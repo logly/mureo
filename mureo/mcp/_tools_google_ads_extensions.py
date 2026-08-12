@@ -1031,7 +1031,7 @@ TOOLS: list[Tool] = [
             "coercion is applied, so callers should parse "
             "defensively), change_resource_type (enum string e.g. "
             "'CAMPAIGN', 'CAMPAIGN_BUDGET', 'AD_GROUP', 'AD', "
-            "'CAMPAIGN_BID_MODIFIER'), resource_change_operation "
+            "'AD_GROUP_BID_MODIFIER'), resource_change_operation "
             "('CREATE'|'UPDATE'|'REMOVE' as enum string), "
             "changed_fields (list of dotted field paths), "
             "user_email}]. Read-only. Defaults to the last 14 days "

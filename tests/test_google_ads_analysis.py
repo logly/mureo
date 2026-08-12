@@ -1395,6 +1395,83 @@ class TestRsaAnalysisMixin:
             ),
         )
 
+    @staticmethod
+    def _make_real_asset_row(
+        text: str,
+        field_type: int,
+        performance_label: int,
+        impressions: int = 1000,
+        clicks: int = 100,
+        conversions: float = 5.0,
+        cost_micros: int = 3_000_000,
+    ) -> Any:
+        """One ``ad_group_ad_asset_view`` row in the shape ``_search`` returns.
+
+        ``_make_asset_row`` above builds a double whose ``__str__`` answers
+        "FieldType.HEADLINE", which production never produces: mureo builds its
+        client with the SDK default ``use_proto_plus=False``, so the row is raw
+        protobuf and ``field_type`` is the plain int 2. ``str()`` made that
+        "2", ``"2" == "HEADLINE"`` is False, and ``headlines`` /
+        ``descriptions`` came back empty on every live account (#588).
+        """
+        from google.ads.googleads import util
+        from google.ads.googleads.v23.services.types.google_ads_service import (
+            GoogleAdsRow,
+        )
+
+        row = GoogleAdsRow()
+        row.ad_group_ad_asset_view.field_type = field_type
+        row.ad_group_ad_asset_view.performance_label = performance_label
+        row.asset.text_asset.text = text
+        row.metrics.impressions = impressions
+        row.metrics.clicks = clicks
+        row.metrics.conversions = conversions
+        row.metrics.cost_micros = cost_micros
+        raw_row = util.convert_proto_plus_to_protobuf(row)
+        assert isinstance(  # the shape the interceptor delivers
+            raw_row.ad_group_ad_asset_view.field_type, int
+        )
+        return raw_row
+
+    @pytest.mark.unit
+    async def test_analyze_rsa_assets_on_the_real_row_shape(self) -> None:
+        """The same analysis, driven by the row ``_search`` actually returns."""
+        client = self._make_client()
+        client._search.return_value = [
+            # HEADLINE / BEST, HEADLINE / LOW, DESCRIPTION / BEST
+            self._make_real_asset_row("Best Headline", 2, 6, impressions=1000),
+            self._make_real_asset_row("Low Headline", 2, 4, impressions=500),
+            self._make_real_asset_row("Best Desc", 3, 6, impressions=800),
+        ]
+
+        result = await client.analyze_rsa_assets("123")
+
+        assert [h["text"] for h in result["headlines"]] == [
+            "Best Headline",
+            "Low Headline",
+        ]
+        assert [d["text"] for d in result["descriptions"]] == ["Best Desc"]
+        assert [h["text"] for h in result["best_headlines"]] == ["Best Headline"]
+        assert [h["text"] for h in result["worst_headlines"]] == ["Low Headline"]
+        assert [d["text"] for d in result["best_descriptions"]] == ["Best Desc"]
+        assert result["headlines"][0]["performance_label"] == "BEST"
+
+    @pytest.mark.unit
+    async def test_audit_rsa_assets_on_the_real_row_shape(self) -> None:
+        """The audit reads the analysis, so it was dead for the same reason."""
+        client = self._make_client()
+        client._search.return_value = [
+            self._make_real_asset_row("Low Headline", 2, 4),
+            self._make_real_asset_row("Poor Desc", 3, 4),
+        ]
+
+        result = await client.audit_rsa_assets("123")
+
+        assert result["label_distribution"] == {"LOW": 2}
+        rec_types = [r["type"] for r in result["recommendations"]]
+        assert "replace_headline" in rec_types
+        assert "replace_description" in rec_types
+
     @pytest.mark.unit
     async def test_analyze_rsa_assets_basic(self) -> None:
         client = self._make_client()
@@ -1523,6 +1600,57 @@ class TestAuctionAnalysisMixin:
                 average_cpc=average_cpc,
             ),
         )
+
+    @staticmethod
+    def _make_real_device_row(
+        device: int,
+        impressions: int,
+        clicks: int,
+        cost_micros: int,
+        conversions: float,
+        ctr: float,
+        average_cpc: int = 50_000,
+    ) -> Any:
+        """One device-segmented row in the shape ``_search`` returns.
+
+        ``_make_device_row`` above builds a double whose ``__str__`` answers
+        "Device.MOBILE"; the real row is raw protobuf and ``segments.device``
+        is the plain int 2. ``str()`` made that "2", so every device insight
+        named the device by number and the desktop lookup — which searched for
+        "1", while DESKTOP is 4 — matched nothing (#588).
+        """
+        from google.ads.googleads import util
+        from google.ads.googleads.v23.services.types.google_ads_service import (
+            GoogleAdsRow,
+        )
+
+        row = GoogleAdsRow()
+        row.segments.device = device
+        row.metrics.impressions = impressions
+        row.metrics.clicks = clicks
+        row.metrics.cost_micros = cost_micros
+        row.metrics.conversions = conversions
+        row.metrics.ctr = ctr
+        row.metrics.average_cpc = average_cpc
+        raw_row = util.convert_proto_plus_to_protobuf(row)
+        assert isinstance(raw_row.segments.device, int)  # the delivered shape
+        return raw_row
+
+    @pytest.mark.unit
+    async def test_analyze_device_performance_on_the_real_row_shape(self) -> None:
+        """Devices are named, and the mobile-vs-desktop comparison can fire."""
+        client = self._make_client()
+        client.get_campaign.return_value = {"name": "Test Campaign"}
+        client._search.return_value = [
+            self._make_real_device_row(4, 1000, 100, 5_000_000, 5.0, 0.10),  # DESKTOP
+            self._make_real_device_row(2, 4000, 80, 4_000_000, 0.0, 0.02),  # MOBILE
+        ]
+
+        result = await client.analyze_device_performance("123")
+
+        assert [d["device_type"] for d in result["devices"]] == ["DESKTOP", "MOBILE"]
+        assert any(i.startswith("MOBILE has 0 conversions") for i in result["insights"])
+        assert any("Mobile CTR" in i for i in result["insights"])
 
     @pytest.mark.unit
     async def test_analyze_device_performance_basic(self) -> None:

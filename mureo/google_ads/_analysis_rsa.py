@@ -5,6 +5,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.google_ads._enum_names import (
+    ASSET_FIELD_TYPE_MAP,
+    ASSET_PERFORMANCE_LABEL_MAP,
+    map_enum_name,
+)
+
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
 
@@ -62,9 +68,18 @@ class _RsaAnalysisMixin:
         for row in response:
             view = row.ad_group_ad_asset_view
             asset_text = row.asset.text_asset.text if row.asset.text_asset else ""
-            field_type = str(view.field_type).split(".")[-1] if view.field_type else ""
+            # The falsiness guards are kept deliberately: on raw protobuf an
+            # unset enum field is the int 0 (UNSPECIFIED), and these two
+            # fallbacks — "" for a field type that names no slot, "UNKNOWN"
+            # for the label bucket the audit's learning heuristic counts —
+            # are the answers the rest of this module is written against.
+            field_type = (
+                map_enum_name(view.field_type, ASSET_FIELD_TYPE_MAP)
+                if view.field_type
+                else ""
+            )
             perf_label = (
-                str(view.performance_label).split(".")[-1]
+                map_enum_name(view.performance_label, ASSET_PERFORMANCE_LABEL_MAP)
                 if view.performance_label
                 else "UNKNOWN"
             )

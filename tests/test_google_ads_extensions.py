@@ -537,6 +537,38 @@ class TestGetBidAdjustments:
         assert result[0]["device_type"] == "DESKTOP"
 
     @pytest.mark.asyncio
+    async def test_type_is_the_enum_name_on_the_real_row_shape(
+        self, client: _MockExtensionsClient
+    ) -> None:
+        """``type`` is the bare enum name on the row ``_search`` returns.
+
+        The MagicMock test above assigns the string "DEVICE" to ``type_``, so
+        it passes whatever the code does with the enum. mureo builds its client
+        with the SDK default ``use_proto_plus=False``, so the real row is raw
+        protobuf and ``campaign_criterion.type_`` is the plain ``int`` 6 —
+        ``str()`` made it "6", while the tool contract for
+        ``google_ads_bid_adjustments_get`` promises "DEVICE" (#588).
+        """
+        from google.ads.googleads import util
+        from google.ads.googleads.v23.services.types.google_ads_service import (
+            GoogleAdsRow,
+        )
+
+        row = GoogleAdsRow()
+        row.campaign_criterion.criterion_id = 1
+        row.campaign_criterion.type_ = 6  # DEVICE
+        row.campaign_criterion.bid_modifier = 1.2
+        row.campaign_criterion.device.type_ = 2  # MOBILE
+        raw_row = util.convert_proto_plus_to_protobuf(row)
+        assert isinstance(raw_row.campaign_criterion.type_, int)  # interceptor shape
+
+        client._search = AsyncMock(return_value=[raw_row])
+        result = await client.get_bid_adjustments("123")
+
+        assert result[0]["type"] == "DEVICE"
+        assert result[0]["device_type"] == "MOBILE"
+
+    @pytest.mark.asyncio
     async def test_empty_adjustments(self, client: _MockExtensionsClient) -> None:
         client._search = AsyncMock(return_value=[])
         result = await client.get_bid_adjustments("123")
@@ -699,6 +731,47 @@ class TestListScheduleTargeting:
         result = await client.list_schedule_targeting("123")
         assert len(result) == 1
         assert result[0]["day_of_week"] == "MONDAY"
+        assert result[0]["start_hour"] == 9
+        assert result[0]["end_hour"] == 18
+
+    @pytest.mark.asyncio
+    async def test_enum_names_on_the_real_row_shape(
+        self, client: _MockExtensionsClient
+    ) -> None:
+        """Day and minute are enum names on the row ``_search`` returns.
+
+        The MagicMock test above assigns the strings "MONDAY" and "ZERO", so it
+        passes whatever the code does with the enums. mureo builds its client
+        with the SDK default ``use_proto_plus=False``, so the real row is raw
+        protobuf and both fields are plain ints — ``str()`` made them "2",
+        while the ``google_ads_schedule_targeting_list`` description promises
+        "the string form of the DayOfWeek enum" and of MinuteOfHour, and
+        ``google_ads_schedule_targeting_update`` takes the day back by name
+        (#588).
+        """
+        from google.ads.googleads import util
+        from google.ads.googleads.v23.services.types.google_ads_service import (
+            GoogleAdsRow,
+        )
+
+        row = GoogleAdsRow()
+        row.campaign_criterion.criterion_id = 1
+        row.campaign_criterion.ad_schedule.day_of_week = 2  # MONDAY
+        row.campaign_criterion.ad_schedule.start_hour = 9
+        row.campaign_criterion.ad_schedule.end_hour = 18
+        row.campaign_criterion.ad_schedule.start_minute = 3  # FIFTEEN
+        row.campaign_criterion.ad_schedule.end_minute = 4  # THIRTY
+        raw_row = util.convert_proto_plus_to_protobuf(row)
+        assert isinstance(  # the shape the interceptor delivers
+            raw_row.campaign_criterion.ad_schedule.day_of_week, int
+        )
+
+        client._search = AsyncMock(return_value=[raw_row])
+        result = await client.list_schedule_targeting("123")
+
+        assert result[0]["day_of_week"] == "MONDAY"
+        assert result[0]["start_minute"] == "FIFTEEN"
+        assert result[0]["end_minute"] == "THIRTY"
         assert result[0]["start_hour"] == 9
         assert result[0]["end_hour"] == 18
 

@@ -13,6 +13,10 @@ from typing import TYPE_CHECKING, Any
 from google.ads.googleads.errors import GoogleAdsException
 from google.protobuf.field_mask_pb2 import FieldMask as PbFieldMask
 
+from mureo.google_ads._enum_names import (
+    KEYWORD_PLAN_COMPETITION_LEVEL_MAP,
+    map_enum_name,
+)
 from mureo.google_ads.client import _wrap_mutate_error
 from mureo.google_ads.mappers import (
     map_keyword,
@@ -343,7 +347,10 @@ class _KeywordsMixin:
             {
                 "keyword": idea.text,
                 "avg_monthly_searches": idea.keyword_idea_metrics.avg_monthly_searches,
-                "competition": str(idea.keyword_idea_metrics.competition),
+                "competition": map_enum_name(
+                    idea.keyword_idea_metrics.competition,
+                    KEYWORD_PLAN_COMPETITION_LEVEL_MAP,
+                ),
             }
             for idea in response.results[:20]
         ]

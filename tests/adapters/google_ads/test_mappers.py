@@ -227,6 +227,38 @@ def test_to_keyword_match_type_strings_are_mapped(
 
 
 @pytest.mark.unit
+def test_a_live_keyword_row_survives_the_adapter_boundary() -> None:
+    """``list_keywords`` -> ``to_keyword`` on the row the API really returns.
+
+    ``_coerce`` raises for anything outside {EXACT, PHRASE, BROAD}, and the
+    upstream mapper used to emit a bare ``str()`` of the enum. mureo builds
+    its client with the SDK default ``use_proto_plus=False``, so that field is
+    a plain ``int`` and the string was "2" — every live ``list_keywords``
+    through this adapter raised ``ValueError: unknown keyword match_type:
+    '2'`` (#588). The dict-driven tests around this one cannot see that: they
+    start from a name that is already spelled correctly.
+    """
+    from google.ads.googleads import util
+    from google.ads.googleads.v23.services.types.google_ads_service import GoogleAdsRow
+
+    from mureo.google_ads.mappers import map_keyword
+
+    row = GoogleAdsRow()
+    row.ad_group_criterion.criterion_id = 42
+    row.ad_group_criterion.keyword.text = "buy widgets"
+    row.ad_group_criterion.keyword.match_type = 2  # EXACT
+    row.ad_group_criterion.status = 2  # ENABLED
+    raw = util.convert_proto_plus_to_protobuf(row)
+
+    legacy = map_keyword(raw.ad_group_criterion, raw.campaign, raw.ad_group)
+    out = to_keyword(legacy, account_id=_ACCOUNT_ID, campaign_id="111")
+
+    assert out.match_type == KeywordMatchType.EXACT
+    assert out.status == KeywordStatus.ENABLED
+    assert out.text == "buy widgets"
+
+
+@pytest.mark.unit
 def test_to_keyword_unknown_match_type_raises() -> None:
     row = {
         "id": "k1",

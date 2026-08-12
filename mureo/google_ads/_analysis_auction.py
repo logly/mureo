@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.google_ads._enum_names import DEVICE_MAP, map_enum_name
+
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
 
@@ -72,7 +74,7 @@ class _AuctionAnalysisMixin:
 
         devices: list[dict[str, Any]] = []
         for row in rows:
-            device_type = str(row.segments.device).split(".")[-1]
+            device_type = map_enum_name(row.segments.device, DEVICE_MAP)
             cost = float(row.metrics.cost_micros) / 1_000_000
             conversions = float(row.metrics.conversions)
             cpa = round(cost / conversions, 0) if conversions > 0 else None
@@ -136,11 +138,12 @@ class _AuctionAnalysisMixin:
                         f"Consider lowering bid adjustments for {worst['device_type']}."
                     )
 
-        # Mobile vs Desktop CTR comparison
-        mobile = next((d for d in devices if d["device_type"] in ("MOBILE", "2")), None)
-        desktop = next(
-            (d for d in devices if d["device_type"] in ("DESKTOP", "1")), None
-        )
+        # Mobile vs Desktop CTR comparison. The digit fallbacks these two
+        # lookups used to carry ("2" for mobile, "1" for desktop) existed only
+        # to paper over the unresolved enum above, and the desktop one was
+        # wrong anyway — DESKTOP is 4, 1 is UNKNOWN (#588).
+        mobile = next((d for d in devices if d["device_type"] == "MOBILE"), None)
+        desktop = next((d for d in devices if d["device_type"] == "DESKTOP"), None)
         if mobile and desktop and desktop["ctr"] > 0:
             ctr_ratio = mobile["ctr"] / desktop["ctr"]
             if ctr_ratio < 0.5:

@@ -42,6 +42,19 @@ from google.ads.googleads.v23.enums.types.policy_topic_entry_type import (
     PolicyTopicEntryTypeEnum,
 )
 
+from mureo.google_ads._enum_names import (
+    CHANGE_CLIENT_TYPE_MAP,
+    CHANGE_EVENT_RESOURCE_TYPE_MAP,
+    CONVERSION_ACTION_CATEGORY_MAP,
+    CONVERSION_ACTION_TYPE_MAP,
+    CRITERION_SYSTEM_SERVING_STATUS_MAP,
+    KEYWORD_MATCH_TYPE_MAP,
+    RECOMMENDATION_TYPE_MAP,
+    RESOURCE_CHANGE_OPERATION_MAP,
+    TRACKING_CODE_TYPE_MAP,
+    map_enum_name,
+)
+
 
 class _HasIdAndName(Protocol):
     id: int
@@ -213,22 +226,6 @@ def _map_enum(value: Any, mapping: dict[int, str]) -> str:
     if isinstance(value, int):
         return mapping.get(value, str(value))
     return str(value)
-
-
-def map_enum_name(value: Any, mapping: dict[int, str]) -> str:
-    """Convert a proto enum value to its bare name, whatever its shape.
-
-    Handles every representation the google-ads client can produce:
-    raw protobuf ints (use_proto_plus=False — the production path),
-    proto-plus members stringifying as 'EnumClass.NAME' (Python <= 3.10),
-    and members stringifying as the bare number (IntEnum on Python 3.11+).
-    """
-    if isinstance(value, int) and not isinstance(value, bool):
-        return mapping.get(value, str(value))
-    s = str(value)
-    if s.isdigit():
-        return mapping.get(int(s), s)
-    return s.rsplit(".", 1)[-1]
 
 
 # ---------------------------------------------------------------------------
@@ -422,19 +419,9 @@ def map_keyword_quality_info(
         hasattr(criterion, "system_serving_status")
         and criterion.system_serving_status is not None
     ):
-        raw = criterion.system_serving_status
-        if isinstance(raw, int):
-            serving_map: dict[int, str] = {
-                0: "UNSPECIFIED",
-                1: "UNKNOWN",
-                2: "ELIGIBLE",
-                3: "RARELY_SERVED",
-            }
-            result["system_serving_status"] = serving_map.get(raw, str(raw))
-        elif hasattr(raw, "name"):
-            result["system_serving_status"] = str(raw.name)
-        else:
-            result["system_serving_status"] = str(raw)
+        result["system_serving_status"] = map_enum_name(
+            criterion.system_serving_status, CRITERION_SYSTEM_SERVING_STATUS_MAP
+        )
 
     # quality_info
     qi = getattr(criterion, "quality_info", None)
@@ -474,7 +461,9 @@ def map_keyword(
         ),
         "text": keyword.keyword.text if hasattr(keyword, "keyword") else str(keyword),
         "match_type": (
-            str(keyword.keyword.match_type) if hasattr(keyword, "keyword") else None
+            map_enum_name(keyword.keyword.match_type, KEYWORD_MATCH_TYPE_MAP)
+            if hasattr(keyword, "keyword")
+            else None
         ),
         "status": (
             map_entity_status(keyword.status) if hasattr(keyword, "status") else None
@@ -586,7 +575,9 @@ def map_negative_keyword(criterion: Any) -> dict[str, Any]:
             criterion.keyword.text if hasattr(criterion, "keyword") else None
         ),
         "match_type": (
-            str(criterion.keyword.match_type) if hasattr(criterion, "keyword") else None
+            map_enum_name(criterion.keyword.match_type, KEYWORD_MATCH_TYPE_MAP)
+            if hasattr(criterion, "keyword")
+            else None
         ),
     }
 
@@ -672,18 +663,30 @@ def map_conversion_action(action: Any) -> dict[str, Any]:
     return {
         "id": str(action.id) if hasattr(action, "id") else None,
         "name": _safe_str(action, "name"),
-        "type": str(action.type_) if hasattr(action, "type_") else None,
+        "type": (
+            map_enum_name(action.type_, CONVERSION_ACTION_TYPE_MAP)
+            if hasattr(action, "type_")
+            else None
+        ),
         "status": (
             map_entity_status(action.status) if hasattr(action, "status") else None
         ),
-        "category": str(action.category) if hasattr(action, "category") else None,
+        "category": (
+            map_enum_name(action.category, CONVERSION_ACTION_CATEGORY_MAP)
+            if hasattr(action, "category")
+            else None
+        ),
     }
 
 
 def map_tag_snippet(snippet: Any) -> dict[str, Any]:
     """Format conversion tag snippet."""
     return {
-        "type": str(snippet.type_) if hasattr(snippet, "type_") else None,
+        "type": (
+            map_enum_name(snippet.type_, TRACKING_CODE_TYPE_MAP)
+            if hasattr(snippet, "type_")
+            else None
+        ),
         # The v23 proto spells the page-header snippet ``global_site_tag``;
         # the response key stays ``page_header`` for backward compatibility
         # with the documented google_ads_conversions_tag tool contract.
@@ -701,7 +704,11 @@ def map_recommendation(rec: Any) -> dict[str, Any]:
         "resource_name": (
             str(rec.resource_name) if hasattr(rec, "resource_name") else None
         ),
-        "type": str(rec.type_) if hasattr(rec, "type_") else None,
+        "type": (
+            map_enum_name(rec.type_, RECOMMENDATION_TYPE_MAP)
+            if hasattr(rec, "type_")
+            else None
+        ),
         "impact": (
             {
                 "base_metrics": {
@@ -755,13 +762,15 @@ def map_change_event(event: Any) -> dict[str, Any]:
         "resource_name": _safe_str(event, "resource_name"),
         "change_date_time": _safe_str(event, "change_date_time"),
         "change_resource_type": (
-            str(event.change_resource_type)
+            map_enum_name(event.change_resource_type, CHANGE_EVENT_RESOURCE_TYPE_MAP)
             if hasattr(event, "change_resource_type")
             else None
         ),
         "change_resource_name": _safe_str(event, "change_resource_name"),
         "resource_change_operation": (
-            str(event.resource_change_operation)
+            map_enum_name(
+                event.resource_change_operation, RESOURCE_CHANGE_OPERATION_MAP
+            )
             if hasattr(event, "resource_change_operation")
             else None
         ),
@@ -772,7 +781,9 @@ def map_change_event(event: Any) -> dict[str, Any]:
             else []
         ),
         "client_type": (
-            str(event.client_type) if hasattr(event, "client_type") else None
+            map_enum_name(event.client_type, CHANGE_CLIENT_TYPE_MAP)
+            if hasattr(event, "client_type")
+            else None
         ),
         "user_email": _safe_str(event, "user_email"),
         "campaign": _safe_str(event, "campaign"),

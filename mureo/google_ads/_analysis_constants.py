@@ -6,6 +6,9 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+from mureo.google_ads._enum_names import KEYWORD_MATCH_TYPE_MAP
+from mureo.google_ads.mappers import AD_GROUP_CRITERION_STATUS_MAP
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -20,23 +23,15 @@ _PERIOD_DAYS: dict[str, int] = {
 
 # ---------------------------------------------------------------------------
 # Common mapping constants (eliminate duplicate definitions)
+#
+# Both were transcribed by hand and both happened to be right; they are now
+# aliases of the SDK-derived maps so they cannot drift from the API version
+# (#588). The names are kept because the analysis modules read them.
 # ---------------------------------------------------------------------------
 
-_MATCH_TYPE_MAP: dict[int, str] = {
-    0: "UNSPECIFIED",
-    1: "UNKNOWN",
-    2: "EXACT",
-    3: "PHRASE",
-    4: "BROAD",
-}
+_MATCH_TYPE_MAP: dict[int, str] = KEYWORD_MATCH_TYPE_MAP
 
-_STATUS_MAP: dict[int, str] = {
-    0: "UNSPECIFIED",
-    1: "UNKNOWN",
-    2: "ENABLED",
-    3: "PAUSED",
-    4: "REMOVED",
-}
+_STATUS_MAP: dict[int, str] = AD_GROUP_CRITERION_STATUS_MAP
 
 # ---------------------------------------------------------------------------
 # Informational query patterns. Japanese tokens that signal informational

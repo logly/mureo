@@ -530,6 +530,53 @@ class TestDiagnoseCampaignDeliveryAdditional:
         assert any("RARELY_SERVED" in w for w in result["warnings"])
 
     @pytest.mark.asyncio
+    async def test_rarely_served_warning_fires_on_the_real_row_shape(
+        self, client: _MockDiagClient
+    ) -> None:
+        """The same warning, driven by the row ``_search`` actually returns.
+
+        The MagicMock test above hands the diagnostic the string
+        "RARELY_SERVED", so it passes whatever the code does with the enum.
+        mureo builds its client with the SDK default ``use_proto_plus=False``,
+        so the real row is raw protobuf and ``system_serving_status`` is the
+        plain ``int`` 3 — ``str()`` made it "3", ``"RARELY_SERVED" in "3"`` is
+        False, and this warning could never fire on a live account (#588).
+        """
+        from google.ads.googleads import util
+        from google.ads.googleads.v23.services.types.google_ads_service import (
+            GoogleAdsRow,
+        )
+
+        campaign = self._make_base_campaign()
+        client.get_campaign = AsyncMock(return_value=campaign)
+        client.list_ad_groups = AsyncMock(return_value=[{"id": "1"}])
+
+        row = GoogleAdsRow()
+        row.ad_group_criterion.keyword.text = "rare keyword"
+        row.ad_group_criterion.keyword.match_type = 4  # BROAD
+        row.ad_group_criterion.approval_status = 2  # APPROVED
+        row.ad_group_criterion.system_serving_status = 3  # RARELY_SERVED
+        raw_row = util.convert_proto_plus_to_protobuf(row)
+        assert isinstance(  # the shape the interceptor delivers
+            raw_row.ad_group_criterion.system_serving_status, int
+        )
+
+        client._search = AsyncMock(
+            side_effect=[
+                [raw_row],  # keywords
+                [],  # ads
+                [],  # locations
+                [],  # billing
+                [],  # impression share
+            ]
+        )
+
+        result = await client.diagnose_campaign_delivery("123")
+
+        assert any("RARELY_SERVED" in w for w in result["warnings"])
+        assert any("rare keyword" in w for w in result["warnings"])
+
+    @pytest.mark.asyncio
     async def test_disapproved_ads_issue(self, client: _MockDiagClient) -> None:
         """Disapproved-ad issue (line 431)."""
         campaign = self._make_base_campaign()

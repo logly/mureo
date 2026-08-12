@@ -6,12 +6,30 @@ conversions.
 
 from __future__ import annotations
 
+import inspect
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from google.ads.googleads import util
+from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.v23.common import TagSnippet
+from google.ads.googleads.v23.enums.types.keyword_match_type import (
+    KeywordMatchTypeEnum,
+)
+from google.ads.googleads.v23.resources.types.ad_group_criterion import (
+    AdGroupCriterion,
+)
 from google.ads.googleads.v23.resources.types.campaign import Campaign
+from google.ads.googleads.v23.resources.types.change_event import ChangeEvent
+from google.ads.googleads.v23.resources.types.conversion_action import ConversionAction
+from google.ads.googleads.v23.resources.types.recommendation import Recommendation
 
+from mureo.google_ads._enum_names import (
+    CHANGE_EVENT_RESOURCE_TYPE_MAP,
+    map_enum_name,
+)
 from mureo.google_ads.mappers import (
     _BIDDING_STRATEGY_MAP,
     _micros_to_currency,
@@ -41,6 +59,68 @@ from mureo.google_ads.mappers import (
     map_sitelink,
     map_tag_snippet,
 )
+
+# ---------------------------------------------------------------------------
+# The two shapes a mapper can be handed — and which one production uses
+# ---------------------------------------------------------------------------
+
+
+def _raw(message: Any) -> Any:
+    """The shape ``GoogleAdsApiClient._search`` actually delivers.
+
+    mureo builds its client with the SDK default ``use_proto_plus=False``, so
+    the SDK's response interceptor converts every row to raw protobuf before a
+    mapper sees it — and on raw protobuf an enum field is a plain ``int`` with
+    no ``.name``. Handing a mapper a proto-plus object is therefore testing a
+    shape production never produces; see ``TestWhyTheRawShapeIsTheRealOne``.
+    """
+    return util.convert_proto_plus_to_protobuf(message)
+
+
+def _proto_plus(message: Any) -> Any:
+    """The shape a ``use_proto_plus=True`` client would deliver."""
+    return message
+
+
+# Every enum assertion runs through both, so the mappers stay pinned under
+# either client setting and a future flip of that flag cannot silently break
+# them. ``raw-protobuf`` is the one that reflects production today.
+SHAPES: list[Callable[[Any], Any]] = [_raw, _proto_plus]
+SHAPE_IDS = ["raw-protobuf", "proto-plus"]
+
+
+@pytest.mark.unit
+class TestWhyTheRawShapeIsTheRealOne:
+    """Why every enum test below is driven through ``_raw`` (#588).
+
+    The original fix for #588 read ``.name`` off the value and was verified
+    against proto-plus objects built in the test. It passed and changed
+    nothing in production, because production never sees that shape. These two
+    assertions are the load-bearing premise; if either stops holding, the
+    parametrization above needs revisiting rather than deleting.
+    """
+
+    def test_mureo_builds_its_client_on_the_raw_protobuf_default(self) -> None:
+        """``GoogleAdsApiClient`` passes no ``use_proto_plus``, and it is False."""
+        from mureo.google_ads.client import GoogleAdsApiClient
+
+        source = inspect.getsource(GoogleAdsApiClient.__init__)
+        assert "use_proto_plus" not in source
+        default = inspect.signature(GoogleAdsClient.__init__).parameters[
+            "use_proto_plus"
+        ]
+        assert default.default is False
+
+    def test_a_raw_protobuf_enum_field_is_a_plain_int_with_no_name(self) -> None:
+        """The whole reason ``str()`` on these fields emitted "2"."""
+        event = ChangeEvent()
+        event.change_resource_type = 2  # AD
+
+        value = _raw(event).change_resource_type
+
+        assert isinstance(value, int)
+        assert not hasattr(value, "name")
+
 
 # ---------------------------------------------------------------------------
 # Helper functions
@@ -139,6 +219,57 @@ class TestEnumMappers:
     def test_map_primary_status_reason_int(self) -> None:
         result = map_primary_status_reason(0)
         assert result == "UNSPECIFIED"
+
+
+@pytest.mark.unit
+class TestMapEnumNameOnEveryShape:
+    """The one resolver every enum read goes through (#588).
+
+    It resolves a name from the SDK-derived mapping instead of reading
+    ``.name`` off the value, which is what makes it work on the raw-protobuf
+    path where there is no ``.name`` to read.
+    """
+
+    def test_the_raw_protobuf_int_resolves_to_its_name(self) -> None:
+        """The production path: a plain ``int``, no ``.name``, was "2"."""
+        event = ChangeEvent()
+        event.change_resource_type = 2  # AD
+
+        value = _raw(event).change_resource_type
+
+        assert map_enum_name(value, CHANGE_EVENT_RESOURCE_TYPE_MAP) == "AD"
+
+    def test_a_proto_plus_member_resolves_to_the_same_name(self) -> None:
+        """A ``use_proto_plus=True`` client must produce the same string."""
+        event = ChangeEvent()
+        event.change_resource_type = 2  # AD
+
+        resolved = map_enum_name(
+            event.change_resource_type, CHANGE_EVENT_RESOURCE_TYPE_MAP
+        )
+
+        assert resolved == "AD"
+
+    def test_an_out_of_range_int_falls_back_to_its_digits(self) -> None:
+        """An enum member newer than the vendored SDK must not raise."""
+        assert map_enum_name(9999, CHANGE_EVENT_RESOURCE_TYPE_MAP) == "9999"
+
+    def test_a_string_passes_through_unchanged(self) -> None:
+        """What the MagicMock-driven tests in this file feed the mappers."""
+        assert map_enum_name("EXACT", CHANGE_EVENT_RESOURCE_TYPE_MAP) == "EXACT"
+
+    def test_a_value_that_merely_claims_a_name_does_not_get_it(self) -> None:
+        """Only the mapping decides; ``.name`` is never consulted.
+
+        A MagicMock answers every attribute, so ``getattr(value, "name",
+        None)`` hands back a truthy stand-in and a ``.name``-based helper
+        looks correct for any input at all — the exact reason #588's first fix
+        passed a green suite while changing nothing in production.
+        """
+        mock = MagicMock()
+        mock.name = "AD"
+
+        assert map_enum_name(mock, CHANGE_EVENT_RESOURCE_TYPE_MAP) != "AD"
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +510,27 @@ class TestMapKeyword:
         assert result["ad_group_id"] == "200"
         assert result["ad_group_name"] == "AG200"
 
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_match_type_is_the_bare_enum_name(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        """A real proto, in both shapes — ``raw-protobuf`` is production.
+
+        Every ``match_type`` test above feeds the mapper a string that is
+        already a name, so none of them can see what the mapper does with the
+        value the client actually delivers: a plain ``int``, which bare
+        ``str()`` turned into "2". Consumers key on the bare name —
+        ``_analysis_keywords`` compares against "BROAD"/"PHRASE",
+        ``exclusion_impact.matching`` against "EXACT"/"PHRASE" — so "2" is a
+        silent mis-comparison at every one of them (#588).
+        """
+        criterion = AdGroupCriterion()
+        criterion.criterion_id = 66666
+        criterion.keyword.text = "running shoes"
+        criterion.keyword.match_type = 2  # EXACT
+
+        assert map_keyword(shape(criterion))["match_type"] == "EXACT"
+
 
 @pytest.mark.unit
 class TestMapKeywordQualityInfo:
@@ -402,6 +554,20 @@ class TestMapKeywordQualityInfo:
         assert result["post_click_quality_score"] == "ABOVE_AVERAGE"
         assert result["search_predicted_ctr"] == "BELOW_AVERAGE"
         assert result["system_serving_status"] == "ELIGIBLE"
+
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_system_serving_status_is_the_bare_enum_name(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        """``_keywords`` compares this against "RARELY_SERVED" exactly."""
+        criterion = AdGroupCriterion()
+        criterion.criterion_id = 55555
+        criterion.keyword.text = "shoes"
+        criterion.system_serving_status = 3  # RARELY_SERVED
+
+        result = map_keyword_quality_info(shape(criterion))
+
+        assert result["system_serving_status"] == "RARELY_SERVED"
 
     def test_品質情報なし(self) -> None:
         keyword = MagicMock(spec=["criterion_id", "keyword", "status"])
@@ -452,6 +618,51 @@ class TestMapNegativeKeyword:
         assert result["criterion_id"] == "77777"
         assert result["keyword_text"] == "無料"
         assert result["match_type"] == "EXACT"
+
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_match_type_is_the_bare_enum_name(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        """A real proto, in both shapes — ``raw-protobuf`` is production.
+
+        On the raw shape the field is the plain ``int`` 2, which bare
+        ``str()`` emitted as "2"; the mock test above cannot see that because
+        it feeds the mapper a string that is already a name.
+        """
+        criterion = AdGroupCriterion()
+        criterion.criterion_id = 77777
+        criterion.keyword.text = "free"
+        criterion.keyword.match_type = 2  # EXACT
+
+        assert map_negative_keyword(shape(criterion))["match_type"] == "EXACT"
+
+
+@pytest.mark.unit
+class TestKeywordMatchTypeSpelling:
+    """The two mappers that read ``KeywordMatchType`` may not drift apart.
+
+    ``map_keyword`` and ``map_negative_keyword`` read the same field off the
+    same proto and feed consumers that compare on the bare name, so a fix
+    applied to one and not the other is its own defect: for a while #588 was
+    scoped to the negative-keyword site alone, which would have shipped
+    ``map_negative_keyword`` returning "EXACT" next to ``map_keyword``
+    returning "2". This pins them together, member by member.
+    """
+
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_both_mappers_spell_every_member_the_same_bare_way(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        for member in KeywordMatchTypeEnum.KeywordMatchType:
+            criterion = AdGroupCriterion()
+            criterion.keyword.text = "shoes"
+            criterion.keyword.match_type = member.value
+            row = shape(criterion)
+
+            positive = map_keyword(row)["match_type"]
+            negative = map_negative_keyword(row)["match_type"]
+
+            assert positive == negative == member.name
 
 
 @pytest.mark.unit
@@ -520,6 +731,23 @@ class TestMapConversionAction:
         assert result["name"] == "購入完了"
         assert result["status"] == "ENABLED"
 
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_type_and_category_are_bare_enum_names(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        """Real proto in both shapes; on the production one these were "8"/"4"."""
+        action = ConversionAction()
+        action.id = 10001
+        action.name = "Purchase"
+        action.status = 2  # ENABLED
+        action.type_ = 8  # WEBPAGE
+        action.category = 4  # PURCHASE
+
+        result = map_conversion_action(shape(action))
+
+        assert result["type"] == "WEBPAGE"
+        assert result["category"] == "PURCHASE"
+
 
 @pytest.mark.unit
 class TestMapTagSnippet:
@@ -527,19 +755,22 @@ class TestMapTagSnippet:
     # so the previous mock-based test passed against ``page_header``, a field
     # the v23 TagSnippet does not have. The key was therefore always empty.
 
-    def test_global_site_tag_populates_the_page_header_key(self) -> None:
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_global_site_tag_populates_the_page_header_key(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
         """The global site tag is returned under the ``page_header`` key."""
         snippet = TagSnippet()
         snippet.type_ = 2  # WEBPAGE
         snippet.global_site_tag = "<script>gtag</script>"
         snippet.event_snippet = "<script>event</script>"
 
-        result = map_tag_snippet(snippet)
+        result = map_tag_snippet(shape(snippet))
 
-        # ``type`` is deliberately not pinned to a literal: the mapper returns
-        # ``str(snippet.type_)``, and proto-plus enums are stdlib IntEnum,
-        # whose ``__str__`` CPython changed in 3.11 — "TrackingCodeType.WEBPAGE"
-        # on 3.10, "2" on 3.11+. This test is about the snippet fields.
+        # ``type`` IS pinned to the bare enum name: the mapper resolves it
+        # through ``map_enum_name``, so the "2" that bare ``str()`` emitted on
+        # the raw-protobuf path production runs on is a failure here.
+        assert result["type"] == "WEBPAGE"
         assert result["page_header"] == "<script>gtag</script>"
         assert result["event_snippet"] == "<script>event</script>"
 
@@ -580,6 +811,15 @@ class TestMapRecommendation:
         assert result["resource_name"] == "customers/123/recommendations/456"
         assert result["impact"]["base_metrics"]["impressions"] == 1000.0
 
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_type_is_the_bare_enum_name(self, shape: Callable[[Any], Any]) -> None:
+        """Real proto in both shapes; on the production one this was "3"."""
+        rec = Recommendation()
+        rec.resource_name = "customers/123/recommendations/456"
+        rec.type_ = 3  # KEYWORD
+
+        assert map_recommendation(shape(rec))["type"] == "KEYWORD"
+
 
 @pytest.mark.unit
 class TestMapChangeEvent:
@@ -610,10 +850,6 @@ class TestMapChangeEvent:
         A real protobuf raises ``AttributeError`` for a name it does not have,
         so every key this asserts is a name the vendored SDK actually defines.
         """
-        from google.ads.googleads.v23.resources.types.change_event import (
-            ChangeEvent,
-        )
-
         event = ChangeEvent(
             resource_name="customers/1/changeEvents/2026-08-05~1~2",
             change_date_time="2026-08-05 09:14:00",
@@ -638,6 +874,29 @@ class TestMapChangeEvent:
         assert result["resource_change_operation"] is not None
         assert result["client_type"] is not None
 
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_the_three_enum_fields_are_bare_names(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        """The names ``change_import`` keys on, in both client shapes.
+
+        On the raw-protobuf shape production runs, these fields are the plain
+        ints 2/3/6 and bare ``str()`` emitted "2"/"3"/"6", while the consumers
+        look the value up by exact match on "AD" — so the classification
+        missed every time. See ``tests/test_change_import_google_ads.py`` for
+        the end-to-end proof (#588).
+        """
+        event = ChangeEvent(change_date_time="2026-08-05 09:14:00")
+        event.change_resource_type = 2  # AD
+        event.resource_change_operation = 3  # UPDATE
+        event.client_type = 6  # GOOGLE_ADS_API
+
+        result = map_change_event(shape(event))
+
+        assert result["change_resource_type"] == "AD"
+        assert result["resource_change_operation"] == "UPDATE"
+        assert result["client_type"] == "GOOGLE_ADS_API"
+
     def test_every_mapped_key_exists_on_the_proto(self) -> None:
         """No key the mapper emits may name a field the proto does not have.
 
@@ -645,10 +904,6 @@ class TestMapChangeEvent:
         moment someone adds a field name by hand rather than from the proto.
         Keys the mapper renames deliberately are listed as exceptions.
         """
-        from google.ads.googleads.v23.resources.types.change_event import (
-            ChangeEvent,
-        )
-
         declared = {f.name for f in ChangeEvent.pb(ChangeEvent()).DESCRIPTOR.fields}
         emitted = set(map_change_event(ChangeEvent()))
         assert emitted <= declared, (

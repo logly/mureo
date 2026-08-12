@@ -1355,6 +1355,52 @@ class TestGetNetworkPerformanceReport:
         assert result[0]["network_label"] == "Google Search"
 
     @pytest.mark.asyncio
+    async def test_network_type_on_the_real_row_shape(self) -> None:
+        """The same split, driven by the row ``_search`` actually returns.
+
+        The MagicMock tests here assign the string "SEARCH"; the real row is
+        raw protobuf and ``segments.ad_network_type`` is a plain int. This read
+        worked in production only because it carried hardcoded digit fallbacks
+        ("2", "3") beside the names; it now resolves the enum instead, so the
+        fallbacks are gone and this pins the behaviour they used to carry
+        (#588).
+        """
+        from google.ads.googleads import util
+        from google.ads.googleads.v23.services.types.google_ads_service import (
+            GoogleAdsRow,
+        )
+
+        def _raw_row(network: int) -> Any:
+            row = GoogleAdsRow()
+            row.campaign.id = 111
+            row.campaign.name = "テスト"
+            row.segments.ad_network_type = network
+            row.metrics.impressions = 1000
+            row.metrics.clicks = 50
+            row.metrics.cost_micros = 5000_000_000
+            row.metrics.conversions = 5.0
+            row.metrics.ctr = 0.05
+            row.metrics.average_cpc = 100_000_000
+            return util.convert_proto_plus_to_protobuf(row)
+
+        client = _make_client()
+        rows = [
+            _raw_row(2),
+            _raw_row(3),
+            _raw_row(4),
+        ]  # SEARCH, SEARCH_PARTNERS, CONTENT
+        assert isinstance(rows[0].segments.ad_network_type, int)  # delivered shape
+
+        with patch.object(client, "_search", return_value=rows):
+            result = await client.get_network_performance_report()
+
+        assert [r["network_type"] for r in result] == ["SEARCH", "SEARCH_PARTNERS"]
+        assert [r["network_label"] for r in result] == [
+            "Google Search",
+            "Search Partners",
+        ]
+
+    @pytest.mark.asyncio
     async def test_DISPLAY等はスキップ(self) -> None:
         client = _make_client()
         row = MagicMock()

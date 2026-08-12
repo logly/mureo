@@ -9,11 +9,15 @@ the handler wiring.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from google.ads.googleads import util
+from google.ads.googleads.v23.services.types.google_ads_service import GoogleAdsRow
 
+from mureo.google_ads._placement_mappers import map_placement_performance
 from mureo.google_ads.client import GoogleAdsApiClient
 
 PLACEMENT = 3  # CriterionTypeEnum.PLACEMENT
@@ -494,6 +498,17 @@ def _placement_perf_row(
     placement_type: str = "PlacementType.WEBSITE",
     impressions: int = 1000,
 ) -> MagicMock:
+    """A query-shaping stand-in — NOT the shape production delivers.
+
+    ``placement_type`` here is the string "PlacementType.WEBSITE", which the
+    client never produces: mureo builds it with the SDK default
+    ``use_proto_plus=False``, so the row is raw protobuf and the field is a
+    plain ``int``. Every assertion this helper feeds therefore passes whatever
+    the mapper does with a real enum, which is how #588 hid here. The rows are
+    kept for the GAQL / scoping tests they serve; anything about
+    ``placement_type`` is pinned on the real shape in
+    ``TestPlacementPerformanceOnTheRealRowShape`` below.
+    """
     row = MagicMock()
     view = row.group_placement_view
     view.placement = placement
@@ -562,3 +577,122 @@ class TestPlacementPerformance:
         client._search = _search  # type: ignore[method-assign]
         with pytest.raises(ValueError):
             await client.get_placement_performance(campaign_id="100 OR 1=1")
+
+
+# ---------------------------------------------------------------------------
+# The two shapes a mapper can be handed — and which one production uses
+# ---------------------------------------------------------------------------
+
+
+def _raw(message: Any) -> Any:
+    """The shape ``GoogleAdsApiClient._search`` actually delivers.
+
+    mureo builds its client with the SDK default ``use_proto_plus=False``, so
+    the SDK's response interceptor converts every row to raw protobuf before a
+    mapper sees it — and on raw protobuf an enum field is a plain ``int`` with
+    no ``.name``.
+    """
+    return util.convert_proto_plus_to_protobuf(message)
+
+
+def _proto_plus(message: Any) -> Any:
+    """The shape a ``use_proto_plus=True`` client would deliver."""
+    return message
+
+
+# Both shapes, so the mapper stays pinned under either client setting and a
+# future flip of that flag cannot silently break it. ``raw-protobuf`` is the
+# one that reflects production today.
+SHAPES: list[Callable[[Any], Any]] = [_raw, _proto_plus]
+SHAPE_IDS = ["raw-protobuf", "proto-plus"]
+
+WEBSITE = 2  # PlacementTypeEnum.PlacementType
+MOBILE_APPLICATION_PLACEMENT = 4
+
+
+def _placement_perf_proto(placement_type: int = WEBSITE) -> GoogleAdsRow:
+    """A real ``group_placement_view`` row, enum field and all."""
+    row = GoogleAdsRow()
+    row.group_placement_view.placement = "example.com"
+    row.group_placement_view.display_name = "Example"
+    row.group_placement_view.target_url = "https://example.com"
+    row.group_placement_view.placement_type = placement_type
+    row.metrics.impressions = 1000
+    row.metrics.clicks = 10
+    row.metrics.cost_micros = 5_000_000
+    row.metrics.conversions = 2.0
+    return row
+
+
+@pytest.mark.unit
+class TestPlacementPerformanceOnTheRealRowShape:
+    """``placement_type`` on the row ``_search`` really returns (#588).
+
+    The ``_placement_perf_row`` tests above assign the string
+    "PlacementType.WEBSITE", so they pass whatever the mapper does with the
+    enum. On the raw-protobuf path the field is the plain ``int`` 2, which
+    bare ``str()`` turned into "2" — and every placement row then failed the
+    ``_PLACEMENT_ATTRIBUTABLE`` membership test in
+    :mod:`mureo.mcp.exclusion_sources`, so placement-attributed delivery was
+    silently always empty for the exclusion-impact preview and for the
+    delivery-collapse diagnosis.
+    """
+
+    def test_a_raw_protobuf_placement_type_is_a_plain_int(self) -> None:
+        """The premise: the interceptor shape has no ``.name`` to read."""
+        value = _raw(_placement_perf_proto()).group_placement_view.placement_type
+
+        assert isinstance(value, int)
+        assert not hasattr(value, "name")
+
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_placement_type_is_the_bare_enum_name(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        result = map_placement_performance(shape(_placement_perf_proto()))
+
+        assert result["placement_type"] == "WEBSITE"
+        assert result["type"] == "website"
+
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_a_website_row_is_attributable_delivery(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        """Asserted against the real set, so the two cannot drift apart.
+
+        ``_placement_records`` copies this ``type`` into
+        ``DeliveryRecord.entity_type``, which is what the attributable test
+        keys on.
+        """
+        from mureo.mcp.exclusion_sources import _PLACEMENT_ATTRIBUTABLE
+
+        result = map_placement_performance(shape(_placement_perf_proto()))
+
+        assert result["type"] in _PLACEMENT_ATTRIBUTABLE
+
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_a_mobile_application_row_is_attributable_delivery(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        from mureo.mcp.exclusion_sources import _PLACEMENT_ATTRIBUTABLE
+
+        result = map_placement_performance(
+            shape(_placement_perf_proto(MOBILE_APPLICATION_PLACEMENT))
+        )
+
+        assert result["placement_type"] == "MOBILE_APPLICATION"
+        assert result["type"] == "mobile_application"
+        assert result["type"] in _PLACEMENT_ATTRIBUTABLE
+
+    @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
+    def test_a_kind_no_exclusion_can_name_keeps_its_lower_cased_name(
+        self, shape: Callable[[Any], Any]
+    ) -> None:
+        """A YouTube channel row stays readable and stays non-attributable."""
+        from mureo.mcp.exclusion_sources import _PLACEMENT_ATTRIBUTABLE
+
+        result = map_placement_performance(shape(_placement_perf_proto(6)))
+
+        assert result["placement_type"] == "YOUTUBE_CHANNEL"
+        assert result["type"] == "youtube_channel"
+        assert result["type"] not in _PLACEMENT_ATTRIBUTABLE

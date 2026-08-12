@@ -9,6 +9,127 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Google Ads enum fields emitted the raw number, not the name every
+  consumer keys on** (#588). Twenty reads across the row mappers, the
+  campaign diagnostic, the bid-adjustment and ad-schedule listings, the
+  placement-performance view, the RSA asset analysis, the device analysis and
+  the keyword-suggestion tool stringified an enum
+  field with a bare `str()`. mureo
+  builds its client with the SDK default `use_proto_plus=False`, so the SDK's
+  response interceptor converts every row to raw protobuf before a mapper sees
+  it — and on raw protobuf an enum field is a plain `int` with no `.name`.
+  Every one of those reads therefore emitted `"2"`, on every Python version.
+  They now emit `"AD"`, so **the observable output of these fields changes**:
+  `change_resource_type`, `resource_change_operation` and `client_type` on
+  `google_ads_change_history_list`, the conversion-action `type` and
+  `category`, the conversion tag-snippet `type`, the recommendation `type`,
+  the `match_type` of both the keyword and the negative-keyword mapper,
+  the criterion `type` on `google_ads_bid_adjustments_get`, the
+  `placement_type` — with the `type` derived from it — on every
+  `group_placement_view` row, the `day_of_week`, `start_minute` and
+  `end_minute` of `google_ads_schedule_targeting_list`, the `device_type` of
+  `google_ads_device_analyze`, the `competition` of
+  `google_ads_keywords_suggest`, and the `performance_label` of
+  `google_ads_rsa_assets_analyze` / `_audit`.
+
+  The cost was not cosmetic, and everywhere but the third bullet it was
+  silent:
+
+  - `change_import` classifies a change by exact match on that string —
+    `_RESOURCE_KINDS`, `_AD_LEVEL_RESOURCE_TYPES`, `_CRITERION_RESOURCE_TYPES`
+    and `_OPERATION_ALIASES` all key on names like `"AD"` — so **the
+    classification had never worked**. Every imported external change fell
+    through to kind `""` and lost its ad-level identity, with no exception
+    raised and nothing logged, and the dedupe that keys on the kind stopped
+    matching with it.
+  - Keyword match types were mis-comparing the same way: `_analysis_keywords`
+    tests `match_type == "BROAD"` / `== "PHRASE"` and
+    `exclusion_impact.matching` tests `== "EXACT"` / `== "PHRASE"`, and `"2"`
+    equals none of them.
+  - The adapter boundary did not fail silently, it failed loudly: the
+    Google Ads provider adapter coerces `match_type` against
+    `{EXACT, PHRASE, BROAD}` and raises otherwise, so every live
+    `list_keywords` through it raised `ValueError: unknown keyword
+    match_type: '2'`.
+  - The rarely-served-keyword warning in `campaigns.diagnose` was dead code:
+    it tests `"RARELY_SERVED" in str(system_serving_status)` against `"3"`,
+    so a live account could never trigger it.
+  - Placement-attributed delivery was always empty. The `type` of a
+    `group_placement_view` row is derived from `placement_type`, and
+    `exclusion_sources` tests it for membership of
+    `{website, mobile_application}` before a row can be attributed — a digit
+    string is in neither, so **no placement row was ever attributable**. Both
+    the exclusion-impact preview (#547) and the delivery-collapse diagnosis
+    (#572) read that basis, and both saw nothing, with no exception raised and
+    nothing logged.
+  - **RSA asset analysis returned nothing, and always had.**
+    `google_ads_rsa_assets_analyze` sorts each asset into `headlines` or
+    `descriptions` by `field_type == "HEADLINE"` / `== "DESCRIPTION"`, which
+    `"2"` and `"3"` never satisfied, so both lists came back empty for every
+    live account — and with them `best_headlines`, `worst_headlines` and the
+    whole of `google_ads_rsa_assets_audit`, which reads them. The tool
+    answered "asset-level performance data has not yet been accumulated" to
+    accounts with years of it. The `performance_label == "BEST"` and
+    `in ("LOW", "POOR")` filters could not have matched either.
+  - Device analysis named devices by number, and could not find the desktop.
+    `google_ads_device_analyze` wrote insights like `"2 has 0 conversions
+    with 40000 yen in cost"`. Its mobile-vs-desktop CTR comparison fared
+    worse: the digit fallbacks written beside the names found mobile under
+    `"2"` but looked for desktop under `"1"` — DESKTOP is `4`, `1` is
+    UNKNOWN — so that comparison could never fire. Those fallbacks are
+    deleted rather than corrected: they existed only to paper over the
+    unresolved enum.
+  - Four tool contracts documented the name and shipped the number: the
+    `google_ads_bid_adjustments_get` description promises `type` as a
+    "CriterionType enum string, e.g. 'DEVICE'" and returned `"6"`;
+    `google_ads_change_history_list` promises `change_resource_type` as an
+    enum string; `google_ads_keywords_suggest` promises
+    `competition (LOW / MEDIUM / HIGH)` and shipped `"2"` / `"3"` / `"4"`;
+    and `google_ads_schedule_targeting_list` promises `day_of_week` as "the
+    string form of the DayOfWeek enum, e.g. 'MONDAY'..'SUNDAY'" and
+    `start_minute` / `end_minute` as `'ZERO'`, `'FIFTEEN'`, `'THIRTY'` or
+    `'FORTY_FIVE'` — the day it returned as `"2"` is also the spelling
+    `google_ads_schedule_targeting_update` takes back, so a read could not be
+    round-tripped into a write. The descriptions were right; the code was not.
+
+  The reads now resolve through the existing `map_enum_name(value, mapping)`,
+  against maps derived from the vendored SDK enums rather than transcribed, so
+  they cannot go stale against the API version. Resolver and maps moved
+  together into `mureo/google_ads/_enum_names.py`, because `mappers.py` is at
+  the 800-line budget a test enforces on it. It resolves the raw `int` through
+  the mapping and never reads `.name` off the value — a `MagicMock` answers
+  `.name` with a truthy stand-in, which is how a `.name`-based reading of this
+  bug looked correct while changing nothing. Every fixed surface gained a test
+  driven through
+  `convert_proto_plus_to_protobuf`, the shape the interceptor really
+  delivers, beside the mock-driven test that had been masking it; the mapper
+  assertions are parametrized across the proto-plus shape as well, so a future
+  flip of `use_proto_plus` cannot silently break them either.
+
+  `map_keyword` is fixed alongside its sibling `map_negative_keyword` — they
+  read the same `KeywordMatchType` off the same proto, so fixing one alone
+  would have introduced a fresh inconsistency — and a test pins the two to the
+  same spelling for every member of the enum, in both shapes.
+
+  Two reads that were already right are consolidated onto the same resolver
+  rather than left as the only two of their kind: the keyword system-serving
+  status, which carried its own hand-transcribed map, and the
+  network-performance ad-network type, whose hardcoded digit fallbacks
+  happened to be correct. So are the hand-written match-type and
+  criterion-status maps the keyword analysis reads, which are now aliases of
+  the SDK-derived ones. That makes twenty-three `map_enum_name` call sites in
+  total: the twenty broken reads, plus one because the criterion-type read
+  spends a call on each branch of its ternary, plus those two.
+
+  The count above is twenty because the first pass found thirteen and a
+  descriptor sweep of the whole package then found seven more. There is no
+  third pass: `tests/test_google_ads_enum_reads.py` extracts every
+  `str(<attribute chain>)` under `mureo/google_ads/`, resolves the chain
+  against the vendored v23 descriptors, and fails on any that lands on a
+  `TYPE_ENUM` field. Its subject-to-message bindings are asserted against the
+  sweep in both directions, so a new subject forces a decision and a departed
+  one cannot linger, and its extraction is pinned against an independent
+  tokenizer count so it cannot decay into a green no-op.
 - **A read written mureo's own way is now recognised as a read, in the one
   place that can safely act on it** (#549 follow-up). mureo's tools put the
   verb LAST (`google_ads_campaigns_list`); the shared read vocabulary only
