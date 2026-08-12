@@ -63,6 +63,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose request line carries the OAuth callback's `?code=`; query
   strings are now redacted before those lines are logged.
 
+  A security review of this change found a second class of the same
+  problem and it is fixed here: the three account-listing failure paths
+  in `mureo/google_ads/accounts.py` logged the Google Ads SDK exception
+  with `exc_info=True`. `GoogleAdsException` does not curate its
+  `__str__` — it never passes a message to `super().__init__`, so
+  formatting it prints the underlying `grpc.Call` repr, which carries
+  `debug_error_string` and with it the request metadata (developer
+  token, authorization header). Inert while nothing had a handler; a
+  credential on disk once one exists. They now log the exception class
+  only, which is what this function's own callers already did for
+  exactly this reason. The remaining `exc_info=True` sites elsewhere in
+  `mureo/google_ads/` are not reachable from the configure server and
+  are tracked separately.
+
+  `~/.mureo` itself is now created `0o700`. `Path.mkdir(parents=True,
+  mode=...)` applies the mode to the leaf only, so on a fresh install —
+  where `mureo configure` can be the command that creates the directory
+  — it was landing at the umask default rather than the owner-only mode
+  the docs describe.
+
   Documented in `docs/cli.md`, `docs/authentication.md` and both
   getting-started guides.
 

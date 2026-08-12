@@ -176,6 +176,13 @@ def _add_stderr_handler(package_logger: logging.Logger) -> None:
 def _add_file_handler(package_logger: logging.Logger, path: Path) -> Path | None:
     """Install the rotating file handler, or return ``None`` on failure."""
     try:
+        # mkdir(parents=True, mode=...) applies mode to the LEAF only; any
+        # parent it creates on the way gets the default mode masked by umask.
+        # On a fresh install `mureo configure` can be the command that creates
+        # ~/.mureo itself, so harden it explicitly — otherwise the directory
+        # docs describe as owner-only lands 0o755 (or group-writable under
+        # umask 002) and another local user can list what is in it.
+        path.parent.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         handler = _SecureRotatingFileHandler(
             path,
