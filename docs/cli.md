@@ -166,6 +166,32 @@ Notes:
 - After upgrading mureo, run `mureo service restart` so the running daemon picks up the new code (Task Scheduler and the supervisors do not relaunch a cleanly-exited process automatically on every platform).
 - The configure dashboard's **About** tab also has a **Restart configure** button that does the same thing from the browser: a managed service restarts via its supervisor, while an interactive `mureo configure` restarts itself in place. The page waits for the server to come back and reloads automatically.
 
+### Configure log
+
+Every configure run — interactive, `--serve`, or started by the auto-start service — writes to:
+
+```
+~/.mureo/logs/configure.log        # (%USERPROFILE%\.mureo\logs\configure.log on Windows)
+```
+
+`mureo configure` prints the path on startup. The file is rotated at 1 MiB and keeps 3 older generations (`configure.log.1` … `.3`), so it is bounded at ~4 MiB no matter how long the daemon runs. It is created owner-only (`0600`) on macOS/Linux.
+
+What goes in it: the server's own lifecycle (bound URL, single-instance reuse, shutdown), credential *operations* (which env var name was written into which file, which plugin credential keys were accepted — never a value), and the failures the UI deliberately shows only as a generic message — a Meta token refresh that could not be persisted, an account listing that failed, a credential file that would not parse. Warnings and errors also still go to the terminal.
+
+Raise the level with an environment variable (`DEBUG`, `INFO`, `WARNING`, `ERROR`; default `INFO`):
+
+```bash
+MUREO_LOG_LEVEL=DEBUG mureo configure
+```
+
+For the always-on service, add it to the unit rather than the shell: `Environment=MUREO_LOG_LEVEL=DEBUG` in `~/.config/systemd/user/mureo-configure.service`, or an `EnvironmentVariables` entry in `~/Library/LaunchAgents/io.mureo.configure.plist`, then `mureo service restart`.
+
+`DEBUG` adds every HTTP request line the local UI served. Query strings are redacted before they are written (an OAuth callback carries an authorization code in its query), and no log line at any level contains a token, secret or credential value — but a debug log does reveal which accounts and files you touched, so read it before you attach it to a bug report.
+
+Only mureo's own log records go to this file. Third-party libraries (the Google Ads SDK among them) keep whatever logging your environment gives them, so raising `MUREO_LOG_LEVEL` cannot make an SDK dump request payloads into it.
+
+> **macOS only:** `~/.mureo/configure.log` and `~/.mureo/configure.err` (note: no `logs/`) are a different thing — the raw stdout/stderr of the LaunchAgent, captured by launchd itself. They hold startup lines and any traceback that escaped the server. The rotated `logs/configure.log` above is the application log and is the one to read first.
+
 ## Maintenance Commands
 
 `mureo upgrade` upgrades mureo and its plugins inside the current (pipx) venv in one pip invocation — `pipx upgrade mureo` only touches the primary package, leaving same-venv plugins behind.

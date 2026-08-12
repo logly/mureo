@@ -40,6 +40,7 @@ from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 # implementation lives in :mod:`mureo.core.terminal` (#227 follow-up).
 from mureo.core.terminal import terminal_fd as _terminal_fd
 from mureo.fsutil import backup_file, file_lock, lock_path_for
+from mureo.logging_setup import safe_http_log_line
 
 if TYPE_CHECKING:
     from google_auth_oauthlib.flow import Flow
@@ -322,8 +323,12 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body.encode("utf-8"))
 
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
-        """Suppress log output to stdout."""
-        logger.debug(fmt, *args)
+        """Suppress log output to stdout.
+
+        #581: the callback's request line carries the OAuth ``?code=``,
+        so the query string is scrubbed before it is logged at DEBUG.
+        """
+        logger.debug("%s", safe_http_log_line(fmt, *args))
 
 
 class OAuthCallbackServer:

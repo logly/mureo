@@ -175,6 +175,9 @@ mureo/
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
 ├── credential_guard.py  # Blocks AI agents from reading ~/.mureo/credentials.json
+├── logging_setup.py     # Configure-server logging (#581): rotating ~/.mureo/logs/configure.log,
+│                        #   MUREO_LOG_LEVEL, and the HTTP access-log query scrubber. Installed by
+│                        #   the configure entry point only — never at import time, never on root.
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)
 
 skills/                       # Native slash skills — one `<name>/SKILL.md` per skill (migrated from
@@ -364,6 +367,8 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 - Meta Ads: `META_ADS_ACCESS_TOKEN`, `META_ADS_APP_ID`, `META_ADS_APP_SECRET`
 - Amazon Ads: `AMAZON_ADS_CLIENT_ID` plus either `AMAZON_ADS_ACCESS_TOKEN` or both of `AMAZON_ADS_REFRESH_TOKEN` / `AMAZON_ADS_CLIENT_SECRET`; optional `AMAZON_ADS_REGION`, `AMAZON_ADS_ACCOUNT_MODE`, `AMAZON_ADS_PROFILE_ID`, `AMAZON_ADS_ACCOUNT_ID`, `AMAZON_ADS_MANAGER_ACCOUNT_ID`
 - The `auth_setup.py` wizard writes credentials to `~/.mureo/credentials.json`
+- **No log line may carry a token, secret or credential value** — log the field name, the exception *type*, or a scrubbed detail, never the value. Since #581 the configure server installs a real handler (`mureo/logging_setup.py` → `~/.mureo/logs/configure.log`, `MUREO_LOG_LEVEL` to raise it), so a leaky `logger.*` call is now a leak on disk rather than a dead line. HTTP access logs go through `safe_http_log_line`, which drops query strings (an OAuth callback carries `?code=`)
+
 
 ## BYOD Mode (Bring Your Own Data)
 

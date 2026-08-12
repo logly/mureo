@@ -91,8 +91,18 @@ async def list_accessible_accounts(
     try:
         customer_service = base_client.get_service("CustomerService")
         response = customer_service.list_accessible_customers()
-    except Exception:
-        logger.warning("Failed to retrieve account list", exc_info=True)
+    except Exception as exc:  # noqa: BLE001
+        # Class name only. GoogleAdsException does not curate its __str__:
+        # it never calls super().__init__ with a safe message, so
+        # BaseException keeps the raw constructor args and formatting the
+        # exception prints the underlying grpc.Call repr — which carries
+        # debug_error_string, and with it the request metadata
+        # (developer-token, authorization header). A traceback via
+        # exc_info=True would put that in the configure log. Callers of this
+        # function already log the class only for exactly this reason (see
+        # mureo/cli/web_auth.py); doing it there and not here left the leak
+        # in place.
+        logger.warning("Failed to retrieve account list (%s)", type(exc).__name__)
         return []
 
     accounts: list[dict[str, Any]] = []
@@ -145,9 +155,12 @@ async def list_accessible_accounts(
                 name = row.customer.descriptive_name or customer_id
                 is_manager = bool(row.customer.manager)
                 break
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # Class name only — see the note above list_accessible_customers.
             logger.debug(
-                "Failed to retrieve account info: %s", customer_id, exc_info=True
+                "Failed to retrieve account info: %s (%s)",
+                customer_id,
+                type(exc).__name__,
             )
 
         _add(customer_id, name, is_manager=is_manager, parent_id=None)
@@ -182,11 +195,12 @@ async def list_accessible_accounts(
                     is_manager=bool(child.manager),
                     parent_id=customer_id,
                 )
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            # Class name only — see the note above list_accessible_customers.
             logger.warning(
-                "Failed to retrieve child accounts for MCC %s",
+                "Failed to retrieve child accounts for MCC %s (%s)",
                 customer_id,
-                exc_info=True,
+                type(exc).__name__,
             )
 
     return accounts

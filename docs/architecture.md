@@ -80,6 +80,7 @@ mureo/
 ├── __init__.py              # Package root (version)
 ├── auth.py                  # Credential loading & client factory (+ Meta token auto-refresh)
 ├── auth_setup.py            # Interactive setup wizard (OAuth + MCP config + credential guard)
+├── logging_setup.py         # `mureo configure` log handlers (~/.mureo/logs/configure.log, rotated) + HTTP access-log scrubbing (#581)
 ├── throttle.py              # Rate limiting (token bucket + rolling hourly cap)
 ├── google_ads/              # Google Ads API client
 │   ├── client.py            # GoogleAdsApiClient (Mixins)
