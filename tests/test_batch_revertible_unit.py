@@ -757,71 +757,23 @@ class TestBatchPlanCoverage:
         assert plan.members[0].status is BatchMemberStatus.ALREADY_REVERSED
         assert plan.apply_order == ()
 
-    def test_native_read_only_member_is_not_counted_as_a_gap(
-        self, workspace: Path
-    ) -> None:
+    def test_a_read_in_the_batch_is_not_counted_as_a_gap(self, workspace: Path) -> None:
         """A read in the batch is not something the operator must undo by hand.
 
-        KNOWN DEFECT, pinned deliberately — read this before "fixing" it.
+        Both spellings of a read are recognised now. The bridged convention
+        puts the verb first (``campaign_management-list_campaigns``); mureo's
+        own puts it last (``google_ads_campaigns_list``), and for a long time
+        only the first was matched — so every native read in a batch reached
+        ``plan_rollback`` as a write with no ``reversible_params`` hint and
+        was reported IRREVERSIBLE. The direction was safe (nothing was ever
+        offered for reversal that should not be) but the operator was shown a
+        read among the "cannot be reverted" items, which is untrue and
+        corrodes the exact surface #549 adds.
 
-        **What is wrong.** ``mureo.core.tool_names.is_read_only_tool_name``
-        anchors its verbs at the START of a hyphen-delimited name segment
-        (``list_campaigns``), but mureo's own tools put the verb at the END
-        (``google_ads_campaigns_list``). So::
-
-            is_read_only_tool_name("google_ads_campaigns_list")  # False, wrong
-
-        A NATIVE read therefore reaches ``plan_rollback`` as a write with no
-        ``reversible_params`` hint and is classified IRREVERSIBLE instead of
-        NOTHING_TO_REVERSE. The error direction is safe — nothing is offered
-        for reversal that should not be — but the batch report shows the
-        operator a read among the "cannot be reverted" items, which is untrue
-        and corrodes trust in exactly the surface #549 adds. The bridged
-        spelling (``campaign_management-list_campaigns``) is matched correctly
-        today, which is why both are asserted here.
-
-        **Why it is not fixed in the #549 PR.** The obvious fix — also match a
-        verb at the END of a segment — is wrong, not merely broad. Three
-        modules share this vocabulary, and one of them gates a DENIAL:
-        ``mureo.mcp.server._register_pattern_fallbacks`` skips
-        ``register_pattern_fallback_tool(name)`` when the name reads as a read,
-        so a name wrongly classified as a read loses its guardrail money
-        pattern-scan. Measured on a 294-tool installed plugin surface, a naive
-        suffix rule flips 23 names, and **13 of them are**
-        ``ToolSemantics(mutating=True)`` — i.e. 13 real mutations would be
-        newly exempted from the money scan::
-
-            amc-execute_query
-            logly_ads_context_merge_adgroup_list
-            reporting-create_campaign_report
-            reporting-create_inventory_report
-            reporting-create_product_report
-            reporting-create_report
-            reporting-delete_report          <- a DELETE reading as a read
-            yahoo_ads_create_placement_url_list
-            yahoo_ads_display_create_placement_url_list
-            yahoo_ads_display_remove_placement_url_list
-            yahoo_ads_display_update_placement_url_list
-            yahoo_ads_remove_placement_url_list
-            yahoo_ads_update_placement_url_list
-
-        (On the native side the same rule flips 70 of 208 names, none carrying
-        a write verb — the native direction alone is safe.)
-
-        **What a correct fix must do.** Match a trailing verb only when no
-        write verb (``create`` / ``update`` / ``delete`` / ``remove`` / ``set``
-        / ``add`` / ``merge`` / ``execute`` …) appears elsewhere in the same
-        segment, so ``google_ads_campaigns_list`` becomes a read while
-        ``reporting-delete_report`` and ``yahoo_ads_update_placement_url_list``
-        stay writes. It changes plugin guardrail registration, plugin
-        ``derive_semantics`` classification and ``mureo rollback list`` output,
-        so it needs its own tests in ``test_strategy_gate_pattern_fallback.py``,
-        ``test_mcp_plugin_semantics.py``, ``test_rollback.py`` and
-        ``test_cli_rollback.py``.
-
-        **What flips here when it lands.** The ``by_index[0]`` assertion below
-        becomes ``BatchMemberStatus.NOTHING_TO_REVERSE``. ``by_index[1]``,
-        ``by_index[2]`` and ``apply_order`` are unchanged.
+        The trailing reading is guarded by ``WRITE_VERBS`` — see
+        ``mureo.core.tool_names`` and the write-verb cases in
+        ``tests/test_rollback.py``, which is where the measurement behind that
+        guard is recorded.
         """
         state_file = workspace / "STATE.json"
         batch = begin_batch(state_file, label="a pass that also read things")
@@ -842,14 +794,16 @@ class TestBatchPlanCoverage:
 
         plan = plan_batch_rollback(read_state_file(state_file), batch.batch_id)
         by_index = {m.index: m for m in plan.members}
-        # Bridged spelling: correctly recognised as a read today.
+        # Native spelling, verb last.
+        assert by_index[0].status is BatchMemberStatus.NOTHING_TO_REVERSE
+        # Bridged spelling, verb first.
         assert by_index[1].status is BatchMemberStatus.NOTHING_TO_REVERSE
-        # Native spelling: misclassified today. Flip this to
-        # NOTHING_TO_REVERSE with the tool_names fix.
-        assert by_index[0].status is BatchMemberStatus.IRREVERSIBLE
         assert by_index[2].status is BatchMemberStatus.REVERSIBLE
-        # Either way a read is never offered for reversal.
+        # A read is never offered for reversal, and with both reads now
+        # recognised the batch reports as fully revertible rather than
+        # showing the operator a read they must somehow undo.
         assert plan.apply_order == (2,)
+        assert plan.coverage is BatchCoverage.FULL
 
     def test_unknown_batch_id_is_empty_not_a_lie(self, workspace: Path) -> None:
         plan = plan_batch_rollback(read_state_file(workspace / "STATE.json"), "nope")
