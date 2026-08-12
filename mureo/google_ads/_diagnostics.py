@@ -4,6 +4,11 @@ import logging
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
+from mureo.google_ads._enum_names import (
+    CRITERION_SYSTEM_SERVING_STATUS_MAP,
+    KEYWORD_MATCH_TYPE_MAP,
+    map_enum_name,
+)
 from mureo.google_ads.mappers import (
     map_ad_type,
     map_approval_status,
@@ -324,15 +329,22 @@ class _DiagnosticsMixin:
         for row in kw_response:
             kw = row.ad_group_criterion
             approval = map_criterion_approval_status(kw.approval_status)
+            # Both enums arrive as plain ints on the raw-protobuf path this
+            # client runs on, so ``str()`` gave "3" and the RARELY_SERVED test
+            # below could never fire — the warning was dead code (#588).
             sys_status = (
-                str(kw.system_serving_status)
+                map_enum_name(
+                    kw.system_serving_status, CRITERION_SYSTEM_SERVING_STATUS_MAP
+                )
                 if hasattr(kw, "system_serving_status")
                 else ""
             )
             enabled_kws.append(
                 {
                     "text": kw.keyword.text,
-                    "match_type": str(kw.keyword.match_type),
+                    "match_type": map_enum_name(
+                        kw.keyword.match_type, KEYWORD_MATCH_TYPE_MAP
+                    ),
                     "approval_status": approval,
                     "system_serving_status": sys_status,
                 }

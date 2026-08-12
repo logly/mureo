@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from mureo.google_ads._analysis import _AnalysisMixin
 from mureo.google_ads._creative import _CreativeMixin
 from mureo.google_ads._diagnostics import _DiagnosticsMixin
+from mureo.google_ads._enum_names import AD_NETWORK_TYPE_MAP, map_enum_name
 from mureo.google_ads._gaql_validator import (
     escape_string_literal as _gaql_escape_string_literal,
 )
@@ -43,7 +44,6 @@ from mureo.google_ads.mappers import (
     map_bidding_strategy_type,
     map_campaign,
     map_entity_status,
-    map_enum_name,
     map_performance_report,
 )
 
@@ -1091,11 +1091,11 @@ class GoogleAdsApiClient(  # type: ignore[misc]
 
         results: list[dict[str, Any]] = []
         for row in response:
-            network_type = str(row.segments.ad_network_type).replace(
-                "AdNetworkType.", ""
+            network_type = map_enum_name(
+                row.segments.ad_network_type, AD_NETWORK_TYPE_MAP
             )
             # SEARCH = Google Search, SEARCH_PARTNERS = Search Partners, skip others
-            if network_type not in ("SEARCH", "SEARCH_PARTNERS", "2", "3"):
+            if network_type not in ("SEARCH", "SEARCH_PARTNERS"):
                 continue
             cost_micros = row.metrics.cost_micros
             conversions = float(row.metrics.conversions)
@@ -1105,14 +1105,10 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                 {
                     "campaign_id": str(row.campaign.id),
                     "campaign_name": str(row.campaign.name),
-                    "network_type": (
-                        "SEARCH"
-                        if network_type in ("SEARCH", "2")
-                        else "SEARCH_PARTNERS"
-                    ),
+                    "network_type": network_type,
                     "network_label": (
                         "Google Search"
-                        if network_type in ("SEARCH", "2")
+                        if network_type == "SEARCH"
                         else "Search Partners"
                     ),
                     "impressions": int(row.metrics.impressions),

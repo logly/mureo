@@ -10,7 +10,8 @@ import logging
 from typing import Any
 
 from mureo._image_validation import validate_image_file
-from mureo.google_ads.mappers import ASSET_TYPE_MAP, MIME_TYPE_MAP, map_enum_name
+from mureo.google_ads._enum_names import map_enum_name
+from mureo.google_ads.mappers import ASSET_TYPE_MAP, MIME_TYPE_MAP
 
 logger = logging.getLogger(__name__)
 

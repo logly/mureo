@@ -29,6 +29,7 @@ mureo/
 ├── google_ads/          # Google Ads API client (Mixin composition)
 │   ├── client.py        # GoogleAdsApiClient (main entry)
 │   ├── mappers.py       # Response mapping to structured dicts
+│   ├── _enum_names.py   # map_enum_name + SDK-derived int->name maps (raw protobuf has no .name, #588)
 │   ├── _placement_mappers.py # Negative-placement + group_placement_view row mappers (#544/#547)
 │   ├── _ads.py          # AdsMixin (RSA create/update/status/list)
 │   ├── _ads_display.py  # DisplayAdsMixin (RDA create + RDAUploadError)

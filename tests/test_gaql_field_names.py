@@ -238,7 +238,6 @@ _UNBOUND_MAPPER_SUBJECTS: dict[str, str] = {
     "keyword": "carries deliberate non-proto fallbacks (keyword.id, str(keyword))",
     "member": "an enum member, not a message",
     "qi": "the quality_info of the unbound 'criterion'",
-    "raw": "an enum value or a plain int, not a message",
     "value": "an enum value or a plain int, not a message",
 }
 

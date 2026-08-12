@@ -262,6 +262,57 @@ class TestRowMapping:
         move the watermark past changes never seen."""
         assert _row_to_change(_row(change_date_time="")) is None
 
+    def test_a_real_change_event_row_classifies_end_to_end(self) -> None:
+        """The whole path, from the row the API returns to the kind (#588).
+
+        Every test above starts from a hand-written row dict, which is where
+        this feed's worst defect hid: the mapper emitted a bare ``str()`` of
+        the enum field, and mureo builds its Google Ads client with the SDK
+        default ``use_proto_plus=False``, so that field is a plain ``int`` and
+        the string was "2" — while every consumer keys on "AD". Classification
+        missed every time and each imported change fell through to kind ``""``
+        with nothing raised and nothing logged.
+
+        So this drives ``map_change_event`` with the RAW PROTOBUF the search
+        interceptor hands back — ``convert_proto_plus_to_protobuf`` is exactly
+        what the SDK does — and asserts the kind at the far end. Building the
+        proto-plus object and passing it straight in would test a shape
+        production never produces, which is how the first attempt at this fix
+        passed while changing nothing.
+        """
+        from google.ads.googleads import util
+        from google.ads.googleads.v23.resources.types.change_event import ChangeEvent
+
+        from mureo.change_import.dedupe import (
+            _OPERATION_ALIASES,
+            KIND_AD,
+            change_kind,
+        )
+        from mureo.google_ads.mappers import map_change_event
+
+        event = ChangeEvent(
+            resource_name="customers/1/changeEvents/2026-08-05~1~2",
+            change_date_time="2026-08-05 09:14:00",
+            change_resource_name="customers/1/ads/999",
+            campaign="customers/1/campaigns/111",
+            ad_group="customers/1/adGroups/222",
+        )
+        event.change_resource_type = 2  # AD
+        event.resource_change_operation = 3  # UPDATE
+        event.changed_fields.paths.append("ad.final_urls")
+        raw = util.convert_proto_plus_to_protobuf(event)
+        assert isinstance(raw.change_resource_type, int)  # the production shape
+
+        change = _row_to_change(map_change_event(raw))
+
+        assert change is not None
+        assert change.resource_type == "AD"
+        # The point of the fix: the kind resolves instead of being "".
+        assert change_kind(change) == KIND_AD
+        assert _OPERATION_ALIASES.get(change.operation) == "update"
+        # And the ad-level identity, which is keyed on the same string.
+        assert change.ad_id == "999"
+
 
 @pytest.mark.unit
 class TestGoogleFeed:

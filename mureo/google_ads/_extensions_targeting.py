@@ -14,6 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 from google.protobuf.field_mask_pb2 import FieldMask as PbFieldMask
 
+from mureo.google_ads._enum_names import (
+    DAY_OF_WEEK_MAP,
+    MINUTE_OF_HOUR_MAP,
+    map_enum_name,
+)
 from mureo.google_ads.client import _wrap_mutate_error
 from mureo.google_ads.mappers import (
     AD_GROUP_CRITERION_STATUS_MAP,
@@ -23,7 +28,6 @@ from mureo.google_ads.mappers import (
     INCOME_RANGE_TYPE_MAP,
     PARENTAL_STATUS_TYPE_MAP,
     map_change_event,
-    map_enum_name,
     map_recommendation,
 )
 
@@ -470,10 +474,14 @@ class _TargetingMixin:
         return [
             {
                 "criterion_id": str(row.campaign_criterion.criterion_id),
+                # The criterion type arrives as a plain int on the raw-protobuf
+                # path this client runs on, so ``str()`` returned "6" where the
+                # tool contract promises "DEVICE" (#588). The ``type_``/``type``
+                # fallback stays: it covers the proto-plus naming difference.
                 "type": (
-                    str(row.campaign_criterion.type_)
+                    map_enum_name(row.campaign_criterion.type_, CRITERION_TYPE_MAP)
                     if hasattr(row.campaign_criterion, "type_")
-                    else str(row.campaign_criterion.type)
+                    else map_enum_name(row.campaign_criterion.type, CRITERION_TYPE_MAP)
                 ),
                 "bid_modifier": float(row.campaign_criterion.bid_modifier),
                 "device_type": (
@@ -673,11 +681,17 @@ class _TargetingMixin:
         return [
             {
                 "criterion_id": str(row.campaign_criterion.criterion_id),
-                "day_of_week": str(row.campaign_criterion.ad_schedule.day_of_week),
+                "day_of_week": map_enum_name(
+                    row.campaign_criterion.ad_schedule.day_of_week, DAY_OF_WEEK_MAP
+                ),
                 "start_hour": int(row.campaign_criterion.ad_schedule.start_hour),
                 "end_hour": int(row.campaign_criterion.ad_schedule.end_hour),
-                "start_minute": str(row.campaign_criterion.ad_schedule.start_minute),
-                "end_minute": str(row.campaign_criterion.ad_schedule.end_minute),
+                "start_minute": map_enum_name(
+                    row.campaign_criterion.ad_schedule.start_minute, MINUTE_OF_HOUR_MAP
+                ),
+                "end_minute": map_enum_name(
+                    row.campaign_criterion.ad_schedule.end_minute, MINUTE_OF_HOUR_MAP
+                ),
                 "bid_modifier": (
                     float(row.campaign_criterion.bid_modifier)
                     if hasattr(row.campaign_criterion, "bid_modifier")

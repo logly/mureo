@@ -433,6 +433,53 @@ class TestSuggestKeywords:
         assert result[0]["avg_monthly_searches"] == 1000
 
     @pytest.mark.asyncio
+    async def test_competition_on_the_real_response_shape(self) -> None:
+        """The tool contract promises LOW / MEDIUM / HIGH; it shipped digits.
+
+        The MagicMock tests above set ``competition`` to the string "MEDIUM",
+        so they pass whatever the code does with the enum. mureo builds its
+        client with the SDK default ``use_proto_plus=False``, so the SDK
+        converts the response to raw protobuf and ``competition`` is the plain
+        int 3 — ``str()`` made that "3", against a description that documents
+        ``competition (LOW / MEDIUM / HIGH)`` (#588).
+        """
+        from google.ads.googleads import util
+        from google.ads.googleads.v23.common.types.keyword_plan_common import (
+            KeywordPlanHistoricalMetrics,
+        )
+        from google.ads.googleads.v23.services.types.keyword_plan_idea_service import (
+            GenerateKeywordIdeaResponse,
+            GenerateKeywordIdeaResult,
+        )
+
+        response = GenerateKeywordIdeaResponse()
+        for text, competition, searches in (("KW高", 4, 900), ("KW中", 3, 500)):
+            response.results.append(
+                GenerateKeywordIdeaResult(
+                    text=text,
+                    keyword_idea_metrics=KeywordPlanHistoricalMetrics(
+                        competition=competition,
+                        avg_monthly_searches=searches,
+                    ),
+                )
+            )
+        raw_response = util.convert_proto_plus_to_protobuf(response)
+        assert isinstance(  # the shape the interceptor delivers
+            raw_response.results[0].keyword_idea_metrics.competition, int
+        )
+
+        client = _make_client()
+        mock_service = MagicMock()
+        mock_service.generate_keyword_ideas.return_value = raw_response
+        client._client.get_service.return_value = mock_service
+        client._client.get_type.return_value = MagicMock()
+
+        result = await client.suggest_keywords(["テスト"])
+
+        assert [r["competition"] for r in result] == ["HIGH", "MEDIUM"]
+        assert [r["keyword"] for r in result] == ["KW高", "KW中"]
+
+    @pytest.mark.asyncio
     async def test_20件上限(self) -> None:
         client = _make_client()
         ideas = []

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from mureo.google_ads._enum_names import PLACEMENT_TYPE_MAP, map_enum_name
 from mureo.google_ads.mappers import (
     CRITERION_TYPE_MAP,
     _HasIdAndName,
@@ -29,7 +30,6 @@ from mureo.google_ads.mappers import (
     _safe_float,
     _safe_int,
     _safe_str,
-    map_enum_name,
 )
 
 # === Negative Placements (delivery-surface exclusions, #544) ===
@@ -107,7 +107,9 @@ def map_placement_performance(row: Any) -> dict[str, Any]:
     """
     view = row.group_placement_view if hasattr(row, "group_placement_view") else row
     metrics = row.metrics if hasattr(row, "metrics") else row
-    raw_type = str(getattr(view, "placement_type", "")).rsplit(".", 1)[-1].upper()
+    raw_type = map_enum_name(
+        getattr(view, "placement_type", ""), PLACEMENT_TYPE_MAP
+    ).upper()
     return {
         "placement": _safe_str(view, "placement"),
         "display_name": _safe_str(view, "display_name"),
