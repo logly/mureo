@@ -2,7 +2,7 @@
 name: _mureo-amazon-ads
 description: "Amazon Ads (official MCP, bridged by mureo): query campaigns, ad groups, ads and targets, run reports, and manage account access under Amazon's own tool names."
 metadata:
-  version: 0.10.43
+  version: 0.10.44
   openclaw:
     category: "advertising"
     requires:

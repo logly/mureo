@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.44] - 2026-08-12
+
 ### Fixed
 
 - **Every Meta lead-form create was a guaranteed 400, and duplicating a
@@ -250,6 +252,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   known-open-bypass list gains both, plus the symlink asymmetry between
   the two guards: the path guard resolves symlinks in each direction, the
   Bash guard never touches the filesystem and cannot.
+
+- **Campaign flight dates are read from the fields v23 actually has.**
+  `map_campaign` read `campaign.start_date` / `campaign.end_date`. The v23
+  `Campaign` has neither — it spells the flight `start_date_time` /
+  `end_date_time` — and because both reads sat behind `hasattr` guards, the
+  keys were simply never emitted. No error, no empty string, just two absent
+  keys. The campaign date-range diagnosis in `_diagnostics.py` reads exactly
+  those keys, so "campaign start date is in the future" and "campaign end date
+  has passed" could never fire, and a finished flight was reported as a healthy
+  campaign that happened to have stopped spending.
+
+  Both layers were stale, so both were fixed: the mapper now reads
+  `start_date_time` / `end_date_time` and narrows each to `YYYY-MM-DD` (the
+  consumers compare whole days), and the two GAQL queries that feed it
+  (`list_campaigns`, `get_campaign`) now select those fields — neither selected
+  any date field, so correcting the attribute name alone would still have
+  yielded nothing. The output keys stay `start_date` / `end_date`. The same
+  narrowing is now shared with `_daily_delivery_row` rather than duplicated.
+
+- **The mapper layer is now swept against the proto, not just the queries.**
+  `tests/test_gaql_field_names.py` validated every GAQL `SELECT` against the
+  live descriptors, which is why the flight-date bug survived it: a
+  `hasattr(campaign, "end_date")` is invisible to a query sweep, and
+  `MagicMock` answers `hasattr` for any name, so every test agreed with the
+  broken code. The file now also resolves the literal attribute reads in
+  `google_ads/mappers.py` against the proto, covering `x.field`,
+  `hasattr`/`getattr`, and the `_safe_str` / `_safe_int` / `_safe_float`
+  helpers that most of the file actually uses. The helper names are derived
+  from the source rather than listed, the extraction is pinned against an
+  independent count, and each read subject must be either bound to a message or
+  listed as unbindable with a reason — so the sweep cannot quietly decay into a
+  no-op, which is the failure mode it exists to prevent.
+
+  It immediately found a second instance: `map_tag_snippet` read
+  `snippet.page_header`, which `TagSnippet` does not have, so the conversion
+  tag's page-header snippet was always `""`. It now reads `global_site_tag`;
+  the response key stays `page_header` for compatibility with the documented
+  `google_ads_conversions_tag` contract.
+
+- **A targeted STATE.json write no longer resets fields it does not own.**
+  All five mutators (`upsert_campaign`, `append_action_log`, `set_report`,
+  `set_platform_metrics`, `set_conversion_action_types`) rebuilt the
+  `StateDocument` — and three of them the `PlatformState` — by enumerating
+  every field. That works until a field is added, at which point every mutator
+  that forgot it silently resets it, and a reset field is indistinguishable
+  downstream from one that was never set.
+
+  They now use `dataclasses.replace` and change only the fields each call
+  actually owns, so preservation is structural rather than remembered. A new
+  field on either model is carried across by every mutator with no edit.
+
+  The same shape was found and fixed in `_merge_campaign_metrics`
+  (`mureo/analytics/builtin/_live_clients.py`), which folded two rows for one
+  campaign by enumerating five of `CampaignMetrics`'s seven fields and dropped
+  `cpa` / `ctr`. Inert today because nothing populates them — the exact state
+  the other instances were in before a field was added. The two duplicated
+  merge blocks are now one helper, and `cpa` / `ctr` are cleared *explicitly*
+  rather than by omission: they are ratios, cannot be summed, and carrying one
+  row's value across would report it as the total's.
+
+  A fifth was found in `preflight_tracking_consistency`
+  (`mureo/analysis/tracking/checks.py`) while rebasing onto the commit that
+  introduced it: narrowing a `TrackingConsistencyReport` to the planned ads
+  enumerated all five of its fields, so nothing is dropped today and the sixth
+  field added to that model would be. Two helpers beside it in the same file
+  already used `replace`.
+
+  This is the same defect that dropped `archived` from a renamed agency client
+  and `origin` from a batched `action_log` entry. Finding it four times did
+  not prevent the fifth, because the failure is an omission and omissions are
+  invisible in review — so the fix comes with tests driven off
+  `dataclasses.fields(...)`: each names only what its mutator declares it
+  changes and asserts everything else survived.
+
+  `state_codec` must keep enumerating (it maps to an external JSON schema, so
+  `replace` cannot help it), so it gets two guards with a clear division of
+  labour. Its field coverage is asserted **at module import**, so adding a
+  field without naming it there raises immediately — on any `import mureo`, a
+  REPL, or a `pytest -k` run that never collects the round-trip test. That
+  check asserts *declaration*; the round-trip tests assert the field actually
+  **survives**, and they now cover every model the codec touches — including
+  the nested `ActionLogEntry` and `AdState`, where a declared-but-unwired
+  field would previously have round-tripped to `None` unnoticed because the
+  fixtures left it at its default.
 
 ### Added
 
@@ -850,92 +936,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape, so sixteen mis-tagged ads produce zero findings), and a source
   campaign carrying the scheme on a single ad when the campaigns use different
   landing pages.
-
-### Fixed
-
-- **Campaign flight dates are read from the fields v23 actually has.**
-  `map_campaign` read `campaign.start_date` / `campaign.end_date`. The v23
-  `Campaign` has neither — it spells the flight `start_date_time` /
-  `end_date_time` — and because both reads sat behind `hasattr` guards, the
-  keys were simply never emitted. No error, no empty string, just two absent
-  keys. The campaign date-range diagnosis in `_diagnostics.py` reads exactly
-  those keys, so "campaign start date is in the future" and "campaign end date
-  has passed" could never fire, and a finished flight was reported as a healthy
-  campaign that happened to have stopped spending.
-
-  Both layers were stale, so both were fixed: the mapper now reads
-  `start_date_time` / `end_date_time` and narrows each to `YYYY-MM-DD` (the
-  consumers compare whole days), and the two GAQL queries that feed it
-  (`list_campaigns`, `get_campaign`) now select those fields — neither selected
-  any date field, so correcting the attribute name alone would still have
-  yielded nothing. The output keys stay `start_date` / `end_date`. The same
-  narrowing is now shared with `_daily_delivery_row` rather than duplicated.
-
-- **The mapper layer is now swept against the proto, not just the queries.**
-  `tests/test_gaql_field_names.py` validated every GAQL `SELECT` against the
-  live descriptors, which is why the flight-date bug survived it: a
-  `hasattr(campaign, "end_date")` is invisible to a query sweep, and
-  `MagicMock` answers `hasattr` for any name, so every test agreed with the
-  broken code. The file now also resolves the literal attribute reads in
-  `google_ads/mappers.py` against the proto, covering `x.field`,
-  `hasattr`/`getattr`, and the `_safe_str` / `_safe_int` / `_safe_float`
-  helpers that most of the file actually uses. The helper names are derived
-  from the source rather than listed, the extraction is pinned against an
-  independent count, and each read subject must be either bound to a message or
-  listed as unbindable with a reason — so the sweep cannot quietly decay into a
-  no-op, which is the failure mode it exists to prevent.
-
-  It immediately found a second instance: `map_tag_snippet` read
-  `snippet.page_header`, which `TagSnippet` does not have, so the conversion
-  tag's page-header snippet was always `""`. It now reads `global_site_tag`;
-  the response key stays `page_header` for compatibility with the documented
-  `google_ads_conversions_tag` contract.
-
-- **A targeted STATE.json write no longer resets fields it does not own.**
-  All five mutators (`upsert_campaign`, `append_action_log`, `set_report`,
-  `set_platform_metrics`, `set_conversion_action_types`) rebuilt the
-  `StateDocument` — and three of them the `PlatformState` — by enumerating
-  every field. That works until a field is added, at which point every mutator
-  that forgot it silently resets it, and a reset field is indistinguishable
-  downstream from one that was never set.
-
-  They now use `dataclasses.replace` and change only the fields each call
-  actually owns, so preservation is structural rather than remembered. A new
-  field on either model is carried across by every mutator with no edit.
-
-  The same shape was found and fixed in `_merge_campaign_metrics`
-  (`mureo/analytics/builtin/_live_clients.py`), which folded two rows for one
-  campaign by enumerating five of `CampaignMetrics`'s seven fields and dropped
-  `cpa` / `ctr`. Inert today because nothing populates them — the exact state
-  the other instances were in before a field was added. The two duplicated
-  merge blocks are now one helper, and `cpa` / `ctr` are cleared *explicitly*
-  rather than by omission: they are ratios, cannot be summed, and carrying one
-  row's value across would report it as the total's.
-
-  A fifth was found in `preflight_tracking_consistency`
-  (`mureo/analysis/tracking/checks.py`) while rebasing onto the commit that
-  introduced it: narrowing a `TrackingConsistencyReport` to the planned ads
-  enumerated all five of its fields, so nothing is dropped today and the sixth
-  field added to that model would be. Two helpers beside it in the same file
-  already used `replace`.
-
-  This is the same defect that dropped `archived` from a renamed agency client
-  and `origin` from a batched `action_log` entry. Finding it four times did
-  not prevent the fifth, because the failure is an omission and omissions are
-  invisible in review — so the fix comes with tests driven off
-  `dataclasses.fields(...)`: each names only what its mutator declares it
-  changes and asserts everything else survived.
-
-  `state_codec` must keep enumerating (it maps to an external JSON schema, so
-  `replace` cannot help it), so it gets two guards with a clear division of
-  labour. Its field coverage is asserted **at module import**, so adding a
-  field without naming it there raises immediately — on any `import mureo`, a
-  REPL, or a `pytest -k` run that never collects the round-trip test. That
-  check asserts *declaration*; the round-trip tests assert the field actually
-  **survives**, and they now cover every model the codec touches — including
-  the nested `ActionLogEntry` and `AdState`, where a declared-but-unwired
-  field would previously have round-tripped to `None` unnoticed because the
-  fixtures left it at its default.
 
 ## [0.10.43] - 2026-08-07
 
