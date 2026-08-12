@@ -299,6 +299,25 @@ def _fully_populated_entry() -> ActionLogEntry:
     return ActionLogEntry(**_ENTRY_FIELD_VALUES)
 
 
+#: The provenance trio, which only an OBSERVED change carries.
+_PROVENANCE_FIELDS = ("origin", "external_id", "occurred_at")
+
+
+def _fully_populated_own_entry() -> ActionLogEntry:
+    """The same entry, minus provenance: a change mureo itself made.
+
+    Only this kind reaches ``stamp_batch``'s rewrite at all. An observed
+    change is returned untouched (see
+    ``TestJoiningABatchPreservesTheEntry.test_an_observed_change_is_left_out``),
+    so driving the field-preservation check off an external entry would
+    assert on a code path it no longer takes and pass for the wrong reason.
+    """
+    values = {k: v for k, v in _ENTRY_FIELD_VALUES.items()}
+    for name in _PROVENANCE_FIELDS:
+        values[name] = None
+    return ActionLogEntry(**values)
+
+
 @pytest.mark.unit
 class TestJoiningABatchPreservesTheEntry:
     """Joining a batch must change ``batch_id`` and nothing else.
@@ -318,7 +337,7 @@ class TestJoiningABatchPreservesTheEntry:
 
     def test_stamp_batch_changes_only_batch_id(self) -> None:
         """The pure function, so a failure localizes here and not in the codec."""
-        entry = _fully_populated_entry()
+        entry = _fully_populated_own_entry()
         record = BatchRecord(
             batch_id="batch-x", label="pass", started_at="2026-08-07T09:00:00+09:00"
         )
@@ -343,7 +362,7 @@ class TestJoiningABatchPreservesTheEntry:
         """
         state_file = workspace / "STATE.json"
         batch = begin_batch(state_file, label="preserve everything")
-        entry = _fully_populated_entry()
+        entry = _fully_populated_own_entry()
         append_action_log(state_file, entry)
 
         stored = read_state_file(state_file).action_log[0]
@@ -351,10 +370,55 @@ class TestJoiningABatchPreservesTheEntry:
         for field in fields(ActionLogEntry):
             if field.name == "batch_id":
                 continue
-            assert getattr(stored, field.name) == _ENTRY_FIELD_VALUES[field.name], (
+            expected = (
+                None
+                if field.name in _PROVENANCE_FIELDS
+                else _ENTRY_FIELD_VALUES[field.name]
+            )
+            assert getattr(stored, field.name) == expected, (
                 f"{field.name!r} did not survive append_action_log with an open "
                 "batch — check stamp_batch and both halves of state_codec."
             )
+
+    def test_an_observed_change_is_left_out_of_the_batch(self) -> None:
+        """An imported change is not part of what the operator did.
+
+        A batch is a declared change set — "what I did on Monday". A UI edit
+        mureo merely read out of a platform's change history is not that, and
+        stamping it on would drop the batch's coverage to ``partial`` for no
+        reason but that the batch was open when the change was recorded.
+
+        The decision lives in ``stamp_batch`` rather than in a caller for the
+        same reason membership itself does (#549): every recording path
+        converges here, so no caller has to know. The polled importer opts
+        out by hand as well; the hosted-connector route, which records
+        through ``mureo_state_action_log_append``, has only this.
+        """
+        entry = _fully_populated_entry()
+        assert entry.is_external, "fixture must be an observed change"
+        record = BatchRecord(
+            batch_id="batch-x", label="pass", started_at="2026-08-07T09:00:00+09:00"
+        )
+
+        stamped = stamp_batch(entry, record)
+
+        assert stamped.batch_id is None
+        for field in fields(ActionLogEntry):
+            assert getattr(stamped, field.name) == getattr(entry, field.name)
+
+    def test_an_explicit_batch_id_still_wins_for_an_observed_change(self) -> None:
+        """Opting out of the implicit stamp is not a ban on deliberate ones.
+
+        A backfill that declares its own batch and records into it by id is a
+        real use, and the id is still validated against the declared batches
+        by ``ensure_joinable``. Only the silent join is withheld.
+        """
+        entry = ActionLogEntry(**{**_ENTRY_FIELD_VALUES, "batch_id": "batch-declared"})
+        record = BatchRecord(
+            batch_id="batch-open", label="pass", started_at="2026-08-07T09:00:00+09:00"
+        )
+
+        assert stamp_batch(entry, record).batch_id == "batch-declared"
 
 
 @pytest.mark.unit
@@ -693,71 +757,23 @@ class TestBatchPlanCoverage:
         assert plan.members[0].status is BatchMemberStatus.ALREADY_REVERSED
         assert plan.apply_order == ()
 
-    def test_native_read_only_member_is_not_counted_as_a_gap(
-        self, workspace: Path
-    ) -> None:
+    def test_a_read_in_the_batch_is_not_counted_as_a_gap(self, workspace: Path) -> None:
         """A read in the batch is not something the operator must undo by hand.
 
-        KNOWN DEFECT, pinned deliberately — read this before "fixing" it.
+        Both spellings of a read are recognised now. The bridged convention
+        puts the verb first (``campaign_management-list_campaigns``); mureo's
+        own puts it last (``google_ads_campaigns_list``), and for a long time
+        only the first was matched — so every native read in a batch reached
+        ``plan_rollback`` as a write with no ``reversible_params`` hint and
+        was reported IRREVERSIBLE. The direction was safe (nothing was ever
+        offered for reversal that should not be) but the operator was shown a
+        read among the "cannot be reverted" items, which is untrue and
+        corrodes the exact surface #549 adds.
 
-        **What is wrong.** ``mureo.core.tool_names.is_read_only_tool_name``
-        anchors its verbs at the START of a hyphen-delimited name segment
-        (``list_campaigns``), but mureo's own tools put the verb at the END
-        (``google_ads_campaigns_list``). So::
-
-            is_read_only_tool_name("google_ads_campaigns_list")  # False, wrong
-
-        A NATIVE read therefore reaches ``plan_rollback`` as a write with no
-        ``reversible_params`` hint and is classified IRREVERSIBLE instead of
-        NOTHING_TO_REVERSE. The error direction is safe — nothing is offered
-        for reversal that should not be — but the batch report shows the
-        operator a read among the "cannot be reverted" items, which is untrue
-        and corrodes trust in exactly the surface #549 adds. The bridged
-        spelling (``campaign_management-list_campaigns``) is matched correctly
-        today, which is why both are asserted here.
-
-        **Why it is not fixed in the #549 PR.** The obvious fix — also match a
-        verb at the END of a segment — is wrong, not merely broad. Three
-        modules share this vocabulary, and one of them gates a DENIAL:
-        ``mureo.mcp.server._register_pattern_fallbacks`` skips
-        ``register_pattern_fallback_tool(name)`` when the name reads as a read,
-        so a name wrongly classified as a read loses its guardrail money
-        pattern-scan. Measured on a 294-tool installed plugin surface, a naive
-        suffix rule flips 23 names, and **13 of them are**
-        ``ToolSemantics(mutating=True)`` — i.e. 13 real mutations would be
-        newly exempted from the money scan::
-
-            amc-execute_query
-            logly_ads_context_merge_adgroup_list
-            reporting-create_campaign_report
-            reporting-create_inventory_report
-            reporting-create_product_report
-            reporting-create_report
-            reporting-delete_report          <- a DELETE reading as a read
-            yahoo_ads_create_placement_url_list
-            yahoo_ads_display_create_placement_url_list
-            yahoo_ads_display_remove_placement_url_list
-            yahoo_ads_display_update_placement_url_list
-            yahoo_ads_remove_placement_url_list
-            yahoo_ads_update_placement_url_list
-
-        (On the native side the same rule flips 70 of 208 names, none carrying
-        a write verb — the native direction alone is safe.)
-
-        **What a correct fix must do.** Match a trailing verb only when no
-        write verb (``create`` / ``update`` / ``delete`` / ``remove`` / ``set``
-        / ``add`` / ``merge`` / ``execute`` …) appears elsewhere in the same
-        segment, so ``google_ads_campaigns_list`` becomes a read while
-        ``reporting-delete_report`` and ``yahoo_ads_update_placement_url_list``
-        stay writes. It changes plugin guardrail registration, plugin
-        ``derive_semantics`` classification and ``mureo rollback list`` output,
-        so it needs its own tests in ``test_strategy_gate_pattern_fallback.py``,
-        ``test_mcp_plugin_semantics.py``, ``test_rollback.py`` and
-        ``test_cli_rollback.py``.
-
-        **What flips here when it lands.** The ``by_index[0]`` assertion below
-        becomes ``BatchMemberStatus.NOTHING_TO_REVERSE``. ``by_index[1]``,
-        ``by_index[2]`` and ``apply_order`` are unchanged.
+        The trailing reading is guarded by ``WRITE_VERBS`` — see
+        ``mureo.core.tool_names`` and the write-verb cases in
+        ``tests/test_rollback.py``, which is where the measurement behind that
+        guard is recorded.
         """
         state_file = workspace / "STATE.json"
         batch = begin_batch(state_file, label="a pass that also read things")
@@ -778,14 +794,16 @@ class TestBatchPlanCoverage:
 
         plan = plan_batch_rollback(read_state_file(state_file), batch.batch_id)
         by_index = {m.index: m for m in plan.members}
-        # Bridged spelling: correctly recognised as a read today.
+        # Native spelling, verb last.
+        assert by_index[0].status is BatchMemberStatus.NOTHING_TO_REVERSE
+        # Bridged spelling, verb first.
         assert by_index[1].status is BatchMemberStatus.NOTHING_TO_REVERSE
-        # Native spelling: misclassified today. Flip this to
-        # NOTHING_TO_REVERSE with the tool_names fix.
-        assert by_index[0].status is BatchMemberStatus.IRREVERSIBLE
         assert by_index[2].status is BatchMemberStatus.REVERSIBLE
-        # Either way a read is never offered for reversal.
+        # A read is never offered for reversal, and with both reads now
+        # recognised the batch reports as fully revertible rather than
+        # showing the operator a read they must somehow undo.
         assert plan.apply_order == (2,)
+        assert plan.coverage is BatchCoverage.FULL
 
     def test_unknown_batch_id_is_empty_not_a_lie(self, workspace: Path) -> None:
         plan = plan_batch_rollback(read_state_file(workspace / "STATE.json"), "nope")
