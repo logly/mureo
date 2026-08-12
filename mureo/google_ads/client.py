@@ -418,6 +418,8 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                 campaign.bidding_strategy_type,
                 campaign.campaign_budget,
                 campaign.primary_status,
+                campaign.start_date_time,
+                campaign.end_date_time,
                 campaign_budget.amount_micros
             FROM campaign
             ORDER BY campaign.id
@@ -457,6 +459,8 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                 campaign.primary_status,
                 campaign.primary_status_reasons,
                 campaign.bidding_strategy_system_status,
+                campaign.start_date_time,
+                campaign.end_date_time,
                 campaign.target_impression_share.location,
                 campaign.target_impression_share.location_fraction_micros,
                 campaign.target_impression_share.cpc_bid_ceiling_micros,

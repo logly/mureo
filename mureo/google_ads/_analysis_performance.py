@@ -14,7 +14,7 @@ from mureo.google_ads._analysis_constants import (
     _safe_metrics,
 )
 from mureo.google_ads._gaql_validator import validate_period_days
-from mureo.google_ads.mappers import map_entity_status
+from mureo.google_ads.mappers import date_half, map_entity_status
 
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
@@ -737,17 +737,14 @@ def _daily_delivery_row(row: Any) -> dict[str, Any]:
     """Map one GAQL ``segments.date`` row to the shared delivery shape."""
     # v23 carries the flight end as ``end_date_time`` ("YYYY-MM-DD HH:MM:SS");
     # there is no ``campaign.end_date`` to select, and the detector compares
-    # whole days, so only the date half is kept.
-    end_date_time = str(getattr(row.campaign, "end_date_time", "") or "")
-    end_date = end_date_time.split(" ", 1)[0].split("T", 1)[0]
+    # whole days, so only the date half is kept — see ``date_half`` for the
+    # 2037-12-30 "no end date" value it can return (harmless here: a cliff can
+    # never post-date it).
     return {
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),
         "status": map_entity_status(row.campaign.status),
-        # Google returns 2037-12-30 for "no end date"; passing it through
-        # is harmless (a cliff can never post-date it) and avoids
-        # hard-coding a sentinel that Google may change.
-        "end_date": end_date,
+        "end_date": date_half(getattr(row.campaign, "end_date_time", "")),
         "date": str(row.segments.date),
         "impressions": int(row.metrics.impressions),
         "clicks": int(row.metrics.clicks),
