@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every Meta lead-form create was a guaranteed 400, and duplicating a
+  form silently lost its intro cover photo.** Two defects hit against
+  Graph API v21.0.
+
+  `follow_up_action_url` was typed optional, but Meta requires it: a
+  create without it returns HTTP 400 `error_subcode 1892085` /
+  `"Missing field(s): FollowUpActionURL"`. Any caller following mureo's
+  own schema — `meta_ads_lead_forms_create` included — therefore failed
+  on every call. It is now a **required** parameter of
+  `create_lead_form` and of the MCP tool schema, so the call fails at
+  the call site with the field named instead of after a Meta
+  round-trip. It is deliberately not defaulted from the privacy-policy
+  host: silently deriving it would send real leads to a URL nobody
+  chose. `thank_you_page` adds a richer completion screen but does not
+  remove the requirement — the docs and tool descriptions that claimed
+  it "replaces" / "supersedes" `follow_up_action_url` were wrong and
+  are corrected.
+
+  The intro card's cover photo is write/read asymmetric: creation takes
+  `context_card.cover_photo_id`, but Meta reads it back as
+  `context_card.cover_photo: {id, created_time}`, and requesting
+  `context_card{cover_photo_id}` is rejected with `(#100) Tried
+  accessing nonexisting field (cover_photo_id)`. `duplicate_lead_form`
+  re-posted the read-back shape verbatim, so a duplicate either lost
+  the cover or 400d. It now normalizes the card before re-posting
+  (`cover_photo.id` → `cover_photo_id`, read-only `cover_photo` / `id`
+  dropped, every other key preserved) without mutating the source
+  record. `get_lead_form` still returns Meta's raw shape — mureo's
+  passthrough convention — and the asymmetry is documented on both
+  sides instead. `duplicate_lead_form` also fails fast with a
+  `ValueError` when the source form has no `follow_up_action_url`,
+  mirroring the existing `privacy_policy.url` check, and the
+  `meta_ads_lead_forms_duplicate` description no longer claims the
+  intro / thank-you / conditional-branch fields are uncopied (they have
+  been copied since PR 4).
+
 - **Google Ads enum fields emitted the raw number, not the name every
   consumer keys on** (#588). Twenty reads across the row mappers, the
   campaign diagnostic, the bid-adjustment and ad-schedule listings, the

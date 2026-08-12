@@ -150,6 +150,7 @@ class TestCreateLeadForm:
             name="問い合わせフォーム",
             questions=questions,
             privacy_policy_url="https://example.com/privacy",
+            follow_up_action_url="https://example.com/thanks",
         )
 
         assert result["id"] == "form_new"
@@ -428,6 +429,7 @@ class TestLeadsApiError:
                 name="テスト",
                 questions=[{"type": "EMAIL"}],
                 privacy_policy_url="https://example.com/privacy",
+                follow_up_action_url="https://example.com/thanks",
             )
 
     @pytest.mark.asyncio
@@ -524,6 +526,7 @@ class TestLeadFormsMcpHandlers:
                     "name": "テストフォーム",
                     "questions": [{"type": "EMAIL"}],
                     "privacy_policy_url": "https://example.com/privacy",
+                    "follow_up_action_url": "https://example.com/thanks",
                 },
             )
 
@@ -631,7 +634,13 @@ class TestLeadAdsToolDefinitions:
             ("meta_ads_lead_forms_get", ["form_id"]),
             (
                 "meta_ads_lead_forms_create",
-                ["page_id", "name", "questions", "privacy_policy_url"],
+                [
+                    "page_id",
+                    "name",
+                    "questions",
+                    "privacy_policy_url",
+                    "follow_up_action_url",
+                ],
             ),
             ("meta_ads_lead_forms_update", ["form_id", "status"]),
             (
@@ -774,15 +783,21 @@ class TestDuplicateLeadForm:
         assert post_data["locale"] == "ja_JP"
 
     @pytest.mark.asyncio
-    async def test_duplicate_lead_form_handles_missing_optional_fields(
+    async def test_duplicate_lead_form_handles_missing_locale(
         self, client: LeadsMixin
     ) -> None:
-        """Works even when source omits follow_up_action_url / locale."""
+        """Works even when the source omits the optional ``locale``.
+
+        ``follow_up_action_url`` is no longer optional — Meta requires
+        it, so a source without one fails fast instead (see
+        tests/test_meta_ads_lead_form_contract.py).
+        """
         source = {
             "id": "form_1",
             "name": "原本",
             "questions": [{"type": "EMAIL"}],
             "privacy_policy": {"url": "https://example.com/policy"},
+            "follow_up_action_url": "https://example.com/thanks",
         }
         client._get = AsyncMock(return_value=source)
         client._post = AsyncMock(return_value={"id": "form_2"})
@@ -790,9 +805,10 @@ class TestDuplicateLeadForm:
         await client.duplicate_lead_form("form_1", page_id="page_123", new_name="Copy")
 
         post_data = client._post.call_args[0][1]
-        # Optional fields are not added.
-        assert "follow_up_action_url" not in post_data
+        # The optional field is not added.
         assert "locale" not in post_data
+        # The required one is always carried over.
+        assert post_data["follow_up_action_url"] == "https://example.com/thanks"
 
     @pytest.mark.asyncio
     async def test_duplicate_lead_form_accepts_string_privacy_policy_url(
@@ -804,6 +820,7 @@ class TestDuplicateLeadForm:
             "name": "原本",
             "questions": [{"type": "EMAIL"}],
             "privacy_policy_url": "https://example.com/policy",
+            "follow_up_action_url": "https://example.com/thanks",
         }
         client._get = AsyncMock(return_value=source)
         client._post = AsyncMock(return_value={"id": "form_2"})
@@ -825,6 +842,7 @@ class TestDuplicateLeadForm:
             "name": "オリジナル",
             "questions": [{"type": "EMAIL"}],
             "privacy_policy": {"url": "https://example.com/policy"},
+            "follow_up_action_url": "https://example.com/thanks",
         }
         client._get = AsyncMock(return_value=source)
         client._post = AsyncMock(return_value={"id": "form_2"})
@@ -918,6 +936,7 @@ class TestDuplicateLeadForm:
             "name": "原本",
             "questions": [{"type": "EMAIL"}],
             "privacy_policy": {"url": "https://example.com/policy"},
+            "follow_up_action_url": "https://example.com/thanks",
             "context_card": {
                 "title": "資料請求",
                 "content": "60秒で完了",
@@ -965,6 +984,7 @@ class TestDuplicateLeadForm:
             "name": "原本",
             "questions": [{"type": "EMAIL"}],
             "privacy_policy": {"url": "https://example.com/policy"},
+            "follow_up_action_url": "https://example.com/thanks",
         }
         client._get = AsyncMock(return_value=source)
         client._post = AsyncMock(return_value={"id": "form_2"})
@@ -989,6 +1009,7 @@ class TestDuplicateLeadForm:
             "name": "原本",
             "questions": [{"type": "EMAIL"}],
             "privacy_policy": {"url": "https://example.com/policy"},
+            "follow_up_action_url": "https://example.com/thanks",
             "is_higher_intent": False,
         }
         client._get = AsyncMock(return_value=source)
@@ -1023,6 +1044,7 @@ class TestCreateLeadFormAdvanced:
             name="basic",
             questions=[{"type": "EMAIL"}],
             privacy_policy_url="https://example.com/policy",
+            follow_up_action_url="https://example.com/thanks",
         )
         data = client._post.call_args[0][1]
         # The new fields are not sent.
@@ -1047,6 +1069,7 @@ class TestCreateLeadFormAdvanced:
             name="intro form",
             questions=[{"type": "EMAIL"}],
             privacy_policy_url="https://example.com/policy",
+            follow_up_action_url="https://example.com/thanks",
             context_card=card,
         )
         data = client._post.call_args[0][1]
@@ -1069,6 +1092,7 @@ class TestCreateLeadFormAdvanced:
             name="ty form",
             questions=[{"type": "EMAIL"}],
             privacy_policy_url="https://example.com/policy",
+            follow_up_action_url="https://example.com/thanks",
             thank_you_page=page,
         )
         data = client._post.call_args[0][1]
@@ -1088,6 +1112,7 @@ class TestCreateLeadFormAdvanced:
             name="HI form",
             questions=[{"type": "EMAIL"}],
             privacy_policy_url="https://example.com/policy",
+            follow_up_action_url="https://example.com/thanks",
             is_higher_intent=True,
         )
         data = client._post.call_args[0][1]
@@ -1104,6 +1129,7 @@ class TestCreateLeadFormAdvanced:
             name="standard form",
             questions=[{"type": "EMAIL"}],
             privacy_policy_url="https://example.com/policy",
+            follow_up_action_url="https://example.com/thanks",
         )
         data = client._post.call_args[0][1]
         assert "is_higher_intent" not in data
@@ -1125,6 +1151,7 @@ class TestCreateLeadFormAdvanced:
             name="branching form",
             questions=[{"type": "EMAIL"}],
             privacy_policy_url="https://example.com/policy",
+            follow_up_action_url="https://example.com/thanks",
             conditional_questions_choices=choices,
         )
         data = client._post.call_args[0][1]

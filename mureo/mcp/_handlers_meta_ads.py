@@ -735,9 +735,9 @@ async def handle_lead_forms_create(args: dict[str, Any]) -> list[TextContent]:
         "name": _require(args, "name"),
         "questions": _require(args, "questions"),
         "privacy_policy_url": _require(args, "privacy_policy_url"),
+        "follow_up_action_url": _require(args, "follow_up_action_url"),
     }
     for key in (
-        "follow_up_action_url",
         "locale",
         "context_card",
         "thank_you_page",

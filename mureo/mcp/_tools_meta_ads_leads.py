@@ -65,6 +65,10 @@ TOOLS: list[Tool] = [
             "(``{url, link_text?}``) and the legacy "
             "``privacy_policy_url`` flat field, "
             "follow_up_action_url, leads_count, and created_time. "
+            "context_card comes back with the intro cover photo as "
+            "``cover_photo: {id, created_time}`` — NOT the "
+            "``cover_photo_id`` you pass on create; requesting "
+            "``context_card{cover_photo_id}`` is rejected by Meta. "
             "Read-only. Call this before designing downstream CRM sync "
             "so you know the exact field keys to map."
         ),
@@ -94,7 +98,7 @@ TOOLS: list[Tool] = [
             "(FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, JOB_TITLE, "
             "CITY, STATE, ZIP_CODE, COUNTRY, DATE_OF_BIRTH) or CUSTOM "
             "(requires key, label, and options for dropdowns). Meta "
-            "requires a privacy_policy_url by policy."
+            "requires both privacy_policy_url and follow_up_action_url."
         ),
         inputSchema={
             "type": "object",
@@ -175,10 +179,12 @@ TOOLS: list[Tool] = [
                 "follow_up_action_url": {
                     "type": "string",
                     "description": (
-                        "Optional URL the user is redirected to after "
-                        "submission (e.g. thank-you page). Omit to show "
-                        "Meta's default confirmation only. Superseded by "
-                        "thank_you_page when both are supplied."
+                        "URL the user is sent to from the completion "
+                        "screen (e.g. thank-you page). Required by Meta "
+                        "— omitting it fails with error_subcode 1892085 "
+                        "'Missing field(s): FollowUpActionURL'. "
+                        "thank_you_page adds a richer completion screen "
+                        "but does not replace this field."
                     ),
                 },
                 "locale": {
@@ -194,15 +200,21 @@ TOOLS: list[Tool] = [
                         "Optional intro / welcome screen shown before "
                         "the form. Lifts conversion rate measurably when "
                         "supplied. Expected keys: title, content, style "
-                        "(PARAGRAPH_STYLE or LIST_STYLE), cover_photo_id."
+                        "(PARAGRAPH_STYLE or LIST_STYLE), cover_photo_id. "
+                        "cover_photo_id is a PAGE photo id from "
+                        "meta_ads_pages_upload_photo and is write-only: "
+                        "Meta reads it back as context_card.cover_photo.id "
+                        "({id, created_time}), and asking for "
+                        "context_card{cover_photo_id} is rejected."
                     ),
                 },
                 "thank_you_page": {
                     "type": "object",
                     "description": (
                         "Optional custom completion screen with a CTA. "
-                        "Replaces follow_up_action_url's simple "
-                        "redirect when supplied. Expected keys: title, "
+                        "Richer than follow_up_action_url's plain "
+                        "redirect, but does not replace it — Meta still "
+                        "requires follow_up_action_url. Expected keys: title, "
                         "body, button_type (VIEW_WEBSITE / "
                         "CALL_BUSINESS / MESSAGE_BUSINESS / DOWNLOAD / "
                         "DOWNLOAD_APP), website_url, button_text."
@@ -234,6 +246,7 @@ TOOLS: list[Tool] = [
                 "name",
                 "questions",
                 "privacy_policy_url",
+                "follow_up_action_url",
             ],
             "additionalProperties": False,
         },
@@ -280,16 +293,22 @@ TOOLS: list[Tool] = [
         description=(
             "Duplicates a lead form under the same (or another) Page. "
             "Meta has no native copy endpoint, so this fetches the "
-            "source form's questions, privacy_policy, optional "
-            "follow_up_action_url and locale, then creates a fresh "
-            "form with the supplied new_name. Returns the new form's "
+            "source form's questions, privacy_policy, "
+            "follow_up_action_url, locale, context_card, "
+            "thank_you_page, is_higher_intent and "
+            "conditional_questions_choices, then creates a fresh "
+            "form with the supplied new_name. The copied context_card "
+            "is normalized (Meta reads the intro cover photo back as "
+            "cover_photo.id but only accepts cover_photo_id on write). "
+            "Fails fast with a ValueError when the source form has no "
+            "follow_up_action_url or no privacy_policy.url — Meta "
+            "requires both. Returns the new form's "
             "id. Source form is untouched. Mutating, reversible via "
             "meta_ads_lead_forms_update {status: ARCHIVED} on the new "
-            "form's id. **Lossy:** advanced fields on the source "
-            "(legal_content_id, gdpr_required / custom_disclaimer, "
-            "question_page_custom_headline, intro/thank-you screens, "
-            "conditional question branches) are NOT copied; re-create "
-            "them on the new form manually if needed."
+            "form's id. **Lossy:** legal_content_id, gdpr_required / "
+            "custom_disclaimer and question_page_custom_headline are "
+            "NOT copied; re-create them on the new form manually if "
+            "needed."
         ),
         inputSchema={
             "type": "object",
@@ -451,6 +470,10 @@ TOOLS: list[Tool] = [
             "cover photo; Meta requires a Page photo id). Typical flow: "
             "upload here → take `photo_id` → pass it as "
             "`context_card.cover_photo_id` to meta_ads_lead_forms_create. "
+            "The write field is one-way: meta_ads_lead_forms_get reads the "
+            "same id back under `context_card.cover_photo.id`, so verify "
+            "there rather than asking for `context_card{cover_photo_id}` "
+            "(which Meta rejects). "
             "Provide exactly one of `file_path` (local image) or "
             "`image_url`. The photo is uploaded UNPUBLISHED (not shown on "
             "the page timeline). Requires the `pages_manage_posts` "
