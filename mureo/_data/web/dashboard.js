@@ -1156,6 +1156,24 @@
         });
         li.appendChild(btn);
       }
+      // Meta-only (#579): a Meta access token expires, and Remove — which
+      // throws the credentials away — was the only action on this row, so
+      // deleting them first was the natural misread. The hint and the card
+      // live in auth_wizards_meta.js, shared with the wizard's Meta step;
+      // keyed off the row so no other credential row grows the control.
+      if (configured && row.key === "meta_ads" && window.MUREO_AUTH_META) {
+        const expiring = window.MUREO_AUTH_META.buildMetaExpiringHint(status);
+        if (expiring) li.appendChild(expiring);
+        li.appendChild(
+          window.MUREO_AUTH_META.buildMetaReauthSection(async function () {
+            // A saved token changes the row it was opened from: re-read the
+            // snapshot so the expiry hint clears with the token that caused
+            // it, instead of leaving the warning that sent the operator here.
+            await MUREO.loadStatus();
+            renderAll();
+          })
+        );
+      }
       // Google Ads + Search Console share the one Google OAuth.
       if (configured && row.key === "google_ads") {
         const note = document.createElement("div");

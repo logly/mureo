@@ -482,11 +482,19 @@ All tools return structured JSON via `TextContent`. The format depends on the to
 
 ### Authentication Error
 
+Every platform returns the SAME envelope when mureo could not authenticate. It is a successful tool call, so you must branch on the payload:
+
 ```json
 {
-  "error": "No credentials found. Set environment variables (GOOGLE_ADS_DEVELOPER_TOKEN, ...) or ~/.mureo/credentials.json"
+  "status": "auth_error",
+  "auth_cause": "no_credentials",
+  "detail": "Credentials not found. Set environment variables (GOOGLE_ADS_DEVELOPER_TOKEN, ...) or ~/.mureo/credentials.json."
 }
 ```
+
+`auth_cause` is `no_credentials` (nothing is configured — the operator runs `mureo configure` / `mureo auth setup`) or `token_invalid` (a credential exists and the platform rejected it, typically an expired token — the operator re-authorizes). `detail` is the operator-facing sentence.
+
+**This is a hole in your data, not a data point.** mureo read *nothing* from that platform for this call, so never print `detail` where a number belongs and never treat that platform's missing or empty figures as evidence that it was quiet. Say which platform failed and why, mark any report containing one as **partial**, and withhold conclusions that depend on the numbers you did not get.
 
 ## STATE.json Schema (when writing on Code via `Write`)
 

@@ -25,6 +25,14 @@ if TYPE_CHECKING:
 
 from mcp.types import TextContent
 
+from mureo.core.auth_failure import (
+    AUTH_CAUSE_NO_CREDENTIALS,
+    AUTH_ERROR_STATUS,
+    auth_failure_payload,
+    classify_auth_exception,
+    is_auth_failure_payload,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -163,9 +171,27 @@ def _json_result(data: Any) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(data, ensure_ascii=False))]
 
 
+def _auth_error_result(cause: str, detail: str) -> list[TextContent]:
+    """Return the machine-readable auth-failure envelope (#580).
+
+    Every platform's auth failure leaves mureo through here or through
+    :func:`api_error_handler`, so one shape covers all of them. See
+    :mod:`mureo.core.auth_failure` for why the shape is a ``status`` field
+    rather than a sentence.
+    """
+    return _json_result(auth_failure_payload(cause, detail))
+
+
 def _no_creds_result(msg: str) -> list[TextContent]:
-    """Return a credentials-not-found error."""
-    return [TextContent(type="text", text=msg)]
+    """Return a credentials-not-found error.
+
+    ``msg`` survives verbatim as the payload's ``detail``, so the operator
+    still reads which env var to set — but it is a field of an
+    ``auth_error`` payload now, not the whole body, so a report skill can
+    tell "could not read this platform" from "this platform was quiet"
+    (#580).
+    """
+    return _auth_error_result(AUTH_CAUSE_NO_CREDENTIALS, msg)
 
 
 # The single prefix ``api_error_handler`` stamps onto a caught-exception
@@ -173,6 +199,19 @@ def _no_creds_result(msg: str) -> list[TextContent]:
 # failed but was returned as content instead of raised" — kept here, next to
 # the producer, as the one source of truth.
 API_ERROR_PREFIX = "API error:"
+
+
+def is_auth_error_result(result: list[Any] | None) -> bool:
+    """True if ``result`` is the :data:`AUTH_ERROR_STATUS` envelope (#580)."""
+    if not result:
+        return False
+    text = getattr(result[0], "text", "")
+    if not isinstance(text, str) or AUTH_ERROR_STATUS not in text:
+        return False
+    try:
+        return is_auth_failure_payload(json.loads(text))
+    except ValueError:
+        return False
 
 
 def is_error_result(result: list[Any] | None) -> bool:
@@ -184,11 +223,18 @@ def is_error_result(result: list[Any] | None) -> bool:
     that did not actually change platform state. Shared by the native
     (:mod:`mureo.mcp.native_reversal`) and plugin (:mod:`mureo.mcp.server`)
     promotion paths so both skip the identical envelope.
+
+    The auth-failure envelope counts too: a mutation refused for a missing
+    or rejected credential never reached the platform either, and recording
+    it would put a change that did not happen into ``action_log`` — with an
+    ``observation_due`` and a reversal plan for it (#580).
     """
     if not result:
         return False
     text = getattr(result[0], "text", "")
-    return isinstance(text, str) and text.startswith(API_ERROR_PREFIX)
+    if isinstance(text, str) and text.startswith(API_ERROR_PREFIX):
+        return True
+    return is_auth_error_result(result)
 
 
 def api_error_handler(
@@ -209,6 +255,14 @@ def api_error_handler(
             raise
         except Exception as exc:
             logger.exception("%s failed", func.__name__)
+            # An auth failure is a different outcome, not a worse error: it
+            # means this platform produced NO data, so a report built on the
+            # platforms that did answer is partial. Flattening it into the
+            # same untyped string as a quota error is what let an expired
+            # token read as a quiet account (#580).
+            cause = classify_auth_exception(exc)
+            if cause is not None:
+                return _auth_error_result(cause, str(exc))
             return [TextContent(type="text", text=f"{API_ERROR_PREFIX} {exc}")]
         finally:
             bucket = _active_clients.get() or []
