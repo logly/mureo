@@ -9,6 +9,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from google.ads.googleads.v23.common import TagSnippet
+from google.ads.googleads.v23.resources.types.campaign import Campaign
 
 from mureo.google_ads.mappers import (
     _BIDDING_STRATEGY_MAP,
@@ -178,15 +180,11 @@ class TestMapCampaign:
         campaign.primary_status = 9
         campaign.primary_status_reasons = [0]
         campaign.bidding_strategy_system_status = 0
-        campaign.start_date = "2024-01-01"
-        campaign.end_date = "2024-12-31"
 
         result = map_campaign(campaign)
 
         assert result["serving_status"] == "SERVING"
         assert result["primary_status"] == "LEARNING"
-        assert result["start_date"] == "2024-01-01"
-        assert result["end_date"] == "2024-12-31"
 
     def test_advertising_channel_type_SEARCH(self) -> None:
         """advertising_channel_type is returned as "SEARCH"."""
@@ -213,6 +211,74 @@ class TestMapCampaign:
 
         result = map_campaign(campaign)
         assert result["channel_type"] == "DISPLAY"
+
+    # --- Flight dates: real proto only, never MagicMock -------------------
+    #
+    # MagicMock answers hasattr for ANY name, so a mock-based test passes
+    # against fields that do not exist. The flight-date mapping is therefore
+    # pinned against the vendored v23 proto.
+
+    @staticmethod
+    def _real_campaign() -> Campaign:
+        """A real v23 Campaign with the minimum map_campaign() reads."""
+        campaign = Campaign()
+        campaign.id = 12345
+        campaign.name = "Real Proto Campaign"
+        campaign.status = 2  # ENABLED
+        return campaign
+
+    def test_flight_dates_are_narrowed_to_the_date_half(self) -> None:
+        """start/end_date_time map to start_date/end_date without the time."""
+        campaign = self._real_campaign()
+        campaign.start_date_time = "2024-01-01 00:00:00"
+        campaign.end_date_time = "2024-12-31 23:59:59"
+
+        result = map_campaign(campaign)
+
+        assert result["start_date"] == "2024-01-01"
+        assert result["end_date"] == "2024-12-31"
+
+    def test_flight_dates_accept_the_T_separator(self) -> None:
+        """The ISO ``T`` separator is narrowed the same way as a space."""
+        campaign = self._real_campaign()
+        campaign.start_date_time = "2024-03-05T00:00:00"
+        campaign.end_date_time = "2037-12-30T23:59:59"
+
+        result = map_campaign(campaign)
+
+        # 2037-12-30 is Google's "no end date"; it is passed through rather
+        # than translated into a sentinel of mureo's own.
+        assert result["start_date"] == "2024-03-05"
+        assert result["end_date"] == "2037-12-30"
+
+    def test_unset_flight_dates_omit_the_keys(self) -> None:
+        """Unset flight dates emit no key at all, not an empty string.
+
+        Consumers such as _diagnostics test the value for truthiness via
+        ``.get(..., "")``; an empty-string key would be equally falsy, but
+        omitting keeps the payload honest about what the API returned.
+        """
+        result = map_campaign(self._real_campaign())
+
+        assert "start_date" not in result
+        assert "end_date" not in result
+
+    def test_v23_campaign_proto_has_no_start_date_or_end_date(self) -> None:
+        """Regression pin for the silent-failure mode this mapper had.
+
+        map_campaign used to read ``campaign.start_date`` / ``campaign.end_date``
+        behind ``hasattr`` guards. Those fields do not exist on the v23 proto, so
+        both keys were never populated and the campaign date-range diagnosis was
+        permanently dead — silently, because every test used a MagicMock, which
+        answers ``hasattr`` for any name. If someone reverts to the stale
+        spelling, this fails loudly.
+        """
+        campaign = Campaign()
+
+        assert not hasattr(campaign, "start_date")
+        assert not hasattr(campaign, "end_date")
+        assert hasattr(campaign, "start_date_time")
+        assert hasattr(campaign, "end_date_time")
 
 
 @pytest.mark.unit
@@ -457,16 +523,45 @@ class TestMapConversionAction:
 
 @pytest.mark.unit
 class TestMapTagSnippet:
-    def test_基本変換(self) -> None:
-        snippet = MagicMock()
-        snippet.type_ = "PAGE_LOAD"
-        snippet.page_header = "<header>"
-        snippet.event_snippet = "<event>"
+    # Real proto only, never MagicMock: a mock answers every attribute name,
+    # so the previous mock-based test passed against ``page_header``, a field
+    # the v23 TagSnippet does not have. The key was therefore always empty.
+
+    def test_global_site_tag_populates_the_page_header_key(self) -> None:
+        """The global site tag is returned under the ``page_header`` key."""
+        snippet = TagSnippet()
+        snippet.type_ = 2  # WEBPAGE
+        snippet.global_site_tag = "<script>gtag</script>"
+        snippet.event_snippet = "<script>event</script>"
 
         result = map_tag_snippet(snippet)
 
-        assert result["type"] == "PAGE_LOAD"
-        assert result["page_header"] == "<header>"
+        # ``type`` is deliberately not pinned to a literal: the mapper returns
+        # ``str(snippet.type_)``, and proto-plus enums are stdlib IntEnum,
+        # whose ``__str__`` CPython changed in 3.11 — "TrackingCodeType.WEBPAGE"
+        # on 3.10, "2" on 3.11+. This test is about the snippet fields.
+        assert result["page_header"] == "<script>gtag</script>"
+        assert result["event_snippet"] == "<script>event</script>"
+
+    def test_unset_snippets_map_to_empty_strings(self) -> None:
+        """An unset snippet yields "", never a stale or missing value."""
+        result = map_tag_snippet(TagSnippet())
+
+        assert result["page_header"] == ""
+        assert result["event_snippet"] == ""
+
+    def test_v23_tag_snippet_proto_has_no_page_header(self) -> None:
+        """Regression pin for the silent-failure mode this mapper had.
+
+        map_tag_snippet used to read ``snippet.page_header``, which does not
+        exist on the v23 proto, so the key was permanently empty. The output
+        key keeps the ``page_header`` name for the documented tool contract,
+        but the read must stay on ``global_site_tag``.
+        """
+        snippet = TagSnippet()
+
+        assert not hasattr(snippet, "page_header")
+        assert hasattr(snippet, "global_site_tag")
 
 
 @pytest.mark.unit

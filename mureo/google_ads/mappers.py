@@ -306,6 +306,20 @@ def map_bidding_system_status(status: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+def date_half(value: Any) -> str:
+    """The ``YYYY-MM-DD`` half of a Google Ads datetime, or ``""``.
+
+    Both the ``" "`` and ``"T"`` separators are accepted, as the API has used
+    each of them, and any falsy value narrows to ``""`` so callers can pass a
+    missing field straight through.
+
+    Google returns ``2037-12-30`` for "no end date"; that is passed through
+    unchanged, because hard-coding a sentinel Google may change is worse than
+    a far-future date every consumer can already compare against.
+    """
+    return str(value or "").split(" ", 1)[0].split("T", 1)[0]
+
+
 def map_campaign(campaign: Any) -> dict[str, Any]:
     """Format campaign information for LLM consumption."""
     result: dict[str, Any] = {
@@ -340,10 +354,17 @@ def map_campaign(campaign: Any) -> dict[str, Any]:
         result["bidding_strategy_system_status"] = map_bidding_system_status(
             campaign.bidding_strategy_system_status
         )
-    if hasattr(campaign, "start_date") and campaign.start_date:
-        result["start_date"] = str(campaign.start_date)
-    if hasattr(campaign, "end_date") and campaign.end_date:
-        result["end_date"] = str(campaign.end_date)
+    # v23 has no ``campaign.start_date`` / ``campaign.end_date``: the flight is
+    # spelled ``start_date_time`` / ``end_date_time`` ("YYYY-MM-DD HH:MM:SS").
+    # Consumers (diagnostics) compare whole days, so only the date half is kept
+    # under the historical ``start_date`` / ``end_date`` keys — see
+    # ``date_half`` for the 2037-12-30 "no end date" value it can return.
+    start_date = date_half(getattr(campaign, "start_date_time", ""))
+    if start_date:
+        result["start_date"] = start_date
+    end_date = date_half(getattr(campaign, "end_date_time", ""))
+    if end_date:
+        result["end_date"] = end_date
     return result
 
 
@@ -663,7 +684,10 @@ def map_tag_snippet(snippet: Any) -> dict[str, Any]:
     """Format conversion tag snippet."""
     return {
         "type": str(snippet.type_) if hasattr(snippet, "type_") else None,
-        "page_header": _safe_str(snippet, "page_header"),
+        # The v23 proto spells the page-header snippet ``global_site_tag``;
+        # the response key stays ``page_header`` for backward compatibility
+        # with the documented google_ads_conversions_tag tool contract.
+        "page_header": _safe_str(snippet, "global_site_tag"),
         "event_snippet": _safe_str(snippet, "event_snippet"),
     }
 
