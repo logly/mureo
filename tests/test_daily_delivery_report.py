@@ -100,6 +100,25 @@ async def test_google_daily_delivery_shape_and_window() -> None:
 
 
 @pytest.mark.asyncio
+async def test_google_open_ended_flight_yields_an_empty_end_date() -> None:
+    """A campaign with no end date must narrow to "" rather than raise.
+
+    protobuf's default for the unset ``end_date_time`` is the empty string,
+    and ``delivery_collapse._parse_optional_date`` reads "" as "no flight
+    end". Narrowing must not turn that into an unparseable value: the
+    non-optional twin raises on anything that is not YYYY-MM-DD.
+    """
+    day = date(2026, 5, 31)
+    row = _google_row(day, 350_000)
+    row.campaign.end_date_time = ""
+    client = _GoogleClient([row])
+
+    rows = await client.get_daily_delivery_report(days=45)
+
+    assert rows[0]["end_date"] == ""
+
+
+@pytest.mark.asyncio
 async def test_google_sparse_response_is_reconciled_to_what_was_reported() -> None:
     """GAQL omits a (campaign, date) row when nothing served that day.
 
