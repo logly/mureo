@@ -1,0 +1,127 @@
+"""A Meta token pasted into the advanced form must not enter the refresh clock.
+
+Regression tests for #578. The advanced "mureo Credentials (advanced)" form
+writes one field at a time through :func:`write_credential_env_var`, which
+merges field-wise. For ``META_ADS_ACCESS_TOKEN`` that merge used to leave the
+previous token's ``token_obtained_at`` in place, so the very next Meta call saw
+a brand-new token as an aged one, handed it to the Graph token-exchange
+endpoint under the stale ``app_id``/``app_secret``, and wrote the result over
+it (or failed silently).
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
+
+import pytest
+
+from mureo.auth import _should_refresh, load_meta_ads_credentials
+from mureo.web.env_var_writer import write_credential_env_var
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+#: Older than ``mureo.auth._TOKEN_REFRESH_THRESHOLD_DAYS`` (53) by a margin, so
+#: the surviving stamp is unambiguously past the refresh threshold.
+_STALE_STAMP = (datetime.now(tz=timezone.utc) - timedelta(days=90)).isoformat()
+
+
+def _write_stale_meta_section(path: Path) -> None:
+    """Seed the on-disk state an operator with an expired token actually has."""
+    path.write_text(
+        json.dumps(
+            {
+                "meta_ads": {
+                    "access_token": "EXPIRED-USER-TOKEN",
+                    "app_id": "111111111111111",
+                    "app_secret": "stale-app-secret",
+                    "account_id": "act_222",
+                    "token_obtained_at": _STALE_STAMP,
+                },
+                # A second provider must survive the single-field write.
+                "google_ads": {"developer_token": "dev-token"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.unit
+class TestMetaAccessTokenLeavesRefreshClock:
+    def test_pasted_token_is_not_due_for_refresh(self, tmp_path: Path) -> None:
+        """The exact assertion #578 asks for: no refresh after a hand paste."""
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCESS_TOKEN", "SYSTEM-USER-TOKEN", credentials_path=path
+        )
+
+        creds = load_meta_ads_credentials(path)
+        assert creds is not None
+        assert creds.access_token == "SYSTEM-USER-TOKEN"
+        assert _should_refresh(creds) is False
+
+    def test_stale_token_obtained_at_is_dropped(self, tmp_path: Path) -> None:
+        """The stamp belongs to the token being replaced, so it must not survive."""
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCESS_TOKEN", "SYSTEM-USER-TOKEN", credentials_path=path
+        )
+
+        meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+        assert "token_obtained_at" not in meta
+
+    def test_app_credentials_and_account_are_preserved(self, tmp_path: Path) -> None:
+        """Only the refresh clock is cleared — no other field is destroyed.
+
+        Dropping ``app_secret`` would make an operator who only meant to
+        refresh a token re-fetch it from Meta, so the fix clears the stamp
+        instead: ``_should_refresh`` already short-circuits without one.
+        """
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCESS_TOKEN", "SYSTEM-USER-TOKEN", credentials_path=path
+        )
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["meta_ads"]["app_id"] == "111111111111111"
+        assert payload["meta_ads"]["app_secret"] == "stale-app-secret"
+        assert payload["meta_ads"]["account_id"] == "act_222"
+        assert payload["google_ads"] == {"developer_token": "dev-token"}
+
+    def test_writing_another_meta_field_keeps_the_stamp(self, tmp_path: Path) -> None:
+        """Only the token write clears the clock.
+
+        Saving ``META_ADS_ACCOUNT_ID`` does not replace the token, so the
+        stamp still describes the token on disk and must be left alone.
+        """
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCOUNT_ID", "act_999", credentials_path=path
+        )
+
+        meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+        assert meta["token_obtained_at"] == _STALE_STAMP
+        assert meta["account_id"] == "act_999"
+
+    def test_no_stamp_to_clear_is_not_an_error(self, tmp_path: Path) -> None:
+        """A first-time paste has no prior section; the write still succeeds."""
+        path = tmp_path / "credentials.json"
+
+        write_credential_env_var(
+            "META_ADS_ACCESS_TOKEN", "SYSTEM-USER-TOKEN", credentials_path=path
+        )
+
+        creds = load_meta_ads_credentials(path)
+        assert creds is not None
+        assert creds.access_token == "SYSTEM-USER-TOKEN"
+        assert _should_refresh(creds) is False

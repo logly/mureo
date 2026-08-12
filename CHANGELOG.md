@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Meta token pasted into the advanced credentials form was overwritten on
+  the next API call** (#578). The Setup tab's *mureo Credentials (advanced)*
+  form writes one field at a time, and that field-wise merge left the previous
+  token's `token_obtained_at` in place. `_should_refresh` ages the token
+  against that stamp — which was already past the 53-day threshold, since a
+  stale token is why the operator was pasting a new one — so the very next
+  Meta tool call handed the brand-new token to Graph's `fb_exchange_token`
+  endpoint under the stored `app_id` / `app_secret`. Both outcomes were
+  silent: an exchange that succeeded replaced a never-expiring system-user
+  token with a ~60-day one, and an exchange that failed (the common case,
+  where the token was minted under a different app) was swallowed, leaving
+  the operator to conclude the paste "didn't take" while it was retried on
+  every subsequent call. Writing `META_ADS_ACCESS_TOKEN` now clears
+  `token_obtained_at`, so a hand-entered token short-circuits the refresh
+  check the same way the dedicated paste card does. `app_id`, `app_secret`
+  and `account_id` are kept — updating a token should not cost the operator
+  their app secret — and writes to other `meta_ads` fields leave the stamp
+  alone, since it still describes the token on disk.
+
 ## [0.10.44] - 2026-08-12
 
 ### Fixed
