@@ -14,6 +14,7 @@ worth anything:
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ from mureo.change_import import (
     get_change_feed,
     import_external_changes,
     list_change_feed_platforms,
+    plugin_source,
     register_change_feed,
     to_action_log_entry,
 )
@@ -780,16 +782,21 @@ class TestProvenanceSurvivesBatchStamping:
     ``stamp_batch`` at all. A hosted connector does: mureo holds no
     credentials for TikTok and dispatches nothing, so an agent records what it
     read from the connector's own change history through
-    ``mureo_state_action_log_append`` — the ordinary append path, where joining
-    the open batch is the DEFAULT.
+    ``mureo_state_action_log_append`` — the ordinary append path.
 
-    That is where a batch-stamping bug reaches the provenance fields, and the
-    failure mode is silent in the worst way: a dropped ``origin`` reads as
-    "mureo made this change", which flips ``is_external`` to False and lets
-    ``plan_rollback`` accept a ``reversible_params`` hint that came from
-    outside mureo entirely. These tests pin the whole chain rather than the
-    stamping function, so a future regression anywhere along it is caught here
-    too.
+    That path used to stamp the open batch onto the entry. It cost nothing in
+    honesty (``plan_rollback`` refused the entry either way, and the batch
+    still reported the coverage gap) but it contradicted the rule the docs
+    state without qualification: an imported change is not part of the
+    operator's declared change set. ``stamp_batch`` now declines to stamp an
+    observed change, so the rule holds for every recording path rather than
+    only the polled one.
+
+    What these tests are really guarding is the chain underneath: a dropped
+    ``origin`` reads as "mureo made this change", which flips ``is_external``
+    to False and lets ``plan_rollback`` accept a ``reversible_params`` hint
+    that came from outside mureo entirely — and ``is_external`` is now also
+    what keeps the entry out of the batch, so losing it costs twice.
     """
 
     def _forged_hint(self) -> dict[str, Any]:
@@ -816,23 +823,58 @@ class TestProvenanceSurvivesBatchStamping:
             reversible_params=self._forged_hint(),
         )
 
-    def test_provenance_survives_an_append_that_joins_a_batch(
+    def test_an_open_batch_does_not_capture_an_observed_change(
         self, tmp_path: Path
     ) -> None:
+        """The ordinary append path, with a batch open, on a hosted connector.
+
+        This is the route the polled importer does not take, and the one the
+        "imports never join a batch" rule used to miss.
+        """
         path = _write_state(tmp_path, {"tiktok_ads": "tt1"})
-        batch = begin_batch(path, label="monday exclusions")
+        begin_batch(path, label="monday exclusions")
         entry = self._external_entry()
 
         append_action_log(path, entry)
 
         stored = read_state_file(path).action_log[-1]
-        # It DID join the batch — this is the ordinary path, not the importer's.
-        assert stored.batch_id == batch.batch_id
-        # ...and joining cost it nothing.
+        assert stored.batch_id is None
+        # ...and staying out cost it nothing.
         assert stored.origin == EXTERNAL_ORIGIN
         assert stored.external_id == entry.external_id
         assert stored.occurred_at == entry.occurred_at
         assert stored.is_external
+
+    def test_an_operators_own_batch_stays_fully_revertible(
+        self, tmp_path: Path
+    ) -> None:
+        """The consequence an operator actually feels.
+
+        A reversible change of their own, recorded while an unrelated UI edit
+        was imported, must still report full coverage — the import is not
+        theirs and is no longer counted against them.
+        """
+        path = _write_state(tmp_path, {"tiktok_ads": "tt1", "google_ads": "111"})
+        batch = begin_batch(path, label="monday exclusions")
+        append_action_log(
+            path,
+            ActionLogEntry(
+                timestamp=NOW.isoformat(),
+                action="google_ads_campaigns_update_status",
+                platform="google_ads",
+                campaign_id="111",
+                reversible_params={
+                    "operation": "google_ads_campaigns_update_status",
+                    "params": {"campaign_id": "111", "status": "ENABLED"},
+                },
+            ),
+        )
+        append_action_log(path, self._external_entry())
+
+        plan = plan_batch_rollback(read_state_file(path), batch.batch_id)
+
+        assert plan.coverage.value == "full"
+        assert len(plan.apply_order) == 1
 
     def test_rollback_still_refuses_a_batch_stamped_external_entry(
         self, tmp_path: Path
@@ -849,14 +891,24 @@ class TestProvenanceSurvivesBatchStamping:
         assert plan.status is RollbackStatus.NOT_SUPPORTED
         assert "outside mureo" in plan.notes
 
-    def test_the_batch_plan_reports_it_as_a_gap(self, tmp_path: Path) -> None:
-        """A batch holding it must not read as fully revertible."""
+    def test_a_deliberately_backfilled_entry_is_still_a_gap(
+        self, tmp_path: Path
+    ) -> None:
+        """Declining the implicit join is not a way to hide an import.
+
+        An operator who deliberately records an observed change INTO a batch,
+        by naming its id, gets what they asked for — and the plan says the
+        batch cannot be fully reverted, because that member genuinely cannot.
+        """
         path = _write_state(tmp_path, {"tiktok_ads": "tt1"})
         batch = begin_batch(path, label="monday exclusions")
-        append_action_log(path, self._external_entry())
+        entry = replace(self._external_entry(), batch_id=batch.batch_id)
 
+        append_action_log(path, entry)
+
+        stored = read_state_file(path).action_log[-1]
+        assert stored.batch_id == batch.batch_id
         plan = plan_batch_rollback(read_state_file(path), batch.batch_id)
-
         assert plan.coverage.value == "none"
         assert plan.apply_order == ()
 
@@ -1145,6 +1197,138 @@ class TestChangeFeedAbi:
 
         with pytest.warns(ChangeFeedWarning):
             assert discover_change_feeds(refresh=True, loader=_boom) == ()
+
+
+@pytest.mark.unit
+class TestChangeFeedDiscoveryRejectsBadPlugins:
+    """Every way ``_collect_one`` can refuse an entry point, through discover().
+
+    This registry is deliberately modelled on ``mureo.analytics.registry`` so
+    plugin authors meet one set of rules, and that sibling pins each of these
+    refusals. The equivalents here were only ever reached by calling
+    ``register()`` directly, which skips ``_collect_one`` entirely — so the
+    load-isolation, not-a-class, not-instantiable, protocol-check, first-wins
+    and breadcrumb branches had no regression protection on the path a real
+    plugin actually takes.
+
+    Every case drives ``discover(loader=...)``, which is that path.
+    """
+
+    @staticmethod
+    def _ep(name: str, value: Any) -> Any:
+        class _EntryPoint:
+            def __init__(self) -> None:
+                self.name = name
+                self.dist = None
+
+            def load(self) -> Any:
+                return value
+
+        return _EntryPoint()
+
+    def _discover(self, *eps: Any) -> tuple[str, ...]:
+        return default_change_feed_registry().discover(
+            refresh=True, loader=lambda group: list(eps)
+        )
+
+    def test_an_entry_point_that_is_not_a_class_is_skipped(self) -> None:
+        with pytest.warns(ChangeFeedWarning, match="must yield a class"):
+            assert self._discover(self._ep("inst", _StubFeed("a_ads", None))) == ()
+        assert get_change_feed("a_ads") is None
+
+    def test_a_class_needing_constructor_arguments_is_skipped(self) -> None:
+        class _NeedsArgs:
+            platform = "a_ads"
+
+            def __init__(self, required: str) -> None:  # no no-arg form
+                self.required = required
+
+        with pytest.warns(ChangeFeedWarning, match="not instantiable"):
+            assert self._discover(self._ep("needsargs", _NeedsArgs)) == ()
+
+    def test_a_constructor_that_raises_is_isolated(self) -> None:
+        class _Explodes:
+            platform = "a_ads"
+
+            def __init__(self) -> None:
+                raise RuntimeError("boom")
+
+        with pytest.warns(ChangeFeedWarning, match="not instantiable"):
+            assert self._discover(self._ep("explodes", _Explodes)) == ()
+
+    def test_a_class_that_fails_the_protocol_check_is_skipped(self) -> None:
+        """Structurally close, but missing the method that does the work."""
+
+        class _NoFetch:
+            platform = "a_ads"
+
+        with pytest.warns(ChangeFeedWarning):
+            assert self._discover(self._ep("nofetch", _NoFetch)) == ()
+        assert get_change_feed("a_ads") is None
+
+    def test_one_bad_plugin_does_not_cost_a_good_one(self) -> None:
+        """Fault isolation is per entry point, not per group."""
+
+        class _Good:
+            platform = "good_ads"
+
+            async def fetch_change_events(self, **kwargs: Any) -> ChangeFeedResult:
+                return ChangeFeedResult(changes=())
+
+        class _Bad:
+            platform = "bad_ads"
+
+        with pytest.warns(ChangeFeedWarning):
+            registered = self._discover(self._ep("bad", _Bad), self._ep("good", _Good))
+        assert registered == ("good_ads",)
+        assert get_change_feed("good_ads") is not None
+
+    def test_first_plugin_wins_a_platform_collision(self) -> None:
+        class _First:
+            platform = "dup_ads"
+
+            async def fetch_change_events(self, **kwargs: Any) -> ChangeFeedResult:
+                return ChangeFeedResult(changes=())
+
+        class _Second(_First):
+            pass
+
+        with pytest.warns(ChangeFeedWarning, match="already registered"):
+            registered = self._discover(
+                self._ep("first", _First), self._ep("second", _Second)
+            )
+        assert registered == ("dup_ads",)
+        assert isinstance(get_change_feed("dup_ads"), _First)
+        assert not isinstance(get_change_feed("dup_ads"), _Second)
+
+    def test_the_source_distribution_breadcrumb_is_recorded(self) -> None:
+        """``plugin_source`` is public and had no test at all.
+
+        It is how an operator finds out which pip package supplied a feed
+        that reported something odd, so an empty answer is a support problem.
+        """
+
+        class _Dist:
+            name = "acme-mureo-plugin"
+
+        class _Feed:
+            platform = "acme_ads"
+
+            async def fetch_change_events(self, **kwargs: Any) -> ChangeFeedResult:
+                return ChangeFeedResult(changes=())
+
+        ep = self._ep("acme", _Feed)
+        ep.dist = _Dist()
+
+        assert self._discover(ep) == ("acme_ads",)
+        feed = get_change_feed("acme_ads")
+        assert feed is not None
+        assert plugin_source(feed) == "acme-mureo-plugin"
+
+    def test_a_feed_registered_by_hand_reports_no_distribution(self) -> None:
+        feed = _StubFeed("hand_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+        assert plugin_source(feed) == ""
 
 
 # ---------------------------------------------------------------------------
