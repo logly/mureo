@@ -102,9 +102,7 @@ async def list_accessible_accounts(
         # function already log the class only for exactly this reason (see
         # mureo/cli/web_auth.py); doing it there and not here left the leak
         # in place.
-        logger.warning(
-            "Failed to retrieve account list (%s)", type(exc).__name__
-        )
+        logger.warning("Failed to retrieve account list (%s)", type(exc).__name__)
         return []
 
     accounts: list[dict[str, Any]] = []
