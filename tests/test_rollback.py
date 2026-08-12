@@ -440,14 +440,83 @@ class TestHyphenNamespacedToolNames:
     @pytest.mark.parametrize(
         "action",
         [
-            # Native names keep their exact behaviour: the read-only prefixes
-            # anchor at the start of the name, never mid-word.
-            "google_ads_campaigns_list",
             "update_budget",
+            # A verb that is only a prefix of a longer word is still not a
+            # verb: `listing` is not `list`, and the trailing-verb reading
+            # tokenises on `_` for the same reason.
             "listing_update",
+            "getter_config",
         ],
     )
-    def test_native_names_are_unchanged(self, action: str) -> None:
+    def test_a_native_write_is_still_a_write(self, action: str) -> None:
+        entry = _entry(action=action, reversible_params=None)
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            # mureo's own convention puts the verb at the END, which the
+            # prefix-only rule never matched — so every native read reached
+            # here as a write with no hint and was reported as something the
+            # operator has to undo by hand.
+            "google_ads_campaigns_list",
+            "google_ads_budget_get",
+            "google_ads_search_terms_report",
+            "analysis_anomalies_check",
+        ],
+    )
+    def test_a_native_read_is_read_only(self, action: str) -> None:
+        assert plan_rollback(_entry(action=action, reversible_params=None)) is None
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            # Real names from the installed plugin surface; each a mutation
+            # whose segment happens to END in a read verb.
+            "yahoo_ads_update_placement_url_list",
+            "yahoo_ads_remove_placement_url_list",
+            "yahoo_ads_create_placement_url_list",
+            "yahoo_ads_display_update_placement_url_list",
+            "yahoo_ads_display_remove_placement_url_list",
+            "yahoo_ads_display_create_placement_url_list",
+            "reporting-delete_report",
+            "reporting-create_report",
+            "reporting-create_campaign_report",
+            "reporting-create_inventory_report",
+            "reporting-create_product_report",
+            "amc-execute_query",
+            "logly_ads_context_merge_adgroup_list",
+            # Verbs no installed tool uses today. A hardcoded vocabulary is
+            # only as good as the next plugin's naming, so the ones a review
+            # found missing are pinned here rather than left to be
+            # rediscovered.
+            "yahoo_ads_patch_placement_url_list",
+            "yahoo_ads_replace_placement_url_list",
+            "yahoo_ads_cancel_placement_url_list",
+            "yahoo_ads_duplicate_placement_url_list",
+            "yahoo_ads_attach_placement_url_list",
+            "yahoo_ads_detach_placement_url_list",
+            "campaigns-publish_report",
+            "campaigns-restore_report",
+        ],
+    )
+    def test_a_write_verb_beats_a_trailing_read_verb(self, action: str) -> None:
+        """The guard that makes the trailing reading safe to have at all.
+
+        This surface reports what an operator can be asked to undo, so a
+        mutation misread here is a real gap hidden inside a batch that claims
+        full coverage. The vocabulary is single-sourced from
+        ``mureo.byod._client_common._MUTATION_PREFIXES``, which AGENTS.md
+        calls authoritative, so a verb learned there is known here too.
+
+        The guarded reading is confined to THIS surface. The plugin-facing
+        callers of ``is_read_only_tool_name`` — the guardrail money scan
+        above all — keep the strict verb-first rule, because mureo does not
+        name plugin tools and no hardcoded vocabulary can be complete for
+        names it does not control.
+        """
         entry = _entry(action=action, reversible_params=None)
         plan = plan_rollback(entry)
         assert plan is not None

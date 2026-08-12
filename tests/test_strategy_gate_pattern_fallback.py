@@ -1395,6 +1395,44 @@ class TestReadNameExemption:
         _register_plugin_pattern_fallbacks(_semantics_for(name))
         assert has_pattern_fallback(name) is True
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            # mureo's own verb-last convention. The ROLLBACK planner reads
+            # these as reads (see reads_as_a_report_only_action); this gate
+            # deliberately does NOT, and that difference is the design.
+            "google_ads_campaigns_list",
+            "google_ads_budget_get",
+            "analysis_anomalies_check",
+            # A plugin could ship any verb it likes, including one no
+            # hardcoded vocabulary knows. Widening THIS gate on name shape
+            # is how such a mutation would silently lose its money scan.
+            "yahoo_ads_patch_placement_url_list",
+            "yahoo_ads_cancel_placement_url_list",
+            "yahoo_ads_duplicate_placement_url_list",
+            "reporting-delete_report",
+            "amc-execute_query",
+        ],
+    )
+    def test_a_trailing_verb_never_exempts_a_plugin_tool(self, name: str) -> None:
+        """The denial gate keeps the STRICT rule, on purpose.
+
+        A read whose verb is last is recognised for rollback reporting, where
+        the cost of being wrong is a misleading batch coverage line. It is NOT
+        recognised here, where the cost of being wrong is a ``## Guardrails``
+        budget cap that never fires. mureo does not name plugin tools and
+        cannot enumerate the verbs a plugin might use, so this gate does not
+        try: the exemption stays keyed on the verb-first convention alone.
+
+        The cost is stated rather than hidden: a genuine bridged read named
+        verb-last is scanned here for money-shaped arguments it does not
+        carry, which wastes a scan and denies nothing.
+        """
+        from mureo.mcp.server import _register_plugin_pattern_fallbacks
+
+        _register_plugin_pattern_fallbacks(_semantics_for(name))
+        assert has_pattern_fallback(name) is True
+
     def test_the_exemption_uses_the_shared_read_vocabulary(self) -> None:
         """One list, two safety surfaces — see mureo.core.tool_names."""
         from mureo.core.tool_names import is_read_only_tool_name

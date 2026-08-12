@@ -33,7 +33,10 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any
 
-from mureo.core.tool_names import READ_ONLY_PREFIXES, is_read_only_tool_name
+from mureo.core.tool_names import (
+    READ_ONLY_PREFIXES,
+    reads_as_a_report_only_action,
+)
 from mureo.rollback.models import RollbackPlan, RollbackStatus
 
 if TYPE_CHECKING:
@@ -300,8 +303,17 @@ def _is_read_only(action: str) -> bool:
     the planner emit a NOT_SUPPORTED plan for an action with nothing to undo.
     A name with no hyphen is one segment, so native behaviour is unchanged —
     including the deliberate non-match of mid-word hits like ``listing_update``.
+
+    This surface — and ONLY this surface — also reads a verb at the END of a
+    segment, because mureo's own tools are named that way
+    (``google_ads_campaigns_list``) and the prefix-only rule reported every
+    native read as an item the operator cannot revert. The looser predicate
+    is deliberately not the shared one: its other three callers all gate
+    plugin-facing safety decisions, including the guardrail money scan, and
+    widening those on names mureo does not control is how a mutation loses a
+    cap. See :func:`mureo.core.tool_names.reads_as_a_report_only_action`.
     """
-    return is_read_only_tool_name(action)
+    return reads_as_a_report_only_action(action)
 
 
 def _not_supported(entry: ActionLogEntry, *, notes: str) -> RollbackPlan:
