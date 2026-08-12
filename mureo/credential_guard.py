@@ -25,7 +25,9 @@ Two guards are installed:
   cover every file in the directory, not just ``credentials.json``.
 * Bash guard: normalizes the command *once* into the text a shell would
   read after quoting, line continuations and expansions are resolved, and
-  applies two rules to that one string.  Either one denies.
+  applies four rules to it.  Any one of them denies.  Rules 1 and 2 read
+  the directory name, rules 3 and 4 the two things a search that never
+  spells the directory does write down.
 
   The single reading is the load-bearing part, and it was learned the
   expensive way.  Earlier versions had one rule scanning the raw command
@@ -38,6 +40,19 @@ Two guards are installed:
   reader.  If a rule needs information the fold destroys, the fold has to
   preserve it — which is what ``_COLLAPSE`` does for expansion
   boundaries — rather than the rule reaching for a different string.
+
+  Rule 3 reads the raw text too, and that is not the thing this paragraph
+  forbids — read this before adding another rule that does the same,
+  because the difference is the whole point.  The split-brain bug was
+  *partition*: each rule owned one string and was blind to the other, so
+  an obfuscation resolved on one axis walked past the rule that owned the
+  other.  Rule 3 is a *union* — it runs against the readings AND the raw
+  command, so nothing is invisible to it and no fold can open a hole
+  underneath it.  It also does not want anything the fold destroys: it
+  looks for a pattern that a program other than the shell will expand,
+  and the fold models the shell alone, so there is nothing for
+  ``_COLLAPSE`` to preserve on its behalf.  A rule reading the raw text
+  *instead of* the readings would be the old bug returning.
 
   Rule 1 (the name spelled out) denies when the normalized text contains
   ``.mureo`` where a path component could *start*.  Anchoring on the
@@ -561,7 +576,7 @@ _NORMALIZE = (
 
 # An expansion swallows the identifier run that names it: `$D` and `%s` are
 # one unknown thing, not an unknown thing followed by the letters `d`/`s`.
-# Collapsing them is what lets a single reading serve both rules — after
+# Collapsing them is what lets a single reading serve the rules — after
 # it, `$D.mureo` reads as `*/.mureo`, whose dot sits at a boundary exactly
 # like the one in `~/.mureo`, so the literal rule needs no separate scan of
 # the raw text to find it.  This cannot hide a name: it removes only
@@ -728,8 +743,8 @@ _BASH_GUARD_CODE = (
     + _QUOTE_STEP
     + ", initial=(0,0))); "
     # One reading of the command, built once. Brace expansion turns it into
-    # the list of readings the shell would produce; both rules see all of
-    # them, so neither depends on a guess about any single one.
+    # the list of readings the shell would produce; every rule sees all of
+    # them, so none depends on a guess about any single one.
     "t=" + _NORMALIZE + "; "
     "t="
     + _COLLAPSE
