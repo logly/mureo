@@ -10,6 +10,22 @@
   // Meta's official hosted Ads MCP endpoint (matches catalog.py).
   const META_HOSTED_URL = "https://mcp.facebook.com/ads";
 
+  // Server-side failure codes from /api/credentials/meta/token mapped to
+  // mureo's own wording (#579). Graph answers an expired or revoked token
+  // with an error 190 string carrying an fbtrace_id — the right thing to
+  // keep for a support thread, the wrong thing to be the only sentence an
+  // operator is shown. mureo names the platform, the cause and the single
+  // recovery action; Graph's text stays underneath, secondary.
+  const META_TOKEN_ERROR_KEYS = {
+    token_invalid: "wizard.auth.meta_token_invalid",
+    account_fetch_failed: "wizard.auth.meta_token_account_fetch_failed",
+  };
+
+  function metaTokenErrorKey(res) {
+    const err = res && res.body ? res.body.error : null;
+    return (err && META_TOKEN_ERROR_KEYS[err]) || "wizard.auth.oauth_failed";
+  }
+
   // Render the manual Connectors setup as an actionable card:
   // numbered steps + a copy-to-clipboard URL. No own "Continue"
   // button — the outer wizard's Next advances this step. Always
@@ -453,6 +469,30 @@
     status.className = "wizard-shared-with-sc-note";
     details.appendChild(status);
 
+    // Graph's own error body, demoted to a second line: the status above
+    // says what happened and what to do, this says what Meta replied.
+    // Hidden until there is something to show, so a clean card carries no
+    // empty row.
+    const detail = document.createElement("small");
+    detail.className = "field-hint";
+    detail.hidden = true;
+    details.appendChild(detail);
+
+    function clearError() {
+      status.textContent = "";
+      detail.textContent = "";
+      detail.hidden = true;
+    }
+
+    function reportError(res) {
+      const msg = MUREO.t(metaTokenErrorKey(res));
+      status.textContent = msg;
+      const raw = (res && res.body && res.body.detail) || "";
+      detail.textContent = raw;
+      detail.hidden = !raw;
+      MUREO.toast(msg, "error");
+    }
+
     function renderProbe(body) {
       const granted = (body.scopes || []).join(", ");
       const missing = (body.missing_scopes || []).join(", ");
@@ -490,7 +530,7 @@
       const token = tokenInput.value.trim();
       if (!token) return;
       validateBtn.disabled = true;
-      status.textContent = "";
+      clearError();
       const res = await MUREO.postJson("/api/credentials/meta/token", {
         access_token: token,
         validate_only: true,
@@ -499,10 +539,7 @@
       if (res.ok && res.body) {
         renderProbe(res.body);
       } else {
-        const msg = (res.body && res.body.detail) ||
-          MUREO.t("wizard.auth.oauth_failed");
-        status.textContent = msg;
-        MUREO.toast(msg, "error");
+        reportError(res);
       }
     });
 
@@ -510,6 +547,7 @@
       const token = tokenInput.value.trim();
       if (!token) return;
       saveBtn.disabled = true;
+      clearError();
       const res = await MUREO.postJson("/api/credentials/meta/token", {
         access_token: token,
         account_id: accountSelect.value || null,
@@ -520,10 +558,7 @@
         MUREO.toast(msg, "success");
         onDone();
       } else {
-        const msg = (res.body && res.body.detail) ||
-          MUREO.t("wizard.auth.oauth_failed");
-        status.textContent = msg;
-        MUREO.toast(msg, "error");
+        reportError(res);
         saveBtn.disabled = false;
       }
     });
@@ -531,9 +566,71 @@
     return details;
   }
 
+  // Dashboard re-authentication for the native Meta credentials (#579).
+  // A Meta token can expire, and Remove — throwing the credentials away —
+  // used to be the only action on its row; the Amazon plugin card has had
+  // an authorize section next to its own credentials since #121.
+  //
+  // The card is opened HERE rather than by sending the operator back to
+  // the wizard: "mureo:wizard_start" resets the wizard to step 0, there is
+  // no step-jump, and the Meta auth slot is gated on STATE.platforms /
+  // STATE.providerChoice, which hydrateStateFromStatus never fills in. So
+  // the only wizard route is re-running setup from the host step.
+  //
+  // Built lazily and toggled: the card carries a 4-step token guide, which
+  // does not belong permanently inside a one-line credential row.
+  function buildMetaReauthSection(onDone) {
+    const box = document.createElement("div");
+    box.className = "meta-reauth";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    btn.textContent = MUREO.t("dashboard.meta_reauth_button");
+    btn.setAttribute("data-i18n", "dashboard.meta_reauth_button");
+    box.appendChild(btn);
+
+    const slot = document.createElement("div");
+    slot.hidden = true;
+    box.appendChild(slot);
+
+    btn.addEventListener("click", function () {
+      if (!slot.firstChild) {
+        const card = buildMetaTokenCard(onDone);
+        // The <details> summary is de-emphasized chrome (see
+        // buildMetaTokenCard); a card that opened collapsed would hide the
+        // very form the button just promised.
+        card.open = true;
+        slot.appendChild(card);
+      }
+      slot.hidden = !slot.hidden;
+    });
+    return box;
+  }
+
+  // Re-authentication nudge, driven by the status snapshot's meta_token
+  // row. Only a token mureo can age is warned about: a Business Manager
+  // system-user token never expires and is stored without the app pair, so
+  // the collector reports it as not expiring however old it is, and a
+  // token with no obtained-at stamp has an unknown age that says nothing.
+  function buildMetaExpiringHint(status) {
+    const row = status && status.meta_token ? status.meta_token : null;
+    if (!row || row.access_token_expiring !== true) return null;
+    const note = document.createElement("small");
+    // meta-reauth-hint earns the note a full-width line inside the flex
+    // credential row, the way dashboard-provider-hosted-note does.
+    note.className = "field-hint mark-no meta-reauth-hint";
+    note.textContent = MUREO.t("dashboard.meta_access_token_expiring", {
+      days: row.access_token_age_days,
+    });
+    return note;
+  }
+
   window.MUREO_AUTH_META = {
     showManualSetup: showManualSetup,
     buildMetaMethodChooser: buildMetaMethodChooser,
     buildMetaTokenCard: buildMetaTokenCard,
+    buildMetaReauthSection: buildMetaReauthSection,
+    buildMetaExpiringHint: buildMetaExpiringHint,
   };
 })();

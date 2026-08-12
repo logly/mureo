@@ -62,6 +62,15 @@ AMAZON_REFRESH_TOKEN_LIFETIME_DAYS = 365
 # re-authorize before Amazon revokes it mid-operation.
 AMAZON_REFRESH_TOKEN_WARN_DAYS = 335
 
+# Meta's long-lived user tokens live ~60 days from issue. mureo exchanges
+# them for a fresh one at 53 days, so a token still older than that on
+# disk is one the automatic refresh has NOT renewed — which is the only
+# state worth warning about, and it leaves a week of headroom. Kept in
+# lockstep with ``mureo.auth._TOKEN_REFRESH_THRESHOLD_DAYS`` (asserted by
+# ``tests/test_web_status_meta_token.py``) rather than imported: this
+# module is a pure filesystem read and must not pull in the auth stack.
+META_ACCESS_TOKEN_WARN_DAYS = 53
+
 
 @dataclass(frozen=True)
 class StatusSnapshot:
@@ -102,6 +111,13 @@ class StatusSnapshot:
     # is never reported as expiring — older tokens have no fixed expiry.
     # Defaults to an empty dict so direct constructions keep working.
     amazon_token: dict[str, Any] = field(default_factory=dict)
+    # #579: the Meta access token's re-authentication clock —
+    # ``{"access_token_age_days": int | None, "access_token_expiring":
+    # bool}``. Only a token stored WITH ``app_id``/``app_secret`` can
+    # expire (see :func:`_detect_meta_token`), so the flag is False for a
+    # never-expiring system-user token however old it is. Defaults to an
+    # empty dict so direct constructions keep working.
+    meta_token: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -116,6 +132,7 @@ class StatusSnapshot:
             "multi_account_auth": self.multi_account_auth,
             "amazon_manifest": dict(self.amazon_manifest),
             "amazon_token": dict(self.amazon_token),
+            "meta_token": dict(self.meta_token),
         }
 
 
@@ -259,6 +276,44 @@ def _detect_amazon_token(credentials_path: Path) -> dict[str, Any]:
         "refresh_token_age_days": age,
         "refresh_token_expiring": age is not None
         and age > AMAZON_REFRESH_TOKEN_WARN_DAYS,
+    }
+
+
+def _detect_meta_token(credentials_path: Path) -> dict[str, Any]:
+    """Meta access-token age + expiry warning (#579).
+
+    Two Meta tokens live in the same field and only one of them expires:
+
+    - a **long-lived user token**, stored together with ``app_id`` and
+      ``app_secret``, lives ~60 days. mureo exchanges it for a fresh one
+      at :data:`META_ACCESS_TOKEN_WARN_DAYS`
+      (:func:`mureo.auth._should_refresh`), so finding one still older
+      than that on disk means the refresh is not happening — a browser
+      OAuth that has not run in months, or an exchange Graph keeps
+      rejecting. That is the state worth a nudge;
+    - a **Business Manager system-user token** never expires, and the
+      paste card deliberately stores it WITHOUT the app pair to keep it
+      off the refresh clock. It is still stamped with an obtained-at
+      date, so age alone would grow into a warning about a credential
+      that cannot go stale. The app pair — the same condition
+      ``_should_refresh`` short-circuits on — is what separates the two.
+
+    An absent or unparseable stamp reports an unknown age and never
+    warns: a hand-entered token clears the stamp on purpose (#578), so
+    "no stamp" means "off the clock", not "infinitely old".
+
+    Read-only and never raises, like every other detector here.
+    """
+    payload = read_json_safe(credentials_path)
+    section = payload.get("meta_ads")
+    section = section if isinstance(section, dict) else {}
+    age = _refresh_token_age_days(section.get("token_obtained_at"))
+    refreshable = bool(section.get("app_id")) and bool(section.get("app_secret"))
+    return {
+        "access_token_age_days": age,
+        "access_token_expiring": refreshable
+        and age is not None
+        and age > META_ACCESS_TOKEN_WARN_DAYS,
     }
 
 
@@ -452,6 +507,7 @@ def collect_status(
     mureo_disable = _detect_mureo_disable(resolved.mcp_registry_path)
     amazon_manifest = _detect_amazon_manifest(resolved.credentials_path)
     amazon_token = _detect_amazon_token(resolved.credentials_path)
+    meta_token = _detect_meta_token(resolved.credentials_path)
     return StatusSnapshot(
         host=resolved.host,
         setup_parts=setup_parts,
@@ -464,4 +520,5 @@ def collect_status(
         multi_account_auth=multi_account_auth,
         amazon_manifest=amazon_manifest,
         amazon_token=amazon_token,
+        meta_token=meta_token,
     )
