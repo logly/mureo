@@ -536,7 +536,10 @@ class TestMapTagSnippet:
 
         result = map_tag_snippet(snippet)
 
-        assert result["type"] == "TrackingCodeType.WEBPAGE"
+        # ``type`` is deliberately not pinned to a literal: the mapper returns
+        # ``str(snippet.type_)``, and proto-plus enums are stdlib IntEnum,
+        # whose ``__str__`` CPython changed in 3.11 — "TrackingCodeType.WEBPAGE"
+        # on 3.10, "2" on 3.11+. This test is about the snippet fields.
         assert result["page_header"] == "<script>gtag</script>"
         assert result["event_snippet"] == "<script>event</script>"
 
