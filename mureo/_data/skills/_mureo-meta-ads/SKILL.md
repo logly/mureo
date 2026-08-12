@@ -553,13 +553,18 @@ different one.
 
 - `create` -- Create a lead form. **Requires user confirmation.**
   ```
-  Required: account_id, page_id, name, questions (array), privacy_policy_url
+  Required: account_id, page_id, name, questions (array),
+    privacy_policy_url, follow_up_action_url
   Optional advanced: locale, context_card (intro screen),
     thank_you_page (custom completion screen), is_higher_intent
     (3-step input→review→submit form), conditional_questions_choices
-    (branching logic), follow_up_action_url (simple redirect; superseded
-    by thank_you_page when both present)
+    (branching logic)
   ```
+
+  `follow_up_action_url` is required by Meta — omitting it fails with
+  `error_subcode 1892085` / "Missing field(s): FollowUpActionURL". It is
+  the URL behind the completion screen's button; `thank_you_page` adds a
+  richer completion screen on top of it, it does not replace it.
 
   When to use `is_higher_intent=true`: trims junk submissions, lowers
   total volume — pick when CV quality matters more than CV volume
@@ -567,7 +572,10 @@ different one.
 
   When to use `context_card`: lifts conversion rate measurably. Always
   worth a `{title, content, style=PARAGRAPH_STYLE}` minimum for any
-  campaign that survives past a 1-week test.
+  campaign that survives past a 1-week test. `cover_photo_id` (a PAGE
+  photo id from `meta_ads_pages_upload_photo`) is write-only — Meta reads
+  it back as `context_card.cover_photo.id`, so asking for
+  `context_card{cover_photo_id}` returns a 400.
 
   When to use `conditional_questions_choices`: when a follow-up
   question is only relevant given a prior answer (e.g. "How many
@@ -581,7 +589,12 @@ different one.
   ```
 
 - `duplicate` -- Copy an existing form (questions / privacy_policy /
-  follow_up_action_url / locale) under a new name on the given Page.
+  follow_up_action_url / locale / context_card / thank_you_page /
+  is_higher_intent / conditional_questions_choices) under a new name on
+  the given Page. The intro card's cover photo is re-mapped from the
+  read shape (`cover_photo.id`) to the write shape (`cover_photo_id`).
+  Fails fast when the source form has no `privacy_policy.url` or no
+  `follow_up_action_url` — Meta requires both at creation time.
   Source form is untouched. **Requires user confirmation.**
   ```
   Required: account_id, form_id, page_id, new_name
@@ -824,7 +837,7 @@ Step 3: Create a dynamic creative (multi-asset optimization) (CONFIRM WITH USER)
 
 ```
 Step 1: Create the Instant Form (CONFIRM WITH USER)
-  -> meta_ads_lead_forms_create {account_id, page_id, name, questions, privacy_policy_url}
+  -> meta_ads_lead_forms_create {account_id, page_id, name, questions, privacy_policy_url, follow_up_action_url}
   Returns: { id: "<form_id>", ... }
 
 Step 2: Create a Lead Ad creative attached to the form

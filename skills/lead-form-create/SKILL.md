@@ -52,9 +52,10 @@ Skip a step only when the answer is unambiguous from STATE.json / STRATEGY.md (e
      - **IMPORTANT — `cover_photo_id` needs a PAGE photo id, not an ad-account `image_hash`.** Do **not** use `meta_ads_images_upload_file` / `meta_ads_creatives_upload_image` here — those upload to the ad account and return an `image_hash`, which Meta rejects for a form cover photo (this previously failed silently).
      - If the user wants a cover image: call **`meta_ads_pages_upload_photo`** with the form's `page_id` and either a `file_path` (local image) or `image_url`. Capture the returned **`photo_id`** and pass it as `context_card.cover_photo_id`.
        - This needs the `pages_manage_posts` permission. If the call fails with a permissions error (e.g. `(#200)` / `pages_manage_posts`), tell the user to re-run Meta auth (`mureo` Meta login) so the access token picks up the scope, then retry. As a fallback they can upload the cover manually in **Ads Manager → form builder → intro screen**.
+       - `cover_photo_id` is write-only: Meta reads the id back as `context_card.cover_photo.id`. Verify there (`meta_ads_lead_forms_get`) — requesting `context_card{cover_photo_id}` returns a 400.
      - If the user does not want a cover image, omit `cover_photo_id` entirely.
 
-6. **Post-submission behaviour**: Ask which of three options the user wants — (a) Meta's default confirmation (no extra config), (b) a simple redirect to a URL after submission (the lightweight `follow_up_action_url` field, common case for "send them to my thank-you page"), or (c) a full custom completion screen with title / body / CTA button. If (b), capture the URL. If (c), collect — one question per step: `title`, `body`, `button_type` (`VIEW_WEBSITE` / `CALL_BUSINESS` / `MESSAGE_BUSINESS` / `DOWNLOAD` / `DOWNLOAD_APP`), `website_url`, `button_text`. Note: `thank_you_page` supersedes `follow_up_action_url` when both are set, so do not collect both — pick one based on the user's choice.
+6. **Post-submission behaviour**: `follow_up_action_url` is **always required** by Meta (omitting it fails with `error_subcode 1892085` / "Missing field(s): FollowUpActionURL"), so always ask for the completion-screen URL — "Where should the form send people after they submit?" Default it from STRATEGY.md or the site's thank-you page so the user can accept in one word, and never invent one silently. Then ask whether they also want a full custom completion screen with title / body / CTA button (`thank_you_page`). That is an optional add-on *on top of* `follow_up_action_url`, not a replacement — if yes, collect one question per step: `title`, `body`, `button_type` (`VIEW_WEBSITE` / `CALL_BUSINESS` / `MESSAGE_BUSINESS` / `DOWNLOAD` / `DOWNLOAD_APP`), `website_url`, `button_text`.
 
 7. **Higher-intent (3-step) mode?**: Explain the trade-off in one sentence: "Higher-intent mode adds a review step before submit. It improves lead quality and trims junk submissions, but it costs total volume." Then ask yes/no. Default is `false` (single-step) unless the operator's STRATEGY.md flags quality over volume.
 
@@ -62,7 +63,7 @@ Skip a step only when the answer is unambiguous from STATE.json / STRATEGY.md (e
 
 ### Confirm before mutating
 
-Once every answer is collected, summarise the full payload in a short bulleted list (form name, questions, privacy URL, intro card on/off, thank-you on/off, higher-intent on/off, locale) and **ask the user to confirm** before calling the tool. Do not call `meta_ads_lead_forms_create` until the user gives an explicit go-ahead.
+Once every answer is collected, summarise the full payload in a short bulleted list (form name, questions, privacy URL, follow-up action URL, intro card on/off, thank-you on/off, higher-intent on/off, locale) and **ask the user to confirm** before calling the tool. Do not call `meta_ads_lead_forms_create` until the user gives an explicit go-ahead.
 
 ### Create the form
 

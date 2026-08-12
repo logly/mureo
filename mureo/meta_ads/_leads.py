@@ -49,6 +49,29 @@ _CSV_INJECTION_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
 _MAX_LEAD_PAGES = 10_000
 
 
+def _context_card_for_write(card: dict[str, Any]) -> dict[str, Any]:
+    """Turn a read-back ``context_card`` into one Meta accepts on write.
+
+    The intro card's cover photo is write/read asymmetric: creation
+    takes ``cover_photo_id`` (a PAGE photo id), but Meta reads the card
+    back as ``cover_photo: {"id": ..., "created_time": ...}`` — and
+    requesting ``context_card{cover_photo_id}`` is rejected outright
+    with ``(#100) Tried accessing nonexisting field (cover_photo_id)``.
+    Re-posting the read-back shape therefore either loses the cover or
+    fails, so the read shape is converted back to the write shape here.
+
+    Returns a NEW dict; the input is never mutated. The server-assigned
+    ``id`` is dropped (read-only), ``cover_photo`` is converted to
+    ``cover_photo_id`` when it carries an id and dropped either way, and
+    every other key is preserved untouched.
+    """
+    out = {k: v for k, v in card.items() if k not in ("id", "cover_photo")}
+    cover = card.get("cover_photo")
+    if isinstance(cover, dict) and cover.get("id"):
+        out["cover_photo_id"] = cover["id"]
+    return out
+
+
 def _csv_safe(value: str) -> str:
     """Escape leading characters that would otherwise be interpreted
     as a spreadsheet formula. Idempotent — re-escaping the result is
@@ -105,6 +128,14 @@ class LeadsMixin:
     async def get_lead_form(self, form_id: str) -> dict[str, Any]:
         """Get lead form details
 
+        Meta's raw shape is returned unchanged. Note the intro card's
+        cover photo reads back as ``context_card.cover_photo``
+        (``{"id": ..., "created_time": ...}``) even though creation
+        takes ``cover_photo_id`` — asking Meta for
+        ``context_card{cover_photo_id}`` fails with ``(#100) Tried
+        accessing nonexisting field (cover_photo_id)``. Use
+        :func:`_context_card_for_write` before re-posting a card.
+
         Args:
             form_id: Lead form ID
 
@@ -120,8 +151,8 @@ class LeadsMixin:
         name: str,
         questions: list[dict[str, Any]],
         privacy_policy_url: str,
+        follow_up_action_url: str,
         *,
-        follow_up_action_url: str | None = None,
         locale: str | None = None,
         context_card: dict[str, Any] | None = None,
         thank_you_page: dict[str, Any] | None = None,
@@ -141,8 +172,12 @@ class LeadsMixin:
                 ``label``, and (for dropdowns) ``options``.
             privacy_policy_url: HTTPS URL of the advertiser's
                 privacy policy. Required by Meta policy.
-            follow_up_action_url: Optional redirect URL shown after
-                submission. Omit for Meta's default confirmation.
+            follow_up_action_url: URL the user is sent to from the
+                completion screen's button. **Required by Meta** —
+                omitting it fails with HTTP 400 ``error_subcode
+                1892085`` / "Missing field(s): FollowUpActionURL".
+                ``thank_you_page`` adds a richer completion screen but
+                does not remove this requirement.
             locale: Optional form locale (e.g. ``"ja_JP"``).
             context_card: Optional intro / welcome screen shown
                 before the form. Expected shape:
@@ -150,13 +185,20 @@ class LeadsMixin:
                 "style": "PARAGRAPH_STYLE" | "LIST_STYLE",
                 "cover_photo_id": "..."}``. Meta lifts conversion
                 rates measurably when an intro is supplied.
+                ``cover_photo_id`` is a PAGE photo id (see
+                :meth:`upload_page_photo`) and is write-only: Meta
+                reads the card back as ``cover_photo: {"id": ...,
+                "created_time": ...}``, and requesting
+                ``context_card{cover_photo_id}`` is a 400.
             thank_you_page: Optional custom completion screen with
                 a CTA. Expected shape (subset):
                 ``{"title": "...", "body": "...",
                 "button_type": "VIEW_WEBSITE" | "CALL_BUSINESS" |
                 "MESSAGE_BUSINESS" | "DOWNLOAD" | "DOWNLOAD_APP",
                 "website_url": "...", "button_text": "..."}``.
-                Replaces ``follow_up_action_url``'s simple redirect.
+                Richer than the plain ``follow_up_action_url``
+                redirect, but does not replace it — Meta still
+                requires ``follow_up_action_url``.
             is_higher_intent: When ``True``, Meta renders a 3-step
                 form (input → review → submit) which trims junk
                 submissions at the cost of total leads volume.
@@ -176,10 +218,9 @@ class LeadsMixin:
             "name": name,
             "questions": json.dumps(questions),
             "privacy_policy": json.dumps({"url": privacy_policy_url}),
+            "follow_up_action_url": follow_up_action_url,
         }
 
-        if follow_up_action_url is not None:
-            data["follow_up_action_url"] = follow_up_action_url
         if locale is not None:
             data["locale"] = locale
         if context_card is not None:
@@ -252,7 +293,12 @@ class LeadsMixin:
         **Copied fields**: ``questions``, ``privacy_policy``,
         ``follow_up_action_url``, ``locale``, ``context_card``,
         ``thank_you_page``, ``is_higher_intent``,
-        ``conditional_questions_choices``.
+        ``conditional_questions_choices``. The ``context_card`` is
+        normalized on the way out by :func:`_context_card_for_write`
+        — Meta reads the intro cover photo back as
+        ``cover_photo: {id, created_time}`` but only accepts
+        ``cover_photo_id`` on write, so re-posting the read-back
+        shape verbatim would drop the cover (or 400).
 
         **NOT copied** (lossy by design — Meta either makes them
         immutable post-creation or they require separate setup on
@@ -277,7 +323,9 @@ class LeadsMixin:
                 ``privacy_policy`` is present but its ``url`` is
                 empty / missing — falls through to the same fail
                 path so the operator gets one clear error rather
-                than a Meta 400 later.
+                than a Meta 400 later. Also raised when the source
+                form has no ``follow_up_action_url``; Meta requires
+                it at creation time (``error_subcode 1892085``).
         """
         source = await self.get_lead_form(form_id)
         policy = source.get("privacy_policy")
@@ -291,13 +339,19 @@ class LeadsMixin:
                 "Meta requires one for lead form creation"
             )
 
+        follow_up_url = source.get("follow_up_action_url")
+        if not follow_up_url:
+            raise ValueError(
+                f"source form {form_id!r} has no follow_up_action_url; "
+                "Meta requires one for lead form creation"
+            )
+
         data: dict[str, Any] = {
             "name": new_name,
             "questions": json.dumps(source.get("questions", [])),
             "privacy_policy": json.dumps({"url": privacy_url}),
+            "follow_up_action_url": follow_up_url,
         }
-        if source.get("follow_up_action_url"):
-            data["follow_up_action_url"] = source["follow_up_action_url"]
         if source.get("locale"):
             data["locale"] = source["locale"]
 
@@ -307,7 +361,9 @@ class LeadsMixin:
         # duplicate. JSON-encode dict / list fields the same way
         # create_lead_form does.
         if source.get("context_card"):
-            data["context_card"] = json.dumps(source["context_card"])
+            data["context_card"] = json.dumps(
+                _context_card_for_write(source["context_card"])
+            )
         if source.get("thank_you_page"):
             data["thank_you_page"] = json.dumps(source["thank_you_page"])
         if source.get("is_higher_intent"):
