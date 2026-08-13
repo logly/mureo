@@ -2,6 +2,39 @@
 
 ### Fixed
 
+- **A platform key an agent invented was accepted on write, creating a phantom
+  duplicate** (#609). An agent operating through mureo wrote its snapshots
+  under `logly_ads` for a bridge whose provider is `logly_ads_context`. The
+  write guard checked the key's *shape* only — empty, padded, or a malformed
+  `plugin:` claim — so an arbitrary plausible string passed, and both keys
+  ended up in the same `platforms` map carrying the same ad account. The
+  reporting view sums every entry, so that account's spend, conversions and
+  CPA were double-counted, and the operator was told to repair it by hand.
+  This was the upstream cause of #606, which fixed the wording the two
+  conflict notes produced downstream but not the bad key being written.
+
+  Creating a platform entry now also refuses a key that names no platform
+  mureo can resolve. Three vocabularies are accepted: a built-in
+  (`google_ads` / `meta_ads` / `search_console` / `ga4` / `tiktok_ads`), a
+  platform an installed plugin registered under the `mureo.providers` or
+  `mureo.analytics` entry-point group, and a canonical
+  `plugin:<distribution>:<provider>` key — the last accepted without
+  requiring the distribution to be installed, so a snapshot from another
+  machine, an uninstalled bridge or a restored backup stays writable. The
+  refusal names the key and lists what would have been accepted, so an
+  agent's next attempt is informed rather than a second guess.
+
+  The check is deliberately narrow. It runs on **create through the targeted
+  writers only** — the paths where a caller named one platform
+  (`mureo_state_upsert_campaign`, `mureo_state_platform_metrics_set`,
+  `mureo_state_set_conversion_events`). Whole-document writes, restores,
+  imports and the tolerant parse are untouched, and an entry that already
+  exists keeps taking writes whatever its key: an operator holding a bad key
+  has to be able to keep syncing and repair it. If the installed-plugin set
+  cannot be read at all (corrupted metadata, an odd install layout) the check
+  logs and lets the write through — a broken environment is not evidence that
+  a key is wrong.
+
 - **Two conflict notes on the same platform card contradicted each other**
   (#606). A card could show `duplicate_account` — "one ad account is stored
   under two platform keys", certain, and the account identified — directly

@@ -6,11 +6,13 @@ import dataclasses
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 
+from mureo.context import platform_guards
 from mureo.context.errors import ContextFileError
 from mureo.context.models import (
     ActionLogEntry,
@@ -2007,8 +2009,21 @@ class TestDuplicateAccountEntryGuard:
         self, tmp_path: Path
     ) -> None:
         """The registry-name spelling and the canonical ``plugin:<dist>`` key
-        are two keys for one account — exactly the #533 ingress."""
-        path = self._seed(tmp_path, "mureo-logly-bridge", "act_1")
+        are two keys for one account — exactly the #533 ingress.
+
+        The bare distribution name is seeded through the whole-document path
+        because #609 refuses it on create (it is neither a built-in, nor an
+        installed provider, nor a plugin key). State that already carries it
+        still has to collide, and still has to stay repairable.
+        """
+        path = tmp_path / "STATE.json"
+        write_state_file(
+            path,
+            StateDocument(
+                version="2",
+                platforms={"mureo-logly-bridge": PlatformState(account_id="act_1")},
+            ),
+        )
         with pytest.raises(ValueError, match="mureo-logly-bridge"):
             set_platform_metrics(
                 path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 2.0}
@@ -2319,6 +2334,214 @@ class TestDuplicateAccountEntryGuard:
         )
         doc = set_platform_metrics(path, "plugin:", "123", totals={"spend": 1.0})
         assert doc.platforms["plugin:"].totals == {"spend": 1.0}
+
+
+# ---------------------------------------------------------------------------
+# #609 — a platform key an agent invented is refused on create
+# ---------------------------------------------------------------------------
+
+
+def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch, *names: str) -> None:
+    """Pin which plugin platforms the environment reports as installed.
+
+    Every test below pins this. The developer machine that reported #609 has
+    real bridges installed (``logly_ads_context``, ``yahoo_ads``, …), so a test
+    that leaned on the ambient environment would pass for a reason it did not
+    assert — and would flip on a machine with no plugins.
+    """
+    entries = tuple(SimpleNamespace(name=name) for name in names)
+    monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: entries)
+
+
+@pytest.mark.unit
+class TestUnknownPlatformKeyGuard:
+    """#609 — an agent can no longer invent a platform key mureo then stores.
+
+    The observed failure: an agent wrote LOGLY snapshots under ``logly_ads``
+    while the bridge's provider is ``logly_ads_context``. Both keys carried the
+    same ad account, so the reporting view summed them.
+
+    Refusing is create-only, exactly like every other key check here: a
+    document that ALREADY carries a bad key has to stay writable or the
+    operator can never repair it.
+    """
+
+    def test_an_invented_key_is_refused_on_create(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """And the message names the key plus what WOULD have been accepted,
+        so the agent's next attempt is correct rather than a second guess."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        with pytest.raises(ValueError) as exc:
+            set_platform_metrics(path, "logly_ads", "act_1", totals={"spend": 1.0})
+        message = str(exc.value)
+        assert "logly_ads" in message
+        # The three accepted vocabularies are all named.
+        assert "google_ads" in message  # a built-in
+        assert "logly_ads_context" in message  # an installed provider
+        assert "plugin:" in message  # the canonical plugin key form
+        # Fail-before-write: nothing landed.
+        assert not path.exists()
+
+    def test_an_installed_providers_name_is_accepted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        doc = set_platform_metrics(
+            path, "logly_ads_context", "act_1", totals={"spend": 1.0}
+        )
+        assert set(doc.platforms) == {"logly_ads_context"}
+
+    def test_the_logly_incident(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The reported case, pinned end to end: the invented key is refused,
+        the real provider name is accepted, and one account keeps one key."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        with pytest.raises(ValueError, match="logly_ads"):
+            set_platform_metrics(path, "logly_ads", "act_1", totals={"spend": 1.0})
+        doc = set_platform_metrics(
+            path, "logly_ads_context", "act_1", totals={"spend": 1.0}
+        )
+        assert set(doc.platforms) == {"logly_ads_context"}
+
+    def test_a_builtin_is_accepted_with_no_plugin_installed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Including ``tiktok_ads``, a hosted connector with no provider entry
+        point at all — its key is a built-in, not a plugin."""
+        from mureo.core.platform_keys import BUILTIN_PLATFORM_DISPLAY_NAMES
+
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        for index, key in enumerate(sorted(BUILTIN_PLATFORM_DISPLAY_NAMES)):
+            set_platform_metrics(path, key, f"act_{index}", totals={"spend": 1.0})
+        assert set(read_state_file(path).platforms) == set(
+            BUILTIN_PLATFORM_DISPLAY_NAMES
+        )
+
+    def test_the_installed_set_is_read_from_the_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Not from a list in the source: with nothing installed, a provider
+        name that IS installed on the reporting machine is refused."""
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        with pytest.raises(ValueError, match="logly_ads_context"):
+            set_platform_metrics(
+                path, "logly_ads_context", "act_1", totals={"spend": 1.0}
+            )
+
+    def test_a_canonical_plugin_key_is_accepted_when_nothing_is_installed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The escape hatch for a snapshot whose bridge is not installed here
+        (another machine, an uninstalled bridge, a restored backup): the
+        canonical key names its own distribution, so it needs no registry."""
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        doc = set_platform_metrics(
+            path,
+            "plugin:mureo-logly-bridge:logly_ads_context",
+            "act_1",
+            totals={"spend": 1.0},
+        )
+        assert set(doc.platforms) == {"plugin:mureo-logly-bridge:logly_ads_context"}
+
+    def test_uninstalling_a_provider_does_not_strand_its_entries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Create-only means an existing entry keeps taking writes after its
+        bridge is uninstalled — otherwise `pip uninstall` freezes the state."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(path, "logly_ads_context", "act_1", totals={"spend": 1.0})
+        _pin_installed_platforms(monkeypatch)
+        doc = set_platform_metrics(
+            path, "logly_ads_context", "act_1", totals={"spend": 2.0}
+        )
+        assert doc.platforms["logly_ads_context"].totals == {"spend": 2.0}
+
+    def test_an_existing_unknown_key_stays_writable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The repair path: the operator holding the bad key must be able to
+        keep syncing it (and to re-point it) while they decide what to do."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {"version": "2", "platforms": {"logly_ads": {"account_id": "act_1"}}}
+            ),
+            encoding="utf-8",
+        )
+        doc = set_platform_metrics(path, "logly_ads", "act_1", totals={"spend": 1.0})
+        assert doc.platforms["logly_ads"].totals == {"spend": 1.0}
+
+    def test_a_whole_document_write_carrying_an_unknown_key_still_lands(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Detection, not enforcement, on the whole-document funnel — a
+        restore / import / digest sync must never be blocked by this check."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        write_state_file(
+            path,
+            StateDocument(
+                version="2",
+                platforms={"logly_ads": PlatformState(account_id="act_1")},
+            ),
+        )
+        assert set(read_state_file(path).platforms) == {"logly_ads"}
+
+    def test_an_unreadable_plugin_environment_fails_open(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """``importlib.metadata`` blowing up (odd install layout, corrupted
+        metadata) must not make every plugin platform unwritable — it is not
+        evidence the key is wrong. Log it and let the write through."""
+        path = tmp_path / "STATE.json"
+
+        def _boom(**_kwargs: Any) -> Any:
+            raise RuntimeError("corrupted metadata")
+
+        with (
+            patch("importlib.metadata.entry_points", _boom),
+            caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"),
+        ):
+            doc = set_platform_metrics(
+                path, "logly_ads_context", "act_1", totals={"spend": 1.0}
+            )
+        assert set(doc.platforms) == {"logly_ads_context"}
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    def test_upsert_campaign_shares_the_guard(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        with pytest.raises(ValueError, match="logly_ads"):
+            upsert_campaign(
+                path,
+                CampaignSnapshot(campaign_id="c1", campaign_name="C1", status="ACTIVE"),
+                platform="logly_ads",
+                account_id="act_1",
+            )
+        assert not path.exists()
+
+    def test_set_conversion_action_types_shares_the_guard(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.context.state import set_conversion_action_types
+
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        with pytest.raises(ValueError, match="logly_ads"):
+            set_conversion_action_types(path, "logly_ads", "act_1", ["lead"])
+        assert not path.exists()
 
 
 # ---------------------------------------------------------------------------

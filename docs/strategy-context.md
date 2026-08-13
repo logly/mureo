@@ -217,6 +217,25 @@ the reporting dashboard's label lookup, and `mureo_analytics_modules_list` /
 under another is a silent join failure; see
 `skills/_mureo-shared/SKILL.md` → *Canonical platform key*.
 
+**A key mureo cannot resolve is rejected on create.** Creating a `platforms`
+entry through `upsert_campaign` / `set_platform_metrics` /
+`set_conversion_action_types` (and so through the `mureo_state_*` tools)
+requires the key to be one of: a first-class ad-platform key; a platform an
+**installed** plugin registered (its provider / analytics entry-point name,
+e.g. `logly_ads_context`); or a `plugin:<dist>:<provider>` key, which is
+accepted whether or not that distribution is installed here — use it for a
+snapshot whose bridge lives on another machine. Anything else is refused with
+an error naming the key and listing what would have been accepted, because an
+invented key (`logly_ads` for a bridge whose provider is `logly_ads_context`)
+files an account under a key nothing joins with and double-counts it against
+the entry it really belongs to.
+
+The check is create-only and applies to the targeted writers only: a
+**whole-document** write (a restore, an import, a digest sync) still lands
+whatever keys it carries, and an entry that already exists keeps taking writes
+under its own key — an operator holding a bad key has to be able to sync and
+repair it.
+
 **One ad account has exactly one platform key.** The `platforms` map is keyed
 by a free-form string, so two spellings of the same platform would otherwise
 produce two entries for one real ad account — and the reporting view sums

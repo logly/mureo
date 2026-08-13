@@ -26,8 +26,9 @@ duplicate just as surely. So the decision branches on what the entry already
 says:
 
 1. **The key does not exist.** A true create: validate the key's shape
-   (:func:`reject_unusable_platform_key`) and refuse if another key already
-   holds ``account_id``.
+   (:func:`reject_unusable_platform_key`), refuse a key naming no platform
+   mureo can resolve (:func:`reject_unknown_platform_key`), and refuse if
+   another key already holds ``account_id``.
 2. **The key exists and its stored id matches the incoming one.** A plain
    update — nothing about identity changes, so allow it. The match is
    ``act_``-tolerant, so re-writing ``123456`` as ``act_123456`` is still an
@@ -54,6 +55,35 @@ operator who already has one.** Nothing here deletes or merges an entry either
 — the two halves of a duplicate typically hold different *partial* figures, so
 the repair is the operator's call, informed by the read side.
 
+Which writers this applies to (#609)
+------------------------------------
+:func:`reject_unknown_platform_key` refuses a key naming no platform mureo
+can resolve, and it runs on branch (1) **only**. The split it follows is
+"did an agent name this platform, or did this document arrive from
+elsewhere?":
+
+- **An agent named it — refuse.** ``upsert_campaign``,
+  ``set_platform_metrics`` and ``set_conversion_action_types`` in
+  :mod:`mureo.context.state` (reached from the MCP tools
+  ``mureo_state_upsert_campaign`` / ``mureo_state_platform_metrics_set`` /
+  ``mureo_state_set_conversion_events``, and from bridges and out-of-tree
+  writers calling them directly). Each takes ONE key the caller chose, so
+  there is something to refuse and a caller to tell.
+- **The document arrived from elsewhere — never refuse.**
+  ``write_state_file`` and everything funnelling through it
+  (``FilesystemStateStore.write_state``, mureo-agency's digest sync, a
+  restored backup, an import), plus the tolerant parse in
+  :mod:`mureo.context.state_codec` and the demo installer, which renders a
+  scenario's STATE.json straight to disk. A whole document has no notion of
+  which entry is new, and refusing it would strand an operator holding state
+  they cannot otherwise repair — the same reason
+  :func:`warn_on_duplicate_accounts` only reports.
+
+A key that is legitimate but unresolvable **here** — a snapshot for a bridge
+this machine does not have installed — is not stranded either: the canonical
+``plugin:<distribution>:<provider>`` form names its own distribution and so
+is accepted without any registry to consult.
+
 One corner this does **not** defend: writing an explicit ``account_id=""``
 onto an entry that holds a known id silently reverts that entry to "unknown",
 because ``""`` is by contract free rather than taken. The MCP surface blocks
@@ -66,7 +96,7 @@ id, never ``""`` to mean "leave it alone".
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mureo.context.platform_accounts import (
     DuplicateAccountEntry,
@@ -132,7 +162,9 @@ def reject_unusable_platform_key(platform: str) -> None:
     STATE.json and on the dashboard without saying so, which is the same class
     of silent divergence this guard exists to stop.
 
-    Create-only; see :func:`guard_platform_entry_write`.
+    Shape only — whether the key names a platform that EXISTS is
+    :func:`reject_unknown_platform_key`'s question (#609). Create-only; see
+    :func:`guard_platform_entry_write`.
     """
     # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
     # ``state_store`` -> ``mureo.context.state``, which imports this module —
@@ -161,6 +193,119 @@ def reject_unusable_platform_key(platform: str) -> None:
             f"or the older {PLUGIN_PLATFORM_PREFIX}<distribution> for a "
             f"distribution that provides a single platform"
         )
+
+
+def _provider_entry_points() -> tuple[Any, ...] | None:
+    """Return every entry point that registers a plugin platform.
+
+    Both groups a plugin can name a platform in: ``mureo.providers`` (the
+    provider itself) and ``mureo.analytics`` (an analytics module, whose
+    registry name is the same ``<provider>`` component — see
+    :mod:`mureo.core.platform_keys`). A distribution may ship only the latter,
+    and refusing its key would be a false rejection.
+
+    Entry points are **not loaded**: only ``ep.name`` is read. Loading would
+    import third-party code on a state write, which is neither this function's
+    business nor safe to do under the state lock.
+
+    ``None`` — distinct from an empty tuple — means the environment could not
+    be enumerated. ``importlib.metadata`` blowing up is rare but possible
+    (unusual install layout, corrupted metadata), and unlike the policy-gate
+    loader (:func:`mureo.mcp.server._policy_gate_entry_points`, which treats
+    the failure as "zero gates") this one cannot treat it as "zero providers":
+    that would turn a broken environment into a refusal of every plugin
+    platform key. A failure is not evidence the key is wrong, so the caller
+    fails open. Isolated as its own function so tests can pin the environment
+    rather than monkeypatching ``importlib.metadata``.
+    """
+    from importlib.metadata import entry_points
+
+    from mureo.analytics.registry import ANALYTICS_ENTRY_POINT_GROUP
+    from mureo.core.providers.registry import PROVIDERS_ENTRY_POINT_GROUP
+
+    found: list[Any] = []
+    for group in (PROVIDERS_ENTRY_POINT_GROUP, ANALYTICS_ENTRY_POINT_GROUP):
+        try:
+            found.extend(entry_points(group=group))
+        except Exception as exc:  # noqa: BLE001 — see docstring: fail open
+            logger.warning(
+                "platform key check: importlib.metadata.entry_points(group=%r) "
+                "failed (%s); accepting the key rather than refusing every "
+                "plugin platform",
+                group,
+                exc,
+            )
+            return None
+    return tuple(found)
+
+
+def _installed_platform_names() -> frozenset[str] | None:
+    """The platform names installed plugins registered, or ``None``.
+
+    ``None`` propagates :func:`_provider_entry_points`' "could not enumerate".
+    A nameless or blank entry point is dropped: it can never equal a key that
+    :func:`reject_unusable_platform_key` already let through.
+    """
+    eps = _provider_entry_points()
+    if eps is None:
+        return None
+    return frozenset(
+        name
+        for ep in eps
+        if isinstance(name := getattr(ep, "name", None), str) and name.strip()
+    )
+
+
+def reject_unknown_platform_key(platform: str) -> None:
+    """Reject a ``platform`` naming no platform mureo can resolve (#609).
+
+    Three vocabularies are accepted, and nothing else:
+
+    - a built-in key (:data:`~mureo.core.platform_keys.
+      BUILTIN_PLATFORM_DISPLAY_NAMES`), which includes the hosted connectors
+      that have no provider entry point at all;
+    - a platform an installed plugin registered (:func:`_installed_platform_names`);
+    - a canonical ``plugin:<distribution>:<provider>`` key (or the legacy
+      ``plugin:<distribution>``), accepted **without** checking that the
+      distribution is installed — it names its own distribution, so a snapshot
+      from another machine, an uninstalled bridge or a restored backup stays
+      writable.
+
+    Refusing is what stops an agent inventing a key: ``logly_ads`` for a bridge
+    whose provider is ``logly_ads_context`` produced a second entry holding the
+    same ad account, which the reporting view then summed (#609, the upstream
+    cause of #606). This is deliberately not a rewrite — canonicalizing an
+    unknown key would change the key the operator sees without saying so, which
+    is the silent divergence :func:`reject_unusable_platform_key` exists to
+    stop. The message therefore names the key AND what would have been
+    accepted, so the caller's next attempt is informed rather than a guess.
+
+    Create-only, and fails open on an unreadable environment; see this module's
+    docstring and :func:`guard_platform_entry_write`.
+    """
+    from mureo.core.platform_keys import (
+        BUILTIN_PLATFORM_DISPLAY_NAMES,
+        PLUGIN_PLATFORM_PREFIX,
+        is_plugin_platform_key,
+    )
+
+    if platform in BUILTIN_PLATFORM_DISPLAY_NAMES or is_plugin_platform_key(platform):
+        return
+    installed = _installed_platform_names()
+    if installed is None or platform in installed:
+        return
+    builtins = ", ".join(sorted(BUILTIN_PLATFORM_DISPLAY_NAMES))
+    plugins = ", ".join(sorted(installed)) if installed else "none installed here"
+    raise ValueError(
+        f"refusing to create platform {platform!r}: it is not a platform mureo "
+        f"can resolve, and storing it would file this account under a key "
+        f"nothing joins with — double-counting it against the key the account "
+        f"is really stored under. Accepted: a built-in ({builtins}); a platform "
+        f"an installed plugin registered ({plugins}); or a plugin platform key "
+        f"{PLUGIN_PLATFORM_PREFIX}<distribution>:<provider>, which is the form "
+        f"to use for a plugin whose package is not installed on this machine. "
+        f"Write to the key this account is already stored under if it has one."
+    )
 
 
 def _reject_account_already_taken(
@@ -218,6 +363,7 @@ def guard_platform_entry_write(
     existing = platforms.get(platform)
     if existing is None:  # (1) create
         reject_unusable_platform_key(platform)
+        reject_unknown_platform_key(platform)
         _reject_account_already_taken(platforms, platform, account_id, creating=True)
         return
     if account_ids_match(existing.account_id, account_id):  # (2) plain update
@@ -280,6 +426,7 @@ def warn_on_duplicate_accounts(path: Path, doc: StateDocument) -> None:
 
 __all__ = [
     "guard_platform_entry_write",
+    "reject_unknown_platform_key",
     "reject_unusable_platform_key",
     "warn_on_duplicate_accounts",
 ]

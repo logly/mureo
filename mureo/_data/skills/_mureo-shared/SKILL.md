@@ -534,7 +534,13 @@ shows fewer campaigns than you wrote — get these exact names right:
   same rule is yours to honour, and a wholesale `Write` that lands a duplicate
   is logged as a warning rather than blocked. Pass the key exactly — a key with
   surrounding whitespace (`" google_ads"`) is a *different* key, and is
-  rejected on create rather than silently stripped. If a document already
+  rejected on create rather than silently stripped. **Never invent or
+  abbreviate a platform key**: creating an entry under a key that is neither a
+  first-class ad-platform key, nor a platform an installed plugin registered
+  (its entry-point name — `logly_ads_context`, not `logly_ads`), nor a
+  `plugin:<dist>:<provider>` key is rejected, with the accepted keys listed in
+  the error. Use the canonical `plugin:<dist>:<provider>` form when the bridge
+  that owns a snapshot is not installed on this machine. If a document already
   carries the duplicate pair, writes to the *existing* keys still succeed —
   mureo never merges or deletes an entry, because the two typically hold
   different partial figures; reconciling them is the operator's call. Changing
