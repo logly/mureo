@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.10.45] - 2026-08-13
+
 ### Fixed
 
 - **Two conflict notes on the same platform card contradicted each other**
