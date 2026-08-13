@@ -101,8 +101,12 @@ class _CreativeMixin:
             result["existing_ads"] = await self._fetch_existing_ads(
                 campaign_id, ad_group_id
             )
-        except Exception:
-            logger.warning("Failed to retrieve existing ads", exc_info=True)
+        except Exception as exc:
+            # Class name only. A traceback would print the GoogleAdsException
+            # repr, which carries the request metadata (developer token,
+            # authorization header) — see mureo/google_ads/accounts.py for the
+            # full reasoning (#603).
+            logger.warning("Failed to retrieve existing ads (%s)", type(exc).__name__)
             result["existing_ads"] = "fetch_failed"
 
         # --- 3. Search term insights ---
@@ -110,8 +114,10 @@ class _CreativeMixin:
             result["search_term_insights"] = await self._extract_search_term_insights(
                 campaign_id, ad_group_id
             )
-        except Exception:
-            logger.warning("Failed to retrieve search term insights", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve search term insights (%s)", type(exc).__name__
+            )
             result["search_term_insights"] = "fetch_failed"
 
         # --- 4. Keyword suggestions ---
@@ -121,8 +127,10 @@ class _CreativeMixin:
                 result["keyword_suggestions"] = await self.suggest_keywords(seeds)
             else:
                 result["keyword_suggestions"] = []
-        except Exception:
-            logger.warning("Failed to retrieve keyword suggestions", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve keyword suggestions (%s)", type(exc).__name__
+            )
             result["keyword_suggestions"] = "fetch_failed"
 
         # --- 5. Existing keywords ---
@@ -130,8 +138,10 @@ class _CreativeMixin:
             result["existing_keywords"] = await self.list_keywords(
                 campaign_id=campaign_id
             )
-        except Exception:
-            logger.warning("Failed to retrieve existing keywords", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve existing keywords (%s)", type(exc).__name__
+            )
             result["existing_keywords"] = "fetch_failed"
 
         # --- 6. Context summary for LLM ---

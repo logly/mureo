@@ -521,8 +521,12 @@ class _DiagnosticsMixin:
         try:
             sitelinks = await self.list_sitelinks(campaign_id)
             result["sitelinks_count"] = len(sitelinks)
-        except Exception:
-            logger.debug("Failed to retrieve sitelink count", exc_info=True)
+        except Exception as exc:
+            # Class name only. A traceback would print the GoogleAdsException
+            # repr, which carries the request metadata (developer token,
+            # authorization header) — see mureo/google_ads/accounts.py for the
+            # full reasoning (#603).
+            logger.debug("Failed to retrieve sitelink count (%s)", type(exc).__name__)
             result["sitelinks_count"] = 0
 
         # 8. Billing setup check
@@ -610,10 +614,17 @@ class _DiagnosticsMixin:
             # Sort by CV count descending
             conversion_actions_detail.sort(key=lambda x: x["conversions"], reverse=True)
             result["conversion_actions_detail"] = conversion_actions_detail
-        except Exception:
-            logger.debug(
-                "Failed to retrieve conversion action performance", exc_info=True
+        except Exception as exc:
+            # Never the exception itself (see above). This one wraps a GAQL
+            # search, so the curated server-side failure message is both safe
+            # and the thing worth reading; anything else falls back to the
+            # class name.
+            detail = (
+                self._extract_error_detail(exc)  # type: ignore[attr-defined]
+                if hasattr(exc, "failure")
+                else type(exc).__name__
             )
+            logger.debug("Failed to retrieve conversion action performance: %s", detail)
             result["conversion_actions_detail"] = []
 
         # --- NEW: 9. Impression share check ---
@@ -655,8 +666,14 @@ class _DiagnosticsMixin:
                             f"of impressions due to insufficient ad rank"
                         )
                 break  # First row only
-        except Exception:
-            logger.debug("Failed to retrieve impression share", exc_info=True)
+        except Exception as exc:
+            # GAQL search again — curated detail, class name otherwise.
+            detail = (
+                self._extract_error_detail(exc)  # type: ignore[attr-defined]
+                if hasattr(exc, "failure")
+                else type(exc).__name__
+            )
+            logger.debug("Failed to retrieve impression share: %s", detail)
 
         # Generate recommended actions
         if bidding.get("strategy") == "TARGET_IMPRESSION_SHARE":

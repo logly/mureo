@@ -68,6 +68,27 @@
   kept out of `action_log` — it would otherwise have been recorded as a
   change that never happened, complete with an `observation_due`.
 
+- **A Google Ads tool failure could write the developer token and the
+  `authorization` header to the log** (#603). 36 call sites under
+  `mureo/google_ads/` logged SDK exceptions with `exc_info=True`, which writes
+  `traceback.format_exception()` and so `str(exc)`. `GoogleAdsException` does
+  not curate its `__str__`: it never passes a message to `super().__init__()`,
+  so formatting it prints the underlying `grpc.Call` repr — which carries
+  `debug_error_string()`, and with it the request metadata. Chaining meant a
+  `RuntimeError` caught one level up printed the same bytes, because a
+  traceback follows `__cause__`. The three sites reachable from the configure
+  server were fixed in #581; these are the rest, on MCP tool paths, where the
+  exposure depends on what the host process has switched on.
+
+  Each site now logs the exception class, or — for the three that wrap a GAQL
+  search directly — the curated server-side `failure.errors[0].message` via
+  `_extract_error_detail`, which is both safe and more useful than a bare class
+  name. `_extract_error_detail` no longer falls back to `str(exc)` when the
+  failure carries no errors, since that fallback was the same leak in the
+  function offered as the safe alternative. `tests/test_google_ads_log_exc_info.py`
+  fails on a new `exc_info=` or `logger.exception()` anywhere under
+  `mureo/google_ads/`, so the 37th cannot be written.
+
 ### Added
 
 - **A Meta token expiry notice and a re-authenticate control on the Meta

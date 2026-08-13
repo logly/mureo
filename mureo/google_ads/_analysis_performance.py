@@ -286,8 +286,14 @@ class _PerformanceAnalysisMixin:
             )
             insights.extend(perf_insights)
             result.update(cpa_info)
-        except Exception:
-            logger.warning("Failed to retrieve performance comparison", exc_info=True)
+        except Exception as exc:
+            # Class name only. A traceback would print the GoogleAdsException
+            # repr, which carries the request metadata (developer token,
+            # authorization header) — see mureo/google_ads/accounts.py for the
+            # full reasoning (#603).
+            logger.warning(
+                "Failed to retrieve performance comparison (%s)", type(exc).__name__
+            )
             result["performance_current"] = "Retrieval failed"
 
         # 3. Top 20 search terms
@@ -301,8 +307,10 @@ class _PerformanceAnalysisMixin:
                 reverse=True,
             )
             result["top_search_terms"] = sorted_terms[:20]
-        except Exception:
-            logger.warning("Failed to retrieve search terms report", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve search terms report (%s)", type(exc).__name__
+            )
             result["top_search_terms"] = "Retrieval failed"
 
         # 4. Google recommendations
@@ -311,16 +319,18 @@ class _PerformanceAnalysisMixin:
             result["recommendations_from_google"] = recommendations[:10]
             if recommendations:
                 recs.append(f"Google has {len(recommendations)} recommendations")
-        except Exception:
-            logger.warning("Failed to retrieve recommendations", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve recommendations (%s)", type(exc).__name__
+            )
             result["recommendations_from_google"] = "Retrieval failed"
 
         # 5. Recent change history
         try:
             changes_history = await self.list_change_history()
             result["recent_changes"] = changes_history[:10]
-        except Exception:
-            logger.warning("Failed to retrieve change history", exc_info=True)
+        except Exception as exc:
+            logger.warning("Failed to retrieve change history (%s)", type(exc).__name__)
             result["recent_changes"] = "Retrieval failed"
 
         # 6. Analysis summary
@@ -355,8 +365,10 @@ class _PerformanceAnalysisMixin:
             result["performance_current_7d"] = current_m
             result["performance_previous_7d"] = previous_m
             result["changes"] = changes
-        except Exception:
-            logger.warning("Failed to retrieve performance comparison", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve performance comparison (%s)", type(exc).__name__
+            )
             result["performance_current_7d"] = "Retrieval failed"
 
         # 2. Cost increase breakdown (CPC increase vs click increase)
@@ -373,8 +385,8 @@ class _PerformanceAnalysisMixin:
             result["wasteful_search_terms"] = term_analysis["wasteful_search_terms"]
             if term_analysis["finding"]:
                 findings.append(term_analysis["finding"])
-        except Exception:
-            logger.warning("Search term analysis failed", exc_info=True)
+        except Exception as exc:
+            logger.warning("Search term analysis failed (%s)", type(exc).__name__)
             result["new_search_terms"] = "Retrieval failed"
             result["wasteful_search_terms"] = "Retrieval failed"
 
@@ -397,8 +409,8 @@ class _PerformanceAnalysisMixin:
                 findings.append(
                     f"There are {len(bid_budget_changes)} recent bid/budget-related changes"
                 )
-        except Exception:
-            logger.warning("Failed to retrieve change history", exc_info=True)
+        except Exception as exc:
+            logger.warning("Failed to retrieve change history (%s)", type(exc).__name__)
             result["bid_budget_changes"] = "Retrieval failed"
 
         # 5. Negative keyword candidates
@@ -476,8 +488,8 @@ class _PerformanceAnalysisMixin:
                         f"There are {len(neg_candidates)} search terms with cost but no conversions. "
                         "Consider adding them as negative keywords"
                     )
-        except Exception:
-            logger.warning("Negative keyword analysis failed", exc_info=True)
+        except Exception as exc:
+            logger.warning("Negative keyword analysis failed (%s)", type(exc).__name__)
             result["negative_keyword_candidates"] = "Retrieval failed"
 
     # =================================================================
@@ -540,11 +552,11 @@ class _PerformanceAnalysisMixin:
                         "recommendations": diag.get("recommendations", []),
                     }
                 )
-            except Exception:
+            except Exception as exc:
                 logger.warning(
-                    "Failed to run detailed diagnostics for campaign %s",
+                    "Failed to run detailed diagnostics for campaign %s (%s)",
                     cid,
-                    exc_info=True,
+                    type(exc).__name__,
                 )
                 detailed_diagnostics.append(
                     {
