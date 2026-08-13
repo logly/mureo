@@ -833,6 +833,41 @@ async def test_platform_metrics_set_rejects_a_duplicate_account(cwd_to_tmp) -> N
     assert "act_1" in message
 
 
+async def test_platform_metrics_set_rejects_an_invented_platform_key(
+    cwd_to_tmp, monkeypatch
+) -> None:
+    """#609 — the tool surface an agent actually calls refuses a key it made
+    up, and tells it what would have been accepted.
+
+    The installed set is pinned: this machine has real bridges installed, and
+    a test that read the ambient environment would not be asserting the rule.
+    """
+    from types import SimpleNamespace
+
+    from mureo.context import platform_guards
+
+    monkeypatch.setattr(
+        platform_guards,
+        "_provider_entry_points",
+        lambda: (SimpleNamespace(name="logly_ads_context"),),
+    )
+    mod = _import_tools()
+    with pytest.raises(ValueError) as exc:
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set",
+            {
+                "platform": "logly_ads",
+                "account_id": "act_1",
+                "totals": {"spend": 1.0},
+            },
+        )
+    message = str(exc.value)
+    assert "logly_ads" in message
+    assert "logly_ads_context" in message
+    assert "google_ads" in message
+    assert not (cwd_to_tmp / "STATE.json").exists()
+
+
 async def test_platform_metrics_set_rejects_malformed_shapes(cwd_to_tmp) -> None:
     mod = _import_tools()
     base = {"platform": "google_ads", "account_id": "act_123"}

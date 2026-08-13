@@ -53,7 +53,11 @@ from mureo.context.platform_accounts import (
     normalize_account_id,
 )
 from mureo.context.state import read_state_file
-from mureo.core.platform_keys import is_plugin_platform_key, plugin_platform_parts
+from mureo.core.platform_keys import (
+    BUILTIN_PLATFORM_DISPLAY_NAMES,
+    is_plugin_platform_key,
+    plugin_platform_parts,
+)
 
 # The client seam. Imported (not re-implemented) and re-exported through
 # ``__all__`` so ``from mureo.web.reports import state_store_for_client``
@@ -153,16 +157,12 @@ _CANONICAL_TOTAL_KEYS: tuple[str, ...] = (
 
 # Built-in platform key → human display name. Plugin keys (``plugin:<dist>``)
 # and any unknown key are resolved by :func:`platform_display_name` instead.
-_BUILTIN_DISPLAY_NAMES: dict[str, str] = {
-    "google_ads": "Google Ads",
-    "meta_ads": "Meta Ads",
-    "search_console": "Search Console",
-    "ga4": "GA4",
-    # Hosted-connector platform (no native mureo tools; added as a Claude.ai
-    # connector). Skills write its snapshots under this key — give it a friendly
-    # dashboard label instead of falling back to the raw "tiktok_ads".
-    "tiktok_ads": "TikTok Ads",
-}
+#
+# The map itself lives in ``mureo.core.platform_keys`` (#609): the write-time
+# guard has to accept exactly these keys, and ``mureo.context`` cannot import
+# ``mureo.web``. This module keeps the local name because it is the read-side
+# resolver's own vocabulary and every reference below reads as one.
+_BUILTIN_DISPLAY_NAMES = BUILTIN_PLATFORM_DISPLAY_NAMES
 
 # Distribution → display name for OFFICIAL, in-tree bridges (audit #30).
 # These ride the ``plugin:<dist>`` dispatch path to reuse the plugin safety

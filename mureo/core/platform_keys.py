@@ -85,9 +85,27 @@ surfaces build different keys for one platform.
 This module is the single source of that convention. Everything that
 builds, recognises, or takes apart a plugin platform key goes through
 it rather than open-coding the ``"plugin:"`` literal.
+
+The built-in keys (#609)
+------------------------
+:data:`BUILTIN_PLATFORM_DISPLAY_NAMES` is the other half of the platform
+vocabulary — the keys that belong to no plugin. It lived in
+``mureo.web.reports`` while only the dashboard needed it; the write-time
+guard (:mod:`mureo.context.platform_guards`) now has to consult it to
+refuse a key an agent invented, and ``context`` must not import ``web``:
+that would put the configure UI's import graph on the state-write path,
+and it inverts the layering (a UI surface is a consumer of the
+vocabulary, not its owner). It is data with no dependencies, so it sits
+here beside the plugin half rather than in a module of its own.
 """
 
 from __future__ import annotations
+
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 PLUGIN_PLATFORM_PREFIX = "plugin:"
 """The prefix that marks a platform key as belonging to a plugin."""
@@ -99,6 +117,36 @@ Safe because the distribution half cannot contain it and the parse
 splits on the FIRST occurrence, so an unvalidated provider half
 round-trips — not because both halves are forbidden from containing one.
 See this module's docstring.
+"""
+
+BUILTIN_PLATFORM_DISPLAY_NAMES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "google_ads": "Google Ads",
+        "meta_ads": "Meta Ads",
+        "search_console": "Search Console",
+        "ga4": "GA4",
+        # Hosted-connector platform (no native mureo tools, and no provider
+        # entry point — added as a Claude.ai connector). Skills write its
+        # snapshots under this key, so it is a built-in key even though
+        # nothing in the plugin registry will ever vouch for it.
+        "tiktok_ads": "TikTok Ads",
+    }
+)
+"""Built-in platform key → human display name.
+
+The complete set of ``platforms`` keys that belong to no plugin. Two
+surfaces read it and they must not drift apart:
+
+- the dashboard resolves a label from it
+  (:func:`mureo.web.reports.platform_display_name`) — a key missing here
+  resolves to itself, which is the ``unrecognized_key`` conflict signal;
+- the write guard accepts it without consulting the plugin registry
+  (:func:`mureo.context.platform_guards.reject_unknown_platform_key`) —
+  a key missing here is refused on create.
+
+Read-only (:class:`~types.MappingProxyType`): it is process-wide shared
+state now, and a surface that could mutate it would change what another
+accepts or renders.
 """
 
 
@@ -234,6 +282,7 @@ def plugin_platform_key_matches(key: str, distribution: str, provider: str) -> b
 
 
 __all__ = [
+    "BUILTIN_PLATFORM_DISPLAY_NAMES",
     "PLUGIN_PLATFORM_PREFIX",
     "PLUGIN_PLATFORM_SEPARATOR",
     "is_plugin_platform_key",

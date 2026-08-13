@@ -260,7 +260,10 @@ def upsert_campaign(
         The updated :class:`StateDocument`.
 
     Raises:
-        ValueError: ``platform`` is not a usable platform key, or the write
+        ValueError: ``platform`` is not a usable platform key, names no
+            platform mureo can resolve (a built-in, an installed plugin's
+            platform, or a ``plugin:<dist>:<provider>`` key — checked on
+            CREATE only, so an existing entry stays writable), or the write
             would create a SECOND key for an account another key already
             holds (see
             :func:`mureo.context.platform_guards.guard_platform_entry_write`).
@@ -512,7 +515,10 @@ def set_platform_metrics(
         The updated :class:`StateDocument`.
 
     Raises:
-        ValueError: ``platform`` is not a usable platform key, or the write
+        ValueError: ``platform`` is not a usable platform key, names no
+            platform mureo can resolve (a built-in, an installed plugin's
+            platform, or a ``plugin:<dist>:<provider>`` key — checked on
+            CREATE only, so an existing entry stays writable), or the write
             would create a SECOND key for an account another key already
             holds (see
             :func:`mureo.context.platform_guards.guard_platform_entry_write`).
@@ -584,7 +590,10 @@ def set_conversion_action_types(
         The updated :class:`StateDocument`.
 
     Raises:
-        ValueError: ``platform`` is not a usable platform key, or the write
+        ValueError: ``platform`` is not a usable platform key, names no
+            platform mureo can resolve (a built-in, an installed plugin's
+            platform, or a ``plugin:<dist>:<provider>`` key — checked on
+            CREATE only, so an existing entry stays writable), or the write
             would create a SECOND key for an account another key already
             holds (see
             :func:`mureo.context.platform_guards.guard_platform_entry_write`).

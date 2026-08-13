@@ -257,12 +257,15 @@ _CAMPAIGN_PROPERTY = {
             "minLength": 1,
             "description": (
                 "Platform key this campaign belongs to, e.g. "
-                "``google_ads`` / ``meta_ads`` / ``tiktok_ads``, or a plugin "
-                "bridge ``plugin:<dist>``. Use the SAME key the account is "
-                "already stored under — one ad account has exactly one "
-                "platform key, and a second key for an account another key "
-                "already holds is REJECTED (the reporting view sums the "
-                "entries, so it would double-count)."
+                "``google_ads`` / ``meta_ads`` / ``tiktok_ads``, a platform "
+                "an installed plugin registered (its provider name), or a "
+                "plugin bridge ``plugin:<dist>:<provider>``. Use the SAME key "
+                "the account is already stored under — one ad account has "
+                "exactly one platform key, and a second key for an account "
+                "another key already holds is REJECTED (the reporting view "
+                "sums the entries, so it would double-count). A NEW key that "
+                "is none of the three is REJECTED too: do not invent or "
+                "abbreviate a platform name."
             ),
         },
         "account_id": {
@@ -526,12 +529,16 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Platform key: a built-in (``google_ads`` / "
                         "``meta_ads`` / ``tiktok_ads`` / ``search_console`` / "
-                        "``ga4``) or a plugin bridge ``plugin:<dist>``. Use "
-                        "the SAME key the account is already stored under — "
-                        "one ad account has exactly one platform key, and a "
-                        "second key for an account another key already holds "
-                        "is REJECTED (the reporting view sums the entries, so "
-                        "it would double-count)."
+                        "``ga4``), a platform an installed plugin registered "
+                        "(its provider name), or a plugin bridge "
+                        "``plugin:<dist>:<provider>``. Use the SAME key the "
+                        "account is already stored under — one ad account has "
+                        "exactly one platform key, and a second key for an "
+                        "account another key already holds is REJECTED (the "
+                        "reporting view sums the entries, so it would "
+                        "double-count). A NEW key that is none of the three "
+                        "is REJECTED too: do not invent or abbreviate a "
+                        "platform name."
                     ),
                 },
                 "account_id": {
@@ -608,7 +615,8 @@ TOOLS: list[Tool] = [
                         "ad account has exactly one platform key, and a "
                         "second key for an account another key already holds "
                         "is REJECTED (the reporting view sums the entries, so "
-                        "it would double-count)."
+                        "it would double-count). A NEW key naming no platform "
+                        "mureo knows is REJECTED too."
                     ),
                 },
                 "account_id": {
