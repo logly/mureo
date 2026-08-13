@@ -128,6 +128,22 @@ def test_the_two_findings_keep_separate_strings() -> None:
 
 
 @pytest.mark.unit
+def test_the_unrecognised_key_note_branches_on_the_account_fact() -> None:
+    """#606 — the note must not tell an operator the ad account cannot be
+    identified when the duplicate-account note directly above it just
+    identified it. The renderer picks between two strings on the wire fact
+    (``account_known``), so the wording can never outrun the condition."""
+    js = _read_reports()
+    assert "account_known" in js
+    assert "dashboard.reports_conflict_unknown_key_no_account" in js
+    # The narrow string is reachable only from the account-KNOWN branch: an
+    # inverted test would put the "review it by hand" clause back on exactly
+    # the rows the duplicate finding has already explained.
+    logic = _read("reports_logic.js")
+    assert "row.account_known === true" in logic
+
+
+@pytest.mark.unit
 def test_platform_cards_show_the_conflict_too() -> None:
     """The index card only renders for multi-client installs, so a
     single-client (OSS) setup would otherwise never see the finding at all —
@@ -164,6 +180,7 @@ def test_freshness_and_conflict_strings_are_localized_in_both_locales() -> None:
         "dashboard.reports_conflict_double_counted",
         "dashboard.reports_conflict_kpis_withheld",
         "dashboard.reports_conflict_unknown_key",
+        "dashboard.reports_conflict_unknown_key_no_account",
         "dashboard.reports_platform_updated",
         "dashboard.reports_platform_stale",
         "dashboard.reports_platform_stale_partial",

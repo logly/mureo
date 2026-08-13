@@ -13,6 +13,9 @@ side, which has to handle a document that is ALREADY wrong:
     ``account_ids_match("", "")`` is ``False``);
   - the two findings stay **distinct**, because an operator's next move
     differs between them;
+  - a key that lands in BOTH findings carries ``account_known`` saying its
+    ad account IS identified (#606), so the unrecognised-key note cannot be
+    worded as the opposite of the duplicate note above it;
   - a legitimate multi-platform client raises neither;
   - no ad account id crosses the wire for any of it;
   - each platform row carries its OWN freshness (``fetched_at``), with a
@@ -249,6 +252,81 @@ def test_the_two_findings_stay_distinct(
     (unknown,) = _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY)
     assert dup["platform_keys"] == ["google_ads", "meta_ads"]
     assert unknown["platform_keys"] == ["logly_ads"]
+
+
+@pytest.mark.unit
+def test_one_key_in_both_findings_says_its_account_is_known(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The shape from #606: two unrecognisable keys sharing ONE account id.
+
+    Every other fixture keeps the two findings on disjoint keys, so nothing
+    pinned what the unrecognised-key row says about an entry the account
+    join has ALREADY reported with certainty. Here each key appears in both
+    rows, and the unrecognised-key row must not be readable as "this
+    entry's ad account cannot be identified" — ``duplicate_account`` just
+    identified it. ``account_known`` is the fact the renderer needs to pick
+    a sentence that does not contradict the row above it.
+    """
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={
+                "ads_key_a": PlatformState(account_id="555", totals={"spend": 100.0}),
+                "ads_key_b": PlatformState(account_id="555", totals={"spend": 40.0}),
+            },
+        ),
+    )
+
+    summary = build_report_summary()
+    (dup,) = _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT)
+    assert dup["platform_keys"] == ["ads_key_a", "ads_key_b"]
+    # A duplicate group is built BY the id, so its account is known by
+    # construction. The row states it anyway, so every conflict row answers
+    # the same question and no consumer has to special-case a kind.
+    assert dup["account_known"] is True
+
+    unknown = _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY)
+    assert [row["platform_keys"] for row in unknown] == [["ads_key_a"], ["ads_key_b"]]
+    assert [row["account_known"] for row in unknown] == [True, True]
+
+
+@pytest.mark.unit
+def test_an_unrecognised_key_with_no_usable_account_id_says_so(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The narrower shape the wording was originally written for.
+
+    An entry that never said which ad account it describes is invisible to
+    the account join (``account_ids_match("", "")`` is ``False``), so it may
+    be a duplicate mureo cannot see — and only here is that clause true.
+    ``account_known`` folds the same way the join does, so whitespace and a
+    bare ``act_`` prefix count as "did not say" rather than as an id.
+    """
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={
+                "ads_key_a": PlatformState(account_id="", totals={"spend": 1.0}),
+                "ads_key_b": PlatformState(account_id="   ", totals={"spend": 2.0}),
+                "ads_key_c": PlatformState(account_id="act_", totals={"spend": 3.0}),
+            },
+        ),
+    )
+
+    summary = build_report_summary()
+    assert _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT) == []
+    unknown = _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY)
+    assert [row["platform_keys"] for row in unknown] == [
+        ["ads_key_a"],
+        ["ads_key_b"],
+        ["ads_key_c"],
+    ]
+    assert [row["account_known"] for row in unknown] == [False, False, False]
 
 
 @pytest.mark.unit

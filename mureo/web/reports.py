@@ -48,7 +48,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
-from mureo.context.platform_accounts import duplicate_account_entries
+from mureo.context.platform_accounts import (
+    duplicate_account_entries,
+    normalize_account_id,
+)
 from mureo.context.state import read_state_file
 from mureo.core.platform_keys import is_plugin_platform_key, plugin_platform_parts
 
@@ -109,6 +112,15 @@ value), so :func:`~mureo.context.platform_accounts.duplicate_account_entries`
 deliberately does not report that pair. This second, independent signal is
 what catches it: an entry whose identity cannot be established at all, and
 which may therefore be a duplicate of a canonical one.
+
+The condition itself is narrower than that motivating case: it tests the
+KEY only, so it also fires on a key mureo cannot label whose ``account_id``
+resolves perfectly well. Both belong here — the operator has to look at the
+key either way — but they are not the same finding, so the row carries
+``account_known`` and the dashboard says the milder thing (mureo cannot
+tell which *platform* this is) when the account is in fact known. Claiming
+the ad account is unidentifiable there would contradict the
+``duplicate_account`` row sitting on the same key (#606).
 
 Recognition is delegated to :func:`platform_display_name`, which returns the
 key unchanged exactly when it can make nothing of it — that is already how
@@ -451,16 +463,27 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
 def _build_platform_conflicts(doc: StateDocument | None) -> list[dict[str, Any]]:
     """Reasons the caller must NOT sum this document's platform rows.
 
-    Each row is ``{"kind": <CONFLICT_*>, "platform_keys": [...]}`` — the
-    grouping the browser cannot do, since the rows carry no ``account_id``.
-    Nothing here identifies an ad account: the keys alone are what an
-    operator needs to find the entries in STATE.json, and putting the id on
-    the wire would undo :func:`_platform_row`'s omission.
+    Each row is ``{"kind": <CONFLICT_*>, "platform_keys": [...],
+    "account_known": <bool>}`` — the grouping the browser cannot do, since
+    the rows carry no ``account_id``. Nothing here identifies an ad account:
+    the keys alone are what an operator needs to find the entries in
+    STATE.json, and putting the id on the wire would undo
+    :func:`_platform_row`'s omission. ``account_known`` is a presence bit,
+    not an id — it says only whether the entries behind the row named an ad
+    account mureo could resolve, which is a fact about the *document*, not
+    about the account.
 
     Two independent signals, reported separately (see
     :data:`CONFLICT_DUPLICATE_ACCOUNT` and
     :data:`CONFLICT_UNRECOGNIZED_KEY` for why neither can stand in for the
-    other). A single key can legitimately appear in both.
+    other). A single key can legitimately appear in both — and when it does,
+    ``account_known`` is what keeps the two notes from asserting opposite
+    facts about it (#606). The unrecognised-key condition never inspects the
+    id, so without this bit the renderer would have to claim the ad account
+    is unidentifiable for an entry the duplicate finding just identified.
+    On a duplicate-account row it is always ``True``: that group is built BY
+    a resolvable id. It is stated anyway so every row answers the same
+    question and no consumer has to special-case a kind.
 
     **Detection, not repair.** Duplicated entries typically hold different
     *partial* figures, so summing over-counts exactly as much as dropping
@@ -473,12 +496,19 @@ def _build_platform_conflicts(doc: StateDocument | None) -> list[dict[str, Any]]
         {
             "kind": CONFLICT_DUPLICATE_ACCOUNT,
             "platform_keys": list(group.platform_keys),
+            "account_known": True,
         }
         for group in duplicate_account_entries(doc.platforms)
     ]
     rows.extend(
-        {"kind": CONFLICT_UNRECOGNIZED_KEY, "platform_keys": [key]}
-        for key in doc.platforms
+        {
+            "kind": CONFLICT_UNRECOGNIZED_KEY,
+            "platform_keys": [key],
+            # Folded the way the account join folds it, so "known here" and
+            # "joinable there" can never mean two different things.
+            "account_known": bool(normalize_account_id(entry.account_id)),
+        }
+        for key, entry in doc.platforms.items()
         if platform_display_name(key) == key
     )
     return rows

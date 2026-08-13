@@ -313,9 +313,11 @@ None of the write guards repair anything, so an operator whose STATE.json is
 *already* doubled keeps seeing a doubled card until they fix the file. The
 read-only Reports view therefore detects the problem itself and reports it on
 the summary as `platform_conflicts` — a list of
-`{kind, platform_keys}`, in document order, carrying **no `account_id`**
-(the platform rows deliberately omit it, and the grouping is done server-side
-precisely so the browser is never handed one).
+`{kind, platform_keys, account_known}`, in document order, carrying **no
+`account_id`** (the platform rows deliberately omit it, and the grouping is
+done server-side precisely so the browser is never handed one).
+`account_known` is a presence bit, not an id: it says only whether the
+entries behind the row named an ad account mureo could resolve.
 
 Two `kind`s, deliberately never merged into one warning, because an
 operator's next move differs:
@@ -323,7 +325,15 @@ operator's next move differs:
 | `kind` | What it establishes | Signal |
 |--------|---------------------|--------|
 | `duplicate_account` | Two or more keys resolve to **one** ad account, so any total over these rows is double-counted *right now* | `duplicate_account_entries` (the shared join above) |
-| `unrecognized_key` | A key **no mureo surface can resolve**, so that entry's identity cannot be established and it *may* duplicate a canonical one | `platform_display_name(key) == key` — the key resolves to no label |
+| `unrecognized_key` | A key **no mureo surface can resolve**, so mureo cannot say which platform that entry describes — and, when the entry names no ad account either (`account_known: false`), it *may* duplicate a canonical one | `platform_display_name(key) == key` — the key resolves to no label |
+
+The `unrecognized_key` condition tests the **key** alone, so it also fires on
+an entry whose `account_id` resolves perfectly well — including one the
+`duplicate_account` row has just named with certainty. `account_known` is what
+keeps the two notes on one key from asserting opposite facts: on a known
+account the dashboard says only that the *platform* cannot be resolved, and
+the "may be a duplicate — review it by hand" wording is reserved for the
+account-less shape, which is the one the join genuinely cannot see.
 
 The second signal is not redundant. The join treats an empty `account_id` as
 unknown, and unknown never matches unknown — so a document holding one
@@ -353,9 +363,9 @@ What the dashboard does about it:
   reads as a real outlier in an at-a-glance grid and gets acted on, so no
   number is safer than a wrong one under a warning; the un-summed
   per-platform figures are one click away in the client's detail view;
-- an `unrecognized_key` conflict is a *suspicion*, not a proof (the key may
-  well be a genuine platform mureo does not know), so the totals still
-  render — the card is flagged, not blanked;
+- an `unrecognized_key` conflict is a *labelling* problem, not a proof that
+  any figure is wrong (the key may well be a genuine platform mureo does not
+  know), so the totals still render — the card is flagged, not blanked;
 - either way the card carries a visible marker, so a flagged card cannot be
   skimmed as a healthy one, and the per-platform cards in the detail view
   carry the same finding (a single-client OSS install has no index grid, so

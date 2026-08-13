@@ -552,7 +552,15 @@ test.describe("relativeAge", function () {
 
 test.describe("conflict kinds", function () {
   const DUP = { kind: "duplicate_account", platform_keys: ["google_ads", "gads_legacy"] };
-  const UNK = { kind: "unrecognized_key", platform_keys: ["plugin:mystery"] };
+  // `account_known` is what splits the unrecognised-key note in two (#606):
+  // true means the entry named an ad account mureo could resolve, so only
+  // the PLATFORM is unknown; false means the entry named none, which is the
+  // one shape where "this may be a duplicate mureo cannot see" is true.
+  const UNK = {
+    kind: "unrecognized_key",
+    platform_keys: ["plugin:mystery"],
+    account_known: true,
+  };
   const summary = {
     platforms: [
       { key: "google_ads", display_name: "Google Ads" },
@@ -571,6 +579,79 @@ test.describe("conflict kinds", function () {
       logic.reportsConflictText(UNK, labels),
       "dashboard.reports_conflict_unknown_key"
     );
+  });
+
+  test.it("splits the unrecognised-key note on whether the account is known", function () {
+    // #606: the condition behind `unrecognized_key` never looked at the
+    // account id, so ONE string claimed the ad account could not be
+    // identified even for an entry whose id `duplicate_account` had just
+    // reported with certainty. Two strings, chosen on the fact itself.
+    const labels = logic.reportsPlatformLabels(summary);
+    const noAccount = {
+      kind: "unrecognized_key",
+      platform_keys: ["plugin:mystery"],
+      account_known: false,
+    };
+    assert.equal(
+      logic.reportsConflictText(noAccount, labels),
+      "dashboard.reports_conflict_unknown_key_no_account"
+    );
+    assert.equal(
+      paramsFor("dashboard.reports_conflict_unknown_key_no_account").keys,
+      "plugin:mystery"
+    );
+  });
+
+  test.it("keeps the review-by-hand wording when the field is absent", function () {
+    // A summary from an older or out-of-tree producer says nothing about
+    // the account. Unknown is not "known", so the cautious string — the one
+    // that tells the operator to check by hand — stays the answer.
+    const labels = logic.reportsPlatformLabels(summary);
+    for (const account_known of [undefined, null, "yes", 1]) {
+      const row = {
+        kind: "unrecognized_key",
+        platform_keys: ["plugin:mystery"],
+        account_known: account_known,
+      };
+      assert.equal(
+        logic.reportsConflictText(row, labels),
+        "dashboard.reports_conflict_unknown_key_no_account"
+      );
+    }
+  });
+
+  test.it("gives one key in BOTH findings two notes that agree", function () {
+    // The #606 report: two unrecognisable keys under one ad account, so the
+    // same key carries a duplicate_account row AND an unrecognized_key row.
+    // The pair must not assert opposite facts about that account.
+    const bothDup = {
+      kind: "duplicate_account",
+      platform_keys: ["ads_key_a", "ads_key_b"],
+      account_known: true,
+    };
+    const bothUnkA = {
+      kind: "unrecognized_key",
+      platform_keys: ["ads_key_a"],
+      account_known: true,
+    };
+    const bothSummary = {
+      platforms: [{ key: "ads_key_a" }, { key: "ads_key_b" }],
+      platform_conflicts: [bothDup, bothUnkA],
+    };
+    const rows = logic.reportsConflictsForKey(bothSummary, "ads_key_a");
+    assert.deepEqual(rows, [bothDup, bothUnkA]);
+
+    const labels = logic.reportsPlatformLabels(bothSummary);
+    const texts = rows.map(function (row) {
+      return logic.reportsConflictText(row, labels);
+    });
+    assert.deepEqual(texts, [
+      "dashboard.reports_conflict_double_counted",
+      "dashboard.reports_conflict_unknown_key",
+    ]);
+    // Specifically NOT the string that says the ad account cannot be
+    // identified — the note above it just identified it.
+    assert.ok(!texts.includes("dashboard.reports_conflict_unknown_key_no_account"));
   });
 
   test.it("names the platforms the way the rest of the view does", function () {

@@ -99,7 +99,21 @@
     if (row.kind === REPORTS_CONFLICT_DUPLICATE_ACCOUNT) {
       return MUREO.t("dashboard.reports_conflict_double_counted", { keys: keys });
     }
-    return MUREO.t("dashboard.reports_conflict_unknown_key", { keys: keys });
+    // An unrecognised key is TWO findings wearing one kind (#606). The
+    // condition behind it tests the key alone, so it also fires on entries
+    // whose ad account is perfectly well known — including ones the
+    // duplicate-account row above has just named with certainty. Only the
+    // account-less shape may carry the "this may be a duplicate mureo
+    // cannot see, review it by hand" clause; saying that of a known account
+    // contradicts the note beside it. `=== true` on purpose: a row that
+    // does not state the fact is UNKNOWN, not known, and the cautious
+    // wording is the right answer there.
+    return MUREO.t(
+      row.account_known === true
+        ? "dashboard.reports_conflict_unknown_key"
+        : "dashboard.reports_conflict_unknown_key_no_account",
+      { keys: keys }
+    );
   }
 
   // Every conflict that names `key`, so a platform card can carry its own.

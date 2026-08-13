@@ -2,6 +2,30 @@
 
 ### Fixed
 
+- **Two conflict notes on the same platform card contradicted each other**
+  (#606). A card could show `duplicate_account` — "one ad account is stored
+  under two platform keys", certain, and the account identified — directly
+  above `unrecognized_key`, which said mureo could not tell which ad account
+  that same key described and that a duplicate was therefore only a
+  possibility. Both notes are correct findings and both still render (the
+  operator's next move differs between them), but the wording of the second
+  was written for a narrower case than the condition that emits it: it fires
+  purely on a key mureo cannot label and never inspects `account_id` at all,
+  so the sentence about an unidentifiable ad account was shown even for
+  entries whose id had just been reported with certainty. A self-contradicting
+  pair of warnings teaches operators to distrust both.
+
+  The conflict rows on the summary now carry `account_known` — a presence
+  bit, not an id, folded the same way the account join folds one, so "known
+  here" and "joinable there" cannot drift apart. The dashboard picks its
+  wording from it: with a known account the note says only that the
+  **platform** cannot be resolved from the key, and the "this may be a
+  duplicate mureo cannot see — review it by hand" clause is reserved for the
+  entry that records no ad account, which is the one shape the join genuinely
+  cannot see and the one the clause was written for. The figures on screen
+  were never affected, and nothing about which findings are emitted, or about
+  withholding a double-counted client total, has changed.
+
 - **A Meta token pasted into the advanced credentials form was overwritten on
   the next API call** (#578). The Setup tab's *mureo Credentials (advanced)*
   form writes one field at a time, and that field-wise merge left the previous
