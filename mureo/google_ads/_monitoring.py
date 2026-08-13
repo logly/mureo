@@ -52,16 +52,24 @@ class _MonitoringMixin:
         campaign: dict[str, Any] | None = None
         try:
             campaign = await self.get_campaign(campaign_id)
-        except Exception:
-            logger.warning("Failed to retrieve campaign information", exc_info=True)
+        except Exception as exc:
+            # Class name only. A traceback would print the GoogleAdsException
+            # repr, which carries the request metadata (developer token,
+            # authorization header) — see mureo/google_ads/accounts.py for the
+            # full reasoning (#603).
+            logger.warning(
+                "Failed to retrieve campaign information (%s)", type(exc).__name__
+            )
         result["campaign"] = campaign
 
         # 2. Delivery diagnostics
         diagnosis: dict[str, Any] = {}
         try:
             diagnosis = await self.diagnose_campaign_delivery(campaign_id)
-        except Exception:
-            logger.warning("Failed to retrieve delivery diagnostics", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve delivery diagnostics (%s)", type(exc).__name__
+            )
             issues.append("Failed to retrieve delivery diagnostics")
         result["diagnosis"] = diagnosis
 
@@ -71,8 +79,10 @@ class _MonitoringMixin:
             performance = await self.get_performance_report(
                 campaign_id=campaign_id, period="YESTERDAY"
             )
-        except Exception:
-            logger.warning("Failed to retrieve previous day performance", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve previous day performance (%s)", type(exc).__name__
+            )
             issues.append("Failed to retrieve previous day performance")
         result["performance"] = performance
 
@@ -156,8 +166,10 @@ class _MonitoringMixin:
             perf = await self.get_performance_report(
                 campaign_id=campaign_id, period="LAST_7_DAYS"
             )
-        except Exception:
-            logger.warning("Failed to retrieve performance report", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve performance report (%s)", type(exc).__name__
+            )
             issues.append("Failed to retrieve performance report")
 
         metrics = perf[0].get("metrics", {}) if perf else {}
@@ -179,8 +191,8 @@ class _MonitoringMixin:
         cost_analysis: dict[str, Any] = {}
         try:
             cost_analysis = await self.investigate_cost_increase(campaign_id)
-        except Exception:
-            logger.warning("Failed to retrieve cost analysis", exc_info=True)
+        except Exception as exc:
+            logger.warning("Failed to retrieve cost analysis (%s)", type(exc).__name__)
             issues.append("Failed to retrieve cost analysis")
         result["cost_analysis"] = cost_analysis
 
@@ -270,8 +282,10 @@ class _MonitoringMixin:
             perf = await self.get_performance_report(
                 campaign_id=campaign_id, period="LAST_7_DAYS"
             )
-        except Exception:
-            logger.warning("Failed to retrieve performance report", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve performance report (%s)", type(exc).__name__
+            )
             issues.append("Failed to retrieve performance report")
 
         metrics = perf[0].get("metrics", {}) if perf else {}
@@ -287,8 +301,10 @@ class _MonitoringMixin:
         performance_analysis: dict[str, Any] = {}
         try:
             performance_analysis = await self.analyze_performance(campaign_id)
-        except Exception:
-            logger.warning("Failed to retrieve performance analysis", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve performance analysis (%s)", type(exc).__name__
+            )
             issues.append("Failed to retrieve performance analysis")
         result["performance_analysis"] = performance_analysis
 
@@ -393,15 +409,19 @@ class _MonitoringMixin:
         campaign: dict[str, Any] | None = None
         try:
             campaign = await self.get_campaign(campaign_id)
-        except Exception:
-            logger.warning("Failed to retrieve campaign information", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve campaign information (%s)", type(exc).__name__
+            )
 
         # 2. Conversion tracking configuration
         cv_actions: list[dict[str, Any]] = []
         try:
             cv_actions = await self.list_conversion_actions()
-        except Exception:
-            logger.warning("Failed to retrieve conversion action list", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve conversion action list (%s)", type(exc).__name__
+            )
             issues.append("Failed to retrieve conversion action list")
 
         total_actions = len(cv_actions)
@@ -447,8 +467,10 @@ class _MonitoringMixin:
             perf = await self.get_performance_report(
                 campaign_id=campaign_id, period="LAST_7_DAYS"
             )
-        except Exception:
-            logger.warning("Failed to retrieve performance report", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve performance report (%s)", type(exc).__name__
+            )
             issues.append("Failed to retrieve performance report")
 
         metrics = perf[0].get("metrics", {}) if perf else {}
@@ -485,8 +507,10 @@ class _MonitoringMixin:
         diagnosis: dict[str, Any] = {}
         try:
             diagnosis = await self.diagnose_campaign_delivery(campaign_id)
-        except Exception:
-            logger.warning("Failed to retrieve delivery diagnostics", exc_info=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve delivery diagnostics (%s)", type(exc).__name__
+            )
             issues.append("Failed to retrieve delivery diagnostics")
 
         result["delivery_diagnosis"] = {
@@ -528,8 +552,10 @@ class _MonitoringMixin:
                         f"Zero-CV search terms account for "
                         f"{round(zero_cv_cost / cost * 100, 1)}% of total cost"
                     )
-            except Exception:
-                logger.warning("Failed to retrieve search terms report", exc_info=True)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to retrieve search terms report (%s)", type(exc).__name__
+                )
                 issues.append("Failed to retrieve search terms report")
         result["search_term_quality"] = search_term_quality
 

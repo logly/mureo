@@ -492,16 +492,19 @@ class _AdsMixin:
                             " Please pause existing ads before enabling."
                         ),
                     }
-            except Exception:
+            except Exception as exc:
                 # Advisory guard only — Google still enforces the RSA limit
                 # server-side. But do not silently bypass it: log at WARNING and
                 # thread a caveat into the result so the caller knows the
-                # friendly pre-check did not run for this call.
+                # friendly pre-check did not run for this call. Class name only:
+                # a traceback would print the GoogleAdsException repr, which
+                # carries the request metadata (developer token, authorization
+                # header) — see mureo/google_ads/accounts.py (#603).
                 logger.warning(
-                    "RSA-limit pre-check failed for ad_group %s; proceeding "
+                    "RSA-limit pre-check failed for ad_group %s (%s); proceeding "
                     "(Google Ads still enforces the limit server-side).",
                     ad_group_id,
-                    exc_info=True,
+                    type(exc).__name__,
                 )
                 precheck_skipped = True
 

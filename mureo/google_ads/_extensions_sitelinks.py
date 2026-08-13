@@ -89,8 +89,20 @@ class _SitelinksMixin:
                     mapped["level"] = "account"
                     results.append(mapped)
                     seen_ids.add(mapped.get("id"))
-        except Exception:
-            logger.debug("Failed to retrieve account-level sitelinks", exc_info=True)
+        except Exception as exc:
+            # Never the exception itself: a traceback would print the
+            # GoogleAdsException repr, which carries the request metadata
+            # (developer token, authorization header) — see
+            # mureo/google_ads/accounts.py for the full reasoning (#603). This
+            # wraps a GAQL search, so the curated server-side failure message
+            # is both safe and the thing worth reading; anything else falls
+            # back to the class name.
+            detail = (
+                self._extract_error_detail(exc)  # type: ignore[attr-defined]
+                if hasattr(exc, "failure")
+                else type(exc).__name__
+            )
+            logger.debug("Failed to retrieve account-level sitelinks: %s", detail)
 
         return results
 

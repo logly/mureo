@@ -362,11 +362,20 @@ class GoogleAdsApiClient(  # type: ignore[misc]
 
     @staticmethod
     def _extract_error_detail(exc: GoogleAdsException) -> str:
-        """Extract the first error message from GoogleAdsException."""
+        """Extract the first error message from GoogleAdsException.
+
+        The returned string is logged and embedded in the errors callers see,
+        so it must never be ``str(exc)``: ``GoogleAdsException`` does not
+        curate its ``__str__``, and formatting it prints the underlying
+        ``grpc.Call`` repr — which carries ``debug_error_string()``, and with
+        it the request metadata (developer token, ``authorization`` header).
+        The server-side ``failure.errors[0].message`` is curated; an empty
+        ``errors`` leaves only the class name (#603).
+        """
         for error in exc.failure.errors:
             if hasattr(error, "message"):
                 return str(error.message)
-        return str(exc)
+        return type(exc).__name__
 
     @staticmethod
     def _has_error_code(

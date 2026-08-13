@@ -242,6 +242,17 @@ class TestExtractErrorDetail:
         result = GoogleAdsApiClient._extract_error_detail(exc)
         assert isinstance(result, str)
 
+    def test_no_errors_falls_back_to_the_class_name(self) -> None:
+        """Never ``str(exc)``: its args carry the request metadata (#603)."""
+        exc = _make_google_ads_exception()
+        exc._failure.errors = []
+        exc.args = ("developer-token: s3cret, authorization: Bearer s3cret",)
+
+        result = GoogleAdsApiClient._extract_error_detail(exc)
+
+        assert result == "GoogleAdsException"
+        assert "s3cret" not in result
+
 
 @pytest.mark.unit
 class TestHasErrorCode:

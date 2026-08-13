@@ -54,11 +54,15 @@ class _BudgetAnalysisMixin:
                 m = _safe_metrics(perf)
                 cost = float(m.get("cost", 0))
                 convs = float(m.get("conversions", 0))
-            except Exception:
+            except Exception as exc:
+                # Class name only. A traceback would print the GoogleAdsException
+                # repr, which carries the request metadata (developer token,
+                # authorization header) — see mureo/google_ads/accounts.py for the
+                # full reasoning (#603).
                 logger.warning(
-                    "Failed to retrieve performance for campaign %s",
+                    "Failed to retrieve performance for campaign %s (%s)",
                     cid,
-                    exc_info=True,
+                    type(exc).__name__,
                 )
                 failed_campaigns.append(cid)
                 continue
@@ -184,9 +188,11 @@ class _BudgetAnalysisMixin:
                     budget_info.get("daily_budget", 0) if budget_info else 0
                 )
                 camp["budget_id"] = budget_info.get("id", "") if budget_info else ""
-            except Exception:
+            except Exception as exc:
                 logger.warning(
-                    "Failed to retrieve budget for campaign %s", cid, exc_info=True
+                    "Failed to retrieve budget for campaign %s (%s)",
+                    cid,
+                    type(exc).__name__,
                 )
                 camp["current_daily_budget"] = 0
                 camp["budget_id"] = ""
