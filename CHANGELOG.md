@@ -1,57 +1,6 @@
 ## [Unreleased]
 
-### Added
-
-- **A supported way to repair a platform entry filed under a key mureo cannot
-  resolve** — `mureo repair platform-key` (#610). #609 stops a new bad key
-  being written; it does nothing for state that already carries one, and until
-  now the only way out was to open STATE.json and edit it. On a non-engineer's
-  machine that is the more dangerous option, not the safer one: they were told
-  what was wrong, told mureo would not fix it, and left to hand-edit the file
-  that drives their reporting.
-
-  Running the command **changes nothing**. A dry run is the default, not a
-  flag: it names the key, the ad account, how many campaigns the entry
-  carries, whether it holds a `totals` rollup and which windows it covers with
-  each window's `fetched_at` — for the unresolvable entry *and* for the entry
-  the same ad account is stored under — then states exactly what would change.
-  `--apply` is a second, deliberate step and still asks; with no TTY (an AI
-  agent's shell, a CI runner) it declines rather than proceeding.
-
-  It **drops** the unresolvable entry rather than merging it. Moving its
-  figures under the canonical key is only defensible once you have decided the
-  canonical entry is empty or older — a judgement about which of two sets of
-  partial figures is true, and that is precisely what the reporting view
-  refuses to make. Dropping needs no such judgement and loses nothing that the
-  next sync cannot refill from the platform itself. Nothing is summed: two
-  partial entries added together over-count exactly as much as dropping one
-  under-counts.
-
-  The pre-repair document is backed up first, timestamped
-  (`STATE.json.bak.<unix_ns>`, so a second run cannot overwrite the first
-  backup), and the command prints the `cp` that restores it. That backup is
-  the undo; the repair is deliberately **not** written to `action_log`, which
-  records changes made to an *ad platform* — every entry names a `platform`
-  and is fed to the rollback planner's MCP-operation allow-list, so a
-  local-file edit has neither an operation to name nor one to reverse, and the
-  entry would have had to carry the very key just removed.
-
-  Scope is the unresolvable-key case only. "Resolvable" is not decided a
-  second time: the command asks the same `reject_unknown_platform_key` the
-  write guard asks, inheriting its fail-open behaviour, so an environment
-  whose installed plugins cannot be enumerated proposes nothing for removal.
-  A duplicate whose two keys BOTH name real platforms is reported and handed
-  back to the operator in as many words — it is not a general duplicate
-  merger. Only the `platforms` map changes: `last_synced_at` is not
-  re-stamped (a repair is not a sync) and the platform-blind legacy
-  `campaigns` list is left alone.
-
-  The dashboard's conflicted platform cards now name the command. The repair
-  itself is not offered as a button there: the card's `unrecognized_key`
-  signal tests whether a key resolves to a display *label*, and by that test
-  `logly_ads_context` — the correct key in the reported incident — is just as
-  unrecognised as the invented `logly_ads`, so an action hung off it would
-  offer to delete the right entry.
+## [0.10.45] - 2026-08-14
 
 ### Fixed
 
@@ -200,6 +149,57 @@
   `mureo/google_ads/`, so the 37th cannot be written.
 
 ### Added
+
+- **A supported way to repair a platform entry filed under a key mureo cannot
+  resolve** — `mureo repair platform-key` (#610). #609 stops a new bad key
+  being written; it does nothing for state that already carries one, and until
+  now the only way out was to open STATE.json and edit it. On a non-engineer's
+  machine that is the more dangerous option, not the safer one: they were told
+  what was wrong, told mureo would not fix it, and left to hand-edit the file
+  that drives their reporting.
+
+  Running the command **changes nothing**. A dry run is the default, not a
+  flag: it names the key, the ad account, how many campaigns the entry
+  carries, whether it holds a `totals` rollup and which windows it covers with
+  each window's `fetched_at` — for the unresolvable entry *and* for the entry
+  the same ad account is stored under — then states exactly what would change.
+  `--apply` is a second, deliberate step and still asks; with no TTY (an AI
+  agent's shell, a CI runner) it declines rather than proceeding.
+
+  It **drops** the unresolvable entry rather than merging it. Moving its
+  figures under the canonical key is only defensible once you have decided the
+  canonical entry is empty or older — a judgement about which of two sets of
+  partial figures is true, and that is precisely what the reporting view
+  refuses to make. Dropping needs no such judgement and loses nothing that the
+  next sync cannot refill from the platform itself. Nothing is summed: two
+  partial entries added together over-count exactly as much as dropping one
+  under-counts.
+
+  The pre-repair document is backed up first, timestamped
+  (`STATE.json.bak.<unix_ns>`, so a second run cannot overwrite the first
+  backup), and the command prints the `cp` that restores it. That backup is
+  the undo; the repair is deliberately **not** written to `action_log`, which
+  records changes made to an *ad platform* — every entry names a `platform`
+  and is fed to the rollback planner's MCP-operation allow-list, so a
+  local-file edit has neither an operation to name nor one to reverse, and the
+  entry would have had to carry the very key just removed.
+
+  Scope is the unresolvable-key case only. "Resolvable" is not decided a
+  second time: the command asks the same `reject_unknown_platform_key` the
+  write guard asks, inheriting its fail-open behaviour, so an environment
+  whose installed plugins cannot be enumerated proposes nothing for removal.
+  A duplicate whose two keys BOTH name real platforms is reported and handed
+  back to the operator in as many words — it is not a general duplicate
+  merger. Only the `platforms` map changes: `last_synced_at` is not
+  re-stamped (a repair is not a sync) and the platform-blind legacy
+  `campaigns` list is left alone.
+
+  The dashboard's conflicted platform cards now name the command. The repair
+  itself is not offered as a button there: the card's `unrecognized_key`
+  signal tests whether a key resolves to a display *label*, and by that test
+  `logly_ads_context` — the correct key in the reported incident — is just as
+  unrecognised as the invented `logly_ads`, so an action hung off it would
+  offer to delete the right entry.
 
 - **A Meta token expiry notice and a re-authenticate control on the Meta
   credential row** (#579). A Meta access token expired and mureo said nothing,
