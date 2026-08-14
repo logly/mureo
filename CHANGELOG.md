@@ -35,6 +35,37 @@
   uninstall it. Re-registration also still takes the last write, so a bridge's
   deliberate override keeps working; it is now announced rather than silent.
 
+- **`/daily-check` invented figures for a platform whose tools were not in the
+  session** (#586). A hosted connector was disconnected host-side, so its
+  whole tool namespace (`tt-ads-*`) was missing from the run. The platform is
+  enumerated from its STATE.json `platforms` key alone, so it stayed in scope;
+  the run emitted a one-line disclaimer and then a KPI table for it — target,
+  actual, attainment %, pass/fail icons — formatted identically to the
+  sections built from measured data, with the figures extrapolated from
+  whatever numbers the run still held. Budget and bid recommendations were
+  layered on top, and the numbers were persisted as the next run's comparison
+  baseline.
+
+  This is #580's hole with a different cause, so it gets #580's treatment
+  rather than a second vocabulary. #580 keys on a tool result
+  (`{"status": "auth_error", ...}`); an absent tool returns nothing to
+  inspect, so the check had to move ahead of the report. `/daily-check` step 2
+  now records whether each enumerated platform's tools are actually callable
+  in this session — not merely that its key is configured — and step 4 raises
+  `tools_absent_for_<platform>` once the native and official/hosted-MCP
+  fallbacks are exhausted, so it never fires on a platform a fallback could
+  still read. Step 10's partial-report rule, which #580 added, now opens on
+  either condition and names the platform with its cause and recovery.
+
+  A platform that was not checked gets no KPI table, no target/actual
+  columns, no attainment percentage and no pass/fail icon — those claim a
+  measurement against a target that did not happen — and steps 12–13 write
+  nothing for it, so an invented figure cannot become tomorrow's baseline.
+  The `_mureo-shared` hosted-connector rule, which forbade aborting the
+  workflow but never forbade substituting numbers for the data it lacked, now
+  forbids both. The #440 rule is untouched: the report degrades, it does not
+  stop.
+
 - **A period report shipped whole while a platform was unreadable** (#602).
   `/daily-check` gained the auth-failure branch in #580; `/weekly-report` and
   `/monthly-report` did not. When a platform's credentials were missing or its
