@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 219 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 1 change-import tool (record changes made outside mureo), 5 cross-platform analysis tools (anomaly detection, delivery-collapse detection and diagnosis, the exclusion delivery-impact preview and tracking-parameter consistency), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 221 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 191 advertising and SEO operation tools across Google Ads (91), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 1 change-import tool (record changes made outside mureo), 5 cross-platform analysis tools (anomaly detection, delivery-collapse detection and diagnosis, the exclusion delivery-impact preview and tracking-parameter consistency), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -281,6 +281,29 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 |------|-------------|-------------------|
 | `google_ads_assets_upload_image` | Upload a local image file as a Google Ads asset | `customer_id`, `file_path` |
 | `google_ads_image_assets_list` | List existing image assets with their names and dimensions (width/height, file size, serving URL) | `customer_id` |
+
+#### Performance Max asset-group text
+
+`google_ads_ads_list` returns no rows for a Performance Max campaign: P-MAX
+has no `ad_group_ad`, and its headlines, long headlines and descriptions are
+assets linked to an **asset group** through `asset_group_asset`. These two
+tools are the P-MAX ad-copy surface.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads_asset_group_assets_list` | List the HEADLINE / LONG_HEADLINE / DESCRIPTION assets linked to Performance Max asset groups, with the `asset_id` and the `asset_group_asset` handle for each. Optionally filtered by `asset_group_id` or `campaign_id` | `customer_id` |
+| `google_ads_asset_group_assets_replace` | Swap one headline, long headline or description of an asset group for new text | `customer_id`, `asset_group_id`, `field_type`, `old_asset_id`, `new_text` |
+
+A Google Ads text `Asset` is immutable, so the swap is not an update: it
+creates a new `Asset`, links it under the same `field_type`, and removes the
+old link. All three go in **one** atomic `GoogleAdsService.mutate`, so the
+asset group's asset count for that field type never dips below the
+Performance Max minimum — a removal issued on its own can be refused with
+`AssetGroupError.NOT_ENOUGH_HEADLINE_ASSET` (or the long-headline /
+description twin), which the tool reports as an actionable message rather
+than a raw API error. The old `Asset` itself is not deleted; only its link to
+that asset group is. The swap is not automatically reversible: to undo it,
+call the tool again with the old text.
 
 ### Meta Ads
 

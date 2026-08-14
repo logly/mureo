@@ -124,6 +124,7 @@ _MUTATING_CATALOGUE: frozenset[str] = frozenset(
     {
         # Google Ads — mutating
         "google_ads_ad_groups_create",
+        "google_ads_asset_group_assets_replace",
         "google_ads_ad_groups_update",
         "google_ads_ads_create",
         "google_ads_ads_create_display",
