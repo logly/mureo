@@ -20,6 +20,7 @@ from typing import Any
 
 from google.ads.googleads.v23.enums.types.ad_network_type import AdNetworkTypeEnum
 from google.ads.googleads.v23.enums.types.asset_field_type import AssetFieldTypeEnum
+from google.ads.googleads.v23.enums.types.asset_link_status import AssetLinkStatusEnum
 from google.ads.googleads.v23.enums.types.asset_performance_label import (
     AssetPerformanceLabelEnum,
 )
@@ -124,6 +125,12 @@ PLACEMENT_TYPE_MAP: dict[int, str] = {
 
 ASSET_FIELD_TYPE_MAP: dict[int, str] = {
     member.value: member.name for member in AssetFieldTypeEnum.AssetFieldType  # type: ignore[attr-defined]
+}
+
+#: The status of an asset LINK (``asset_group_asset.status`` and the other
+#: ``*_asset.status`` fields) — not the status of the asset itself (#590).
+ASSET_LINK_STATUS_MAP: dict[int, str] = {
+    member.value: member.name for member in AssetLinkStatusEnum.AssetLinkStatus  # type: ignore[attr-defined]
 }
 
 ASSET_PERFORMANCE_LABEL_MAP: dict[int, str] = {

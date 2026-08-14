@@ -197,6 +197,11 @@ _MUTATION_PREFIXES = (
     "cancel_",
     "set_",
     "patch_",
+    # A Performance Max text swap (#590): a text Asset is immutable, so the
+    # client method is named for what it does — replace_ matches no generic
+    # prefix above, and without this entry a BYOD call would fall through to
+    # the empty-list read stub and read as a write that quietly did nothing.
+    "replace_",
     # Meta-specific mutation verbs whose method names do not match any
     # of the generic prefixes above: boost_post / boost_instagram_post,
     # end_split_test, duplicate_lead_form, and export_leads_to_csv (the

@@ -676,6 +676,38 @@ async def handle_image_assets_list(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
+# Performance Max asset-group text assets (#590)
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_asset_group_assets_list(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.list_asset_group_text_assets(
+        asset_group_id=_opt(args, "asset_group_id"),
+        campaign_id=_opt(args, "campaign_id"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_asset_group_assets_replace(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "asset_group_id": _require(args, "asset_group_id"),
+        "field_type": _require(args, "field_type"),
+        "old_asset_id": _require(args, "old_asset_id"),
+        "new_text": _require(args, "new_text"),
+    }
+    result = await client.replace_asset_group_text_asset(params)
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
 # Handler mapping
 # ---------------------------------------------------------------------------
 _HANDLERS_BASE: dict[str, Any] = {
@@ -713,6 +745,8 @@ _HANDLERS_BASE: dict[str, Any] = {
     "google_ads_device_analyze": handle_device_analyze,
     "google_ads_assets_upload_image": handle_assets_upload_image,
     "google_ads_image_assets_list": handle_image_assets_list,
+    "google_ads_asset_group_assets_list": handle_asset_group_assets_list,
+    "google_ads_asset_group_assets_replace": handle_asset_group_assets_replace,
 }
 
 # Merge extension and analysis handlers
