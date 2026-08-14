@@ -18,7 +18,18 @@ builds on:
   paths itself; a channel field accepts either a flat key (unchanged) or this.
 - Their process-wide registries and register / lookup / reset helpers,
   populated by ``mureo.mcp.server`` from plugin tool metadata at import so the
-  pure decision layer stays I/O-free and needs no plugin imports.
+  pure decision layer stays I/O-free and needs no plugin imports. They are
+  keyed by BARE tool name, deliberately: every lookup here is reached with a
+  tool name and nothing else — ``StrategyPolicyGate.evaluate`` sits behind the
+  public two-argument :class:`~mureo.core.policy.PolicyGate` Protocol that
+  third parties implement, and :mod:`mureo.policy.learning_reset` is a pure
+  layer with no provider handle — so an identity-keyed registry would have
+  nothing to resolve an identity from. It does not need one: mureo exposes at
+  most one plugin tool per name (see :func:`~mureo.mcp.tool_provider.
+  collect_plugin_tools`), so the declaration held under a name always belongs
+  to the tool that name dispatches to. A *conflicting* re-registration is
+  still announced rather than applied in silence — see
+  :func:`_log_conflicting_registration` (#589).
 - The same for one tool's ``annotations.readOnlyHint``
   (:func:`register_read_only_hint` / :func:`declared_read_only_hint` /
   :func:`reset_read_only_hints`) — so a pure decision that has to ask "is this
@@ -35,10 +46,13 @@ re-export block in that module.
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 #: A path segment suffix meaning "descend every item of this array".
 ARRAY_SUFFIX = "[]"
@@ -239,6 +253,50 @@ class BudgetDeclaration:
     micros: bool = False
 
 
+def _log_conflicting_registration(
+    channel: str, tool_name: str, existing: object, incoming: object
+) -> None:
+    """Announce a second, DIFFERENT registration under the same tool name (#589).
+
+    All three registries below are keyed by BARE tool name — no plugin, no
+    distribution — and every one is last-write-wins, so a second registration
+    replaces a guardrail rather than adding one. That is the right default and
+    stays: reversing it to first-wins would silently break the deliberate
+    override an out-of-tree caller makes (these registrars are public API,
+    re-exported from :mod:`mureo.policy.strategy_gate` for the sibling
+    bridges). What must not stay is the *silence* — a replaced budget key
+    points the gate at an argument the called tool does not have, and a
+    replaced ``readOnlyHint`` can turn a real mutation into a "read" that
+    loses both its pattern-fallback money scan and its
+    ``block_learning_resets`` refusal.
+
+    Re-registering the SAME value is not a collision and says nothing: server
+    startup and a test's ``reset_*`` + re-discovery both replay identical
+    registrations, and a warning there would be noise that trains an operator
+    to ignore the real one.
+
+    This layer is pure and holds no plugin identity, so the message names the
+    tool and both values but cannot name the distributions. The one collision
+    where identity IS known — two installed plugins shipping the same tool
+    name — is reported at collection time by
+    :func:`mureo.mcp.tool_provider.collect_plugin_tools`, which names both.
+    """
+    if existing == incoming:
+        return
+    logger.warning(
+        "conflicting %s declaration for tool '%s': %r was already registered "
+        "and is being replaced by %r (last registration wins). These "
+        "registries are keyed by tool name alone, so the usual cause is two "
+        "installed distributions claiming the same name; check which one "
+        "supplies '%s' before trusting the guardrail on it.",
+        channel,
+        tool_name,
+        existing,
+        incoming,
+        tool_name,
+    )
+
+
 # Tool name → declaration. Populated by the MCP server from plugin tool
 # metadata at import (see ``mureo.mcp.server``), so the pure decision layer
 # stays I/O-free and the gate needs no plugin imports.
@@ -246,7 +304,14 @@ _BUDGET_DECLARATIONS: dict[str, BudgetDeclaration] = {}
 
 
 def register_budget_declaration(tool_name: str, declaration: BudgetDeclaration) -> None:
-    """Bind ``tool_name``'s budget argument keys (last registration wins)."""
+    """Bind ``tool_name``'s budget argument keys (last registration wins).
+
+    A conflicting re-registration is logged rather than refused — see
+    :func:`_log_conflicting_registration`.
+    """
+    existing = _BUDGET_DECLARATIONS.get(tool_name)
+    if existing is not None:
+        _log_conflicting_registration("budget", tool_name, existing, declaration)
     _BUDGET_DECLARATIONS[tool_name] = declaration
 
 
@@ -320,7 +385,14 @@ _BID_DECLARATIONS: dict[str, BidDeclaration] = {}
 
 
 def register_bid_declaration(tool_name: str, declaration: BidDeclaration) -> None:
-    """Bind ``tool_name``'s bid argument keys (last registration wins)."""
+    """Bind ``tool_name``'s bid argument keys (last registration wins).
+
+    A conflicting re-registration is logged rather than refused — see
+    :func:`_log_conflicting_registration`.
+    """
+    existing = _BID_DECLARATIONS.get(tool_name)
+    if existing is not None:
+        _log_conflicting_registration("bid", tool_name, existing, declaration)
     _BID_DECLARATIONS[tool_name] = declaration
 
 
@@ -348,7 +420,16 @@ def register_read_only_hint(tool_name: str, read_only: bool) -> None:
     layer otherwise has nothing but the tool's NAME to go on, and a name shape
     is a guess where a declaration is evidence — registering the declaration
     lets the guess be demoted to a fallback.
+
+    A conflicting re-registration is logged rather than refused — see
+    :func:`_log_conflicting_registration`. The membership test is deliberate:
+    a stored ``False`` is a DECLARED value, and ``.get()`` would read it as
+    "nothing was registered" and skip the check on the one flip that matters.
     """
+    if tool_name in _READ_ONLY_HINTS:
+        _log_conflicting_registration(
+            "readOnlyHint", tool_name, _READ_ONLY_HINTS[tool_name], read_only
+        )
     _READ_ONLY_HINTS[tool_name] = read_only
 
 
