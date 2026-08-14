@@ -56,8 +56,9 @@ Find the ads whose audience has seen them too many times. Creative fatigue is a 
 
 7. **Recommendations — rotate / refresh, with the evidence as the brief**: For each FATIGUED (and borderline WATCH) ad, hand off to a creative workflow, passing the fatigue evidence (frequency, CTR decline, the tiring asset) as the input brief:
    - **New visuals + composed banners** → **`/creative-generate`**.
-   - **Copy / headline refresh, RSA asset swaps** → **`/creative-refresh`**.
+   - **Copy / headline refresh, RSA asset swaps, Performance Max asset-group text** → **`/creative-refresh`**.
    Do not silently produce new creative here — this skill diagnoses and routes; the creative skills generate under their own approval gates.
+   **Route, do not promise.** Whether mureo can apply a rewrite depends on the surface, not on the verdict: `/creative-refresh` runs its *Apply or draft* check per item and may come back with copy for the operator to paste in by hand (every image, video and logo asset today, and any surface whose write tool is absent from the session). Hand the fatigue evidence over as the brief; do **not** tell the operator here that the creative will be rewritten, and do not offer the rewrite yourself — from this skill you cannot see which write tools cover the tiring asset.
 
 8. **Pausing a clearly-fatigued ad — approval gate**: Pausing is a write. Apply the *Confirm Before Write Operations* rule from `../_mureo-shared/SKILL.md`: list the ad(s), their current spend/frequency/CTR, and confirm before pausing via `meta_ads_ads_pause` (Meta) or `google_ads_ads_update_status` (Google Ads). Prefer **rotate-in-a-replacement over pause-into-a-gap** unless the ad is actively harmful — pausing without a fresh creative ready starves delivery. Never bulk-pause without listing the total impact first.
 

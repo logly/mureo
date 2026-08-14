@@ -1,6 +1,6 @@
 ---
 name: creative-refresh
-description: "Refresh ad copy and creative assets based on performance signals and brand voice. Use when the user asks to refresh creative, propose new ad copy, A/B test creatives, update RSA assets, rotate underperformers, or visually evaluate / compare banner (image) creatives. Also use when the user asks in Japanese (クリエイティブを刷新して / 広告文の改善案がほしい / RSAアセットの入れ替え / バナーを比較評価して)."
+description: "Refresh ad copy and creative assets based on performance signals and brand voice. Use when the user asks to refresh creative, propose new ad copy, A/B test creatives, update RSA assets, swap Performance Max asset-group headlines or descriptions, rotate underperformers, or visually evaluate / compare banner (image) creatives. Also use when the user asks in Japanese (クリエイティブを刷新して / 広告文の改善案がほしい / RSAアセットの入れ替え / P-MAXの見出しを差し替えて / バナーを比較評価して)."
 metadata:
   version: 0.10.45
 ---
@@ -26,17 +26,18 @@ Refresh ad creatives based on strategy context and performance data across all p
 2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **Audit current creatives**: For each ad platform:
-   - **Google Ads**: prefer mureo native — call `google_ads_ad_performance_report` per campaign, plus `google_ads_rsa_assets_audit` (per-asset CTR/CVR ratings) and `google_ads_rsa_assets_analyze` (LOW/POOR detection). In BYOD mode, the Apps Script bundle does not include per-asset ratings — these tools return `[]`; fall back to `google_ads_ads_list` for headline/description text and use `ad_performance.report` for ad-level CTR/conv only. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP for ad-level performance and ad listing, then **skip the mureo-only RSA asset audit tools** (`google_ads_rsa_assets_audit`, `google_ads_rsa_assets_analyze`) and note: "per-asset LOW/POOR detection and the RSA asset audit are mureo-specific value-add features — install or re-enable via `mureo setup claude-code` for the full creative audit."
+   - **Google Ads**: prefer mureo native — call `google_ads_ad_performance_report` per campaign, plus `google_ads_rsa_assets_audit` (per-asset CTR/CVR ratings) and `google_ads_rsa_assets_analyze` (LOW/POOR detection). A **Performance Max** campaign has no `ad_group_ad`, so `google_ads_ads_list` and the RSA asset tools return nothing for it — an audit that stops there reports a P-MAX account as having no ad copy at all. Read its copy with `google_ads_asset_group_assets_list` (pass `campaign_id` when you have no `asset_group_id`); it returns the HEADLINE / LONG_HEADLINE / DESCRIPTION assets, **text only**, one entry per link with the `asset_id` you will need to change one. In BYOD mode, the Apps Script bundle does not include per-asset ratings — these tools return `[]`; fall back to `google_ads_ads_list` for headline/description text and use `ad_performance.report` for ad-level CTR/conv only. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP for ad-level performance and ad listing, then **skip the mureo-only RSA asset audit tools** (`google_ads_rsa_assets_audit`, `google_ads_rsa_assets_analyze`) and note: "per-asset LOW/POOR detection and the RSA asset audit are mureo-specific value-add features — install or re-enable via `mureo setup claude-code` for the full creative audit."
    - **Meta Ads**: prefer mureo native — call `meta_ads_creatives_list`, `meta_ads_analysis_compare_ads`, and `meta_ads_analysis_suggest_creative`. In BYOD mode, creative URLs / headlines / body / CTA may be present in `~/.mureo/byod/meta_ads/creatives.csv` (best-effort, populated only when those columns were in the export). If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for the creative list and ad-level insights only, then **skip the mureo-only analysis tools** (`meta_ads_analysis_compare_ads`, `meta_ads_analysis_suggest_creative`); perform the ad-comparison and creative-suggestion logic yourself using the rules in step 6 and note to the user that mureo's automated creative-suggestion engine requires the native MCP.
    - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
    - Identify underperforming assets (LOW/POOR ratings for search ads, low CTR/engagement for social ads).
-   - **Image / banner creatives**: the text-and-metrics audit above does not look at the picture itself. When a creative carries an image (`image_url` / `thumbnail_url` from `meta_ads_creatives_list`, or a Google image/Display/PMax asset), also run the **Visual creative evaluation** section below to score the banner's design, not just its copy and CTR.
+   - **Image / banner creatives**: the text-and-metrics audit above does not look at the picture itself. When a creative carries an image you can actually reach — `image_url` / `thumbnail_url` from `meta_ads_creatives_list`, or a Google image asset from `google_ads_image_assets_list` (account-level: name, dimensions and a full-size serving `url`) — also run the **Visual creative evaluation** section below to score the banner's design, not just its copy and CTR.
 
 4. **Analyze landing pages**: For each campaign's final URL, analyze the landing page to extract key selling points, CTAs, and features. If GA4 is available, pull engagement metrics (time on page, scroll depth, bounce rate) to inform creative direction.
 
 5. **Organic keyword insights** (if Search Console is available): Incorporate top-performing organic search queries into ad copy. Terms that drive organic clicks likely resonate with users.
 
 6. **Generate platform-appropriate creative recommendations**:
+   **First run the *Apply or draft* check below** for every surface you are about to write copy for, and carry its verdict into the draft itself — a draft mureo cannot apply is labelled that way in the same message that presents it, not after the operator agrees.
    Using Persona pain points + USP + LP selling points + Brand Voice rules, draft:
    - **Search ads**: Headlines and descriptions aligned with character limits and ad format requirements
    - **Social ads**: Primary text, headline, description, CTA suggestions
@@ -49,17 +50,56 @@ Refresh ad creatives based on strategy context and performance data across all p
 
 7. **Validate**: Run each through the relevant platform's ad validation rules (character limits, prohibited expressions, no duplicates).
 
-8. **Present recommendations** with rationale for each. Group by platform.
+8. **Present recommendations** with rationale for each. Group by platform, and inside each group keep the *Apply or draft* verdict visible per item — "mureo will apply" and "paste this in yourself" are different offers and must not be presented as one list.
 
-9. **Ask for approval** before creating/updating any ads.
+9. **Ask for approval** before creating/updating any ads — only for the items the *Apply or draft* check marked applicable. Never ask for approval to apply a draft-only item; hand that draft over as paste-in copy and move on.
 
 10. **Check pending observations**: Before executing, check `action_log` for campaigns being modified. If a previous creative change is still within its observation window, warn about stacking changes.
 
-11. **Execute approved changes**: Use each platform's ad creation/update tools to apply changes.
+11. **Execute approved changes**: Use each platform's ad creation/update tools to apply changes. For Google Performance Max copy that is `google_ads_asset_group_assets_replace` — one call per asset, taking `asset_group_id` + `field_type` + `old_asset_id` (from `google_ads_asset_group_assets_list`) + `new_text` — not `google_ads_ads_update`, which cannot see a P-MAX campaign. A draft-only item produces **no tool call at all**.
 
-12. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CTR, CPA, conversions, impressions, clicks) and `observation_due` (14 days from `server_now`'s date).
+12. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CTR, CPA, conversions, impressions, clicks) and `observation_due` (14 days from `server_now`'s date). Log only what mureo actually wrote: a draft the operator was asked to paste in by hand is not a mureo change and gets no `action_log` entry (log it, and `/ad-fatigue-check` and the outcome evaluator will later measure a change that may never have been made).
 
 13. **Update STATE.json** with notes.
+
+## Apply or draft (decide before you draft, not after approval)
+
+Some ad copy mureo can write for the operator; some it can only hand over as
+text to paste into the platform's own UI. Both are useful outcomes. What is
+never useful is finding out which one applies *after* the operator has said
+yes — that spends a round trip on an offer that was never executable.
+
+**The rule**: before you draft anything, name the mureo write tool that would
+apply it for that exact surface (platform + campaign type + asset kind), and
+scope the offer by **whether that tool is in this session's tool list** —
+never by campaign type as a category.
+
+- **A write tool exists** → offer to apply it, under the step 9 approval gate.
+- **No write tool exists** → say so in the same message that carries the
+  draft, before asking for anything: "mureo cannot apply this one — here is
+  copy to paste into <platform> yourself." Never offer to apply it, never ask
+  for approval to apply it, and never log it as a mureo change (step 12).
+
+What Google Ads copy mureo can write **today**:
+
+| Surface | Read | Write |
+|---|---|---|
+| Search RSA headlines / descriptions | `google_ads_ads_list`, `google_ads_rsa_assets_audit` | `google_ads_ads_create`, `google_ads_ads_update` |
+| Performance Max asset-group text — HEADLINE / LONG_HEADLINE / DESCRIPTION | `google_ads_asset_group_assets_list` (text only) | `google_ads_asset_group_assets_replace` — one asset per call, by `asset_group_id` + `field_type` + `old_asset_id` |
+| Responsive Display Ad text | `google_ads_ads_list` | create only (`google_ads_ads_create_display`); no text update — **draft-only** for an edit |
+| Any image, video, logo or business name — including every non-text field type of a P-MAX asset group | `google_ads_image_assets_list` lists account-level images with a serving URL, but nothing reports which asset group or ad uses one | none — **draft-only** |
+
+That table is a **snapshot of the tool layer, not** the boundary. The boundary
+is the tool list you can actually see in this session, and it moves in both
+directions: mureo gains tools, so a surface that was draft-only last release
+may have a write tool now — offer it even though the table does not name it.
+And a tool the table names can be **absent** here (BYOD, a plugin-only or
+hosted-connector-only session, `MUREO_DISABLE_GOOGLE_ADS=1`); when it is,
+that surface is draft-only for this run. Check, do not assume in either
+direction.
+
+The same rule governs the platforms this table does not cover: if you cannot
+name the write tool, the answer is a draft, said up front.
 
 ## Visual creative evaluation (image / banner ads)
 
@@ -83,8 +123,23 @@ score, an empty rubric, or an "image not found" finding for a text ad.
 
 1. Collect each creative's image reference: `image_url` (or `thumbnail_url` for
    video — you evaluate the still frame only, not motion) from
-   `meta_ads_creatives_list`; for Google, the image/Display/PMax asset URL. In
-   BYOD mode use the URL column from `creatives.csv` when present.
+   `meta_ads_creatives_list`; for Google, the full-size serving `url` of an
+   image asset from `google_ads_image_assets_list`. In BYOD mode use the URL
+   column from `creatives.csv` when present.
+   **What Google will not give you**: `google_ads_image_assets_list` is
+   account-wide — it does not say which ad or asset group serves an asset, so
+   you cannot enumerate "the images of this Performance Max asset group" from
+   it. `google_ads_asset_group_assets_list` returns the asset group's
+   headlines, long headlines and descriptions — text only, no image, video or
+   logo assets. A Responsive Display Ad is the one case with a link:
+   `google_ads_ads_list` returns its `marketing_images` /
+   `square_marketing_images` / `logo_images` as asset **resource names**,
+   which you match by id against `google_ads_image_assets_list` to get a URL.
+   For any image you cannot reach, score the copy and metrics, say plainly
+   that the picture could not be retrieved, and ask the operator to paste it
+   into chat if they want it graded — never a guessed visual score, and never
+   an offer to change an asset mureo has no write tool for (see *Apply or
+   draft*).
 2. **On Claude Code (has Read/Bash):** download the image to the scratch
    directory (`curl -sL "<image_url>" -o <scratch>/creative_<id>.jpg`) and
    `Read` that file — the Read tool renders the pixels so you can actually see

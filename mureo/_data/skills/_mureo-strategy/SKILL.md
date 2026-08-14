@@ -583,11 +583,23 @@ Step 2: Based on persona pain points, craft headlines that address them directly
   Example persona pain point: "Limited budget, too many low-quality leads"
   -> Headlines: "Reduce Wasted Ad Spend by 40%", "Get Better Leads, Not More Leads"
 
-Step 3: Create the RSA ad (with Google Ads tools)
-  -> google_ads_ads_create {
+Step 3: Apply it with the tool that covers the surface -- never draft first
+        and look for a tool afterwards (see "Apply or draft" in
+        skills/creative-refresh/SKILL.md)
+
+  Search RSA -> google_ads_ads_create {
        headlines addressing persona pain points,
        descriptions highlighting USP
      }
+
+  Performance Max -> not an ad: its copy lives on the asset group.
+     google_ads_asset_group_assets_list {campaign_id}   # get old_asset_id
+     google_ads_asset_group_assets_replace {asset_group_id, field_type,
+       old_asset_id, new_text}                          # one asset per call
+
+  No write tool for this surface (any image / video / logo asset today)
+     -> present the draft as copy for the operator to paste in, said up
+        front, and offer no apply step
 ```
 
 ### 2. USP-Driven Keyword Selection
@@ -618,13 +630,20 @@ Step 1: Read STRATEGY.md Brand Voice section
 
 Step 2: List current ads
   -> google_ads_ads_list {customer_id, ad_group_id}
+  Performance Max returns NO rows here (it has no ad_group_ad) -- auditing
+  brand voice from this tool alone silently skips every P-MAX campaign
+  -> google_ads_asset_group_assets_list {customer_id, campaign_id}
 
 Step 3: Review each ad against brand voice rules
   Flag: "Best Ad Platform Ever!" -> violates "no hype" rule
   OK: "Reduce CPA by 30% with AI-Powered Optimization" -> data-backed, professional
 
 Step 4: Update non-compliant ads (CONFIRM WITH USER)
-  -> google_ads_ads_update {headlines: [improved versions]}
+  Search RSA -> google_ads_ads_update {headlines: [improved versions]}
+  Performance Max -> google_ads_asset_group_assets_replace {asset_group_id,
+       field_type, old_asset_id, new_text}
+  No write tool for the surface -> draft only, said up front; see
+       "Apply or draft" in skills/creative-refresh/SKILL.md
 ```
 
 ### 4. Operation Mode-Guided Actions
