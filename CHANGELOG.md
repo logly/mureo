@@ -1,96 +1,6 @@
 ## [Unreleased]
 
-### Added
-
-- **A supported way to repair a platform entry filed under a key mureo cannot
-  resolve** — `mureo repair platform-key` (#610). #609 stops a new bad key
-  being written; it does nothing for state that already carries one, and until
-  now the only way out was to open STATE.json and edit it. On a non-engineer's
-  machine that is the more dangerous option, not the safer one: they were told
-  what was wrong, told mureo would not fix it, and left to hand-edit the file
-  that drives their reporting.
-
-  Running the command **changes nothing**. A dry run is the default, not a
-  flag: it names the key, the ad account, how many campaigns the entry
-  carries, whether it holds a `totals` rollup and which windows it covers with
-  each window's `fetched_at` — for the unresolvable entry *and* for the entry
-  the same ad account is stored under — then states exactly what would change.
-  `--apply` is a second, deliberate step and still asks; with no TTY (an AI
-  agent's shell, a CI runner) it declines rather than proceeding.
-
-  It **drops** the unresolvable entry rather than merging it. Moving its
-  figures under the canonical key is only defensible once you have decided the
-  canonical entry is empty or older — a judgement about which of two sets of
-  partial figures is true, and that is precisely what the reporting view
-  refuses to make. Dropping needs no such judgement and loses nothing that the
-  next sync cannot refill from the platform itself. Nothing is summed: two
-  partial entries added together over-count exactly as much as dropping one
-  under-counts.
-
-  The pre-repair document is backed up first, timestamped
-  (`STATE.json.bak.<unix_ns>`, so a second run cannot overwrite the first
-  backup), and the command prints the `cp` that restores it. That backup is
-  the undo; the repair is deliberately **not** written to `action_log`, which
-  records changes made to an *ad platform* — every entry names a `platform`
-  and is fed to the rollback planner's MCP-operation allow-list, so a
-  local-file edit has neither an operation to name nor one to reverse, and the
-  entry would have had to carry the very key just removed.
-
-  Scope is the unresolvable-key case only. "Resolvable" is not decided a
-  second time: the command asks the same `reject_unknown_platform_key` the
-  write guard asks, inheriting its fail-open behaviour, so an environment
-  whose installed plugins cannot be enumerated proposes nothing for removal.
-  A duplicate whose two keys BOTH name real platforms is reported and handed
-  back to the operator in as many words — it is not a general duplicate
-  merger. Only the `platforms` map changes: `last_synced_at` is not
-  re-stamped (a repair is not a sync) and the platform-blind legacy
-  `campaigns` list is left alone.
-
-  The dashboard's conflicted platform cards now name the command. The repair
-  itself is not offered as a button there: the card's `unrecognized_key`
-  signal tests whether a key resolves to a display *label*, and by that test
-  `logly_ads_context` — the correct key in the reported incident — is just as
-  unrecognised as the invented `logly_ads`, so an action hung off it would
-  offer to delete the right entry.
-
-- **`mureo repair platform-key --all` — the same repair across every client on
-  the machine** (#614). A bad key is written by an *agent*, and an agent that
-  ran against every client wrote it into every client's STATE.json. Repairing
-  one document at a time asks a non-engineer to remember which directories
-  exist and gives them no way to notice the one they missed.
-
-  `--all` leads with a **summary**: which clients have unresolvable keys,
-  which are clean, which could not be read, each as "N of M" — the number is
-  the point. The per-client detail follows in the same shape the
-  single-workspace run prints. Dry run stays the default, and `--apply`
-  confirms **once**, with the whole list in view; a prompt per client trains
-  an operator to hold down `y`. Each repaired client is still backed up
-  individually and the `cp` that restores it printed per client.
-
-  One client failing — an unparseable document, a lock it cannot take, a
-  permission error — costs that client and not the run: it is named in the
-  summary, the rest are repaired, and the exit status is non-zero so a script
-  notices. A *finding* is not a failure: a dry run that reports work to do
-  exits `0`. `--all` with `--state-file` is refused (one says "every client",
-  the other says "this one file"); `--all --key` narrows the sweep to one key
-  across every client, which is the shape the incident actually took.
-
-  Which clients exist is **not** a new mechanism. It is the same two optional
-  `StateStore` capabilities the read-only Reports tab already reads —
-  `list_clients()` and `state_store_for_client(slug)` — resolved through
-  `mureo.web.report_clients`, so OSS grows no dependency on the backend that
-  supplies them and there is no second answer to "which clients exist" that
-  can drift from the first. A store declaring neither, which is every OSS
-  install, yields exactly one client — the active workspace — and `--all`
-  reports `Surveyed 1 client.` and repairs it. That count is the honest
-  signal when a registry cannot be read: an operator running twelve clients
-  and told one knows where to look.
-
-  **Archived clients are swept too**, and labelled. Archiving means "stop
-  collecting this client's figures" — a decision about what to fetch next,
-  not a statement that what is already stored is correct. Skipping them would
-  leave the bad key in place to reappear the day the client is restored, on a
-  machine whose operator has no reason to run the sweep again.
+## [0.10.45] - 2026-08-14
 
 ### Fixed
 
@@ -239,6 +149,96 @@
   `mureo/google_ads/`, so the 37th cannot be written.
 
 ### Added
+
+- **A supported way to repair a platform entry filed under a key mureo cannot
+  resolve** — `mureo repair platform-key` (#610). #609 stops a new bad key
+  being written; it does nothing for state that already carries one, and until
+  now the only way out was to open STATE.json and edit it. On a non-engineer's
+  machine that is the more dangerous option, not the safer one: they were told
+  what was wrong, told mureo would not fix it, and left to hand-edit the file
+  that drives their reporting.
+
+  Running the command **changes nothing**. A dry run is the default, not a
+  flag: it names the key, the ad account, how many campaigns the entry
+  carries, whether it holds a `totals` rollup and which windows it covers with
+  each window's `fetched_at` — for the unresolvable entry *and* for the entry
+  the same ad account is stored under — then states exactly what would change.
+  `--apply` is a second, deliberate step and still asks; with no TTY (an AI
+  agent's shell, a CI runner) it declines rather than proceeding.
+
+  It **drops** the unresolvable entry rather than merging it. Moving its
+  figures under the canonical key is only defensible once you have decided the
+  canonical entry is empty or older — a judgement about which of two sets of
+  partial figures is true, and that is precisely what the reporting view
+  refuses to make. Dropping needs no such judgement and loses nothing that the
+  next sync cannot refill from the platform itself. Nothing is summed: two
+  partial entries added together over-count exactly as much as dropping one
+  under-counts.
+
+  The pre-repair document is backed up first, timestamped
+  (`STATE.json.bak.<unix_ns>`, so a second run cannot overwrite the first
+  backup), and the command prints the `cp` that restores it. That backup is
+  the undo; the repair is deliberately **not** written to `action_log`, which
+  records changes made to an *ad platform* — every entry names a `platform`
+  and is fed to the rollback planner's MCP-operation allow-list, so a
+  local-file edit has neither an operation to name nor one to reverse, and the
+  entry would have had to carry the very key just removed.
+
+  Scope is the unresolvable-key case only. "Resolvable" is not decided a
+  second time: the command asks the same `reject_unknown_platform_key` the
+  write guard asks, inheriting its fail-open behaviour, so an environment
+  whose installed plugins cannot be enumerated proposes nothing for removal.
+  A duplicate whose two keys BOTH name real platforms is reported and handed
+  back to the operator in as many words — it is not a general duplicate
+  merger. Only the `platforms` map changes: `last_synced_at` is not
+  re-stamped (a repair is not a sync) and the platform-blind legacy
+  `campaigns` list is left alone.
+
+  The dashboard's conflicted platform cards now name the command. The repair
+  itself is not offered as a button there: the card's `unrecognized_key`
+  signal tests whether a key resolves to a display *label*, and by that test
+  `logly_ads_context` — the correct key in the reported incident — is just as
+  unrecognised as the invented `logly_ads`, so an action hung off it would
+  offer to delete the right entry.
+
+- **`mureo repair platform-key --all` — the same repair across every client on
+  the machine** (#614). A bad key is written by an *agent*, and an agent that
+  ran against every client wrote it into every client's STATE.json. Repairing
+  one document at a time asks a non-engineer to remember which directories
+  exist and gives them no way to notice the one they missed.
+
+  `--all` leads with a **summary**: which clients have unresolvable keys,
+  which are clean, which could not be read, each as "N of M" — the number is
+  the point. The per-client detail follows in the same shape the
+  single-workspace run prints. Dry run stays the default, and `--apply`
+  confirms **once**, with the whole list in view; a prompt per client trains
+  an operator to hold down `y`. Each repaired client is still backed up
+  individually and the `cp` that restores it printed per client.
+
+  One client failing — an unparseable document, a lock it cannot take, a
+  permission error — costs that client and not the run: it is named in the
+  summary, the rest are repaired, and the exit status is non-zero so a script
+  notices. A *finding* is not a failure: a dry run that reports work to do
+  exits `0`. `--all` with `--state-file` is refused (one says "every client",
+  the other says "this one file"); `--all --key` narrows the sweep to one key
+  across every client, which is the shape the incident actually took.
+
+  Which clients exist is **not** a new mechanism. It is the same two optional
+  `StateStore` capabilities the read-only Reports tab already reads —
+  `list_clients()` and `state_store_for_client(slug)` — resolved through
+  `mureo.web.report_clients`, so OSS grows no dependency on the backend that
+  supplies them and there is no second answer to "which clients exist" that
+  can drift from the first. A store declaring neither, which is every OSS
+  install, yields exactly one client — the active workspace — and `--all`
+  reports `Surveyed 1 client.` and repairs it. That count is the honest
+  signal when a registry cannot be read: an operator running twelve clients
+  and told one knows where to look.
+
+  **Archived clients are swept too**, and labelled. Archiving means "stop
+  collecting this client's figures" — a decision about what to fetch next,
+  not a statement that what is already stored is correct. Skipping them would
+  leave the bad key in place to reappear the day the client is restored, on a
+  machine whose operator has no reason to run the sweep again.
 
 - **A Meta token expiry notice and a re-authenticate control on the Meta
   credential row** (#579). A Meta access token expired and mureo said nothing,
