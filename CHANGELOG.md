@@ -1,5 +1,44 @@
 ## [Unreleased]
 
+### Fixed
+
+- **A failed Meta token refresh wrote Graph's raw response body to the
+  configure log** (#605). `_call_refresh_api` interpolated the whole of
+  `resp.text` into the `ValueError` it raised, and `refresh_meta_token_if_needed`
+  logged that with `exc_info=True` — a traceback writes
+  `traceback.format_exception()` and so `str(exc)`. Before #581 nothing
+  installed a handler and the line went nowhere; since #581 it lands in
+  `~/.mureo/logs/configure.log`. The outgoing request is a POST, so mureo's own
+  `app_secret` and access token are in the body rather than the URL; what was
+  written verbatim and unbounded was whatever Meta chose to put in an error
+  body.
+
+  The refusal now names the status code and a curated, bounded slice of Graph's
+  error envelope — `error.message` (truncated, newlines collapsed so
+  platform-authored text cannot forge a log record), `error.code` and
+  `error_subcode` — and nothing else. A body that is not that envelope
+  contributes no text at all, rather than falling back to the raw body: the
+  fallback is the leak. `exc_info=True` is gone from both refresh sites; a
+  transport failure logs its exception class only, since httpx's own text can
+  embed the request URL.
+
+  Deleting the line was not an option. This is the silent path #578 was about —
+  the refresh fails on every Meta call and this line is the only record — so
+  the fix had to keep it diagnosable, not just quiet.
+
+- **The `exc_info` regression guard now sweeps every credential-holding
+  module**, not just `mureo/google_ads/` (#605). The class of bug #603 fixed
+  came straight back in `mureo/auth.py`, so the guard that was meant to stop it
+  was watching the wrong perimeter. `tests/test_google_ads_log_exc_info.py` is
+  now `tests/test_log_exc_info_sweep.py` and fails on a new `exc_info=` or
+  `logger.exception()` under `mureo/google_ads/`, `mureo/meta_ads/`,
+  `mureo/amazon_ads/`, `mureo/auth.py` or `mureo/auth_setup.py`. `mureo/web/` is
+  deliberately excluded, with the reasoning recorded in the file. Widening
+  caught two `Future.exception()` calls in `mureo/amazon_ads/batch.py` that are
+  not logging at all, so the sweep now requires a log-shaped receiver for
+  `.exception()` — asserted in both directions against planted source, rather
+  than exempted by line number.
+
 ## [0.10.45] - 2026-08-14
 
 ### Fixed
