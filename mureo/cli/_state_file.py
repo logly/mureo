@@ -32,6 +32,24 @@ from it for each command that uses it.
 """
 
 
+def state_file_for_store(store: object) -> Path | None:
+    """Where ``store`` keeps its STATE.json, or ``None`` if it will not say.
+
+    Duck-typed on the two attributes the filesystem store (and the per-client
+    stores an Agency backend hands back) expose: ``state_path`` wins, else
+    ``<workspace>/STATE.json``. A store advertising neither has no file for a
+    file-level command to work on — ``None`` says so rather than guessing at
+    the process's CWD, which would point a repair at the wrong document.
+    """
+    attr = getattr(store, "state_path", None)
+    if attr is not None:
+        return Path(attr).resolve()
+    workspace = getattr(store, "workspace", None)
+    if workspace is None:
+        return None
+    return Path(workspace) / "STATE.json"
+
+
 def resolve_default_state_file() -> Path:
     """Return the workspace-derived default for ``--state-file``.
 
@@ -46,11 +64,11 @@ def resolve_default_state_file() -> Path:
     from mureo.core.runtime_context import get_runtime_context
 
     store = get_runtime_context().state_store
-    attr = getattr(store, "state_path", None)
-    if attr is not None:
-        return Path(attr).resolve()
-    workspace = getattr(store, "workspace", Path.cwd())
-    return Path(workspace) / "STATE.json"
+    return state_file_for_store(store) or Path.cwd() / "STATE.json"
 
 
-__all__ = ["STATE_FILE_OPTION", "resolve_default_state_file"]
+__all__ = [
+    "STATE_FILE_OPTION",
+    "resolve_default_state_file",
+    "state_file_for_store",
+]

@@ -408,6 +408,9 @@ mureo repair platform-key --apply
 
 # Narrow it to one key, or point at another workspace's file.
 mureo repair platform-key --key logly_ads --state-file ./client-a/STATE.json
+
+# Or sweep every client this machine knows about, summary first.
+mureo repair platform-key --all
 ```
 
 What it does, and deliberately does not:
@@ -446,6 +449,17 @@ What it does, and deliberately does not:
   stale figures read as just-synced), and the legacy flat `campaigns` list is
   left alone because it is platform-blind — nothing in it says which entries
   came from the removed key.
+
+- **`--all` repairs every client, not every directory you remembered.** The
+  bad key was written by an agent, and an agent that ran against every client
+  wrote it everywhere. `--all` surveys each client the active `StateStore`
+  advertises (the same `list_clients()` / `state_store_for_client(slug)` seam
+  the Reports tab reads — no OSS dependency on a multi-account backend), leads
+  with "N of M need repair", confirms **once** with the whole list in view,
+  and carries on past a client it cannot read with a non-zero exit. On an
+  install whose store declares neither capability it surveys exactly one
+  client, the active workspace. Archived clients are swept and labelled. See
+  [`docs/cli.md`](cli.md#every-client-at-once---all).
 
 The write goes through `write_state_file`, the whole-document funnel the
 create guard deliberately does not police, so a document that is *already*

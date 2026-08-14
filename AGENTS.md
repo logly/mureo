@@ -126,7 +126,10 @@ mureo/
 │   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*` / `upgrade-google`
 │   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
 │   ├── repair_cmd.py    # `mureo repair platform-key` — drop a platforms entry filed under a
-│   │                    #   key mureo cannot resolve; dry run by default, backs up first (#610)
+│   │                    #   key mureo cannot resolve; dry run by default, backs up first (#610).
+│   │                    #   `--all` sweeps every client, summary first, one prompt (#614)
+│   ├── _repair_clients.py # Which STATE.json files `--all` sweeps — reuses the Reports tab's
+│   │                    #   optional list_clients / state_store_for_client seam, never a second one
 │   ├── _state_file.py   # The shared `--state-file` option + workspace default (rollback + repair)
 │   ├── _tty.py          # TTY-safe helpers for non-interactive setup + terminal_safe() scrubbing
 │   └── web_auth.py      # Browser-based OAuth wizard spawned by `mureo configure` (per-platform creds)

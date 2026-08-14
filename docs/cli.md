@@ -291,6 +291,10 @@ mureo repair platform-key --apply --yes
 # Narrow it to one key, or point at another workspace's STATE.json.
 mureo repair platform-key --key logly_ads
 mureo repair platform-key --state-file /path/to/STATE.json
+
+# Survey every client on this machine instead of one workspace.
+mureo repair platform-key --all
+mureo repair platform-key --all --apply
 ```
 
 The dry run names the key, the ad account, how many campaigns the entry carries, whether it holds a `totals` rollup and which windows it covers with each window's fetch time — for the unresolvable entry **and** for the entry the same ad account is stored under — then states exactly what would change:
@@ -333,6 +337,43 @@ If this turns out wrong, put it back with:
 That backup is the undo. The repair is not recorded in `action_log`: that log records changes made to an *ad platform* and feeds the rollback planner, and a local-file edit has neither a platform operation to name nor one to reverse. With no TTY — an AI agent's shell, a CI runner — `--apply` declines rather than proceeding, so nothing destructive happens where the question could not be asked.
 
 The same finding is flagged on the configure UI's Reports cards, which now name this command.
+
+### Every client at once: `--all`
+
+A bad key is rarely one directory's problem. It is written by an agent, and an agent that ran against every client on the machine wrote it into every client's STATE.json. `--all` sweeps them all and **leads with the summary**, so you can see how many of how many need work without scrolling:
+
+```
+=== mureo repair platform-key --all ===
+
+Surveyed 6 clients.
+
+  Need repair (2 of 6):
+    acme (Acme Co) — logly_ads
+    beta (Beta Ltd) — logly_ads
+
+  Need your decision (1 of 6):
+    epsilon (Epsilon GmbH) [archived] — one ad account under two real platform keys (see below)
+
+  Clean (2 of 6):
+    gamma (Gamma KK)
+    zeta (Zeta SA) — no STATE.json yet
+
+  Could not be read (1 of 6):
+    delta (Delta Inc) — Failed to parse JSON in STATE.json: /clients/delta/STATE.json
+```
+
+The per-client detail follows, in the same shape as the single-workspace run, for every client that has a finding. Then:
+
+- **Dry run is still the default.** `--all` on its own changes nothing.
+- **`Need your decision` is its own group, not a footnote under `Clean`.** An ad account stored under two keys that *both* name real platforms is still double-counted; mureo simply will not choose which entry to drop, because the two usually hold different partial figures. It is not a repair this command can make, and it is not clean either — so it is counted separately rather than qualified after an em dash in a line you would skim.
+- **`--all --apply` asks once**, with the whole list in view — not once per client. A prompt per client teaches you to hold down `y`, which is the opposite of what a confirmation is for. Every repaired client is still backed up individually, and the `cp` that restores it is printed per client.
+- **One client failing does not stop the sweep.** An unparseable STATE.json, a lock it cannot take, a permission error — that client is named in the summary and under `Could not be read`, the rest are repaired, and the command exits non-zero so a script notices. A *finding* is not a failure: a dry run that reports work to do exits `0`.
+- **`--all` and `--state-file` are refused together.** One says "every client", the other says "this one file".
+- **`--all --key <key>` is allowed** and narrows the sweep to that key across every client — the reported incident used one invented key everywhere. A client that does not carry it is simply clean.
+
+Which clients exist comes from the same optional `StateStore` capabilities the configure UI's Reports tab reads (`list_clients()` / `state_store_for_client(slug)` — see [`docs/plugin-authoring.md`](plugin-authoring.md)). A store that declares neither — every OSS install — yields exactly one client, the active workspace, and `--all` reports `Surveyed 1 client.` and repairs it. That count is worth reading: if you run twelve clients and are told one, the client registry is what is broken, not the sweep.
+
+**Archived clients are swept too**, and labelled `[archived]`. Archiving means "stop collecting this client's figures" — a decision about what to fetch next, not a statement that what is already stored is correct. Skipping them would leave the bad key in place to reappear the day the client is restored, on a machine whose operator has no reason to run the sweep again.
 
 ## BYOD Commands (Bring Your Own Data)
 
