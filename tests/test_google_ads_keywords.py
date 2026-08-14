@@ -49,10 +49,14 @@ def _make_google_ads_exception(
     failure = MagicMock()
     failure.errors = [error]
     exc = GoogleAdsException.__new__(GoogleAdsException)
-    exc._failure = failure
+    # Assign on the INSTANCE. `type(exc)` is GoogleAdsException itself, so a
+    # class-level property here would edit the class for the rest of the
+    # session and make the real __init__ (`self.failure = failure`) raise
+    # AttributeError in every module collected afterwards. `failure` is a
+    # plain instance attribute, so the property was never needed.
+    exc.failure = failure
     exc._call = MagicMock()
     exc._request_id = "req-123"
-    type(exc).failure = property(lambda self: self._failure)
     return exc
 
 
