@@ -112,7 +112,7 @@ mureo/
 │   ├── _handlers_mureo_context.py         # Context (STRATEGY/STATE) handlers
 │   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
 │   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89)
-├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback; ad ops are via MCP)
+├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair; ad ops are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── setup_cmd.py     # `mureo setup claude-code` / `cursor` / `codex` / `gemini`
 │   ├── setup_codex.py   # Codex install-kit: MCP, credential guard, operational + foundation skills
@@ -125,13 +125,20 @@ mureo/
 │   ├── upgrade_cmd.py   # `mureo upgrade` — pipx venv-aware bulk upgrade of mureo + plugins
 │   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*` / `upgrade-google`
 │   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
-│   ├── _tty.py          # TTY-safe helpers for non-interactive setup
+│   ├── repair_cmd.py    # `mureo repair platform-key` — drop a platforms entry filed under a
+│   │                    #   key mureo cannot resolve; dry run by default, backs up first (#610)
+│   ├── _state_file.py   # The shared `--state-file` option + workspace default (rollback + repair)
+│   ├── _tty.py          # TTY-safe helpers for non-interactive setup + terminal_safe() scrubbing
 │   └── web_auth.py      # Browser-based OAuth wizard spawned by `mureo configure` (per-platform creds)
 ├── context/             # File-based strategy context (no DB)
 │   ├── strategy.py      # STRATEGY.md parser/writer
 │   ├── state.py         # STATE.json parser/writer
 │   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
+│   ├── platform_guards.py # Write-time platform-key guards (#534/#609) — the one "is this key
+│   │                      #   real?" answer every other surface asks
+│   ├── platform_repair.py # The repair half (#610): plan + drop an entry under an unresolvable
+│   │                      #   key. Drops, never merges; backs up; not an action_log entry
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer

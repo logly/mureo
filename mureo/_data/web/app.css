@@ -2050,6 +2050,19 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   word-break: break-word;
 }
 
+/* Where to go about the note above (#610). Quiet on purpose: it is a
+   pointer to `mureo repair platform-key`, not a second warning. */
+.report-card-conflict-hint {
+  margin: 0;
+  padding: 0 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .report-card.is-conflicted {
   border-color: color-mix(in srgb, var(--danger) 45%, transparent);
 }

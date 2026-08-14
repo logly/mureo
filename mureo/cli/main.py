@@ -27,6 +27,7 @@ from mureo.cli.install_desktop_cmd import install_desktop_app
 from mureo.cli.learn_cmd import learn_app
 from mureo.cli.open_cmd import open_app
 from mureo.cli.providers_cmd import providers_app
+from mureo.cli.repair_cmd import repair_app
 from mureo.cli.rollback_cmd import rollback_app
 from mureo.cli.service_cmd import service_app
 from mureo.cli.setup_cmd import setup_app
@@ -42,6 +43,7 @@ app.add_typer(auth_app)
 app.add_typer(setup_app)
 app.add_typer(install_desktop_app)
 app.add_typer(rollback_app)
+app.add_typer(repair_app)
 app.add_typer(byod_app)
 app.add_typer(demo_app)
 app.add_typer(providers_app)
