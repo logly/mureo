@@ -177,7 +177,9 @@ Every configure run — interactive, `--serve`, or started by the auto-start ser
 
 `mureo configure` prints the path on startup. The file is rotated at 1 MiB and keeps 3 older generations (`configure.log.1` … `.3`), so it is bounded at ~4 MiB no matter how long the daemon runs. It is created owner-only (`0600`) on macOS/Linux.
 
-What goes in it: the server's own lifecycle (bound URL, single-instance reuse, shutdown), credential *operations* (which env var name was written into which file, which plugin credential keys were accepted — never a value), and the failures the UI deliberately shows only as a generic message — a Meta token refresh that could not be persisted, an account listing that failed, a credential file that would not parse. Warnings and errors also still go to the terminal.
+What goes in it: the server's own lifecycle (bound URL, single-instance reuse, shutdown), credential *operations* (which env var name was written into which file, which plugin credential keys were accepted — never a value), and the failures the UI deliberately shows only as a generic message — a Meta token refresh that failed or could not be persisted, an account listing that failed, a credential file that would not parse. Warnings and errors also still go to the terminal.
+
+Platform failures are recorded as a status code plus the platform's own error *identifiers*, not its response body: a failed Meta token refresh, for instance, logs `HTTP 400 from Meta Graph (… | code=190 | subcode=460)` — enough to look the error up or quote it in a support ticket, without writing an unbounded, vendor-authored blob to your disk. Quote the whole line in a bug report; it carries no credential value.
 
 Raise the level with an environment variable (`DEBUG`, `INFO`, `WARNING`, `ERROR`; default `INFO`):
 

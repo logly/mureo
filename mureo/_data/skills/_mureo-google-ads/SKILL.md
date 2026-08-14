@@ -139,6 +139,8 @@ immediate request but is not remembered.
 | 87 | `google_ads_negative_placements_list` | Negative Placement | Read | List excluded websites / apps / app categories (campaign + ad group) |
 | 88 | `google_ads_negative_placements_add` | Negative Placement | Write | Exclude websites / apps / app categories (batch, one revertible unit) |
 | 89 | `google_ads_negative_placements_remove` | Negative Placement | Write | Lift exclusions by criterion_id (batch) |
+| 90 | `google_ads_asset_group_assets_list` | Performance Max | Read | List the headlines / long headlines / descriptions linked to a P-MAX asset group |
+| 91 | `google_ads_asset_group_assets_replace` | Performance Max | Write | Swap one P-MAX headline / long headline / description for new text |
 
 ## API Resources
 
@@ -204,6 +206,7 @@ immediate request but is not remembered.
 ### ads
 
 - `list` -- List ads, optionally filtered by ad group. Returns `headlines` and `descriptions` for both RSA and RDA. For RDAs, the response also includes `long_headline`, `business_name`, `marketing_images`, `square_marketing_images`, and `logo_images` (lists of asset resource names).
+  Performance Max campaigns return **no rows here** — P-MAX has no `ad_group_ad`. Its ad copy lives on asset groups: use `asset_group_assets.list` / `asset_group_assets.replace` below.
   ```
   Required: customer_id (string)
   Optional: ad_group_id (string), status_filter (string)
@@ -234,6 +237,43 @@ immediate request but is not remembered.
   ```
   Required: customer_id, ad_group_id, ad_id (string)
   ```
+
+### asset_group_assets (Performance Max ad copy)
+
+A Performance Max campaign has no `ad_group_ad`, so `ads.list` / `ads.update`
+never see it. Its headlines, long headlines and descriptions are assets linked
+to an **asset group**. These two tools are the P-MAX ad-copy surface — do not
+tell an operator that swapping P-MAX copy is unsupported by the API; it is not.
+
+- `list` -- List the HEADLINE / LONG_HEADLINE / DESCRIPTION assets linked to
+  Performance Max asset groups. Returns one entry per link:
+  `{resource_name, field_type, status, asset_id, text, asset_group_id,
+  asset_group_name, campaign_id, campaign_resource_name}`, in the order the API
+  returned them and not deduplicated. Start here when you have a campaign id but
+  no asset group id.
+  ```
+  Required: customer_id (string)
+  Optional: asset_group_id (string), campaign_id (string)
+  ```
+
+- `replace` -- Swap one headline / long headline / description for new text.
+  **Requires user confirmation.**
+  ```
+  Required: customer_id, asset_group_id (string),
+            field_type (string: "HEADLINE" | "LONG_HEADLINE" | "DESCRIPTION"),
+            old_asset_id (string, from asset_group_assets.list),
+            new_text (string)
+  ```
+  A Google Ads text `Asset` is immutable, so this is not an update: it creates a
+  new `Asset`, links it under the same `field_type`, and removes the old link —
+  all three in ONE atomic mutate, so the asset group's asset count for that
+  field type never dips below the Performance Max minimum. Display-width limits
+  (a full-width character counts as two): HEADLINE 30, LONG_HEADLINE 90,
+  DESCRIPTION 90. Text already linked under the same `field_type` is refused
+  before any write (Google rejects a duplicate link), as is an `old_asset_id`
+  that is not linked under that `field_type`. The old `Asset` itself is not
+  deleted, only its link to this asset group. Not automatically reversible: to
+  undo, call `replace` again with the old text, which `list` reported.
 
 ### keywords
 

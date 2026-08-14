@@ -102,6 +102,7 @@ _MUTATING_BUILTIN_SUFFIXES: frozenset[str] = frozenset(
         "_enable",
         "_disable",
         "_apply",
+        "_replace",
         "_submit",
         "_upload",
         "_send",

@@ -233,6 +233,7 @@ def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
 # Import after _wrap_mutate_error definition (avoid circular import)
 from mureo.google_ads._ads import _AdsMixin  # noqa: E402
 from mureo.google_ads._ads_display import _DisplayAdsMixin  # noqa: E402
+from mureo.google_ads._asset_groups import _AssetGroupsMixin  # noqa: E402
 from mureo.google_ads._extensions import _ExtensionsMixin  # noqa: E402
 from mureo.google_ads._keywords import _KeywordsMixin  # noqa: E402
 from mureo.google_ads._placements import _PlacementsMixin  # noqa: E402
@@ -244,6 +245,7 @@ PARTNER_CPA_WARNING_RATIO: float = 2.0
 class GoogleAdsApiClient(  # type: ignore[misc]
     _AdsMixin,
     _DisplayAdsMixin,
+    _AssetGroupsMixin,
     _KeywordsMixin,
     _PlacementsMixin,
     _MonitoringMixin,
