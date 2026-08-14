@@ -53,6 +53,45 @@
   unrecognised as the invented `logly_ads`, so an action hung off it would
   offer to delete the right entry.
 
+- **`mureo repair platform-key --all` — the same repair across every client on
+  the machine** (#613). A bad key is written by an *agent*, and an agent that
+  ran against every client wrote it into every client's STATE.json. Repairing
+  one document at a time asks a non-engineer to remember which directories
+  exist and gives them no way to notice the one they missed.
+
+  `--all` leads with a **summary**: which clients have unresolvable keys,
+  which are clean, which could not be read, each as "N of M" — the number is
+  the point. The per-client detail follows in the same shape the
+  single-workspace run prints. Dry run stays the default, and `--apply`
+  confirms **once**, with the whole list in view; a prompt per client trains
+  an operator to hold down `y`. Each repaired client is still backed up
+  individually and the `cp` that restores it printed per client.
+
+  One client failing — an unparseable document, a lock it cannot take, a
+  permission error — costs that client and not the run: it is named in the
+  summary, the rest are repaired, and the exit status is non-zero so a script
+  notices. A *finding* is not a failure: a dry run that reports work to do
+  exits `0`. `--all` with `--state-file` is refused (one says "every client",
+  the other says "this one file"); `--all --key` narrows the sweep to one key
+  across every client, which is the shape the incident actually took.
+
+  Which clients exist is **not** a new mechanism. It is the same two optional
+  `StateStore` capabilities the read-only Reports tab already reads —
+  `list_clients()` and `state_store_for_client(slug)` — resolved through
+  `mureo.web.report_clients`, so OSS grows no dependency on the backend that
+  supplies them and there is no second answer to "which clients exist" that
+  can drift from the first. A store declaring neither, which is every OSS
+  install, yields exactly one client — the active workspace — and `--all`
+  reports `Surveyed 1 client.` and repairs it. That count is the honest
+  signal when a registry cannot be read: an operator running twelve clients
+  and told one knows where to look.
+
+  **Archived clients are swept too**, and labelled. Archiving means "stop
+  collecting this client's figures" — a decision about what to fetch next,
+  not a statement that what is already stored is correct. Skipping them would
+  leave the bad key in place to reappear the day the client is restored, on a
+  machine whose operator has no reason to run the sweep again.
+
 ### Fixed
 
 - **A platform key an agent invented was accepted on write, creating a phantom
