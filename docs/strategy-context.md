@@ -391,6 +391,66 @@ What the dashboard does about it:
   that is the only surface it can appear on there);
 - nothing is merged, dropped or reordered. Detection, not repair.
 
+#### Repairing an entry filed under a key mureo cannot resolve
+
+Detection is right for the general case and still leaves one gap: a key that
+names **no platform at all** (`logly_ads` for a bridge whose provider is
+`logly_ads_context`). There is no question about which of two platforms the
+data belongs to, because only one of the two keys names a platform — so this
+one case has a supported repair, and it is the only one:
+
+```bash
+# Show what mureo would do. Changes nothing.
+mureo repair platform-key
+
+# Make the change (asks first; --yes skips the prompt).
+mureo repair platform-key --apply
+
+# Narrow it to one key, or point at another workspace's file.
+mureo repair platform-key --key logly_ads --state-file ./client-a/STATE.json
+```
+
+What it does, and deliberately does not:
+
+- **A dry run is the default**, not a flag. The command prints the key, the ad
+  account, how many campaigns the entry carries, whether it holds a `totals`
+  rollup and which windows it covers with each window's `fetched_at` — for the
+  unresolvable entry *and* for the entry the same ad account is stored under —
+  then states exactly what would change. `--apply` is a second, deliberate
+  step and still asks; with no TTY (an AI agent's shell, a CI runner) it
+  declines rather than proceeding.
+- **It drops the unresolvable entry; it never merges one.** The alternative —
+  moving its figures under the canonical key — is only defensible once you have
+  decided the canonical entry is empty or older, which is a judgement about
+  which of two sets of partial figures is true, and that is precisely what the
+  reporting view refuses to make. Dropping needs no such judgement, and the
+  figures are not lost: the next sync refills the canonical key from the
+  platform itself.
+- **It backs the document up first**, timestamped
+  (`STATE.json.bak.<unix_ns>`, so a second run cannot overwrite the first
+  backup), and prints the `cp` that puts it back. That backup is the undo. The
+  repair is **not** written to `action_log`: that log records changes made to
+  an *ad platform*, every entry names a `platform` and is fed to the rollback
+  planner's MCP-operation allow-list, and a local-file edit has no platform
+  operation to name or reverse — the entry would also have to carry the very
+  key just removed, putting it back on the dashboard's activity feed.
+- **"Resolvable" is not decided twice.** The command asks the same
+  `reject_unknown_platform_key` the write guard asks, including its fail-open
+  behaviour: on an environment whose installed plugins cannot be enumerated,
+  every key counts as resolvable and nothing is proposed for removal.
+- **A duplicate whose two keys both name real platforms is reported, not
+  repaired** — the command says so in as many words and hands the decision
+  back. It is not a general duplicate merger.
+- Only the `platforms` map changes. `last_synced_at` is not re-stamped (a
+  repair is not a sync, and re-stamping it would make every other platform's
+  stale figures read as just-synced), and the legacy flat `campaigns` list is
+  left alone because it is platform-blind — nothing in it says which entries
+  came from the removed key.
+
+The write goes through `write_state_file`, the whole-document funnel the
+create guard deliberately does not police, so a document that is *already*
+duplicated stays repairable.
+
 #### Per-platform freshness
 
 `fetched_at` (the metric-vocabulary key, see *Performance Metrics* in

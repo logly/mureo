@@ -1989,6 +1989,17 @@
         note.textContent = reportsConflictText(row, labels);
         card.appendChild(note);
       });
+      // Where the way out lives (#610). The repair is NOT offered as a
+      // button here: `unrecognized_key` tests whether a key resolves to a
+      // display label, and by that test the CORRECT key in the reported
+      // incident (`logly_ads_context`) is just as unrecognised as the
+      // invented one — so a button hung off this signal would offer to
+      // delete the right entry. The CLI asks #609's resolvability question
+      // directly, in-process. This is a pointer, not an action.
+      const hint = document.createElement("p");
+      hint.className = "report-card-conflict-hint";
+      hint.textContent = MUREO.t("dashboard.reports_conflict_repair_hint");
+      card.appendChild(hint);
     }
 
     const totals =

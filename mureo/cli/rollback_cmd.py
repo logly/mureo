@@ -14,11 +14,12 @@ let an operator see, before executing anything, what mureo would do.
 from __future__ import annotations
 
 import json
-import re
-from pathlib import Path
+from pathlib import Path  # noqa: TCH003 (used at runtime by typer)
 
 import typer
 
+from mureo.cli._state_file import STATE_FILE_OPTION, resolve_default_state_file
+from mureo.cli._tty import terminal_safe as _safe
 from mureo.context.errors import ContextFileError
 from mureo.context.state import read_state_file
 from mureo.core.platform_keys import (
@@ -29,51 +30,12 @@ from mureo.rollback import RollbackPlan, plan_rollback
 
 rollback_app = typer.Typer(name="rollback", help="Inspect reversible actions")
 
-# STATE.json is agent-writable, so any string field it contributes to terminal
-# output is attacker-influenceable. Strip C0/C1 control bytes (including ANSI
-# escape, BEL, CR, and newline) before echo to prevent an agent from clearing
-# the screen, spoofing prompts, or corrupting the column layout of the list
-# view.
-_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")
-
-
-def _safe(value: str) -> str:
-    """Return ``value`` with control characters replaced by ``?``."""
-    return _CONTROL_CHARS.sub("?", value)
-
-
-_STATE_FILE_OPTION = typer.Option(
-    None,
-    "--state-file",
-    help=(
-        "Path to the STATE.json file to inspect. Defaults to the active "
-        "workspace's STATE.json — CWD-relative in the default file-backed "
-        "configuration, or whatever location an installed alternate "
-        "backend exposes via the mureo.runtime_context_factory entry "
-        "point."
-    ),
-)
-
-
-def _resolve_default_state_file() -> Path:
-    """Return the workspace-derived default for ``--state-file``.
-
-    Mirrors the workspace lookup the MCP handlers (rollback, analysis,
-    mureo_context) perform: the file lives at the active StateStore's
-    ``state_path`` if exposed, otherwise ``<workspace>/STATE.json``
-    where workspace falls back to ``Path.cwd()``.
-
-    Lazy import keeps ``mureo.cli.rollback_cmd`` import-time-free of
-    the runtime_context resolver, so Typer's startup remains cheap.
-    """
-    from mureo.core.runtime_context import get_runtime_context
-
-    store = get_runtime_context().state_store
-    attr = getattr(store, "state_path", None)
-    if attr is not None:
-        return Path(attr).resolve()
-    workspace = getattr(store, "workspace", Path.cwd())
-    return Path(workspace) / "STATE.json"
+# ``STATE_FILE_OPTION`` / ``resolve_default_state_file`` are shared with
+# ``mureo repair`` (mureo/cli/_state_file.py): a command that inspects
+# STATE.json and one that rewrites it must resolve the same file by default.
+# ``terminal_safe`` is likewise shared — STATE.json is agent-writable, so
+# every string it contributes to terminal output is scrubbed of control bytes
+# before echo.
 
 
 def _platform_filter_matches(entry_platform: str, wanted: str) -> bool:
@@ -133,7 +95,7 @@ def _load_plans(
 
 @rollback_app.command("list")  # type: ignore[untyped-decorator, unused-ignore]
 def rollback_list(
-    state_file: Path | None = _STATE_FILE_OPTION,
+    state_file: Path | None = STATE_FILE_OPTION,
     platform: str | None = typer.Option(
         None,
         "--platform",
@@ -142,7 +104,7 @@ def rollback_list(
 ) -> None:
     """List action_log entries and whether they can be rolled back."""
     if state_file is None:
-        state_file = _resolve_default_state_file()
+        state_file = resolve_default_state_file()
     plans = _load_plans(state_file, platform=platform)
     if not plans:
         typer.echo("No reversible actions recorded in the action log.")
@@ -165,11 +127,11 @@ def rollback_list(
 @rollback_app.command("show")  # type: ignore[untyped-decorator, unused-ignore]
 def rollback_show(
     index: int = typer.Argument(..., help="Index into STATE.json action_log.", min=0),
-    state_file: Path | None = _STATE_FILE_OPTION,
+    state_file: Path | None = STATE_FILE_OPTION,
 ) -> None:
     """Show the full rollback plan for one action_log entry."""
     if state_file is None:
-        state_file = _resolve_default_state_file()
+        state_file = resolve_default_state_file()
     if not state_file.exists():
         typer.echo(f"Error: STATE.json not found at {state_file}", err=True)
         raise typer.Exit(1)

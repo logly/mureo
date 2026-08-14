@@ -29,6 +29,7 @@ mureo <subcommand-group> <command> [options]
 | `install-desktop` | Wire mureo into Claude Desktop chat (macOS) |
 | `learn` | Append insights to the diagnostic knowledge base |
 | `rollback` | Inspect reversible actions recorded in STATE.json |
+| `repair` | Repair STATE.json problems mureo can fix without guessing |
 
 Run `mureo --help` to see all available groups.
 
@@ -270,6 +271,68 @@ Agent: rollback_apply({index: 0, confirm: true}) → dispatches.
 ### Reverting a whole bulk change
 
 A bulk pass wrapped in a batch (`mureo_batch_begin` / `mureo_batch_end`) is planned as one unit by `rollback_plan_get` with `batch_id` instead of `index` — it reports every member, overall and per-platform coverage (`full` / `partial` / `none`), and the reason each member it cannot reverse. That surface is **MCP-only**: `mureo rollback list` / `show` still work entry by entry, and neither the batch tools nor batch planning has a CLI command today. Ask the agent for the batch plan before applying anything; a batch where only some members can be restored will say so there.
+
+## Repair Commands
+
+`mureo repair` fixes the STATE.json problems mureo can fix **without guessing**. Today that is one: a `platforms` entry filed under a key that names no advertising platform at all — an agent writing LOGLY snapshots under `logly_ads` when the bridge's provider is `logly_ads_context`, for instance. Both keys then carry the same ad account, and the dashboard reports the spend, conversions and CPA as double-counted.
+
+A duplicate whose two keys **both** name real platforms is reported and handed back to you: which of two sets of partial figures is true is a question about money that only you can answer, and mureo will not answer it for you.
+
+```bash
+# Show what mureo would do. Changes nothing — this is the default.
+mureo repair platform-key
+
+# Make the change. Asks for confirmation first.
+mureo repair platform-key --apply
+
+# Skip the prompt (scripts, or when you have already read the dry run).
+mureo repair platform-key --apply --yes
+
+# Narrow it to one key, or point at another workspace's STATE.json.
+mureo repair platform-key --key logly_ads
+mureo repair platform-key --state-file /path/to/STATE.json
+```
+
+The dry run names the key, the ad account, how many campaigns the entry carries, whether it holds a `totals` rollup and which windows it covers with each window's fetch time — for the unresolvable entry **and** for the entry the same ad account is stored under — then states exactly what would change:
+
+```
+  logly_ads — mureo cannot resolve this key.
+    It is not one of mureo's own platform names, no plugin installed here
+    registers it, and it is not a plugin:<distribution>:<provider> key. So no
+    platform's data can belong to it.
+
+    This entry holds:
+      ad account:  1234567890
+      campaigns:   1
+      totals:      stored, covering LAST_30_DAYS, fetched 2026-08-01T03:00:00+00:00
+      periods:     LAST_30_DAYS (fetched 2026-08-01T03:00:00+00:00)
+
+    The same ad account is also stored under a key mureo CAN resolve, which
+    holds:
+      logly_ads_context
+        campaigns:   1
+        totals:      stored, covering LAST_30_DAYS, fetched 2026-08-12T03:00:00+00:00
+        periods:     none stored
+
+    Would change: the whole logly_ads entry is removed from STATE.json.
+    Would NOT change: no figures are added together, moved or edited, and every
+    other platform entry is left exactly as it is.
+    Afterwards: the next sync refills logly_ads_context from the platform itself.
+```
+
+Nothing is ever merged or summed: two partial entries added together over-count exactly as much as dropping one under-counts. The unresolvable entry is **removed**, and the next sync refills the key the account is really stored under.
+
+`--apply` backs STATE.json up first, timestamped, and prints the command that restores it:
+
+```
+Backed up STATE.json to /path/to/STATE.json.bak.1786664790525084000
+If this turns out wrong, put it back with:
+  cp "/path/to/STATE.json.bak.1786664790525084000" "/path/to/STATE.json"
+```
+
+That backup is the undo. The repair is not recorded in `action_log`: that log records changes made to an *ad platform* and feeds the rollback planner, and a local-file edit has neither a platform operation to name nor one to reverse. With no TTY — an AI agent's shell, a CI runner — `--apply` declines rather than proceeding, so nothing destructive happens where the question could not be asked.
+
+The same finding is flagged on the configure UI's Reports cards, which now name this command.
 
 ## BYOD Commands (Bring Your Own Data)
 

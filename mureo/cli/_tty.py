@@ -13,14 +13,31 @@ This module adds:
 - :func:`confirm_or_default` — a drop-in replacement for
   ``typer.confirm`` that takes ``default`` when no TTY is present and
   honors an explicit ``override`` (for CLI flags) without prompting.
+- :func:`terminal_safe` — scrub control bytes out of a string that came
+  from an agent-writable file before it is echoed.
 """
 
 from __future__ import annotations
 
+import re
 import sys
 
 import click
 import typer
+
+#: C0/C1 control bytes — ANSI escape, BEL, CR and newline included.
+#:
+#: STATE.json and the files beside it are agent-writable, so any string they
+#: contribute to terminal output is attacker-influenceable. Left in, an agent
+#: could clear the operator's screen, spoof a prompt (including a
+#: confirmation prompt), or corrupt a column layout so a repair preview reads
+#: as something other than what it says.
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")
+
+
+def terminal_safe(value: str) -> str:
+    """Return ``value`` with every control character replaced by ``?``."""
+    return _CONTROL_CHARS.sub("?", value)
 
 
 def is_tty() -> bool:

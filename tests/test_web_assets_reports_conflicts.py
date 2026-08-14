@@ -404,3 +404,31 @@ def test_the_period_fallback_asks_hasfigures_not_the_rendered_values() -> None:
     fallback = fetch.split("if (!kpis.hasFigures", 1)[1]
     for withheld in ("kpis.spend", "kpis.conversions", "kpis.cpa"):
         assert withheld not in fallback, f"the fallback reads {withheld}"
+
+
+@pytest.mark.unit
+def test_a_conflicted_platform_card_points_at_the_repair_command() -> None:
+    """#610 — the card is where the finding surfaces, so it is where the way
+    out has to be named. Without it the operator is told what is wrong and
+    told mureo will not fix it, and the only remaining move is editing
+    STATE.json by hand.
+
+    A pointer, not a button: ``unrecognized_key`` tests whether a key
+    resolves to a display LABEL, and by that test the correct key in the
+    reported incident (``logly_ads_context``) is just as unrecognised as the
+    invented one — so an action hung off this signal would offer to delete
+    the right entry. The card therefore names the command and nothing more.
+    """
+    js = _read("dashboard.js")
+    css = _read("app.css")
+    catalog = json.loads(_read("i18n.json"))
+    assert "dashboard.reports_conflict_repair_hint" in js
+    assert "report-card-conflict-hint" in js
+    assert ".report-card-conflict-hint" in css
+    for locale in ("en", "ja"):
+        text = catalog[locale]["dashboard.reports_conflict_repair_hint"]
+        assert "mureo repair platform-key" in text
+    # No mutating control is offered from the read-only Reports view.
+    assert "repair platform-key" not in js.replace(
+        "dashboard.reports_conflict_repair_hint", ""
+    )
