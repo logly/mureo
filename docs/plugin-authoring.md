@@ -546,6 +546,15 @@ Rules the server enforces (a non-conforming provider is skipped with a
   name (e.g. `acme_ads_list_campaigns`). Built-in tool names are
   reserved — a colliding plugin tool is dropped (built-ins win), and a
   name already taken by an earlier plugin is dropped (first wins).
+  Your **guardrail declarations go with the dropped tool**: mureo keys
+  the budget/bid registries and the `readOnlyHint` registry by tool name
+  alone, so a dropped tool contributes no declaration and every mureo
+  guardrail on that name follows the plugin that won it. The drop is
+  reported as a `PluginToolWarning` and on the log, naming both
+  distributions and both providers, and it never stops the server —
+  but an operator running two bridges that share a generic name like
+  `update_campaign` has one of them silently unavailable until they
+  look. A prefix is the only reliable fix.
 - **Keep `inputSchema` honest — mureo enforces it server-side.** Since
   #324 the dispatcher validates every call against your declared
   `inputSchema` *before* it reaches your handler and rejects a violation
