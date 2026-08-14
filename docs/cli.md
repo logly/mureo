@@ -351,9 +351,11 @@ Surveyed 6 clients.
     acme (Acme Co) — logly_ads
     beta (Beta Ltd) — logly_ads
 
-  Clean (3 of 6):
-    gamma (Gamma KK)
+  Need your decision (1 of 6):
     epsilon (Epsilon GmbH) [archived] — one ad account under two real platform keys (see below)
+
+  Clean (2 of 6):
+    gamma (Gamma KK)
     zeta (Zeta SA) — no STATE.json yet
 
   Could not be read (1 of 6):
@@ -363,6 +365,7 @@ Surveyed 6 clients.
 The per-client detail follows, in the same shape as the single-workspace run, for every client that has a finding. Then:
 
 - **Dry run is still the default.** `--all` on its own changes nothing.
+- **`Need your decision` is its own group, not a footnote under `Clean`.** An ad account stored under two keys that *both* name real platforms is still double-counted; mureo simply will not choose which entry to drop, because the two usually hold different partial figures. It is not a repair this command can make, and it is not clean either — so it is counted separately rather than qualified after an em dash in a line you would skim.
 - **`--all --apply` asks once**, with the whole list in view — not once per client. A prompt per client teaches you to hold down `y`, which is the opposite of what a confirmation is for. Every repaired client is still backed up individually, and the `cp` that restores it is printed per client.
 - **One client failing does not stop the sweep.** An unparseable STATE.json, a lock it cannot take, a permission error — that client is named in the summary and under `Could not be read`, the rest are repaired, and the command exits non-zero so a script notices. A *finding* is not a failure: a dry run that reports work to do exits `0`.
 - **`--all` and `--state-file` are refused together.** One says "every client", the other says "this one file".

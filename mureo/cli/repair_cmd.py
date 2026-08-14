@@ -506,9 +506,29 @@ def _echo_survey_summary(
         total,
         lambda s: ", ".join(_safe(r.entry.key) for r in s.repairs),
     )
+    # A client mureo will not touch is not therefore finished. An account
+    # stored under two keys that BOTH name real platforms is still
+    # double-counting, and mureo deliberately will not choose between them —
+    # so it gets its own group rather than a note hung off "Clean". The
+    # operator this command is for reads "Clean (3 of 6)" as "three are
+    # fine"; a qualifier after an em dash is exactly what they skim past.
+    _echo_survey_group(
+        "Need your decision",
+        [
+            s
+            for s in surveys
+            if not s.repairs and not s.error and _undecidable_groups(s.doc)
+        ],
+        total,
+        lambda _s: "one ad account under two real platform keys (see below)",
+    )
     _echo_survey_group(
         "Clean",
-        [s for s in surveys if not s.repairs and not s.error],
+        [
+            s
+            for s in surveys
+            if not s.repairs and not s.error and not _undecidable_groups(s.doc)
+        ],
         total,
         _clean_note,
     )
@@ -538,19 +558,16 @@ def _echo_survey_group(
 
 
 def _clean_note(survey: ClientSurvey) -> str:
-    """Why a client with no repairable entry may still not be finished.
+    """Why a "clean" client may still not be the one holding the figures.
 
-    "Clean" here means only "nothing mureo will remove". A client whose
-    account is stored under two keys that BOTH name real platforms is still
-    double-counting, and a client with no STATE.json at all is not the one
-    holding the figures the operator is looking for — both are said out loud
-    rather than folded into a reassuring word.
+    A client that has never synced has nothing to repair and nothing to
+    double-count, but it also has none of the numbers the operator came
+    looking for — so it is said out loud rather than folded into a
+    reassuring word. The other not-really-clean case, an account stored
+    under two keys that both name real platforms, is not here: it has its
+    own summary group.
     """
-    if survey.missing:
-        return "no STATE.json yet"
-    if _undecidable_groups(survey.doc):
-        return "one ad account under two real platform keys (see below)"
-    return ""
+    return "no STATE.json yet" if survey.missing else ""
 
 
 def _echo_survey_details(surveys: tuple[ClientSurvey, ...]) -> None:

@@ -195,6 +195,50 @@ class TestSurvey:
         assert "beta" in out
         assert "gamma" in out
 
+    def test_an_undecidable_duplicate_is_not_counted_as_clean(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Its own group, not a note hung off "Clean".
+
+        A client whose account sits under two keys that BOTH name real
+        platforms is still double-counting; mureo just will not choose which
+        entry to drop. Counting it in "Clean (N of M)" tells the operator
+        this command is written for — a non-engineer sweeping every client —
+        that it is fine, and the qualifier after the em dash is exactly what
+        a person skimming a summary does not read.
+        """
+        paths = {
+            slug: tmp_path / slug / "STATE.json" for slug in ("acme", "delta", "gamma")
+        }
+        _bad_state(paths["acme"], "1111111111")
+        _write(
+            paths["delta"],
+            {
+                "version": "2",
+                "platforms": {
+                    "google_ads": {"account_id": "4444444444"},
+                    "logly_ads_context": {"account_id": "4444444444"},
+                },
+            },
+        )
+        _clean_state(paths["gamma"], "3333333333")
+        stores = {slug: _ClientStore(path) for slug, path in paths.items()}
+        rows = [
+            {"slug": "acme", "name": "Acme Co", "active": True},
+            {"slug": "delta", "name": "Delta Inc", "active": False},
+            {"slug": "gamma", "name": "Gamma KK", "active": False},
+        ]
+        _install_store(monkeypatch, _AgencyStore(paths["acme"], rows, dict(stores)))
+
+        result = _run("--all")
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "Need repair (1 of 3)" in out
+        assert "Need your decision (1 of 3)" in out
+        # The one genuinely finished client is the only one called clean.
+        assert "Clean (1 of 3)" in out
+
     def test_the_summary_comes_before_the_per_client_detail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
