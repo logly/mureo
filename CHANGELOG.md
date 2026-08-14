@@ -54,6 +54,19 @@
 
 ### Fixed
 
+- **Four test modules edited `GoogleAdsException` for the rest of the
+  session.** Each built a fake exception with `__new__` and then attached a
+  fake `failure` through `type(exc).failure = property(...)`. `type(exc)` is
+  the class itself, and nothing put it back — so once any of those modules
+  had run, the real `__init__` (`self.failure = failure`) hit a read-only
+  property and raised `AttributeError: can't set attribute` in **every module
+  collected afterwards**. Invisible when a file was run on its own, which is
+  why it survived. `failure` is a plain instance attribute, so the property
+  was never needed; assigning it on the instance gives the same fake and
+  leaves the class alone. A fifth site did the same to `MagicMock` itself, so
+  every mock in the session grew a `long_headline` property. An AST sweep now
+  fails on any assignment through `type(...)` under `tests/`.
+
 - **Two plugins shipping the same tool name lost one plugin's guardrails
   without saying whose** (#589). mureo's three plugin declaration registries —
   the budget keys, the bid keys and the `readOnlyHint` that decide whether a

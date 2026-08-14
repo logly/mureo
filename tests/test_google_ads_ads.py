@@ -48,10 +48,14 @@ def _make_google_ads_exception(
     failure = MagicMock()
     failure.errors = [error]
     exc = GoogleAdsException.__new__(GoogleAdsException)
-    exc._failure = failure
+    # Assign on the INSTANCE. `type(exc)` is GoogleAdsException itself, so a
+    # class-level property here would edit the class for the rest of the
+    # session and make the real __init__ (`self.failure = failure`) raise
+    # AttributeError in every module collected afterwards. `failure` is a
+    # plain instance attribute, so the property was never needed.
+    exc.failure = failure
     exc._call = MagicMock()
     exc._request_id = "req-123"
-    type(exc).failure = property(lambda self: self._failure)
     return exc
 
 
@@ -737,18 +741,20 @@ class TestCreateDisplayAd:
         def capture_long_headline(value: str) -> None:
             captured_long_headline_text["text"] = value
 
-        type(original_set).long_headline = property(
-            lambda self: type(
-                "LH",
-                (),
-                {
-                    "text": property(
-                        lambda s: captured_long_headline_text.get("text", ""),
-                        lambda s, v: captured_long_headline_text.__setitem__("text", v),
-                    )
-                },
-            )()
-        )
+        # Assign on the INSTANCE. `original_set` is a MagicMock child, so
+        # `type(original_set)` is MagicMock itself — a property installed there
+        # would give every MagicMock in the session a `long_headline`, and
+        # nothing puts it back. A single stub instance captures the same writes.
+        original_set.long_headline = type(
+            "LH",
+            (),
+            {
+                "text": property(
+                    lambda s: captured_long_headline_text.get("text", ""),
+                    lambda s, v: captured_long_headline_text.__setitem__("text", v),
+                )
+            },
+        )()
 
         with (
             patch.object(client, "upload_image_asset", side_effect=mock_upload),
