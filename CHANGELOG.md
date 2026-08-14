@@ -155,6 +155,43 @@
   P-MAX headlines and descriptions is "not supported by the API". That is
   wrong, and the Google Ads skill now says so explicitly.
 
+- **A period report shipped whole while a platform was unreadable** (#602).
+  `/daily-check` gained the auth-failure branch in #580; `/weekly-report` and
+  `/monthly-report` did not. When a platform's credentials were missing or its
+  token had been rejected, both runs completed and produced a report that
+  looked complete: auth-failure prose where the numbers belonged, next to real
+  figures from the platforms that did answer, followed by the usual
+  recommendations.
+
+  For a period report the misread is worse than for a daily one. The figures
+  are period totals, they are compared against a prior period, and a monthly
+  report is written for a client to read and quote. A cross-platform total
+  computed **without** a platform, set beside a prior total that **included**
+  it, manufactures a decline out of a credential problem — and the monthly MoM
+  baseline is exactly where this bites, because step 4 takes it from
+  STATE.json's persisted rollup or the previous report's `kpis`, both written
+  when the platform was still readable.
+
+  Both skills now branch on the machine-readable envelope every platform
+  already returns (`{"status": "auth_error", "auth_cause": "no_credentials" |
+  "token_invalid", "detail": ...}`), using the wording `/daily-check` carries:
+  the report opens by marking itself **partial**, names each affected platform
+  with its cause and its recovery (configure the credential vs. re-authorize a
+  rejected one), and withholds every verdict, comparison and recommendation
+  that depends on the missing platform's numbers. The period-over-period rule
+  is stated explicitly: an unreadable platform's WoW / MoM line is *unknown* —
+  never `0`, never `-100%`, never a blank cell — and a partial period is
+  either restated against the same set of platforms that answered, with the
+  total labelled to say so, or the comparison is withheld and the blocking
+  platform named.
+
+  Neither skill may persist a number it did not read: the unreadable
+  platform's `kpis` entry is omitted rather than zeroed, and the partial read
+  is recorded as a flag and in the narrative. Without that, one period's
+  credential problem becomes the next period's baseline and shows up twice.
+  The #440 rule is untouched — one platform failing degrades the report, it
+  never aborts the run.
+
 ## [0.10.45] - 2026-08-14
 
 ### Fixed
