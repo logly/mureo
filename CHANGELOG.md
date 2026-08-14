@@ -1,5 +1,57 @@
 ## [Unreleased]
 
+### Added
+
+- **Performance Max ad copy can now be read and changed from mureo** (#590).
+  Asking for the current ad copy of a P-MAX campaign returned nothing, and
+  asking to swap a headline could not be fulfilled by any tool — the change
+  had to be made by hand in the Google Ads UI. P-MAX has no `ad_group_ad`, so
+  every ad-text query in the tree missed it: its headlines, long headlines and
+  descriptions are assets linked to an **asset group** through
+  `asset_group_asset`.
+
+  Two new Google Ads MCP tools (91 total, 221 across all families):
+
+  - `google_ads_asset_group_assets_list` — the HEADLINE / LONG_HEADLINE /
+    DESCRIPTION assets linked to Performance Max asset groups, optionally
+    filtered by `asset_group_id` or `campaign_id`. Each entry carries the
+    `asset_id`, the text, the link status and the `asset_group_asset`
+    resource name, plus the asset group and campaign it belongs to. Entries
+    are returned in the order the API returned them and are **not**
+    deduplicated: two links carrying identical text are two entries, because
+    that is what the asset group has.
+  - `google_ads_asset_group_assets_replace` — swaps one of them for new text.
+
+  A Google Ads text `Asset` is immutable, so the swap is not an update: it
+  creates a new `Asset`, links it under the same `field_type`, and removes the
+  old link. All three operations go in **one** atomic
+  `GoogleAdsService.mutate`, creates before the removal, so the asset group's
+  asset count for that field type never dips below the Performance Max
+  minimum — a removal issued on its own can be refused with
+  `AssetGroupError.NOT_ENOUGH_HEADLINE_ASSET` (or the long-headline /
+  description twin), and split across two round trips it would leave the asset
+  group short in between. `partial_failure` is deliberately not set for the
+  same reason. Should Google refuse on asset-count grounds anyway, the tool
+  says what that means and what to do instead of passing the raw API error up.
+
+  Two refusals happen before any write, from a single read: an `old_asset_id`
+  that is not linked to that asset group under that `field_type` (the error
+  lists what is), and text that is already linked under the same `field_type`
+  (Google rejects a duplicate link). Text is checked against the per-field
+  display-width limits — HEADLINE 30, LONG_HEADLINE 90, DESCRIPTION 90 — with
+  a full-width character counting as two, the same measure the RSA validator
+  uses.
+
+  The old `Asset` itself is not deleted; only its link to that asset group is.
+  The swap is not automatically reversible: to undo it, call the tool again
+  with the old text, which the list tool reported. This matches
+  `google_ads_ads_update`, the comparable RSA text edit, which records no
+  before-state either.
+
+  Also corrects the record: a previous session told an operator that swapping
+  P-MAX headlines and descriptions is "not supported by the API". That is
+  wrong, and the Google Ads skill now says so explicitly.
+
 ### Fixed
 
 - **Two plugins shipping the same tool name lost one plugin's guardrails

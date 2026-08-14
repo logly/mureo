@@ -33,6 +33,8 @@ mureo/
 │   ├── _placement_mappers.py # Negative-placement + group_placement_view row mappers (#544/#547)
 │   ├── _ads.py          # AdsMixin (RSA create/update/status/list)
 │   ├── _ads_display.py  # DisplayAdsMixin (RDA create + RDAUploadError)
+│   ├── _asset_groups.py # AssetGroupsMixin (Performance Max asset-group text: read +
+│   │                    #   swap via one atomic GoogleAdsService.mutate, #590)
 │   ├── _keywords.py     # KeywordsMixin (add/remove/suggest/diagnose)
 │   ├── _placements.py   # PlacementsMixin (negative placements: sites/apps/app categories, #544)
 │   ├── _analysis.py     # AnalysisMixin aggregator, composing the split modules below
@@ -229,6 +231,7 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Device | `device.analyze` |
 | CPC | `cpc.detect_trend` |
 | Assets | `assets.upload_image`, `image_assets.list` |
+| Performance Max (#590) | `asset_group_assets.list`, `asset_group_assets.replace` — P-MAX ad copy lives on `asset_group_asset`, not `ad_group_ad` |
 
 ### Meta Ads
 
@@ -386,7 +389,7 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 
 When working on mureo:
 - New ad-platform handlers MUST call `mureo/mcp/_client_factory.get_*_client(...)` for the BYOD path; real-mode dispatch can call `create_*_client` directly to keep test mocks at `mureo.mcp._handlers_*.create_*_client` working.
-- BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`, `boost_`, `end_`, `duplicate_`, `export_`) return `{"status": "skipped_in_byod_readonly"}`. The authoritative list is `_MUTATION_PREFIXES` in `mureo/byod/clients.py` (25 prefixes).
+- BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`, `boost_`, `end_`, `duplicate_`, `export_`) return `{"status": "skipped_in_byod_readonly"}`. The authoritative list is `_MUTATION_PREFIXES` in `mureo/byod/clients.py` (26 prefixes).
 - New bundle adapters live in `mureo/byod/adapters/<platform>.py` and must implement `has_tab(workbook)` (returns True when the workbook contains the adapter's required sheet/header signature) and `normalize_from_workbook(workbook, dst_dir)` (writes CSVs to `dst_dir`, returns an `ImportResult`). Both adapters (Google Ads and Meta Ads) import the shared helper `sanitize_cell` from `mureo/byod/adapters/_csv_safe.py` and apply it to every user-controlled cell against CSV injection (it prefixes formula triggers `=`, `+`, `-`, `@`, tab, CR with a single quote), then write to the mureo internal schema documented in `docs/byod.md`.
 - Bundle imports MUST never escape `~/.mureo/byod/` — `bundle.py` and `installer.remove_platform` both enforce path-traversal guards.
 - See `docs/byod.md` for the user-facing walkthrough and the recommended Saved Report configuration for Meta Ads (multilingual: 9 locales).
