@@ -340,6 +340,16 @@ _PLUGIN_THROTTLER = Throttler(PLUGIN_THROTTLE)
 # metadata (annotations.readOnlyHint + optional meta["mureo"]). No new
 # ABI surface. A declared throttle hint gets its own bucket; everything
 # else shares _PLUGIN_THROTTLER. Undeclared ⇒ mutating (conservative).
+#
+# Keyed by BARE tool name, and that is safe rather than lucky (#589):
+# ``collect_plugin_tools`` already dedupes tool names first-wins, dropping the
+# duplicate from BOTH ``_PLUGIN_TOOLS`` and ``_PLUGIN_DISPATCH`` and naming the
+# two distributions involved. So this map — and the three declaration
+# registries fed from it below — holds the semantics of the ONE tool that is
+# actually dispatchable under that name. A second distribution's declaration
+# can never be paired with a first distribution's tool, which is what re-keying
+# by ``(distribution, name)`` would have bought; what identity is needed for is
+# the *message*, and that is emitted where identity lives, at collection.
 _PLUGIN_SEMANTICS: dict[str, ToolSemantics] = {
     t.name: derive_semantics(t) for t in _PLUGIN_TOOLS
 }

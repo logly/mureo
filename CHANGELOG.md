@@ -2,6 +2,39 @@
 
 ### Fixed
 
+- **Two plugins shipping the same tool name lost one plugin's guardrails
+  without saying whose** (#589). mureo's three plugin declaration registries —
+  the budget keys, the bid keys and the `readOnlyHint` that decide whether a
+  tool is treated as read-only and how its money changes are gated — are keyed
+  by bare tool name, with no distribution behind it. Two honest bridges both
+  shipping `update_campaign` is enough to make that matter.
+
+  The registries themselves turn out to be safe: mureo already drops a
+  duplicate plugin tool name at discovery, first-installed wins, so exactly one
+  tool per name is ever exposed and the declaration held under a name always
+  belongs to the tool that name dispatches to. A declaration from one
+  distribution can never be paired with another distribution's tool. What was
+  wrong was the *reporting*: the drop was announced as a warning naming only
+  the losing provider's entry-point name, with neither distribution named and
+  no mention that the dropped tool's budget/bid caps and `readOnlyHint` went
+  with it. An operator with two bridges installed had no way to tell which one
+  was silently no longer being enforced.
+
+  That message now names both distributions and both providers, says the
+  dropped tool is not callable and that its guardrail declarations are gone
+  with it, and is written to the log as well as to `warnings` — stderr from a
+  stdio MCP server is routinely swallowed by the client. Separately, a
+  conflicting re-registration through the public `register_budget_declaration`
+  / `register_bid_declaration` / `register_read_only_hint` API (the path a
+  sibling bridge can still take) is logged with the tool name and both values.
+
+  Deliberately **not** fatal. A colliding pair costs the operator one
+  unavailable tool, not an unguarded money path, and these registries are
+  populated at import — refusing to start would let one bad plugin pair stop
+  mureo from starting at all, including the surfaces the operator would use to
+  uninstall it. Re-registration also still takes the last write, so a bridge's
+  deliberate override keeps working; it is now announced rather than silent.
+
 - **`/daily-check` invented figures for a platform whose tools were not in the
   session** (#586). A hosted connector was disconnected host-side, so its
   whole tool namespace (`tt-ads-*`) was missing from the run. The platform is
