@@ -1,4 +1,4 @@
-"""``mureo repair platform-key --all`` — the whole-machine sweep (#613).
+"""``mureo repair platform-key --all`` — the whole-machine sweep (#614).
 
 The incident the command exists for spans EVERY client directory on the
 affected machine, and the operator is a non-engineer. Running the

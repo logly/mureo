@@ -54,7 +54,7 @@
   offer to delete the right entry.
 
 - **`mureo repair platform-key --all` — the same repair across every client on
-  the machine** (#613). A bad key is written by an *agent*, and an agent that
+  the machine** (#614). A bad key is written by an *agent*, and an agent that
   ran against every client wrote it into every client's STATE.json. Repairing
   one document at a time asks a non-engineer to remember which directories
   exist and gives them no way to notice the one they missed.
