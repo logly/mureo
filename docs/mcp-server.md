@@ -1045,7 +1045,7 @@ An auth failure is returned as a result, not raised as an exception — but it i
 
 Both causes are produced centrally, so every platform behaves identically: `no_credentials` from the shared `_no_creds_result` helper, `token_invalid` from `@api_error_handler` when the underlying exception is an auth failure (`PlatformAuthError`, an HTTP 401/403, or a Google Ads `authentication_error` / `authorization_error`). The vocabulary lives in `mureo/core/auth_failure.py`.
 
-**An agent must never render an `auth_error` result as data.** A platform that could not be read is not a platform that was quiet, and a report containing one is partial — see the `/daily-check` skill's partial-report rule. mureo also treats the envelope as a failed call internally: a mutation that returns it is never written to `action_log`.
+**An agent must never render an `auth_error` result as data.** A platform that could not be read is not a platform that was quiet, and a report containing one is partial — see the partial-report rule in the `/daily-check`, `/weekly-report` and `/monthly-report` skills. In the two period reports it goes further: a period missing a platform is never compared against a prior period that had it, and the unreadable platform's KPI is omitted from the persisted rollup rather than written as `0`, because that rollup is the next period's baseline. mureo also treats the envelope as a failed call internally: a mutation that returns it is never written to `action_log`.
 
 ### API Errors
 
