@@ -36,15 +36,21 @@ Design constraints
   in the registry, not a guarantee this layer can make.
 - **Built-ins win on name collision**; first plugin wins on
   plugin↔plugin collision — mirroring the registry's dedupe policy so
-  a later-installed plugin cannot shadow a core tool.
+  a later-installed plugin cannot shadow a core tool. A plugin↔plugin
+  drop is reported naming BOTH distributions (#589): it silently takes
+  the dropped tool's guardrail declarations with it, so an operator has
+  to be able to see which of two installed packages lost.
 """
 
 from __future__ import annotations
 
 import contextlib
 import inspect
+import logging
 import warnings
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -254,13 +260,68 @@ def _collect_one(
             )
             continue
         if tool_name in dispatch:
-            _warn(
-                f"provider {label!r}: tool {tool_name!r} already provided by "
-                f"an earlier plugin; duplicate dropped (first wins)"
+            message = _duplicate_tool_name_message(
+                tool_name, dispatch[tool_name], entry
             )
+            _warn(message)
+            # Also on the logger, not only as a ``warnings`` line: this drops
+            # one distribution's guardrail declarations along with its tool,
+            # and stderr from a stdio MCP server is routinely swallowed by
+            # the client. An operator has to be able to find this afterwards.
+            logger.warning("%s", message)
             continue
         tools.append(tool)
         dispatch[tool_name] = instance
+
+
+#: Rendered in place of a distribution mureo could not attribute. Never
+#: ``None``: a message reading "distribution None" tells an operator nothing
+#: about which package to look for.
+UNKNOWN_DISTRIBUTION = "<unknown distribution>"
+
+
+def _identity_label(distribution: str | None, provider_name: str | None) -> str:
+    """Name one side of a collision the way the audit trail names a call.
+
+    ``plugin:<distribution>:<provider>`` is the canonical platform key (#537),
+    and both halves are needed: one distribution can ship several providers
+    (``mureo-lineyahoo-bridge`` ships three), so the distribution alone would
+    not tell an operator which of them to look at.
+    """
+    dist = distribution or UNKNOWN_DISTRIBUTION
+    provider = provider_name or "<unknown provider>"
+    return f"distribution {dist!r} (provider {provider!r})"
+
+
+def _duplicate_tool_name_message(
+    tool_name: str, incumbent: object, challenger: ProviderEntry
+) -> str:
+    """Describe a plugin↔plugin tool-name collision, naming BOTH sides (#589).
+
+    The drop itself is not new — first-wins dedupe has always happened here,
+    and it is what keeps mureo's three bare-name declaration registries
+    honest: exactly one tool per name survives into ``_PLUGIN_TOOLS``, so the
+    declaration a registry ends up holding always belongs to the tool that is
+    actually dispatchable. The two can never disagree, which is why those
+    registries do not need a ``(distribution, name)`` key.
+
+    What was missing is that the operator could not see *whose* guardrails
+    went away: the message named the losing provider's entry-point name only,
+    with no distribution on either side and no mention of the incumbent. Both
+    are known right here — the incumbent through the breadcrumb stamped on its
+    instance, the challenger through its registry entry — so both are named.
+    """
+    return (
+        f"tool {tool_name!r} is shipped by two plugins: "
+        f"{_identity_label(plugin_source(incumbent), plugin_provider_name(incumbent))} "
+        f"already provides it, and "
+        f"{_identity_label(challenger.source_distribution, challenger.name)} "
+        f"ships the same name; the duplicate is dropped (first wins). Only one "
+        f"plugin can own a tool name, so the dropped tool is not callable and "
+        f"its budget/bid declarations and readOnlyHint are dropped with it — "
+        f"every mureo guardrail on {tool_name!r} follows the plugin that won. "
+        f"Uninstall one of the two if that is not the one you meant."
+    )
 
 
 def plugin_source(provider: object) -> str:
