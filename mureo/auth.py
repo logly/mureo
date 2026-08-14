@@ -418,6 +418,76 @@ _TOKEN_REFRESH_THRESHOLD_DAYS = 53
 _META_GRAPH_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token"
 _refresh_lock = asyncio.Lock()
 
+#: Caps on the Graph-authored fields quoted in a refresh failure (#605).
+#: ``error.message`` is unbounded free text; the numeric codes are numeric only
+#: by convention, so bound those too rather than trusting the envelope.
+_GRAPH_ERROR_MESSAGE_MAX_CHARS = 200
+_GRAPH_ERROR_CODE_MAX_CHARS = 32
+
+#: What a refusal reports when the body is not the ``{"error": {...}}``
+#: envelope — an HTML proxy page, a Graph outage, plain junk. The status code
+#: still travels with it; the body itself never does.
+_NO_GRAPH_ERROR_DETAIL = "no error detail in response body"
+
+
+class MetaTokenRefreshError(ValueError):
+    """A Meta token refresh failed with a message mureo itself composed.
+
+    The distinction matters at the log site. Every message raised as this type
+    is assembled here out of a status code and a curated, bounded slice of
+    Graph's error envelope, so it is safe to write to
+    ``~/.mureo/logs/configure.log`` verbatim. Anything else reaching that
+    ``except`` — an httpx transport error, whose text can embed the request URL
+    — gets its class name logged and nothing more.
+
+    Subclasses :class:`ValueError` to keep the documented ``Raises:`` contract
+    of :func:`_call_refresh_api` (and its callers' ``except ValueError``) intact.
+    """
+
+
+def _truncate(value: str, limit: int) -> str:
+    """``value`` bounded to ``limit`` characters, marked when it was cut."""
+    return value if len(value) <= limit else value[:limit] + "..."
+
+
+def _one_log_line(value: str) -> str:
+    """Collapse newlines so platform-authored text cannot forge a log record."""
+    return " ".join(value.split())
+
+
+def _graph_error_detail(resp: httpx.Response) -> str:
+    """A curated, bounded rendering of a Meta Graph error body (#605).
+
+    Quotes ``error.message`` / ``error.code`` / ``error_subcode`` and nothing
+    else. ``resp.text`` is content Graph chose, of unbounded length, and the
+    whole of it used to be interpolated into the raised exception and then
+    written to disk with a traceback. Anything that is not the expected error
+    envelope yields :data:`_NO_GRAPH_ERROR_DETAIL` rather than a fallback to
+    the raw body — the fallback is the leak.
+    """
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001 — tolerate non-JSON error bodies
+        return _NO_GRAPH_ERROR_DETAIL
+
+    err = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(err, dict):
+        return _NO_GRAPH_ERROR_DETAIL
+
+    parts: list[str] = []
+    message = err.get("message")
+    if message:
+        parts.append(
+            _truncate(_one_log_line(str(message)), _GRAPH_ERROR_MESSAGE_MAX_CHARS)
+        )
+    for field_name, label in (("code", "code"), ("error_subcode", "subcode")):
+        value = err.get(field_name)
+        if value is not None:
+            rendered = _truncate(_one_log_line(str(value)), _GRAPH_ERROR_CODE_MAX_CHARS)
+            parts.append(f"{label}={rendered}")
+
+    return " | ".join(parts) if parts else _NO_GRAPH_ERROR_DETAIL
+
 
 async def refresh_meta_token_if_needed(
     credentials: MetaAdsCredentials,
@@ -448,8 +518,17 @@ async def refresh_meta_token_if_needed(
 
         try:
             new_token, new_obtained_at = await _call_refresh_api(credentials)
-        except Exception:
-            logger.warning("Failed to refresh Meta Ads token", exc_info=True)
+        except MetaTokenRefreshError as exc:
+            # Composed here from the status code and curated Graph fields, so
+            # it is safe verbatim — and it is the ONLY record of a refresh that
+            # otherwise fails silently on every Meta call (#578).
+            logger.warning("Failed to refresh Meta Ads token: %s", exc)
+            return credentials
+        except Exception as exc:
+            # Transport-level failures. httpx exception text can embed the
+            # request URL, so name the type and stop there; no exc_info, whose
+            # traceback re-prints str(exc) and follows __cause__ (#603, #605).
+            logger.warning("Failed to refresh Meta Ads token (%s)", type(exc).__name__)
             return credentials
 
         refreshed = replace(
@@ -461,7 +540,7 @@ async def refresh_meta_token_if_needed(
         resolved = path if path is not None else _resolve_write_path()
         try:
             _save_meta_token(resolved, new_token, new_obtained_at)
-        except Exception:
+        except Exception as exc:
             # The refreshed token works for THIS process (returned below) but is
             # not on disk, so every future process re-refreshes from the aging
             # stored token. If the underlying cause (read-only mount, bad perms,
@@ -469,13 +548,17 @@ async def refresh_meta_token_if_needed(
             # Meta calls will start failing with an expired-token error that
             # looks unrelated. Surface an actionable warning rather than a bare
             # "failed to save".
+            # The exception CLASS, not the exception: PermissionError vs
+            # ConfigWriteError already separates "read-only mount / bad perms"
+            # from "corrupt credentials.json", and the ``except`` is broad
+            # enough that a traceback here is an uncurated write to disk (#605).
             logger.warning(
                 "Meta Ads token was refreshed but could NOT be persisted to %s "
-                "— the new token is used for this session only. Check the file's "
-                "permissions/JSON validity and re-run `mureo auth setup` if Meta "
-                "tools later report an expired token.",
+                "(%s) — the new token is used for this session only. Check the "
+                "file's permissions/JSON validity and re-run `mureo auth setup` "
+                "if Meta tools later report an expired token.",
                 resolved,
-                exc_info=True,
+                type(exc).__name__,
             )
 
         return refreshed
@@ -511,7 +594,8 @@ async def _call_refresh_api(
 
     Raises:
         httpx.HTTPError: On network errors.
-        ValueError: On unexpected API response.
+        MetaTokenRefreshError: On unexpected API response. A ``ValueError``
+            subclass, and its message is mureo-composed — see the class.
     """
     params = {
         "grant_type": "fb_exchange_token",
@@ -530,14 +614,23 @@ async def _call_refresh_api(
         resp = await client.post(_META_GRAPH_TOKEN_URL, data=params)
 
     if resp.status_code != 200:
-        raise ValueError(
-            f"Meta token refresh failed with status {resp.status_code}: " f"{resp.text}"
+        # NOT resp.text: the whole body used to land in this message and, via
+        # the caller's exc_info=True, in ~/.mureo/logs/configure.log (#605).
+        detail = _graph_error_detail(resp)
+        raise MetaTokenRefreshError(
+            f"HTTP {resp.status_code} from Meta Graph ({detail})"
         )
 
-    data = resp.json()
-    new_token = data.get("access_token")
+    try:
+        data = resp.json()
+    except Exception:  # noqa: BLE001 — a 200 that is not JSON is still a failure
+        raise MetaTokenRefreshError(
+            "HTTP 200 from Meta Graph with a non-JSON body"
+        ) from None
+
+    new_token = data.get("access_token") if isinstance(data, dict) else None
     if not new_token:
-        raise ValueError("No access_token in refresh response")
+        raise MetaTokenRefreshError("HTTP 200 from Meta Graph with no access_token")
 
     new_obtained_at = datetime.now(tz=timezone.utc).isoformat()
     return new_token, new_obtained_at
