@@ -161,6 +161,124 @@ class TestDryRunIsTheDefault:
 
 
 # ---------------------------------------------------------------------------
+# A document mureo cannot read is an error, never a traceback (#618)
+# ---------------------------------------------------------------------------
+
+
+class TestAnUnreadableDocument:
+    """The person this command is for cannot read a traceback.
+
+    ``read_state_file`` wraps ``json.JSONDecodeError`` only. Strict parsing
+    also raises a bare ``ValueError`` for a document that is valid JSON but
+    invalid against the schema, and nothing on this path caught it — so a
+    campaign missing ``campaign_name`` ended in a full Python traceback while
+    ``--all`` reported the same file as "Could not be read".
+    """
+
+    def test_a_schema_invalid_document_is_an_error_not_a_traceback(
+        self, tmp_path: Path
+    ) -> None:
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "campaigns": [{"campaign_id": "c-1"}],
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 1
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+        assert "Traceback" not in result.output
+        assert "Error:" in result.output
+        assert str(state) in result.output
+        assert "Campaign is missing required field" in result.output
+
+    def test_apply_on_a_schema_invalid_document_is_an_error_too(
+        self, tmp_path: Path
+    ) -> None:
+        """Same file, the destructive flags. It must not crash there either,
+        and nothing may be written or backed up."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "campaigns": [{"campaign_id": "c-1"}],
+                    }
+                },
+            },
+        )
+        before = state.read_bytes()
+
+        result = _run("--state-file", str(state), "--apply", "--yes")
+
+        assert result.exit_code == 1
+        assert "Traceback" not in result.output
+        assert "Error:" in result.output
+        assert state.read_bytes() == before
+        assert list(tmp_path.glob("STATE.json.bak.*")) == []
+
+    def test_a_document_that_breaks_between_preview_and_lock_is_an_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The apply path re-reads under the lock, so a concurrent writer can
+        hand it a document the preview never saw. That is the same
+        ``ValueError``, and it must not surface as a traceback either."""
+        from mureo.cli import repair_cmd
+
+        state = tmp_path / "STATE.json"
+        _reported_state(state)
+
+        def _explode(*_args: Any, **_kwargs: Any) -> None:
+            raise ValueError("Campaign is missing required field 'campaign_name': {}")
+
+        monkeypatch.setattr(repair_cmd, "apply_state_file_repairs", _explode)
+
+        result = _run("--state-file", str(state), "--apply", "--yes")
+
+        assert result.exit_code == 1
+        assert "Traceback" not in result.output
+        assert "Error: mureo cannot read STATE.json" in result.output
+        assert "Campaign is missing required field" in result.output
+
+    def test_control_characters_in_the_parse_error_are_scrubbed(
+        self, tmp_path: Path
+    ) -> None:
+        """The failing text comes out of STATE.json, so the exception carries
+        agent-writable content straight to a terminal."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "campaigns": [{"campaign_id": "c-1\x1b[2J\x07"}],
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 1
+        assert "\x1b" not in result.output
+        assert "\x07" not in result.output
+
+
+# ---------------------------------------------------------------------------
 # Applying
 # ---------------------------------------------------------------------------
 

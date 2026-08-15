@@ -449,10 +449,20 @@ def apply_state_file_repairs(
         pre-repair document was backed up to.
 
     Raises:
-        ContextFileError: ``path`` exists but cannot be read or parsed. The
-            repair refuses to proceed on a document it cannot parse strictly,
-            because writing back a tolerantly-parsed one would silently drop
-            the entries the tolerant parse skipped.
+        ContextFileError: ``path`` exists but could not be opened, or its
+            bytes are not valid JSON.
+        ValueError: ``path`` holds valid JSON that does not satisfy the strict
+            schema — a campaign missing ``campaign_name``, say. This is what
+            :func:`~mureo.context.state.parse_state` raises and
+            :func:`~mureo.context.state.read_state_file` passes through
+            unwrapped; it is stated here because an earlier version of this
+            docstring promised ``ContextFileError`` for every unparseable
+            document, and a caller that believed it ended in a traceback
+            (#618). Callers reporting to a person must catch both.
+
+            Either way the repair refuses to proceed on a document it cannot
+            parse strictly, because writing back a tolerantly-parsed one would
+            silently drop the entries the tolerant parse skipped.
         OSError: The backup could not be written. Nothing is overwritten in
             that case — :func:`mureo.fsutil.backup_file` fails closed.
     """

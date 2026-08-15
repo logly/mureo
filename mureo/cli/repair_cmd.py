@@ -24,6 +24,9 @@ What is printed lives in :mod:`mureo.cli._repair_preview` — this module
 decides what to do, that one words what it would mean. Every claim it makes
 has to survive the run it precedes; the three that did not are #618.
 
+A document mureo cannot read is an ``Error:`` line, never a traceback, on
+both paths — see :func:`_echo_unreadable`.
+
 ``--all``: the same repair, once per client
 -------------------------------------------
 The incident is not one directory's. It was made by an agent running against
@@ -65,7 +68,11 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from mureo.cli._repair_clients import list_repair_targets, survey_clients
+from mureo.cli._repair_clients import (
+    list_repair_targets,
+    survey_clients,
+    unreadable_reason,
+)
 from mureo.cli._repair_preview import (
     echo_kept_findings,
     echo_repair,
@@ -106,9 +113,39 @@ def _read_document(state_file: Path) -> StateDocument:
         raise typer.Exit(1)
     try:
         return read_state_file(state_file)
-    except ContextFileError as exc:
-        typer.echo(f"Error: {exc}", err=True)
+    except (ContextFileError, ValueError) as exc:
+        _echo_unreadable(state_file, exc)
         raise typer.Exit(1) from exc
+
+
+def _echo_unreadable(state_file: Path, exc: Exception) -> None:
+    """Report a STATE.json this command cannot read, and stop.
+
+    ``read_state_file`` wraps ``json.JSONDecodeError`` as ``ContextFileError``
+    and nothing else, but strict parsing also raises a bare ``ValueError`` for
+    a document that is valid JSON and invalid against the schema — a campaign
+    missing ``campaign_name``, say. Catching only ``ContextFileError`` left
+    that document ending in a Python traceback here while ``--all`` reported
+    the same file under "Could not be read": one document, two answers, and
+    the person this command exists for cannot read the second one (#618).
+
+    Caught at the CLI rather than by widening ``read_state_file``'s contract:
+    that function has fifteen-odd other callers, some of which may well be
+    relying on a ``ValueError`` passing through, and this is not the place to
+    find out.
+
+    The reason text is ``--all``'s own, so the two paths cannot drift into
+    describing one file differently again. It is scrubbed — the failing
+    fragment comes out of an agent-writable STATE.json.
+    """
+    typer.echo(f"Error: mureo cannot read STATE.json: {state_file}", err=True)
+    typer.echo(f"       {unreadable_reason(exc)}", err=True)
+    typer.echo(
+        "       Nothing was changed. This command will not repair a document it "
+        "cannot\n       read in full: writing it back would drop whatever the "
+        "read skipped.",
+        err=True,
+    )
 
 
 def _reject_unusable_key_argument(doc: StateDocument, key: str) -> None:
@@ -277,7 +314,15 @@ def _apply(state_file: Path, keys: tuple[str, ...] | None) -> None:
     """Run the repair and report the backup before what it removed."""
     try:
         outcome = apply_state_file_repairs(state_file, keys=keys)
-    except (ContextFileError, OSError) as exc:
+    except (ContextFileError, ValueError) as exc:
+        # Between the preview and the lock, the document became one mureo
+        # cannot parse strictly — a concurrent writer, or a file swapped under
+        # it. Reported exactly as the read path reports it, and for the same
+        # reason: a bare ``ValueError`` out of strict parsing is not a
+        # traceback this command's operator should ever see (#618).
+        _echo_unreadable(state_file, exc)
+        raise typer.Exit(1) from exc
+    except OSError as exc:
         typer.echo(f"Error: STATE.json was not changed: {exc}", err=True)
         raise typer.Exit(1) from exc
     if not outcome.changed:
@@ -327,6 +372,14 @@ def _repair_every_client(
         typer.echo(
             "Nothing to repair automatically: mureo will not remove the entries "
             "above, for the reason given under each one."
+        )
+    elif not needing and failures:
+        # "Every client's entries resolve" is false when a client's entries
+        # could not be read at all — the same false reassurance #616/#618 are
+        # about, one line further down.
+        typer.echo(
+            "Nothing to repair in the clients that could be read. The ones "
+            "listed under\n'Could not be read' were not surveyed at all."
         )
     elif not needing:
         typer.echo(

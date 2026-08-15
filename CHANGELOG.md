@@ -50,6 +50,26 @@
   when every entry for an ad account is in the plan, every block says the
   account will be left with no record at all — before the confirmation.
 
+- **A schema-invalid STATE.json ended `mureo repair platform-key` in a raw
+  traceback** (#618). `read_state_file` wraps `json.JSONDecodeError` only, and
+  strict parsing also raises a bare `ValueError` for a document that is valid
+  JSON but invalid against the schema — a campaign missing `campaign_name`,
+  say. The single-workspace path caught only `ContextFileError`, so that
+  document produced a Python traceback, while `--all` caught broadly and
+  reported the very same file under `Could not be read`. One document, two
+  answers, and the person this command exists for cannot read the second one.
+
+  Both CLI entry points now catch it and print the same `Error: ...` block the
+  command uses everywhere else, naming the file and the reason — reusing
+  `--all`'s own wording so the two paths cannot drift apart again.
+  `read_state_file`'s contract is deliberately unchanged (fifteen-odd callers
+  depend on it); the docstring on `apply_state_file_repairs`, which promised
+  `ContextFileError` for every unparseable document, is corrected to state that
+  `ValueError` passes through and that a caller reporting to a person must
+  catch both. While there: `--all` no longer closes a sweep in which nothing
+  could be read with "every client's platform entries are filed under keys
+  mureo can resolve", which it could not know.
+
 - **Four test modules edited `GoogleAdsException` for the rest of the
   session.** Each built a fake exception with `__new__` and then attached a
   fake `failure` through `type(exc).failure = property(...)`. `type(exc)` is

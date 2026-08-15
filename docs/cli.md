@@ -398,6 +398,17 @@ If this turns out wrong, put it back with:
 
 That backup is the undo. The repair is not recorded in `action_log`: that log records changes made to an *ad platform* and feeds the rollback planner, and a local-file edit has neither a platform operation to name nor one to reverse. With no TTY — an AI agent's shell, a CI runner — `--apply` declines rather than proceeding, so nothing destructive happens where the question could not be asked.
 
+A STATE.json mureo cannot read — bad JSON, or valid JSON that does not satisfy the schema — is reported as an error and repaired not at all, on both paths. The single-workspace run names the file and the reason:
+
+```
+Error: mureo cannot read STATE.json: /path/to/STATE.json
+       Campaign is missing required field 'campaign_name': {'campaign_id': 'c-1'}
+       Nothing was changed. This command will not repair a document it cannot
+       read in full: writing it back would drop whatever the read skipped.
+```
+
+`--all` reports the same reason under `Could not be read` and carries on with the other clients. The repair deliberately refuses a document it can only parse *tolerantly*: writing back a tolerant parse would silently drop whatever that parse skipped, which is a bigger loss than the one you came to fix.
+
 The same finding is flagged on the configure UI's Reports cards, which now name this command.
 
 ### Every client at once: `--all`

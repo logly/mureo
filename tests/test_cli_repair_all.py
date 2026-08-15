@@ -472,6 +472,58 @@ class TestPartialFailure:
         assert _platform_keys(paths["acme"]) == {"logly_ads_context"}
         assert _platform_keys(paths["beta"]) == {"logly_ads_context"}
 
+    def test_both_paths_report_the_same_unreadable_document_the_same_way(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#618's point is that the two paths DISAGREED about one file.
+
+        A STATE.json that is valid JSON but invalid against the schema was
+        reported by ``--all`` under "Could not be read" and crashed the
+        single-workspace run with a raw traceback. Same document, same
+        command, two answers — and the operator this is written for cannot
+        read the second one. So the reason text is asserted to be the same on
+        both paths, not merely "neither traceback".
+        """
+        state = tmp_path / "theta" / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "campaigns": [{"campaign_id": "c-1"}],
+                    }
+                },
+            },
+        )
+        reason = "Campaign is missing required field 'campaign_name'"
+
+        single = _run("--state-file", str(state))
+
+        assert single.exit_code == 1
+        assert "Traceback" not in single.output
+        assert "Error:" in single.output
+        assert reason in single.output
+        assert str(state) in single.output
+
+        rows = [{"slug": "theta", "name": "Theta AB", "active": True}]
+        _install_store(
+            monkeypatch,
+            _AgencyStore(state, rows, {"theta": _ClientStore(state)}),
+        )
+
+        sweep = _run("--all")
+
+        assert sweep.exit_code == 1
+        assert "Traceback" not in sweep.output
+        assert "Could not be read (1 of 1)" in sweep.output
+        assert reason in sweep.output
+        # And the sweep does not close by calling a document it never read
+        # clean: "every client's entries resolve" is not knowable here.
+        assert "every client's platform entries are filed under" not in sweep.output
+        assert "Nothing to repair in the clients that could be read." in sweep.output
+
     def test_an_unreadable_client_makes_even_a_dry_run_exit_non_zero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

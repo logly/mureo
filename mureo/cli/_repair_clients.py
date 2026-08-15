@@ -162,7 +162,7 @@ def survey_client(
     try:
         doc = read_state_file(target.state_file)
     except Exception as exc:  # noqa: BLE001 — one bad client is not a bad sweep
-        return ClientSurvey(target, None, (), (), _reason(exc))
+        return ClientSurvey(target, None, (), (), unreadable_reason(exc))
     plan = plan_platform_keys(doc, keys=keys)
     return ClientSurvey(target, doc, plan.repairs, plan.kept, None)
 
@@ -216,13 +216,18 @@ def _active_workspace_target() -> ClientTarget:
     )
 
 
-def _reason(exc: Exception) -> str:
-    """One scrubbed line saying why a client could not be read.
+def unreadable_reason(exc: Exception) -> str:
+    """One scrubbed line saying why a STATE.json could not be read.
 
     STATE.json is agent-writable, so an exception carrying a fragment of it
     carries attacker-influenceable text straight to a terminal — the same
     reason every other string this command prints goes through
     ``terminal_safe``.
+
+    Shared with the single-workspace path (:mod:`mureo.cli.repair_cmd`) rather
+    than reimplemented there: the two used to give different answers about one
+    document — this one named it under "Could not be read", the other ended in
+    a traceback — and one wording is how they are kept in step (#618).
     """
     text = _safe(str(exc)).strip()
     return text or type(exc).__name__
@@ -235,4 +240,5 @@ __all__ = [
     "list_repair_targets",
     "survey_client",
     "survey_clients",
+    "unreadable_reason",
 ]
