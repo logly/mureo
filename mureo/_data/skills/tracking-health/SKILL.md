@@ -2,7 +2,7 @@
 name: tracking-health
 description: "Preventive audit of conversion tracking across all configured ad platforms — Meta pixels + CAPI, Google Ads conversion actions, and final-URL tracking-parameter consistency on every platform — with a GA4 cross-check. Use when the user asks to check tracking, audit conversion measurement, verify pixels / tags, check that ads carry the right utm / tracking parameters for the campaign they are in, diagnose why conversions stopped or look wrong, sanity-check CV counting, or requests a 計測ヘルスチェック / タグ・計測監査 / パラメータ整合性チェック / 計測が壊れていないか確認. Reads STRATEGY.md and STATE.json, produces a per-platform tracking scorecard (OK / Watch / Broken per check) and a fix list ranked by revenue risk."
 metadata:
-  version: 0.10.45
+  version: 0.10.46
 ---
 
 # Tracking Health
