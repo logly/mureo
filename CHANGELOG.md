@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.10.46] - 2026-08-15
+
 ### Fixed
 
 - **`mureo repair platform-key` offered to delete a legitimate solitary entry
