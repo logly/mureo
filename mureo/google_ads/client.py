@@ -234,6 +234,9 @@ def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
 from mureo.google_ads._ads import _AdsMixin  # noqa: E402
 from mureo.google_ads._ads_display import _DisplayAdsMixin  # noqa: E402
 from mureo.google_ads._asset_groups import _AssetGroupsMixin  # noqa: E402
+from mureo.google_ads._asset_groups_images import (  # noqa: E402
+    _AssetGroupImagesMixin,
+)
 from mureo.google_ads._extensions import _ExtensionsMixin  # noqa: E402
 from mureo.google_ads._keywords import _KeywordsMixin  # noqa: E402
 from mureo.google_ads._placements import _PlacementsMixin  # noqa: E402
@@ -246,6 +249,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     _AdsMixin,
     _DisplayAdsMixin,
     _AssetGroupsMixin,
+    _AssetGroupImagesMixin,
     _KeywordsMixin,
     _PlacementsMixin,
     _MonitoringMixin,

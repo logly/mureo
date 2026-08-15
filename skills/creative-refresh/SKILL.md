@@ -1,6 +1,6 @@
 ---
 name: creative-refresh
-description: "Refresh ad copy and creative assets based on performance signals and brand voice. Use when the user asks to refresh creative, propose new ad copy, A/B test creatives, update RSA assets, swap Performance Max asset-group headlines or descriptions, rotate underperformers, or visually evaluate / compare banner (image) creatives. Also use when the user asks in Japanese (クリエイティブを刷新して / 広告文の改善案がほしい / RSAアセットの入れ替え / P-MAXの見出しを差し替えて / バナーを比較評価して)."
+description: "Refresh ad copy and creative assets based on performance signals and brand voice. Use when the user asks to refresh creative, propose new ad copy, A/B test creatives, update RSA assets, swap Performance Max asset-group headlines, descriptions, images or logos, rotate underperformers, or visually evaluate / compare banner (image) creatives. Also use when the user asks in Japanese (クリエイティブを刷新して / 広告文の改善案がほしい / RSAアセットの入れ替え / P-MAXの見出しを差し替えて / P-MAXの画像を差し替えて / バナーを比較評価して)."
 metadata:
   version: 0.10.45
 ---
@@ -26,11 +26,11 @@ Refresh ad creatives based on strategy context and performance data across all p
 2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **Audit current creatives**: For each ad platform:
-   - **Google Ads**: prefer mureo native — call `google_ads_ad_performance_report` per campaign, plus `google_ads_rsa_assets_audit` (per-asset CTR/CVR ratings) and `google_ads_rsa_assets_analyze` (LOW/POOR detection). A **Performance Max** campaign has no `ad_group_ad`, so `google_ads_ads_list` and the RSA asset tools return nothing for it — an audit that stops there reports a P-MAX account as having no ad copy at all. Read its copy with `google_ads_asset_group_assets_list` (pass `campaign_id` when you have no `asset_group_id`); it returns the HEADLINE / LONG_HEADLINE / DESCRIPTION assets, **text only**, one entry per link with the `asset_id` you will need to change one. In BYOD mode, the Apps Script bundle does not include per-asset ratings — these tools return `[]`; fall back to `google_ads_ads_list` for headline/description text and use `ad_performance.report` for ad-level CTR/conv only. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP for ad-level performance and ad listing, then **skip the mureo-only RSA asset audit tools** (`google_ads_rsa_assets_audit`, `google_ads_rsa_assets_analyze`) and note: "per-asset LOW/POOR detection and the RSA asset audit are mureo-specific value-add features — install or re-enable via `mureo setup claude-code` for the full creative audit."
+   - **Google Ads**: prefer mureo native — call `google_ads_ad_performance_report` per campaign, plus `google_ads_rsa_assets_audit` (per-asset CTR/CVR ratings) and `google_ads_rsa_assets_analyze` (LOW/POOR detection). A **Performance Max** campaign has no `ad_group_ad`, so `google_ads_ads_list` and the RSA asset tools return nothing for it — an audit that stops there reports a P-MAX account as having no creative at all. Read its creative with `google_ads_asset_group_assets_list` (pass `campaign_id` when you have no `asset_group_id`); one call returns **both** the HEADLINE / LONG_HEADLINE / DESCRIPTION text (each entry with `text`) and the MARKETING_IMAGE / SQUARE_MARKETING_IMAGE / PORTRAIT_MARKETING_IMAGE / LOGO / LANDSCAPE_LOGO images (each entry with `asset_name`, a full-size serving `url`, `width_pixels`, `height_pixels`). `field_type` says which. Every entry carries the `asset_id` you will need to change it. Video and business-name assets are not returned. In BYOD mode, the Apps Script bundle does not include per-asset ratings — these tools return `[]`; fall back to `google_ads_ads_list` for headline/description text and use `ad_performance.report` for ad-level CTR/conv only. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP for ad-level performance and ad listing, then **skip the mureo-only RSA asset audit tools** (`google_ads_rsa_assets_audit`, `google_ads_rsa_assets_analyze`) and note: "per-asset LOW/POOR detection and the RSA asset audit are mureo-specific value-add features — install or re-enable via `mureo setup claude-code` for the full creative audit."
    - **Meta Ads**: prefer mureo native — call `meta_ads_creatives_list`, `meta_ads_analysis_compare_ads`, and `meta_ads_analysis_suggest_creative`. In BYOD mode, creative URLs / headlines / body / CTA may be present in `~/.mureo/byod/meta_ads/creatives.csv` (best-effort, populated only when those columns were in the export). If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for the creative list and ad-level insights only, then **skip the mureo-only analysis tools** (`meta_ads_analysis_compare_ads`, `meta_ads_analysis_suggest_creative`); perform the ad-comparison and creative-suggestion logic yourself using the rules in step 6 and note to the user that mureo's automated creative-suggestion engine requires the native MCP.
    - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
    - Identify underperforming assets (LOW/POOR ratings for search ads, low CTR/engagement for social ads).
-   - **Image / banner creatives**: the text-and-metrics audit above does not look at the picture itself. When a creative carries an image you can actually reach — `image_url` / `thumbnail_url` from `meta_ads_creatives_list`, or a Google image asset from `google_ads_image_assets_list` (account-level: name, dimensions and a full-size serving `url`) — also run the **Visual creative evaluation** section below to score the banner's design, not just its copy and CTR.
+   - **Image / banner creatives**: the text-and-metrics audit above does not look at the picture itself. When a creative carries an image you can actually reach — `image_url` / `thumbnail_url` from `meta_ads_creatives_list`, a P-MAX asset group's images from `google_ads_asset_group_assets_list` (which says *which* asset group serves each one), or a Google image asset from `google_ads_image_assets_list` (account-level: name, dimensions and a full-size serving `url`) — also run the **Visual creative evaluation** section below to score the banner's design, not just its copy and CTR.
 
 4. **Analyze landing pages**: For each campaign's final URL, analyze the landing page to extract key selling points, CTAs, and features. If GA4 is available, pull engagement metrics (time on page, scroll depth, bounce rate) to inform creative direction.
 
@@ -56,7 +56,7 @@ Refresh ad creatives based on strategy context and performance data across all p
 
 10. **Check pending observations**: Before executing, check `action_log` for campaigns being modified. If a previous creative change is still within its observation window, warn about stacking changes.
 
-11. **Execute approved changes**: Use each platform's ad creation/update tools to apply changes. For Google Performance Max copy that is `google_ads_asset_group_assets_replace` — one call per asset, taking `asset_group_id` + `field_type` + `old_asset_id` (from `google_ads_asset_group_assets_list`) + `new_text` — not `google_ads_ads_update`, which cannot see a P-MAX campaign. A draft-only item produces **no tool call at all**.
+11. **Execute approved changes**: Use each platform's ad creation/update tools to apply changes. For Google Performance Max copy that is `google_ads_asset_group_assets_replace` — one call per asset, taking `asset_group_id` + `field_type` + `old_asset_id` (from `google_ads_asset_group_assets_list`) + `new_text` — not `google_ads_ads_update`, which cannot see a P-MAX campaign. For a P-MAX **image or logo** it is `google_ads_asset_group_images_replace`, same targeting arguments plus either `new_asset_id` (an image the account already holds) or `new_image_path` (a local file to upload) — exactly one, and you do not need to know which situation you are in to pick the tool. A draft-only item produces **no tool call at all**.
 
 12. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CTR, CPA, conversions, impressions, clicks) and `observation_due` (14 days from `server_now`'s date). Log only what mureo actually wrote: a draft the operator was asked to paste in by hand is not a mureo change and gets no `action_log` entry (log it, and `/ad-fatigue-check` and the outcome evaluator will later measure a change that may never have been made).
 
@@ -85,9 +85,12 @@ What Google Ads copy mureo can write **today**:
 | Surface | Read | Write |
 |---|---|---|
 | Search RSA headlines / descriptions | `google_ads_ads_list`, `google_ads_rsa_assets_audit` | `google_ads_ads_create`, `google_ads_ads_update` |
-| Performance Max asset-group text — HEADLINE / LONG_HEADLINE / DESCRIPTION | `google_ads_asset_group_assets_list` (text only) | `google_ads_asset_group_assets_replace` — one asset per call, by `asset_group_id` + `field_type` + `old_asset_id` |
+| Performance Max asset-group text — HEADLINE / LONG_HEADLINE / DESCRIPTION | `google_ads_asset_group_assets_list` (the `text` of each entry) | `google_ads_asset_group_assets_replace` — one asset per call, by `asset_group_id` + `field_type` + `old_asset_id` |
+| Performance Max asset-group images — MARKETING_IMAGE / SQUARE_MARKETING_IMAGE / PORTRAIT_MARKETING_IMAGE / LOGO / LANDSCAPE_LOGO | `google_ads_asset_group_assets_list` (the `url` + dimensions of each entry) | `google_ads_asset_group_images_replace` — one image per call, by `asset_group_id` + `field_type` + `old_asset_id` + either `new_asset_id` or `new_image_path` |
 | Responsive Display Ad text | `google_ads_ads_list` | create only (`google_ads_ads_create_display`); no text update — **draft-only** for an edit |
-| Any image, video, logo or business name — including every non-text field type of a P-MAX asset group | `google_ads_image_assets_list` lists account-level images with a serving URL, but nothing reports which asset group or ad uses one | none — **draft-only** |
+| A Responsive Display Ad's images | `google_ads_ads_list` returns asset resource names; join by id to `google_ads_image_assets_list` for a URL | none — **draft-only** |
+| Video, business name, and every other non-text non-image field type of a P-MAX asset group | not returned by `google_ads_asset_group_assets_list` | none — **draft-only** |
+| Any image outside the surfaces above | `google_ads_image_assets_list` lists account-level images with a serving URL, but does not report which ad uses one | none — **draft-only** |
 
 That table is a **snapshot of the tool layer, not** the boundary. The boundary
 is the tool list you can actually see in this session, and it moves in both
@@ -123,18 +126,20 @@ score, an empty rubric, or an "image not found" finding for a text ad.
 
 1. Collect each creative's image reference: `image_url` (or `thumbnail_url` for
    video — you evaluate the still frame only, not motion) from
-   `meta_ads_creatives_list`; for Google, the full-size serving `url` of an
-   image asset from `google_ads_image_assets_list`. In BYOD mode use the URL
-   column from `creatives.csv` when present.
+   `meta_ads_creatives_list`; for a **Performance Max** asset group, the
+   `url` of each image entry from `google_ads_asset_group_assets_list` — that
+   is the one Google read that says *which* asset group serves an image, so
+   "the images of this asset group" is directly enumerable (pass
+   `campaign_id` when you have no `asset_group_id`); for any other Google
+   image, the full-size serving `url` from `google_ads_image_assets_list`. In
+   BYOD mode use the URL column from `creatives.csv` when present.
    **What Google will not give you**: `google_ads_image_assets_list` is
-   account-wide — it does not say which ad or asset group serves an asset, so
-   you cannot enumerate "the images of this Performance Max asset group" from
-   it. `google_ads_asset_group_assets_list` returns the asset group's
-   headlines, long headlines and descriptions — text only, no image, video or
-   logo assets. A Responsive Display Ad is the one case with a link:
+   account-wide — outside a P-MAX asset group it does not say which ad serves
+   an asset. A Responsive Display Ad is the one other case with a link:
    `google_ads_ads_list` returns its `marketing_images` /
    `square_marketing_images` / `logo_images` as asset **resource names**,
    which you match by id against `google_ads_image_assets_list` to get a URL.
+   And no Google read returns video assets at all.
    For any image you cannot reach, score the copy and metrics, say plainly
    that the picture could not be retrieved, and ask the operator to paste it
    into chat if they want it graded — never a guessed visual score, and never
@@ -145,8 +150,9 @@ score, an empty rubric, or an "image not found" finding for a text ad.
    `Read` that file — the Read tool renders the pixels so you can actually see
    the banner. Only fetch URLs on the ad platform's own CDN
    (`*.fbcdn.net` / `*.cdninstagram.com` / `googleusercontent.com` /
-   `gstatic.com` etc.); refuse arbitrary hosts (SSRF hygiene). Delete the temp
-   files when done.
+   `gstatic.com` / `googlesyndication.com` — the last is where a P-MAX asset
+   group's image `url` points); refuse arbitrary hosts (SSRF hygiene). Delete
+   the temp files when done.
 3. **On Desktop / Cowork (MCP-only, no Read/Bash):** you generally cannot fetch
    and view an arbitrary URL yourself. Present the `image_url` to the operator
    and ask them to paste/drop the image into chat so you can see it; if they

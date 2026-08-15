@@ -6,14 +6,21 @@ discovered that every write tool it knew (``google_ads_ads_create`` /
 ``google_ads_ads_update``) is RSA-only. The answer became "do it yourself in
 the Google Ads UI" after the operator had already spent a round trip.
 
-#590 has since landed ``google_ads_asset_group_assets_list`` /
-``google_ads_asset_group_assets_replace``, so P-MAX **text** is now
-applicable. That fixes one instance; it does not fix the shape of the bug.
-The durable requirement is that the offer be scoped by *whether a write tool
-exists for this exact surface*, decided **before** drafting — so the same
-guidance keeps working for the surfaces still uncovered (every image, video,
-logo and business-name asset, including every non-text field type of a P-MAX
+#590 landed ``google_ads_asset_group_assets_list`` /
+``google_ads_asset_group_assets_replace`` and #626 widened the read to a
+P-MAX asset group's images and added
+``google_ads_asset_group_images_replace``, so P-MAX text and images are both
+applicable now. That fixes two instances; it does not fix the shape of the
+bug. The durable requirement is that the offer be scoped by *whether a write
+tool exists for this exact surface*, decided **before** drafting — so the
+same guidance keeps working for the surfaces still uncovered (video,
+business name, and every other non-text non-image field type of a P-MAX
 asset group) and for whatever the tool layer gains next.
+
+The tests below therefore pin the rule's *shape* and its accuracy at this
+moment, and are expected to be edited whenever the tool layer moves. Prose
+that claims a surface is draft-only after it gained a write tool is the same
+defect pointing the other way.
 
 Pinned in BOTH the packaged copy and the repo-root mirror, kept
 byte-identical.
@@ -44,6 +51,9 @@ _RULE_HEADING = "## Apply or draft"
 #: The P-MAX ad-copy surface #590 added.
 _PMAX_LIST = "google_ads_asset_group_assets_list"
 _PMAX_REPLACE = "google_ads_asset_group_assets_replace"
+
+#: The P-MAX image surface #626 added, on the same read.
+_PMAX_IMAGE_REPLACE = "google_ads_asset_group_images_replace"
 
 
 def _body(name: str) -> str:
@@ -151,14 +161,36 @@ def test_rule_names_the_rsa_route_and_its_limit() -> None:
     assert "google_ads_ads_create" in rule
 
 
-def test_rule_marks_non_text_assets_draft_only() -> None:
-    """#590 swaps text by ``field_type``. Images, video, logos and business
-    names — including every non-text field type of a P-MAX asset group —
-    have no write tool."""
+def test_rule_names_the_pmax_image_route() -> None:
+    """#626 landed: a P-MAX asset group's images are applicable now, from
+    the same read. Calling them draft-only would be #591's defect pointing
+    the other way."""
+    rule = _section(_body("creative-refresh"), _RULE_HEADING)
+    assert _PMAX_IMAGE_REPLACE in rule
+    for field_type in ("MARKETING_IMAGE", "LOGO"):
+        assert field_type in rule
+
+
+def test_rule_names_both_image_entry_points_on_one_tool() -> None:
+    """The operator must not have to know whether the account already holds
+    the image in order to pick a tool name."""
+    rule = _section(_body("creative-refresh"), _RULE_HEADING)
+    image_lines = "\n".join(_lines(rule, _PMAX_IMAGE_REPLACE))
+    assert "new_asset_id" in image_lines
+    assert "new_image_path" in image_lines
+
+
+def test_rule_still_marks_the_uncovered_asset_kinds_draft_only() -> None:
+    """What the tool layer does NOT cover: video, business name, and every
+    other non-text non-image field type of a P-MAX asset group."""
     rule = _section(_body("creative-refresh"), _RULE_HEADING).lower()
     assert "draft-only" in rule
-    for kind in ("image", "video", "logo", "business name"):
+    for kind in ("video", "business name"):
         assert kind in rule, f"the uncovered surfaces must name {kind}"
+    uncovered = "\n".join(
+        ln for ln in _lines(rule, "draft-only") if "video" in ln.lower()
+    )
+    assert "none" in uncovered, "an uncovered surface must show no write tool"
 
 
 def test_audit_step_reads_pmax_copy_instead_of_missing_it() -> None:
@@ -183,28 +215,64 @@ def test_execute_step_routes_pmax_to_the_replace_tool() -> None:
         assert arg in joined, f"the P-MAX swap must name {arg}"
 
 
+def test_execute_step_routes_pmax_images_to_their_own_tool() -> None:
+    """An image swap is not a text swap: it takes an asset id or a file
+    path, not ``new_text``."""
+    body = _body("creative-refresh")
+    exec_lines = "\n".join(_lines(body, _PMAX_IMAGE_REPLACE))
+    assert exec_lines
+    for arg in ("asset_group_id", "field_type", "old_asset_id"):
+        assert arg in exec_lines, f"the P-MAX image swap must name {arg}"
+
+
+def test_audit_step_reads_pmax_images_not_only_its_text() -> None:
+    """The read returns both kinds in one call; an audit that reports only
+    the text is the same "P-MAX has no creative" blind spot one level in."""
+    body = _body("creative-refresh")
+    reads = "\n".join(_lines(body, _PMAX_LIST))
+    assert "MARKETING_IMAGE" in reads
+    assert "url" in reads
+
+
 # ---------------------------------------------------------------------------
 # The visual-evaluation instruction the issue calls out as unsatisfiable
 # ---------------------------------------------------------------------------
 
 
 def test_visual_evaluation_no_longer_claims_a_pmax_asset_is_retrievable() -> None:
-    """``a Google image/Display/PMax asset`` promised something no tool
-    delivers. #590 covers text, not pixels — the claim is still false."""
+    """``a Google image/Display/PMax asset`` was one undifferentiated
+    promise. The surfaces differ and the skill has to say how."""
     body = _body("creative-refresh")
     assert "image/Display/PMax asset" not in body
 
 
-def test_visual_evaluation_states_what_can_and_cannot_be_retrieved() -> None:
-    """Precisely: account-level image assets have a serving URL; which asset
-    group uses them is not retrievable, and the P-MAX text tool returns text."""
+def test_visual_evaluation_routes_pmax_images_to_the_asset_group_read() -> None:
+    """#626 closed the gap #591 recorded: the images of a given P-MAX asset
+    group are enumerable now, so the visual-evaluation instruction is
+    satisfiable for P-MAX and must name the read that satisfies it."""
+    body = _body("creative-refresh")
+    section = _section(body, "### Getting the image in front of you")
+    assert _PMAX_LIST in section
+    assert "url" in section
+
+
+def test_visual_evaluation_still_states_what_cannot_be_retrieved() -> None:
+    """The account-wide caveat on ``google_ads_image_assets_list`` survives:
+    outside a P-MAX asset group it still does not say which ad serves an
+    asset, and no Google read returns video assets."""
     body = _body("creative-refresh")
     assert "google_ads_image_assets_list" in body
-    text_only = [ln for ln in _lines(body, _PMAX_LIST) if "text only" in ln.lower()]
-    assert text_only, (
-        f"{_PMAX_LIST} must be qualified as text only, so no reader takes it "
-        "for an image route"
-    )
+    section = _section(body, "### Getting the image in front of you").lower()
+    assert "account-wide" in section
+    assert "video" in section
+
+
+def test_no_line_still_calls_the_pmax_read_text_only() -> None:
+    """The #591 wording. Leaving it in place would send a reader looking for
+    an image route that is now right there in the same result."""
+    body = _body("creative-refresh")
+    stale = [ln for ln in _lines(body, _PMAX_LIST) if "text only" in ln.lower()]
+    assert not stale, f"stale text-only claim about {_PMAX_LIST}: {stale}"
 
 
 # ---------------------------------------------------------------------------

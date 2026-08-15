@@ -33,8 +33,12 @@ mureo/
 │   ├── _placement_mappers.py # Negative-placement + group_placement_view row mappers (#544/#547)
 │   ├── _ads.py          # AdsMixin (RSA create/update/status/list)
 │   ├── _ads_display.py  # DisplayAdsMixin (RDA create + RDAUploadError)
-│   ├── _asset_groups.py # AssetGroupsMixin (Performance Max asset-group text: read +
-│   │                    #   swap via one atomic GoogleAdsService.mutate, #590)
+│   ├── _asset_groups.py # AssetGroupsMixin (Performance Max asset groups: one read for
+│   │                    #   text + images, and the text swap via one atomic
+│   │                    #   GoogleAdsService.mutate, #590/#626). Owns both field-type
+│   │                    #   tables — text width limits and image dimension rules
+│   ├── _asset_groups_images.py # AssetGroupImagesMixin (the P-MAX image swap, #626:
+│   │                    #   existing asset id or local upload, one atomic mutate)
 │   ├── _keywords.py     # KeywordsMixin (add/remove/suggest/diagnose)
 │   ├── _placements.py   # PlacementsMixin (negative placements: sites/apps/app categories, #544)
 │   ├── _analysis.py     # AnalysisMixin aggregator, composing the split modules below
@@ -237,7 +241,7 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Device | `device.analyze` |
 | CPC | `cpc.detect_trend` |
 | Assets | `assets.upload_image`, `image_assets.list` |
-| Performance Max (#590) | `asset_group_assets.list`, `asset_group_assets.replace` — P-MAX ad copy lives on `asset_group_asset`, not `ad_group_ad` |
+| Performance Max (#590, #626) | `asset_group_assets.list` (text + images in one read), `asset_group_assets.replace` (text), `asset_group_images.replace` (images, from an asset id or a local file) — P-MAX creative lives on `asset_group_asset`, not `ad_group_ad` |
 
 ### Meta Ads
 

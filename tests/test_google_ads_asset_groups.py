@@ -1,8 +1,10 @@
-"""Performance Max asset-group text assets (#590).
+"""Performance Max asset-group assets — read + text swap (#590, #626).
 
-Covers ``_AssetGroupsMixin``: the read of the HEADLINE / LONG_HEADLINE /
-DESCRIPTION assets linked to a Performance Max asset group, and the swap
-that replaces one of them.
+Covers ``_AssetGroupsMixin``: the read of the assets linked to a
+Performance Max asset group — the HEADLINE / LONG_HEADLINE / DESCRIPTION
+text of #590 and the five image field types of #626, in one query — and
+the swap that replaces one text asset. The image swap has its own module,
+``tests/test_google_ads_asset_group_images.py``.
 
 **Real SDK messages, faked transport.** A ``GoogleAdsClient`` built with
 mock credentials opens no channel until a call is actually issued, so the
@@ -37,7 +39,10 @@ from google.ads.googleads.v23.services.types.google_ads_service import (
     MutateOperationResponse,
 )
 
-from mureo.google_ads._asset_groups import PMAX_TEXT_FIELD_TYPES
+from mureo.google_ads._asset_groups import (
+    PMAX_IMAGE_FIELD_TYPES,
+    PMAX_TEXT_FIELD_TYPES,
+)
 from mureo.google_ads.client import GoogleAdsApiClient
 
 CUSTOMER_ID = "1234567890"
@@ -47,10 +52,16 @@ CUSTOMER_ID = "1234567890"
 HEADLINE = 2
 DESCRIPTION = 3
 LONG_HEADLINE = 17
+MARKETING_IMAGE = 5
+SQUARE_MARKETING_IMAGE = 19
+LOGO = 21
 _FIELD_TYPE_NAMES = {
     HEADLINE: "HEADLINE",
     DESCRIPTION: "DESCRIPTION",
     LONG_HEADLINE: "LONG_HEADLINE",
+    MARKETING_IMAGE: "MARKETING_IMAGE",
+    SQUARE_MARKETING_IMAGE: "SQUARE_MARKETING_IMAGE",
+    LOGO: "LOGO",
 }
 
 
@@ -85,6 +96,39 @@ def _row(
     link.status = status
     row.asset.id = asset_id
     row.asset.text_asset.text = text
+    row.asset_group.id = asset_group_id
+    row.asset_group.name = asset_group_name
+    row.asset_group.campaign = f"customers/{CUSTOMER_ID}/campaigns/{campaign_id}"
+    return util.convert_proto_plus_to_protobuf(row)
+
+
+def _image_row(
+    *,
+    asset_id: int = 555,
+    asset_name: str = "Spring hero",
+    field_type: int = MARKETING_IMAGE,
+    url: str = "https://tpc.googlesyndication.com/simgad/555",
+    width: int = 1200,
+    height: int = 628,
+    status: int = 2,  # AssetLinkStatusEnum.ENABLED
+    asset_group_id: int = 4242,
+    asset_group_name: str = "PMax JP",
+    campaign_id: int = 900,
+) -> Any:
+    """One image ``asset_group_asset`` row, raw-protobuf shaped."""
+    row = GoogleAdsRow()
+    link = row.asset_group_asset
+    link.resource_name = (
+        f"customers/{CUSTOMER_ID}/assetGroupAssets/"
+        f"{asset_group_id}~{asset_id}~{_FIELD_TYPE_NAMES[field_type]}"
+    )
+    link.field_type = field_type
+    link.status = status
+    row.asset.id = asset_id
+    row.asset.name = asset_name
+    row.asset.image_asset.full_size.url = url
+    row.asset.image_asset.full_size.width_pixels = width
+    row.asset.image_asset.full_size.height_pixels = height
     row.asset_group.id = asset_group_id
     row.asset_group.name = asset_group_name
     row.asset_group.campaign = f"customers/{CUSTOMER_ID}/campaigns/{campaign_id}"
@@ -178,7 +222,7 @@ def _install_fake_mutate(client: GoogleAdsApiClient, response: Any) -> list[Any]
 
 
 # ---------------------------------------------------------------------------
-# list_asset_group_text_assets
+# list_asset_group_assets
 # ---------------------------------------------------------------------------
 
 
@@ -197,13 +241,131 @@ class TestListAssetGroupTextAssets:
             return []
 
         client._search = _search  # type: ignore[method-assign]
-        await client.list_asset_group_text_assets()
+        await client.list_asset_group_assets()
 
         assert len(queries) == 1
         assert "FROM asset_group_asset" in queries[0]
         assert "asset.text_asset.text" in queries[0]
         for field_type in PMAX_TEXT_FIELD_TYPES:
             assert f"'{field_type}'" in queries[0]
+
+    async def test_one_query_covers_the_images_too(self) -> None:
+        """#626: "show me this asset group's creative" must not need two
+        calls, and a text-only read is how #591's field report concluded a
+        P-MAX account had no creative at all."""
+        client = _make_client()
+        queries: list[str] = []
+
+        async def _search(query: str) -> list[Any]:
+            queries.append(query)
+            return []
+
+        client._search = _search  # type: ignore[method-assign]
+        await client.list_asset_group_assets()
+
+        assert len(queries) == 1, "text and images come back in one round trip"
+        for field_type in PMAX_IMAGE_FIELD_TYPES:
+            assert f"'{field_type}'" in queries[0]
+        for column in (
+            "asset.name",
+            "asset.image_asset.full_size.url",
+            "asset.image_asset.full_size.width_pixels",
+            "asset.image_asset.full_size.height_pixels",
+        ):
+            assert column in queries[0]
+
+    async def test_video_field_types_are_not_selected(self) -> None:
+        """Out of scope by design: a video asset references a YouTube id
+        rather than uploaded bytes, so it is a different entry shape."""
+        client = _make_client()
+        queries: list[str] = []
+
+        async def _search(query: str) -> list[Any]:
+            queries.append(query)
+            return []
+
+        client._search = _search  # type: ignore[method-assign]
+        await client.list_asset_group_assets()
+
+        for field_type in ("YOUTUBE_VIDEO", "VIDEO", "RELATED_YOUTUBE_VIDEOS"):
+            assert f"'{field_type}'" not in queries[0]
+
+    async def test_image_rows_carry_the_picture_and_its_dimensions(self) -> None:
+        client = _make_client()
+
+        async def _search(query: str) -> list[Any]:
+            return [_image_row()]
+
+        client._search = _search  # type: ignore[method-assign]
+        (entry,) = await client.list_asset_group_assets()
+
+        assert entry["field_type"] == "MARKETING_IMAGE"
+        assert entry["asset_id"] == "555"
+        assert entry["asset_name"] == "Spring hero"
+        assert entry["url"] == "https://tpc.googlesyndication.com/simgad/555"
+        assert entry["width_pixels"] == 1200
+        assert entry["height_pixels"] == 628
+        assert entry["status"] == "ENABLED"
+        assert entry["asset_group_id"] == "4242"
+        assert entry["campaign_id"] == "900"
+        assert "text" not in entry, "an image link has no text to report"
+
+    async def test_text_rows_are_unchanged_by_the_image_half(self) -> None:
+        """#590's row shape is a contract: the image half added no key to a
+        text row and removed none."""
+        client = _make_client()
+
+        async def _search(query: str) -> list[Any]:
+            return [_row(asset_id=111, text="Old headline"), _image_row()]
+
+        client._search = _search  # type: ignore[method-assign]
+        text_entry, image_entry = await client.list_asset_group_assets()
+
+        assert set(text_entry) == {
+            "resource_name",
+            "field_type",
+            "status",
+            "asset_id",
+            "text",
+            "asset_group_id",
+            "asset_group_name",
+            "campaign_id",
+            "campaign_resource_name",
+        }
+        assert set(image_entry) - set(text_entry) == {
+            "asset_name",
+            "url",
+            "width_pixels",
+            "height_pixels",
+        }
+        assert set(text_entry) - set(image_entry) == {"text"}
+
+    async def test_both_kinds_come_back_from_one_call_in_api_order(self) -> None:
+        client = _make_client()
+        rows = [
+            _image_row(asset_id=555, field_type=MARKETING_IMAGE),
+            _row(asset_id=111, text="A headline"),
+            _image_row(
+                asset_id=556,
+                field_type=LOGO,
+                width=1200,
+                height=1200,
+                asset_name="Logo",
+            ),
+        ]
+
+        async def _search(query: str) -> list[Any]:
+            return rows
+
+        client._search = _search  # type: ignore[method-assign]
+        result = await client.list_asset_group_assets()
+
+        assert [r["asset_id"] for r in result] == ["555", "111", "556"]
+        assert [r["field_type"] for r in result] == [
+            "MARKETING_IMAGE",
+            "HEADLINE",
+            "LOGO",
+        ]
 
     async def test_returns_every_row_the_api_returned_in_order(self) -> None:
         """No summing, no dedupe, no reordering — three identical texts under
@@ -219,7 +381,7 @@ class TestListAssetGroupTextAssets:
             return rows
 
         client._search = _search  # type: ignore[method-assign]
-        result = await client.list_asset_group_text_assets()
+        result = await client.list_asset_group_assets()
 
         assert [r["asset_id"] for r in result] == ["1", "2", "3"]
         assert [r["text"] for r in result] == ["Same", "Same", "Long one"]
@@ -236,7 +398,7 @@ class TestListAssetGroupTextAssets:
             return [_row(asset_id=111, text="Old headline")]
 
         client._search = _search  # type: ignore[method-assign]
-        (entry,) = await client.list_asset_group_text_assets()
+        (entry,) = await client.list_asset_group_assets()
 
         assert entry["resource_name"].startswith(
             f"customers/{CUSTOMER_ID}/assetGroupAssets/"
@@ -259,9 +421,7 @@ class TestListAssetGroupTextAssets:
             return []
 
         client._search = _search  # type: ignore[method-assign]
-        await client.list_asset_group_text_assets(
-            asset_group_id="4242", campaign_id="900"
-        )
+        await client.list_asset_group_assets(asset_group_id="4242", campaign_id="900")
 
         assert "asset_group.id = 4242" in queries[0]
         assert (
@@ -275,7 +435,7 @@ class TestListAssetGroupTextAssets:
         client = _make_client()
         client._search = MagicMock()  # type: ignore[method-assign]
         with pytest.raises(ValueError):
-            await client.list_asset_group_text_assets(asset_group_id=bad)
+            await client.list_asset_group_assets(asset_group_id=bad)
 
     async def test_an_empty_filter_is_no_filter_not_an_error(self) -> None:
         """Matches ``list_ads``: a falsy filter means "whole account"."""
@@ -287,9 +447,10 @@ class TestListAssetGroupTextAssets:
             return []
 
         client._search = _search  # type: ignore[method-assign]
-        await client.list_asset_group_text_assets(asset_group_id="", campaign_id="")
+        await client.list_asset_group_assets(asset_group_id="", campaign_id="")
 
-        assert "AND" not in queries[0]
+        # Not a bare "AND": LANDSCAPE_LOGO in the IN clause contains one.
+        assert "AND asset_group." not in queries[0]
 
 
 # ---------------------------------------------------------------------------
@@ -560,16 +721,22 @@ class TestReplaceAssetGroupTextAsset:
 
 @pytest.mark.unit
 class TestFieldTypeConstants:
-    def test_the_query_and_the_limit_table_name_the_same_field_types(self) -> None:
+    def test_the_query_and_the_two_tables_name_the_same_field_types(self) -> None:
         """The GAQL ``IN`` clause is a static literal (so it can carry the
         ``validate_static_query`` marker); this stops it drifting from the
-        table the write half validates against."""
-        from mureo.google_ads._asset_groups import _TEXT_ASSET_QUERY
+        two tables the write halves validate against."""
+        from mureo.google_ads._asset_groups import _ASSET_QUERY
 
-        for field_type in PMAX_TEXT_FIELD_TYPES:
-            assert f"'{field_type}'" in _TEXT_ASSET_QUERY
-        quoted = _TEXT_ASSET_QUERY.split("IN (")[1].split(")")[0]
-        assert quoted.count("'") == 2 * len(PMAX_TEXT_FIELD_TYPES)
+        expected = set(PMAX_TEXT_FIELD_TYPES) | set(PMAX_IMAGE_FIELD_TYPES)
+        for field_type in expected:
+            assert f"'{field_type}'" in _ASSET_QUERY
+        quoted = _ASSET_QUERY.split("IN (")[1].split(")")[0]
+        assert quoted.count("'") == 2 * len(expected)
+
+    def test_the_two_tables_do_not_overlap(self) -> None:
+        """Parallel, not shared: a text field type carries a width limit and
+        an image field type carries a shape."""
+        assert not set(PMAX_TEXT_FIELD_TYPES) & set(PMAX_IMAGE_FIELD_TYPES)
 
     def test_every_field_type_is_a_real_asset_field_type_enum_member(self) -> None:
         from google.ads.googleads.v23.enums.types.asset_field_type import (
@@ -578,6 +745,47 @@ class TestFieldTypeConstants:
 
         names = {member.name for member in AssetFieldTypeEnum.AssetFieldType}
         assert set(PMAX_TEXT_FIELD_TYPES) <= names
+        assert set(PMAX_IMAGE_FIELD_TYPES) <= names
+
+    def test_the_image_table_excludes_the_non_asset_group_image_types(self) -> None:
+        """``AssetFieldTypeEnum`` has eight image field types; three of them
+        are not Performance Max asset-group slots. Pinned so a later "the
+        enum has more, add them" edit has to argue with this."""
+        excluded = {"TALL_PORTRAIT_MARKETING_IMAGE", "BUSINESS_LOGO", "AD_IMAGE"}
+        assert not excluded & set(PMAX_IMAGE_FIELD_TYPES)
+
+    def test_every_required_image_type_has_an_asset_count_floor(self) -> None:
+        """The SDK's own corroboration that these are asset-group slots:
+        ``AssetGroupErrorEnum`` defines ``NOT_ENOUGH_*`` for exactly the
+        three required image field types and for no other."""
+        from google.ads.googleads.v23.errors.types.asset_group_error import (
+            AssetGroupErrorEnum,
+        )
+
+        from mureo.google_ads._asset_groups_images import (
+            _NOT_ENOUGH_IMAGE_ASSET_ERRORS,
+        )
+
+        codes = {m.name for m in AssetGroupErrorEnum.AssetGroupError}
+        assert set(_NOT_ENOUGH_IMAGE_ASSET_ERRORS) <= codes
+        floors = {c for c in codes if c.startswith("NOT_ENOUGH_")}
+        image_floors = {
+            c
+            for c in floors
+            if any(f"NOT_ENOUGH_{ft}_ASSET" == c for ft in PMAX_IMAGE_FIELD_TYPES)
+        }
+        assert image_floors == set(_NOT_ENOUGH_IMAGE_ASSET_ERRORS)
+
+    def test_the_dimension_rules_are_self_consistent(self) -> None:
+        """Each spec's own minimum has to satisfy the ratio it declares —
+        otherwise the smallest allowed image would be refused by the very
+        check the same table drives."""
+        from mureo.google_ads._asset_groups import _validate_image_dimensions
+
+        for field_type, spec in PMAX_IMAGE_FIELD_TYPES.items():
+            _validate_image_dimensions(field_type, spec.min_width, spec.min_height)
+            width, height = (int(part) for part in spec.recommended.split("x"))
+            _validate_image_dimensions(field_type, width, height)
 
 
 @pytest.mark.unit
@@ -588,5 +796,6 @@ def test_mixin_is_composed_into_the_client() -> None:
             customer_id=CUSTOMER_ID,
             developer_token="t",
         )
-    assert hasattr(client, "list_asset_group_text_assets")
+    assert hasattr(client, "list_asset_group_assets")
     assert hasattr(client, "replace_asset_group_text_asset")
+    assert hasattr(client, "replace_asset_group_image_asset")

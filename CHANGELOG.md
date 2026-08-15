@@ -1,5 +1,55 @@
 ## [Unreleased]
 
+### Added
+
+- **A Performance Max asset group's images can now be read and swapped**
+  (#626). #590 made a P-MAX asset group's *text* readable and writable; its
+  pictures stayed invisible. No tool reported which images an asset group
+  served — `google_ads_image_assets_list` is account-wide and never says
+  which asset group or ad uses an asset — so "show me this asset group's
+  creative" could only be half-answered, and nothing could change one.
+
+  `google_ads_asset_group_assets_list` now returns **both** halves from one
+  query. Every entry still carries the link and asset-group columns;
+  `field_type` says what the rest holds. A text link adds `text`, exactly as
+  #590 shipped it — no key added, none removed. An image link
+  (`MARKETING_IMAGE`, `SQUARE_MARKETING_IMAGE`,
+  `PORTRAIT_MARKETING_IMAGE`, `LOGO`, `LANDSCAPE_LOGO`) adds `asset_name`,
+  `url` (the full-size serving URL), `width_pixels` and `height_pixels`. One
+  read rather than two, because a text-only answer to "show me this asset
+  group's creative" is how #591's field report came to conclude a P-MAX
+  account had no creative at all.
+
+  The new `google_ads_asset_group_images_replace` swaps one of them. Both
+  situations go through it: pass `new_asset_id` for an image the account
+  already holds, or `new_image_path` for a local file it uploads first —
+  exactly one of the two, so an operator never has to work out which
+  situation they are in to pick a tool name. Like the text swap it is one
+  atomic `GoogleAdsService.mutate` with the create first, here two
+  operations rather than three (an image asset already exists before the
+  asset group can point at it), so the per-field-type count never dips below
+  the Performance Max minimum — `AssetGroupError.NOT_ENOUGH_*` is reported
+  as an actionable message rather than a raw API error, and
+  `partial_failure` is deliberately unset.
+
+  Google enforces a shape per slot (1.91:1, 1:1, 4:5, 1:1 and 4:1
+  respectively, each with its own pixel floor). mureo checks it **before**
+  uploading or linking anything, so a wrongly proportioned file costs no API
+  call and leaves no unlinked asset in the account. For a format it cannot
+  measure locally — a GIF, or an unrecognised header — it does not guess:
+  the file goes to Google and the `ImageError` refusal comes back translated
+  into the rule for that slot. It never crops or resizes.
+
+  Video stays out of scope: a video asset references a YouTube video id
+  rather than uploaded bytes, so it is a different entry shape and a
+  different operator workflow.
+
+  `/creative-refresh` is updated in the same change. It previously stated
+  that a P-MAX asset group's images were not retrievable and that every
+  image was draft-only, which the read half now makes false; its *Apply or
+  draft* rule keys on whether a write tool exists for the surface, so the
+  new tool flows through it rather than needing the rule rewritten.
+
 ### Fixed
 
 - **`mureo repair platform-key` offered to delete a legitimate solitary entry
