@@ -53,9 +53,10 @@ class TestGoogleAdsToolDefinitions:
     """Verify the Google Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """All 91 tools are defined (89 + P-MAX asset-group list/replace, #590)."""
+        """All 92 tools are defined (89 + P-MAX asset-group list/replace
+        (#590) + the P-MAX asset-group image swap (#626))."""
         mod = _import_google_ads_tools()
-        assert len(mod.TOOLS) == 91
+        assert len(mod.TOOLS) == 92
 
     def test_all_tool_names(self) -> None:
         """Every tool name starts with google_ads_ (underscore-separated, per MCP spec)."""

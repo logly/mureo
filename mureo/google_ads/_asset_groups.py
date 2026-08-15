@@ -1,13 +1,30 @@
-"""Performance Max asset-group text assets (#590).
+"""Performance Max asset-group assets — text read/swap, image read (#590, #626).
 
 A Performance Max campaign has no ``ad_group_ad``, so every ad-text query
 in this package returns nothing for it: its headlines, long headlines and
 descriptions are assets linked to an **asset group** through
-``asset_group_asset``. This mixin is the read and the write for those
-three field types.
+``asset_group_asset``. The same is true of everything an asset group
+shows — its landscape, square and portrait images and its two logos are
+links on the same resource.
 
-Why the write is a swap and not an update
------------------------------------------
+This module is the read for both kinds and the write for text. The image
+write lives next door in :mod:`mureo.google_ads._asset_groups_images`,
+which imports the field-type table and the dimension rules from here.
+
+One read, two row shapes
+------------------------
+:meth:`_AssetGroupsMixin.list_asset_group_assets` issues **one** query
+covering both tables, because the question an operator asks is "show me
+this asset group's creative", not "show me its text" — and a text-only
+read is exactly how #591's field report came to conclude a P-MAX account
+had no ad copy at all. A text row and an image row share the link and
+asset-group columns and differ in their payload: ``text`` for text,
+``asset_name`` / ``url`` / ``width_pixels`` / ``height_pixels`` for
+images. ``field_type`` is the discriminator. Text rows are returned by
+:func:`_map_text_asset_row` exactly as #590 shipped them.
+
+Why the text write is a swap and not an update
+----------------------------------------------
 A text ``Asset`` is immutable — the string cannot be edited in place, and
 ``AssetGroupAssetService`` only re-points a link. Replacing one headline
 is therefore three operations: create the new ``Asset``, create the
@@ -32,6 +49,7 @@ https://developers.google.com/google-ads/api/performance-max/asset-requirements
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from google.ads.googleads.errors import GoogleAdsException
@@ -60,6 +78,62 @@ PMAX_TEXT_FIELD_TYPES: dict[str, int] = {
     "DESCRIPTION": 90,
 }
 
+
+@dataclass(frozen=True)
+class PmaxImageSpec:
+    """What Google requires of an image linked under one field type.
+
+    ``aspect_ratio`` is width / height. ``ratio_label`` is the same rule
+    as Google writes it, so an error message can quote the requirement
+    rather than a float.
+    """
+
+    aspect_ratio: float
+    ratio_label: str
+    min_width: int
+    min_height: int
+    recommended: str
+
+
+#: The Performance Max image field types this package reads, mapped to the
+#: dimension rule Google enforces on each. Parallel to
+#: :data:`PMAX_TEXT_FIELD_TYPES`, not shared with it: a text field type
+#: carries a display-width limit and an image field type carries a shape.
+#:
+#: Five of the eight image field types in ``AssetFieldTypeEnum`` are here.
+#: The three that are not:
+#:
+#: * ``TALL_PORTRAIT_MARKETING_IMAGE`` (9:16) — Demand Gen's vertical
+#:   slot. The only place the vendored SDK names it is
+#:   ``GenerateImagesRequest``, which spans four channel types.
+#: * ``BUSINESS_LOGO`` — a *campaign* asset
+#:   (``ResourceLimitType.BUSINESS_LOGO_CAMPAIGN_ASSETS_PER_CAMPAIGN``),
+#:   not an asset-group link.
+#: * ``AD_IMAGE`` — "linked for use to select an ad image", an ad-level
+#:   selection, not an asset-group slot.
+#:
+#: The corroboration inside the SDK is ``AssetGroupErrorEnum``: it defines
+#: an asset-count floor for ``MARKETING_IMAGE``, ``SQUARE_MARKETING_IMAGE``
+#: and ``LOGO`` and for no other image field type. Those three are the
+#: required ones; ``PORTRAIT_MARKETING_IMAGE`` and ``LANDSCAPE_LOGO`` are
+#: optional, which is why they have no floor rather than why they are absent.
+PMAX_IMAGE_FIELD_TYPES: dict[str, PmaxImageSpec] = {
+    "MARKETING_IMAGE": PmaxImageSpec(1.91, "1.91:1", 600, 314, "1200x628"),
+    "SQUARE_MARKETING_IMAGE": PmaxImageSpec(1.0, "1:1", 300, 300, "1200x1200"),
+    "PORTRAIT_MARKETING_IMAGE": PmaxImageSpec(0.8, "4:5", 480, 600, "960x1200"),
+    "LOGO": PmaxImageSpec(1.0, "1:1", 128, 128, "1200x1200"),
+    "LANDSCAPE_LOGO": PmaxImageSpec(4.0, "4:1", 512, 128, "1200x300"),
+}
+
+#: How far a supplied image may sit from its field type's nominal ratio.
+#: Deliberately loose. A false reject here has no override — mureo would
+#: refuse an image Google would have taken, and never resizes to make one
+#: fit — while a false accept costs one translated API refusal. 5% passes
+#: every size Google itself recommends (1200x628 is 1.911, not 1.910) and
+#: still catches the mistake this check exists for: a square image handed
+#: to a landscape slot.
+_ASPECT_RATIO_TOLERANCE = 0.05
+
 #: ``AssetGroupError`` codes that mean "this would leave the asset group
 #: below its minimum". Surfaced as an actionable message rather than a raw
 #: API error, since the operator's next step differs from any other failure.
@@ -76,28 +150,40 @@ _TEMP_ASSET_ID = "-1"
 
 # The field-type filter is spelled out so the query stays a pure literal and
 # can carry the validate_static_query marker. test_google_ads_asset_groups.py
-# pins it against PMAX_TEXT_FIELD_TYPES so the two cannot drift.
-_TEXT_ASSET_QUERY = """
+# pins it against PMAX_TEXT_FIELD_TYPES + PMAX_IMAGE_FIELD_TYPES so the three
+# cannot drift.
+_ASSET_QUERY = """
             SELECT
                 asset_group_asset.resource_name,
                 asset_group_asset.field_type,
                 asset_group_asset.status,
                 asset.id,
+                asset.name,
                 asset.text_asset.text,
+                asset.image_asset.full_size.url,
+                asset.image_asset.full_size.width_pixels,
+                asset.image_asset.full_size.height_pixels,
                 asset_group.id,
                 asset_group.name,
                 asset_group.campaign
             FROM asset_group_asset
-            WHERE asset_group_asset.field_type IN ('HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION')
+            WHERE asset_group_asset.field_type IN (
+                'HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION',
+                'MARKETING_IMAGE', 'SQUARE_MARKETING_IMAGE',
+                'PORTRAIT_MARKETING_IMAGE', 'LOGO', 'LANDSCAPE_LOGO'
+            )
 """
 
 
 def _map_text_asset_row(row: Any) -> dict[str, Any]:
-    """Map one ``asset_group_asset`` row, verbatim.
+    """Map one text ``asset_group_asset`` row, verbatim.
 
     ``campaign_id`` is the trailing segment of the asset group's own
     ``campaign`` resource name; the full resource name is returned beside
     it so the derivation is visible rather than implied.
+
+    The key set is the one #590 shipped and its tests pin: the image half
+    of #626 added no field here and removed none.
     """
     link = row.asset_group_asset
     group = row.asset_group
@@ -115,6 +201,49 @@ def _map_text_asset_row(row: Any) -> dict[str, Any]:
     }
 
 
+def _map_image_asset_row(row: Any) -> dict[str, Any]:
+    """Map one image ``asset_group_asset`` row.
+
+    Shares every link and asset-group column with
+    :func:`_map_text_asset_row` and replaces ``text`` with the picture:
+    ``url`` / ``width_pixels`` / ``height_pixels`` are named as
+    ``list_image_assets`` names them, so an agent holding both results can
+    join them without a translation table. ``asset_name`` is spelled out
+    rather than ``name`` because the row already carries
+    ``asset_group_name`` and a bare ``name`` beside it is ambiguous.
+    """
+    link = row.asset_group_asset
+    group = row.asset_group
+    campaign_resource = str(group.campaign)
+    full_size = row.asset.image_asset.full_size
+    return {
+        "resource_name": str(link.resource_name),
+        "field_type": map_enum_name(link.field_type, ASSET_FIELD_TYPE_MAP),
+        "status": map_enum_name(link.status, ASSET_LINK_STATUS_MAP),
+        "asset_id": str(row.asset.id),
+        "asset_name": str(row.asset.name),
+        "url": str(full_size.url),
+        "width_pixels": int(full_size.width_pixels),
+        "height_pixels": int(full_size.height_pixels),
+        "asset_group_id": str(group.id),
+        "asset_group_name": str(group.name),
+        "campaign_id": campaign_resource.rsplit("/", 1)[-1],
+        "campaign_resource_name": campaign_resource,
+    }
+
+
+def _map_asset_row(row: Any) -> dict[str, Any]:
+    """Route a row to the mapper for its field type.
+
+    The query's ``IN`` clause is the authority on what can arrive, so
+    anything that is not one of the image field types is text.
+    """
+    field_type = map_enum_name(row.asset_group_asset.field_type, ASSET_FIELD_TYPE_MAP)
+    if field_type in PMAX_IMAGE_FIELD_TYPES:
+        return _map_image_asset_row(row)
+    return _map_text_asset_row(row)
+
+
 def _validate_field_type(value: Any) -> str:
     """Return ``value`` if it is one of the three P-MAX text field types."""
     if not isinstance(value, str) or value not in PMAX_TEXT_FIELD_TYPES:
@@ -123,6 +252,50 @@ def _validate_field_type(value: Any) -> str:
             f"{', '.join(PMAX_TEXT_FIELD_TYPES)}."
         )
     return value
+
+
+def _validate_image_field_type(value: Any) -> str:
+    """Return ``value`` if it is one of the five P-MAX image field types."""
+    if not isinstance(value, str) or value not in PMAX_IMAGE_FIELD_TYPES:
+        raise ValueError(
+            f"Invalid field_type: {value!r}. Supported: "
+            f"{', '.join(PMAX_IMAGE_FIELD_TYPES)}."
+        )
+    return value
+
+
+def _validate_image_dimensions(
+    field_type: str, width: int | None, height: int | None
+) -> None:
+    """Refuse an image whose shape the field type cannot take.
+
+    Checked before anything is uploaded or linked, mirroring how
+    :func:`_validate_text` refuses over-long copy: a refusal that costs no
+    API call can name the exact rule, and it leaves no unlinked asset
+    behind in the account.
+
+    Unknown dimensions are **not** an error. ``width``/``height`` are
+    ``None`` for a GIF or any header mureo cannot parse, and guessing is
+    the one thing this must not do — those go to Google and come back as a
+    translated ``ImageError``. mureo never resizes.
+    """
+    if not width or not height:
+        return
+    spec = PMAX_IMAGE_FIELD_TYPES[field_type]
+    if width < spec.min_width or height < spec.min_height:
+        raise ValueError(
+            f"{field_type} requires at least {spec.min_width}x{spec.min_height} "
+            f"pixels; this image is {width}x{height}. Google recommends "
+            f"{spec.recommended}. Supply a larger image — mureo does not resize."
+        )
+    ratio = width / height
+    if abs(ratio - spec.aspect_ratio) > spec.aspect_ratio * _ASPECT_RATIO_TOLERANCE:
+        raise ValueError(
+            f"{field_type} requires a {spec.ratio_label} image; this one is "
+            f"{width}x{height} ({ratio:.2f}:1). Google recommends "
+            f"{spec.recommended}. Supply a correctly proportioned image — "
+            f"mureo does not crop or resize."
+        )
 
 
 def _validate_text(value: Any, field_type: str) -> str:
@@ -190,7 +363,7 @@ def _swap_result(
 
 
 class _AssetGroupsMixin:
-    """Performance Max asset-group text reads and swaps."""
+    """Performance Max asset-group reads, and the text swap."""
 
     _customer_id: str
     _client: GoogleAdsClient
@@ -204,24 +377,27 @@ class _AssetGroupsMixin:
         exc: GoogleAdsException, attr_name: str, error_name: str
     ) -> bool: ...
 
-    async def list_asset_group_text_assets(
+    async def list_asset_group_assets(
         self,
         asset_group_id: str | None = None,
         campaign_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """List the text assets linked to Performance Max asset groups.
+        """List the text and image assets linked to P-MAX asset groups.
 
         Returns one entry per ``asset_group_asset`` link whose ``field_type``
-        is HEADLINE, LONG_HEADLINE or DESCRIPTION — in the order the API
-        returned them, with nothing summed, deduplicated or reordered. Two
-        links carrying the same text are two entries, because that is what
-        the asset group has.
+        is one of the three text types or the five image types — in the order
+        the API returned them, with nothing summed, deduplicated or reordered.
+        Two links carrying the same asset are two entries, because that is
+        what the asset group has.
+
+        Text rows carry ``text``; image rows carry ``asset_name``, ``url``,
+        ``width_pixels`` and ``height_pixels``. ``field_type`` says which.
 
         Args:
             asset_group_id: Restrict to one asset group.
             campaign_id: Restrict to the asset groups of one campaign.
         """
-        query = validate_static_query(_TEXT_ASSET_QUERY)
+        query = validate_static_query(_ASSET_QUERY)
         if asset_group_id:
             self._validate_id(asset_group_id, "asset_group_id")
             query += f"                AND asset_group.id = {asset_group_id}\n"
@@ -232,7 +408,7 @@ class _AssetGroupsMixin:
                 f"'customers/{self._customer_id}/campaigns/{campaign_id}'\n"
             )
         rows = await self._search(query)
-        return [_map_text_asset_row(row) for row in rows]
+        return [_map_asset_row(row) for row in rows]
 
     @_wrap_mutate_error("Performance Max asset-group text replacement")
     async def replace_asset_group_text_asset(
@@ -248,7 +424,7 @@ class _AssetGroupsMixin:
         Supported ``params`` keys (all required): ``asset_group_id``,
         ``field_type`` (HEADLINE / LONG_HEADLINE / DESCRIPTION),
         ``old_asset_id`` (the ``asset_id`` reported by
-        :meth:`list_asset_group_text_assets`), ``new_text``.
+        :meth:`list_asset_group_assets`), ``new_text``.
         """
         asset_group_id = self._validate_id(
             str(params.get("asset_group_id", "")), "asset_group_id"
@@ -293,9 +469,7 @@ class _AssetGroupsMixin:
         """
         linked = [
             row
-            for row in await self.list_asset_group_text_assets(
-                asset_group_id=asset_group_id
-            )
+            for row in await self.list_asset_group_assets(asset_group_id=asset_group_id)
             if row["field_type"] == field_type
         ]
         if any(row["text"] == new_text for row in linked):

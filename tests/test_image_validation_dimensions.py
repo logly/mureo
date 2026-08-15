@@ -161,3 +161,53 @@ def test_truncated_png_signature_passes_through(tmp_path: Path) -> None:
     img = tmp_path / "raw.png"
     img.write_bytes(b"\x89PNG raw visual")  # not the full 8-byte signature
     assert _validate(img) == img
+
+
+# ---------------------------------------------------------------------------
+# read_image_dimensions (#626)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "name,payload,expected",
+    [
+        ("hero.png", _png(1200, 628), (1200, 628)),
+        ("hero.jpg", _jpeg(600, 314), (600, 314)),
+        ("hero.webp", _webp_vp8x(960, 1200), (960, 1200)),
+    ],
+)
+def test_read_image_dimensions_measures_what_it_can(
+    tmp_path: Path, name: str, payload: bytes, expected: tuple[int, int]
+) -> None:
+    """The P-MAX image swap refuses a wrongly shaped file before uploading
+    it, which it can only do for the formats these probes cover."""
+    from mureo._image_validation import read_image_dimensions
+
+    img = tmp_path / name
+    img.write_bytes(payload)
+    assert read_image_dimensions(img) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "name,payload",
+    [
+        ("animated.gif", b"GIF89a" + b"\x00" * 32),
+        ("placeholder.png", b"\x00" * 100),
+        ("missing.png", None),
+    ],
+)
+def test_read_image_dimensions_says_unknown_rather_than_guessing(
+    tmp_path: Path, name: str, payload: bytes | None
+) -> None:
+    """``(None, None)`` is the honest answer for a format with no std-lib
+    probe here. A caller enforcing a per-slot shape must read that as "not
+    known", never as "not allowed" — mureo does not guess and does not
+    resize."""
+    from mureo._image_validation import read_image_dimensions
+
+    img = tmp_path / name
+    if payload is not None:
+        img.write_bytes(payload)
+    assert read_image_dimensions(img) == (None, None)

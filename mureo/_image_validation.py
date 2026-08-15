@@ -232,6 +232,23 @@ def _enforce_image_header(path: Path, *, max_pixels: int) -> None:
         )
 
 
+def read_image_dimensions(path: Path) -> tuple[int | None, int | None]:
+    """Return ``(width, height)`` for a PNG/JPEG/WebP file, else ``(None, None)``.
+
+    The honest answer for anything else: this project has no image-library
+    dependency, so a GIF, or a header these std-lib probes cannot parse,
+    yields ``(None, None)`` rather than a guess. Callers that enforce a
+    per-slot dimension rule must treat that as "not known", never as "not
+    allowed" — see
+    ``mureo.google_ads._asset_groups._validate_image_dimensions``.
+    """
+    probed = _probe_image(path)
+    if probed is None:
+        return (None, None)
+    _, width, height = probed
+    return (width, height)
+
+
 def validate_image_file(
     file_path: str,
     *,

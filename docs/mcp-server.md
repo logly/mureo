@@ -282,37 +282,67 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | `google_ads_assets_upload_image` | Upload a local image file as a Google Ads asset | `customer_id`, `file_path` |
 | `google_ads_image_assets_list` | List existing image assets with their names and dimensions (width/height, file size, serving URL) | `customer_id` |
 
-#### Performance Max asset-group text
+#### Performance Max asset groups
 
 `google_ads_ads_list` returns no rows for a Performance Max campaign: P-MAX
-has no `ad_group_ad`, and its headlines, long headlines and descriptions are
-assets linked to an **asset group** through `asset_group_asset`. These two
-tools are the P-MAX ad-copy surface.
+has no `ad_group_ad`. Its headlines, long headlines and descriptions — and
+its images and logos — are assets linked to an **asset group** through
+`asset_group_asset`. These three tools are the P-MAX creative surface.
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `google_ads_asset_group_assets_list` | List the HEADLINE / LONG_HEADLINE / DESCRIPTION assets linked to Performance Max asset groups, with the `asset_id` and the `asset_group_asset` handle for each. Optionally filtered by `asset_group_id` or `campaign_id` | `customer_id` |
+| `google_ads_asset_group_assets_list` | List the text AND image assets linked to Performance Max asset groups, with the `asset_id` and the `asset_group_asset` handle for each. Optionally filtered by `asset_group_id` or `campaign_id` | `customer_id` |
 | `google_ads_asset_group_assets_replace` | Swap one headline, long headline or description of an asset group for new text | `customer_id`, `asset_group_id`, `field_type`, `old_asset_id`, `new_text` |
+| `google_ads_asset_group_images_replace` | Swap one image or logo of an asset group, from an existing asset id or a local file | `customer_id`, `asset_group_id`, `field_type`, `old_asset_id`, and one of `new_asset_id` / `new_image_path` |
 
-A Google Ads text `Asset` is immutable, so the swap is not an update: it
-creates a new `Asset`, links it under the same `field_type`, and removes the
-old link. All three go in **one** atomic `GoogleAdsService.mutate`, so the
-asset group's asset count for that field type never dips below the
-Performance Max minimum — a removal issued on its own can be refused with
-`AssetGroupError.NOT_ENOUGH_HEADLINE_ASSET` (or the long-headline /
-description twin), which the tool reports as an actionable message rather
-than a raw API error. The old `Asset` itself is not deleted; only its link to
-that asset group is. The swap is not automatically reversible: to undo it,
-call the tool again with the old text.
+**One read, two row shapes.** `google_ads_asset_group_assets_list` issues one
+query covering both halves, because the question is "show me this asset
+group's creative", not "show me its text". Every entry carries
+`resource_name`, `field_type`, `status`, `asset_id`, `asset_group_id`,
+`asset_group_name`, `campaign_id` and `campaign_resource_name`; `field_type`
+says what the rest holds. A text link (`HEADLINE`, `LONG_HEADLINE`,
+`DESCRIPTION`) adds `text`. An image link (`MARKETING_IMAGE`,
+`SQUARE_MARKETING_IMAGE`, `PORTRAIT_MARKETING_IMAGE`, `LOGO`,
+`LANDSCAPE_LOGO`) adds `asset_name`, `url` (the full-size serving URL),
+`width_pixels` and `height_pixels`. This is also the only Google read that
+says *which* asset group serves a given image: `google_ads_image_assets_list`
+is account-wide and does not.
 
-**Text only.** These two tools cover the three text field types and nothing
-else: an asset group's image, video, logo, business-name and other non-text
-assets are not returned by
-`google_ads_asset_group_assets_list` and cannot be replaced.
-`google_ads_image_assets_list` lists the account's image assets with a
-serving URL, but it is account-wide — it does not report which asset group or
-ad uses one, so the images of a given Performance Max asset group cannot be
-enumerated. `/creative-refresh` treats every surface with no write tool as
+**The text swap.** A Google Ads text `Asset` is immutable, so the swap is not
+an update: it creates a new `Asset`, links it under the same `field_type`,
+and removes the old link. All three go in **one** atomic
+`GoogleAdsService.mutate`, so the asset group's asset count for that field
+type never dips below the Performance Max minimum — a removal issued on its
+own can be refused with `AssetGroupError.NOT_ENOUGH_HEADLINE_ASSET` (or the
+long-headline / description twin), which the tool reports as an actionable
+message rather than a raw API error. The old `Asset` itself is not deleted;
+only its link to that asset group is.
+
+**The image swap.** Nothing has to be created inside the mutate — an image
+asset exists before an asset group can point at it — so the request is two
+operations, link then unlink, again as one atomic mutate against the same
+`NOT_ENOUGH_MARKETING_IMAGE_ASSET` / `NOT_ENOUGH_SQUARE_MARKETING_IMAGE_ASSET`
+/ `NOT_ENOUGH_LOGO_ASSET` floors. Pass `new_asset_id` for an image the
+account already holds, or `new_image_path` for a local file — exactly one of
+the two; the tool uploads the file itself, so an operator never has to work
+out which situation they are in. Google enforces a shape per slot
+(`MARKETING_IMAGE` 1.91:1 min 600x314, `SQUARE_MARKETING_IMAGE` 1:1 min
+300x300, `PORTRAIT_MARKETING_IMAGE` 4:5 min 480x600, `LOGO` 1:1 min 128x128,
+`LANDSCAPE_LOGO` 4:1 min 512x128) and mureo checks it **before** uploading or
+linking anything, so a wrongly proportioned file costs no API call and leaves
+no unlinked asset behind. For a format it cannot measure locally (GIF, or an
+unrecognised header) it does not guess: the file goes to Google and an
+`ImageError` refusal comes back translated into the rule for that slot.
+mureo never crops or resizes.
+
+Neither swap is automatically reversible: to undo one, call the tool again
+with the old text or the old `asset_id`.
+
+**Text and images only.** Video, business name, and every other field type of
+an asset group are neither returned by `google_ads_asset_group_assets_list`
+nor replaceable. A video asset references a YouTube video id rather than
+uploaded bytes, so it is a different entry shape and a different operator
+workflow. `/creative-refresh` treats every surface with no write tool as
 draft-only and says so before drafting rather than after the operator agrees;
 see its *Apply or draft* section.
 
