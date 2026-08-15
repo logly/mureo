@@ -676,7 +676,7 @@ async def handle_image_assets_list(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# Performance Max asset-group text assets (#590)
+# Performance Max asset-group assets (#590 text, #626 images)
 # ---------------------------------------------------------------------------
 
 
@@ -685,7 +685,7 @@ async def handle_asset_group_assets_list(args: dict[str, Any]) -> list[TextConte
     client = _get_client(args)
     if client is None:
         return _no_google_creds()
-    result = await client.list_asset_group_text_assets(
+    result = await client.list_asset_group_assets(
         asset_group_id=_opt(args, "asset_group_id"),
         campaign_id=_opt(args, "campaign_id"),
     )
@@ -704,6 +704,27 @@ async def handle_asset_group_assets_replace(args: dict[str, Any]) -> list[TextCo
         "new_text": _require(args, "new_text"),
     }
     result = await client.replace_asset_group_text_asset(params)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_asset_group_images_replace(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "asset_group_id": _require(args, "asset_group_id"),
+        "field_type": _require(args, "field_type"),
+        "old_asset_id": _require(args, "old_asset_id"),
+    }
+    # new_asset_id / new_image_path are exactly-one-of, which `_require`
+    # cannot express. The client refuses zero or two, so the rule holds for
+    # any caller, not just this handler.
+    for key in ("new_asset_id", "new_image_path", "new_image_name"):
+        value = _opt(args, key)
+        if value is not None:
+            params[key] = value
+    result = await client.replace_asset_group_image_asset(params)
     return _json_result(result)
 
 
@@ -747,6 +768,7 @@ _HANDLERS_BASE: dict[str, Any] = {
     "google_ads_image_assets_list": handle_image_assets_list,
     "google_ads_asset_group_assets_list": handle_asset_group_assets_list,
     "google_ads_asset_group_assets_replace": handle_asset_group_assets_replace,
+    "google_ads_asset_group_images_replace": handle_asset_group_images_replace,
 }
 
 # Merge extension and analysis handlers

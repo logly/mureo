@@ -63,10 +63,10 @@ class TestListTools:
     """Verify list_tools returns the correct tool definitions."""
 
     async def test_list_tools_returns_all_tools(self) -> None:
-        """list_tools returns all tools (Google Ads 91 + Meta Ads 90 + Search Console 10
+        """list_tools returns all tools (Google Ads 92 + Meta Ads 90 + Search Console 10
         + Rollback 2 + Batch 3 + Change Import 1 + Analysis 5 + Mureo Context 9
         + Analytics Registry 2 + Learning 2 + Learning pre-flight 1
-        + Creative Studio 5 = 221).
+        + Creative Studio 5 = 222).
 
         Analytics Registry is 2: mureo_analytics_modules_list +
         mureo_analytics_run (#440). Batch is 3: mureo_batch_begin / _end /
@@ -78,7 +78,7 @@ class TestListTools:
         mureo_learning_reset_preflight (#548)."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 221
+        assert len(tools) == 222
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads and Meta Ads tools are included."""

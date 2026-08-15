@@ -90,6 +90,8 @@ _STR_READ_SUBJECTS: dict[tuple[str, str], tuple[str, str]] = {
     ("_asset_groups.py", "row"): ("services", "GoogleAdsRow"),
     ("_asset_groups.py", "link"): ("resources", "AssetGroupAsset"),
     ("_asset_groups.py", "group"): ("resources", "AssetGroup"),
+    ("_asset_groups.py", "full_size"): ("common", "ImageDimension"),
+    ("_asset_groups_images.py", "asset"): ("resources", "Asset"),
     ("_creative.py", "ad"): ("resources", "Ad"),
     ("_diagnostics.py", "row"): ("services", "GoogleAdsRow"),
     ("_diagnostics.py", "ad"): ("resources", "AdGroupAd"),
