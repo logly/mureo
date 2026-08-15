@@ -305,6 +305,17 @@ than a raw API error. The old `Asset` itself is not deleted; only its link to
 that asset group is. The swap is not automatically reversible: to undo it,
 call the tool again with the old text.
 
+**Text only.** These two tools cover the three text field types and nothing
+else: an asset group's image, video, logo, business-name and other non-text
+assets are not returned by
+`google_ads_asset_group_assets_list` and cannot be replaced.
+`google_ads_image_assets_list` lists the account's image assets with a
+serving URL, but it is account-wide — it does not report which asset group or
+ad uses one, so the images of a given Performance Max asset group cannot be
+enumerated. `/creative-refresh` treats every surface with no write tool as
+draft-only and says so before drafting rather than after the operator agrees;
+see its *Apply or draft* section.
+
 ### Meta Ads
 
 #### Campaigns

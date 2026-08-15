@@ -15,6 +15,61 @@
   every mock in the session grew a `long_headline` property. An AST sweep now
   fails on any assignment through `type(...)` under `tests/`.
 
+- **Creative guidance offered to apply copy changes before checking that a
+  tool could apply them** (#591). Asked about a Performance Max campaign,
+  mureo drafted replacement headlines and offered to push them; the offer was
+  accepted; only then did it turn out that every write tool it knew
+  (`google_ads_ads_create` / `google_ads_ads_update`) is RSA-only, and the
+  answer became "do it yourself in the Google Ads UI". A round trip spent on
+  an offer that was never executable.
+
+  `/creative-refresh` now decides **before drafting**, not after approval.
+  Its new *Apply or draft* rule requires naming the write tool that would
+  apply a change for that exact surface (platform + campaign type + asset
+  kind) and scoping the offer by whether that tool is in the session's tool
+  list — never by campaign type as a category. A surface with a write tool is
+  offered for application under the usual approval gate; a surface without one
+  is presented as copy for the operator to paste in, stated in the same
+  message as the draft, with no approval request and no `action_log` entry
+  (logging a hand-paste as a mureo change would have the outcome evaluator
+  later measure a change that may never have been made).
+
+  The rule names the concrete surfaces of today — Search RSA text, and the
+  Performance Max asset-group text that #590 just made writable — but says
+  explicitly that they are a snapshot of the tool layer and not the boundary:
+  a surface that was draft-only last release may have a write tool now and
+  should be offered, and a tool named there can be absent in a given session
+  (BYOD, plugin- or hosted-connector-only, `MUREO_DISABLE_GOOGLE_ADS=1`), in
+  which case that surface is draft-only for that run. This is what keeps the
+  guidance from rotting the next time the tool layer grows — the previous
+  wording had no scoping at all, which is how the bad offer got made.
+
+  Two consequences of #590 flow through the same edit. The creative audit no
+  longer misses Performance Max: `google_ads_ads_list` returns no rows for a
+  P-MAX campaign, so the audit step now reads its copy with
+  `google_ads_asset_group_assets_list`, and execution routes P-MAX through
+  `google_ads_asset_group_assets_replace` (per asset, by `asset_group_id` +
+  `field_type` + `old_asset_id`) instead of `google_ads_ads_update`, which
+  cannot see it. The same branch is added to the two `_mureo-strategy`
+  playbooks that fed drafted copy straight into the RSA-only tools.
+
+  Also corrects an instruction that could not be satisfied: the visual
+  evaluation section told the agent to fetch "a Google image/Display/PMax
+  asset" URL. #590 covers text, not pixels — `google_ads_image_assets_list`
+  is account-wide and never says which asset group or ad serves an image, and
+  `google_ads_asset_group_assets_list` returns text only. The section now
+  states exactly what can be retrieved (a Responsive Display Ad's image asset
+  resource names from `google_ads_ads_list`, matched by id against
+  `google_ads_image_assets_list`) and what cannot (the images of a given P-MAX
+  asset group), and says to ask the operator for the image rather than guess a
+  score.
+
+  `/ad-fatigue-check`, which routes fatigued creatives into
+  `/creative-refresh`, now hands over the fatigue evidence as a brief without
+  promising a rewrite — from there it cannot see which write tools cover the
+  tiring asset, so committing mureo to applying anything is exactly the
+  original bug one skill upstream.
+
 - **Two plugins shipping the same tool name lost one plugin's guardrails
   without saying whose** (#589). mureo's three plugin declaration registries —
   the budget keys, the bid keys and the `readOnlyHint` that decide whether a

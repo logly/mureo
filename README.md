@@ -192,7 +192,7 @@ See [SECURITY.md](SECURITY.md) for the full threat model and vulnerability repor
 | `/rescue` | Emergency performance fix: platform-side vs site-side root cause diagnosis |
 | `/incident-postmortem` | Post-incident retrospective: timeline reconstruction, root-cause analysis, reusable insights via `/learn`, and preventive guardrails (no ad-platform writes) |
 | `/search-term-cleanup` | Keyword hygiene with paid/organic overlap elimination |
-| `/creative-refresh` | Multi-platform ad copy refresh using your Persona, USP, and organic keyword data |
+| `/creative-refresh` | Multi-platform ad copy refresh using your Persona, USP, and organic keyword data. Applies what a tool covers — Search RSA text and Performance Max asset-group text — and hands anything else (images, video, logos) over as copy to paste in, said up front rather than after you accept |
 | `/creative-generate` | Generate creator-quality ad creatives (key visuals + composed banners) from a strategy brief, with an art-direction scoring loop ([Creative Studio](docs/creative-studio.md)) |
 | `/ad-fatigue-check` | Detect creative fatigue (frequency, week-over-week CTR decline, CPM drift), score ads FATIGUED/WATCH/FRESH, and route refreshes to `/creative-generate` or `/creative-refresh` |
 | `/experiment` | Design, run, and evaluate a controlled A/B split test — one variable, a falsifiable hypothesis, a fixed window, and a per-variant winner/no-difference/inconclusive verdict |
@@ -276,6 +276,7 @@ Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distin
 |------------|-------------|
 | RSA ad validation | Prohibited expression detection, character width calculation, auto-correction, ad strength prediction |
 | RSA asset audit | Asset-level performance analysis, replacement/addition recommendations |
+| Performance Max asset-group copy | Read an asset group's headlines / long headlines / descriptions and swap one. Text only — the image, video and logo assets of an asset group are neither readable per asset group nor writable, so mureo drafts those for you to paste in and says so before you accept |
 | Landing page analysis | HTML parsing with SSRF protection, CTA/feature/price detection, industry estimation |
 | Creative research | Aggregates LP + existing ads + search terms + keyword suggestions into a unified research package |
 | Message match evaluation | Ad copy <-> landing page alignment scoring (screenshot capture via Playwright) |
