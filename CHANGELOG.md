@@ -52,6 +52,17 @@
 
 ### Fixed
 
+- **A Windows CI failure that had nothing to do with the change under
+  test.** `test_oversize_post_body_rejected` asserted the client sees a
+  `413`. The handler answers it *without reading the body* — deliberately,
+  since reading it is what the cap exists to avoid — so the client is still
+  writing 20 KB when the server replies and closes. Whether it reads the
+  status or has its socket torn out first is socket buffering: Linux and
+  macOS deliver the response, Windows raises `ConnectionAbortedError` first.
+  Both prove the body was refused rather than buffered, so the test now
+  accepts either and additionally asserts the server still serves the next
+  request — the part neither outcome shows on its own.
+
 - **Four test modules edited `GoogleAdsException` for the rest of the
   session.** Each built a fake exception with `__new__` and then attached a
   fake `failure` through `type(exc).failure = property(...)`. `type(exc)` is
