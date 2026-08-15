@@ -239,6 +239,94 @@ class TestSurvey:
         # The one genuinely finished client is the only one called clean.
         assert "Clean (1 of 3)" in out
 
+    def test_an_entry_mureo_will_not_remove_is_not_counted_as_needing_repair(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#616 narrowed the plan, and the summary has to follow it.
+
+        ``theta``'s only finding is a solitary entry under a key no plugin
+        installed HERE registers, holding figures and duplicating nothing.
+        mureo will not remove it, so counting theta under "Need repair" would
+        promise a repair the sweep never makes — and counting it under "Clean"
+        would tell the operator there is nothing to look at.
+        """
+        paths = {
+            slug: tmp_path / slug / "STATE.json" for slug in ("acme", "theta", "gamma")
+        }
+        _bad_state(paths["acme"], "1111111111")
+        _write(
+            paths["theta"],
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "5555555555",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00+00:00",
+                        },
+                        "metrics_period": "LAST_30_DAYS",
+                    }
+                },
+            },
+        )
+        _clean_state(paths["gamma"], "3333333333")
+        stores = {slug: _ClientStore(path) for slug, path in paths.items()}
+        rows = [
+            {"slug": "acme", "name": "Acme Co", "active": True},
+            {"slug": "theta", "name": "Theta AB", "active": False},
+            {"slug": "gamma", "name": "Gamma KK", "active": False},
+        ]
+        _install_store(monkeypatch, _AgencyStore(paths["acme"], rows, dict(stores)))
+        before = paths["theta"].read_bytes()
+
+        result = _run("--all", "--apply", "--yes")
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "Need repair (1 of 3)" in out
+        assert "Need your decision (1 of 3)" in out
+        assert "Clean (1 of 3)" in out
+        # And the sweep left it alone.
+        assert paths["theta"].read_bytes() == before
+        assert list(tmp_path.glob("theta/STATE.json.bak.*")) == []
+
+    def test_a_sweep_whose_only_findings_are_undecidable_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With nothing to repair the sweep must not claim every key resolves
+        — one of them plainly does not."""
+        path = tmp_path / "theta" / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "5555555555",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00+00:00",
+                        },
+                    }
+                },
+            },
+        )
+        rows = [{"slug": "theta", "name": "Theta AB", "active": True}]
+        _install_store(
+            monkeypatch, _AgencyStore(path, rows, {"theta": _ClientStore(path)})
+        )
+
+        result = _run("--all")
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "Need your decision (1 of 1)" in out
+        assert (
+            "every client's platform entries are filed under keys mureo can" not in out
+        )
+        assert "Nothing to repair automatically" in out
+
     def test_the_summary_comes_before_the_per_client_detail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
