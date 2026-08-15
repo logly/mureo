@@ -1,56 +1,74 @@
 ## [Unreleased]
 
-### Added
-
-- **A Performance Max asset group's images can now be read and swapped**
-  (#626). #590 made a P-MAX asset group's *text* readable and writable; its
-  pictures stayed invisible. No tool reported which images an asset group
-  served — `google_ads_image_assets_list` is account-wide and never says
-  which asset group or ad uses an asset — so "show me this asset group's
-  creative" could only be half-answered, and nothing could change one.
-
-  `google_ads_asset_group_assets_list` now returns **both** halves from one
-  query. Every entry still carries the link and asset-group columns;
-  `field_type` says what the rest holds. A text link adds `text`, exactly as
-  #590 shipped it — no key added, none removed. An image link
-  (`MARKETING_IMAGE`, `SQUARE_MARKETING_IMAGE`,
-  `PORTRAIT_MARKETING_IMAGE`, `LOGO`, `LANDSCAPE_LOGO`) adds `asset_name`,
-  `url` (the full-size serving URL), `width_pixels` and `height_pixels`. One
-  read rather than two, because a text-only answer to "show me this asset
-  group's creative" is how #591's field report came to conclude a P-MAX
-  account had no creative at all.
-
-  The new `google_ads_asset_group_images_replace` swaps one of them. Both
-  situations go through it: pass `new_asset_id` for an image the account
-  already holds, or `new_image_path` for a local file it uploads first —
-  exactly one of the two, so an operator never has to work out which
-  situation they are in to pick a tool name. Like the text swap it is one
-  atomic `GoogleAdsService.mutate` with the create first, here two
-  operations rather than three (an image asset already exists before the
-  asset group can point at it), so the per-field-type count never dips below
-  the Performance Max minimum — `AssetGroupError.NOT_ENOUGH_*` is reported
-  as an actionable message rather than a raw API error, and
-  `partial_failure` is deliberately unset.
-
-  Google enforces a shape per slot (1.91:1, 1:1, 4:5, 1:1 and 4:1
-  respectively, each with its own pixel floor). mureo checks it **before**
-  uploading or linking anything, so a wrongly proportioned file costs no API
-  call and leaves no unlinked asset in the account. For a format it cannot
-  measure locally — a GIF, or an unrecognised header — it does not guess:
-  the file goes to Google and the `ImageError` refusal comes back translated
-  into the rule for that slot. It never crops or resizes.
-
-  Video stays out of scope: a video asset references a YouTube video id
-  rather than uploaded bytes, so it is a different entry shape and a
-  different operator workflow.
-
-  `/creative-refresh` is updated in the same change. It previously stated
-  that a P-MAX asset group's images were not retrievable and that every
-  image was draft-only, which the read half now makes false; its *Apply or
-  draft* rule keys on whether a write tool exists for the surface, so the
-  new tool flows through it rather than needing the rule rewritten.
-
 ### Fixed
+
+- **`mureo repair platform-key` offered to delete a legitimate solitary entry
+  when its plugin was not installed on the machine running the repair**
+  (#616). The delete criterion was resolvability, alone — and "mureo cannot
+  resolve this key" is a fact about *this machine's* installed bridges, not
+  about the entry. The same STATE.json was therefore judged differently on two
+  machines, and on the one lacking a bridge a real platform's real figures,
+  duplicating nothing, became a deletion candidate. Worst under `--all`, which
+  sweeps every client from one host whose plugin set need not match the machine
+  that wrote each document.
+
+  Removal is now proposed only when the **document itself** shows the entry is
+  wrong: it duplicates a key mureo *can* resolve holding the same ad account,
+  or it is an empty stub (no campaigns, no `totals`, no stored periods, no
+  declared settings). An empty `account_id` deliberately does not make a stub —
+  the shape reported from the field carries one, and an entry that never said
+  which account it describes can still hold every figure a platform has.
+  Everything else unresolvable is reported and handed back with its reason,
+  the way an undecidable duplicate already was.
+
+- **A dropped platform entry silently took the operator-declared conversion
+  allow-list with it** (#617). `conversion_action_types` is set by a person so
+  a custom-event advertiser is counted correctly (#342); nothing on the
+  platform side knows it, so no sync restores it. The preview described the
+  change entirely in terms of re-fetchable figures and never named the field,
+  so the operator confirmed a loss they were never shown.
+
+  The field is now carried on `PlatformEntryFacts` and printed whenever an
+  entry holds one — count, the action types themselves, and that no sync
+  restores them — and an entry carrying one is **refused** rather than offered.
+  Refusing rather than asking a second time is the point: the existing
+  confirmation is skippable with `--yes`, which is exactly how the
+  whole-machine sweep is run, so a second prompt would protect nobody on the
+  path that matters.
+
+- **With two or more entries dropped in one pass, each preview block claimed
+  the others were left untouched** (#618). `every other platform entry is left
+  exactly as it is` was printed unconditionally, once per block, so each block
+  contradicted the ones around it. And sibling entries for the same ad account
+  were filtered to the resolvable ones — precisely hiding the siblings that
+  were *also* being dropped, so a pass that removed an account's last record
+  never said so.
+
+  The reassurance is now scoped to entries outside the plan and names the plan
+  when it holds more than one key; siblings are listed whether or not mureo can
+  resolve them, each labelled as staying or as being removed by this run; and
+  when every entry for an ad account is in the plan, every block says the
+  account will be left with no record at all — before the confirmation.
+
+- **A schema-invalid STATE.json ended `mureo repair platform-key` in a raw
+  traceback** (#618). `read_state_file` wraps `json.JSONDecodeError` only, and
+  strict parsing also raises a bare `ValueError` for a document that is valid
+  JSON but invalid against the schema — a campaign missing `campaign_name`,
+  say. The single-workspace path caught only `ContextFileError`, so that
+  document produced a Python traceback, while `--all` caught broadly and
+  reported the very same file under `Could not be read`. One document, two
+  answers, and the person this command exists for cannot read the second one.
+
+  Both CLI entry points now catch it and print the same `Error: ...` block the
+  command uses everywhere else, naming the file and the reason — reusing
+  `--all`'s own wording so the two paths cannot drift apart again.
+  `read_state_file`'s contract is deliberately unchanged (fifteen-odd callers
+  depend on it); the docstring on `apply_state_file_repairs`, which promised
+  `ContextFileError` for every unparseable document, is corrected to state that
+  `ValueError` passes through and that a caller reporting to a person must
+  catch both. While there: `--all` no longer closes a sweep in which nothing
+  could be read with "every client's platform entries are filed under keys
+  mureo can resolve", which it could not know.
 
 - **A Windows CI failure that had nothing to do with the change under
   test.** `test_oversize_post_body_rejected` asserted the client sees a
@@ -233,6 +251,54 @@
   than exempted by line number.
 
 ### Added
+
+- **A Performance Max asset group's images can now be read and swapped**
+  (#626). #590 made a P-MAX asset group's *text* readable and writable; its
+  pictures stayed invisible. No tool reported which images an asset group
+  served — `google_ads_image_assets_list` is account-wide and never says
+  which asset group or ad uses an asset — so "show me this asset group's
+  creative" could only be half-answered, and nothing could change one.
+
+  `google_ads_asset_group_assets_list` now returns **both** halves from one
+  query. Every entry still carries the link and asset-group columns;
+  `field_type` says what the rest holds. A text link adds `text`, exactly as
+  #590 shipped it — no key added, none removed. An image link
+  (`MARKETING_IMAGE`, `SQUARE_MARKETING_IMAGE`,
+  `PORTRAIT_MARKETING_IMAGE`, `LOGO`, `LANDSCAPE_LOGO`) adds `asset_name`,
+  `url` (the full-size serving URL), `width_pixels` and `height_pixels`. One
+  read rather than two, because a text-only answer to "show me this asset
+  group's creative" is how #591's field report came to conclude a P-MAX
+  account had no creative at all.
+
+  The new `google_ads_asset_group_images_replace` swaps one of them. Both
+  situations go through it: pass `new_asset_id` for an image the account
+  already holds, or `new_image_path` for a local file it uploads first —
+  exactly one of the two, so an operator never has to work out which
+  situation they are in to pick a tool name. Like the text swap it is one
+  atomic `GoogleAdsService.mutate` with the create first, here two
+  operations rather than three (an image asset already exists before the
+  asset group can point at it), so the per-field-type count never dips below
+  the Performance Max minimum — `AssetGroupError.NOT_ENOUGH_*` is reported
+  as an actionable message rather than a raw API error, and
+  `partial_failure` is deliberately unset.
+
+  Google enforces a shape per slot (1.91:1, 1:1, 4:5, 1:1 and 4:1
+  respectively, each with its own pixel floor). mureo checks it **before**
+  uploading or linking anything, so a wrongly proportioned file costs no API
+  call and leaves no unlinked asset in the account. For a format it cannot
+  measure locally — a GIF, or an unrecognised header — it does not guess:
+  the file goes to Google and the `ImageError` refusal comes back translated
+  into the rule for that slot. It never crops or resizes.
+
+  Video stays out of scope: a video asset references a YouTube video id
+  rather than uploaded bytes, so it is a different entry shape and a
+  different operator workflow.
+
+  `/creative-refresh` is updated in the same change. It previously stated
+  that a P-MAX asset group's images were not retrievable and that every
+  image was draft-only, which the read half now makes false; its *Apply or
+  draft* rule keys on whether a write tool exists for the surface, so the
+  new tool flows through it rather than needing the rule rewritten.
 
 - **Performance Max ad copy can now be read and changed from mureo** (#590).
   Asking for the current ad copy of a P-MAX campaign returned nothing, and

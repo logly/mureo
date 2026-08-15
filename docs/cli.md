@@ -278,7 +278,18 @@ A bulk pass wrapped in a batch (`mureo_batch_begin` / `mureo_batch_end`) is plan
 
 `mureo repair` fixes the STATE.json problems mureo can fix **without guessing**. Today that is one: a `platforms` entry filed under a key that names no advertising platform at all — an agent writing LOGLY snapshots under `logly_ads` when the bridge's provider is `logly_ads_context`, for instance. Both keys then carry the same ad account, and the dashboard reports the spend, conversions and CPA as double-counted.
 
-A duplicate whose two keys **both** name real platforms is reported and handed back to you: which of two sets of partial figures is true is a question about money that only you can answer, and mureo will not answer it for you.
+### What is actually removed, and what is only reported
+
+"mureo cannot resolve this key" is a fact about **the machine running the repair** — which plugin bridges are installed on it right now — not about the entry. The same STATE.json is judged differently on two machines, so unresolvability on its own selects nothing. An entry is offered for removal only when the **document itself** shows it is wrong:
+
+- **it duplicates a key mureo can resolve** holding the same ad account — the record survives under the key the account is really stored under; or
+- **it is an empty stub** — no campaigns, no `totals`, no stored periods and no settings of your own. Note that an empty `account_id` does *not* make a stub: an entry that never said which account it describes can still hold every figure a platform has.
+
+Everything else it finds is **reported and handed back to you**, with the reason under each block:
+
+- **a duplicate whose two keys both name real platforms** — which of two sets of partial figures is true is a question about money that only you can answer;
+- **an unresolvable entry that duplicates nothing and carries figures** — it may be the only record of that spend, and the key may belong to a plugin that is simply not installed on this machine. mureo will not delete it on a guess;
+- **any entry carrying `conversion_action_types`** — the conversion allow-list you declared by hand with `mureo_state_set_conversion_events`. Every figure in an entry can be re-fetched from the platform; that setting cannot, because nothing on the platform side knows it. mureo refuses to remove such an entry rather than asking you to confirm a loss — a second prompt would be skipped by `--yes`, which is exactly how the whole-machine sweep is run. To remove it anyway: declare those action types on the entry you are keeping, clear them here, then run the command again.
 
 ```bash
 # Show what mureo would do. Changes nothing — this is the default.
@@ -299,13 +310,16 @@ mureo repair platform-key --all
 mureo repair platform-key --all --apply
 ```
 
-The dry run names the key, the ad account, how many campaigns the entry carries, whether it holds a `totals` rollup and which windows it covers with each window's fetch time — for the unresolvable entry **and** for the entry the same ad account is stored under — then states exactly what would change:
+The dry run names the key, the ad account, how many campaigns the entry carries, whether it holds a `totals` rollup and which windows it covers with each window's fetch time — for the entry being removed **and** for every other entry holding the same ad account, whether or not mureo can resolve those — then states why it can go and exactly what would change:
 
 ```
   logly_ads — mureo cannot resolve this key.
     It is not one of mureo's own platform names, no plugin installed here
-    registers it, and it is not a plugin:<distribution>:<provider> key. So no
-    platform's data can belong to it.
+    registers it, and it is not a plugin:<distribution>:<provider> key.
+
+    Why it can go: the same ad account is stored under logly_ads_context, which
+    mureo CAN resolve — so this entry duplicates a record that survives, and
+    holds nothing a sync cannot refill.
 
     This entry holds:
       ad account:  1234567890
@@ -313,9 +327,8 @@ The dry run names the key, the ad account, how many campaigns the entry carries,
       totals:      stored, covering LAST_30_DAYS, fetched 2026-08-01T03:00:00+00:00
       periods:     LAST_30_DAYS (fetched 2026-08-01T03:00:00+00:00)
 
-    The same ad account is also stored under a key mureo CAN resolve, which
-    holds:
-      logly_ads_context
+    The same ad account is also stored under:
+      logly_ads_context — mureo CAN resolve this key; it stays.
         campaigns:   1
         totals:      stored, covering LAST_30_DAYS, fetched 2026-08-12T03:00:00+00:00
         periods:     none stored
@@ -328,6 +341,53 @@ The dry run names the key, the ad account, how many campaigns the entry carries,
 
 Nothing is ever merged or summed: two partial entries added together over-count exactly as much as dropping one under-counts. The unresolvable entry is **removed**, and the next sync refills the key the account is really stored under.
 
+**When one run removes two or more entries**, the "would NOT change" line is scoped to the entries outside the plan and the plan is listed, so no block claims the others are untouched:
+
+```
+    Would NOT change: no figures are added together, moved or edited. Every
+    platform entry other than the 2 this run removes is left exactly as it is.
+    This run removes: logly_ads, logly_adz.
+```
+
+**When every entry for one ad account is in the plan**, both blocks say so before the confirmation, rather than each describing its own removal in isolation:
+
+```
+    The same ad account is also stored under:
+      logly_adz — this run removes this entry too.
+        ...
+
+    Afterwards: this run removes every entry for ad account 1234567890
+    (logly_ads, logly_adz), so STATE.json will hold NO record of that account at all.
+    The figures stay in the backup; re-sync the platform under its real
+    key once you know what that is.
+```
+
+**An entry mureo will not remove** is shown in the same shape, with `Would change: nothing.` and what to do about it:
+
+```
+  logly_ads — mureo cannot resolve this key, and will NOT remove it.
+    It is not one of mureo's own platform names, no plugin installed here
+    registers it, and it is not a plugin:<distribution>:<provider> key.
+
+    Why it stays: it carries conversion_action_types — a conversion allow-list
+    you declared by hand. Every figure here can be re-fetched from the platform;
+    that setting cannot, because nothing on the platform side knows it. Removing
+    the entry would take it with it, so mureo refuses rather than asking you to
+    confirm a loss it can avoid.
+
+    This entry holds:
+      ad account:  1234567890
+      campaigns:   0
+      totals:      stored, covering LAST_30_DAYS, fetched 2026-08-13T23:10:00Z
+      periods:     none stored
+      conversions: 1 conversion_action_type you declared — no sync restores this
+                   offsite_conversion.custom.90210
+
+    Would change: nothing.
+    Yours to decide: declare those action types on the entry you are keeping,
+    clear them here, then run this command again.
+```
+
 `--apply` backs STATE.json up first, timestamped, and prints the command that restores it:
 
 ```
@@ -338,6 +398,17 @@ If this turns out wrong, put it back with:
 
 That backup is the undo. The repair is not recorded in `action_log`: that log records changes made to an *ad platform* and feeds the rollback planner, and a local-file edit has neither a platform operation to name nor one to reverse. With no TTY — an AI agent's shell, a CI runner — `--apply` declines rather than proceeding, so nothing destructive happens where the question could not be asked.
 
+A STATE.json mureo cannot read — bad JSON, or valid JSON that does not satisfy the schema — is reported as an error and repaired not at all, on both paths. The single-workspace run names the file and the reason:
+
+```
+Error: mureo cannot read STATE.json: /path/to/STATE.json
+       Campaign is missing required field 'campaign_name': {'campaign_id': 'c-1'}
+       Nothing was changed. This command will not repair a document it cannot
+       read in full: writing it back would drop whatever the read skipped.
+```
+
+`--all` reports the same reason under `Could not be read` and carries on with the other clients. The repair deliberately refuses a document it can only parse *tolerantly*: writing back a tolerant parse would silently drop whatever that parse skipped, which is a bigger loss than the one you came to fix.
+
 The same finding is flagged on the configure UI's Reports cards, which now name this command.
 
 ### Every client at once: `--all`
@@ -347,27 +418,28 @@ A bad key is rarely one directory's problem. It is written by an agent, and an a
 ```
 === mureo repair platform-key --all ===
 
-Surveyed 6 clients.
+Surveyed 7 clients.
 
-  Need repair (2 of 6):
+  Need repair (2 of 7):
     acme (Acme Co) — logly_ads
     beta (Beta Ltd) — logly_ads
 
-  Need your decision (1 of 6):
+  Need your decision (2 of 7):
     epsilon (Epsilon GmbH) [archived] — one ad account under two real platform keys (see below)
+    theta (Theta AB) — mureo cannot resolve logly_ads_v2, and will not remove it (see below)
 
-  Clean (2 of 6):
+  Clean (2 of 7):
     gamma (Gamma KK)
     zeta (Zeta SA) — no STATE.json yet
 
-  Could not be read (1 of 6):
+  Could not be read (1 of 7):
     delta (Delta Inc) — Failed to parse JSON in STATE.json: /clients/delta/STATE.json
 ```
 
 The per-client detail follows, in the same shape as the single-workspace run, for every client that has a finding. Then:
 
 - **Dry run is still the default.** `--all` on its own changes nothing.
-- **`Need your decision` is its own group, not a footnote under `Clean`.** An ad account stored under two keys that *both* name real platforms is still double-counted; mureo simply will not choose which entry to drop, because the two usually hold different partial figures. It is not a repair this command can make, and it is not clean either — so it is counted separately rather than qualified after an em dash in a line you would skim.
+- **`Need your decision` is its own group, not a footnote under `Clean`.** An ad account stored under two keys that *both* name real platforms is still double-counted; mureo simply will not choose which entry to drop, because the two usually hold different partial figures. The same group holds the entries mureo *can* see are unresolvable but will not remove — one that duplicates nothing and carries figures, or one holding a `conversion_action_types` override. None of those is a repair this command makes, and none of them is clean either, so they are counted separately rather than qualified after an em dash in a line you would skim. A client whose only finding is one of these is **never** counted under `Need repair`: the sweep would not touch it, and `Need repair (N of M)` has to be the number of clients `--apply` will actually change.
 - **`--all --apply` asks once**, with the whole list in view — not once per client. A prompt per client teaches you to hold down `y`, which is the opposite of what a confirmation is for. Every repaired client is still backed up individually, and the `cp` that restores it is printed per client.
 - **One client failing does not stop the sweep.** An unparseable STATE.json, a lock it cannot take, a permission error — that client is named in the summary and under `Could not be read`, the rest are repaired, and the command exits non-zero so a script notices. A *finding* is not a failure: a dry run that reports work to do exits `0`.
 - **`--all` and `--state-file` are refused together.** One says "every client", the other says "this one file".

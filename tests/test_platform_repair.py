@@ -16,10 +16,14 @@ What these tests pin:
   - a duplicate whose two keys BOTH name real platforms is left alone — that
     is the case ``mureo/web/reports.py`` deliberately refuses to decide, and
     this repair does not widen into a general duplicate merger;
-  - a lone unresolvable key that is NOT part of a duplicate is IN scope. It
-    has to be: the shape actually reported from the field carries
-    ``account_id: ""`` on one of the two entries, and an unknown id is never
-    a join key, so the account join cannot see that pair at all;
+  - **unresolvable alone is not enough to offer removal** (#616). "mureo
+    cannot resolve this key" is a fact about the machine running the repair,
+    not about the entry — the plugin that registers the key may simply not be
+    installed here. Removal is offered only when the DOCUMENT shows the entry
+    is wrong: it duplicates a key mureo CAN resolve holding the same ad
+    account, or it is an empty stub;
+  - an entry carrying ``conversion_action_types`` is never dropped (#617).
+    That allow-list is operator-declared, so no sync restores it;
   - the write goes through a path ``guard_platform_entry_write`` does not
     refuse — verified against a document the create guard would reject;
   - nothing is summed, moved or re-stamped: the surviving entry is byte-for
@@ -41,10 +45,15 @@ import pytest
 
 from mureo.context import platform_guards
 from mureo.context.platform_repair import (
+    DROP_DUPLICATE,
+    DROP_EMPTY_STUB,
+    KEEP_CARRIES_FIGURES,
+    KEEP_CONVERSION_OVERRIDE,
     apply_state_file_repairs,
     drop_platform_entries,
     is_unresolvable_platform_key,
     plan_platform_key_repairs,
+    plan_platform_keys,
 )
 from mureo.context.state import read_state_file
 from mureo.core.runtime_context import default_runtime_context, reset_runtime_context
@@ -433,14 +442,20 @@ class TestScope:
         assert outcome.changed is False
         assert path.read_bytes() == before
 
-    def test_a_lone_unresolvable_key_is_in_scope(
+    def test_a_lone_unresolvable_key_with_figures_is_out_of_scope(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """IN scope, and it has to be: the shape actually reported from the
-        field has ``account_id: ""`` on the bad entry, and an unknown id is
-        never a join key — so ``duplicate_account_entries`` cannot see that
-        pair, and a duplicate-only repair would miss the very incident this
-        issue was filed for."""
+        """Reversed by #616, deliberately.
+
+        It used to be IN scope, on the reasoning that the reported shape
+        carries ``account_id: ""`` on the bad entry so the account join cannot
+        see the pair. But an entry that joins with nothing and carries figures
+        is indistinguishable from a legitimate solitary entry whose bridge is
+        not installed on THIS machine — and deleting that one loses the only
+        record of real spend. An entry with an unknown account id and nothing
+        stored is still offered (it is an empty stub); one carrying figures is
+        reported for the operator instead.
+        """
         _pin_installed_platforms(monkeypatch, "logly_ads_context")
         path = tmp_path / "STATE.json"
         _write(
@@ -456,15 +471,19 @@ class TestScope:
                 },
             },
         )
+        before = path.read_bytes()
 
-        (repair,) = plan_platform_key_repairs(read_state_file(path))
-        assert repair.entry.key == "logly_ads"
-        assert repair.entry.account_id == ""
-        # The join cannot connect the two, so the plan claims no context.
-        assert repair.same_account == ()
+        plan = plan_platform_keys(read_state_file(path))
+        assert plan.repairs == ()
+        (finding,) = plan.kept
+        assert finding.entry.key == "logly_ads"
+        assert finding.entry.account_id == ""
+        assert finding.reason == KEEP_CARRIES_FIGURES
+        # The join cannot connect the two, so the finding claims no context.
+        assert finding.same_account == ()
 
-        apply_state_file_repairs(path)
-        assert set(read_state_file(path).platforms) == {"logly_ads_context"}
+        assert apply_state_file_repairs(path).changed is False
+        assert path.read_bytes() == before
 
     def test_only_the_named_key_is_repaired(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -519,6 +538,288 @@ class TestScope:
 
         assert outcome.changed is False
         assert not path.exists()
+
+
+# ---------------------------------------------------------------------------
+# What the document has to SAY before an entry is offered (#616)
+# ---------------------------------------------------------------------------
+
+
+class TestWhatIsOfferedForRemoval:
+    """Unresolvable alone selects nothing. The document has to show it is wrong.
+
+    ``is_unresolvable_platform_key`` answers a question about the machine
+    running the repair — which plugins are importable right now — not about
+    the entry. On a machine where a bridge is not installed, that machine's
+    legitimate solitary entry looks exactly like an invented key. So the plan
+    asks the DOCUMENT instead: is this a duplicate of a key mureo can resolve
+    holding the same ad account, or is it an empty stub?
+    """
+
+    def test_a_solitary_entry_with_figures_is_not_offered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The #616 case: a real platform, real figures, duplicating nothing —
+        on a machine that simply does not have the bridge installed."""
+        _pin_installed_platforms(monkeypatch)  # no plugin installed HERE
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "campaigns": [
+                            {
+                                "campaign_id": "c-1",
+                                "campaign_name": "Always-on prospecting",
+                                "status": "ENABLED",
+                            }
+                        ],
+                        "totals": _logly_totals(128000.0, "2026-08-13T23:10:00Z"),
+                        "metrics_period": "LAST_30_DAYS",
+                    }
+                },
+            },
+        )
+        before = path.read_bytes()
+
+        plan = plan_platform_keys(read_state_file(path))
+
+        assert plan.repairs == ()
+        (finding,) = plan.kept
+        assert finding.entry.key == "logly_ads_context"
+        assert finding.reason == KEEP_CARRIES_FIGURES
+        assert apply_state_file_repairs(path).changed is False
+        assert path.read_bytes() == before
+
+    def test_a_duplicate_of_a_resolvable_key_is_offered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The incident's own shape: same ad account, one key that resolves."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(path, _reported_document())
+
+        plan = plan_platform_keys(read_state_file(path))
+
+        (repair,) = plan.repairs
+        assert repair.entry.key == "logly_ads"
+        assert repair.reason == DROP_DUPLICATE
+        assert plan.kept == ()
+
+    def test_a_duplicate_of_another_UNRESOLVABLE_key_is_not_offered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two entries neither of which mureo can vouch for are not evidence
+        against each other: dropping one still loses figures nothing refills."""
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                    },
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "totals": _logly_totals(4500.0, "2026-08-12T03:00:00+00:00"),
+                    },
+                },
+            },
+        )
+
+        plan = plan_platform_keys(read_state_file(path))
+
+        assert plan.repairs == ()
+        assert [f.reason for f in plan.kept] == [
+            KEEP_CARRIES_FIGURES,
+            KEEP_CARRIES_FIGURES,
+        ]
+
+    def test_an_empty_stub_is_offered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No campaigns, no totals, no periods, no declared settings — there
+        is nothing in it to lose, whoever the key belongs to."""
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {"version": "2", "platforms": {"logly_ads": {"account_id": "1234567890"}}},
+        )
+
+        plan = plan_platform_keys(read_state_file(path))
+
+        (repair,) = plan.repairs
+        assert repair.entry.key == "logly_ads"
+        assert repair.reason == DROP_EMPTY_STUB
+        apply_state_file_repairs(path)
+        assert read_state_file(path).platforms == {}
+
+    def test_an_id_less_empty_stub_is_offered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty ``account_id`` is not what makes a stub — an entry with an
+        unknown id and real figures is NOT one — but it does not save an entry
+        that stores nothing either."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_context": {"account_id": "1234567890"},
+                    "logly_ads": {"account_id": ""},
+                },
+            },
+        )
+
+        plan = plan_platform_keys(read_state_file(path))
+
+        (repair,) = plan.repairs
+        assert repair.entry.key == "logly_ads"
+        assert repair.reason == DROP_EMPTY_STUB
+
+    def test_an_entry_that_only_carries_periods_is_not_a_stub(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "",
+                        "periods": {
+                            "YESTERDAY": {
+                                "spend": 100.0,
+                                "fetched_at": "2026-08-13T00:00:00Z",
+                            }
+                        },
+                    }
+                },
+            },
+        )
+
+        plan = plan_platform_keys(read_state_file(path))
+
+        assert plan.repairs == ()
+        assert [f.reason for f in plan.kept] == [KEEP_CARRIES_FIGURES]
+
+
+# ---------------------------------------------------------------------------
+# The one field no sync brings back (#617)
+# ---------------------------------------------------------------------------
+
+
+class TestOperatorDeclaredSettings:
+    """``conversion_action_types`` is declared by a person, not fetched (#342).
+
+    Every other thing a ``platforms`` entry holds — the ad account, campaigns,
+    ``totals``, ``periods``, ``metrics_period`` — is re-fetchable, which is
+    what makes "drop it, the next sync refills the real key" a safe repair.
+    This one is not: nothing on the platform side knows it, so dropping the
+    entry loses it for good. mureo refuses rather than asking the operator to
+    confirm a loss it can avoid.
+    """
+
+    def test_an_entry_carrying_an_override_is_never_dropped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "conversion_action_types": ["offsite_conversion.custom.90210"],
+                    },
+                    "logly_ads_context": {"account_id": "1234567890"},
+                },
+            },
+        )
+        before = path.read_bytes()
+
+        plan = plan_platform_keys(read_state_file(path))
+
+        # It IS a duplicate of a resolvable key — the only thing holding it
+        # back is the setting no sync restores.
+        assert plan.repairs == ()
+        (finding,) = plan.kept
+        assert finding.entry.key == "logly_ads"
+        assert finding.reason == KEEP_CONVERSION_OVERRIDE
+        assert apply_state_file_repairs(path).changed is False
+        assert path.read_bytes() == before
+
+    def test_the_override_is_carried_into_the_facts_an_operator_reads(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``PlatformEntryFacts`` is what the preview can print, so a field
+        that is invisible there cannot be named before a confirmation."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "conversion_action_types": [
+                            "offsite_conversion.custom.90210",
+                            "offsite_conversion.custom.90211",
+                        ],
+                    },
+                },
+            },
+        )
+
+        (finding,) = plan_platform_keys(read_state_file(path)).kept
+
+        assert finding.entry.conversion_action_types == (
+            "offsite_conversion.custom.90210",
+            "offsite_conversion.custom.90211",
+        )
+
+    def test_an_override_survives_a_repair_of_a_sibling_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The refusal is per entry, not per document: a stub beside it is
+        still removed, and the declared allow-list is still there afterwards."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {"account_id": "1234567890"},
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "conversion_action_types": ["offsite_conversion.custom.90210"],
+                    },
+                },
+            },
+        )
+
+        outcome = apply_state_file_repairs(path)
+
+        assert [r.entry.key for r in outcome.repairs] == ["logly_ads"]
+        doc = read_state_file(path)
+        assert doc.platforms["logly_ads_context"].conversion_action_types == (
+            "offsite_conversion.custom.90210",
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -18,6 +18,46 @@ fail-open behaviour too: when the environment cannot be enumerated at all,
 every key is treated as resolvable and this module proposes nothing. A broken
 install is not evidence that an entry should be deleted.
 
+Unresolvable is not enough to propose removal (#616)
+----------------------------------------------------
+"mureo cannot resolve this key" is a fact about the **machine running the
+repair** — which plugins are importable at this moment — not about the entry.
+The same document is judged differently on two machines, and on the machine
+lacking a bridge a *legitimate* solitary entry, holding a real account's real
+figures and duplicating nothing, looked exactly like the invented key the
+command exists to remove.
+
+So the plan asks the **document** whether the entry is wrong, and offers
+removal only on one of two answers:
+
+- :data:`DROP_DUPLICATE` — another key in the same ``platforms`` map holds the
+  same ad account and mureo CAN resolve it. The record survives under the key
+  the account is really stored under, so this one is a second copy.
+- :data:`DROP_EMPTY_STUB` — the entry stores nothing at all: no campaigns, no
+  ``totals``, no ``periods`` and no operator-declared setting. There is
+  nothing in it to lose, whoever the key turns out to belong to.
+
+Everything else unresolvable is reported as a :class:`PlatformKeyFinding` and
+handed back, the way an undecidable duplicate already is. Note what does NOT
+make a stub: an empty ``account_id``. The shape reported from the field
+carries one, and treating "did not say which account" as "holds nothing"
+would delete precisely the solitary entry #616 is about.
+
+The one field a sync does not bring back (#617)
+------------------------------------------------
+``conversion_action_types`` (:class:`~mureo.context.models.PlatformState`) is
+an allow-list a **person** declared so a custom-event advertiser is counted
+correctly (#342). Nothing on the platform side knows it, so no sync restores
+it — unlike every figure in the entry. An entry carrying one is therefore
+never dropped, even when it is otherwise removable; it is reported as
+:data:`KEEP_CONVERSION_OVERRIDE` instead.
+
+Refusing rather than asking a second time is deliberate. The confirmation this
+command already asks is skippable with ``--yes``, which is exactly how the
+sweep this feature leads with (``--all --apply --yes``) is run, so a second
+prompt would protect nobody on the path that matters. A setting only an
+operator can supply is also, by definition, not mureo's to decide.
+
 Drop, never merge
 -----------------
 Two repairs were plausible: **move** the unresolvable entry's figures under
@@ -32,7 +72,9 @@ refuse. It is also undefined in the shape actually reported from the field: an
 unresolvable entry whose ``account_id`` is ``""`` joins with nothing, so there
 is no canonical entry to move it to. Dropping needs no such judgement. The
 figures are not lost — they are re-fetchable from the platform, and the
-pre-repair document is backed up first.
+pre-repair document is backed up first. That argument covers figures and
+nothing else, which is why the one operator-declared field is excluded from
+dropping altogether (see above).
 
 Nothing else in the document is touched. In particular ``last_synced_at`` is
 **not** re-stamped: a repair is not a sync, and re-stamping it would make
@@ -89,6 +131,18 @@ if TYPE_CHECKING:
 
     from mureo.context.models import PlatformState, StateDocument
 
+DROP_DUPLICATE = "duplicate"
+"""Offered: a key mureo CAN resolve holds the same ad account."""
+
+DROP_EMPTY_STUB = "empty_stub"
+"""Offered: the entry stores nothing — no figures, no declared settings."""
+
+KEEP_CARRIES_FIGURES = "carries_figures"
+"""Kept: nothing in the document says this entry is wrong (#616)."""
+
+KEEP_CONVERSION_OVERRIDE = "conversion_override"
+"""Kept: it carries ``conversion_action_types``, which no sync restores."""
+
 
 @dataclass(frozen=True)
 class RollupFacts:
@@ -113,6 +167,11 @@ class PlatformEntryFacts:
     it covers. No figures — the decision this supports is about identity, not
     about whose spend is larger, and putting the numbers side by side would
     invite exactly the comparison this module refuses to make.
+
+    ``conversion_action_types`` is the exception that proves the contract:
+    it is not a figure but a setting an operator declared, and it is the one
+    thing in the entry no sync restores (#617). A preview can only print what
+    this dataclass carries, so leaving it out was what made the loss silent.
     """
 
     key: str
@@ -123,6 +182,24 @@ class PlatformEntryFacts:
     metrics_period: str | None
     totals_fetched_at: str | None
     rollups: tuple[RollupFacts, ...]
+    conversion_action_types: tuple[str, ...] = ()
+
+    @property
+    def is_empty_stub(self) -> bool:
+        """Does this entry store nothing a removal could lose?
+
+        No campaigns, no ``totals``, no per-period rollups and no declared
+        conversion allow-list. An empty ``account_id`` deliberately does NOT
+        count towards this: the shape reported from the field carries one, and
+        an entry that declined to name its account can still hold every figure
+        a platform has (#616).
+        """
+        return not (
+            self.campaign_count
+            or self.has_totals
+            or self.rollups
+            or self.conversion_action_types
+        )
 
 
 @dataclass(frozen=True)
@@ -130,15 +207,52 @@ class PlatformKeyRepair:
     """One unresolvable entry mureo offers to drop, plus its context.
 
     ``same_account`` is every OTHER key that describes the same ad account, in
-    document order — the entries that survive the repair. It is empty when the
-    entry names no account mureo can join on, which is the shape reported from
-    the field (``account_id: ""``); an empty tuple therefore means "mureo
-    found nothing this could be a duplicate of", never "there is nothing
-    else".
+    document order. It is empty when the entry names no account mureo can join
+    on, which is the shape reported from the field (``account_id: ""``); an
+    empty tuple therefore means "mureo found nothing this could be a duplicate
+    of", never "there is nothing else". Its members are not all survivors —
+    another one may be in the same plan — so a caller previewing this has to
+    compare against the plan's own keys before promising anything about them
+    (#618).
+
+    ``reason`` is :data:`DROP_DUPLICATE` or :data:`DROP_EMPTY_STUB`: what in
+    the DOCUMENT says this entry is wrong. Unresolvability alone is not one of
+    them.
     """
 
     entry: PlatformEntryFacts
     same_account: tuple[PlatformEntryFacts, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class PlatformKeyFinding:
+    """One unresolvable entry mureo will NOT remove, and why.
+
+    Reported rather than repaired, the way an undecidable duplicate already
+    is. ``reason`` is :data:`KEEP_CARRIES_FIGURES` (nothing in the document
+    says the entry is wrong — the key may belong to a plugin that is simply
+    not installed on this machine) or :data:`KEEP_CONVERSION_OVERRIDE` (the
+    entry could otherwise go, but carries a setting no sync restores).
+    """
+
+    entry: PlatformEntryFacts
+    same_account: tuple[PlatformEntryFacts, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class PlatformKeyPlan:
+    """Every unresolvable entry, split by whether mureo will act on it.
+
+    ``repairs`` is what an ``--apply`` would remove; ``kept`` is what it would
+    leave and report. A caller reporting "nothing to repair" has to consult
+    both: a document whose only finding is in ``kept`` is not clean, it is
+    waiting on the operator.
+    """
+
+    repairs: tuple[PlatformKeyRepair, ...]
+    kept: tuple[PlatformKeyFinding, ...]
 
 
 @dataclass(frozen=True)
@@ -204,41 +318,89 @@ def _describe(key: str, entry: PlatformState) -> PlatformEntryFacts:
             RollupFacts(period=str(period), fetched_at=_rollup_fetched_at(rollup))
             for period, rollup in periods.items()
         ),
+        conversion_action_types=tuple(entry.conversion_action_types or ()),
     )
 
 
-def plan_platform_key_repairs(
+def _drop_reason(
+    entry: PlatformEntryFacts, same_account: tuple[PlatformEntryFacts, ...]
+) -> str | None:
+    """What in the DOCUMENT says this entry is wrong, or ``None`` (#616).
+
+    Two answers only, and neither of them is "the key does not resolve on this
+    machine". A sibling that is itself unresolvable does not count as a
+    duplicate: two entries mureo cannot vouch for are not evidence against
+    each other, and dropping either still loses figures nothing refills.
+    """
+    if any(other.resolvable for other in same_account):
+        return DROP_DUPLICATE
+    if entry.is_empty_stub:
+        return DROP_EMPTY_STUB
+    return None
+
+
+def plan_platform_keys(
     doc: StateDocument, *, keys: Iterable[str] | None = None
-) -> tuple[PlatformKeyRepair, ...]:
-    """Every entry filed under a key mureo cannot resolve, in document order.
+) -> PlatformKeyPlan:
+    """Every unresolvable entry, split into what mureo will and will not touch.
 
     Pure — it reads ``doc`` and returns a description. This is what a dry run
-    shows, and what :func:`apply_state_file_repairs` re-derives under the lock
+    shows, and :func:`apply_state_file_repairs` re-derives it under the lock
     before writing anything.
 
     ``keys`` narrows the plan to the named keys. A named key that resolves
-    fine, or that the document does not carry, simply produces no repair;
+    fine, or that the document does not carry, simply produces nothing;
     telling the operator which of the two happened needs the document itself
     and is the caller's job.
     """
     platforms = doc.platforms or {}
     wanted = frozenset(keys) if keys is not None else None
-    return tuple(
-        PlatformKeyRepair(
-            entry=_describe(key, entry),
-            same_account=tuple(
-                _describe(other, platforms[other])
-                for other in platform_keys_for_account(platforms, entry.account_id)
-                if other != key
-            ),
+    repairs: list[PlatformKeyRepair] = []
+    kept: list[PlatformKeyFinding] = []
+    for key, entry in platforms.items():
+        if wanted is not None and key not in wanted:
+            continue
+        if not is_unresolvable_platform_key(key):
+            continue
+        facts = _describe(key, entry)
+        same_account = tuple(
+            _describe(other, platforms[other])
+            for other in platform_keys_for_account(platforms, entry.account_id)
+            if other != key
         )
-        for key, entry in platforms.items()
-        if (wanted is None or key in wanted) and is_unresolvable_platform_key(key)
-    )
+        reason = _drop_reason(facts, same_account)
+        if reason is None:
+            kept.append(PlatformKeyFinding(facts, same_account, KEEP_CARRIES_FIGURES))
+        elif facts.conversion_action_types:
+            # Removable by the document, but it carries the one field a sync
+            # does not bring back (#617). Reported, never dropped.
+            kept.append(
+                PlatformKeyFinding(facts, same_account, KEEP_CONVERSION_OVERRIDE)
+            )
+        else:
+            repairs.append(PlatformKeyRepair(facts, same_account, reason))
+    return PlatformKeyPlan(repairs=tuple(repairs), kept=tuple(kept))
+
+
+def plan_platform_key_repairs(
+    doc: StateDocument, *, keys: Iterable[str] | None = None
+) -> tuple[PlatformKeyRepair, ...]:
+    """Only the entries :func:`plan_platform_keys` offers to remove.
+
+    The narrow view, for callers with nothing to say about the entries mureo
+    hands back. Anything that reports to an operator wants
+    :func:`plan_platform_keys`: an empty result here does NOT mean the
+    document is clean.
+    """
+    return plan_platform_keys(doc, keys=keys).repairs
 
 
 def drop_platform_entries(doc: StateDocument, keys: Iterable[str]) -> StateDocument:
     """Return ``doc`` without the ``platforms`` entries named by ``keys``.
+
+    Removes the WHOLE entry, ``conversion_action_types`` included — which is
+    why :func:`plan_platform_keys` never names a key carrying one (#617).
+    This function takes the caller's word for it and does not re-check.
 
     Pure, and deliberately narrow: only the ``platforms`` map changes.
     ``last_synced_at`` is not re-stamped (a repair is not a sync), the legacy
@@ -258,7 +420,13 @@ def drop_platform_entries(doc: StateDocument, keys: Iterable[str]) -> StateDocum
 def apply_state_file_repairs(
     path: Path, *, keys: Iterable[str] | None = None
 ) -> RepairOutcome:
-    """Drop every unresolvable ``platforms`` entry in ``path``, safely.
+    """Drop every ``platforms`` entry the document shows to be wrong, safely.
+
+    "Unresolvable" is the filter, not the criterion: an entry is removed only
+    when it duplicates a resolvable key holding the same ad account or is an
+    empty stub, and never when it carries an operator-declared conversion
+    allow-list. See :func:`plan_platform_keys`.
+
 
     The whole cycle — read, plan, back up, write — runs inside the STATE.json
     sidecar lock every other mutator contends on, so a concurrent sync cannot
@@ -281,10 +449,20 @@ def apply_state_file_repairs(
         pre-repair document was backed up to.
 
     Raises:
-        ContextFileError: ``path`` exists but cannot be read or parsed. The
-            repair refuses to proceed on a document it cannot parse strictly,
-            because writing back a tolerantly-parsed one would silently drop
-            the entries the tolerant parse skipped.
+        ContextFileError: ``path`` exists but could not be opened, or its
+            bytes are not valid JSON.
+        ValueError: ``path`` holds valid JSON that does not satisfy the strict
+            schema — a campaign missing ``campaign_name``, say. This is what
+            :func:`~mureo.context.state.parse_state` raises and
+            :func:`~mureo.context.state.read_state_file` passes through
+            unwrapped; it is stated here because an earlier version of this
+            docstring promised ``ContextFileError`` for every unparseable
+            document, and a caller that believed it ended in a traceback
+            (#618). Callers reporting to a person must catch both.
+
+            Either way the repair refuses to proceed on a document it cannot
+            parse strictly, because writing back a tolerantly-parsed one would
+            silently drop the entries the tolerant parse skipped.
         OSError: The backup could not be written. Nothing is overwritten in
             that case — :func:`mureo.fsutil.backup_file` fails closed.
     """
@@ -304,7 +482,13 @@ def apply_state_file_repairs(
 
 
 __all__ = [
+    "DROP_DUPLICATE",
+    "DROP_EMPTY_STUB",
+    "KEEP_CARRIES_FIGURES",
+    "KEEP_CONVERSION_OVERRIDE",
     "PlatformEntryFacts",
+    "PlatformKeyFinding",
+    "PlatformKeyPlan",
     "PlatformKeyRepair",
     "RepairOutcome",
     "RollupFacts",
@@ -312,4 +496,5 @@ __all__ = [
     "drop_platform_entries",
     "is_unresolvable_platform_key",
     "plan_platform_key_repairs",
+    "plan_platform_keys",
 ]
