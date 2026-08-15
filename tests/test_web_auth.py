@@ -785,7 +785,25 @@ class TestSecurityHardening:
         assert wizard.session.csrf_token != original_token
 
     def test_oversize_post_body_rejected(self, wizard: Any) -> None:
-        """Cap on POST Content-Length prevents local DoS / OOM."""
+        """Cap on POST Content-Length prevents local DoS / OOM.
+
+        The handler answers 413 **without reading the body** — deliberately,
+        since reading it is the thing the cap exists to avoid. That makes what
+        the client observes a matter of transport timing: it is still writing
+        20 KB when the server replies and closes, so whether it gets to read
+        the 413 or has its socket torn out from under it first depends on
+        socket buffering. On Linux and macOS the body fits in the buffers and
+        the response arrives; on Windows the write is aborted first and
+        ``urllib`` raises ``ConnectionAbortedError`` (WinError 10053) before
+        any status line is seen. Asserting only on ``HTTPError`` made this
+        test fail on Windows CI at random.
+
+        Both outcomes prove the same thing, which is what this test is for:
+        the body was refused rather than buffered. So accept either, require
+        413 whenever a status is actually observed, and then assert the part
+        neither outcome shows on its own — that the server refused this one
+        request and is still serving.
+        """
         huge = b"a" * (20 * 1024)  # 20 KB > 16 KB cap
         req = urllib.request.Request(
             _url(wizard, "/google-ads/submit"),
@@ -793,9 +811,22 @@ class TestSecurityHardening:
             method="POST",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        with pytest.raises(urllib.error.HTTPError) as exc_info:
+
+        # Narrow on purpose: the 413 the server sends, or the connection being
+        # torn down mid-write. Not bare OSError, and not ConnectionError
+        # either — both would swallow ConnectionRefusedError from a server
+        # that never came up, and this test would pass while proving nothing.
+        with pytest.raises(
+            (urllib.error.HTTPError, ConnectionAbortedError, ConnectionResetError)
+        ) as exc_info:
             urllib.request.urlopen(req, timeout=2.0)
-        assert exc_info.value.code == 413
+        if isinstance(exc_info.value, urllib.error.HTTPError):
+            assert exc_info.value.code == 413
+
+        # Refused, not crashed: a normal request still works afterwards. This
+        # is what distinguishes the cap doing its job from the server dying on
+        # the oversize body — the failure mode the cap exists to prevent.
+        assert _fetch(wizard, "/google-ads").status == 200
 
 
 class TestDoneRoute:
