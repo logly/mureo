@@ -161,6 +161,124 @@ class TestDryRunIsTheDefault:
 
 
 # ---------------------------------------------------------------------------
+# A document mureo cannot read is an error, never a traceback (#618)
+# ---------------------------------------------------------------------------
+
+
+class TestAnUnreadableDocument:
+    """The person this command is for cannot read a traceback.
+
+    ``read_state_file`` wraps ``json.JSONDecodeError`` only. Strict parsing
+    also raises a bare ``ValueError`` for a document that is valid JSON but
+    invalid against the schema, and nothing on this path caught it — so a
+    campaign missing ``campaign_name`` ended in a full Python traceback while
+    ``--all`` reported the same file as "Could not be read".
+    """
+
+    def test_a_schema_invalid_document_is_an_error_not_a_traceback(
+        self, tmp_path: Path
+    ) -> None:
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "campaigns": [{"campaign_id": "c-1"}],
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 1
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+        assert "Traceback" not in result.output
+        assert "Error:" in result.output
+        assert str(state) in result.output
+        assert "Campaign is missing required field" in result.output
+
+    def test_apply_on_a_schema_invalid_document_is_an_error_too(
+        self, tmp_path: Path
+    ) -> None:
+        """Same file, the destructive flags. It must not crash there either,
+        and nothing may be written or backed up."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "campaigns": [{"campaign_id": "c-1"}],
+                    }
+                },
+            },
+        )
+        before = state.read_bytes()
+
+        result = _run("--state-file", str(state), "--apply", "--yes")
+
+        assert result.exit_code == 1
+        assert "Traceback" not in result.output
+        assert "Error:" in result.output
+        assert state.read_bytes() == before
+        assert list(tmp_path.glob("STATE.json.bak.*")) == []
+
+    def test_a_document_that_breaks_between_preview_and_lock_is_an_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The apply path re-reads under the lock, so a concurrent writer can
+        hand it a document the preview never saw. That is the same
+        ``ValueError``, and it must not surface as a traceback either."""
+        from mureo.cli import repair_cmd
+
+        state = tmp_path / "STATE.json"
+        _reported_state(state)
+
+        def _explode(*_args: Any, **_kwargs: Any) -> None:
+            raise ValueError("Campaign is missing required field 'campaign_name': {}")
+
+        monkeypatch.setattr(repair_cmd, "apply_state_file_repairs", _explode)
+
+        result = _run("--state-file", str(state), "--apply", "--yes")
+
+        assert result.exit_code == 1
+        assert "Traceback" not in result.output
+        assert "Error: mureo cannot read STATE.json" in result.output
+        assert "Campaign is missing required field" in result.output
+
+    def test_control_characters_in_the_parse_error_are_scrubbed(
+        self, tmp_path: Path
+    ) -> None:
+        """The failing text comes out of STATE.json, so the exception carries
+        agent-writable content straight to a terminal."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "campaigns": [{"campaign_id": "c-1\x1b[2J\x07"}],
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 1
+        assert "\x1b" not in result.output
+        assert "\x07" not in result.output
+
+
+# ---------------------------------------------------------------------------
 # Applying
 # ---------------------------------------------------------------------------
 
@@ -281,6 +399,158 @@ class TestScope:
         assert result.exit_code == 0, result.output
         payload = json.loads(state.read_text(encoding="utf-8"))
         assert set(payload["platforms"]) == {"logly_adz"}
+
+
+# ---------------------------------------------------------------------------
+# The preview has to be TRUE (#616 / #617 / #618)
+# ---------------------------------------------------------------------------
+
+
+class TestThePreviewIsTrue:
+    """Every sentence printed before the confirmation has to hold afterwards.
+
+    The person reading it cannot open STATE.json to check, so a reassurance
+    that is false for the run they are about to approve is worse than no
+    reassurance at all.
+    """
+
+    def test_a_solitary_entry_with_figures_is_reported_not_offered(
+        self, tmp_path: Path
+    ) -> None:
+        """#616. ``logly_ads_v2`` is not registered by the one pinned plugin,
+        but nothing in the document says it is wrong — so it is handed back."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00Z",
+                        },
+                        "metrics_period": "LAST_30_DAYS",
+                    }
+                },
+            },
+        )
+        before = state.read_bytes()
+
+        result = _run("--state-file", str(state), "--apply", "--yes")
+
+        assert result.exit_code == 0, result.output
+        assert state.read_bytes() == before
+        assert "will NOT remove" in result.output
+        assert "not be installed" in result.output
+
+    def test_a_conversion_override_is_named_and_the_entry_is_kept(
+        self, tmp_path: Path
+    ) -> None:
+        """#617. The allow-list is operator-declared and no sync restores it,
+        so it is named in the preview AND the entry is refused, not offered
+        behind a confirmation the ``--yes`` flag would walk straight through."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "conversion_action_types": ["offsite_conversion.custom.90210"],
+                    },
+                    "logly_ads_context": {"account_id": "1234567890"},
+                },
+            },
+        )
+        before = state.read_bytes()
+
+        result = _run("--state-file", str(state), "--apply", "--yes")
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "conversion_action_types" in out
+        assert "offsite_conversion.custom.90210" in out
+        assert "no sync restores this" in out
+        assert "will NOT remove" in out
+        # And nothing was removed.
+        assert state.read_bytes() == before
+
+    def test_two_entries_in_one_plan_never_claim_the_others_are_untouched(
+        self, tmp_path: Path
+    ) -> None:
+        """#618, first half. ``every other platform entry is left exactly as
+        it is`` printed once per block contradicts itself the moment a plan
+        holds two entries."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {"account_id": "1111111111"},
+                    "logly_adz": {"account_id": "2222222222"},
+                    "logly_ads_context": {"account_id": "3333333333"},
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "Found 2 platform entries" in out
+        assert "other platform entry is left exactly as it is" not in out
+        assert "other than the 2 this run removes" in out
+        assert "This run removes: logly_ads, logly_adz." in out
+
+    def test_one_entry_in_a_plan_keeps_the_plain_reassurance(
+        self, tmp_path: Path
+    ) -> None:
+        state = tmp_path / "STATE.json"
+        _reported_state(state)
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        assert "other platform entry is left exactly as it is" in result.output
+
+    def test_two_dropped_entries_sharing_an_account_say_it_is_left_empty(
+        self, tmp_path: Path
+    ) -> None:
+        """#618, second half. Neither block used to mention the other, so the
+        operator was never told the ad account would have no entry left."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {"account_id": "1234567890"},
+                    "logly_adz": {"account_id": "1234567890"},
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        # Both blocks say it, not just the first.
+        assert out.count("NO record of that account") == 2
+        assert out.count("this run removes this entry too") == 2
+
+    def test_the_reason_the_entry_can_go_is_stated(self, tmp_path: Path) -> None:
+        state = tmp_path / "STATE.json"
+        _reported_state(state)
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        assert "Why it can go:" in result.output
+        assert "duplicates" in result.output
 
 
 # ---------------------------------------------------------------------------

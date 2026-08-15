@@ -8,12 +8,24 @@ decide safely and shows its work for everything else:
   the keys, the ad account and what each entry holds (``fetched_at``, which
   windows, whether a ``totals`` rollup is there), then states exactly what
   would change. ``--apply`` is the second, deliberate step, and it still asks.
-- **It only ever removes an entry filed under a key mureo cannot resolve.** A
-  duplicate whose two keys BOTH name real platforms is reported and handed
-  back — that is a question about which figures are true, which only the
-  operator can answer.
+- **It removes an entry only when the DOCUMENT shows it is wrong** — a
+  duplicate of a key mureo can resolve holding the same ad account, or an
+  empty stub (#616). "No plugin here registers this key" is a fact about the
+  machine running the repair, not about the entry, so it selects nothing on
+  its own. Everything else it finds is reported and handed back: a duplicate
+  whose two keys BOTH name real platforms (which figures are true is the
+  operator's question), an unresolvable entry that duplicates nothing and
+  carries figures, and any entry holding ``conversion_action_types``, which no
+  sync restores (#617).
 - **It backs the document up first**, timestamped, and prints the command that
   puts it back.
+
+What is printed lives in :mod:`mureo.cli._repair_preview` — this module
+decides what to do, that one words what it would mean. Every claim it makes
+has to survive the run it precedes; the three that did not are #618.
+
+A document mureo cannot read is an ``Error:`` line, never a traceback, on
+both paths — see :func:`_echo_unreadable`.
 
 ``--all``: the same repair, once per client
 -------------------------------------------
@@ -56,16 +68,25 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from mureo.cli._repair_clients import list_repair_targets, survey_clients
+from mureo.cli._repair_clients import (
+    list_repair_targets,
+    survey_clients,
+    unreadable_reason,
+)
+from mureo.cli._repair_preview import (
+    echo_kept_findings,
+    echo_repair,
+    echo_undecidable_duplicates,
+    undecidable_groups,
+)
 from mureo.cli._state_file import STATE_FILE_OPTION, resolve_default_state_file
 from mureo.cli._tty import confirm_or_default
 from mureo.cli._tty import terminal_safe as _safe
 from mureo.context.errors import ContextFileError
-from mureo.context.platform_accounts import duplicate_account_entries
 from mureo.context.platform_repair import (
     apply_state_file_repairs,
     is_unresolvable_platform_key,
-    plan_platform_key_repairs,
+    plan_platform_keys,
 )
 from mureo.context.state import read_state_file
 
@@ -74,8 +95,7 @@ if TYPE_CHECKING:
 
     from mureo.cli._repair_clients import ClientSurvey, ClientTarget
     from mureo.context.models import StateDocument
-    from mureo.context.platform_accounts import DuplicateAccountEntry
-    from mureo.context.platform_repair import PlatformEntryFacts, PlatformKeyRepair
+    from mureo.context.platform_repair import PlatformKeyRepair
 
 repair_app = typer.Typer(
     name="repair",
@@ -93,9 +113,39 @@ def _read_document(state_file: Path) -> StateDocument:
         raise typer.Exit(1)
     try:
         return read_state_file(state_file)
-    except ContextFileError as exc:
-        typer.echo(f"Error: {exc}", err=True)
+    except (ContextFileError, ValueError) as exc:
+        _echo_unreadable(state_file, exc)
         raise typer.Exit(1) from exc
+
+
+def _echo_unreadable(state_file: Path, exc: Exception) -> None:
+    """Report a STATE.json this command cannot read, and stop.
+
+    ``read_state_file`` wraps ``json.JSONDecodeError`` as ``ContextFileError``
+    and nothing else, but strict parsing also raises a bare ``ValueError`` for
+    a document that is valid JSON and invalid against the schema — a campaign
+    missing ``campaign_name``, say. Catching only ``ContextFileError`` left
+    that document ending in a Python traceback here while ``--all`` reported
+    the same file under "Could not be read": one document, two answers, and
+    the person this command exists for cannot read the second one (#618).
+
+    Caught at the CLI rather than by widening ``read_state_file``'s contract:
+    that function has fifteen-odd other callers, some of which may well be
+    relying on a ``ValueError`` passing through, and this is not the place to
+    find out.
+
+    The reason text is ``--all``'s own, so the two paths cannot drift into
+    describing one file differently again. It is scrubbed — the failing
+    fragment comes out of an agent-writable STATE.json.
+    """
+    typer.echo(f"Error: mureo cannot read STATE.json: {state_file}", err=True)
+    typer.echo(f"       {unreadable_reason(exc)}", err=True)
+    typer.echo(
+        "       Nothing was changed. This command will not repair a document it "
+        "cannot\n       read in full: writing it back would drop whatever the "
+        "read skipped.",
+        err=True,
+    )
 
 
 def _reject_unusable_key_argument(doc: StateDocument, key: str) -> None:
@@ -129,139 +179,6 @@ def _reject_resolvable_key(key: str) -> None:
             err=True,
         )
         raise typer.Exit(1)
-
-
-def _echo_entry_facts(
-    facts: PlatformEntryFacts, indent: str, *, show_account: bool = True
-) -> None:
-    """Print one entry's contents — never its figures, only what it holds.
-
-    The key is the caller's to print: it is already the subject of the
-    sentence introducing each block. ``show_account`` drops the ad account on
-    a block the surrounding sentence has already said shares one, so the
-    operator reads facts rather than repetition.
-    """
-    if show_account:
-        typer.echo(
-            f"{indent}ad account:  {_safe(facts.account_id) or '(none recorded)'}"
-        )
-    typer.echo(f"{indent}campaigns:   {facts.campaign_count}")
-    typer.echo(f"{indent}totals:      {_totals_line(facts)}")
-    typer.echo(f"{indent}periods:     {_periods_line(facts)}")
-
-
-def _totals_line(facts: PlatformEntryFacts) -> str:
-    if not facts.has_totals:
-        return "none stored"
-    window = (
-        _safe(facts.metrics_period) if facts.metrics_period else "an unnamed window"
-    )
-    when = (
-        f"fetched {_safe(facts.totals_fetched_at)}"
-        if facts.totals_fetched_at
-        else "no fetch time recorded"
-    )
-    return f"stored, covering {window}, {when}"
-
-
-def _periods_line(facts: PlatformEntryFacts) -> str:
-    if not facts.rollups:
-        return "none stored"
-    return "; ".join(
-        f"{_safe(rollup.period)} "
-        + (
-            f"(fetched {_safe(rollup.fetched_at)})"
-            if rollup.fetched_at
-            else "(no fetch time recorded)"
-        )
-        for rollup in facts.rollups
-    )
-
-
-def _echo_repair(repair: PlatformKeyRepair) -> None:
-    """Show one finding and exactly what removing it would and would not do."""
-    typer.echo("")
-    typer.echo(f"  {_safe(repair.entry.key)} — mureo cannot resolve this key.")
-    typer.echo(
-        "    It is not one of mureo's own platform names, no plugin installed "
-        "here\n    registers it, and it is not a plugin:<distribution>:<provider> "
-        "key. So no\n    platform's data can belong to it."
-    )
-    typer.echo("")
-    typer.echo("    This entry holds:")
-    _echo_entry_facts(repair.entry, "      ")
-    survivors = [facts for facts in repair.same_account if facts.resolvable]
-    if survivors:
-        typer.echo("")
-        typer.echo(
-            "    The same ad account is also stored under a key mureo CAN "
-            "resolve, which\n    holds:"
-        )
-        for facts in survivors:
-            typer.echo(f"      {_safe(facts.key)}")
-            _echo_entry_facts(facts, "        ", show_account=False)
-    typer.echo("")
-    typer.echo(
-        f"    Would change: the whole {_safe(repair.entry.key)} entry is removed "
-        f"from STATE.json."
-    )
-    typer.echo(
-        "    Would NOT change: no figures are added together, moved or edited, "
-        "and every\n    other platform entry is left exactly as it is."
-    )
-    if survivors:
-        typer.echo(
-            f"    Afterwards: the next sync refills {_safe(survivors[0].key)} from "
-            f"the platform itself."
-        )
-    else:
-        typer.echo(
-            "    Afterwards: no key mureo can resolve holds this ad account, so "
-            "nothing refills\n    it on its own. The figures stay in the backup; "
-            "re-sync the platform under its\n    real key once you know what that is."
-        )
-
-
-def _undecidable_groups(doc: StateDocument | None) -> tuple[DuplicateAccountEntry, ...]:
-    """Duplicates whose keys ALL name real platforms — mureo's to report only.
-
-    Split out of the echo so the ``--all`` summary can flag a client whose
-    only finding is one of these without printing the whole block twice.
-    """
-    if doc is None:
-        return ()
-    return tuple(
-        group
-        for group in duplicate_account_entries(doc.platforms or {})
-        if not any(is_unresolvable_platform_key(key) for key in group.platform_keys)
-    )
-
-
-def _echo_undecidable_duplicates(doc: StateDocument | None) -> None:
-    """Report a duplicate this command will not touch, and say why.
-
-    Both keys name real platforms, so the question is which set of partial
-    figures is true — the one ``mureo/web/reports.py`` refuses to answer, and
-    is right to refuse. Saying nothing here would read as "mureo found no
-    problem" to an operator who came from a dashboard warning.
-    """
-    groups = _undecidable_groups(doc)
-    if not groups:
-        return
-    typer.echo("")
-    for group in groups:
-        keys = ", ".join(_safe(key) for key in group.platform_keys)
-        typer.echo(
-            f"One ad account ({_safe(group.account_id)}) is stored under platform "
-            f"keys that\nBOTH name real platforms ({keys}), so its spend, "
-            f"conversions and CPA are\ncounted twice."
-        )
-    typer.echo(
-        "mureo does not choose between them: the two entries usually hold "
-        "different\npartial figures, so dropping either under-counts as much as "
-        "adding them\ntogether over-counts. Check which entry holds the right "
-        "figures and remove\nthe other yourself."
-    )
 
 
 def _echo_apply_result(repairs: tuple[PlatformKeyRepair, ...]) -> None:
@@ -323,31 +240,41 @@ def _repair_one_workspace(
     if key is not None:
         _reject_unusable_key_argument(doc, key)
     keys = (key,) if key is not None else None
-    repairs = plan_platform_key_repairs(doc, keys=keys)
+    plan = plan_platform_keys(doc, keys=keys)
+    repairs = plan.repairs
 
     typer.echo(f"=== {_COMMAND} ===")
     typer.echo("")
     typer.echo(f"STATE.json: {state_file}")
-    if not repairs:
+    if not repairs and not plan.kept:
         typer.echo("")
         typer.echo(
             "Nothing to repair: every platform entry is filed under a key mureo "
             "can resolve."
         )
-        _echo_undecidable_duplicates(doc)
+        echo_undecidable_duplicates(doc)
         return
 
-    typer.echo("")
-    typer.echo(
-        f"Found {len(repairs)} platform "
-        f"{'entry' if len(repairs) == 1 else 'entries'} filed under a key mureo "
-        f"cannot resolve."
-    )
-    for repair in repairs:
-        _echo_repair(repair)
-    _echo_undecidable_duplicates(doc)
+    if repairs:
+        typer.echo("")
+        typer.echo(
+            f"Found {len(repairs)} platform "
+            f"{'entry' if len(repairs) == 1 else 'entries'} filed under a key mureo "
+            f"cannot resolve."
+        )
+        removing = frozenset(repair.entry.key for repair in repairs)
+        for repair in repairs:
+            echo_repair(repair, removing=removing)
+    echo_kept_findings(plan.kept)
+    echo_undecidable_duplicates(doc)
     typer.echo("")
 
+    if not repairs:
+        # Everything found is the operator's call, so there is nothing
+        # ``--apply`` could do and no confirmation worth asking for.
+        typer.echo("Nothing to repair automatically: mureo will not remove the")
+        typer.echo("entries above, for the reason given under each one.")
+        return
     if not _confirmed(apply=apply, yes=yes):
         return
     _apply(state_file, keys)
@@ -387,7 +314,15 @@ def _apply(state_file: Path, keys: tuple[str, ...] | None) -> None:
     """Run the repair and report the backup before what it removed."""
     try:
         outcome = apply_state_file_repairs(state_file, keys=keys)
-    except (ContextFileError, OSError) as exc:
+    except (ContextFileError, ValueError) as exc:
+        # Between the preview and the lock, the document became one mureo
+        # cannot parse strictly — a concurrent writer, or a file swapped under
+        # it. Reported exactly as the read path reports it, and for the same
+        # reason: a bare ``ValueError`` out of strict parsing is not a
+        # traceback this command's operator should ever see (#618).
+        _echo_unreadable(state_file, exc)
+        raise typer.Exit(1) from exc
+    except OSError as exc:
         typer.echo(f"Error: STATE.json was not changed: {exc}", err=True)
         raise typer.Exit(1) from exc
     if not outcome.changed:
@@ -431,7 +366,22 @@ def _repair_every_client(
     typer.echo("")
 
     needing = [survey for survey in surveys if survey.repairs]
-    if not needing:
+    if not needing and any(survey.kept for survey in surveys):
+        # Unresolvable entries were found; mureo just will not remove them.
+        # Saying "every key resolves" here would be plainly false (#616).
+        typer.echo(
+            "Nothing to repair automatically: mureo will not remove the entries "
+            "above, for the reason given under each one."
+        )
+    elif not needing and failures:
+        # "Every client's entries resolve" is false when a client's entries
+        # could not be read at all — the same false reassurance #616/#618 are
+        # about, one line further down.
+        typer.echo(
+            "Nothing to repair in the clients that could be read. The ones "
+            "listed under\n'Could not be read' were not surveyed at all."
+        )
+    elif not needing:
         typer.echo(
             "Nothing to repair: every client's platform entries are filed under "
             "keys mureo can resolve."
@@ -512,22 +462,23 @@ def _echo_survey_summary(
     # so it gets its own group rather than a note hung off "Clean". The
     # operator this command is for reads "Clean (3 of 6)" as "three are
     # fine"; a qualifier after an em dash is exactly what they skim past.
+    # Since #616 the same applies to an unresolvable entry mureo declines to
+    # remove: it is neither a repair the sweep makes nor a clean client.
     _echo_survey_group(
         "Need your decision",
-        [
-            s
-            for s in surveys
-            if not s.repairs and not s.error and _undecidable_groups(s.doc)
-        ],
+        [s for s in surveys if _needs_a_decision(s)],
         total,
-        lambda _s: "one ad account under two real platform keys (see below)",
+        _decision_note,
     )
     _echo_survey_group(
         "Clean",
         [
             s
             for s in surveys
-            if not s.repairs and not s.error and not _undecidable_groups(s.doc)
+            if not s.repairs
+            and not s.error
+            and not s.kept
+            and not undecidable_groups(s.doc)
         ],
         total,
         _clean_note,
@@ -557,6 +508,29 @@ def _echo_survey_group(
     typer.echo("")
 
 
+def _needs_a_decision(survey: ClientSurvey) -> bool:
+    """Has this client a finding mureo reports but will not act on?
+
+    Only asked of clients with no repair of their own: a client that needs
+    both is counted under "Need repair", where the sweep will visit it anyway,
+    and its other findings still print in the detail below.
+    """
+    if survey.repairs or survey.error:
+        return False
+    return bool(survey.kept) or bool(undecidable_groups(survey.doc))
+
+
+def _decision_note(survey: ClientSurvey) -> str:
+    """Which of the two undecidable findings this client has — or both."""
+    notes = []
+    if undecidable_groups(survey.doc):
+        notes.append("one ad account under two real platform keys")
+    if survey.kept:
+        keys = ", ".join(_safe(finding.entry.key) for finding in survey.kept)
+        notes.append(f"mureo cannot resolve {keys}, and will not remove it")
+    return f"{'; '.join(notes)} (see below)"
+
+
 def _clean_note(survey: ClientSurvey) -> str:
     """Why a "clean" client may still not be the one holding the figures.
 
@@ -573,16 +547,20 @@ def _clean_note(survey: ClientSurvey) -> str:
 def _echo_survey_details(surveys: tuple[ClientSurvey, ...]) -> None:
     """The single-workspace detail block, per client that has a finding."""
     for survey in surveys:
-        if not survey.repairs and not _undecidable_groups(survey.doc):
+        if not (survey.repairs or survey.kept or undecidable_groups(survey.doc)):
             continue
         typer.echo("")
         typer.echo(f"--- {_client_label(survey.target)} ---")
         # Scrubbed: unlike the single run's ``--state-file``, this path came
         # from a backend's client registry rather than from the operator.
         typer.echo(f"STATE.json: {_safe(str(survey.target.state_file))}")
+        # Scoped per client: a sweep removes each client's entries from that
+        # client's document, so one client's plan says nothing about another's.
+        removing = frozenset(repair.entry.key for repair in survey.repairs)
         for repair in survey.repairs:
-            _echo_repair(repair)
-        _echo_undecidable_duplicates(survey.doc)
+            echo_repair(repair, removing=removing)
+        echo_kept_findings(survey.kept)
+        echo_undecidable_duplicates(survey.doc)
 
 
 def _apply_every_client(

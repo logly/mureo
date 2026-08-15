@@ -239,6 +239,94 @@ class TestSurvey:
         # The one genuinely finished client is the only one called clean.
         assert "Clean (1 of 3)" in out
 
+    def test_an_entry_mureo_will_not_remove_is_not_counted_as_needing_repair(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#616 narrowed the plan, and the summary has to follow it.
+
+        ``theta``'s only finding is a solitary entry under a key no plugin
+        installed HERE registers, holding figures and duplicating nothing.
+        mureo will not remove it, so counting theta under "Need repair" would
+        promise a repair the sweep never makes — and counting it under "Clean"
+        would tell the operator there is nothing to look at.
+        """
+        paths = {
+            slug: tmp_path / slug / "STATE.json" for slug in ("acme", "theta", "gamma")
+        }
+        _bad_state(paths["acme"], "1111111111")
+        _write(
+            paths["theta"],
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "5555555555",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00+00:00",
+                        },
+                        "metrics_period": "LAST_30_DAYS",
+                    }
+                },
+            },
+        )
+        _clean_state(paths["gamma"], "3333333333")
+        stores = {slug: _ClientStore(path) for slug, path in paths.items()}
+        rows = [
+            {"slug": "acme", "name": "Acme Co", "active": True},
+            {"slug": "theta", "name": "Theta AB", "active": False},
+            {"slug": "gamma", "name": "Gamma KK", "active": False},
+        ]
+        _install_store(monkeypatch, _AgencyStore(paths["acme"], rows, dict(stores)))
+        before = paths["theta"].read_bytes()
+
+        result = _run("--all", "--apply", "--yes")
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "Need repair (1 of 3)" in out
+        assert "Need your decision (1 of 3)" in out
+        assert "Clean (1 of 3)" in out
+        # And the sweep left it alone.
+        assert paths["theta"].read_bytes() == before
+        assert list(tmp_path.glob("theta/STATE.json.bak.*")) == []
+
+    def test_a_sweep_whose_only_findings_are_undecidable_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With nothing to repair the sweep must not claim every key resolves
+        — one of them plainly does not."""
+        path = tmp_path / "theta" / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "5555555555",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00+00:00",
+                        },
+                    }
+                },
+            },
+        )
+        rows = [{"slug": "theta", "name": "Theta AB", "active": True}]
+        _install_store(
+            monkeypatch, _AgencyStore(path, rows, {"theta": _ClientStore(path)})
+        )
+
+        result = _run("--all")
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "Need your decision (1 of 1)" in out
+        assert (
+            "every client's platform entries are filed under keys mureo can" not in out
+        )
+        assert "Nothing to repair automatically" in out
+
     def test_the_summary_comes_before_the_per_client_detail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -383,6 +471,58 @@ class TestPartialFailure:
         # The sweep carried on.
         assert _platform_keys(paths["acme"]) == {"logly_ads_context"}
         assert _platform_keys(paths["beta"]) == {"logly_ads_context"}
+
+    def test_both_paths_report_the_same_unreadable_document_the_same_way(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#618's point is that the two paths DISAGREED about one file.
+
+        A STATE.json that is valid JSON but invalid against the schema was
+        reported by ``--all`` under "Could not be read" and crashed the
+        single-workspace run with a raw traceback. Same document, same
+        command, two answers — and the operator this is written for cannot
+        read the second one. So the reason text is asserted to be the same on
+        both paths, not merely "neither traceback".
+        """
+        state = tmp_path / "theta" / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "campaigns": [{"campaign_id": "c-1"}],
+                    }
+                },
+            },
+        )
+        reason = "Campaign is missing required field 'campaign_name'"
+
+        single = _run("--state-file", str(state))
+
+        assert single.exit_code == 1
+        assert "Traceback" not in single.output
+        assert "Error:" in single.output
+        assert reason in single.output
+        assert str(state) in single.output
+
+        rows = [{"slug": "theta", "name": "Theta AB", "active": True}]
+        _install_store(
+            monkeypatch,
+            _AgencyStore(state, rows, {"theta": _ClientStore(state)}),
+        )
+
+        sweep = _run("--all")
+
+        assert sweep.exit_code == 1
+        assert "Traceback" not in sweep.output
+        assert "Could not be read (1 of 1)" in sweep.output
+        assert reason in sweep.output
+        # And the sweep does not close by calling a document it never read
+        # clean: "every client's entries resolve" is not knowable here.
+        assert "every client's platform entries are filed under" not in sweep.output
+        assert "Nothing to repair in the clients that could be read." in sweep.output
 
     def test_an_unreadable_client_makes_even_a_dry_run_exit_non_zero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

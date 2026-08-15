@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.cli._state_file import resolve_default_state_file, state_file_for_store
 from mureo.cli._tty import terminal_safe as _safe
-from mureo.context.platform_repair import plan_platform_key_repairs
+from mureo.context.platform_repair import plan_platform_keys
 from mureo.context.state import read_state_file
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from mureo.context.models import StateDocument
-    from mureo.context.platform_repair import PlatformKeyRepair
+    from mureo.context.platform_repair import PlatformKeyFinding, PlatformKeyRepair
 
 _UNRESOLVED_STORE = "its state store did not say where its STATE.json lives"
 
@@ -92,16 +92,21 @@ class ClientRegistry:
 class ClientSurvey:
     """What one client's STATE.json turned out to hold.
 
-    Exactly one of three states, and the caller reads them in this order:
-    ``error`` set (could not be read), ``repairs`` non-empty (needs work), or
-    neither (clean). ``doc`` is kept so the caller can report the findings
-    this command deliberately does NOT repair — a duplicate whose two keys
-    both name real platforms — without re-reading the file.
+    Read in this order: ``error`` set (could not be read), ``repairs``
+    non-empty (needs work), ``kept`` non-empty (needs the operator's
+    decision), or none of them (clean). ``kept`` carries the unresolvable
+    entries the repair deliberately will NOT remove (#616/#617) — a client
+    with only those is not clean and is not repairable either, so a summary
+    that reads ``repairs`` alone would file it wrongly whichever way it went.
+    ``doc`` is kept so the caller can also report the other finding this
+    command does not repair — a duplicate whose two keys both name real
+    platforms — without re-reading the file.
     """
 
     target: ClientTarget
     doc: StateDocument | None
     repairs: tuple[PlatformKeyRepair, ...]
+    kept: tuple[PlatformKeyFinding, ...]
     error: str | None
 
     @property
@@ -145,20 +150,21 @@ def survey_client(
     """Read one client and plan its repairs, converting failure to a report.
 
     ``keys`` narrows the plan exactly as
-    :func:`~mureo.context.platform_repair.plan_platform_key_repairs` does. The
-    read is strict, like the single-workspace command's: a document that only
-    parses tolerantly must not be rewritten, because the entries the tolerant
-    parse skipped would be dropped by the write-back.
+    :func:`~mureo.context.platform_repair.plan_platform_keys` does. The read is
+    strict, like the single-workspace command's: a document that only parses
+    tolerantly must not be rewritten, because the entries the tolerant parse
+    skipped would be dropped by the write-back.
     """
     if target.state_file is None:
-        return ClientSurvey(target, None, (), target.error or _UNRESOLVED_STORE)
+        return ClientSurvey(target, None, (), (), target.error or _UNRESOLVED_STORE)
     if not target.state_file.exists():
-        return ClientSurvey(target, None, (), None)
+        return ClientSurvey(target, None, (), (), None)
     try:
         doc = read_state_file(target.state_file)
     except Exception as exc:  # noqa: BLE001 — one bad client is not a bad sweep
-        return ClientSurvey(target, None, (), _reason(exc))
-    return ClientSurvey(target, doc, plan_platform_key_repairs(doc, keys=keys), None)
+        return ClientSurvey(target, None, (), (), unreadable_reason(exc))
+    plan = plan_platform_keys(doc, keys=keys)
+    return ClientSurvey(target, doc, plan.repairs, plan.kept, None)
 
 
 def survey_clients(
@@ -210,13 +216,18 @@ def _active_workspace_target() -> ClientTarget:
     )
 
 
-def _reason(exc: Exception) -> str:
-    """One scrubbed line saying why a client could not be read.
+def unreadable_reason(exc: Exception) -> str:
+    """One scrubbed line saying why a STATE.json could not be read.
 
     STATE.json is agent-writable, so an exception carrying a fragment of it
     carries attacker-influenceable text straight to a terminal — the same
     reason every other string this command prints goes through
     ``terminal_safe``.
+
+    Shared with the single-workspace path (:mod:`mureo.cli.repair_cmd`) rather
+    than reimplemented there: the two used to give different answers about one
+    document — this one named it under "Could not be read", the other ended in
+    a traceback — and one wording is how they are kept in step (#618).
     """
     text = _safe(str(exc)).strip()
     return text or type(exc).__name__
@@ -229,4 +240,5 @@ __all__ = [
     "list_repair_targets",
     "survey_client",
     "survey_clients",
+    "unreadable_reason",
 ]

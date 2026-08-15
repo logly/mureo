@@ -131,9 +131,13 @@ mureo/
 │   ├── upgrade_cmd.py   # `mureo upgrade` — pipx venv-aware bulk upgrade of mureo + plugins
 │   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*` / `upgrade-google`
 │   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
-│   ├── repair_cmd.py    # `mureo repair platform-key` — drop a platforms entry filed under a
-│   │                    #   key mureo cannot resolve; dry run by default, backs up first (#610).
+│   ├── repair_cmd.py    # `mureo repair platform-key` — drop a platforms entry the DOCUMENT
+│   │                    #   shows to be wrong (duplicate of a resolvable key, or empty stub);
+│   │                    #   dry run by default, backs up first (#610/#616).
 │   │                    #   `--all` sweeps every client, summary first, one prompt (#614)
+│   ├── _repair_preview.py # What that command prints — the half that has to be TRUE: why an
+│   │                    #   entry can go, what is NOT changed (scoped to the plan), every
+│   │                    #   same-account sibling, and conversion_action_types (#616/#617/#618)
 │   ├── _repair_clients.py # Which STATE.json files `--all` sweeps — reuses the Reports tab's
 │   │                    #   optional list_clients / state_store_for_client seam, never a second one
 │   ├── _state_file.py   # The shared `--state-file` option + workspace default (rollback + repair)
@@ -147,7 +151,9 @@ mureo/
 │   ├── platform_guards.py # Write-time platform-key guards (#534/#609) — the one "is this key
 │   │                      #   real?" answer every other surface asks
 │   ├── platform_repair.py # The repair half (#610): plan + drop an entry under an unresolvable
-│   │                      #   key. Drops, never merges; backs up; not an action_log entry
+│   │                      #   key. Unresolvable is the FILTER, not the criterion — the document
+│   │                      #   must show the entry wrong (#616), and conversion_action_types is
+│   │                      #   never dropped (#617). Drops, never merges; backs up; no action_log
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer

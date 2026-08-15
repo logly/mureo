@@ -52,6 +52,74 @@
 
 ### Fixed
 
+- **`mureo repair platform-key` offered to delete a legitimate solitary entry
+  when its plugin was not installed on the machine running the repair**
+  (#616). The delete criterion was resolvability, alone — and "mureo cannot
+  resolve this key" is a fact about *this machine's* installed bridges, not
+  about the entry. The same STATE.json was therefore judged differently on two
+  machines, and on the one lacking a bridge a real platform's real figures,
+  duplicating nothing, became a deletion candidate. Worst under `--all`, which
+  sweeps every client from one host whose plugin set need not match the machine
+  that wrote each document.
+
+  Removal is now proposed only when the **document itself** shows the entry is
+  wrong: it duplicates a key mureo *can* resolve holding the same ad account,
+  or it is an empty stub (no campaigns, no `totals`, no stored periods, no
+  declared settings). An empty `account_id` deliberately does not make a stub —
+  the shape reported from the field carries one, and an entry that never said
+  which account it describes can still hold every figure a platform has.
+  Everything else unresolvable is reported and handed back with its reason,
+  the way an undecidable duplicate already was.
+
+- **A dropped platform entry silently took the operator-declared conversion
+  allow-list with it** (#617). `conversion_action_types` is set by a person so
+  a custom-event advertiser is counted correctly (#342); nothing on the
+  platform side knows it, so no sync restores it. The preview described the
+  change entirely in terms of re-fetchable figures and never named the field,
+  so the operator confirmed a loss they were never shown.
+
+  The field is now carried on `PlatformEntryFacts` and printed whenever an
+  entry holds one — count, the action types themselves, and that no sync
+  restores them — and an entry carrying one is **refused** rather than offered.
+  Refusing rather than asking a second time is the point: the existing
+  confirmation is skippable with `--yes`, which is exactly how the
+  whole-machine sweep is run, so a second prompt would protect nobody on the
+  path that matters.
+
+- **With two or more entries dropped in one pass, each preview block claimed
+  the others were left untouched** (#618). `every other platform entry is left
+  exactly as it is` was printed unconditionally, once per block, so each block
+  contradicted the ones around it. And sibling entries for the same ad account
+  were filtered to the resolvable ones — precisely hiding the siblings that
+  were *also* being dropped, so a pass that removed an account's last record
+  never said so.
+
+  The reassurance is now scoped to entries outside the plan and names the plan
+  when it holds more than one key; siblings are listed whether or not mureo can
+  resolve them, each labelled as staying or as being removed by this run; and
+  when every entry for an ad account is in the plan, every block says the
+  account will be left with no record at all — before the confirmation.
+
+- **A schema-invalid STATE.json ended `mureo repair platform-key` in a raw
+  traceback** (#618). `read_state_file` wraps `json.JSONDecodeError` only, and
+  strict parsing also raises a bare `ValueError` for a document that is valid
+  JSON but invalid against the schema — a campaign missing `campaign_name`,
+  say. The single-workspace path caught only `ContextFileError`, so that
+  document produced a Python traceback, while `--all` caught broadly and
+  reported the very same file under `Could not be read`. One document, two
+  answers, and the person this command exists for cannot read the second one.
+
+  Both CLI entry points now catch it and print the same `Error: ...` block the
+  command uses everywhere else, naming the file and the reason — reusing
+  `--all`'s own wording so the two paths cannot drift apart again.
+  `read_state_file`'s contract is deliberately unchanged (fifteen-odd callers
+  depend on it); the docstring on `apply_state_file_repairs`, which promised
+  `ContextFileError` for every unparseable document, is corrected to state that
+  `ValueError` passes through and that a caller reporting to a person must
+  catch both. While there: `--all` no longer closes a sweep in which nothing
+  could be read with "every client's platform entries are filed under keys
+  mureo can resolve", which it could not know.
+
 - **Four test modules edited `GoogleAdsException` for the rest of the
   session.** Each built a fake exception with `__new__` and then attached a
   fake `failure` through `type(exc).failure = property(...)`. `type(exc)` is
