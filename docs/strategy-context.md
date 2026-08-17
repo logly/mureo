@@ -383,8 +383,9 @@ names the provider. Both keys resolve, so neither is flagged
 state on its own: the write path refuses to **create** the second entry, so
 both forms coexist only after a hand edit or a write that predates the guard.
 mureo merges and rewrites nothing — check which entry holds the right figures,
-keep the key that platform is already stored under, and delete the other
-yourself.
+keep the key that platform is already stored under, and remove the other by
+naming it: `mureo repair platform-key --key <the key to remove>
+--drop-duplicate` (dry run first; `--apply` makes the change).
 
 The bare provider name is the third spelling of that same platform, and it
 renders *identically* to the canonical key (`Logly Ads Context (plugin)`) —
@@ -414,8 +415,10 @@ What the dashboard does about it:
 Detection is right for the general case and still leaves one gap: a key that
 names **no platform at all** (`logly_ads` for a bridge whose provider is
 `logly_ads_context`). There is no question about which of two platforms the
-data belongs to, because only one of the two keys names a platform — so this
-one case has a supported repair, and it is the only one:
+data belongs to, because only one of the two keys names a platform — so that
+case has a supported repair mureo performs on its own judgement. When both
+keys are real the judgement is yours, and `--drop-duplicate` is where you
+record it:
 
 ```bash
 # Show what mureo would do. Changes nothing.
@@ -426,6 +429,9 @@ mureo repair platform-key --apply
 
 # Narrow it to one key, or point at another workspace's file.
 mureo repair platform-key --key logly_ads --state-file ./client-a/STATE.json
+
+# Both keys real? Name the one YOU decided is wrong. Dry run first.
+mureo repair platform-key --key plugin:mureo-logly-bridge --drop-duplicate
 
 # Or sweep every client this machine knows about, summary first.
 mureo repair platform-key --all
@@ -461,7 +467,15 @@ What it does, and deliberately does not:
   every key counts as resolvable and nothing is proposed for removal.
 - **A duplicate whose two keys both name real platforms is reported, not
   repaired** — the command says so in as many words and hands the decision
-  back. It is not a general duplicate merger.
+  back. It is not a general duplicate merger. What it now also does is print
+  the command that ends it: `--key <the key to remove> --drop-duplicate`
+  removes the entry **you** named even though mureo can resolve its key. That
+  is the operator recording a decision, not mureo making one — it is honoured
+  only where the document shows another entry holding the same ad account,
+  it still refuses an entry carrying `conversion_action_types`, and it is not
+  accepted with `--all` (one client's decision must not sweep the machine).
+  Until it existed the dashboard withheld such a client's totals "until this
+  is resolved" while nothing could resolve it.
 - Only the `platforms` map changes. `last_synced_at` is not re-stamped (a
   repair is not a sync, and re-stamping it would make every other platform's
   stale figures read as just-synced), and the legacy flat `campaigns` list is

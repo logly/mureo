@@ -116,6 +116,30 @@
     );
   }
 
+  // What to RUN about the conflicts on this card (#636).
+  //
+  // A duplicated ad account is the one finding whose totals the card
+  // withholds, and until #636 nothing could clear it: the repair would not
+  // touch a duplicate whose two keys both resolve, so "resolve this to see
+  // your totals" pointed at no command that existed. The operator names the
+  // losing key (`--drop-duplicate`) and mureo honours it; mureo still never
+  // picks the loser, which is why the string leaves the key a placeholder.
+  //
+  // Every other finding keeps the survey command — its next move is to LOOK,
+  // not to delete. Defensive about its argument: this runs mid-render, and a
+  // throw here blanks the Reports view.
+  function reportsRepairHint(conflicts) {
+    const rows = Array.isArray(conflicts) ? conflicts : [];
+    const duplicated = rows.some(function (row) {
+      return row && row.kind === REPORTS_CONFLICT_DUPLICATE_ACCOUNT;
+    });
+    return MUREO.t(
+      duplicated
+        ? "dashboard.reports_conflict_duplicate_repair_hint"
+        : "dashboard.reports_conflict_repair_hint"
+    );
+  }
+
   // Every conflict that names `key`, so a platform card can carry its own.
   function reportsConflictsForKey(summary, key) {
     const rows =
@@ -312,6 +336,7 @@
     reportsPlatformLabels: reportsPlatformLabels,
     reportsKeyList: reportsKeyList,
     reportsConflictText: reportsConflictText,
+    reportsRepairHint: reportsRepairHint,
     reportsConflictsForKey: reportsConflictsForKey,
     reportsFreshnessLabel: reportsFreshnessLabel,
     reportsRowIsStale: reportsRowIsStale,

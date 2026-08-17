@@ -134,7 +134,9 @@ mureo/
 │   ├── repair_cmd.py    # `mureo repair platform-key` — drop a platforms entry the DOCUMENT
 │   │                    #   shows to be wrong (duplicate of a resolvable key, or empty stub);
 │   │                    #   dry run by default, backs up first (#610/#616).
-│   │                    #   `--all` sweeps every client, summary first, one prompt (#614)
+│   │                    #   `--all` sweeps every client, summary first, one prompt (#614).
+│   │                    #   `--key <k> --drop-duplicate` records the operator's OWN decision
+│   │                    #   about a duplicate whose two keys both resolve (#636); not with --all
 │   ├── _repair_preview.py # What that command prints — the half that has to be TRUE: why an
 │   │                    #   entry can go, what is NOT changed (scoped to the plan), every
 │   │                    #   same-account sibling, and conversion_action_types (#616/#617/#618)
@@ -154,7 +156,9 @@ mureo/
 │   ├── platform_repair.py # The repair half (#610): plan + drop an entry under an unresolvable
 │   │                      #   key. Unresolvable is the FILTER, not the criterion — the document
 │   │                      #   must show the entry wrong (#616), and conversion_action_types is
-│   │                      #   never dropped (#617). Drops, never merges; backs up; no action_log
+│   │                      #   never dropped (#617). `drop_duplicates` is the one widening: a key
+│   │                      #   the OPERATOR named, dropped only against a same-account sibling
+│   │                      #   (#636). Drops, never merges; backs up; no action_log
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer
