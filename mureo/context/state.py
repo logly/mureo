@@ -45,7 +45,12 @@ from mureo.context.batch import (
 )
 from mureo.context.conversion_overrides import load_conversion_action_types
 from mureo.context.errors import ContextFileError
-from mureo.context.models import BatchRecord, PlatformState, StateDocument
+from mureo.context.models import (
+    NOT_COLLECTED_REASON_MAX_CHARS,
+    BatchRecord,
+    PlatformState,
+    StateDocument,
+)
 from mureo.context.platform_guards import (
     guard_platform_entry_write,
     warn_on_duplicate_accounts,
@@ -621,6 +626,96 @@ def set_platform_metrics(
     return _locked_state_mutation(path, _build)
 
 
+def set_platform_not_collected(
+    path: Path,
+    platform: str,
+    account_id: str,
+    *,
+    reason: str | None,
+) -> StateDocument:
+    """Record — or clear — why a platform's figures were not refreshed (#638).
+
+    Writes ``platforms[platform].not_collected`` as
+    ``{"attempted_at": <now>, "reason": <reason>}``, or removes it when
+    ``reason`` is ``None`` / blank. ``attempted_at`` is stamped SERVER-side
+    (the #460 rule): the caller states what happened, never when.
+
+    **This says the numbers were not UPDATED. It does not say they are
+    wrong.** ``totals`` / ``periods`` are left exactly as they were — they are
+    still the last figures that were truly collected — because writing 0 for a
+    collection that failed would be the lie
+    :func:`set_platform_metrics`' merge semantics deliberately avoid. What was
+    missing was the other half: with the failure unrecorded, "not collected"
+    and "collected, and the answer was zero" are the same document, and an
+    operator watching a card whose figures had not moved for eleven days could
+    not tell a stopped account from a stopped collector.
+
+    **A clear must be said, and whoever collects says it.** Every other
+    targeted mutator here treats an omitted argument as "leave it alone", so
+    nothing else in this module can retire the note: a successful collection
+    writes a rollup, and one window's rollup landing does not prove the
+    platform-level collection recovered. The collector therefore calls this
+    with ``reason=None`` on success, in the same pass. A note that outlives
+    its failure is permanently stale information stated with confidence —
+    exactly what this field exists to remove.
+
+    ``last_synced_at`` is deliberately NOT re-stamped, for the same reason
+    :func:`append_action_log` does not: a collection that FAILED is not a
+    sync, and re-stamping it would make the card report itself just-synced on
+    the strength of nothing having been collected.
+
+    The platform's campaigns, rollups and conversion override — and every
+    OTHER platform — are preserved; the entry is created (carrying
+    ``account_id``) when absent, because a platform that failed on its very
+    first collection is precisely the one an operator cannot otherwise
+    diagnose. The write is atomic, under the state lock.
+
+    Args:
+        path: STATE.json location.
+        platform: Platform key (``"google_ads"`` / ``"meta_ads"`` /
+            ``"plugin:<dist>:<provider>"`` / …) — the ``platforms`` dict key.
+        account_id: The platform account id, always written onto the entry.
+        reason: What happened, in words an operator can act on (an expired
+            token, a permissions error, a collector that did not run).
+            Truncated to :data:`~mureo.context.models.NOT_COLLECTED_REASON_MAX_CHARS`
+            characters. ``None`` or blank CLEARS the note.
+
+    Returns:
+        The updated :class:`StateDocument`.
+
+    Raises:
+        ValueError: ``platform`` is not a usable platform key, names no
+            platform mureo can resolve (checked on CREATE only, so an existing
+            entry stays writable — an operator holding a bad key is exactly
+            the operator whose figures stopped moving), or the write would
+            create a SECOND key for an account another key already holds (see
+            :func:`mureo.context.platform_guards.guard_platform_entry_write`).
+    """
+    cleaned = reason.strip() if isinstance(reason, str) else ""
+
+    def _build(doc: StateDocument) -> StateDocument:
+        platforms = dict(doc.platforms) if doc.platforms else {}
+        guard_platform_entry_write(platforms, platform, account_id)
+        note = (
+            {
+                "attempted_at": _now_iso(),
+                "reason": cleaned[:NOT_COLLECTED_REASON_MAX_CHARS],
+            }
+            if cleaned
+            else None
+        )
+        # Campaigns, rollups and the conversion override have no input on this
+        # call and are carried over by ``replace``: it declares one fact.
+        platforms[platform] = replace(
+            _platform_base(platforms, platform, account_id),
+            account_id=account_id,
+            not_collected=note,
+        )
+        return replace(doc, platforms=platforms)
+
+    return _locked_state_mutation(path, _build)
+
+
 def set_conversion_action_types(
     path: Path,
     platform: str,
@@ -711,6 +806,7 @@ __all__ = [
     "read_state_file",
     "set_conversion_action_types",
     "set_platform_metrics",
+    "set_platform_not_collected",
     "set_report",
     "upsert_campaign",
     "write_state_file",

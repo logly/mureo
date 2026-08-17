@@ -14,6 +14,15 @@ from typing import Any
 #: do neither for a change made in a platform's UI.
 EXTERNAL_ORIGIN = "external"
 
+#: Longest ``PlatformState.not_collected["reason"]`` mureo stores or renders.
+#: A collector's raw error can be a page of API JSON, while the card that has
+#: to show it has one line and STATE.json is read whole on every write. The
+#: cap is applied at BOTH boundaries — the write helper
+#: (:func:`mureo.context.state.set_platform_not_collected`) and the dashboard's
+#: read (:func:`mureo.web.reports._platform_row`) — because a document can also
+#: be written wholesale by a digest that goes near neither.
+NOT_COLLECTED_REASON_MAX_CHARS = 500
+
 
 @dataclass(frozen=True)
 class StrategyEntry:
@@ -318,6 +327,34 @@ class PlatformState:
     # counted correctly. None (the default) keeps the built-in generic set, so
     # legacy entries parse unchanged and emit no extra key.
     conversion_action_types: tuple[str, ...] | None = None
+    # Why this platform's figures were NOT refreshed by the last collection
+    # (#638), as ``{"attempted_at": <ISO 8601>, "reason": <human-readable>}``.
+    # None (the default) is what every entry written before this field existed
+    # carries, so legacy entries parse unchanged and emit no extra key.
+    #
+    # A note about the COLLECTION, never a verdict on the figures. The numbers
+    # in ``totals`` / ``periods`` are still the last ones that were truly
+    # collected: they are not wrong, they are older than they should be. A
+    # surface that renders this as "these figures are wrong" says something
+    # mureo did not.
+    #
+    # It exists because "not collected" and "collected, and the answer was
+    # zero" were the same document. ``merge_metrics_into_state`` leaves an
+    # uncollected platform entirely alone — correct, since writing 0 for a
+    # timed-out request would be a lie — so an operator seeing figures that
+    # had not moved for eleven days had no way to tell a stopped account from
+    # a stopped collector, and left it alone.
+    #
+    # **Whoever collects clears it.** A successful collection MUST clear this
+    # note in the same pass, by calling
+    # :func:`mureo.context.state.set_platform_not_collected` with
+    # ``reason=None``. mureo does not clear it as a side effect of any other
+    # write: every targeted mutator here treats an omitted field as "leave it
+    # alone", and a platform-level note cannot be inferred from one window's
+    # rollup landing. A note that outlived its failure would be the very
+    # defect this field is here to remove — permanently stale information,
+    # stated with confidence.
+    not_collected: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Ensure campaigns is a tuple (defensive copy)."""
@@ -327,6 +364,8 @@ class PlatformState:
             object.__setattr__(self, "totals", copy.deepcopy(self.totals))
         if self.periods is not None:
             object.__setattr__(self, "periods", copy.deepcopy(self.periods))
+        if self.not_collected is not None:
+            object.__setattr__(self, "not_collected", copy.deepcopy(self.not_collected))
         if self.conversion_action_types is not None and not isinstance(
             self.conversion_action_types, tuple
         ):

@@ -296,7 +296,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
-| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_platform_metrics_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate` |
+| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_platform_metrics_set`, `mureo_state_platform_not_collected_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate` |
 
 ## Design Constraints
 

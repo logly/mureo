@@ -1,5 +1,33 @@
 ## [Unreleased]
 
+### Added
+
+- **A platform can now say WHY its figures did not move** (#638).
+  `platforms[<p>].not_collected` — `{attempted_at, reason}` — records the
+  reason a collection did not refresh that platform's numbers, and the
+  Reports card states it directly under the note that withholds them
+  (*"Meta Ads could not be collected 2d ago: the access token expired. The
+  figures shown are the last ones collected — they are not wrong, they are
+  older."*). It completes the fix below: knowing a card is eleven days out of
+  date is not actionable without knowing why, and "not collected" and
+  "collected, and the answer was zero" were until now the same document — a
+  stopped ad account and a stopped collector produced an identical card, which
+  is why that one went untouched for eleven days.
+
+  It is a note about the collection, never a verdict on the figures: the
+  stored `totals` / `periods` are left exactly as they were, because they are
+  still the last numbers truly collected. Write it with
+  `set_platform_not_collected` or the new
+  `mureo_state_platform_not_collected_set` tool; **clearing is explicit and is
+  the collector's job** — call the same writer with `reason=None` (omit
+  `reason` on the tool) on the next successful collection. Nothing clears it
+  as a side effect, because an omitted field means *leave it alone* everywhere
+  else in STATE.json, and a note that outlived its failure would be the same
+  defect one field over: stale information, stated with confidence. Recording
+  a failure does not re-stamp `last_synced_at` — a collection that failed is
+  not a sync. The field is optional and additive: documents without it parse
+  unchanged and gain no key.
+
 ### Fixed
 
 - **An eleven-day-old figure was rendered as the selected window's cost**

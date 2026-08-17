@@ -89,6 +89,7 @@ from mureo.context.state import (
     render_state,
     set_conversion_action_types,
     set_platform_metrics,
+    set_platform_not_collected,
     set_report,
     upsert_campaign,
     write_state_file,
@@ -176,6 +177,10 @@ _PLATFORM_FIELD_VALUES: dict[str, Any] = {
     "metrics_period": "LAST_30_DAYS",
     "periods": {"LAST_30_DAYS": {"spend": 4200.0}},
     "conversion_action_types": ("offsite_conversion.custom.42",),
+    "not_collected": {
+        "attempted_at": "2026-08-08T09:00:00+09:00",
+        "reason": "the Meta access token expired",
+    },
 }
 
 #: One distinctive value per :class:`StateDocument` field.
@@ -322,6 +327,19 @@ class TestDocumentLevelPreservation:
             before, after, changed={"last_synced_at", "platforms"}
         )
 
+    def test_set_platform_not_collected(
+        self, seeded: tuple[Path, StateDocument]
+    ) -> None:
+        path, before = seeded
+        after = set_platform_not_collected(
+            path, _PLATFORM, _ACCOUNT, reason="the sync did not run"
+        )
+        # ``last_synced_at`` is NOT in `changed`: a collection that failed is
+        # not a sync, and re-stamping it would report the document as
+        # just-synced on the strength of nothing having been collected.
+        _assert_document_preserved(before, after, changed={"platforms"})
+        assert after.last_synced_at == before.last_synced_at
+
 
 @pytest.mark.unit
 class TestPlatformLevelPreservation:
@@ -380,6 +398,23 @@ class TestPlatformLevelPreservation:
             changed={"conversion_action_types"},
         )
         assert self._platform(after).conversion_action_types == ("lead",)
+
+    def test_the_not_collected_note_write_keeps_every_figure(
+        self, seeded: tuple[Path, StateDocument]
+    ) -> None:
+        """It says the numbers were not UPDATED — never that they are wrong,
+        and never by touching them."""
+        path, before = seeded
+        after = set_platform_not_collected(
+            path, _PLATFORM, _ACCOUNT, reason="the sync did not run"
+        )
+        _assert_platform_preserved(
+            self._platform(before),
+            self._platform(after),
+            changed={"not_collected"},
+        )
+        note = self._platform(after).not_collected
+        assert note is not None and note["reason"] == "the sync did not run"
 
     def test_a_new_platform_entry_takes_the_dataclass_defaults(
         self, tmp_path: Path

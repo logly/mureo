@@ -821,6 +821,7 @@ Both read tools carry a **`server_now`** field — the server's clock as ISO 860
 | `mureo_state_upsert_campaign` | Upsert a CampaignSnapshot (with optional performance `metrics`) into STATE.json | `campaign` |
 | `mureo_state_report_set` | Persist a structured daily / weekly / goal report summary for the read-only dashboard | `report`, `summary` |
 | `mureo_state_platform_metrics_set` | Set a platform-level metric rollup (feeds the YESTERDAY / LAST_30_DAYS dashboard toggle) | `platform`, `account_id` |
+| `mureo_state_platform_not_collected_set` | Record **why** a platform could not be collected — or clear that note once it can. Omit `reason` to clear, and do so on the next successful collection: nothing else retires it. The stored figures are never touched (they were not updated, not proven wrong), and `last_synced_at` is not re-stamped | `platform`, `account_id` |
 | `mureo_state_set_conversion_events` | Declare which Meta Insights `action_type` rows count as this account's conversions | `platform`, `account_id` |
 | `mureo_outcome_evaluate` | Deterministically score a logged action's outcome (improved / regressed / inconclusive) from before/after metrics | `before`, `after` |
 

@@ -1,6 +1,6 @@
 """mureo's STRATEGY.md / STATE.json MCP tool surface.
 
-Seven tools that expose mureo's context layer over MCP, so any MCP host
+Ten tools that expose mureo's context layer over MCP, so any MCP host
 (Claude Desktop chat, claude.ai web, Codex/Cursor, …) can read and
 update STRATEGY.md / STATE.json without direct filesystem access.
 
@@ -21,6 +21,7 @@ from mureo.mcp._handlers_mureo_context import (
     handle_state_action_log_append,
     handle_state_get,
     handle_state_platform_metrics_set,
+    handle_state_platform_not_collected_set,
     handle_state_report_set,
     handle_state_set_conversion_events,
     handle_state_upsert_campaign,
@@ -593,6 +594,68 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="mureo_state_platform_not_collected_set",
+        description=(
+            "Record WHY a platform's figures could not be collected — or "
+            "CLEAR that note once collection succeeds again. Without it, "
+            '"not collected" and "collected, and the answer was zero" are the '
+            "same STATE.json, so an operator looking at a card whose numbers "
+            "have not moved cannot tell a stopped ad account from a stopped "
+            "collector, and has nothing to act on. Call this when a sync / "
+            "daily-check fails for one platform (expired token, permissions "
+            "error, API outage) INSTEAD of writing zeros: the stored figures "
+            "are left untouched, because they are still the last ones truly "
+            "collected — this note says they were not UPDATED, never that "
+            "they are wrong. ``attempted_at`` is stamped by the server — do "
+            "not compute it. **Omit ``reason`` (or send null / blank) to "
+            "CLEAR the note, and do that on the very next successful "
+            "collection**: nothing else retires it, and a note that outlives "
+            "its failure is permanently stale information stated with "
+            "confidence. Campaigns, rollups, the conversion override and "
+            "every other platform are preserved, and ``last_synced_at`` is "
+            "NOT re-stamped (a failed collection is not a sync). Returns the "
+            "updated state document."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "platform": {
+                    "type": "string",
+                    # No enum: see mureo_state_platform_metrics_set.
+                    "minLength": 1,
+                    "description": (
+                        "Platform key: a built-in (``google_ads`` / "
+                        "``meta_ads`` / …), a platform an installed plugin "
+                        "registered, or ``plugin:<dist>:<provider>``. Use the "
+                        "SAME key the account is already stored under."
+                    ),
+                },
+                "account_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": (
+                        "The platform account id (Google customer_id / Meta "
+                        "act_*). Always written onto the platform entry, and "
+                        "used to detect a second entry for the same account."
+                    ),
+                },
+                "reason": {
+                    "type": "string",
+                    "description": (
+                        "What happened, in words an operator can act on — "
+                        '"the Meta access token expired", "the sync did not '
+                        'run". Not a stack trace: it is rendered on the '
+                        "client card, and long text is truncated. Omit / null "
+                        "/ blank CLEARS the note."
+                    ),
+                },
+                "path": _PATH_PROPERTY,
+            },
+            "required": ["platform", "account_id"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
         name="mureo_state_set_conversion_events",
         description=(
             "Declare which Meta Insights ``action_type`` rows count as THIS "
@@ -710,6 +773,7 @@ _HANDLERS = {
     "mureo_state_upsert_campaign": handle_state_upsert_campaign,
     "mureo_state_report_set": handle_state_report_set,
     "mureo_state_platform_metrics_set": handle_state_platform_metrics_set,
+    "mureo_state_platform_not_collected_set": handle_state_platform_not_collected_set,
     "mureo_state_set_conversion_events": handle_state_set_conversion_events,
     "mureo_outcome_evaluate": handle_outcome_evaluate,
 }

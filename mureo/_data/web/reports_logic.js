@@ -189,6 +189,80 @@
     return !!f && f.stale === true;
   }
 
+  // ------------------------------------------------------------------
+  // Why the figures did not move (#638)
+  // ------------------------------------------------------------------
+
+  // One row's `not_collected` note, normalised, or null.
+  //
+  // Staleness says a figure is out of date; this says WHY it is, which is
+  // the half an operator can act on. A card whose numbers had not moved for
+  // eleven days looked identical whether the ad account had stopped
+  // delivering or the collector had stopped running, so it was left alone
+  // for eleven days.
+  //
+  // A note is NOT a verdict on the figures. They are the last ones that were
+  // truly collected — not wrong, just older than they should be — so nothing
+  // here withholds or restates a number. It only explains one.
+  //
+  // The reason is the payload: a note that states no reason says something
+  // happened and refuses to say what, which is the non-answer this exists to
+  // end, so it is dropped rather than rendered. `attempted_at` is normalised
+  // to null when it is not a string — the text builder then says the time is
+  // unknown instead of interpolating junk.
+  function reportsNotCollectedNote(row) {
+    const r = row && typeof row === "object" ? row : null;
+    const note = r && r.not_collected && typeof r.not_collected === "object"
+      ? r.not_collected
+      : null;
+    if (!note) return null;
+    const reason = typeof note.reason === "string" ? note.reason.trim() : "";
+    if (!reason) return null;
+    const key = typeof r.key === "string" ? r.key : "";
+    return {
+      key: key,
+      label: r.display_name || key,
+      reason: reason,
+      attempted_at:
+        typeof note.attempted_at === "string" && note.attempted_at
+          ? note.attempted_at
+          : null,
+    };
+  }
+
+  // Every platform of a summary that says why it was not collected.
+  //
+  // Unlike the freshness aggregation, a row contributing NO totals still
+  // counts: "there are no figures for this platform, and here is why" is
+  // precisely the sentence that was missing. Defensive about its argument —
+  // this runs mid-render, and a throw blanks the Reports view.
+  function reportsNotCollectedNotes(summary) {
+    const rows =
+      summary && Array.isArray(summary.platforms) ? summary.platforms : [];
+    const notes = [];
+    rows.forEach(function (row) {
+      const note = reportsNotCollectedNote(row);
+      if (note) notes.push(note);
+    });
+    return notes;
+  }
+
+  // A note as one localized sentence. The reason is writer-supplied text and
+  // the caller sets it via textContent.
+  //
+  // An age mureo cannot quote is said to be unknown rather than left blank:
+  // a dangling "could not be collected : …" reads as a claim about now.
+  function reportsNotCollectedText(note) {
+    if (!note || typeof note !== "object" || !note.reason) return "";
+    const age = note.attempted_at ? relativeAge(note.attempted_at) : null;
+    return MUREO.t(
+      age
+        ? "dashboard.reports_not_collected"
+        : "dashboard.reports_not_collected_undated",
+      { platform: note.label || note.key, ago: age, reason: note.reason }
+    );
+  }
+
   // The freshness of a client CARD, which shows one aggregate rather than
   // per-platform rows. Only platforms that actually carry totals count —
   // an advisory bridge contributes nothing to the sum, so its (absent)
@@ -340,6 +414,9 @@
     reportsConflictsForKey: reportsConflictsForKey,
     reportsFreshnessLabel: reportsFreshnessLabel,
     reportsRowIsStale: reportsRowIsStale,
+    reportsNotCollectedNote: reportsNotCollectedNote,
+    reportsNotCollectedNotes: reportsNotCollectedNotes,
+    reportsNotCollectedText: reportsNotCollectedText,
     reportsCardFreshness: reportsCardFreshness,
     aggregateClientKpis: aggregateClientKpis,
   };
