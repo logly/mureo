@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.10.47] - 2026-08-15
+
 ### Fixed
 
 - **Every MCP tool call spent ~11 ms re-discovering the policy gates before
