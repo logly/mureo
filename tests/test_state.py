@@ -1776,6 +1776,45 @@ class TestSetPlatformMetricsFetchedAt:
         assert doc.platforms["google_ads"].totals["fetched_at"] == "today"
 
     @pytest.mark.unit
+    def test_an_explicit_null_is_stamped_like_an_omission(self, tmp_path: Path) -> None:
+        """``null`` states no time — it is the absence, spelled out.
+
+        Not hypothetical: the tool's ``totals`` schema is a free-form object
+        with no per-property types, so ``null`` passes validation untouched,
+        and a model filling in an optional field explicitly is ordinary
+        behaviour. Treating the KEY's presence as "the caller supplied a
+        value" would let exactly the writer #637 is about reproduce the
+        symptom #637 removes: the read side ignores a non-string, so the card
+        would still say "update time unknown".
+        """
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 1.0, "fetched_at": None},
+            periods={"YESTERDAY": {"spend": 1.0, "fetched_at": None}},
+        )
+        ps = doc.platforms["google_ads"]
+        assert ps.totals["fetched_at"] == doc.last_synced_at
+        assert ps.periods["YESTERDAY"]["fetched_at"] == doc.last_synced_at
+
+    @pytest.mark.unit
+    def test_a_blank_string_is_stamped_like_an_omission(self, tmp_path: Path) -> None:
+        """Same reasoning, same outcome: a blank string names no time either,
+        and the read side already folds it into "unknown"."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        for blank in ("", "   ", "\n"):
+            doc = set_platform_metrics(
+                fp, "google_ads", "act_123", totals={"spend": 1.0, "fetched_at": blank}
+            )
+            assert doc.platforms["google_ads"].totals["fetched_at"] == (
+                doc.last_synced_at
+            ), blank
+
+    @pytest.mark.unit
     def test_stamps_every_periods_bucket_the_caller_supplied(
         self, tmp_path: Path
     ) -> None:

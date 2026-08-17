@@ -240,19 +240,32 @@ def _stamp_fetched_at(rollup: Any, written_at: str) -> Any:
     Two things it deliberately does not do:
 
     - **A supplied value is relayed verbatim**, including one that is not a
-      timestamp at all. The key's PRESENCE is what counts as supplied: a
-      caller writing a historical window is stating something the server
-      cannot re-derive, and the read side keeps an uninterpretable string on
-      purpose (see :func:`mureo.web.reports._platform_freshness`) because it
-      is the only clue to the writer that produced it.
+      timestamp at all: a caller writing a historical window is stating
+      something the server cannot re-derive, and the read side keeps an
+      uninterpretable string on purpose (see
+      :func:`mureo.web.reports._platform_freshness`) because it is the only
+      clue to the writer that produced it.
     - **An empty rollup is left empty.** An advisory bridge keeps an entry
       with no figures; a lone ``fetched_at`` would turn "no synced metrics"
       into a rollup claiming a collection time for numbers that do not exist.
 
+    Supplied means **a non-blank string**, not merely the key being present.
+    ``None``, ``""`` and whitespace state no time at all — they are the
+    absence, spelled out — and the tool's ``totals`` schema is a free-form
+    object with no per-property types, so a model filling in an optional
+    field explicitly sends exactly those. Honouring the key alone would let
+    the writer this whole change is about reproduce the symptom it removes:
+    the read side ignores a value that is not a string, so the card would go
+    on saying *"update time unknown"*. Nothing is lost either way — a blank
+    is not a clue to anything, unlike ``"today"``, which is kept.
+
     Anything that is not a dict is passed through untouched — this is a write
     helper, not a validator.
     """
-    if not isinstance(rollup, dict) or not rollup or "fetched_at" in rollup:
+    if not isinstance(rollup, dict) or not rollup:
+        return rollup
+    supplied = rollup.get("fetched_at")
+    if isinstance(supplied, str) and supplied.strip():
         return rollup
     return {**rollup, "fetched_at": written_at}
 
