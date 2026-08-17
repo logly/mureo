@@ -225,6 +225,51 @@ def _platform_base(
     return existing if existing is not None else PlatformState(account_id=account_id)
 
 
+def _stamp_fetched_at(rollup: Any, written_at: str) -> Any:
+    """Return ``rollup`` carrying a ``fetched_at``, stamping ``written_at``
+    when it has none (#637).
+
+    ``fetched_at`` is what the dashboard's staleness marker reads. It used to
+    be a field every writer had to remember, and the writer that reaches it
+    most often is an agent following a skill — so "optional" became "usually
+    missing" and most cards read *"update time unknown"*, which is worse than
+    a stamp accurate to the minute. The server knows when the write happened;
+    for the supported path (pull the figures, then write them) that IS when
+    they were pulled.
+
+    Two things it deliberately does not do:
+
+    - **A supplied value is relayed verbatim**, including one that is not a
+      timestamp at all: a caller writing a historical window is stating
+      something the server cannot re-derive, and the read side keeps an
+      uninterpretable string on purpose (see
+      :func:`mureo.web.reports._platform_freshness`) because it is the only
+      clue to the writer that produced it.
+    - **An empty rollup is left empty.** An advisory bridge keeps an entry
+      with no figures; a lone ``fetched_at`` would turn "no synced metrics"
+      into a rollup claiming a collection time for numbers that do not exist.
+
+    Supplied means **a non-blank string**, not merely the key being present.
+    ``None``, ``""`` and whitespace state no time at all — they are the
+    absence, spelled out — and the tool's ``totals`` schema is a free-form
+    object with no per-property types, so a model filling in an optional
+    field explicitly sends exactly those. Honouring the key alone would let
+    the writer this whole change is about reproduce the symptom it removes:
+    the read side ignores a value that is not a string, so the card would go
+    on saying *"update time unknown"*. Nothing is lost either way — a blank
+    is not a clue to anything, unlike ``"today"``, which is kept.
+
+    Anything that is not a dict is passed through untouched — this is a write
+    helper, not a validator.
+    """
+    if not isinstance(rollup, dict) or not rollup:
+        return rollup
+    supplied = rollup.get("fetched_at")
+    if isinstance(supplied, str) and supplied.strip():
+        return rollup
+    return {**rollup, "fetched_at": written_at}
+
+
 def upsert_campaign(
     path: Path,
     campaign: CampaignSnapshot,
@@ -498,6 +543,12 @@ def set_platform_metrics(
       sync wrote (and vice versa). A given window key is replaced wholesale.
       ``None`` preserves the existing map untouched.
 
+    ``fetched_at`` — the freshness the dashboard reads — is stamped with the
+    write time on every rollup this call SUPPLIES without one (``totals`` and
+    each ``periods`` bucket), and a rollup this call merely preserves is never
+    re-stamped. A value the caller did supply is relayed verbatim. See
+    :func:`_stamp_fetched_at` (#637).
+
     Re-stamps ``last_synced_at`` and writes back atomically under the state
     lock. Other document sections (root campaigns, action_log, reports) are
     preserved.
@@ -529,11 +580,21 @@ def set_platform_metrics(
         guard_platform_entry_write(platforms, platform, account_id)
 
         base = _platform_base(platforms, platform, account_id)
+        # One clock read for the whole write, so a rollup's age and the
+        # document's cannot disagree by a hair and read as two events.
+        written_at = _now_iso()
 
         merged_periods: dict[str, dict[str, Any]] | None
         if periods is not None:
             merged = dict(base.periods) if base.periods else {}
-            merged.update(periods)
+            # Only the buckets THIS write supplies are stamped; the ones it
+            # merely preserves keep the age they were collected at.
+            merged.update(
+                {
+                    window: _stamp_fetched_at(bucket, written_at)
+                    for window, bucket in periods.items()
+                }
+            )
             merged_periods = merged
         else:
             merged_periods = base.periods
@@ -544,14 +605,18 @@ def set_platform_metrics(
         platforms[platform] = replace(
             base,
             account_id=account_id,
-            totals=totals if totals is not None else base.totals,
+            totals=(
+                _stamp_fetched_at(totals, written_at)
+                if totals is not None
+                else base.totals
+            ),
             metrics_period=(
                 metrics_period if metrics_period is not None else base.metrics_period
             ),
             periods=merged_periods,
         )
 
-        return replace(doc, last_synced_at=_now_iso(), platforms=platforms)
+        return replace(doc, last_synced_at=written_at, platforms=platforms)
 
     return _locked_state_mutation(path, _build)
 

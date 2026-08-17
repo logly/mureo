@@ -489,11 +489,22 @@ reporting view judges a figure against the window it covers: stale once it is
 older than that window's own length plus one day of grace, i.e. the point at
 which the stored numbers no longer overlap the window their label claims
 (`YESTERDAY` after 2 days, `LAST_7_DAYS` after 8, `LAST_30_DAYS` after 31).
-A rollup with no `fetched_at` renders as *"update time unknown"* — never as
-fresh, because that would be a claim mureo cannot back. Do not lean on the
+A **stale** rollup is no longer rendered as the selected window's answer: the
+headline figures read `—` and the stored numbers are restated below with
+their age ("last collected 11d ago: …"). Nothing is hidden, but the card
+stops claiming an old figure is this window's result. Do not lean on the
 document-level `last_synced_at` for this: it is re-stamped on **any** platform
 write, so one platform syncing would otherwise make every other platform's
 months-old numbers read as just-synced.
+
+On the **`mureo_state_platform_metrics_set`** path you may leave `fetched_at`
+out: the server stamps the write time onto every rollup that call supplies
+without one (`totals` and each `periods` bucket), and never re-stamps a
+window it merely preserves. Pass your own value only when the figures were
+pulled at some other time — a historical window — and it is relayed verbatim.
+On the **`Write`** path nothing stamps for you, so write it yourself. A rollup
+that still has no `fetched_at` renders as *"update time unknown"* — never as
+fresh, because that would be a claim mureo cannot back.
 
 **Per-period rollups:** `platforms[<p>].periods` is an optional map keyed by a
 canonical period token, each value a totals-shaped object using the SAME

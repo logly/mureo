@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1658,9 +1659,9 @@ class TestSetPlatformMetrics:
         assert doc.platforms is not None
         ps = doc.platforms["google_ads"]
         assert ps.account_id == "act_123"
-        assert ps.totals == {"spend": 3000.0}
+        assert ps.totals["spend"] == 3000.0
         assert ps.metrics_period == "LAST_30_DAYS"
-        assert ps.periods == {"YESTERDAY": {"spend": 100.0}}
+        assert ps.periods["YESTERDAY"]["spend"] == 100.0
 
     @pytest.mark.unit
     def test_omitted_fields_preserve_existing(self, tmp_path: Path) -> None:
@@ -1678,9 +1679,9 @@ class TestSetPlatformMetrics:
             fp, "google_ads", "act_123", periods={"YESTERDAY": {"spend": 100.0}}
         )
         ps = doc.platforms["google_ads"]
-        assert ps.totals == {"spend": 3000.0}  # preserved
+        assert ps.totals["spend"] == 3000.0  # preserved
         assert ps.metrics_period == "LAST_30_DAYS"  # preserved
-        assert ps.periods == {"YESTERDAY": {"spend": 100.0}}
+        assert ps.periods["YESTERDAY"]["spend"] == 100.0
 
     @pytest.mark.unit
     def test_periods_none_preserves_existing_map(self, tmp_path: Path) -> None:
@@ -1691,7 +1692,7 @@ class TestSetPlatformMetrics:
         )
         doc = set_platform_metrics(fp, "google_ads", "act_123", totals={"spend": 2.0})
         ps = doc.platforms["google_ads"]
-        assert ps.periods == {"LAST_30_DAYS": {"spend": 1.0}}  # untouched
+        assert ps.periods["LAST_30_DAYS"]["spend"] == 1.0  # untouched
 
     @pytest.mark.unit
     def test_preserves_reports_section(self, tmp_path: Path) -> None:
@@ -1703,6 +1704,206 @@ class TestSetPlatformMetrics:
             fp, "google_ads", "act_123", periods={"YESTERDAY": {"spend": 1.0}}
         )
         assert doc.reports == {"daily": {"verdict": "Healthy"}}
+
+
+class TestSetPlatformMetricsFetchedAt:
+    """The write-time ``fetched_at`` stamp (#637).
+
+    ``fetched_at`` is what the dashboard's staleness marker reads, and it used
+    to be a field the writer had to remember. The writer that reaches it most
+    often is an agent following a skill, so "optional" became "usually
+    missing" and most cards read "update time unknown". The server knows when
+    the write happened; it stamps that rather than leaving the field empty.
+    """
+
+    @pytest.mark.unit
+    def test_stamps_write_time_when_the_caller_omitted_it(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        before = datetime.now(timezone.utc)
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 3000.0},
+            metrics_period="LAST_30_DAYS",
+        )
+        after = datetime.now(timezone.utc)
+        stamped = doc.platforms["google_ads"].totals["fetched_at"]
+        assert before <= datetime.fromisoformat(stamped) <= after
+        # Everything the caller DID pass is untouched.
+        assert doc.platforms["google_ads"].totals["spend"] == 3000.0
+
+    @pytest.mark.unit
+    def test_the_stamp_is_the_documents_own_write_time(self, tmp_path: Path) -> None:
+        """One clock read per write, so the rollup's age and the document's
+        cannot disagree by a hair and read as two different events."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(fp, "google_ads", "act_1", totals={"spend": 1.0})
+        assert doc.platforms["google_ads"].totals["fetched_at"] == doc.last_synced_at
+
+    @pytest.mark.unit
+    def test_relays_a_supplied_fetched_at_verbatim(self, tmp_path: Path) -> None:
+        """A caller writing a HISTORICAL window passes its own value; the
+        server must not overwrite it with "now"."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 1.0, "fetched_at": "2020-01-01T00:00:00+00:00"},
+        )
+        assert (
+            doc.platforms["google_ads"].totals["fetched_at"]
+            == "2020-01-01T00:00:00+00:00"
+        )
+
+    @pytest.mark.unit
+    def test_relays_a_value_that_is_not_a_timestamp_verbatim(
+        self, tmp_path: Path
+    ) -> None:
+        """The read side deliberately relays an uninterpretable value rather
+        than blanking it — it is the only clue to the writer that produced it
+        (see ``mureo.web.reports._platform_freshness``). Stamping over it here
+        would throw that clue away before it ever reached the document."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp, "google_ads", "act_123", totals={"spend": 1.0, "fetched_at": "today"}
+        )
+        assert doc.platforms["google_ads"].totals["fetched_at"] == "today"
+
+    @pytest.mark.unit
+    def test_an_explicit_null_is_stamped_like_an_omission(self, tmp_path: Path) -> None:
+        """``null`` states no time — it is the absence, spelled out.
+
+        Not hypothetical: the tool's ``totals`` schema is a free-form object
+        with no per-property types, so ``null`` passes validation untouched,
+        and a model filling in an optional field explicitly is ordinary
+        behaviour. Treating the KEY's presence as "the caller supplied a
+        value" would let exactly the writer #637 is about reproduce the
+        symptom #637 removes: the read side ignores a non-string, so the card
+        would still say "update time unknown".
+        """
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 1.0, "fetched_at": None},
+            periods={"YESTERDAY": {"spend": 1.0, "fetched_at": None}},
+        )
+        ps = doc.platforms["google_ads"]
+        assert ps.totals["fetched_at"] == doc.last_synced_at
+        assert ps.periods["YESTERDAY"]["fetched_at"] == doc.last_synced_at
+
+    @pytest.mark.unit
+    def test_a_blank_string_is_stamped_like_an_omission(self, tmp_path: Path) -> None:
+        """Same reasoning, same outcome: a blank string names no time either,
+        and the read side already folds it into "unknown"."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        for blank in ("", "   ", "\n"):
+            doc = set_platform_metrics(
+                fp, "google_ads", "act_123", totals={"spend": 1.0, "fetched_at": blank}
+            )
+            assert doc.platforms["google_ads"].totals["fetched_at"] == (
+                doc.last_synced_at
+            ), blank
+
+    @pytest.mark.unit
+    def test_stamps_every_periods_bucket_the_caller_supplied(
+        self, tmp_path: Path
+    ) -> None:
+        """The dashboard's period toggle reads the PER-WINDOW rollup, so a
+        stamp only on ``totals`` would leave the view an operator actually
+        looks at saying "unknown"."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            periods={
+                "YESTERDAY": {"spend": 100.0},
+                "LAST_30_DAYS": {"spend": 3000.0, "fetched_at": "2020-01-01T00:00:00Z"},
+            },
+        )
+        periods = doc.platforms["google_ads"].periods
+        assert periods["YESTERDAY"]["fetched_at"] == doc.last_synced_at
+        # …and a bucket that came with its own keeps it.
+        assert periods["LAST_30_DAYS"]["fetched_at"] == "2020-01-01T00:00:00Z"
+
+    @pytest.mark.unit
+    def test_a_preserved_rollup_is_not_restamped(self, tmp_path: Path) -> None:
+        """A partial write preserves the windows it does not name. Re-stamping
+        one would claim figures were re-collected when nothing was fetched —
+        the exact lie the marker exists to prevent."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        first = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 3000.0},
+            metrics_period="LAST_30_DAYS",
+            periods={"LAST_30_DAYS": {"spend": 3000.0}},
+        )
+        stamped_totals = first.platforms["google_ads"].totals["fetched_at"]
+        stamped_bucket = first.platforms["google_ads"].periods["LAST_30_DAYS"][
+            "fetched_at"
+        ]
+
+        second = set_platform_metrics(
+            fp, "google_ads", "act_123", periods={"YESTERDAY": {"spend": 1.0}}
+        )
+        ps = second.platforms["google_ads"]
+        assert ps.totals["fetched_at"] == stamped_totals
+        assert ps.periods["LAST_30_DAYS"]["fetched_at"] == stamped_bucket
+        assert ps.periods["YESTERDAY"]["fetched_at"] == second.last_synced_at
+
+    @pytest.mark.unit
+    def test_an_empty_rollup_is_not_stamped(self, tmp_path: Path) -> None:
+        """An advisory bridge keeps an entry with empty totals. A lone
+        ``fetched_at`` would turn "no synced metrics" into a rollup that
+        claims a collection time for figures that do not exist."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp, "google_ads", "act_123", totals={}, periods={"YESTERDAY": {}}
+        )
+        ps = doc.platforms["google_ads"]
+        assert ps.totals == {}
+        assert ps.periods == {"YESTERDAY": {}}
+
+    @pytest.mark.unit
+    def test_stamps_a_rollup_whose_only_figure_is_a_real_zero(
+        self, tmp_path: Path
+    ) -> None:
+        """Zero spend is an ANSWER, not an absence — and it is exactly the
+        answer a stopped campaign gives, so it needs an age most of all."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp, "google_ads", "act_123", totals={"spend": 0, "conversions": 0}
+        )
+        assert doc.platforms["google_ads"].totals["fetched_at"] == doc.last_synced_at
+
+    @pytest.mark.unit
+    def test_does_not_mutate_the_callers_dicts(self, tmp_path: Path) -> None:
+        """The stamp is a copy, not a write into the caller's object."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        totals = {"spend": 1.0}
+        bucket = {"spend": 2.0}
+        set_platform_metrics(
+            fp, "google_ads", "act_123", totals=totals, periods={"YESTERDAY": bucket}
+        )
+        assert totals == {"spend": 1.0}
+        assert bucket == {"spend": 2.0}
 
 
 class TestMutatorsPreserveReports:
@@ -2055,11 +2256,11 @@ class TestDuplicateAccountEntryGuard:
             encoding="utf-8",
         )
         doc = set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 9.0})
-        assert doc.platforms["meta_ads"].totals == {"spend": 9.0}
+        assert doc.platforms["meta_ads"].totals["spend"] == 9.0
         doc = set_platform_metrics(
             path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 8.0}
         )
-        assert doc.platforms["plugin:mureo-logly-bridge"].totals == {"spend": 8.0}
+        assert doc.platforms["plugin:mureo-logly-bridge"].totals["spend"] == 8.0
         # Neither entry was deleted or merged — repair is the operator's call.
         assert set(doc.platforms) == {"meta_ads", "plugin:mureo-logly-bridge"}
 
@@ -2231,7 +2432,7 @@ class TestDuplicateAccountEntryGuard:
         # act_-tolerant: the same account in the other spelling is still a
         # plain update, not a re-point.
         doc = set_platform_metrics(path, "meta_ads", "act_123456", totals={"spend": 2})
-        assert doc.platforms["meta_ads"].totals == {"spend": 2}
+        assert doc.platforms["meta_ads"].totals["spend"] == 2
 
     def test_stamping_an_id_onto_an_idless_entry_is_allowed_even_if_it_collides(
         self, tmp_path: Path
@@ -2317,7 +2518,7 @@ class TestDuplicateAccountEntryGuard:
             encoding="utf-8",
         )
         doc = set_platform_metrics(path, " google_ads", "123", totals={"spend": 1.0})
-        assert doc.platforms[" google_ads"].totals == {"spend": 1.0}
+        assert doc.platforms[" google_ads"].totals["spend"] == 1.0
         assert set(doc.platforms) == {" google_ads"}
 
     def test_an_unusable_key_that_already_exists_stays_writable(
@@ -2333,7 +2534,7 @@ class TestDuplicateAccountEntryGuard:
             encoding="utf-8",
         )
         doc = set_platform_metrics(path, "plugin:", "123", totals={"spend": 1.0})
-        assert doc.platforms["plugin:"].totals == {"spend": 1.0}
+        assert doc.platforms["plugin:"].totals["spend"] == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -2463,7 +2664,7 @@ class TestUnknownPlatformKeyGuard:
         doc = set_platform_metrics(
             path, "logly_ads_context", "act_1", totals={"spend": 2.0}
         )
-        assert doc.platforms["logly_ads_context"].totals == {"spend": 2.0}
+        assert doc.platforms["logly_ads_context"].totals["spend"] == 2.0
 
     def test_an_existing_unknown_key_stays_writable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -2479,7 +2680,7 @@ class TestUnknownPlatformKeyGuard:
             encoding="utf-8",
         )
         doc = set_platform_metrics(path, "logly_ads", "act_1", totals={"spend": 1.0})
-        assert doc.platforms["logly_ads"].totals == {"spend": 1.0}
+        assert doc.platforms["logly_ads"].totals["spend"] == 1.0
 
     def test_a_whole_document_write_carrying_an_unknown_key_still_lands(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

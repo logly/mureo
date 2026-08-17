@@ -1851,6 +1851,7 @@
   const reportsConflictText = REPORTS_LOGIC.reportsConflictText;
   const reportsConflictsForKey = REPORTS_LOGIC.reportsConflictsForKey;
   const reportsFreshnessLabel = REPORTS_LOGIC.reportsFreshnessLabel;
+  const reportsRowIsStale = REPORTS_LOGIC.reportsRowIsStale;
   const reportsCardFreshness = REPORTS_LOGIC.reportsCardFreshness;
   const aggregateClientKpis = REPORTS_LOGIC.aggregateClientKpis;
 
@@ -1951,6 +1952,68 @@
   // result append.
   let reportsRenderSeq = 0;
 
+  // What separates the restated stale figures from one another. One place,
+  // because both the client card and the platform card render the line.
+  const STALE_FIGURE_SEPARATOR = " · ";
+
+  // The withheld figures restated as what they ARE — numbers collected at
+  // `fetchedAt`, not the selected window's answer (#638). Nothing is hidden;
+  // only the claim changes. An age mureo cannot quote is said to be unknown
+  // rather than guessed at.
+  function buildStaleFiguresElement(className, fetchedAt, figuresText) {
+    const el = document.createElement("p");
+    el.className = className;
+    const age = fetchedAt ? relativeAge(fetchedAt) : null;
+    el.textContent = MUREO.t(
+      age
+        ? "dashboard.reports_stale_last_collected"
+        : "dashboard.reports_stale_last_collected_unknown",
+      { ago: age, figures: figuresText }
+    );
+    return el;
+  }
+
+  // One platform's own rollup as a single labelled line, in the same order
+  // and the same vocabulary its KPI grid would have used.
+  function staleTotalsFiguresText(totals) {
+    const parts = [];
+    if (totals.spend != null) {
+      parts.push(
+        MUREO.t("dashboard.reports_kpi_spend") + " " + formatNumber(totals.spend)
+      );
+    }
+    Object.keys(REPORTS_KPI_LABELS).forEach(function (key) {
+      if (totals[key] == null) return;
+      parts.push(MUREO.t(REPORTS_KPI_LABELS[key]) + " " + formatKpi(key, totals[key]));
+    });
+    return parts.join(STALE_FIGURE_SEPARATOR);
+  }
+
+  // The same line for a client card's aggregate (spend / conversions / CPA).
+  function staleAggregateFiguresText(figures) {
+    const parts = [];
+    if (figures.spend != null) {
+      parts.push(
+        MUREO.t("dashboard.reports_kpi_spend") + " " + formatNumber(figures.spend)
+      );
+    }
+    if (figures.conversions != null) {
+      parts.push(
+        MUREO.t("dashboard.reports_kpi_conversions") +
+          " " +
+          formatNumber(figures.conversions)
+      );
+    }
+    if (figures.cpa != null) {
+      parts.push(
+        MUREO.t("dashboard.reports_kpi_cpa") +
+          " " +
+          formatNumber(Math.round(figures.cpa))
+      );
+    }
+    return parts.join(STALE_FIGURE_SEPARATOR);
+  }
+
   // Build one KPI card for a single platform entry. `summary` is optional and
   // supplies the conflict context (the platform row itself carries none).
   function buildReportCard(platform, summary) {
@@ -2021,18 +2084,45 @@
       return card;
     }
 
+    // A rollup older than the window it summarises is not that window's
+    // answer, so it is not rendered as one (#638). The card's head states
+    // the selected period right above these numbers — putting a stale figure
+    // there asserts something mureo cannot back, exactly as a double-counted
+    // total does, and it gets the same treatment: withheld here, restated
+    // below with its age. `stale` unknown (#637) keeps its old rendering.
+    const rowStale = reportsRowIsStale(platform);
+
     // Headline number: spend, large, mono so digits align.
     const headline = document.createElement("div");
     headline.className = "report-card-headline";
     const headlineValue = document.createElement("span");
     headlineValue.className = "report-card-headline-value";
-    headlineValue.textContent = formatNumber(totals.spend != null ? totals.spend : 0);
+    // "—", never a 0: a figure mureo will not state is not a figure of zero.
+    headlineValue.textContent = rowStale
+      ? "—"
+      : formatNumber(totals.spend != null ? totals.spend : 0);
     const headlineLabel = document.createElement("span");
     headlineLabel.className = "report-card-headline-label";
     headlineLabel.textContent = MUREO.t("dashboard.reports_kpi_spend");
     headline.appendChild(headlineValue);
     headline.appendChild(headlineLabel);
     card.appendChild(headline);
+
+    if (rowStale) {
+      const note = document.createElement("p");
+      note.className = "report-card-stale";
+      note.textContent = MUREO.t("dashboard.reports_stale_kpis_withheld");
+      card.appendChild(note);
+      card.appendChild(
+        buildStaleFiguresElement(
+          "report-card-stale-figures",
+          platform.freshness.fetched_at,
+          staleTotalsFiguresText(totals)
+        )
+      );
+      card.appendChild(buildReportCardFoot(platform));
+      return card;
+    }
 
     // Secondary KPIs in a tidy 2-col grid — only those present in totals.
     const grid = document.createElement("dl");
@@ -2442,6 +2532,16 @@
       withheld.textContent = MUREO.t("dashboard.reports_conflict_kpis_withheld");
       card.appendChild(withheld);
     }
+    // The same treatment for the same reason (#638): a stale aggregate is
+    // not the selected window's total, so it is not printed in the cells
+    // that say it is. The note goes ABOVE the cells, like the conflict one,
+    // so the "—" is never read as "this client spent nothing".
+    if (kpis.staleFigures) {
+      const staleNote = document.createElement("p");
+      staleNote.className = "reports-client-card-conflict";
+      staleNote.textContent = MUREO.t("dashboard.reports_stale_kpis_withheld");
+      card.appendChild(staleNote);
+    }
     const krow = document.createElement("div");
     krow.className = "reports-client-card-kpis";
     krow.appendChild(
@@ -2469,6 +2569,17 @@
       );
     }
     card.appendChild(krow);
+    // …and the withheld figures restated below the cells, so the operator
+    // keeps every number they had before, correctly labelled.
+    if (kpis.staleFigures) {
+      card.appendChild(
+        buildStaleFiguresElement(
+          "reports-client-card-stale-figures",
+          kpis.staleFigures.fetched_at,
+          staleAggregateFiguresText(kpis.staleFigures)
+        )
+      );
+    }
 
     const flags = clientReportFlags(summary)
       .slice()

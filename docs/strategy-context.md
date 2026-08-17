@@ -497,13 +497,34 @@ shares not one day with today's last 30); the grace day absorbs a missed
 daily sync and the platforms' own reporting lag. An unrecognised window gets
 the most forgiving threshold rather than a guess.
 
-`fetched_at` is optional and writer-dependent, so an entry without one renders
-as *"update time unknown"* — never as fresh. A value that is not a timestamp
-at all is treated the same way, and is still relayed **verbatim**: the
-staleness verdict is the authoritative "could this be interpreted?" answer, so
-blanking the string would only throw away the clue an operator needs to find
-the writer that produced it. Treat `fetched_at` as an opaque string unless the
-verdict is not "unknown".
+`set_platform_metrics` (and the `mureo_state_platform_metrics_set` tool)
+**stamps the write time** onto every rollup a call supplies without a
+`fetched_at` — `totals` and each `periods` bucket alike — and never re-stamps
+a window the call merely preserves. A value the caller did supply is relayed
+verbatim, so a historical window keeps the time its figures were really
+pulled. The field used to be one the writer had to remember, and the writer
+that reaches it most often is an agent following a skill, so "optional" turned
+into "usually missing" and most cards read *"update time unknown"*.
+
+That state has not gone away and must stay renderable: a document written
+before the stamp, or by something outside mureo, still has no `fetched_at` and
+renders as *"update time unknown"* — never as fresh. A value that is not a
+timestamp at all is treated the same way, and is still relayed **verbatim**:
+the staleness verdict is the authoritative "could this be interpreted?"
+answer, so blanking the string would only throw away the clue an operator
+needs to find the writer that produced it. Treat `fetched_at` as an opaque
+string unless the verdict is not "unknown".
+
+A **stale** figure is not rendered as the selected window's result. Mureo
+cannot vouch for it — the same position it takes on a double-counted account —
+so the headline metrics read `—` and the stored numbers are restated below
+with their age (*"last collected 11d ago: …"*). Nothing is hidden and no
+number is lost; what stops is the claim that an old figure answers the window
+on screen. A card once reported 25,862 in cost for a window whose real cost
+was 0, with the age demoted to a badge beside it; the operator read the bold
+number, as anyone would. A figure whose staleness is *unknown* keeps its
+ordinary rendering — withholding on "we were not told" would blank almost
+every historical card.
 
 A client card shows one aggregate rather than per-platform rows, so it reports
 the **oldest** freshness among the platforms that actually contribute totals —
