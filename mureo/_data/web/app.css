@@ -1607,6 +1607,19 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   word-break: break-word;
 }
 
+/* What to run about the note above (#636). Quiet, like the platform card's
+   hint: it is the way out of a withheld total, not a third warning. */
+.reports-client-card-conflict-hint {
+  margin: 0;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .reports-client-card-kpis {
   display: flex;
   gap: 14px;

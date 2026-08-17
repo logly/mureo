@@ -733,6 +733,38 @@ test.describe("conflict kinds", function () {
     assert.equal(logic.REPORTS_CONFLICT_DUPLICATE_ACCOUNT, "duplicate_account");
     assert.equal(logic.REPORTS_CONFLICT_UNRECOGNIZED_KEY, "unrecognized_key");
   });
+
+  // #636: the card does not merely report a double-counted account, it
+  // WITHHOLDS the client's totals until it is gone — so the hint under it
+  // has to name the command that ends it. A duplicate is resolved by the
+  // operator naming the losing key (`--drop-duplicate`); every other finding
+  // still has only the survey command to offer, and the two must not be
+  // collapsed into one string.
+  test.it("points a duplicate at the command that resolves it", function () {
+    assert.equal(
+      logic.reportsRepairHint([DUP]),
+      "dashboard.reports_conflict_duplicate_repair_hint"
+    );
+    assert.equal(
+      logic.reportsRepairHint([UNK]),
+      "dashboard.reports_conflict_repair_hint"
+    );
+    // A card carrying both findings is a card whose totals are withheld.
+    assert.equal(
+      logic.reportsRepairHint([UNK, DUP]),
+      "dashboard.reports_conflict_duplicate_repair_hint"
+    );
+  });
+
+  test.it("never throws on a malformed conflict list", function () {
+    // These run during a render; a throw here blanks the Reports view.
+    for (const bad of [null, undefined, "rows", [null], [{}], [{ kind: 7 }]]) {
+      assert.equal(
+        logic.reportsRepairHint(bad),
+        "dashboard.reports_conflict_repair_hint"
+      );
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -760,6 +792,8 @@ test.describe("i18n", function () {
     logic.relativeAge(ago(HOUR_MS));
     logic.reportsConflictText({ kind: "duplicate_account", platform_keys: [] }, {});
     logic.reportsConflictText({ kind: "unrecognized_key", platform_keys: [] }, {});
+    logic.reportsRepairHint([{ kind: "duplicate_account", platform_keys: [] }]);
+    logic.reportsRepairHint([{ kind: "unrecognized_key", platform_keys: [] }]);
 
     assert.ok(calls.length > 0, "no i18n key was selected at all");
     for (const call of calls) {

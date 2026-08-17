@@ -24,6 +24,10 @@ What these tests pin:
     account, or it is an empty stub;
   - an entry carrying ``conversion_action_types`` is never dropped (#617).
     That allow-list is operator-declared, so no sync restores it;
+  - a duplicate whose two keys BOTH resolve is repaired only when the losing
+    key is named EXPLICITLY (#636). Naming it is the operator recording the
+    decision mureo refuses to make for them; without that the plan is silent
+    and the document is untouched, and no explicit naming overrides #617;
   - the write goes through a path ``guard_platform_entry_write`` does not
     refuse — verified against a document the create guard would reject;
   - nothing is summed, moved or re-stamped: the surviving entry is byte-for
@@ -45,10 +49,12 @@ import pytest
 
 from mureo.context import platform_guards
 from mureo.context.platform_repair import (
+    DROP_CHOSEN_DUPLICATE,
     DROP_DUPLICATE,
     DROP_EMPTY_STUB,
     KEEP_CARRIES_FIGURES,
     KEEP_CONVERSION_OVERRIDE,
+    KEEP_NOT_A_DUPLICATE,
     apply_state_file_repairs,
     drop_platform_entries,
     is_unresolvable_platform_key,
@@ -862,4 +868,268 @@ class TestTheWritePathIsNotRefused:
         assert set(read_state_file(path).platforms) == {
             "google_ads",
             "logly_ads_context",
+        }
+
+
+# ---------------------------------------------------------------------------
+# The operator's own decision, recorded explicitly (#636)
+# ---------------------------------------------------------------------------
+
+
+def _both_keys_resolve_document() -> dict[str, Any]:
+    """#636: one ad account under two keys mureo CAN resolve.
+
+    The reported pair — the bridge's own provider name and the legacy
+    ``plugin:<distribution>`` spelling of the same platform. Neither is
+    unresolvable, so nothing in the #616 plan reaches either of them.
+    """
+    return {
+        "version": "2",
+        "platforms": {
+            "plugin:mureo-logly-bridge": {
+                "account_id": "1234567890",
+                "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                "metrics_period": "LAST_30_DAYS",
+            },
+            "logly_ads_context": {
+                "account_id": "1234567890",
+                "totals": _logly_totals(4500.0, "2026-08-12T03:00:00+00:00"),
+                "metrics_period": "LAST_30_DAYS",
+            },
+        },
+    }
+
+
+class TestAnExplicitlyChosenDuplicate:
+    """The operator answers the question mureo says is theirs (#636).
+
+    Both keys resolve, so ``plan_platform_keys`` proposes nothing and the
+    dashboard withholds the client's totals for good: mureo would not choose
+    and the operator had no way to record having chosen. Naming the losing key
+    explicitly is that way — and it is the ONLY thing that widens the plan.
+    mureo still never picks a side.
+    """
+
+    def test_the_named_duplicate_is_offered_and_repaired(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(path, _both_keys_resolve_document())
+
+        plan = plan_platform_keys(
+            read_state_file(path),
+            keys=("plugin:mureo-logly-bridge",),
+            drop_duplicates=("plugin:mureo-logly-bridge",),
+        )
+
+        (repair,) = plan.repairs
+        assert repair.entry.key == "plugin:mureo-logly-bridge"
+        assert repair.entry.resolvable is True
+        assert repair.reason == DROP_CHOSEN_DUPLICATE
+        # The evidence is the document's, not the machine's: the sibling that
+        # holds the same ad account is named.
+        assert [facts.key for facts in repair.same_account] == ["logly_ads_context"]
+
+        outcome = apply_state_file_repairs(
+            path,
+            keys=("plugin:mureo-logly-bridge",),
+            drop_duplicates=("plugin:mureo-logly-bridge",),
+        )
+
+        assert outcome.changed is True
+        assert set(read_state_file(path).platforms) == {"logly_ads_context"}
+        # The backup still comes first.
+        assert outcome.backup is not None
+        assert _backups(path)
+
+    def test_the_conflict_the_dashboard_reported_is_gone_afterwards(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Asked of ``mureo.web.reports`` itself: the card recovers."""
+        from mureo.web.reports import CONFLICT_DUPLICATE_ACCOUNT, build_report_summary
+
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(path, _both_keys_resolve_document())
+        ctx = default_runtime_context(workspace=tmp_path)
+        monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
+
+        kinds_before = [
+            row["kind"] for row in build_report_summary()["platform_conflicts"]
+        ]
+        assert CONFLICT_DUPLICATE_ACCOUNT in kinds_before
+
+        apply_state_file_repairs(
+            path,
+            keys=("plugin:mureo-logly-bridge",),
+            drop_duplicates=("plugin:mureo-logly-bridge",),
+        )
+
+        kinds_after = [
+            row["kind"] for row in build_report_summary()["platform_conflicts"]
+        ]
+        assert CONFLICT_DUPLICATE_ACCOUNT not in kinds_after
+
+    def test_the_survivor_is_byte_for_byte_what_it_was(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Drop, never merge — the same contract the #616 path has. Nothing is
+        summed into the entry that stays."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(path, _both_keys_resolve_document())
+        before = read_state_file(path).platforms["logly_ads_context"]
+
+        apply_state_file_repairs(
+            path,
+            keys=("plugin:mureo-logly-bridge",),
+            drop_duplicates=("plugin:mureo-logly-bridge",),
+        )
+
+        assert read_state_file(path).platforms["logly_ads_context"] == before
+
+    def test_without_the_explicit_choice_nothing_changes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Naming the key alone is not deciding: ``keys`` narrows the plan, it
+        does not widen it. Silence here is what keeps mureo out of the
+        operator's money question."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(path, _both_keys_resolve_document())
+        before = path.read_bytes()
+
+        assert plan_platform_keys(read_state_file(path)).repairs == ()
+        assert (
+            plan_platform_keys(
+                read_state_file(path), keys=("plugin:mureo-logly-bridge",)
+            ).repairs
+            == ()
+        )
+        assert apply_state_file_repairs(path).changed is False
+        assert (
+            apply_state_file_repairs(path, keys=("plugin:mureo-logly-bridge",)).changed
+            is False
+        )
+        assert path.read_bytes() == before
+        assert _backups(path) == []
+
+    def test_planning_a_chosen_drop_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The dry run the CLI defaults to: same file, same mtime, no backup."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(path, _both_keys_resolve_document())
+        before = path.read_bytes()
+        mtime = path.stat().st_mtime_ns
+
+        plan_platform_keys(
+            read_state_file(path),
+            keys=("plugin:mureo-logly-bridge",),
+            drop_duplicates=("plugin:mureo-logly-bridge",),
+        )
+
+        assert path.read_bytes() == before
+        assert path.stat().st_mtime_ns == mtime
+        assert _backups(path) == []
+
+    def test_an_entry_that_duplicates_nothing_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit is not carte blanche. This is not a general "delete a key"
+        command: without a sibling holding the same ad account, the document
+        does not show the entry to be a duplicate at all, and the operator may
+        simply have mistyped the key they meant."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                    },
+                    "google_ads": {"account_id": "999"},
+                },
+            },
+        )
+        before = path.read_bytes()
+
+        plan = plan_platform_keys(
+            read_state_file(path),
+            keys=("logly_ads_context",),
+            drop_duplicates=("logly_ads_context",),
+        )
+
+        assert plan.repairs == ()
+        (finding,) = plan.kept
+        assert finding.entry.key == "logly_ads_context"
+        assert finding.reason == KEEP_NOT_A_DUPLICATE
+        assert (
+            apply_state_file_repairs(
+                path,
+                keys=("logly_ads_context",),
+                drop_duplicates=("logly_ads_context",),
+            ).changed
+            is False
+        )
+        assert path.read_bytes() == before
+
+    def test_an_entry_carrying_a_conversion_override_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#617 stands, named explicitly or not: no sync restores that
+        allow-list, so dropping the entry loses it for good."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        payload = _both_keys_resolve_document()
+        payload["platforms"]["plugin:mureo-logly-bridge"]["conversion_action_types"] = [
+            "offsite_conversion.custom.90210"
+        ]
+        _write(path, payload)
+        before = path.read_bytes()
+
+        plan = plan_platform_keys(
+            read_state_file(path),
+            keys=("plugin:mureo-logly-bridge",),
+            drop_duplicates=("plugin:mureo-logly-bridge",),
+        )
+
+        assert plan.repairs == ()
+        (finding,) = plan.kept
+        assert finding.reason == KEEP_CONVERSION_OVERRIDE
+        assert (
+            apply_state_file_repairs(
+                path,
+                keys=("plugin:mureo-logly-bridge",),
+                drop_duplicates=("plugin:mureo-logly-bridge",),
+            ).changed
+            is False
+        )
+        assert path.read_bytes() == before
+
+    def test_only_the_named_key_is_widened(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other half of the duplicate stays, and so does every entry the
+        operator said nothing about."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        payload = _both_keys_resolve_document()
+        payload["platforms"]["google_ads"] = {"account_id": "999"}
+        _write(path, payload)
+
+        apply_state_file_repairs(
+            path,
+            keys=("plugin:mureo-logly-bridge",),
+            drop_duplicates=("plugin:mureo-logly-bridge",),
+        )
+
+        assert set(read_state_file(path).platforms) == {
+            "logly_ads_context",
+            "google_ads",
         }

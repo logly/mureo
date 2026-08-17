@@ -43,6 +43,32 @@ make a stub: an empty ``account_id``. The shape reported from the field
 carries one, and treating "did not say which account" as "holds nothing"
 would delete precisely the solitary entry #616 is about.
 
+The one thing the operator can add to that (#636)
+-------------------------------------------------
+A duplicate whose two keys BOTH resolve was reported and handed back — and
+nothing could then act on it. The dashboard does not merely warn about that
+document, it **withholds the client's totals** until it is resolved, so the
+product named a problem, said the decision was the operator's, and gave them
+nowhere to record having made it. The card stayed red for good.
+
+``drop_duplicates`` is that place. A key named there is dropped when the
+DOCUMENT shows another key holds the same ad account —
+:data:`DROP_CHOSEN_DUPLICATE` — whether or not mureo can resolve it. Three
+things this deliberately is not:
+
+- it is not mureo choosing. Nothing is inferred from figures, freshness or
+  key shape; the plan acts only on keys a person typed;
+- it is not a general "delete this key" command. Without a same-account
+  sibling in the document the entry is reported as
+  :data:`KEEP_NOT_A_DUPLICATE` and nothing is removed, so a mistyped key
+  deletes nothing;
+- it is not an override of #617 below. An entry carrying
+  ``conversion_action_types`` is still refused, named or not.
+
+``keys`` alone still only NARROWS the plan. Naming a key that resolves has
+to stay a no-op on its own, or an operator scoping a sweep would silently
+delete the entry they meant to protect.
+
 The one field a sync does not bring back (#617)
 ------------------------------------------------
 ``conversion_action_types`` (:class:`~mureo.context.models.PlatformState`) is
@@ -137,11 +163,28 @@ DROP_DUPLICATE = "duplicate"
 DROP_EMPTY_STUB = "empty_stub"
 """Offered: the entry stores nothing — no figures, no declared settings."""
 
+DROP_CHOSEN_DUPLICATE = "chosen_duplicate"
+"""Offered: the operator NAMED this key, and another key holds its account.
+
+The only reason that does not stand on the document alone (#636): mureo would
+not choose between two entries it can both resolve, and the operator had no
+way to say they had. Naming the key is that way, and it is the whole of it —
+the document must still show the duplicate.
+"""
+
 KEEP_CARRIES_FIGURES = "carries_figures"
 """Kept: nothing in the document says this entry is wrong (#616)."""
 
 KEEP_CONVERSION_OVERRIDE = "conversion_override"
 """Kept: it carries ``conversion_action_types``, which no sync restores."""
+
+KEEP_NOT_A_DUPLICATE = "not_a_duplicate"
+"""Kept: named for removal, but no other key holds its ad account (#636).
+
+The refusal that keeps the explicit path from becoming a general delete: a
+mistyped key, or one whose sibling was already removed, names an entry the
+document says nothing against.
+"""
 
 
 @dataclass(frozen=True)
@@ -204,7 +247,7 @@ class PlatformEntryFacts:
 
 @dataclass(frozen=True)
 class PlatformKeyRepair:
-    """One unresolvable entry mureo offers to drop, plus its context.
+    """One entry mureo offers to drop, plus its context.
 
     ``same_account`` is every OTHER key that describes the same ad account, in
     document order. It is empty when the entry names no account mureo can join
@@ -215,9 +258,10 @@ class PlatformKeyRepair:
     compare against the plan's own keys before promising anything about them
     (#618).
 
-    ``reason`` is :data:`DROP_DUPLICATE` or :data:`DROP_EMPTY_STUB`: what in
-    the DOCUMENT says this entry is wrong. Unresolvability alone is not one of
-    them.
+    ``reason`` is :data:`DROP_DUPLICATE`, :data:`DROP_EMPTY_STUB` or
+    :data:`DROP_CHOSEN_DUPLICATE`: what says this entry can go. The first two
+    are facts in the DOCUMENT; the third is those plus a key the operator
+    named. Unresolvability alone is never one of them.
     """
 
     entry: PlatformEntryFacts
@@ -227,13 +271,15 @@ class PlatformKeyRepair:
 
 @dataclass(frozen=True)
 class PlatformKeyFinding:
-    """One unresolvable entry mureo will NOT remove, and why.
+    """One entry mureo will NOT remove, and why.
 
     Reported rather than repaired, the way an undecidable duplicate already
     is. ``reason`` is :data:`KEEP_CARRIES_FIGURES` (nothing in the document
     says the entry is wrong — the key may belong to a plugin that is simply
-    not installed on this machine) or :data:`KEEP_CONVERSION_OVERRIDE` (the
-    entry could otherwise go, but carries a setting no sync restores).
+    not installed on this machine), :data:`KEEP_CONVERSION_OVERRIDE` (the
+    entry could otherwise go, but carries a setting no sync restores) or
+    :data:`KEEP_NOT_A_DUPLICATE` (it was named for removal, and no other key
+    in the document holds its ad account).
     """
 
     entry: PlatformEntryFacts
@@ -243,7 +289,7 @@ class PlatformKeyFinding:
 
 @dataclass(frozen=True)
 class PlatformKeyPlan:
-    """Every unresolvable entry, split by whether mureo will act on it.
+    """Every entry in scope, split by whether mureo will act on it.
 
     ``repairs`` is what an ``--apply`` would remove; ``kept`` is what it would
     leave and report. A caller reporting "nothing to repair" has to consult
@@ -323,15 +369,29 @@ def _describe(key: str, entry: PlatformState) -> PlatformEntryFacts:
 
 
 def _drop_reason(
-    entry: PlatformEntryFacts, same_account: tuple[PlatformEntryFacts, ...]
+    entry: PlatformEntryFacts,
+    same_account: tuple[PlatformEntryFacts, ...],
+    *,
+    chosen: bool,
 ) -> str | None:
-    """What in the DOCUMENT says this entry is wrong, or ``None`` (#616).
+    """What says this entry can go, or ``None``.
 
-    Two answers only, and neither of them is "the key does not resolve on this
-    machine". A sibling that is itself unresolvable does not count as a
-    duplicate: two entries mureo cannot vouch for are not evidence against
-    each other, and dropping either still loses figures nothing refills.
+    Three answers, and none of them is "the key does not resolve on this
+    machine". The first is the operator's (#636): a key they NAMED, which the
+    document shows duplicates another key holding the same ad account. The
+    other two are the document's alone (#616) and are reached only for a key
+    mureo cannot resolve — a resolvable entry nobody named is never proposed,
+    which is what keeps ``keys`` a filter rather than a licence.
+
+    A sibling that is itself unresolvable does not make :data:`DROP_DUPLICATE`:
+    two entries mureo cannot vouch for are not evidence against each other,
+    and dropping either still loses figures nothing refills. That reasoning is
+    about mureo choosing, so it does not apply to a key the operator chose.
     """
+    if chosen and same_account:
+        return DROP_CHOSEN_DUPLICATE
+    if entry.resolvable:
+        return None
     if any(other.resolvable for other in same_account):
         return DROP_DUPLICATE
     if entry.is_empty_stub:
@@ -339,10 +399,25 @@ def _drop_reason(
     return None
 
 
+def _keep_reason(entry: PlatformEntryFacts, *, chosen: bool) -> str:
+    """Why an entry with no drop reason is being handed back.
+
+    A named key that resolves got here because the document shows no sibling
+    holding its ad account — a different fact, and a different next step, from
+    "the plugin that owns this key may not be installed here".
+    """
+    if chosen and entry.resolvable:
+        return KEEP_NOT_A_DUPLICATE
+    return KEEP_CARRIES_FIGURES
+
+
 def plan_platform_keys(
-    doc: StateDocument, *, keys: Iterable[str] | None = None
+    doc: StateDocument,
+    *,
+    keys: Iterable[str] | None = None,
+    drop_duplicates: Iterable[str] | None = None,
 ) -> PlatformKeyPlan:
-    """Every unresolvable entry, split into what mureo will and will not touch.
+    """Every entry in scope, split into what mureo will and will not touch.
 
     Pure — it reads ``doc`` and returns a description. This is what a dry run
     shows, and :func:`apply_state_file_repairs` re-derives it under the lock
@@ -352,15 +427,24 @@ def plan_platform_keys(
     fine, or that the document does not carry, simply produces nothing;
     telling the operator which of the two happened needs the document itself
     and is the caller's job.
+
+    ``drop_duplicates`` is the operator's own decision, recorded (#636). A key
+    named there is considered even though mureo can resolve it, and is dropped
+    when the document shows another key holding the same ad account. It is not
+    a licence: no sibling means :data:`KEEP_NOT_A_DUPLICATE` and no change,
+    and ``conversion_action_types`` still refuses outright (#617). Every other
+    entry is judged exactly as before.
     """
     platforms = doc.platforms or {}
     wanted = frozenset(keys) if keys is not None else None
+    chosen = frozenset(drop_duplicates or ())
     repairs: list[PlatformKeyRepair] = []
     kept: list[PlatformKeyFinding] = []
     for key, entry in platforms.items():
         if wanted is not None and key not in wanted:
             continue
-        if not is_unresolvable_platform_key(key):
+        named = key in chosen
+        if not named and not is_unresolvable_platform_key(key):
             continue
         facts = _describe(key, entry)
         same_account = tuple(
@@ -368,12 +452,18 @@ def plan_platform_keys(
             for other in platform_keys_for_account(platforms, entry.account_id)
             if other != key
         )
-        reason = _drop_reason(facts, same_account)
+        reason = _drop_reason(facts, same_account, chosen=named)
         if reason is None:
-            kept.append(PlatformKeyFinding(facts, same_account, KEEP_CARRIES_FIGURES))
+            kept.append(
+                PlatformKeyFinding(
+                    facts, same_account, _keep_reason(facts, chosen=named)
+                )
+            )
         elif facts.conversion_action_types:
             # Removable by the document, but it carries the one field a sync
-            # does not bring back (#617). Reported, never dropped.
+            # does not bring back (#617). Reported, never dropped — naming the
+            # key does not buy past this one, because the loss it prevents is
+            # not one the operator is being asked about.
             kept.append(
                 PlatformKeyFinding(facts, same_account, KEEP_CONVERSION_OVERRIDE)
             )
@@ -383,7 +473,10 @@ def plan_platform_keys(
 
 
 def plan_platform_key_repairs(
-    doc: StateDocument, *, keys: Iterable[str] | None = None
+    doc: StateDocument,
+    *,
+    keys: Iterable[str] | None = None,
+    drop_duplicates: Iterable[str] | None = None,
 ) -> tuple[PlatformKeyRepair, ...]:
     """Only the entries :func:`plan_platform_keys` offers to remove.
 
@@ -392,7 +485,7 @@ def plan_platform_key_repairs(
     :func:`plan_platform_keys`: an empty result here does NOT mean the
     document is clean.
     """
-    return plan_platform_keys(doc, keys=keys).repairs
+    return plan_platform_keys(doc, keys=keys, drop_duplicates=drop_duplicates).repairs
 
 
 def drop_platform_entries(doc: StateDocument, keys: Iterable[str]) -> StateDocument:
@@ -418,7 +511,10 @@ def drop_platform_entries(doc: StateDocument, keys: Iterable[str]) -> StateDocum
 
 
 def apply_state_file_repairs(
-    path: Path, *, keys: Iterable[str] | None = None
+    path: Path,
+    *,
+    keys: Iterable[str] | None = None,
+    drop_duplicates: Iterable[str] | None = None,
 ) -> RepairOutcome:
     """Drop every ``platforms`` entry the document shows to be wrong, safely.
 
@@ -426,6 +522,11 @@ def apply_state_file_repairs(
     when it duplicates a resolvable key holding the same ad account or is an
     empty stub, and never when it carries an operator-declared conversion
     allow-list. See :func:`plan_platform_keys`.
+
+    The one addition to that filter is a key the operator named in
+    ``drop_duplicates`` (#636), which is considered even though mureo can
+    resolve it — and still only removed when the document shows another key
+    holding its ad account.
 
 
     The whole cycle — read, plan, back up, write — runs inside the STATE.json
@@ -443,6 +544,9 @@ def apply_state_file_repairs(
         path: STATE.json location.
         keys: Narrow the repair to these ``platforms`` keys. ``None`` (the
             default) repairs every unresolvable entry in the document.
+        drop_duplicates: Keys the operator has decided to remove even though
+            mureo can resolve them (#636). Honoured only where the document
+            shows another key holding the same ad account.
 
     Returns:
         A :class:`RepairOutcome` naming what was dropped and where the
@@ -468,7 +572,9 @@ def apply_state_file_repairs(
     """
     with file_lock(_state_lock_path(path)):
         doc = read_state_file(path)
-        repairs = plan_platform_key_repairs(doc, keys=keys)
+        repairs = plan_platform_key_repairs(
+            doc, keys=keys, drop_duplicates=drop_duplicates
+        )
         if not repairs:
             return RepairOutcome(path=path, repairs=(), changed=False, backup=None)
         # Timestamped rather than a single rolling ``.bak``: a second repair
@@ -482,10 +588,12 @@ def apply_state_file_repairs(
 
 
 __all__ = [
+    "DROP_CHOSEN_DUPLICATE",
     "DROP_DUPLICATE",
     "DROP_EMPTY_STUB",
     "KEEP_CARRIES_FIGURES",
     "KEEP_CONVERSION_OVERRIDE",
+    "KEEP_NOT_A_DUPLICATE",
     "PlatformEntryFacts",
     "PlatformKeyFinding",
     "PlatformKeyPlan",

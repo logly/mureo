@@ -1849,6 +1849,7 @@
   const relativeAge = REPORTS_LOGIC.relativeAge;
   const reportsPlatformLabels = REPORTS_LOGIC.reportsPlatformLabels;
   const reportsConflictText = REPORTS_LOGIC.reportsConflictText;
+  const reportsRepairHint = REPORTS_LOGIC.reportsRepairHint;
   const reportsConflictsForKey = REPORTS_LOGIC.reportsConflictsForKey;
   const reportsFreshnessLabel = REPORTS_LOGIC.reportsFreshnessLabel;
   const reportsRowIsStale = REPORTS_LOGIC.reportsRowIsStale;
@@ -2052,7 +2053,7 @@
         note.textContent = reportsConflictText(row, labels);
         card.appendChild(note);
       });
-      // Where the way out lives (#610). The repair is NOT offered as a
+      // Where the way out lives (#610/#636). The repair is NOT offered as a
       // button here. Since #631 this signal does agree with mureo's
       // write-time answer — the CORRECT key in the reported incident
       // (`logly_ads_context`) no longer fires it — but agreeing about the
@@ -2060,10 +2061,12 @@
       // the entry wrong (a resolvable sibling on the same ad account, or an
       // entry storing nothing) and is refused for one carrying
       // `conversion_action_types` (#616/#617). None of that evidence is on
-      // the wire. This is a pointer, not an action.
+      // the wire. This is a pointer, not an action — but since #636 it
+      // points at the command that actually ends THIS finding, which
+      // `reportsRepairHint` chooses from the kinds on the card.
       const hint = document.createElement("p");
       hint.className = "report-card-conflict-hint";
-      hint.textContent = MUREO.t("dashboard.reports_conflict_repair_hint");
+      hint.textContent = reportsRepairHint(conflicts);
       card.appendChild(hint);
     }
 
@@ -2541,6 +2544,19 @@
       staleNote.className = "reports-client-card-conflict";
       staleNote.textContent = MUREO.t("dashboard.reports_stale_kpis_withheld");
       card.appendChild(staleNote);
+    }
+    // The way out, under the notes that say why the figures are missing
+    // (#636). This card withholds a client's totals "until this is
+    // resolved" and named nothing that could resolve it: the repair would
+    // not touch a duplicate whose two keys both resolve, so the card stayed
+    // red for good. A pointer, never a control — the Reports view does not
+    // mutate state — and the command itself is chosen by kind in
+    // reports_logic.js rather than re-decided here.
+    if (conflicts.length) {
+      const repairHint = document.createElement("p");
+      repairHint.className = "reports-client-card-conflict-hint";
+      repairHint.textContent = reportsRepairHint(conflicts);
+      card.appendChild(repairHint);
     }
     const krow = document.createElement("div");
     krow.className = "reports-client-card-kpis";

@@ -424,13 +424,39 @@ def test_a_conflicted_platform_card_points_at_the_repair_command() -> None:
     js = _read("dashboard.js")
     css = _read("app.css")
     catalog = json.loads(_read("i18n.json"))
-    assert "dashboard.reports_conflict_repair_hint" in js
+    assert "reportsRepairHint(conflicts)" in js
     assert "report-card-conflict-hint" in js
     assert ".report-card-conflict-hint" in css
+    # Which hint is a decision about a conflict KIND, so it lives in the
+    # tested module rather than in the renderer (#636).
+    assert "dashboard.reports_conflict_repair_hint" in _read("reports_logic.js")
     for locale in ("en", "ja"):
         text = catalog[locale]["dashboard.reports_conflict_repair_hint"]
         assert "mureo repair platform-key" in text
     # No mutating control is offered from the read-only Reports view.
-    assert "repair platform-key" not in js.replace(
-        "dashboard.reports_conflict_repair_hint", ""
+    assert "repair platform-key" not in js
+
+
+@pytest.mark.unit
+def test_a_double_counted_client_card_names_the_command_that_clears_it() -> None:
+    """#636 — the index card is where the operator met the dead end.
+
+    It says the totals are withheld "until this is resolved" and, until now,
+    named nothing that could resolve it: `mureo repair platform-key` would not
+    touch a duplicate whose two keys both resolve, so the card stayed red for
+    good. The hint under a duplicate therefore names the flag that records the
+    operator's decision — the same one the CLI accepts.
+    """
+    js = _read("dashboard.js")
+    catalog = json.loads(_read("i18n.json"))
+    card = _function_body(js, "function buildClientCard(")
+    assert "reportsRepairHint(conflicts)" in card, (
+        "the client index card no longer offers a way out — this is the "
+        "surface that withholds the client's totals"
     )
+    assert "reports-client-card-conflict-hint" in card
+    assert ".reports-client-card-conflict-hint" in _read("app.css")
+    for locale in ("en", "ja"):
+        text = catalog[locale]["dashboard.reports_conflict_duplicate_repair_hint"]
+        assert "mureo repair platform-key" in text
+        assert "--drop-duplicate" in text

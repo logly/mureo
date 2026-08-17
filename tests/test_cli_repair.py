@@ -554,6 +554,254 @@ class TestThePreviewIsTrue:
 
 
 # ---------------------------------------------------------------------------
+# Recording the operator's own decision (#636)
+# ---------------------------------------------------------------------------
+
+
+def _both_keys_resolve_state(path: Path) -> None:
+    """One ad account under two keys mureo can resolve — the #636 deadlock.
+
+    The bridge's provider name and the legacy ``plugin:<distribution>``
+    spelling of the same platform. The dashboard withholds this client's
+    totals until one of them goes, and nothing in the #616 plan reaches
+    either.
+    """
+    _write(
+        path,
+        {
+            "version": "2",
+            "platforms": {
+                "plugin:mureo-logly-bridge": {
+                    "account_id": "1234567890",
+                    "totals": {
+                        "spend": 9000.0,
+                        "fetched_at": "2026-08-01T03:00:00+00:00",
+                    },
+                },
+                "logly_ads_context": {
+                    "account_id": "1234567890",
+                    "totals": {
+                        "spend": 4500.0,
+                        "fetched_at": "2026-08-12T03:00:00+00:00",
+                    },
+                },
+            },
+        },
+    )
+
+
+class TestChoosingWhichDuplicateToDrop:
+    """``--drop-duplicate`` is how an operator records a decision (#636).
+
+    mureo will not say which of two resolvable entries holds the true
+    figures. Before this flag it also had nowhere to be told, so the
+    dashboard's "resolve this" instruction had no runnable next step and the
+    client's totals stayed hidden for good.
+    """
+
+    def test_the_flag_is_needed_before_a_resolvable_key_is_touched(
+        self, tmp_path: Path
+    ) -> None:
+        """Naming a key must never be enough on its own — and the refusal has
+        to name the flag that IS enough, or this is the same dead end."""
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+        before = state.read_bytes()
+
+        result = _run(
+            "--state-file",
+            str(state),
+            "--key",
+            "plugin:mureo-logly-bridge",
+            "--apply",
+            "-y",
+        )
+
+        assert result.exit_code == 1
+        assert state.read_bytes() == before
+        assert "--drop-duplicate" in result.output
+
+    def test_the_dry_run_is_still_the_default(self, tmp_path: Path) -> None:
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+        before = state.read_bytes()
+        mtime = state.stat().st_mtime_ns
+
+        result = _run(
+            "--state-file",
+            str(state),
+            "--key",
+            "plugin:mureo-logly-bridge",
+            "--drop-duplicate",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert state.read_bytes() == before
+        assert state.stat().st_mtime_ns == mtime
+        assert list(tmp_path.glob("STATE.json.bak*")) == []
+        assert "this was a dry run" in result.output
+        # It shows the evidence in the document, not just the key.
+        assert "logly_ads_context" in result.output
+        assert "1234567890" in result.output
+        # "Run the same command with --apply" has to name the SAME command:
+        # the bare one would repair the whole document instead, and one
+        # missing --drop-duplicate would do nothing at all.
+        assert (
+            f'mureo repair platform-key --state-file "{state}" '
+            f"--key plugin:mureo-logly-bridge --drop-duplicate --apply"
+        ) in result.output
+
+    def test_apply_removes_the_named_entry_and_backs_up_first(
+        self, tmp_path: Path
+    ) -> None:
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+
+        result = _run(
+            "--state-file",
+            str(state),
+            "--key",
+            "plugin:mureo-logly-bridge",
+            "--drop-duplicate",
+            "--apply",
+            "-y",
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(state.read_text(encoding="utf-8"))
+        assert set(payload["platforms"]) == {"logly_ads_context"}
+        backups = list(tmp_path.glob("STATE.json.bak.*"))
+        assert len(backups) == 1
+        restored = json.loads(backups[0].read_text(encoding="utf-8"))
+        assert set(restored["platforms"]) == {
+            "plugin:mureo-logly-bridge",
+            "logly_ads_context",
+        }
+
+    def test_apply_without_a_tty_still_declines(self, tmp_path: Path) -> None:
+        """The confirmation is not skipped for an explicit choice."""
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+        before = state.read_bytes()
+
+        result = _run(
+            "--state-file",
+            str(state),
+            "--key",
+            "plugin:mureo-logly-bridge",
+            "--drop-duplicate",
+            "--apply",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert state.read_bytes() == before
+        assert "Nothing was changed" in result.output
+
+    def test_the_flag_needs_a_key_to_name(self, tmp_path: Path) -> None:
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+        before = state.read_bytes()
+
+        result = _run("--state-file", str(state), "--drop-duplicate", "--apply", "-y")
+
+        assert result.exit_code == 1
+        assert state.read_bytes() == before
+        assert "--key" in result.output
+
+    def test_it_cannot_be_swept_across_every_client(self) -> None:
+        """A decision about which of two sets of figures is true is made by
+        looking at ONE document. ``--all`` would apply it to documents the
+        operator has not seen."""
+        result = _run("--all", "--key", "logly_ads_context", "--drop-duplicate")
+
+        assert result.exit_code == 1
+        assert "--all" in result.output
+
+    def test_an_entry_that_duplicates_nothing_is_refused(self, tmp_path: Path) -> None:
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "totals": {"spend": 10.0},
+                    },
+                    "google_ads": {"account_id": "999"},
+                },
+            },
+        )
+        before = state.read_bytes()
+
+        result = _run(
+            "--state-file",
+            str(state),
+            "--key",
+            "logly_ads_context",
+            "--drop-duplicate",
+            "--apply",
+            "-y",
+        )
+
+        assert result.exit_code == 1
+        assert state.read_bytes() == before
+        assert "duplicate" in result.output
+
+    def test_a_conversion_override_is_refused_even_when_named(
+        self, tmp_path: Path
+    ) -> None:
+        """#617 is not overridable: no sync restores that allow-list, so the
+        entry is reported with the step that WOULD free it."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "plugin:mureo-logly-bridge": {
+                        "account_id": "1234567890",
+                        "conversion_action_types": ["offsite_conversion.custom.90210"],
+                    },
+                    "logly_ads_context": {"account_id": "1234567890"},
+                },
+            },
+        )
+        before = state.read_bytes()
+
+        result = _run(
+            "--state-file",
+            str(state),
+            "--key",
+            "plugin:mureo-logly-bridge",
+            "--drop-duplicate",
+            "--apply",
+            "-y",
+        )
+
+        assert result.exit_code == 1
+        assert state.read_bytes() == before
+        assert "conversion_action_types" in result.output
+        assert "offsite_conversion.custom.90210" in result.output
+
+    def test_the_undecidable_block_names_the_command_that_resolves_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The dead end #636 reports: told to fix something, given no command.
+        The block that reports the duplicate now prints the one that ends it."""
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        assert "mureo repair platform-key" in result.output
+        assert "--drop-duplicate" in result.output
+        # …and it does not first tell the operator there is nothing to repair.
+        assert "Nothing to repair" not in result.output
+
+
+# ---------------------------------------------------------------------------
 # STATE.json is agent-writable, so its strings are attacker-influenceable
 # ---------------------------------------------------------------------------
 

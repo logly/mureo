@@ -17,6 +17,14 @@ decide safely and shows its work for everything else:
   operator's question), an unresolvable entry that duplicates nothing and
   carries figures, and any entry holding ``conversion_action_types``, which no
   sync restores (#617).
+- **…unless the operator names the loser themselves** (``--key <k>
+  --drop-duplicate``, #636). Which of two real platform keys holds the true
+  figures stays the operator's question; this is where they answer it. The
+  answer is honoured only against the document — the key must be one another
+  entry's ad account is also stored under — and it buys nothing past #617.
+  The flag is required because ``--key`` alone must keep meaning "narrow the
+  sweep": an operator scoping a run should never find they deleted the entry
+  they were protecting.
 - **It backs the document up first**, timestamped, and prints the command that
   puts it back.
 
@@ -37,6 +45,12 @@ notice the one they missed. ``--all`` surveys every client the active
 summary of how many of how many need work, and confirms **once** with that
 list in view. One client failing costs that client, not the run: the failure
 is named in the summary and the exit status is non-zero.
+
+``--drop-duplicate`` is deliberately NOT part of it. That flag records one
+decision about one pair of entries, made by reading one document; a sweep
+would carry it into every other client's STATE.json, including the ones the
+operator has never opened. The sweep still reports those duplicates and names
+the command to run per client.
 
 **Archived clients are swept too**, and labelled. Archiving means "stop
 collecting this client's figures" — a decision about what to fetch next, not
@@ -68,6 +82,13 @@ design: a conflict row carries keys and a presence bit, never an ad account
 id. So an action hung off the signal alone would still offer a deletion this
 command refuses — in a module whose contract is that it never mutates state.
 The terminal has the whole answer, in-process and current.
+
+``--drop-duplicate`` does not change that. It removes a real entry on the
+operator's word, which is the last thing to hang off a one-click control in a
+read-only view. What the card owes them is the exact command, and since #636
+that is what it prints (``dashboard.reports_conflict_duplicate_repair_hint``)
+— with the key left as a placeholder, because mureo does not know which half
+is wrong and neither does the wire.
 """
 
 from __future__ import annotations
@@ -83,6 +104,7 @@ from mureo.cli._repair_clients import (
     unreadable_reason,
 )
 from mureo.cli._repair_preview import (
+    REPAIR_COMMAND,
     echo_kept_findings,
     echo_repair,
     echo_undecidable_duplicates,
@@ -93,6 +115,7 @@ from mureo.cli._tty import confirm_or_default
 from mureo.cli._tty import terminal_safe as _safe
 from mureo.context.errors import ContextFileError
 from mureo.context.platform_repair import (
+    DROP_CHOSEN_DUPLICATE,
     apply_state_file_repairs,
     is_unresolvable_platform_key,
     plan_platform_keys,
@@ -112,7 +135,8 @@ repair_app = typer.Typer(
     no_args_is_help=True,
 )
 
-_COMMAND = "mureo repair platform-key"
+# One spelling, shared with the module that prints "run this to fix it".
+_COMMAND = REPAIR_COMMAND
 
 
 def _read_document(state_file: Path) -> StateDocument:
@@ -157,7 +181,9 @@ def _echo_unreadable(state_file: Path, exc: Exception) -> None:
     )
 
 
-def _reject_unusable_key_argument(doc: StateDocument, key: str) -> None:
+def _reject_unusable_key_argument(
+    doc: StateDocument, key: str, *, drop_duplicate: bool
+) -> None:
     """Explain a ``--key`` that names nothing this command will touch."""
     platforms = doc.platforms or {}
     if key not in platforms:
@@ -168,7 +194,8 @@ def _reject_unusable_key_argument(doc: StateDocument, key: str) -> None:
             err=True,
         )
         raise typer.Exit(1)
-    _reject_resolvable_key(key)
+    if not drop_duplicate:
+        _reject_resolvable_key(key)
 
 
 def _reject_resolvable_key(key: str) -> None:
@@ -177,14 +204,25 @@ def _reject_resolvable_key(key: str) -> None:
     Shared with ``--all``, which has no single document to check the key's
     presence against but must give the identical answer to the identical
     mistake.
+
+    Not called at all when ``--drop-duplicate`` is passed: that flag is the
+    operator saying they know mureo can resolve this key and want it removed
+    anyway. The refusal therefore has to NAME it — the previous "remove the
+    other yourself" ended in an operator with a red dashboard card, a hidden
+    total and no command to run (#636).
     """
     if not is_unresolvable_platform_key(key):
         typer.echo(
-            f"Error: mureo can resolve {_safe(key)!r}, so this is not the case "
-            f"this command repairs. It only removes an entry filed under a key "
-            f"that names no platform at all. If this entry duplicates another, "
-            f"decide which one holds the right figures and remove the other "
-            f"yourself.",
+            f"Error: mureo can resolve {_safe(key)!r}, so it is not repaired on "
+            f"mureo's own judgement. It removes an entry filed under a key that "
+            f"names no platform at all.",
+            err=True,
+        )
+        typer.echo(
+            f"       If this entry duplicates another key holding the same ad "
+            f"account and\n       you have decided THIS is the one to remove, "
+            f"say so explicitly:\n"
+            f"         {_COMMAND} --key {_safe(key)} --drop-duplicate",
             err=True,
         )
         raise typer.Exit(1)
@@ -206,6 +244,15 @@ def repair_platform_key(
         help=(
             "Repair only this platform key. Without it, every entry filed "
             "under a key mureo cannot resolve is repaired."
+        ),
+    ),
+    drop_duplicate: bool = typer.Option(
+        False,
+        "--drop-duplicate",
+        help=(
+            "Remove the entry named by --key even though mureo can resolve "
+            "its key, because you have decided it is the duplicate half. "
+            "Only honoured when another entry holds the same ad account."
         ),
     ),
     apply: bool = typer.Option(
@@ -234,48 +281,88 @@ def repair_platform_key(
     Shows what it would do and changes nothing unless you pass ``--apply``.
     """
     if all_clients:
-        _repair_every_client(state_file=state_file, key=key, apply=apply, yes=yes)
+        _repair_every_client(
+            state_file=state_file,
+            key=key,
+            drop_duplicate=drop_duplicate,
+            apply=apply,
+            yes=yes,
+        )
         return
-    _repair_one_workspace(state_file=state_file, key=key, apply=apply, yes=yes)
+    _repair_one_workspace(
+        state_file=state_file,
+        key=key,
+        drop_duplicate=drop_duplicate,
+        apply=apply,
+        yes=yes,
+    )
+
+
+def _reject_choice_without_a_key(*, key: str | None, drop_duplicate: bool) -> None:
+    """``--drop-duplicate`` is an answer; it needs the question named.
+
+    Applying it to "every duplicate mureo finds" would be mureo choosing,
+    which is the one thing this path exists NOT to do.
+    """
+    if drop_duplicate and key is None:
+        typer.echo(
+            "Error: --drop-duplicate says which entry of a duplicate to remove, "
+            "so it needs\n       the key: "
+            f"{_COMMAND} --key <the key to remove> --drop-duplicate",
+            err=True,
+        )
+        raise typer.Exit(1)
 
 
 def _repair_one_workspace(
-    *, state_file: Path | None, key: str | None, apply: bool, yes: bool
+    *,
+    state_file: Path | None,
+    key: str | None,
+    drop_duplicate: bool,
+    apply: bool,
+    yes: bool,
 ) -> None:
     """The single-document run: one STATE.json, shown in full before acting."""
+    _reject_choice_without_a_key(key=key, drop_duplicate=drop_duplicate)
+    invocation = _invocation(
+        state_file=state_file, key=key, drop_duplicate=drop_duplicate
+    )
     if state_file is None:
         state_file = resolve_default_state_file()
     doc = _read_document(state_file)
     if key is not None:
-        _reject_unusable_key_argument(doc, key)
+        _reject_unusable_key_argument(doc, key, drop_duplicate=drop_duplicate)
     keys = (key,) if key is not None else None
-    plan = plan_platform_keys(doc, keys=keys)
+    chosen = keys if drop_duplicate else None
+    plan = plan_platform_keys(doc, keys=keys, drop_duplicates=chosen)
     repairs = plan.repairs
 
     typer.echo(f"=== {_COMMAND} ===")
     typer.echo("")
     typer.echo(f"STATE.json: {state_file}")
     if not repairs and not plan.kept:
-        typer.echo("")
-        typer.echo(
-            "Nothing to repair: every platform entry is filed under a key mureo "
-            "can resolve."
-        )
+        # A document whose only finding is a duplicate mureo will not decide
+        # is NOT clean, and saying so first is how #636 read as "mureo says
+        # there is nothing wrong". The block below states it and names the
+        # command that ends it.
+        if not undecidable_groups(doc):
+            typer.echo("")
+            typer.echo(
+                "Nothing to repair: every platform entry is filed under a key "
+                "mureo can resolve."
+            )
         echo_undecidable_duplicates(doc)
+        _exit_on_an_unmet_choice(drop_duplicate=drop_duplicate, repairs=repairs)
         return
 
+    removing = frozenset(repair.entry.key for repair in repairs)
     if repairs:
         typer.echo("")
-        typer.echo(
-            f"Found {len(repairs)} platform "
-            f"{'entry' if len(repairs) == 1 else 'entries'} filed under a key mureo "
-            f"cannot resolve."
-        )
-        removing = frozenset(repair.entry.key for repair in repairs)
+        typer.echo(_found_line(repairs))
         for repair in repairs:
             echo_repair(repair, removing=removing)
     echo_kept_findings(plan.kept)
-    echo_undecidable_duplicates(doc)
+    echo_undecidable_duplicates(doc, removing=removing)
     typer.echo("")
 
     if not repairs:
@@ -283,10 +370,62 @@ def _repair_one_workspace(
         # ``--apply`` could do and no confirmation worth asking for.
         typer.echo("Nothing to repair automatically: mureo will not remove the")
         typer.echo("entries above, for the reason given under each one.")
+        _exit_on_an_unmet_choice(drop_duplicate=drop_duplicate, repairs=repairs)
         return
-    if not _confirmed(apply=apply, yes=yes):
+    if not _confirmed(apply=apply, yes=yes, command=invocation):
         return
-    _apply(state_file, keys)
+    _apply(state_file, keys, chosen)
+
+
+def _invocation(
+    *, state_file: Path | None, key: str | None, drop_duplicate: bool
+) -> str:
+    """This run, spelled so the operator can re-run it with ``--apply``.
+
+    The dry run ends with "run the same command with --apply", and it has to
+    BE the same command: a scoped run that echoed the bare command would send
+    an operator to a whole-document repair they never asked for — and one that
+    dropped ``--drop-duplicate`` would send them to a command that does
+    nothing, which is the dead end #636 is about.
+    """
+    parts = [_COMMAND]
+    if state_file is not None:
+        parts += ["--state-file", f'"{state_file}"']
+    if key is not None:
+        parts += ["--key", _safe(key)]
+    if drop_duplicate:
+        parts.append("--drop-duplicate")
+    return " ".join(parts)
+
+
+def _found_line(repairs: tuple[PlatformKeyRepair, ...]) -> str:
+    """How the run introduces what it found.
+
+    "Filed under a key mureo cannot resolve" is false of an entry the operator
+    named themselves (#636), and it is the sentence they read before
+    confirming.
+    """
+    noun = "entry" if len(repairs) == 1 else "entries"
+    if any(repair.reason == DROP_CHOSEN_DUPLICATE for repair in repairs):
+        return f"Found {len(repairs)} platform {noun} you named for removal."
+    return (
+        f"Found {len(repairs)} platform {noun} filed under a key mureo "
+        f"cannot resolve."
+    )
+
+
+def _exit_on_an_unmet_choice(
+    *, drop_duplicate: bool, repairs: tuple[PlatformKeyRepair, ...]
+) -> None:
+    """Fail when an explicit ``--drop-duplicate`` removed nothing.
+
+    A sweep that finds nothing is a clean result; a named entry that mureo
+    declined to remove is a request that was refused, and the reason is
+    printed above. Exiting 0 there would tell a script — and the operator
+    reading only the last line — that the duplicate is gone.
+    """
+    if drop_duplicate and not repairs:
+        raise typer.Exit(1)
 
 
 def _confirmed(
@@ -319,10 +458,16 @@ def _confirmed(
     return False
 
 
-def _apply(state_file: Path, keys: tuple[str, ...] | None) -> None:
+def _apply(
+    state_file: Path,
+    keys: tuple[str, ...] | None,
+    drop_duplicates: tuple[str, ...] | None = None,
+) -> None:
     """Run the repair and report the backup before what it removed."""
     try:
-        outcome = apply_state_file_repairs(state_file, keys=keys)
+        outcome = apply_state_file_repairs(
+            state_file, keys=keys, drop_duplicates=drop_duplicates
+        )
     except (ContextFileError, ValueError) as exc:
         # Between the preview and the lock, the document became one mureo
         # cannot parse strictly — a concurrent writer, or a file swapped under
@@ -355,14 +500,19 @@ _ALL_COMMAND = f"{_COMMAND} --all"
 
 
 def _repair_every_client(
-    *, state_file: Path | None, key: str | None, apply: bool, yes: bool
+    *,
+    state_file: Path | None,
+    key: str | None,
+    drop_duplicate: bool,
+    apply: bool,
+    yes: bool,
 ) -> None:
     """Survey every client, report, and — once confirmed — repair each.
 
     Exits non-zero when any client could not be surveyed or repaired. A
     *finding* is not a failure: a dry run that reports work to do exits 0.
     """
-    _reject_all_conflicts(state_file=state_file, key=key)
+    _reject_all_conflicts(state_file=state_file, key=key, drop_duplicate=drop_duplicate)
     keys = (key,) if key is not None else None
     registry = list_repair_targets()
     surveys = survey_clients(registry.targets, keys=keys)
@@ -375,12 +525,16 @@ def _repair_every_client(
     typer.echo("")
 
     needing = [survey for survey in surveys if survey.repairs]
-    if not needing and any(survey.kept for survey in surveys):
-        # Unresolvable entries were found; mureo just will not remove them.
-        # Saying "every key resolves" here would be plainly false (#616).
+    if not needing and any(_needs_a_decision(survey) for survey in surveys):
+        # Findings were made; the sweep just will not act on them on its own.
+        # Saying "every key resolves" here would be plainly false (#616) —
+        # and saying "nothing to repair" over a duplicate whose two keys both
+        # resolve is what #636 was reported as, since the dashboard was at the
+        # same time withholding that client's totals. Each block above says
+        # what to run.
         typer.echo(
             "Nothing to repair automatically: mureo will not remove the entries "
-            "above, for the reason given under each one."
+            "above on\nits own, for the reason given under each one."
         )
     elif not needing and failures:
         # "Every client's entries resolve" is false when a client's entries
@@ -414,8 +568,22 @@ def _repair_every_client(
         raise typer.Exit(1)
 
 
-def _reject_all_conflicts(*, state_file: Path | None, key: str | None) -> None:
+def _reject_all_conflicts(
+    *, state_file: Path | None, key: str | None, drop_duplicate: bool
+) -> None:
     """Refuse the flag combinations ``--all`` cannot mean anything with."""
+    if drop_duplicate:
+        # One decision, made by reading ONE document, applied to every client
+        # on the machine — including the ones the operator has never opened.
+        typer.echo(
+            "Error: --all sweeps every client, and --drop-duplicate records your "
+            "decision\n       about one client's two entries — so they cannot be "
+            "combined. Repair\n       those clients one at a time:\n"
+            f"         {_COMMAND} --state-file <client>/STATE.json --key "
+            f"<the key to remove> --drop-duplicate",
+            err=True,
+        )
+        raise typer.Exit(1)
     if state_file is not None:
         typer.echo(
             "Error: --all repairs every client's STATE.json, so it cannot also "

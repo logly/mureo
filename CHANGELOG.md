@@ -34,6 +34,36 @@
   do not exist, and "unknown" stays a renderable state — documents written
   before this change keep existing.
 
+- **A duplicated ad account whose two platform keys both resolved could not be
+  cleared by anything** (#636). The client's Reports card named the two keys,
+  withheld the client's totals "until this is resolved" — and no command
+  resolved it. `mureo repair platform-key --all` answered *"Nothing to
+  repair"*, because removal requires the DOCUMENT to show an entry wrong
+  (#616) and a key an installed plugin registers is not wrong; `--key` only
+  narrowed that same plan, so naming the offending entry changed nothing. Each
+  refusal was right on its own: which of two sets of partial figures is true
+  is a question about money that mureo will not answer. Together they told the
+  operator to decide and gave them nowhere to record the decision, so the card
+  stayed red permanently.
+
+  `--drop-duplicate` is that place. **Named with `--key`, an entry is removed
+  even though mureo can resolve its key** — and only where the document shows
+  another entry holding the same ad account, so a mistyped key deletes
+  nothing. mureo still never chooses: it acts on a key a person typed. Every
+  existing guard stands — the dry run is still the default, the confirmation
+  still asks, the timestamped backup still comes first, and an entry carrying
+  `conversion_action_types` is still refused (#617), named or not, because no
+  sync restores that allow-list. The flag is deliberately not accepted with
+  `--all`: one decision, made by reading one document, must not be swept
+  across clients the operator has never opened.
+
+  The dashboard's conflict note and the CLI's own "mureo does not choose
+  between them" block now **print the command that ends it**, with the key
+  left as a placeholder. A regression test pins the two surfaces together: for
+  every duplicate the Reports view withholds totals over, the repair must
+  offer a key it will drop. An instruction with no runnable next step is how
+  this became a dead end.
+
 ## [0.10.47] - 2026-08-15
 
 ### Fixed

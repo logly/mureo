@@ -287,7 +287,7 @@ A bulk pass wrapped in a batch (`mureo_batch_begin` / `mureo_batch_end`) is plan
 
 Everything else it finds is **reported and handed back to you**, with the reason under each block:
 
-- **a duplicate whose two keys both name real platforms** — which of two sets of partial figures is true is a question about money that only you can answer;
+- **a duplicate whose two keys both name real platforms** — which of two sets of partial figures is true is a question about money that only you can answer. Once you have answered it, `--drop-duplicate` is how you say so (see below);
 - **an unresolvable entry that duplicates nothing and carries figures** — it may be the only record of that spend, and the key may belong to a plugin that is simply not installed on this machine. mureo will not delete it on a guess;
 - **any entry carrying `conversion_action_types`** — the conversion allow-list you declared by hand with `mureo_state_set_conversion_events`. Every figure in an entry can be re-fetched from the platform; that setting cannot, because nothing on the platform side knows it. mureo refuses to remove such an entry rather than asking you to confirm a loss — a second prompt would be skipped by `--yes`, which is exactly how the whole-machine sweep is run. To remove it anyway: declare those action types on the entry you are keeping, clear them here, then run the command again.
 
@@ -304,6 +304,11 @@ mureo repair platform-key --apply --yes
 # Narrow it to one key, or point at another workspace's STATE.json.
 mureo repair platform-key --key logly_ads
 mureo repair platform-key --state-file /path/to/STATE.json
+
+# Remove the half of a duplicate YOU decided is wrong, even though mureo
+# can resolve its key. Dry run first, as always.
+mureo repair platform-key --key plugin:mureo-logly-bridge --drop-duplicate
+mureo repair platform-key --key plugin:mureo-logly-bridge --drop-duplicate --apply
 
 # Survey every client on this machine instead of one workspace.
 mureo repair platform-key --all
@@ -410,6 +415,31 @@ Error: mureo cannot read STATE.json: /path/to/STATE.json
 `--all` reports the same reason under `Could not be read` and carries on with the other clients. The repair deliberately refuses a document it can only parse *tolerantly*: writing back a tolerant parse would silently drop whatever that parse skipped, which is a bigger loss than the one you came to fix.
 
 The same finding is flagged on the configure UI's Reports cards, which now name this command.
+
+### When both keys are real: `--drop-duplicate`
+
+One ad account stored under two keys that **both** name real platforms is the case mureo will not decide — and the dashboard does not merely warn about it, it *withholds that client's totals* until it is gone. So the command reports it, names both keys, and prints exactly what to run once you have decided which entry holds the right figures:
+
+```
+One ad account (1234567890) is stored under platform keys that
+BOTH name real platforms (plugin:mureo-logly-bridge, logly_ads_context), so its spend,
+conversions and CPA are counted twice.
+mureo does not choose between them: the two entries usually hold different
+partial figures, so dropping either under-counts as much as adding them
+together over-counts. Decide which entry holds the right figures, then
+remove the other by naming it:
+  mureo repair platform-key --key <the key to remove> --drop-duplicate
+That shows what it would do and changes nothing until you add --apply.
+```
+
+`--drop-duplicate` is **your decision, recorded** — it is not mureo choosing, and it is not a general "delete this platform entry" command:
+
+- it needs `--key`, and removes only that entry. `--key` on its own still just narrows the plan, so scoping a run can never silently delete the entry you meant to keep;
+- the document must show the duplicate: another entry has to hold the same ad account. If none does, nothing is removed and the command exits non-zero saying so — a misspelt key deletes nothing;
+- an entry carrying `conversion_action_types` is still refused (#617). Naming it does not override that: what you decided is which figures are right, not that a setting no sync restores may be lost;
+- everything else is unchanged — dry run by default, the confirmation still asks, and the timestamped backup is still taken before the write.
+
+It is **not accepted with `--all`**. The decision is made by reading one document; a sweep would carry it into every client's STATE.json, including the ones you have never opened. `--all` still reports each such client under *Need your decision*, with the per-client command to run.
 
 ### Every client at once: `--all`
 
