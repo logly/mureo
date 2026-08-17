@@ -1612,6 +1612,19 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   gap: 14px;
 }
 
+/* The figures a stale card withheld, restated with their age (#638). Quiet
+   and small on purpose: it is a record of what was last collected, not a
+   second claim about the window on screen. */
+.reports-client-card-stale-figures {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .reports-client-kpi {
   display: flex;
   flex-direction: column;
@@ -2048,6 +2061,33 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* Why this platform's headline reads "—" (#638): the rollup is older than
+   the window the card's head names, so it is not stated as that window's
+   result. Shares the conflict note's tint — it is the same kind of finding. */
+.report-card-stale {
+  margin: 0;
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border-radius: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* …and the figures themselves, restated with their age rather than hidden. */
+.report-card-stale-figures {
+  margin: 0;
+  padding: 0 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Where to go about the note above (#610). Quiet on purpose: it is a

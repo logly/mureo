@@ -1,5 +1,39 @@
 ## [Unreleased]
 
+### Fixed
+
+- **An eleven-day-old figure was rendered as the selected window's cost**
+  (#637/#638). A client card showed 25,862 cost / 2 conversions / 12,931 CPA
+  in bold for a window whose real cost was 0 — delivery had ended and there
+  had been nine consecutive zero days. The card's only disclosure was a small
+  *"stale — updated 11 days ago"* badge beside the numbers, so the operator
+  read the numbers and reported the dashboard as broken.
+
+  Two behaviours composed into that. `merge_metrics_into_state` deliberately
+  leaves a platform the digest did not collect alone (absence of a number is
+  not a zero — writing 0 because a request timed out would be a lie), and the
+  card then presented the surviving figure at full strength. **A stale rollup
+  is no longer stated as the selected window's result**: the headline metrics
+  read `—`, exactly as the double-counted-account path already does, and the
+  stored numbers are restated below with their age (*"last collected 11d ago:
+  …"*). Nothing is hidden and no figure is lost; what stops is the claim.
+  A figure whose staleness is **unknown** keeps its previous rendering.
+
+  That fix only reaches a card that can BE stale, which most could not.
+  `fetched_at` — the field the staleness verdict is computed from — was
+  optional and writer-dependent, and the writer that reaches it most often is
+  an agent following a skill, so it was routinely absent and the dashboard
+  read *"update time unknown"* on real figures. `set_platform_metrics` (and
+  the `mureo_state_platform_metrics_set` tool) now **stamps the write time**
+  on every rollup a call supplies without one — `totals` and each `periods`
+  bucket — and never re-stamps a window the call merely preserves. A value
+  the caller did supply is relayed verbatim, including one that is not a
+  timestamp: the read side keeps such a string on purpose, as the only clue
+  to the writer that produced it. An empty rollup (an advisory bridge with no
+  figures) is left empty rather than given a collection time for numbers that
+  do not exist, and "unknown" stays a renderable state — documents written
+  before this change keep existing.
+
 ## [0.10.47] - 2026-08-15
 
 ### Fixed

@@ -513,7 +513,11 @@ TOOLS: list[Tool] = [
             '({"YESTERDAY": {…}, "LAST_30_DAYS": {…}}) for the per-window '
             "rollups the toggle reads. ``periods`` is merged per window key "
             "(a YESTERDAY write keeps a prior LAST_30_DAYS bucket); omitted "
-            "fields preserve their existing value. Campaigns and every other "
+            "fields preserve their existing value. Every rollup you pass "
+            "WITHOUT a ``fetched_at`` is stamped with the write time, so the "
+            'dashboard can state an age instead of "update time unknown"; '
+            "pass your own only when the figures were pulled at some other "
+            "time (a historical window). Campaigns and every other "
             "platform are preserved. ``account_id`` is required and always "
             "written onto the entry. Returns the updated state document."
         ),
@@ -556,7 +560,10 @@ TOOLS: list[Tool] = [
                         "Single-rollup totals for the most recent window "
                         "(spend, impressions, clicks, conversions, cpa, ctr, "
                         "result_indicator, period, fetched_at). Omit to "
-                        "preserve the existing value."
+                        "preserve the existing value. ``fetched_at`` (ISO "
+                        "8601) is stamped with the write time when you leave "
+                        "it out; supply it only for figures pulled at some "
+                        "other time."
                     ),
                 },
                 "metrics_period": {
@@ -572,7 +579,10 @@ TOOLS: list[Tool] = [
                         "Per-window rollups keyed by period token "
                         "(``YESTERDAY`` / ``LAST_30_DAYS`` / …); each value is "
                         "a totals-shaped object. Merged per key into the "
-                        "existing map. Omit to preserve the existing map."
+                        "existing map. Omit to preserve the existing map. "
+                        "Each bucket you pass without a ``fetched_at`` is "
+                        "stamped with the write time; a bucket this call "
+                        "merely preserves is never re-stamped."
                     ),
                 },
                 "path": _PATH_PROPERTY,

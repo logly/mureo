@@ -361,8 +361,11 @@ class TestPlatformLevelPreservation:
         # ``periods`` merges per window rather than replacing the map.
         merged = self._platform(after).periods
         assert merged is not None
+        # …and the window this call did NOT name is byte-for-byte what it
+        # was, down to the absent fetched_at: the #637 stamp lands only on
+        # the rollups a write actually supplies.
         assert merged["LAST_30_DAYS"] == {"spend": 4200.0}
-        assert merged["YESTERDAY"] == {"spend": 100.0}
+        assert merged["YESTERDAY"]["spend"] == 100.0
         # A None argument means "leave as it was", not "clear it".
         assert self._platform(after).totals == _PLATFORM_FIELD_VALUES["totals"]
 

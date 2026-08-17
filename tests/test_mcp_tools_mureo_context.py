@@ -637,10 +637,15 @@ async def test_platform_metrics_set_creates_platform_with_periods(cwd_to_tmp) ->
     payload = json.loads(result[0].text)
     plat = payload["platforms"]["google_ads"]
     assert plat["account_id"] == "act_123"
-    assert plat["totals"] == {"spend": 3000.0, "conversions": 60}
+    assert plat["totals"]["spend"] == 3000.0
+    assert plat["totals"]["conversions"] == 60
     assert plat["metrics_period"] == "LAST_30_DAYS"
-    assert plat["periods"]["YESTERDAY"] == {"spend": 100.0, "conversions": 2}
+    assert plat["periods"]["YESTERDAY"]["spend"] == 100.0
+    assert plat["periods"]["YESTERDAY"]["conversions"] == 2
     assert payload.get("last_synced_at")
+    # Every rollup this write supplied carries a write-time fetched_at (#637).
+    assert plat["totals"]["fetched_at"] == payload["last_synced_at"]
+    assert plat["periods"]["YESTERDAY"]["fetched_at"] == payload["last_synced_at"]
 
 
 async def test_platform_metrics_set_merges_periods_per_window(cwd_to_tmp) -> None:
@@ -664,7 +669,13 @@ async def test_platform_metrics_set_merges_periods_per_window(cwd_to_tmp) -> Non
     )
     payload = json.loads(result[0].text)
     periods = payload["platforms"]["google_ads"]["periods"]
-    assert periods == {"LAST_30_DAYS": {"spend": 3000.0}, "YESTERDAY": {"spend": 100.0}}
+    assert sorted(periods) == ["LAST_30_DAYS", "YESTERDAY"]
+    assert periods["LAST_30_DAYS"]["spend"] == 3000.0
+    assert periods["YESTERDAY"]["spend"] == 100.0
+    # The preserved window keeps the age it was collected at; only the window
+    # this call supplied is stamped with the new write time (#637).
+    assert periods["LAST_30_DAYS"]["fetched_at"] < periods["YESTERDAY"]["fetched_at"]
+    assert periods["YESTERDAY"]["fetched_at"] == payload["last_synced_at"]
 
 
 async def test_platform_metrics_set_preserves_campaigns_and_other_platforms(
@@ -701,7 +712,7 @@ async def test_platform_metrics_set_preserves_campaigns_and_other_platforms(
     payload = json.loads(result[0].text)
     google = payload["platforms"]["google_ads"]
     assert [c["campaign_id"] for c in google["campaigns"]] == ["g1"]
-    assert payload["platforms"]["meta_ads"]["totals"] == {"spend": 5.0}
+    assert payload["platforms"]["meta_ads"]["totals"]["spend"] == 5.0
 
 
 async def test_platform_metrics_set_requires_platform_and_account(cwd_to_tmp) -> None:

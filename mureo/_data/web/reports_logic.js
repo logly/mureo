@@ -149,6 +149,22 @@
     };
   }
 
+  // Has mureo judged THIS row's figures stale (#638)?
+  //
+  // `=== true` on purpose. `stale` is three-valued and `null` means unknown
+  // — fetched_at was absent or unparseable — which is a state, not a
+  // verdict. Documents written before the write-time stamp (#637) are full
+  // of it, so treating unknown as stale would blank most cards; unknown
+  // keeps the rendering it already had.
+  function reportsRowIsStale(row) {
+    const f =
+      row && typeof row === "object" && row.freshness &&
+      typeof row.freshness === "object"
+        ? row.freshness
+        : null;
+    return !!f && f.stale === true;
+  }
+
   // The freshness of a client CARD, which shows one aggregate rather than
   // per-platform rows. Only platforms that actually carry totals count —
   // an advisory bridge contributes nothing to the sum, so its (absent)
@@ -217,6 +233,22 @@
   // render the double-counted sum by forgetting to check the flag.
   // `hasFigures` reports the raw presence of data regardless, for callers
   // deciding whether another period window is worth fetching.
+  //
+  // A STALE contributor withholds the figures too (#638), for the same
+  // reason and by the same mechanism: a rollup older than the window it
+  // summarises is not that window's answer, and rendering it as the headline
+  // asserts something mureo cannot back. A card once showed 25,862 cost for
+  // a window whose real cost was 0 — delivery had stopped eleven days
+  // earlier — with the age demoted to a badge beside it. One stale
+  // contributor is enough: the aggregate is a single number, and a fresh
+  // sibling cannot vouch for the part that is out of date.
+  //
+  // Nothing is hidden. `staleFigures` carries the very same numbers plus the
+  // oldest stale contributor's `fetched_at`, so the card can restate them as
+  // what they ARE ("11d ago: 25,862") instead of what they are not. It is
+  // `null` when the sum is double-counted as well: that figure is wrong at
+  // every age, and restating it under a softer label would put it back on
+  // the card.
   function aggregateClientKpis(summary) {
     const platforms =
       summary && Array.isArray(summary.platforms) ? summary.platforms : [];
@@ -224,6 +256,9 @@
     let conv = 0;
     let hasSpend = false;
     let hasConv = false;
+    let stale = false;
+    let staleSince = null;
+    let staleSinceMs = Infinity;
     platforms.forEach(function (p) {
       const t = p && typeof p.totals === "object" ? p.totals : null;
       if (!t) return;
@@ -235,15 +270,36 @@
         conv += t.conversions;
         hasConv = true;
       }
+      // Only a row that CONTRIBUTES can date the aggregate — an advisory
+      // bridge adds nothing to the sum, so its age says nothing about it.
+      if (!reportsRowIsStale(p)) return;
+      stale = true;
+      const ms = Date.parse(p.freshness.fetched_at);
+      if (!Number.isNaN(ms) && ms < staleSinceMs) {
+        staleSinceMs = ms;
+        staleSince = p.freshness.fetched_at;
+      }
     });
     const doubleCounted = reportsHasDoubleCount(summary);
+    const withheld = doubleCounted || stale;
+    const restate = stale && !doubleCounted && (hasSpend || hasConv);
     return {
-      spend: !doubleCounted && hasSpend ? spend : null,
-      conversions: !doubleCounted && hasConv ? conv : null,
-      cpa:
-        !doubleCounted && hasSpend && hasConv && conv > 0 ? spend / conv : null,
+      spend: !withheld && hasSpend ? spend : null,
+      conversions: !withheld && hasConv ? conv : null,
+      cpa: !withheld && hasSpend && hasConv && conv > 0 ? spend / conv : null,
       hasFigures: hasSpend || hasConv,
       doubleCounted: doubleCounted,
+      stale: stale,
+      staleFigures: restate
+        ? {
+            spend: hasSpend ? spend : null,
+            conversions: hasConv ? conv : null,
+            cpa: hasSpend && hasConv && conv > 0 ? spend / conv : null,
+            // `null` when no contributor carried a usable timestamp: mureo
+            // says the age is unknown rather than inventing one.
+            fetched_at: staleSince,
+          }
+        : null,
     };
   }
 
@@ -258,6 +314,7 @@
     reportsConflictText: reportsConflictText,
     reportsConflictsForKey: reportsConflictsForKey,
     reportsFreshnessLabel: reportsFreshnessLabel,
+    reportsRowIsStale: reportsRowIsStale,
     reportsCardFreshness: reportsCardFreshness,
     aggregateClientKpis: aggregateClientKpis,
   };
