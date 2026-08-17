@@ -225,13 +225,15 @@ def _provider_entry_points() -> tuple[Any, ...] | None:
 
     ``None`` — distinct from an empty tuple — means the environment could not
     be enumerated. ``importlib.metadata`` blowing up is rare but possible
-    (unusual install layout, corrupted metadata), and unlike the policy-gate
-    loader (:func:`mureo.mcp.server._policy_gate_entry_points`, which treats
-    the failure as "zero gates") this one cannot treat it as "zero providers":
-    that would turn a broken environment into a refusal of every plugin
+    (unusual install layout, corrupted metadata), and treating it as "zero
+    providers" would turn a broken environment into a refusal of every plugin
     platform key. A failure is not evidence the key is wrong, so the caller
-    fails open. Isolated as its own function so tests can pin the environment
-    rather than monkeypatching ``importlib.metadata``.
+    fails open. The policy-gate loader
+    (:func:`mureo.mcp.server._policy_gate_entry_points`) draws the same
+    distinction for a different reason: its answer is memoized, so a failure
+    stored as "zero gates" would drop every third-party guardrail for the life
+    of the process (#633). Isolated as its own function so tests can pin the
+    environment rather than monkeypatching ``importlib.metadata``.
     """
     from importlib.metadata import entry_points
 

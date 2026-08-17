@@ -2,6 +2,41 @@
 
 ### Fixed
 
+- **Every MCP tool call spent ~11 ms re-discovering the policy gates before
+  any gate logic ran** (#633). `_evaluate_policy_gates` re-enumerated the
+  `mureo.policy_gates` entry-point group, `load()`-ed every gate class and
+  constructed every gate, on **every dispatch** — justified in the code by
+  "`importlib.metadata.entry_points` is itself cached internally, so the
+  per-call cost is microseconds". Measured on Python 3.10 with four gates
+  installed, `_load_policy_gates()` cost **11.76 ms per call**, of which
+  11.43 ms was the enumeration: it re-stats and re-parses the environment
+  every time, which is exactly the freshness being paid for, so it never
+  converges toward free. It is now **1.0 µs** warm, and the whole gate
+  chain (built-in gate included) went from 10.94 ms to 0.09 ms per dispatch.
+
+  The freshness that cost bought was not reachable in a useful form. A
+  distribution installed into a running server contributes no tools
+  (`_PLUGIN_TOOLS` / `_PLUGIN_DISPATCH` are built at module import,
+  `_PLUGIN_SEMANTICS` and the throttler/declaration registries are
+  comprehensions over them) and no runtime context
+  (`get_runtime_context` caches the first one it resolves). Every
+  gate-registering distribution also registers `mureo.providers`, so the
+  case was never "a gate arrives alone" — it was a bridge whose gate went
+  live while its tools and its tenant resolution stayed unregistered.
+  The gate set is now fixed at the first dispatch and changing it costs a
+  restart, the same trade #631 made on the platform-name enumeration and
+  the same restart the tool set already required.
+
+  What is **not** cached is any failure. An unreadable environment is
+  re-enumerated on the next dispatch, and a gate whose `load()` raised keeps
+  being retried — it is still dropped with a WARNING while the others load,
+  but a transient import error can no longer remove a guardrail for the life
+  of the process. The memo is keyed by the enumerator itself, so a test that
+  installs fake gates by patching it structurally misses the memo and cannot
+  leak into the next test. Loaded *classes* are cached, never instances: the
+  `PolicyGate` ABI promises third-party authors a fresh instance per tool
+  call, and `cls()` costs nothing worth breaking that for.
+
 - **A platform key mureo accepts on write was reported as unresolvable on
   read** (#631). A `platforms` entry filed under an installed plugin's bare
   provider name — `logly_ads_context`, the LOGLY bridge's real platform name —

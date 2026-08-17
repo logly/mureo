@@ -45,6 +45,8 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mcp.types import Tool
 
     from mureo.core.policy import PolicyDecision, PolicyGate
@@ -757,10 +759,20 @@ async def handle_list_tools() -> list[Any]:
     return list(_ALL_TOOLS)
 
 
-def _policy_gate_entry_points() -> tuple[Any, ...]:
-    """Return the entry points registered under
-    ``mureo.policy_gates``. Isolated so the unit tests can patch this
-    without monkeypatching ``importlib.metadata``."""
+def _policy_gate_entry_points() -> tuple[Any, ...] | None:
+    """Return the entry points registered under ``mureo.policy_gates``.
+
+    ``None`` — distinct from an empty tuple — means the environment could not
+    be enumerated at all. The two must not collapse into one value, because
+    :func:`_load_policy_gates` memoizes its answer (#633) and memoizing a
+    failure as "zero gates registered" would run the rest of the process with
+    every third-party guardrail silently missing. An empty tuple is a machine
+    with no gates installed; ``None`` is a moment.
+
+    Isolated as its own function so the unit tests can patch this without
+    monkeypatching ``importlib.metadata`` — and, since the memo is keyed by
+    this function object, so that patching it is what misses the memo.
+    """
     from importlib.metadata import entry_points
 
     from mureo.core.policy import POLICY_GATES_ENTRY_POINT_GROUP
@@ -774,11 +786,49 @@ def _policy_gate_entry_points() -> tuple[Any, ...]:
         # the situation as "no gates registered".
         logger.warning(
             "policy gates: importlib.metadata.entry_points failed (%s); "
-            "treating as zero gates registered",
+            "treating as zero gates for this call",
             exc,
         )
-        return ()
+        return None
     return tuple(eps)
+
+
+_POLICY_GATE_CLASS_CACHE: (
+    tuple[
+        Callable[[], tuple[Any, ...] | None],
+        tuple[Any, ...],
+        list[type[PolicyGate] | None],
+    ]
+    | None
+) = None
+"""Memoized gate discovery for :func:`_load_policy_gates` (#633).
+
+Three parts: the enumerator that produced it, the entry points it returned,
+and the class each of those entry points loaded to — ``None`` in that last
+list where the load has not succeeded (yet).
+
+**Keyed by the enumerator itself**, the pattern
+:func:`mureo.context.platform_guards.installed_platform_names` uses: the tests
+install fake gates by replacing :func:`_policy_gate_entry_points`, and a
+different function object structurally misses the memo. So no test's gates can
+leak into the next test, whatever order the suite runs in, and nothing has to
+remember to clear anything.
+
+**Absence is never cached.** A failed enumeration is not stored at all, and an
+entry point whose ``load()`` raised keeps its slot at ``None`` and is retried
+on the next dispatch. A dropped gate is a missing guardrail; a memo that
+remembered one would turn a transient import error into an enforcement hole
+for the life of the process, which is the opposite of what this module exists
+to do. Retrying costs an ``ep.load()`` (microseconds once the module is in
+``sys.modules``, and this path is only reached at all when something is
+broken), not a re-enumeration.
+
+What is cached is the *class*, never the instance — see
+:func:`_load_policy_gates`.
+
+Written as one assignment, and the per-entry slot as one item store, so a
+concurrent reader sees either the old answer or the new one, never half.
+"""
 
 
 def _load_policy_gates() -> tuple[PolicyGate, ...]:
@@ -788,12 +838,38 @@ def _load_policy_gates() -> tuple[PolicyGate, ...]:
     Per-entry-point exception isolation: a broken third-party
     package (partial install, import error) MUST NOT take mureo
     offline. The failing entry is dropped with a WARNING and the
-    rest still load.
+    rest still load — and it is retried on the next call, never
+    remembered as absent (:data:`_POLICY_GATE_CLASS_CACHE`).
+
+    Discovery is memoized; **instantiation is not**. ``cls()`` is a few
+    microseconds even with every bridge installed, and
+    :class:`mureo.core.policy.PolicyGate` promises third-party authors that
+    the dispatcher constructs their gate fresh per tool call, so instance
+    attributes do not persist and cross-call state belongs on a class
+    attribute. Reusing one instance would quietly break every gate written to
+    that published contract to save nothing, so what the cache holds is the
+    loaded class.
     """
+    global _POLICY_GATE_CLASS_CACHE
+
+    enumerate_entry_points = _policy_gate_entry_points
+    cached = _POLICY_GATE_CLASS_CACHE
+    if cached is not None and cached[0] is enumerate_entry_points:
+        entries, classes = cached[1], cached[2]
+    else:
+        found = enumerate_entry_points()
+        if found is None:  # could not enumerate; not an answer worth keeping
+            return ()
+        entries, classes = found, [None] * len(found)
+        _POLICY_GATE_CLASS_CACHE = (enumerate_entry_points, entries, classes)
+
     gates: list[PolicyGate] = []
-    for ep in _policy_gate_entry_points():
+    for index, ep in enumerate(entries):
         try:
-            cls = ep.load()
+            cls = classes[index]
+            if cls is None:
+                cls = ep.load()
+                classes[index] = cls
             instance = cls()
         except Exception as exc:  # noqa: BLE001
             logger.warning(
@@ -827,11 +903,44 @@ def _evaluate_policy_gates(
     """Run every gate — built-in then third-party. Returns the first deny
     decision, or ``None`` if every gate allowed (or abstained on exception).
 
-    Calls :func:`_load_policy_gates` on every dispatch rather than
-    caching at module-import time so a (rare) at-runtime
-    install/uninstall of a third-party gate is picked up without a
-    server restart. ``importlib.metadata.entry_points`` is itself
-    cached internally, so the per-call cost is microseconds.
+    The gate set is discovered once per process (#633)
+    ---------------------------------------------------
+
+    This used to call :func:`_load_policy_gates` uncached on every dispatch,
+    to pick up an at-runtime install/uninstall of a third-party gate without a
+    server restart, on the claim that ``importlib.metadata.entry_points`` is
+    "itself cached internally, so the per-call cost is microseconds". That
+    claim was wrong by four orders of magnitude. Measured on Python 3.10 with
+    four gates installed: 11.76 ms per ``_load_policy_gates()`` call, of which
+    **11.43 ms is the enumeration**, which re-stats and re-parses the
+    environment every time — that re-check is precisely the freshness being
+    paid for, so it never converges toward free. Every MCP tool call paid it
+    before any gate logic ran.
+
+    And the freshness bought a state nobody wants. A distribution installed
+    into a running server contributes **no tools**: ``_PLUGIN_TOOLS`` /
+    ``_PLUGIN_DISPATCH`` are built by ``collect_plugin_tools`` at module
+    import, ``_PLUGIN_SEMANTICS`` and the throttler/declaration registries are
+    module-level comprehensions over them, and
+    :func:`mureo.core.runtime_context.get_runtime_context` caches the first
+    context it resolves. Every gate-registering distribution observed in the
+    wild also registers ``mureo.providers``, so "the gate arrives alone" is not
+    the scenario — the scenario is a bridge whose gate goes live while its
+    tools and its analytics module stay unregistered, so its own budget gate
+    guards tool names that cannot be dispatched. A distribution shipping a
+    *global* gate is worse rather than better: mureo-agency's read-only gate
+    would start refusing mutations while the runtime-context factory deciding
+    *whose* account is being refused — which it registers in the same
+    ``pyproject.toml`` — is still the OSS default, because that one is
+    resolved once. Uninstall is the worse direction again: a guardrail
+    disappearing mid-process, silently.
+
+    So the gate set is fixed at the first dispatch and changing it costs a
+    restart — which is what changing the tool set already cost. This is the
+    same trade #631 made for the platform-name enumeration, for the same
+    reason: one consistent answer beats a fresher one that disagrees with the
+    rest of the process. What is **not** cached is any failure; see
+    :data:`_POLICY_GATE_CLASS_CACHE`.
     """
     # Lazy-imported so the type is available for the isinstance guard
     # without re-introducing the runtime import at module top (it lives

@@ -940,6 +940,14 @@ Rules for a gate of this kind:
 - **Do not also declare.** A declaration replaces the built-in scan for the
   proposed budgets, which would switch off the very keys your gate injects.
   Pick one mechanism per tool, and pin the choice with a test.
+- **Your module is imported once; your class is constructed per call.**
+  mureo enumerates and `load()`s the entry point on the first dispatch and
+  memoizes the class (#633), so module-level work happens once — but
+  `__init__` runs on every tool call and instance attributes never survive
+  it. Keep `__init__` empty; put any cross-call cache on a class attribute.
+  Installing or uninstalling your package while a server runs does not
+  change the gate set until restart, exactly as it does not change the tool
+  set.
 
 **Structural strategy parity (mutating tools).** A mutating plugin
 call gets the same *structural* strategy handling as a built-in write:
