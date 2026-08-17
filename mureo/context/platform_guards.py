@@ -84,6 +84,20 @@ this machine does not have installed — is not stranded either: the canonical
 ``plugin:<distribution>:<provider>`` form names its own distribution and so
 is accepted without any registry to consult.
 
+One enumeration, two surfaces (#631)
+------------------------------------
+:func:`installed_platform_names` is public because the **read** side has to
+give the same answer: :func:`~mureo.web.reports.platform_display_name` labels
+a bare provider name from it, so a key this module accepts can no longer be
+reported "unrecognised" by the dashboard on the same machine at the same
+moment. ``web`` importing ``context`` is the direction that already holds
+(Reports reads ``state`` and ``platform_accounts``); the reverse would put the
+configure UI's import graph on the state-write path and invert the layering.
+
+The read side inherits the fail-open with it. A label path that failed closed
+on an environment it could not enumerate would be the same drift pointing the
+other way — flagging every plugin entry the guard had just accepted.
+
 One corner this does **not** defend: writing an explicit ``account_id=""``
 onto an entry that holds a known id silently reverts that entry to "unknown",
 because ``""`` is by contract free rather than taken. The MCP surface blocks
@@ -107,6 +121,7 @@ from mureo.context.platform_accounts import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from mureo.context.models import PlatformState, StateDocument
@@ -239,21 +254,69 @@ def _provider_entry_points() -> tuple[Any, ...] | None:
     return tuple(found)
 
 
-def _installed_platform_names() -> frozenset[str] | None:
+_INSTALLED_PLATFORM_NAMES_CACHE: (
+    tuple[Callable[[], tuple[Any, ...] | None], frozenset[str]] | None
+) = None
+"""Memoized :func:`installed_platform_names`, keyed by the enumeration itself.
+
+Keyed rather than a plain value because the pair
+``(_provider_entry_points, result)`` makes a stale answer structurally
+impossible where it would actually bite: a test that installs a plugin
+mid-process does it by swapping that function, and the swapped function is a
+different object, so the memo misses. Nothing has to remember to clear a
+cache, and no test's pin can leak into the next one through this module — the
+hazard the ``_DUPLICATE_ACCOUNT_WARNED`` latch needs a conftest fixture for.
+
+A **failed** enumeration is deliberately not stored (see
+:func:`installed_platform_names`), so the cache only ever holds an answer the
+environment actually gave. Writing the pair is a single assignment, so a
+concurrent reader (the configure server serves requests on threads) sees
+either the previous answer or the new one, never half of one.
+
+What it does not see: a plugin pip-installed while this process runs. That
+costs a restart, and it costs it to the label path and the guard *identically*
+— which is the property #631 is about, since two surfaces reading one
+enumeration at two different moments is the drift all over again. The
+canonical ``plugin:<distribution>:<provider>`` key needs no enumeration at
+all, so nothing is unwritable in the meantime.
+"""
+
+
+def installed_platform_names() -> frozenset[str] | None:
     """The platform names installed plugins registered, or ``None``.
 
-    ``None`` propagates :func:`_provider_entry_points`' "could not enumerate".
-    A nameless or blank entry point is dropped: it can never equal a key that
+    The **one** enumeration of the plugin half of the platform vocabulary.
+    :func:`reject_unknown_platform_key` accepts these names on write (#609)
+    and :func:`~mureo.web.reports.platform_display_name` labels them on read
+    (#631); a second copy anywhere is how the two surfaces come to disagree
+    about which keys are real.
+
+    ``None`` propagates :func:`_provider_entry_points`' "could not enumerate",
+    and every caller has to fail open on it. A nameless or blank entry point
+    is dropped: it can never equal a key that
     :func:`reject_unusable_platform_key` already let through.
+
+    Memoized (:data:`_INSTALLED_PLATFORM_NAMES_CACHE`) because the read side
+    asks per platform per client while rendering Reports, and the scan costs
+    ~43 ms. The failure is not memoized: "could not enumerate" is a moment,
+    not a fact about the machine, so caching it would let one unlucky call
+    fail this process open for its whole lifetime.
     """
-    eps = _provider_entry_points()
+    global _INSTALLED_PLATFORM_NAMES_CACHE
+    enumerate_entry_points = _provider_entry_points
+    cached = _INSTALLED_PLATFORM_NAMES_CACHE
+    if cached is not None and cached[0] is enumerate_entry_points:
+        return cached[1]
+    eps = enumerate_entry_points()
     if eps is None:
         return None
-    return frozenset(
+    names = frozenset(
         name
         for ep in eps
         if isinstance(name := getattr(ep, "name", None), str) and name.strip()
     )
+    _INSTALLED_PLATFORM_NAMES_CACHE = (enumerate_entry_points, names)
+    return names
 
 
 def reject_unknown_platform_key(platform: str) -> None:
@@ -264,7 +327,7 @@ def reject_unknown_platform_key(platform: str) -> None:
     - a built-in key (:data:`~mureo.core.platform_keys.
       BUILTIN_PLATFORM_DISPLAY_NAMES`), which includes the hosted connectors
       that have no provider entry point at all;
-    - a platform an installed plugin registered (:func:`_installed_platform_names`);
+    - a platform an installed plugin registered (:func:`installed_platform_names`);
     - a canonical ``plugin:<distribution>:<provider>`` key (or the legacy
       ``plugin:<distribution>``), accepted **without** checking that the
       distribution is installed — it names its own distribution, so a snapshot
@@ -291,7 +354,7 @@ def reject_unknown_platform_key(platform: str) -> None:
 
     if platform in BUILTIN_PLATFORM_DISPLAY_NAMES or is_plugin_platform_key(platform):
         return
-    installed = _installed_platform_names()
+    installed = installed_platform_names()
     if installed is None or platform in installed:
         return
     builtins = ", ".join(sorted(BUILTIN_PLATFORM_DISPLAY_NAMES))
@@ -426,6 +489,7 @@ def warn_on_duplicate_accounts(path: Path, doc: StateDocument) -> None:
 
 __all__ = [
     "guard_platform_entry_write",
+    "installed_platform_names",
     "reject_unknown_platform_key",
     "reject_unusable_platform_key",
     "warn_on_duplicate_accounts",

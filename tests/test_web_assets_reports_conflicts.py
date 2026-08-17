@@ -413,11 +413,13 @@ def test_a_conflicted_platform_card_points_at_the_repair_command() -> None:
     told mureo will not fix it, and the only remaining move is editing
     STATE.json by hand.
 
-    A pointer, not a button: ``unrecognized_key`` tests whether a key
-    resolves to a display LABEL, and by that test the correct key in the
-    reported incident (``logly_ads_context``) is just as unrecognised as the
-    invented one — so an action hung off this signal would offer to delete
-    the right entry. The card therefore names the command and nothing more.
+    A pointer, not a button. Since #631 the signal agrees with mureo's
+    write-time answer (the correct key in the reported incident,
+    ``logly_ads_context``, no longer fires it), but agreeing about the key is
+    not deciding the repair: removal needs the DOCUMENT to show the entry
+    wrong and is refused for one carrying ``conversion_action_types``
+    (#616/#617), and none of that evidence crosses the wire. The card
+    therefore names the command and nothing more.
     """
     js = _read("dashboard.js")
     css = _read("app.css")

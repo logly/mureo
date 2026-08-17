@@ -149,7 +149,8 @@ mureo/
 │   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
 │   ├── platform_guards.py # Write-time platform-key guards (#534/#609) — the one "is this key
-│   │                      #   real?" answer every other surface asks
+│   │                      #   real?" answer every other surface asks, including the read-side
+│   │                      #   label path (`installed_platform_names`, shared since #631)
 │   ├── platform_repair.py # The repair half (#610): plan + drop an entry under an unresolvable
 │   │                      #   key. Unresolvable is the FILTER, not the criterion — the document
 │   │                      #   must show the entry wrong (#616), and conversion_action_types is

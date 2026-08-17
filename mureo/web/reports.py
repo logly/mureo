@@ -52,9 +52,15 @@ from mureo.context.platform_accounts import (
     duplicate_account_entries,
     normalize_account_id,
 )
+
+# The plugin half of the platform vocabulary, enumerated ONCE for the whole
+# tree (#631). ``web`` -> ``context`` is the direction that already holds
+# above; see that module's "One enumeration, two surfaces".
+from mureo.context.platform_guards import installed_platform_names
 from mureo.context.state import read_state_file
 from mureo.core.platform_keys import (
     BUILTIN_PLATFORM_DISPLAY_NAMES,
+    PLUGIN_PLATFORM_PREFIX,
     is_plugin_platform_key,
     plugin_platform_parts,
 )
@@ -132,6 +138,15 @@ mureo answers "is this key recognisable", and asking the dashboard's own
 resolver means this can never drift from what the dashboard renders. The
 alternative, an alias table mapping arbitrary keys onto platforms, would be a
 guess.
+
+That resolver now reads the **same** installed-plugin enumeration the write
+guard does (:func:`~mureo.context.platform_guards.installed_platform_names`,
+#631), so this signal can no longer fire on a key mureo itself accepted on
+write. Until it did, a bare provider name — ``logly_ads_context``, the LOGLY
+bridge's real platform name — was accepted by the guard, reported ``Clean``
+by ``mureo repair platform-key``, and flagged here, all on one machine at one
+moment. An operator who learns this fires on healthy state stops reading it,
+which costs more than the finding is worth.
 """
 
 # How many of the most-recent ``action_log`` entries the summary surfaces.
@@ -241,6 +256,10 @@ def platform_display_name(key: str) -> str:
       ``plugin:mureo-logly-bridge`` → ``"Logly (plugin)"``,
       ``plugin:acme-ads`` → ``"Acme Ads (plugin)"``). Unchanged, so state
       written before #537 keeps the label it already had.
+    - A bare provider name an INSTALLED plugin registered (#609/#631) → the
+      humanized name with the same ``" (plugin)"`` suffix
+      (``logly_ads_context`` → ``"Logly Ads Context (plugin)"``). See
+      :func:`_installed_plugin_platform_label`.
     - Anything else (an unknown built-in-shaped key) → the key itself, so
       the dashboard never renders a blank label.
 
@@ -263,7 +282,48 @@ def platform_display_name(key: str) -> str:
         if not label:
             label = _humanize_dist(dist)
         return f"{label} (plugin)" if label else key
-    return key
+    return _installed_plugin_platform_label(key) or key
+
+
+def _installed_plugin_platform_label(key: str) -> str:
+    """Label a bare provider name an installed plugin registered (#631).
+
+    ``key`` is a platform name straight out of the ``mureo.providers`` /
+    ``mureo.analytics`` entry points — ``logly_ads_context``, not
+    ``plugin:mureo-logly-bridge:logly_ads_context``. That has been a valid
+    key to WRITE since #609, and this function is why the read side no longer
+    calls it unresolvable: a key the guard accepted was being flagged
+    ``unrecognized_key`` on the dashboard at the same moment
+    ``mureo repair platform-key`` reported the same entry ``Clean``.
+
+    Same ``" (plugin)"`` suffix as the canonical key for the same platform:
+    the entry comes from a plugin under either spelling, and two labels for
+    one platform on one dashboard would replace this inconsistency with
+    another. :data:`_OFFICIAL_BRIDGE_DISPLAY_NAMES` cannot apply here — it is
+    keyed by distribution and a bare name carries none — so an in-tree bridge
+    held under its bare provider name keeps the suffix. Resolving that would
+    mean reading ``ep.dist``, i.e. reading more of an entry point than the
+    guard does, and mureo writes the canonical key for those anyway.
+
+    Fails OPEN exactly as :func:`~mureo.context.platform_guards.
+    reject_unknown_platform_key` does: an environment that cannot be
+    enumerated labels the key rather than reporting it unrecognised, because
+    a broken ``importlib.metadata`` is not evidence that a key is wrong.
+
+    Two shapes are excluded whatever the registry says: a key claiming the
+    plugin namespace without naming a platform (``plugin:``,
+    ``plugin:<dist>:``), which the write path refuses on shape alone
+    (``reject_unusable_platform_key``) and which no enumeration failure can
+    make legitimate; and a name that humanizes to nothing. Both yield ``""``
+    and the caller falls back to the raw key.
+    """
+    if key.startswith(PLUGIN_PLATFORM_PREFIX):
+        return ""
+    installed = installed_platform_names()
+    if installed is not None and key not in installed:
+        return ""
+    label = _humanize_words(key)
+    return f"{label} (plugin)" if label else ""
 
 
 def _humanize_words(name: str) -> str:

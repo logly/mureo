@@ -1990,12 +1990,14 @@
         card.appendChild(note);
       });
       // Where the way out lives (#610). The repair is NOT offered as a
-      // button here: `unrecognized_key` tests whether a key resolves to a
-      // display label, and by that test the CORRECT key in the reported
-      // incident (`logly_ads_context`) is just as unrecognised as the
-      // invented one — so a button hung off this signal would offer to
-      // delete the right entry. The CLI asks #609's resolvability question
-      // directly, in-process. This is a pointer, not an action.
+      // button here. Since #631 this signal does agree with mureo's
+      // write-time answer — the CORRECT key in the reported incident
+      // (`logly_ads_context`) no longer fires it — but agreeing about the
+      // key is not deciding the repair: removal needs the DOCUMENT to show
+      // the entry wrong (a resolvable sibling on the same ad account, or an
+      // entry storing nothing) and is refused for one carrying
+      // `conversion_action_types` (#616/#617). None of that evidence is on
+      // the wire. This is a pointer, not an action.
       const hint = document.createElement("p");
       hint.className = "report-card-conflict-hint";
       hint.textContent = MUREO.t("dashboard.reports_conflict_repair_hint");
