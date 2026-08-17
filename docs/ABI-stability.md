@@ -463,6 +463,18 @@ contract:
   in `reason`; that is the only field surfaced.
 - The default behaviour with zero gates registered is byte-
   identical to v0.9.22: every call dispatches normally.
+- **Lifecycle** (pinned since v0.10.47, #633): the entry point is
+  enumerated and `load()`-ed **once per process**, on the first
+  dispatch, and the resulting class is memoized. The *instance* is
+  still constructed fresh per tool call, so instance attributes do
+  not persist across calls — put cross-call state on a class
+  attribute or a module-level singleton, as before. Consequence: a
+  gate installed or uninstalled while the server runs takes effect
+  on restart, the same as its distribution's tools (collected at
+  module import) and its runtime-context factory (resolved once).
+  A gate whose `load()` *raised* is not memoized — it is retried on
+  the next dispatch, so a transient import error cannot silently
+  remove a guardrail for the life of the process.
 
 The groups are independent: a package may register against any subset
 (provider only, analytics only, change feed only, any combination) —

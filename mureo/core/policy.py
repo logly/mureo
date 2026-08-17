@@ -49,8 +49,8 @@ Per-gate evaluation rules enforced by the dispatcher (in
 
 Implementations MUST be pure and fast — ``evaluate`` runs on every
 tool call. Cache any expensive lookup (file reads, network calls)
-behind a TTL inside the implementation itself; the dispatcher does
-no caching.
+behind a TTL inside the implementation itself; the dispatcher caches
+gate *discovery* (#633) but nothing your ``evaluate`` does.
 """
 
 from __future__ import annotations
@@ -102,6 +102,13 @@ class PolicyGate(Protocol):
     cross-call caching (e.g. a TTL'd re-read of
     ``~/.mureo/config.json``), put the cache on a class attribute
     or a module-level singleton — instance state is ephemeral.
+    The *class* is loaded once per process: the entry point is
+    enumerated and ``load()``-ed on the first dispatch and memoized
+    (#633), so import-time work in your module runs once, but
+    ``__init__`` runs per call and must stay trivial. A gate
+    installed or uninstalled while the server runs is therefore not
+    picked up until restart — the same as its distribution's tools,
+    which are collected at module import.
 
     **Async**: the v1 contract is synchronous by design. A future
     Protocol for asynchronous gates may be added under a separate
