@@ -28,10 +28,12 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from mureo.context import platform_guards
 from mureo.context.models import PlatformState, StateDocument
 from mureo.core.runtime_context import (
     default_runtime_context,
@@ -65,6 +67,18 @@ def _write_state(workspace: Path, doc: StateDocument) -> None:
     from mureo.context.state import write_state_file
 
     write_state_file(workspace / "STATE.json", doc)
+
+
+def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch, *names: str) -> None:
+    """Pin which plugin platforms the environment reports as installed (#631).
+
+    The read side resolves a bare provider name through the same enumeration
+    the write guard uses, so a fixture using one is machine-dependent
+    otherwise: the machine that reported #631 really has the LOGLY and
+    LINE/Yahoo bridges installed. Same pin the #609 / #610 tests use.
+    """
+    entries = tuple(SimpleNamespace(name=name) for name in names)
+    monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: entries)
 
 
 def _ago(days: float) -> str:
@@ -193,12 +207,51 @@ def test_the_reported_field_shape_is_caught_by_the_unrecognised_key_signal(
 ) -> None:
     """The shape actually reported from the field.
 
-    One canonical key with a real id, one key an out-of-tree writer chose
+    One canonical key with a real id, one key an out-of-tree writer INVENTED
+    (``logly_ads``, for a bridge whose platform is ``logly_ads_context``)
     whose ``account_id`` never resolved (``""``). ``account_ids_match("", "")``
     is ``False`` BY DESIGN, so the duplicate-account join reports nothing here
     — account joining alone does NOT detect the reported bug. The second
     signal (a key no mureo surface can label) is what catches it.
+
+    The entry-point set is pinned (#631): the bridge's real platform name is
+    installed on the reporting machine and is a key mureo resolves, so an
+    unpinned fixture would assert something different there than in CI.
     """
+    _pin_installed_platforms(monkeypatch, "logly_ads_context")
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={
+                "google_ads": PlatformState(
+                    account_id="123-456", totals={"spend": 900.0}
+                ),
+                "logly_ads": PlatformState(account_id="", totals={"spend": 400.0}),
+            },
+        ),
+    )
+
+    summary = build_report_summary()
+    assert _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT) == []
+    (found,) = _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY)
+    assert found["platform_keys"] == ["logly_ads"]
+
+
+@pytest.mark.unit
+def test_a_bare_installed_platform_name_is_not_reported_as_unrecognised(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#631, end to end: the same document the repair command calls Clean.
+
+    A bare provider name an installed plugin registered is a key mureo
+    ACCEPTS on write (#609). Reporting it here told the operator, about an
+    entry nothing is wrong with, that mureo cannot tell which platform it
+    names — while ``mureo repair platform-key --all`` reported every client
+    clean. The row still renders, now with a label.
+    """
+    _pin_installed_platforms(monkeypatch, "logly_ads_context")
     _use_workspace(monkeypatch, tmp_path)
     _write_state(
         tmp_path,
@@ -216,9 +269,9 @@ def test_the_reported_field_shape_is_caught_by_the_unrecognised_key_signal(
     )
 
     summary = build_report_summary()
-    assert _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT) == []
-    (found,) = _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY)
-    assert found["platform_keys"] == ["logly_ads_context"]
+    assert summary["platform_conflicts"] == []
+    labels = {p["key"]: p["display_name"] for p in summary["platforms"]}
+    assert labels["logly_ads_context"] == "Logly Ads Context (plugin)"
 
 
 @pytest.mark.unit

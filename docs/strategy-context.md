@@ -346,6 +346,17 @@ operator's next move differs:
 | `duplicate_account` | Two or more keys resolve to **one** ad account, so any total over these rows is double-counted *right now* | `duplicate_account_entries` (the shared join above) |
 | `unrecognized_key` | A key **no mureo surface can resolve**, so mureo cannot say which platform that entry describes — and, when the entry names no ad account either (`account_known: false`), it *may* duplicate a canonical one | `platform_display_name(key) == key` — the key resolves to no label |
 
+The label lookup resolves exactly the vocabulary the write guard accepts: a
+built-in key, a `plugin:<dist>:<provider>` key (or the legacy `plugin:<dist>`),
+**and a bare provider name an installed plugin registered** —
+`logly_ads_context` renders `Logly Ads Context (plugin)`. Both sides read one
+enumeration of the installed plugins and both fail open when the environment
+cannot be enumerated, so a key mureo itself accepts on write is never reported
+here, and `mureo repair platform-key` and the Reports view cannot give an
+operator opposite answers about one entry. (Until they could: the bare form
+was accepted on write, reported `Clean` by the repair command, and flagged
+here, all at once.)
+
 The `unrecognized_key` condition tests the **key** alone, so it also fires on
 an entry whose `account_id` resolves perfectly well — including one the
 `duplicate_account` row has just named with certainty. `account_known` is what
@@ -374,6 +385,13 @@ both forms coexist only after a hand edit or a write that predates the guard.
 mureo merges and rewrites nothing — check which entry holds the right figures,
 keep the key that platform is already stored under, and delete the other
 yourself.
+
+The bare provider name is the third spelling of that same platform, and it
+renders *identically* to the canonical key (`Logly Ads Context (plugin)`) —
+it is the same platform from the same plugin, so a second label would be a
+fiction. Two rows sharing one label therefore mean two entries for one
+platform, which is what the `duplicate_account` conflict names whenever they
+also carry the same `account_id`.
 
 What the dashboard does about it:
 

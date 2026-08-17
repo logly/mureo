@@ -1,5 +1,33 @@
 ## [Unreleased]
 
+### Fixed
+
+- **A platform key mureo accepts on write was reported as unresolvable on
+  read** (#631). A `platforms` entry filed under an installed plugin's bare
+  provider name — `logly_ads_context`, the LOGLY bridge's real platform name —
+  was accepted by the write guard, reported `Clean` by
+  `mureo repair platform-key --all`, and *simultaneously* flagged in the
+  Reports view as a key mureo cannot resolve. Nothing was wrong with the
+  entry, and this fired on every such entry on any install carrying a bridge.
+
+  Two functions were answering one question: #609 made a bare provider name a
+  valid write vocabulary and the label path was never taught about it.
+  `platform_display_name` now resolves it from the **same** installed-plugin
+  enumeration the guard reads (`installed_platform_names`, one home in
+  `mureo/context/platform_guards.py`), labels it like the canonical key for
+  the same platform (`Logly Ads Context (plugin)` — the entry comes from a
+  plugin under either spelling), and inherits the guard's fail-open: an
+  environment that cannot be enumerated labels the key rather than starting to
+  flag every plugin entry. The enumeration is memoized, keyed by the
+  enumerator itself, since the Reports view asks per platform per client.
+
+  The regression guard is an agreement test rather than a test for this one
+  key shape: for built-ins, canonical `plugin:<dist>:<provider>` keys, legacy
+  `plugin:<dist>` keys, installed bare provider names and an invented key, the
+  label path and `is_unresolvable_platform_key` must give the same answer.
+  That is what would have caught #609 widening the write vocabulary without
+  touching the read side.
+
 ## [0.10.46] - 2026-08-15
 
 ### Fixed

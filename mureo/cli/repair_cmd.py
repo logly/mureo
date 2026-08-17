@@ -50,15 +50,24 @@ Why the CLI and not a dashboard button
 --------------------------------------
 The finding surfaces on the dashboard's platform card, and the card now points
 here (``dashboard.reports_conflict_repair_hint``), but the repair itself is
-not offered there. The card cannot tell the two keys apart: the dashboard's
-``unrecognized_key`` signal tests whether a key resolves to a display *label*,
-and by that test ``logly_ads_context`` — the CORRECT key in the reported
-incident — is just as unrecognised as the invented ``logly_ads``. A button
-placed on that signal would offer to delete the right entry. Teaching the
-dashboard the difference means putting #609's resolvability answer on the wire
-and enumerating installed entry points on every dashboard poll, in a module
-whose contract is that it never mutates state. The terminal already has the
-answer, in-process and current.
+not offered there.
+
+The card's ``unrecognized_key`` signal does now agree with #609's answer:
+since #631 the label path resolves a bare provider name from the same
+installed-plugin enumeration the guard reads, so ``logly_ads_context`` — the
+CORRECT key in the reported incident — no longer fires it while the invented
+``logly_ads`` still does.
+
+Agreeing about the key is not deciding the repair, though, and the second
+half is what keeps the button off that card. "Unresolvable" is the FILTER,
+not the criterion (#616): removal needs the DOCUMENT to show the entry wrong
+— a resolvable sibling holding the same ad account, or an entry storing
+nothing at all — and is refused outright for an entry carrying
+``conversion_action_types`` (#617). None of that evidence is on the wire, by
+design: a conflict row carries keys and a presence bit, never an ad account
+id. So an action hung off the signal alone would still offer a deletion this
+command refuses — in a module whose contract is that it never mutates state.
+The terminal has the whole answer, in-process and current.
 """
 
 from __future__ import annotations
