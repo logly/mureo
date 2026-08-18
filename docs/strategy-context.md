@@ -590,11 +590,37 @@ the stale note it explains, and above the repair hint.
 `set_platform_not_collected(path, platform, account_id, reason=...)` (or the
 `mureo_state_platform_not_collected_set` tool) when a collection fails, and
 call the same writer with `reason=None` — omit `reason` on the tool — on the
-next successful collection. Nothing else retires it: every targeted mutator
-here treats an omitted field as *leave it alone*, and one window's rollup
-landing does not prove the platform-level collection recovered. A note that
-outlives its failure is permanently stale information stated with confidence,
-which is precisely the defect it exists to remove.
+next successful collection. No other write retires it: every targeted mutator
+treats an omitted field as *leave it alone*, and one window's rollup landing
+does not prove the platform-level collection recovered. A note that outlives
+its failure is permanently stale information stated with confidence, which is
+precisely the defect it exists to remove.
+
+**And the dashboard does not depend on that being honoured.** A note is not
+shown once any of the platform's rollups carries a `fetched_at` *later* than
+its `attempted_at` — a collection that succeeded after the failure has
+already answered it. The rule is applied server-side, once, exactly where the
+staleness verdict is, so the browser is handed a resolved answer rather than
+a second copy of the rule. Three deliberate limits:
+
+- **Any window counts.** The note is platform-level, so `YESTERDAY` landing
+  proves as much as `LAST_30_DAYS`; the comparison uses the newest
+  `fetched_at` in the entry, not the window on screen. Switching the period
+  toggle can never resurrect a retired note.
+- **No collection time, no retirement.** A platform with no `fetched_at`
+  anywhere has never been collected as far as the document knows, and that is
+  the case where the note is the only thing the card can say.
+- **Retirement is a proof, not a guess.** An unparseable `fetched_at`, or a
+  note with no `attempted_at`, leaves the question open — and open is not
+  retired, the same position the staleness verdict takes on a value it cannot
+  interpret.
+
+Re-pointing a platform key at a *different* ad account also drops the note,
+because it describes a failure for the account the entry used to name.
+
+Between the two, a card can never show a fresh figure and a stale reason at
+the same time: the contract stops the contradiction being written, the read
+rule stops it being shown when the contract was not honoured.
 
 Recording a failure is **not** a sync, so unlike every other platform write
 this one does not re-stamp `last_synced_at`: reporting the document as

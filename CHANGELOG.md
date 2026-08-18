@@ -20,13 +20,26 @@
   `set_platform_not_collected` or the new
   `mureo_state_platform_not_collected_set` tool; **clearing is explicit and is
   the collector's job** — call the same writer with `reason=None` (omit
-  `reason` on the tool) on the next successful collection. Nothing clears it
-  as a side effect, because an omitted field means *leave it alone* everywhere
-  else in STATE.json, and a note that outlived its failure would be the same
-  defect one field over: stale information, stated with confidence. Recording
-  a failure does not re-stamp `last_synced_at` — a collection that failed is
-  not a sync. The field is optional and additive: documents without it parse
-  unchanged and gain no key.
+  `reason` on the tool) on the next successful collection. No other write
+  clears it, because an omitted field means *leave it alone* everywhere else
+  in STATE.json, and a note that outlived its failure would be the same defect
+  one field over: stale information, stated with confidence.
+
+  **And nothing an operator sees depends on that contract being honoured.**
+  The dashboard drops a note once any of the platform's rollups carries a
+  `fetched_at` later than the note's `attempted_at` — a collection that
+  succeeded after the failure has already answered it — decided server-side,
+  once, in the same place the staleness verdict is. Any window counts (the
+  note is platform-level, so the period toggle cannot resurrect a retired
+  one); a platform with no collection time anywhere keeps its note, which is
+  the case where it is the only thing the card can say; and an unparseable
+  timestamp leaves the question open rather than retired. Re-pointing a
+  platform key at a different ad account drops the note too — it describes a
+  failure for the account the entry used to name.
+
+  Recording a failure does not re-stamp `last_synced_at` — a collection that
+  failed is not a sync. The field is optional and additive: documents without
+  it parse unchanged and gain no key.
 
 ### Fixed
 

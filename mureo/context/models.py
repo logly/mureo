@@ -354,6 +354,14 @@ class PlatformState:
     # rollup landing. A note that outlived its failure would be the very
     # defect this field is here to remove — permanently stale information,
     # stated with confidence.
+    #
+    # That contract is a duty, not a guarantee, so nothing an operator SEES
+    # is allowed to depend on it: the read side drops a note that any later
+    # collection has already answered (:func:`mureo.web.reports.
+    # _platform_not_collected`). A document holding a fresh ``fetched_at``
+    # and an older failure states two contradictory answers to one question;
+    # the contract stops that being written, and the read rule stops it being
+    # shown when the contract was not honoured.
     not_collected: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:

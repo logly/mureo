@@ -530,10 +530,14 @@ Two rules, both load-bearing:
   guess for a window you could not pull; the card restates the old numbers
   with their age and now also says why they did not move.
 - **Clear it on the next successful collection** — call the tool again with
-  `reason` omitted (or the Python helper with `reason=None`). Nothing else
+  `reason` omitted (or the Python helper with `reason=None`). No other write
   retires the note: omitting a field means *leave it alone* everywhere in
   STATE.json, so a note left behind would outlive its failure and become
-  permanently stale information stated with confidence.
+  permanently stale information stated with confidence. (The dashboard also
+  stops showing a note once a rollup carries a `fetched_at` later than the
+  note's `attempted_at`, so a card never shows fresh figures beside a stale
+  reason — but that is a backstop, not a substitute: the document itself is
+  yours to keep honest.)
 
 A `reason` with no text is dropped on read, and long text is truncated for
 display — write one sentence an operator can act on, not a stack trace.

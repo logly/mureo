@@ -51,6 +51,7 @@ from mureo.context.models import (
     PlatformState,
     StateDocument,
 )
+from mureo.context.platform_accounts import account_ids_match, normalize_account_id
 from mureo.context.platform_guards import (
     guard_platform_entry_write,
     warn_on_duplicate_accounts,
@@ -225,9 +226,31 @@ def _platform_base(
     campaign upsert once wiped the dashboard rollups, and how a metrics write
     once wiped the #342 conversion override — both silent, because a reset
     field is indistinguishable from one that was never set.
+
+    One exception, and it is about identity rather than preservation:
+    re-pointing a key at a DIFFERENT ad account (allowed when no other key
+    holds it) drops ``not_collected``. That note names a collection failure
+    for the account the entry used to describe; carried over, it would be
+    rendered as a fact about the account that replaced it. Everything else
+    survives the re-point exactly as before — the rollups are figures the
+    next sync overwrites, while a note nothing overwrites would simply be
+    wrong from here on. An entry with no ``account_id`` claims no account, so
+    learning one identifies the entry rather than replacing it and the note
+    stays; ``act_`` spellings of one account are one account (the same
+    reading :func:`~mureo.context.platform_accounts.account_ids_match` gives
+    every other surface).
     """
     existing = platforms.get(platform)
-    return existing if existing is not None else PlatformState(account_id=account_id)
+    if existing is None:
+        return PlatformState(account_id=account_id)
+    if (
+        existing.not_collected is not None
+        and normalize_account_id(existing.account_id)
+        and normalize_account_id(account_id)
+        and not account_ids_match(existing.account_id, account_id)
+    ):
+        return replace(existing, not_collected=None)
+    return existing
 
 
 def _stamp_fetched_at(rollup: Any, written_at: str) -> Any:
@@ -658,6 +681,12 @@ def set_platform_not_collected(
     with ``reason=None`` on success, in the same pass. A note that outlives
     its failure is permanently stale information stated with confidence —
     exactly what this field exists to remove.
+
+    The dashboard does not TRUST that contract, and should not have to: it
+    drops a note any later collection has already answered (see
+    :func:`mureo.web.reports._platform_not_collected`). Clearing it here is
+    still what keeps the document itself honest — the read rule only decides
+    what is shown.
 
     ``last_synced_at`` is deliberately NOT re-stamped, for the same reason
     :func:`append_action_log` does not: a collection that FAILED is not a

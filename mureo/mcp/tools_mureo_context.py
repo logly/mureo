@@ -521,7 +521,12 @@ TOOLS: list[Tool] = [
             "figures were pulled at some other time (a historical window). "
             "Campaigns and every other "
             "platform are preserved. ``account_id`` is required and always "
-            "written onto the entry. Returns the updated state document."
+            "written onto the entry. **If this platform carries a "
+            "``not_collected`` note (a previous collection failure), clear it "
+            "in the same pass** — call mureo_state_platform_not_collected_set "
+            "with ``reason`` omitted; this call preserves the note rather "
+            "than guessing that one window's rollup means the platform "
+            "recovered. Returns the updated state document."
         ),
         inputSchema={
             "type": "object",

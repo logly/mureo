@@ -162,6 +162,28 @@ class TestTheFieldIsOptionalAndAdditive:
             assert doc.platforms is not None
             assert doc.platforms[_PLATFORM].not_collected is None
 
+    def test_an_over_long_reason_is_truncated_on_read(self) -> None:
+        """Capped at every boundary the field crosses, so a hand-edited or
+        externally-written page of API JSON is not re-serialised in full on
+        every subsequent write."""
+        doc = parse_state(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        _PLATFORM: {
+                            "account_id": _ACCOUNT,
+                            "not_collected": {"reason": "z" * 5000},
+                        }
+                    },
+                }
+            )
+        )
+        assert doc.platforms is not None
+        note = doc.platforms[_PLATFORM].not_collected
+        assert note is not None
+        assert len(note["reason"]) == NOT_COLLECTED_REASON_MAX_CHARS
+
     def test_the_stored_note_is_a_defensive_copy(self) -> None:
         note: dict[str, Any] = {"attempted_at": "t", "reason": _REASON}
         state = PlatformState(account_id=_ACCOUNT, not_collected=note)
@@ -280,6 +302,56 @@ class TestSetAndClear:
         assert created.account_id == "act_1"
         assert created.not_collected is not None
 
+    def test_repointing_a_key_at_another_account_drops_the_note(
+        self, tmp_path: Path
+    ) -> None:
+        """The note is about the account that failed. Re-pointing a key at a
+        different ad account (allowed when nobody else holds it) carries the
+        entry over — and a failure reported for the previous account would
+        then be rendered as a fact about this one."""
+        path = tmp_path / "STATE.json"
+        set_platform_not_collected(path, _PLATFORM, "111", reason=_REASON)
+        set_platform_metrics(path, _PLATFORM, "222", totals={"spend": 1.0})
+        entry = _entry(path)
+        assert entry.account_id == "222"
+        assert entry.not_collected is None
+
+    def test_stamping_an_id_onto_an_idless_entry_keeps_the_note(
+        self, tmp_path: Path
+    ) -> None:
+        """An entry with no ``account_id`` claims no account, so learning one
+        identifies the entry rather than replacing it — the same reading the
+        duplicate guard takes of ``""``."""
+        path = tmp_path / "STATE.json"
+        write_state_file(
+            path,
+            StateDocument(
+                version="2",
+                platforms={
+                    _PLATFORM: PlatformState(
+                        account_id="",
+                        not_collected={"attempted_at": "t", "reason": _REASON},
+                    )
+                },
+            ),
+        )
+        set_platform_metrics(path, _PLATFORM, _ACCOUNT, totals={"spend": 1.0})
+        note = _entry(path).not_collected
+        assert note is not None and note["reason"] == _REASON
+
+    def test_the_same_account_written_act_prefixed_keeps_the_note(
+        self, tmp_path: Path
+    ) -> None:
+        """``act_`` tolerance, as everywhere else: one account written two
+        ways is one account, not a re-point."""
+        path = tmp_path / "STATE.json"
+        set_platform_not_collected(path, "meta_ads", "123456", reason=_REASON)
+        set_platform_metrics(path, "meta_ads", "act_123456", totals={"spend": 1.0})
+        doc = read_state_file(path)
+        assert doc.platforms is not None
+        note = doc.platforms["meta_ads"].not_collected
+        assert note is not None and note["reason"] == _REASON
+
     def test_it_shares_the_platform_key_guard(self, tmp_path: Path) -> None:
         """One ad account, one platform key — the same refusal every other
         targeted writer makes, so this one cannot be the way in."""
@@ -389,16 +461,180 @@ class TestTheWire:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """Two different facts: how old the figures are, and why they are not
-        newer. The card shows both, so neither may consume the other."""
+        newer. The card shows both, so neither may consume the other. Here
+        they AGREE — the figures are older than the failure — which is the
+        arrangement the note is true of."""
         _write(
             tmp_path,
             totals={"spend": 1.0, "fetched_at": "2020-01-01T00:00:00+00:00"},
             metrics_period="YESTERDAY",
-            not_collected={"reason": _REASON},
+            not_collected={
+                "attempted_at": "2020-06-01T00:00:00+00:00",
+                "reason": _REASON,
+            },
         )
         (row,) = _summary(monkeypatch, tmp_path)["platforms"]
         assert row["freshness"]["stale"] is True
         assert row["not_collected"]["reason"] == _REASON
+
+
+# ---------------------------------------------------------------------------
+# A note a later collection has already retired
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("_reset_ctx")
+class TestARetiredNoteIsNotShown:
+    """The document must never state two contradictory answers to one
+    question, and no writer's discipline may be what prevents it.
+
+    The failing path this closes: the digest records "the Meta token
+    expired", the operator fixes the token, and the next sync writes fresh
+    figures through ``mureo_state_platform_metrics_set`` — a call whose
+    schema says nothing about the note, so an agent driving only that tool
+    has no clue a second call is needed. The document then carries a fresh
+    ``fetched_at`` AND a days-old collection failure, permanently, and the
+    card renders both. That is the shape of defect #638 is about (a false
+    statement on a dashboard, unnoticed for eleven days) reintroduced by its
+    own fix.
+
+    So the read side decides it, ONCE, in the same place and the same way it
+    already decides staleness: a note is retired by any collection that
+    succeeded after it. The agency-side clearing contract stands — but the
+    correctness of what an operator sees no longer depends on it.
+    """
+
+    def test_a_collection_that_succeeded_since_retires_the_note(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            totals={"spend": 1.0, "fetched_at": "2026-08-18T09:00:00+00:00"},
+            not_collected={
+                "attempted_at": "2026-08-15T09:00:00+00:00",
+                "reason": _REASON,
+            },
+        )
+        (row,) = _summary(monkeypatch, tmp_path)["platforms"]
+        assert row["not_collected"] is None
+
+    def test_a_success_in_ANY_window_retires_it(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The note is platform-level, so any rollup proves the platform was
+        reached — the daily-check writing YESTERDAY says as much about the
+        token as a sync writing LAST_30_DAYS does. The newest ``fetched_at``
+        anywhere is what it is compared against; the row's own window may be
+        an old one the toggle happens to be showing."""
+        _write(
+            tmp_path,
+            totals={"spend": 1.0, "fetched_at": "2026-08-01T09:00:00+00:00"},
+            metrics_period="LAST_30_DAYS",
+            periods={"YESTERDAY": {"spend": 2.0, "fetched_at": "2026-08-18T09:00:00Z"}},
+            not_collected={
+                "attempted_at": "2026-08-15T09:00:00+00:00",
+                "reason": _REASON,
+            },
+        )
+        (row,) = _summary(monkeypatch, tmp_path)["platforms"]
+        assert row["not_collected"] is None
+
+    def test_an_older_collection_does_not_retire_it(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The figures predate the failure, which is exactly when the note is
+        true and most needed. Only a LATER success retires it."""
+        _write(
+            tmp_path,
+            totals={"spend": 1.0, "fetched_at": "2026-08-10T09:00:00+00:00"},
+            not_collected={
+                "attempted_at": "2026-08-15T09:00:00+00:00",
+                "reason": _REASON,
+            },
+        )
+        (row,) = _summary(monkeypatch, tmp_path)["platforms"]
+        assert row["not_collected"]["reason"] == _REASON
+
+    def test_a_platform_never_collected_at_all_keeps_its_note(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The single most important case: no figures, no ``fetched_at``
+        anywhere, and the only thing the dashboard can say is why. Retiring
+        the note on the ABSENCE of a collection time would silence exactly
+        the card that has nothing else on it."""
+        _write(
+            tmp_path,
+            totals={"spend": 1.0},
+            periods={"YESTERDAY": {"spend": 2.0}},
+            not_collected={
+                "attempted_at": "2026-08-15T09:00:00+00:00",
+                "reason": _REASON,
+            },
+        )
+        (row,) = _summary(monkeypatch, tmp_path)["platforms"]
+        assert row["not_collected"]["reason"] == _REASON
+
+    def test_an_advisory_platform_with_no_rollups_keeps_its_note(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            not_collected={
+                "attempted_at": "2026-08-15T09:00:00+00:00",
+                "reason": _REASON,
+            },
+        )
+        (row,) = _summary(monkeypatch, tmp_path)["platforms"]
+        assert row["not_collected"]["reason"] == _REASON
+
+    def test_an_undatable_pair_keeps_the_note(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Retirement is a PROOF that a collection succeeded after the
+        failure, and neither of these can supply one: a note with no
+        ``attempted_at`` (mureo's own writer always stamps it, so this came
+        from a hand edit or an outside writer) and a ``fetched_at`` that is
+        not a timestamp. Unknown is not the same as retired — the same
+        position the staleness verdict takes on an unparseable value."""
+        for totals, note in (
+            (
+                {"spend": 1.0, "fetched_at": "2026-08-18T09:00:00+00:00"},
+                {"reason": _REASON},
+            ),
+            (
+                {"spend": 1.0, "fetched_at": "last tuesday"},
+                {"attempted_at": "2026-08-15T09:00:00+00:00", "reason": _REASON},
+            ),
+        ):
+            _write(tmp_path, totals=totals, not_collected=note)
+            (row,) = _summary(monkeypatch, tmp_path)["platforms"]
+            assert row["not_collected"]["reason"] == _REASON
+
+    def test_the_period_toggle_cannot_resurrect_a_retired_note(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Switching window changes which figures are on screen, never
+        whether the platform was reached. A note the newest collection
+        retired stays retired in every window."""
+        from mureo.core.runtime_context import default_runtime_context
+        from mureo.web.reports import build_report_summary
+
+        _write(
+            tmp_path,
+            periods={
+                "YESTERDAY": {"spend": 2.0, "fetched_at": "2026-08-18T09:00:00+00:00"},
+                "LAST_30_DAYS": {"spend": 9.0},
+            },
+            not_collected={
+                "attempted_at": "2026-08-15T09:00:00+00:00",
+                "reason": _REASON,
+            },
+        )
+        ctx = default_runtime_context(workspace=tmp_path)
+        monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
+        for window in ("YESTERDAY", "LAST_30_DAYS"):
+            (row,) = build_report_summary(period=window)["platforms"]
+            assert row["not_collected"] is None, window
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +690,18 @@ class TestTheMcpTool:
         # The clearing contract is stated where the caller reads it — an
         # agent that cannot see how to remove the note leaves it forever.
         assert "clear" in tool.description.lower()
+
+    async def test_the_metrics_tool_names_the_clearing_call(self) -> None:
+        """The tool an agent reaches on SUCCESS is where the contract has to
+        be readable. Saying it only on the failure tool tells the one caller
+        who no longer needs to know: an agent driving
+        mureo_state_platform_metrics_set alone had no clue a second call
+        existed, so the note would be left behind forever."""
+        from mureo.mcp.tools_mureo_context import TOOLS
+
+        (metrics,) = [t for t in TOOLS if t.name == "mureo_state_platform_metrics_set"]
+        assert "mureo_state_platform_not_collected_set" in metrics.description
+        assert "clear" in metrics.description.lower()
 
 
 def test_an_entry_under_an_unresolvable_key_can_still_record_why(

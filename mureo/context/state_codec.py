@@ -40,6 +40,7 @@ from dataclasses import fields as dataclass_fields
 from typing import Any
 
 from mureo.context.models import (
+    NOT_COLLECTED_REASON_MAX_CHARS,
     ActionLogEntry,
     AdState,
     BatchRecord,
@@ -344,6 +345,12 @@ def _parse_not_collected(raw: Any) -> dict[str, Any] | None:
     Tolerant like the other optional platform fields — a hand-edited value
     costs the note, never the document — and normalising to the two known keys
     here keeps every reader (dashboard, CLI, a plugin) working from one shape.
+
+    ``reason`` is capped at
+    :data:`~mureo.context.models.NOT_COLLECTED_REASON_MAX_CHARS`, the same
+    bound the write helper and the dashboard apply. Doing it on READ too is
+    what stops a page of API JSON from a hand edit or an outside writer being
+    re-serialised in full on every subsequent write.
     """
     if not isinstance(raw, dict):
         return None
@@ -354,7 +361,7 @@ def _parse_not_collected(raw: Any) -> dict[str, Any] | None:
     attempted_at = raw.get("attempted_at")
     if isinstance(attempted_at, str) and attempted_at.strip():
         note["attempted_at"] = attempted_at.strip()
-    note["reason"] = reason.strip()
+    note["reason"] = reason.strip()[:NOT_COLLECTED_REASON_MAX_CHARS]
     return note
 
 

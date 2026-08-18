@@ -500,7 +500,12 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
     resolved server-side into ``platform_conflicts`` instead, so the browser
     is never handed an ad account id to join on. ``freshness`` and
     ``not_collected`` ride ALONGSIDE the five original fields — see
-    :func:`_platform_freshness` and :func:`_safe_not_collected`.
+    :func:`_platform_freshness` and :func:`_platform_not_collected`.
+
+    ``not_collected`` is resolved from the WHOLE platform entry rather than
+    from the window on screen: a note is about the platform, and the
+    collection that retires it may have written any window (see
+    :func:`_platform_not_collected`).
     """
     if period is None:
         totals = _safe_totals(state.totals)
@@ -518,7 +523,7 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
         "metrics_period": metrics_period,
         "campaign_count": len(state.campaigns),
         "freshness": _platform_freshness(totals, metrics_period),
-        "not_collected": _safe_not_collected(state.not_collected),
+        "not_collected": _platform_not_collected(state),
     }
 
 
@@ -716,6 +721,75 @@ def _available_periods(doc: StateDocument | None) -> list[str]:
     known = [p for p in _PERIOD_ORDER if p in found]
     extra = sorted(p for p in found if p not in _PERIOD_ORDER)
     return known + extra
+
+
+def _platform_not_collected(state: PlatformState) -> dict[str, Any] | None:
+    """Why this platform's figures did not move — unless a later collection
+    already answered that (#638).
+
+    The stored note is dropped here when ANY of this platform's rollups was
+    collected AFTER the failure it describes. Retiring the note is the
+    collector's job (see
+    :func:`mureo.context.state.set_platform_not_collected`), but the
+    correctness of what an operator sees must not depend on a writer
+    remembering to do it: nothing in the ``mureo_state_platform_metrics_set``
+    path forces a second call, so a document would otherwise carry a fresh
+    ``fetched_at`` and a days-old collection failure at once, permanently,
+    and the card would render both. Two independent answers to one question,
+    with nothing checking them against each other, is the defect this whole
+    issue is about — a dashboard stating something untrue and no one able to
+    tell.
+
+    Decided ONCE, here, exactly as the staleness verdict is: the browser is
+    handed a resolved answer rather than a second copy of the rule.
+
+    Three deliberate asymmetries:
+
+    - **Any window counts.** The note is platform-level, so a daily-check
+      writing ``YESTERDAY`` proves the platform was reachable just as well as
+      a sync writing ``LAST_30_DAYS``. The comparison uses the NEWEST
+      ``fetched_at`` in the entry, not the window the toggle happens to show
+      — otherwise switching window could resurrect a retired note.
+    - **No collection time, no retirement.** A platform with no ``fetched_at``
+      anywhere has never been collected as far as the document knows, and
+      that is the case where the note is the only thing the card can say.
+    - **Retirement must be PROVED.** An unparseable ``fetched_at`` or a note
+      with no ``attempted_at`` (mureo's own writer always stamps one) leaves
+      the question open, and open is not retired — the same position
+      :func:`_platform_freshness` takes on a value it cannot interpret.
+    """
+    note = _safe_not_collected(state.not_collected)
+    if note is None:
+        return None
+    attempted = _parse_timestamp(note.get("attempted_at"))
+    if attempted is None:
+        return note
+    collected = _newest_collection(state)
+    if collected is not None and collected > attempted:
+        return None
+    return note
+
+
+def _newest_collection(state: PlatformState) -> datetime | None:
+    """The most recent ``fetched_at`` across ALL of a platform's rollups.
+
+    ``totals`` and every ``periods`` bucket, because any of them landing is
+    evidence the platform was reached. ``None`` when not one of them carries
+    a usable timestamp — which is not "never collected" as a fact about the
+    world, only about what the document can show.
+    """
+    rollups: list[Any] = [state.totals]
+    if isinstance(state.periods, dict):
+        rollups.extend(state.periods.values())
+    newest: datetime | None = None
+    for rollup in rollups:
+        if not isinstance(rollup, dict):
+            continue
+        raw = rollup.get("fetched_at")
+        parsed = _parse_timestamp(raw if isinstance(raw, str) else None)
+        if parsed is not None and (newest is None or parsed > newest):
+            newest = parsed
+    return newest
 
 
 def _safe_not_collected(note: dict[str, Any] | None) -> dict[str, Any] | None:
