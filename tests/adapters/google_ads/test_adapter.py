@@ -1193,7 +1193,9 @@ def test_create_campaign_rejects_not_applicable_bid_strategy(
     )
     with pytest.raises(UnsupportedOperation, match="NOT_APPLICABLE"):
         adapter.create_campaign(request)
+    # Refused before any client work — no budget is created either.
     assert mock_client.create_campaign.await_count == 0
+    assert mock_client.create_budget.await_count == 0
 
 
 @pytest.mark.unit

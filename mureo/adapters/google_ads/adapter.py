@@ -263,6 +263,13 @@ class GoogleAdsAdapter:
                 "schedule fields will be implemented in a follow-up task."
             )
 
+        if request.bidding_strategy is BidStrategy.NOT_APPLICABLE:
+            raise UnsupportedOperation(
+                "create_campaign: BidStrategy.NOT_APPLICABLE describes a "
+                "platform that has no bid strategy; it is not a strategy "
+                "Google Ads can be set to."
+            )
+
         params: dict[str, Any] = {"name": request.name}
         if request.daily_budget_micros and request.daily_budget_micros > 0:
             budget_response = self._run(
@@ -278,12 +285,6 @@ class GoogleAdsAdapter:
             )
             if budget_id is not None:
                 params["budget_id"] = str(budget_id)
-        if request.bidding_strategy is BidStrategy.NOT_APPLICABLE:
-            raise UnsupportedOperation(
-                "create_campaign: BidStrategy.NOT_APPLICABLE describes a "
-                "platform that has no bid strategy; it is not a strategy "
-                "Google Ads can be set to."
-            )
         if request.bidding_strategy is not None:
             params["bidding_strategy"] = request.bidding_strategy.value.upper()
 
