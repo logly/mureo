@@ -139,7 +139,9 @@ mureo/
 │   │                    #   about a duplicate whose two keys both resolve (#636); not with --all
 │   ├── _repair_preview.py # What that command prints — the half that has to be TRUE: why an
 │   │                    #   entry can go, what is NOT changed (scoped to the plan), every
-│   │                    #   same-account sibling, and conversion_action_types (#616/#617/#618)
+│   │                    #   same-account sibling, and conversion_action_types (#616/#617/#618).
+│   │                    #   Also the not_collected note an entry carries (#643) and both
+│   │                    #   entries of a duplicate mureo hands back to decide (#645)
 │   ├── _repair_clients.py # Which STATE.json files `--all` sweeps — reuses the Reports tab's
 │   │                    #   optional list_clients / state_store_for_client seam, never a second one
 │   ├── _state_file.py   # The shared `--state-file` option + workspace default (rollback + repair)

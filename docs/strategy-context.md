@@ -443,9 +443,9 @@ What it does, and deliberately does not:
 
 - **A dry run is the default**, not a flag. The command prints the key, the ad
   account, how many campaigns the entry carries, whether it holds a `totals`
-  rollup and which windows it covers with each window's `fetched_at` — for the
-  unresolvable entry *and* for the entry the same ad account is stored under —
-  then states exactly what would change. `--apply` is a second, deliberate
+  rollup, which windows it covers with each window's `fetched_at` and any
+  `not_collected` note — for the unresolvable entry *and* for the entry the
+  same ad account is stored under — then states exactly what would change. `--apply` is a second, deliberate
   step and still asks; with no TTY (an AI agent's shell, a CI runner) it
   declines rather than proceeding.
 - **It drops the unresolvable entry; it never merges one.** The alternative —
@@ -467,15 +467,27 @@ What it does, and deliberately does not:
   `reject_unknown_platform_key` the write guard asks, including its fail-open
   behaviour: on an environment whose installed plugins cannot be enumerated,
   every key counts as resolvable and nothing is proposed for removal.
+- **An entry holding only a `not_collected` note is not an empty stub.** A
+  platform that failed on its very first collection has no campaigns, no
+  `totals` and no `periods`, so the note (#638) is the whole entry — and it is
+  the only thing in the document saying why that platform has no figures.
+  Nothing re-derives it: a later run that succeeds retires it, one that fails
+  again writes a new note about a new attempt. So it is reported and handed
+  back rather than removed as empty, and the dry run states it among what the
+  entry holds. It is not a veto, though: an entry that duplicates a key mureo
+  can resolve is still a duplicate, and the block then says which part of it
+  a sync brings back and which part it does not.
 - **A duplicate whose two keys both name real platforms is reported, not
   repaired** — the command says so in as many words and hands the decision
-  back. It is not a general duplicate merger. What it now also does is print
-  the command that ends it: `--key <the key to remove> --drop-duplicate`
-  removes the entry **you** named even though mureo can resolve its key. That
-  is the operator recording a decision, not mureo making one — it is honoured
-  only where the document shows another entry holding the same ad account,
-  it still refuses an entry carrying `conversion_action_types`, and it is not
-  accepted with `--all` (one client's decision must not sweep the machine).
+  back, describing **what each entry holds** so the decision and its evidence
+  are on one screen. It is not a general duplicate merger. What it now also
+  does is print the command that ends it: `--key <the key to remove>
+  --drop-duplicate` removes the entry **you** named even though mureo can
+  resolve its key. That is the operator recording a decision, not mureo making
+  one — it is honoured only where the document shows another entry holding the
+  same ad account, it still refuses an entry carrying
+  `conversion_action_types`, and it is not accepted with `--all` (one client's
+  decision must not sweep the machine).
   Until it existed the dashboard withheld such a client's totals "until this
   is resolved" while nothing could resolve it.
 - Only the `platforms` map changes. `last_synced_at` is not re-stamped (a

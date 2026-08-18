@@ -283,7 +283,7 @@ A bulk pass wrapped in a batch (`mureo_batch_begin` / `mureo_batch_end`) is plan
 "mureo cannot resolve this key" is a fact about **the machine running the repair** — which plugin bridges are installed on it right now — not about the entry. The same STATE.json is judged differently on two machines, so unresolvability on its own selects nothing. An entry is offered for removal only when the **document itself** shows it is wrong:
 
 - **it duplicates a key mureo can resolve** holding the same ad account — the record survives under the key the account is really stored under; or
-- **it is an empty stub** — no campaigns, no `totals`, no stored periods and no settings of your own. Note that an empty `account_id` does *not* make a stub: an entry that never said which account it describes can still hold every figure a platform has.
+- **it is an empty stub** — no campaigns, no `totals`, no stored periods, no settings of your own and no `not_collected` note. Note that an empty `account_id` does *not* make a stub: an entry that never said which account it describes can still hold every figure a platform has. A **note is not nothing** either: a platform that failed on its very first collection has no figures at all, so the note is the whole entry — and it is the only thing in the document saying why that platform has none. Nothing re-derives it (a later run that succeeds retires it; one that fails again writes a new note about a new attempt), so an entry holding only a note is reported and handed back rather than removed as empty.
 
 Everything else it finds is **reported and handed back to you**, with the reason under each block:
 
@@ -315,7 +315,7 @@ mureo repair platform-key --all
 mureo repair platform-key --all --apply
 ```
 
-The dry run names the key, the ad account, how many campaigns the entry carries, whether it holds a `totals` rollup and which windows it covers with each window's fetch time — for the entry being removed **and** for every other entry holding the same ad account, whether or not mureo can resolve those — then states why it can go and exactly what would change:
+The dry run names the key, the ad account, how many campaigns the entry carries, whether it holds a `totals` rollup, which windows it covers with each window's fetch time, and any `not_collected` note — for the entry being removed **and** for every other entry holding the same ad account, whether or not mureo can resolve those — then states why it can go and exactly what would change:
 
 ```
   logly_ads — mureo cannot resolve this key.
@@ -393,6 +393,20 @@ Nothing is ever merged or summed: two partial entries added together over-count 
     clear them here, then run this command again.
 ```
 
+**An entry that failed to collect** carries a `not_collected` note (#638) and nothing else, and the note is stated among what it holds — it is why that platform shows no figures, and no sync brings it back:
+
+```
+    This entry holds:
+      ad account:  1234567890
+      campaigns:   0
+      totals:      none stored
+      periods:     none stored
+      collection:  FAILED 2026-08-13T04:00:00+00:00 — no sync restores this note
+                   the access token expired
+```
+
+A note does not make an entry unremovable the way `conversion_action_types` does — an entry that duplicates a key mureo can resolve is still a duplicate. It does change what the block claims: "holds nothing a sync cannot refill" is replaced by *"every figure in it is re-fetchable. The collection note below is not: no sync brings that back, and removing this entry removes it."*
+
 `--apply` backs STATE.json up first, timestamped, and prints the command that restores it:
 
 ```
@@ -424,6 +438,16 @@ One ad account stored under two keys that **both** name real platforms is the ca
 One ad account (1234567890) is stored under platform keys that
 BOTH name real platforms (plugin:mureo-logly-bridge, logly_ads_context), so its spend,
 conversions and CPA are counted twice.
+What each entry holds:
+  plugin:mureo-logly-bridge
+    campaigns:   0
+    totals:      stored, covering LAST_30_DAYS, fetched 2026-07-07
+    periods:     YESTERDAY (fetched 2026-08-17T10:17:42+09:00)
+  logly_ads_context
+    campaigns:   3
+    totals:      none stored
+    periods:     YESTERDAY (fetched 2026-08-13); LAST_30_DAYS (fetched 2026-08-13)
+
 mureo does not choose between them: the two entries usually hold different
 partial figures, so dropping either under-counts as much as adding them
 together over-counts. Decide which entry holds the right figures, then
@@ -431,6 +455,8 @@ remove the other by naming it:
   mureo repair platform-key --key <the key to remove> --drop-duplicate
 That shows what it would do and changes nothing until you add --apply.
 ```
+
+**Both entries are described in the block that asks for the decision**, through the same helpers every other block uses, so the decision and its evidence are on one screen. Asking which entry holds the right figures while showing neither entry's figures left an operator with nothing to weigh; naming either key without `--apply` did print the comparison, but nothing said so.
 
 `--drop-duplicate` is **your decision, recorded** — it is not mureo choosing, and it is not a general "delete this platform entry" command:
 

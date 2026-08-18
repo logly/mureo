@@ -1,5 +1,77 @@
 ## [Unreleased]
 
+### Fixed
+
+- **A platform entry holding only a "why this was not collected" note was
+  deleted as empty** (#643). `mureo repair platform-key` removes an entry the
+  document itself shows to be wrong, and one of those two proofs is that the
+  entry stores nothing a removal could lose. `not_collected` (#638) was not
+  counted, so an entry whose only content was the note read as *nothing at
+  all* — and a platform that failed on its **first** collection has no
+  campaigns, no `totals` and no `periods`, which is exactly the entry both
+  writers create on purpose, because a platform that never collected is the
+  one an operator can least diagnose.
+
+  The note belongs on the `conversion_action_types` side of the line this
+  command already draws (#617). The licence to drop figures is that figures
+  come back; a note does not. A later run either succeeds — retiring it — or
+  fails again and writes a **new** note about a **new** attempt, so the record
+  of the earlier failure is gone for good. That matters most where it was
+  least visible: `DROP_EMPTY_STUB` is reached only for a key this machine
+  cannot resolve, and resolvability is a fact about the **machine**, not the
+  entry (#609/#631). A colleague's laptop without the bridge installed, or one
+  where it was uninstalled, ran `--all` and silently dropped the single record
+  explaining why that platform showed no figures — on precisely the machine
+  where the platform was invisible anyway.
+
+  The note is now part of what the dry run says an entry holds, beside the
+  campaign count, the `totals` window and the stored periods:
+
+  ```
+        collection:  FAILED 2026-08-13T04:00:00+00:00 — no sync restores this note
+                     the access token expired
+  ```
+
+  It is not a veto the way `conversion_action_types` is: an entry duplicating
+  a key mureo can resolve is still a duplicate, because what makes a duplicate
+  never depended on the entry being full. What changes is the claim printed
+  above it — *"holds nothing a sync cannot refill"* is not said of an entry
+  whose note the same block calls unrecoverable two lines further down.
+
+- **The block asking which duplicate to keep showed neither entry's figures**
+  (#645). When one ad account is stored under two keys that BOTH name real
+  platforms, mureo will not choose — the entries usually hold different
+  partial figures, so dropping either under-counts as much as summing
+  over-counts — and since #636 it prints the command that records the
+  operator's decision. It printed the account id, the two key names and
+  nothing else, then asked them to *"decide which entry holds the right
+  figures"*.
+
+  The comparison already existed: naming either key with `--drop-duplicate`
+  and no `--apply` prints the named entry and its sibling side by side. But
+  nothing in the block that asks for the decision said so, so an operator who
+  is not an engineer was told to decide and had nothing on screen to decide
+  from. **Both entries are now described in the block that asks**, through the
+  same helpers every other block uses — the campaign count, the `totals`
+  window and its fetch time, the per-period rollups, any
+  `conversion_action_types` and any collection note — so there is one wording
+  of one fact and the decision and its evidence are on one screen:
+
+  ```
+  What each entry holds:
+    plugin:mureo-logly-bridge
+      campaigns:   0
+      totals:      stored, covering LAST_30_DAYS, fetched 2026-07-07
+      periods:     YESTERDAY (fetched 2026-08-17T10:17:42+09:00)
+    logly_ads_context
+      campaigns:   3
+      totals:      none stored
+      periods:     YESTERDAY (fetched 2026-08-13); LAST_30_DAYS (fetched 2026-08-13)
+  ```
+
+  An entry holding nothing says so line by line rather than going blank, and
+  the runnable next step still follows underneath.
+
 ## [0.10.48] - 2026-08-18
 
 ### Added

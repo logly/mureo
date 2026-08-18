@@ -34,8 +34,9 @@ removal only on one of two answers:
   same ad account and mureo CAN resolve it. The record survives under the key
   the account is really stored under, so this one is a second copy.
 - :data:`DROP_EMPTY_STUB` — the entry stores nothing at all: no campaigns, no
-  ``totals``, no ``periods`` and no operator-declared setting. There is
-  nothing in it to lose, whoever the key turns out to belong to.
+  ``totals``, no ``periods``, no operator-declared setting and no
+  collection-failure note. There is nothing in it to lose, whoever the key
+  turns out to belong to.
 
 Everything else unresolvable is reported as a :class:`PlatformKeyFinding` and
 handed back, the way an undecidable duplicate already is. Note what does NOT
@@ -83,6 +84,22 @@ command already asks is skippable with ``--yes``, which is exactly how the
 sweep this feature leads with (``--all --apply --yes``) is run, so a second
 prompt would protect nobody on the path that matters. A setting only an
 operator can supply is also, by definition, not mureo's to decide.
+
+The other thing a sync does not bring back (#643)
+-------------------------------------------------
+``not_collected`` (#638) records that a collection failed at a stated time.
+Nothing re-derives that either: a later run that succeeds retires the note,
+and one that fails again writes a NEW note about a NEW attempt, so the record
+of the earlier failure is gone. It therefore falls on the same side of the
+line as the field above, and :attr:`PlatformEntryFacts.is_empty_stub` counts
+it — an entry whose only content is a note is not "nothing".
+
+The difference from #617 is what that buys. A note does not veto a removal
+the way ``conversion_action_types`` does: a note-only entry duplicating a key
+mureo can resolve is still :data:`DROP_DUPLICATE`, because what makes a
+duplicate never depended on the entry being full. What the note stops is the
+entry being deleted as EMPTY, which is the case where nothing else in the
+document explains why that platform has no figures at all.
 
 Drop, never merge
 -----------------
@@ -161,7 +178,7 @@ DROP_DUPLICATE = "duplicate"
 """Offered: a key mureo CAN resolve holds the same ad account."""
 
 DROP_EMPTY_STUB = "empty_stub"
-"""Offered: the entry stores nothing — no figures, no declared settings."""
+"""Offered: the entry stores nothing — no figures, no settings, no note."""
 
 DROP_CHOSEN_DUPLICATE = "chosen_duplicate"
 """Offered: the operator NAMED this key, and another key holds its account.
@@ -215,6 +232,16 @@ class PlatformEntryFacts:
     it is not a figure but a setting an operator declared, and it is the one
     thing in the entry no sync restores (#617). A preview can only print what
     this dataclass carries, so leaving it out was what made the loss silent.
+
+    ``not_collected_reason`` / ``not_collected_attempted_at`` are the note
+    #638 added, split into the two strings a preview prints (#643). They have
+    the same property: a note records that a collection failed at a stated
+    time, and no later run re-derives it — a successful one retires it, a
+    second failure writes a new note about a new attempt. Relayed verbatim,
+    and taken from the entry as STORED: whether a surface should still SHOW a
+    note is the read side's rule (:func:`mureo.web.reports.
+    _platform_not_collected`), while what a removal would take is what the
+    entry holds.
     """
 
     key: str
@@ -226,22 +253,35 @@ class PlatformEntryFacts:
     totals_fetched_at: str | None
     rollups: tuple[RollupFacts, ...]
     conversion_action_types: tuple[str, ...] = ()
+    not_collected_reason: str | None = None
+    not_collected_attempted_at: str | None = None
 
     @property
     def is_empty_stub(self) -> bool:
         """Does this entry store nothing a removal could lose?
 
-        No campaigns, no ``totals``, no per-period rollups and no declared
-        conversion allow-list. An empty ``account_id`` deliberately does NOT
-        count towards this: the shape reported from the field carries one, and
-        an entry that declined to name its account can still hold every figure
-        a platform has (#616).
+        No campaigns, no ``totals``, no per-period rollups, no declared
+        conversion allow-list and no collection-failure note. An empty
+        ``account_id`` deliberately does NOT count towards this: the shape
+        reported from the field carries one, and an entry that declined to
+        name its account can still hold every figure a platform has (#616).
+
+        The note is counted because removing it loses it (#643). A platform
+        that failed on its FIRST collection has no campaigns, no ``totals``
+        and no ``periods`` — the note is the whole entry, and both writers
+        create exactly that, because a platform that never collected is the
+        one an operator can least diagnose. :data:`DROP_EMPTY_STUB` is
+        reached only under a key mureo cannot resolve, which is a fact about
+        the MACHINE (#609/#631), so counting it is what stops the record of
+        why a platform has no figures being deleted as "empty" on precisely
+        the machines where that platform is invisible anyway.
         """
         return not (
             self.campaign_count
             or self.has_totals
             or self.rollups
             or self.conversion_action_types
+            or self.not_collected_reason
         )
 
 
@@ -347,8 +387,30 @@ def _rollup_fetched_at(rollup: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def _describe(key: str, entry: PlatformState) -> PlatformEntryFacts:
-    """Shape one ``platforms`` entry into :class:`PlatformEntryFacts`."""
+def _note_field(note: object, field: str) -> str | None:
+    """One string off a ``not_collected`` note, or ``None`` (#643).
+
+    Tolerant for the same reason :func:`_rollup_fetched_at` is: the document
+    is already known to be wrong in at least one way, and
+    :func:`~mureo.context.state_codec._parse_not_collected` is not the only
+    way a :class:`~mureo.context.models.PlatformState` can be built.
+    """
+    if not isinstance(note, dict):
+        return None
+    value = note.get(field)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def describe_platform_entry(key: str, entry: PlatformState) -> PlatformEntryFacts:
+    """Shape one ``platforms`` entry into :class:`PlatformEntryFacts`.
+
+    Public because the preview describes entries the plan never selected: an
+    undecidable duplicate is handed back rather than planned, and the block
+    asking which of two entries holds the right figures has to show both
+    (#645). Building a second description there would be a second answer to
+    "what does this entry hold", free to drift from the one every other block
+    prints.
+    """
     periods: Mapping[str, Any] = (
         entry.periods if isinstance(entry.periods, dict) else {}
     )
@@ -365,6 +427,8 @@ def _describe(key: str, entry: PlatformState) -> PlatformEntryFacts:
             for period, rollup in periods.items()
         ),
         conversion_action_types=tuple(entry.conversion_action_types or ()),
+        not_collected_reason=_note_field(entry.not_collected, "reason"),
+        not_collected_attempted_at=_note_field(entry.not_collected, "attempted_at"),
     )
 
 
@@ -446,9 +510,9 @@ def plan_platform_keys(
         named = key in chosen
         if not named and not is_unresolvable_platform_key(key):
             continue
-        facts = _describe(key, entry)
+        facts = describe_platform_entry(key, entry)
         same_account = tuple(
-            _describe(other, platforms[other])
+            describe_platform_entry(other, platforms[other])
             for other in platform_keys_for_account(platforms, entry.account_id)
             if other != key
         )
@@ -601,6 +665,7 @@ __all__ = [
     "RepairOutcome",
     "RollupFacts",
     "apply_state_file_repairs",
+    "describe_platform_entry",
     "drop_platform_entries",
     "is_unresolvable_platform_key",
     "plan_platform_key_repairs",
