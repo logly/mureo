@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.10.48] - 2026-08-18
+
 ### Added
 
 - **A platform can now say WHY its figures did not move** (#638).
