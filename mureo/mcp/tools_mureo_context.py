@@ -278,11 +278,20 @@ _CAMPAIGN_PROPERTY = {
                 "detect a second entry for the same account."
             ),
         },
-        "bidding_strategy_type": {"type": "string"},
+        "bidding_strategy_type": {
+            "type": "string",
+            "description": (
+                "Bid strategy as the platform itself names it, verbatim. "
+                "Omit it for a platform that does not select delivery by a "
+                "bid — never borrow another platform's strategy name."
+            ),
+        },
         "bidding_details": {
             "type": "object",
             "description": (
-                "Free-form bidding detail (e.g. {'target_cpa': 5000}). One "
+                "Free-form bidding detail in the platform's own vocabulary "
+                "(e.g. {'target_cpa': 5000}); omit it alongside "
+                "bidding_strategy_type where the platform has neither. One "
                 "key is read by mureo: for Google Ads, "
                 "'bidding_strategy_system_status' — the value "
                 "google_ads_campaigns_get / google_ads_campaigns_diagnose "

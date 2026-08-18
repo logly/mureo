@@ -447,8 +447,8 @@ verbatim and should surface it to the operator rather than retrying.
 | `campaign_id` | string | Yes | Campaign identifier |
 | `campaign_name` | string | Yes | Human-readable name |
 | `status` | string | Yes | `ENABLED`, `PAUSED`, or `REMOVED` |
-| `bidding_strategy_type` | string | No | e.g., `MAXIMIZE_CONVERSIONS`, `TARGET_CPA` |
-| `bidding_details` | object | No | Strategy-specific details (target_cpa, target_roas, etc.) |
+| `bidding_strategy_type` | string | No | The platform's OWN name for the strategy, verbatim (Google Ads e.g. `MAXIMIZE_CONVERSIONS`, `TARGET_CPA`). Omit for a platform that does not select delivery by a bid — see `../_mureo-shared/SKILL.md` → *Status vocabulary contract* |
+| `bidding_details` | object | No | Strategy-specific details (target_cpa, target_roas, etc.); omitted alongside `bidding_strategy_type` |
 | `daily_budget` | number | No | Daily budget in currency units |
 | `device_targeting` | array | No | Device bid modifiers |
 | `campaign_goal` | string | No | Business objective for this campaign |

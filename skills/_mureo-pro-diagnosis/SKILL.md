@@ -38,7 +38,7 @@ When analyzing a campaign, work through issues in this priority:
 
 ```
 1. Structure    → Is the account structure appropriate for the budget?
-2. Data         → Is there enough conversion data for the bidding strategy?
+2. Data         → Is there enough conversion data for the bidding strategy, where the platform has one?
 3. Targeting    → Are keywords/audiences reaching the right people?
 4. Creative     → Are ads relevant, compelling, and aligned with the LP?
 5. Bids/Budget  → Are bid targets and budgets realistic?

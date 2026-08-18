@@ -49,7 +49,7 @@ Manual operation in the platform UI and mureo-driven operation coexist — most 
    - Campaigns removed/paused
    - Budget changes
    - Status changes
-   - Bidding strategy changes
+   - Bidding strategy changes, on the platforms that have one (see `../_mureo-shared/SKILL.md` → *Status vocabulary contract*)
    - **Ad-level status changes** — ads added or removed, plus **any change to a stored status field**, diffed against the `ads` the previous run stored: compare each ad's `status`, and its `effective_status` when the platform reports one, against the previous run's stored value for that *same* field, and report every difference. An ad **stopped delivering** when such a value moved away from the platform's active value — matched **case-insensitively**, so `ACTIVE`, `ENABLED` and `enabled` all count as active — which makes the limb fire on a platform that reports only one status field, in its own vocabulary, instead of falling through (see `../_mureo-shared/SKILL.md` → *Status vocabulary contract*). Changes mureo did not make are the point of this line: name them explicitly (see *Mixed operation*) instead of letting the new snapshot quietly replace the old.
 
 9. **Update `last_synced_at`** timestamp — use `server_now` from step 0 (the `mureo_state_*` write tools stamp it for you; on the Code `Write` path write that value yourself).

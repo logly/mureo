@@ -232,11 +232,25 @@ class KeywordMatchType(StrEnum):
 
 
 class BidStrategy(StrEnum):
-    """Stable identifiers for campaign bidding strategies."""
+    """Stable identifiers for campaign bidding strategies.
+
+    The first three members are auction strategies. ``NOT_APPLICABLE`` is
+    for a platform that does not select delivery by a bid at all — it
+    states that fact instead of misreporting itself as one of the three.
+    It is a **read-side descriptor only**: adapters reject it on a
+    create / update request, because it names the absence of a strategy
+    rather than a strategy to set.
+
+    ``bidding_strategy=None`` keeps its own, different meaning: **unknown
+    / not fetched**. The two must stay distinct — a field left empty
+    because nobody asked the platform yet must never read as "this
+    platform has no bid strategy".
+    """
 
     MANUAL_CPC = "manual_cpc"
     TARGET_CPA = "target_cpa"
     MAXIMIZE_CONVERSIONS = "maximize_conversions"
+    NOT_APPLICABLE = "not_applicable"
 
 
 # ---------------------------------------------------------------------------

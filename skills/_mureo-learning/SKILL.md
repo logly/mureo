@@ -65,15 +65,17 @@ Different actions need different wait times before evaluation:
 
 | Action Type | Observation Window | Why |
 |------------|-------------------|-----|
-| Budget change (>10%) | 7 days | Smart bidding needs ~7 days to re-learn |
+| Budget change (>10%) | 7 days | Where a budget step makes the platform re-learn (Google Ads Smart Bidding, Meta CBO), that takes ~7 days |
 | Keyword addition/removal | 14 days | Need enough impressions/clicks to evaluate |
 | Negative keyword addition | 14 days | Impact on CPA unfolds gradually |
 | Creative/ad copy change | 14 days | Ad rotation needs time to gather data |
-| Bid strategy change | 21 days | Full learning period for smart bidding |
+| Bid strategy change | 21 days | Full learning period on the platforms that have one — Google Ads Smart Bidding, Meta |
 | Audience/targeting change | 14 days | Need sufficient reach data |
 | Operation Mode change | 21 days | Compound effects across multiple campaigns |
 
 **Do NOT evaluate an action before its observation window has passed.**
+
+The *why* column is platform-conditional; the *window* is not. A platform that does not select delivery by a bid has no learning phase to wait out, but its numbers still need the same time to accumulate — keep the window and drop the learning-reset explanation, rather than narrating a re-learn it cannot have.
 
 ## Minimum Sample Sizes
 
@@ -124,7 +126,7 @@ Ask these questions:
 3. **Were there confounding factors?**
    - Did another change happen to the same campaign during the window?
    - Did seasonality, a holiday, or external event affect the data?
-   - Did a competitor enter or exit the auction?
+   - Did competitive pressure change? On an auction platform (Google Ads, Meta) that is a competitor entering or leaving the auction; on a platform that selects delivery some other way, ask what its own model exposes instead.
 
 4. **Does the direction match the hypothesis?**
    - If you added negative keywords expecting CPA to drop, did CPA actually drop?
@@ -225,7 +227,7 @@ When executing any write operation, record the context needed for future evaluat
 | Keyword change | impressions, clicks, conversions, cpa, ctr |
 | Creative change | impressions, clicks, ctr, conversions, cpa |
 | Targeting change | impressions, clicks, conversions, cpa, reach |
-| Bid strategy change | conversions, cpa, cost, impression_share |
+| Bid strategy change | conversions, cpa, cost — plus `impression_share` on Google Ads, which reports it. `impression_share` is NOT in the canonical metric vocabulary (`../_mureo-strategy/SKILL.md` → *Performance Metrics*): record it in the action_log entry only, never as a STATE.json metric |
 
 ## Consulting Past Evidence
 

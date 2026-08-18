@@ -43,7 +43,7 @@ The mureo plugin ABI consists of exactly the following:
 | `ChangeFeedProvider` Protocol shape (`platform` + `async fetch_change_events()`) — the opt-in change-import secondary Protocol (#545) | `mureo.change_import.protocol` | Stable (structural / `runtime_checkable`) |
 | `ExternalChange` / `ChangeFeedResult` / `ChangeImportOutcome` dataclass shapes and the `ChangeImportStatus` / `ImportVerdict` **enum values** | `mureo.change_import.models` | Stable (additive evolution allowed) |
 | Model dataclass shapes (`Campaign`, `Ad`, `Keyword`, ...) | `mureo.core.providers.models` | Stable (Phase 1; additive evolution allowed) |
-| Status / Kind / MatchType / BidStrategy **enum values** | `mureo.core.providers.models` | Stable |
+| Status / Kind / MatchType / BidStrategy **enum values** | `mureo.core.providers.models` | Stable (additive evolution allowed) |
 | Entry-point group names (`mureo.providers`, `mureo.skills`, `mureo.native_skills`) | `mureo.core.providers.registry` | Stable |
 | `ProviderEntry` field set and order | `mureo.core.providers.registry` | Stable |
 | `SkillEntry` field set | `mureo.core.skills.models` | Stable |
@@ -389,6 +389,35 @@ Every entity / DTO in `mureo.core.providers.models` is
   `CampaignStatus.PAUSED`).
 - **Changing the frozen=True invariant** (allowing mutation).
   Plugins may rely on dataclass instances being hashable.
+
+### Enum members
+
+Adding a member to a `mureo.core.providers.models` enum is
+**non-breaking** (minor), for the same reason as `Capability`
+(section 3): plugins use existing members as constants, and a new
+member does not invalidate an existing reference. A plugin that
+maps the enum exhaustively should map unknown members to its own
+fallback rather than raising. Removing or renaming a member is
+breaking (above).
+
+### `BidStrategy.NOT_APPLICABLE` vs `None`
+
+`BidStrategy` carries a `NOT_APPLICABLE` member for a platform that
+does not select delivery by a bid. The two ways a
+`bidding_strategy: BidStrategy | None` field can be non-committal
+mean **different** things, and the distinction is part of the ABI:
+
+| Value | Meaning |
+|---|---|
+| `BidStrategy.NOT_APPLICABLE` | This platform has no bid strategy. A fetched, final answer. |
+| `None` | Unknown / not fetched. Says nothing about the platform. |
+
+A provider that has no bid strategy reports `NOT_APPLICABLE` rather
+than picking the closest-looking auction member; it never leaves the
+field `None` to mean the same thing. `NOT_APPLICABLE` is a read-side
+descriptor: adapters reject it on `CreateCampaignRequest` /
+`UpdateCampaignRequest`, since it names the absence of a strategy
+rather than one to set.
 
 ### Currency convention
 

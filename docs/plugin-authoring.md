@@ -1105,7 +1105,7 @@ These are what providers **accept**:
 | `ExtensionStatus` | `ENABLED`, `PAUSED`, `REMOVED` | Same convention. |
 | `ExtensionKind` | `SITELINK`, `CALLOUT`, `CONVERSION` | Type-safe dispatch in `list_extensions` / `add_extension`. |
 | `KeywordMatchType` | `EXACT`, `PHRASE`, `BROAD` | |
-| `BidStrategy` | `MANUAL_CPC`, `TARGET_CPA`, `MAXIMIZE_CONVERSIONS` | |
+| `BidStrategy` | `MANUAL_CPC`, `TARGET_CPA`, `MAXIMIZE_CONVERSIONS`, `NOT_APPLICABLE` | `NOT_APPLICABLE` is for a platform that does not select delivery by a bid — report it instead of the closest-looking auction member. `None` still means *unknown / not fetched*, which is a different statement; read-side only (adapters reject it on a create/update request). |
 
 ### Currency and date conventions
 

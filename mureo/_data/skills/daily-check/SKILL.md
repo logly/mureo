@@ -78,7 +78,7 @@ Step 2b **imports** what mureo can fetch, so much of that work is now in `action
    - **EFFICIENCY_STABILIZE**: Analyze CPA trends across all platforms. Flag if CPA increased >10% on any platform.
    - **TURNAROUND_RESCUE**: Identify zero-conversion campaigns and cost spikes across all platforms.
    - **SCALE_EXPANSION**: Check budget utilization across all platforms. Flag underspending campaigns.
-   - **COMPETITOR_DEFENSE**: Run auction/competitive insights on key campaigns. Flag impression share drops >5%.
+   - **COMPETITOR_DEFENSE**: Run each platform's competitive insights where it publishes them — on Google Ads, auction insights and impression share — and flag impression share drops >5%. A platform that publishes no competitive data contributes nothing to this mode: report that gap rather than inferring competitor activity from its own delivery numbers.
    - **CREATIVE_TESTING**: Audit ad asset performance across all platforms. Flag underperforming creatives.
    - **LTV_QUALITY_FOCUS**: Review search term quality and audience alignment across all platforms.
 
