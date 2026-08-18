@@ -829,6 +829,194 @@ class TestOperatorDeclaredSettings:
 
 
 # ---------------------------------------------------------------------------
+# The other thing no sync brings back: a collection-failure note (#643)
+# ---------------------------------------------------------------------------
+
+
+class TestACollectionFailureNote:
+    """An entry whose only content is ``not_collected`` is not an empty stub.
+
+    ``is_empty_stub`` asks one question — does this entry store nothing a
+    removal could lose? — and a note is something a removal loses. It records
+    that a collection failed at a stated time, and nothing re-derives that: a
+    later run either succeeds, retiring the note, or fails again and writes a
+    new note about a new attempt. That puts it on the
+    ``conversion_action_types`` side of the line this module already draws
+    (#617), not the re-fetchable side.
+
+    A platform that failed on its FIRST collection has no campaigns, no
+    ``totals`` and no ``periods``, so the note is all there is — and both
+    writers create exactly that entry on purpose, because it is the case an
+    operator can least diagnose. Being unresolvable is a fact about the
+    MACHINE (#609/#631), so without this the note is dropped as "empty"
+    precisely on the machines where the operator cannot see the platform
+    either.
+    """
+
+    def test_a_note_only_entry_is_not_an_empty_stub(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    }
+                },
+            },
+        )
+
+        (finding,) = plan_platform_keys(read_state_file(path)).kept
+
+        assert finding.entry.is_empty_stub is False
+
+    def test_an_entry_with_nothing_at_all_still_is(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The note is what saves it, not the entry merely existing."""
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {"version": "2", "platforms": {"logly_ads": {"account_id": "1234567890"}}},
+        )
+
+        (repair,) = plan_platform_keys(read_state_file(path)).repairs
+
+        assert repair.entry.is_empty_stub is True
+        assert repair.reason == DROP_EMPTY_STUB
+
+    def test_a_note_only_entry_is_reported_and_handed_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Under a key mureo cannot resolve — the only way DROP_EMPTY_STUB is
+        reached at all, and the case where the note is the one record of why
+        this platform has no figures."""
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    }
+                },
+            },
+        )
+        before = path.read_bytes()
+
+        plan = plan_platform_keys(read_state_file(path))
+
+        assert plan.repairs == ()
+        (finding,) = plan.kept
+        assert finding.entry.key == "logly_ads"
+        assert finding.reason == KEEP_CARRIES_FIGURES
+        assert apply_state_file_repairs(path).changed is False
+        assert path.read_bytes() == before
+
+    def test_the_note_is_carried_into_the_facts_an_operator_reads(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``PlatformEntryFacts`` is what the preview can print, so a field
+        that is invisible there cannot be named before a confirmation — the
+        same reason ``conversion_action_types`` had to be carried (#617)."""
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    }
+                },
+            },
+        )
+
+        (finding,) = plan_platform_keys(read_state_file(path)).kept
+
+        assert finding.entry.not_collected_reason == "the access token expired"
+        assert finding.entry.not_collected_attempted_at == "2026-08-13T04:00:00+00:00"
+
+    def test_an_entry_with_figures_and_no_note_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The field is optional and additive: every entry written before
+        #638 carries none, and reads back as none."""
+        _pin_installed_platforms(monkeypatch)
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "totals": _logly_totals(9000.0, "2026-08-01T03:00:00+00:00"),
+                    }
+                },
+            },
+        )
+
+        (finding,) = plan_platform_keys(read_state_file(path)).kept
+
+        assert finding.entry.not_collected_reason is None
+        assert finding.entry.not_collected_attempted_at is None
+
+    def test_a_note_only_duplicate_of_a_resolvable_key_is_still_offered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The note changes what "empty" means, not what a duplicate is: the
+        record survives under the key the account is really stored under, and
+        DROP_DUPLICATE never asked whether the entry was empty."""
+        _pin_installed_platforms(monkeypatch, "logly_ads_context")
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    },
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "totals": _logly_totals(4500.0, "2026-08-12T03:00:00+00:00"),
+                    },
+                },
+            },
+        )
+
+        (repair,) = plan_platform_keys(read_state_file(path)).repairs
+
+        assert repair.entry.key == "logly_ads"
+        assert repair.reason == DROP_DUPLICATE
+
+
+# ---------------------------------------------------------------------------
 # Repair must stay possible (#609 left whole-document writes permissive)
 # ---------------------------------------------------------------------------
 

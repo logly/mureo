@@ -21,15 +21,24 @@ The claims it is responsible for
   being removed, so a run that left an account with no entry at all said
   nothing about it (#618).
 - **What no sync brings back.** ``conversion_action_types`` is printed
-  whenever an entry carries one (#617). A preview can only show what
-  ``PlatformEntryFacts`` carries, and the field's absence there is what made
-  the loss silent.
+  whenever an entry carries one (#617), and so is a ``not_collected`` note
+  (#643): a failed collection is not re-derivable either, and it is the one
+  thing an entry with no figures at all can still hold. A preview can only
+  show what ``PlatformEntryFacts`` carries, and the field's absence there is
+  what made the loss silent.
 - **The command that ends a finding mureo hands back.** A duplicate whose two
   keys both resolve is still mureo's to report and the operator's to decide —
   but "decide it yourself" with no runnable next step is what left the
   dashboard's card red for good (#636). The block now prints the command that
   records the decision, spelled from :data:`REPAIR_COMMAND` so it cannot drift
   from the command that runs it.
+- **The evidence for the decision mureo hands back.** "Decide which entry
+  holds the right figures" was printed above the account id and the two keys,
+  and nothing else — the one finding where the operator has to weigh the
+  entries themselves was the one that showed neither (#645). Both entries are
+  now described in the block that asks, through the same helpers every other
+  block uses, because a decision and its evidence split across two command
+  outputs is a decision made from memory.
 
 Every string that came out of STATE.json goes through ``terminal_safe``:
 the file is agent-writable, so its keys, account ids and timestamps are
@@ -50,6 +59,7 @@ from mureo.context.platform_repair import (
     KEEP_CARRIES_FIGURES,
     KEEP_CONVERSION_OVERRIDE,
     KEEP_NOT_A_DUPLICATE,
+    describe_platform_entry,
     is_unresolvable_platform_key,
 )
 
@@ -89,7 +99,32 @@ def _echo_entry_facts(
     typer.echo(f"{indent}campaigns:   {facts.campaign_count}")
     typer.echo(f"{indent}totals:      {_totals_line(facts)}")
     typer.echo(f"{indent}periods:     {_periods_line(facts)}")
+    _echo_collection_failure(facts, indent)
     _echo_conversion_override(facts, indent)
+
+
+def _echo_collection_failure(facts: PlatformEntryFacts, indent: str) -> None:
+    """Name a ``not_collected`` note whenever an entry carries one (#643).
+
+    Printed straight after the three lines it explains: an entry reading
+    ``campaigns: 0 / totals: none stored / periods: none stored`` is either a
+    platform that has nothing or a platform nobody could reach, and the note
+    is the only thing in the document that tells those apart.
+
+    Like ``conversion_action_types`` above, it is stated as unrecoverable,
+    because it is: a later collection that succeeds retires this note and one
+    that fails writes a new one about a new attempt, so removing the entry is
+    the end of the record that this attempt failed.
+    """
+    if not facts.not_collected_reason:
+        return
+    when = (
+        _safe(facts.not_collected_attempted_at)
+        if facts.not_collected_attempted_at
+        else "at a time it did not record"
+    )
+    typer.echo(f"{indent}collection:  FAILED {when} — no sync restores this note")
+    typer.echo(f"{indent}             {_safe(facts.not_collected_reason)}")
 
 
 def _echo_conversion_override(facts: PlatformEntryFacts, indent: str) -> None:
@@ -215,11 +250,29 @@ def _drop_reason_line(repair: PlatformKeyRepair) -> str:
         return (
             f"the same ad account is stored under {duplicated}, which\n    mureo CAN "
             f"resolve — so this entry duplicates a record that survives, and\n    "
-            f"holds nothing a sync cannot refill."
+            f"{_what_a_sync_refills(repair.entry)}"
         )
     return (
-        "the entry is an empty stub — no campaigns, no totals, no\n    stored periods "
-        "and no settings of your own. Removing it loses nothing."
+        "the entry is an empty stub — no campaigns, no totals, no\n    stored "
+        "periods, no settings of your own and no note about a failed\n    "
+        "collection. Removing it loses nothing."
+    )
+
+
+def _what_a_sync_refills(entry: PlatformEntryFacts) -> str:
+    """Is "the rest comes back" true of THIS entry? (#643)
+
+    The whole licence to drop a duplicate is that its figures are re-fetchable.
+    A ``not_collected`` note is not — and the block prints that note four
+    lines further down, so claiming the entry holds nothing a sync cannot
+    refill would make one block state both answers to one question, which is
+    the defect #618 was filed for one paragraph over.
+    """
+    if not entry.not_collected_reason:
+        return "holds nothing a sync cannot refill."
+    return (
+        "every figure in it is re-fetchable. The collection\n    note below is "
+        "not: no sync brings that back, and removing this entry\n    removes it."
     )
 
 
@@ -338,7 +391,7 @@ def _echo_kept_finding(finding: PlatformKeyFinding) -> None:
         unresolvable="mureo cannot resolve this key, and will NOT remove it.",
     )
     typer.echo("")
-    typer.echo(_KEPT_REASONS[finding.reason])
+    typer.echo(_kept_reason_line(finding))
     typer.echo("")
     typer.echo("    This entry holds:")
     _echo_entry_facts(finding.entry, "      ")
@@ -347,14 +400,63 @@ def _echo_kept_finding(finding: PlatformKeyFinding) -> None:
     typer.echo(_KEPT_NEXT_STEPS[finding.reason])
 
 
+def _kept_reason_line(finding: PlatformKeyFinding) -> str:
+    """The refusal, with its closing sentence made true of THIS entry.
+
+    Only :data:`KEEP_CARRIES_FIGURES` needs it: its whole argument is "the
+    entry may be the only record of what is below", and what is below is not
+    the same for every entry that reaches it. The other two refusals name a
+    field or the absence of a sibling, which is the same fact whatever the
+    entry holds.
+    """
+    reason = _KEPT_REASONS[finding.reason]
+    if finding.reason != KEEP_CARRIES_FIGURES:
+        return reason
+    return reason.format(loss=_what_removal_would_lose(finding.entry))
+
+
+def _what_removal_would_lose(facts: PlatformEntryFacts) -> str:
+    """What this kept entry is the only record OF (#643).
+
+    Before the note counted towards ``is_empty_stub``, a note-only entry was
+    dropped as an empty stub and never reached this refusal, so "the only
+    record of the figures below" was true of everything that did. Counting the
+    note routes exactly that entry here — the one with no figures at all — and
+    the sentence stopped being true the moment it could be printed.
+
+    The same shape as :func:`_what_a_sync_refills`: one fact, worded from what
+    the entry actually carries, rather than a claim that happens to hold for
+    the cases that used to arrive.
+    """
+    has_figures = bool(facts.campaign_count or facts.has_totals or facts.rollups)
+    if not facts.not_collected_reason:
+        return (
+            "So this entry may be the only record of the\n    figures below, and "
+            "mureo will not delete it on a guess."
+        )
+    if has_figures:
+        return (
+            "So this entry may be the only record of the\n    figures below AND of "
+            "why they stopped moving, and mureo will not delete\n    it on a guess."
+        )
+    return (
+        "What it holds is not figures but the note\n    below — the only record of "
+        "WHY this platform has none, on the very machine\n    where the platform is "
+        "invisible anyway. Nothing re-derives it, so mureo\n    will not delete it "
+        "on a guess."
+    )
+
+
+#: Why each kept entry stays. :data:`KEEP_CARRIES_FIGURES` is a TEMPLATE —
+#: its ``{loss}`` is filled by :func:`_what_removal_would_lose`, because what
+#: the entry would be the only record of is not the same for every entry that
+#: reaches that refusal. Read it through :func:`_kept_reason_line`, never raw.
 _KEPT_REASONS = {
     KEEP_CARRIES_FIGURES: (
         "    Why it stays: that is a fact about THIS machine, not about the "
         "entry — the\n    plugin that owns the key may simply not be installed "
         "here. Nothing in\n    STATE.json says the entry is wrong: no key mureo "
-        "can resolve holds its ad\n    account, and it is not empty. So this "
-        "entry may be the only record of the\n    figures below, and mureo will "
-        "not delete it on a guess."
+        "can resolve holds its ad\n    account, and it is not empty. {loss}"
     ),
     KEEP_CONVERSION_OVERRIDE: (
         "    Why it stays: it carries conversion_action_types — a conversion "
@@ -376,8 +478,8 @@ _KEPT_REASONS = {
 
 _KEPT_NEXT_STEPS = {
     KEEP_CARRIES_FIGURES: (
-        "    Yours to decide: install the plugin that owns this key, or check the "
-        "figures\n    and remove the entry yourself."
+        "    Yours to decide: install the plugin that owns this key, or check "
+        "what it\n    holds and remove the entry yourself."
     ),
     KEEP_CONVERSION_OVERRIDE: (
         "    Yours to decide: declare those action types on the entry you are "
@@ -423,6 +525,13 @@ def echo_undecidable_duplicates(
     records the decision. mureo still does not make it: the key is a
     placeholder the operator fills in.
 
+    It also shows what each entry holds (#645). The block asked which entry
+    holds the right figures while printing neither entry's figures, so the one
+    finding the command hands back was the one finding whose evidence was not
+    on screen. The comparison did exist — naming either key without
+    ``--apply`` prints it — but nothing here said so, and an operator holding
+    two command outputs in their head is not comparing them.
+
     ``removing`` is the keys THIS run already drops. A group one of them
     belongs to is not printed: the repair block above it has just said what
     happens to that account, and repeating "mureo does not choose between
@@ -443,6 +552,7 @@ def echo_undecidable_duplicates(
             f"keys that\nBOTH name real platforms ({keys}), so its spend, "
             f"conversions and CPA are\ncounted twice."
         )
+        _echo_group_entries(doc, group)
     typer.echo(
         "mureo does not choose between them: the two entries usually hold "
         "different\npartial figures, so dropping either under-counts as much as "
@@ -451,6 +561,34 @@ def echo_undecidable_duplicates(
     )
     typer.echo(f"  {REPAIR_COMMAND} --key <the key to remove> --drop-duplicate")
     typer.echo("That shows what it would do and changes nothing until you add --apply.")
+
+
+def _echo_group_entries(
+    doc: StateDocument | None, group: DuplicateAccountEntry
+) -> None:
+    """What each key in an undecidable group holds, side by side (#645).
+
+    Rendered through :func:`_echo_entry_facts`, the same helper every other
+    block uses, so the facts cannot be worded twice and drift. The ad account
+    is left off each entry because the sentence above has just said all of
+    them share it.
+
+    Every key the group NAMES gets a section, including one whose entry the
+    document no longer carries: a key printed as half of the decision and then
+    left undescribed is the gap this fixes, one key narrower.
+    """
+    platforms = doc.platforms if doc is not None and doc.platforms else {}
+    typer.echo("What each entry holds:")
+    for key in group.platform_keys:
+        entry = platforms.get(key)
+        typer.echo(f"  {_safe(key)}")
+        if entry is None:  # pragma: no cover - the group is built from the map
+            typer.echo("    (no entry under this key)")
+            continue
+        _echo_entry_facts(
+            describe_platform_entry(key, entry), "    ", show_account=False
+        )
+    typer.echo("")
 
 
 __all__ = [

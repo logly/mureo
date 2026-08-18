@@ -478,6 +478,221 @@ class TestThePreviewIsTrue:
         # And nothing was removed.
         assert state.read_bytes() == before
 
+    def test_a_collection_failure_note_is_stated(self, tmp_path: Path) -> None:
+        """#643. A platform that failed on its FIRST collection holds nothing
+        but the note, and the note is the one thing in the entry no sync
+        brings back. The dry run is where the operator reads what an entry
+        holds, so it has to say the note is there — and the entry is kept."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    }
+                },
+            },
+        )
+        before = state.read_bytes()
+
+        result = _run("--state-file", str(state), "--apply", "--yes")
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "the access token expired" in out
+        assert "2026-08-13T04:00:00+00:00" in out
+        assert "will NOT remove" in out
+        assert state.read_bytes() == before
+
+    def test_a_kept_note_only_entry_is_not_said_to_hold_figures(
+        self, tmp_path: Path
+    ) -> None:
+        """#643's own doing. Before the note counted towards ``is_empty_stub``
+        a note-only entry was dropped as an empty stub, so it never reached
+        this refusal and "the only record of the figures below" was true of
+        everything that did. Keeping it routes exactly the entry with no
+        figures here, and the sentence has to name what is really there."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "only record of the\n    figures below" not in out
+        assert "not figures but the note" in out
+        # …and the step it hands back does not send them to figures either.
+        assert "check the figures" not in out
+
+    def test_a_kept_entry_with_figures_keeps_the_original_sentence(
+        self, tmp_path: Path
+    ) -> None:
+        """The #616 case is untouched: an entry that does carry figures is
+        still described as the only record of them."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00Z",
+                        },
+                        "metrics_period": "LAST_30_DAYS",
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "only record of the\n    figures below, and mureo will" in out
+        assert "not figures but the note" not in out
+
+    def test_a_kept_entry_holding_both_names_both_losses(self, tmp_path: Path) -> None:
+        """Figures AND a note: neither half may be left out of the sentence
+        that argues for keeping the entry."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00Z",
+                        },
+                        "not_collected": {
+                            "attempted_at": "2026-08-15T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "figures below AND of why they stopped moving" in out
+
+    def test_a_note_on_an_entry_being_dropped_is_stated_first(
+        self, tmp_path: Path
+    ) -> None:
+        """#643. A duplicate of a resolvable key is still removed — the note
+        does not change what a duplicate is — but removing it loses the note,
+        so the operator reads it before the confirmation."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    },
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 4500.0,
+                            "fetched_at": "2026-08-12T03:00:00+00:00",
+                        },
+                    },
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "Found 1 platform entry" in out
+        assert "the access token expired" in out
+
+    def test_a_dropped_notes_loss_is_not_denied_two_lines_above_it(
+        self, tmp_path: Path
+    ) -> None:
+        """#643 meets #618. "Holds nothing a sync cannot refill" is the whole
+        licence to drop a duplicate, and it stops being true of an entry
+        carrying a note the same block prints as unrecoverable. One block, one
+        answer."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    },
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 4500.0,
+                            "fetched_at": "2026-08-12T03:00:00+00:00",
+                        },
+                    },
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "holds nothing a sync cannot refill" not in out
+        assert "no sync brings that back" in out
+
+    def test_an_entry_with_no_note_keeps_the_plain_licence(
+        self, tmp_path: Path
+    ) -> None:
+        """And the caveat is not printed over every duplicate: an entry with
+        no note holds nothing a sync cannot refill, which is the ordinary
+        case and the ordinary sentence."""
+        state = tmp_path / "STATE.json"
+        _reported_state(state)
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        assert "holds nothing a sync cannot refill" in result.output
+
     def test_two_entries_in_one_plan_never_claim_the_others_are_untouched(
         self, tmp_path: Path
     ) -> None:
@@ -799,6 +1014,175 @@ class TestChoosingWhichDuplicateToDrop:
         assert "--drop-duplicate" in result.output
         # …and it does not first tell the operator there is nothing to repair.
         assert "Nothing to repair" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# The decision and its evidence on one screen (#645)
+# ---------------------------------------------------------------------------
+
+
+def _entry_lines(output: str, key: str) -> list[str]:
+    """The lines indented under ``key``'s own line in a printed block.
+
+    The keys also appear inside the sentence naming the group, so the section
+    is located by a line that is nothing BUT the key.
+    """
+    lines = output.splitlines()
+    starts = [i for i, line in enumerate(lines) if line.strip() == key]
+    assert starts, f"{key} is never printed as a section of its own:\n{output}"
+    start = starts[0]
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    body: list[str] = []
+    for line in lines[start + 1 :]:
+        if not line.strip():
+            break
+        if len(line) - len(line.lstrip()) <= indent:
+            break
+        body.append(line.strip())
+    return body
+
+
+class TestTheUndecidableBlockShowsTheEvidence:
+    """ "Decide which entry holds the right figures" needs the figures on screen.
+
+    The block that hands the decision back named the account and the two keys
+    and stopped, so the operator was asked to weigh two entries whose contents
+    were nowhere on the page. The comparison exists — naming either key
+    without ``--apply`` prints it — but nothing in the block that asks for the
+    decision says so, and a decision and its evidence held in two separate
+    command outputs is a decision made from memory.
+    """
+
+    def test_every_key_named_in_the_group_has_its_facts_printed(
+        self, tmp_path: Path
+    ) -> None:
+        """Pinned over the group the module itself reports, not over two
+        hard-coded key names: whatever ``undecidable_groups`` names, the block
+        has to describe."""
+        from mureo.cli._repair_preview import undecidable_groups
+        from mureo.context.state import read_state_file
+
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+        (group,) = undecidable_groups(read_state_file(state))
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        for key in group.platform_keys:
+            body = _entry_lines(result.output, key)
+            assert [line.split(":")[0] for line in body[:3]] == [
+                "campaigns",
+                "totals",
+                "periods",
+            ], body
+        # Both fetch times — the thing the operator is actually comparing.
+        assert "2026-08-01T03:00:00+00:00" in result.output
+        assert "2026-08-12T03:00:00+00:00" in result.output
+
+    def test_an_entry_holding_nothing_says_so_rather_than_going_blank(
+        self, tmp_path: Path
+    ) -> None:
+        """An empty section under a key would read as "mureo did not look"."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_context": {"account_id": "1234567890"},
+                    "google_ads": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 4500.0,
+                            "fetched_at": "2026-08-12T03:00:00+00:00",
+                        },
+                    },
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        body = _entry_lines(result.output, "logly_ads_context")
+        assert body[0].startswith("campaigns:")
+        assert body[0].endswith("0")
+        assert body[1] == "totals:      none stored"
+        assert body[2] == "periods:     none stored"
+
+    def test_the_facts_are_worded_by_the_same_helpers_as_the_repair_preview(
+        self, tmp_path: Path
+    ) -> None:
+        """One wording of one fact. A second rendering of "what this entry
+        holds" is free to drift from the first, and the operator comparing a
+        repair block with this one would be comparing two vocabularies."""
+        from mureo.cli._repair_preview import _periods_line, _totals_line
+        from mureo.context.platform_repair import describe_platform_entry
+        from mureo.context.state import read_state_file
+
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+        doc = read_state_file(state)
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        for key, entry in doc.platforms.items():
+            facts = describe_platform_entry(key, entry)
+            body = _entry_lines(result.output, key)
+            assert f"totals:      {_totals_line(facts)}" in body
+            assert f"periods:     {_periods_line(facts)}" in body
+
+    def test_a_collection_failure_note_is_part_of_the_evidence(
+        self, tmp_path: Path
+    ) -> None:
+        """#643 meets #645: the note explains why one side of the duplicate
+        has no figures, which is exactly what the decision turns on."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_context": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    },
+                    "google_ads": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 4500.0,
+                            "fetched_at": "2026-08-12T03:00:00+00:00",
+                        },
+                    },
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        body = _entry_lines(result.output, "logly_ads_context")
+        assert any("the access token expired" in line for line in body), body
+
+    def test_the_command_that_records_the_decision_still_follows(
+        self, tmp_path: Path
+    ) -> None:
+        """The evidence is added to the block #636 built, not put in place of
+        it: the runnable next step is still the last thing on screen."""
+        state = tmp_path / "STATE.json"
+        _both_keys_resolve_state(state)
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "--drop-duplicate" in out
+        assert out.index("What each entry holds:") < out.index("--drop-duplicate")
 
 
 # ---------------------------------------------------------------------------
