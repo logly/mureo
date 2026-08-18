@@ -1179,6 +1179,36 @@ def test_create_campaign_with_end_date_raises_unsupported(
 
 
 @pytest.mark.unit
+def test_create_campaign_rejects_not_applicable_bid_strategy(
+    adapter: GoogleAdsAdapter, mock_client: Mock
+) -> None:
+    """``BidStrategy.NOT_APPLICABLE`` describes a platform that has no bid
+    strategy (#647). It is a read-side descriptor, so the write path must
+    refuse it rather than send ``NOT_APPLICABLE`` to Google Ads as if it
+    were a strategy."""
+    request = CreateCampaignRequest(
+        name="Test",
+        daily_budget_micros=1_000_000,
+        bidding_strategy=BidStrategy.NOT_APPLICABLE,
+    )
+    with pytest.raises(UnsupportedOperation, match="NOT_APPLICABLE"):
+        adapter.create_campaign(request)
+    assert mock_client.create_campaign.await_count == 0
+
+
+@pytest.mark.unit
+def test_update_campaign_rejects_not_applicable_bid_strategy(
+    adapter: GoogleAdsAdapter, mock_client: Mock
+) -> None:
+    """Same contract on the update path — and no client call is issued."""
+    request = UpdateCampaignRequest(bidding_strategy=BidStrategy.NOT_APPLICABLE)
+    with pytest.raises(UnsupportedOperation, match="NOT_APPLICABLE"):
+        adapter.update_campaign("111", request)
+    assert mock_client.update_campaign.await_count == 0
+    assert mock_client.update_campaign_status.await_count == 0
+
+
+@pytest.mark.unit
 def test_create_campaign_passes_amount_micros_directly(
     adapter: GoogleAdsAdapter, mock_client: Mock
 ) -> None:

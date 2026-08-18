@@ -610,8 +610,20 @@ campaign snapshot's `status` and in each `ads[]` entry's `status` /
   `mureo/core/providers/models.py`, whose values are the public ABI) — so
   those lowercase values are what its STATE.json carries. Do not translate
   them into another platform's spelling.
-- **A platform that exposes no delivery status omits the field** rather than
+- **A platform that does not have the concept omits the field** rather than
   having one invented for it: only `ad_id` is required on an `ads[]` entry.
+  This limb is not about statuses alone — it governs every platform-conditional
+  field in the snapshot, `bidding_strategy_type` and `bidding_details`
+  included. Pricing and delivery selection differ per platform: a platform that
+  does not select delivery by a bid stores no bid strategy, and no skill may
+  require one of it or narrate an auction, a win rate, a bid floor or a
+  smart-bidding learning phase for it. Those are facts about the platforms that
+  work that way, not facts about advertising. Metrics follow the same limb
+  (`../_mureo-strategy/SKILL.md` → *Performance Metrics*): **a platform whose
+  own primary figure has no canonical key omits it rather than borrowing a key
+  that means something else** — writing an eCPM-priced network's selection
+  price into `cpa` or `ctr` makes every consumer of that number wrong. Name
+  such a figure in prose instead, in the platform's own words.
 
 The `/daily-check` and `/sync-state` diffs compare the **stored previous**
 value against the **stored current** value **case-insensitively**, so any

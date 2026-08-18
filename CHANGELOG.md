@@ -2,6 +2,54 @@
 
 ### Fixed
 
+- **Auction and smart-bidding semantics were stated as unconditional facts**
+  (#647). mureo's platform-agnostic instruction text and its shared entity
+  vocabulary described bidding, auctions and smart-bidding learning phases as
+  properties of advertising rather than properties of the platforms that work
+  that way. On a platform whose delivery is not selected by a bid, those
+  sentences are simply false — and the agent carried them over anyway, writing
+  routine report lines and stored learning entries about a campaign in another
+  platform's terms. A learning entry written under the wrong model outlives the
+  session that produced it: nothing downstream re-derives whether the premise
+  held.
+
+  The wording to copy already existed in the tree — `budget-pacing` qualifies
+  the >20 % budget-step warning with the platforms whose learning phase it can
+  reset, and `daily-check`'s learning-state guard names the platform states it
+  is about. The unqualified twins are now qualified the same way, in
+  `budget-rebalance`, `_mureo-learning` (observation windows, confounding
+  factors, metrics-to-record), `daily-check` (`COMPETITOR_DEFENSE`),
+  `incident-postmortem` (the cause taxonomy), `sync-state` (the diff list) and
+  `_mureo-pro-diagnosis` (the diagnostic order). `impression_share` is now
+  attributed to Google Ads and explicitly marked as outside the canonical
+  metric vocabulary, rather than listed as if every platform reported it.
+
+  The **status vocabulary contract** in `_mureo-shared` already carried exactly
+  this discipline for delivery-status strings: store them verbatim, never
+  translate them into another platform's spelling, and let a platform that has
+  no such thing omit the field rather than have one invented for it. That last
+  limb now covers every platform-conditional field in the snapshot —
+  `bidding_strategy_type` and `bidding_details` included — so no skill requires
+  a bid strategy of a platform that has none, or narrates an auction, a win
+  rate or a learning phase for it. Metrics fall under the same limb: a platform
+  whose own primary figure has no canonical key omits it rather than borrowing
+  a key that means something else, because an eCPM-priced network's selection
+  price written into `cpa` makes every consumer of that number wrong.
+
+  `BidStrategy` gained a `NOT_APPLICABLE` member (an additive, non-breaking
+  enum change per `docs/ABI-stability.md` §5). Before it, a platform with no
+  bid strategy had to name itself one of three auction strategies or leave the
+  field empty — and empty already means *unknown / not fetched*, so the two
+  statements were indistinguishable. They are now distinct and documented;
+  `NOT_APPLICABLE` is read-side only and the Google Ads adapter refuses it on a
+  create/update request.
+
+  `mureo_state_upsert_campaign` is the single cross-platform state-write tool,
+  so its schema sits in the model's context in every session the mureo server
+  is loaded in. Its `bidding_strategy_type` had no description at all, and the
+  sibling `bidding_details` opened with a Google-shaped example. Both now state
+  the platform-conditional contract first, in two lines.
+
 - **A platform entry holding only a "why this was not collected" note was
   deleted as empty** (#643). `mureo repair platform-key` removes an entry the
   document itself shows to be wrong, and one of those two proofs is that the

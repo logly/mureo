@@ -38,6 +38,9 @@ class UnsupportedOperation(GoogleAdsAdapterError):  # noqa: N818
         * ``set_extension_status(..., ExtensionStatus.ENABLED |
           ExtensionStatus.PAUSED)`` — the existing extension mixins
           expose remove-only mutations.
+        * ``create_campaign`` / ``update_campaign`` carrying
+          ``BidStrategy.NOT_APPLICABLE`` — that member describes a
+          platform with no bid strategy, so there is nothing to set.
     """
 
 

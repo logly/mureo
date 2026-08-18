@@ -30,10 +30,10 @@ After the fire is out, learn from it. A rescue that is never reflected on repeat
    - **Outcomes** — for each action whose `observation_due` window has now closed (its date is on or before `server_now`'s date), call `mureo_outcome_evaluate` (`before` = that entry's `metrics_at_action`, `after` = current numbers) for a deterministic improved / regressed / inconclusive verdict per action. For actions still inside their window, mark them **still observing** — do not score them (respect `../_mureo-learning/SKILL.md`).
 
 3. **Root-cause analysis**: Classify the cause into one (or a ranked combination) of four buckets, with the **evidence** for each:
-   - **Platform-side** — a bid-strategy misfire, a budget/CBO change, an auction/CPM shift, a disapproval. Evidence: change history, CPM/CPC trend, delivery diagnostics.
+   - **Platform-side** — a budget/CBO change, a disapproval, and on the platforms that price delivery by auction (Google Ads, Meta) a bid-strategy misfire or an auction shift. Evidence: change history, the platform's own unit-cost trend (CPC / CPM where it reports one), delivery diagnostics.
    - **Site-side** — a landing-page break, a checkout/lead-form failure, a speed regression. Evidence: CVR collapse with stable CTR, a deploy that lines up with the drop.
    - **Measurement-side** — a pixel/tag break, a conversion-action misconfig, an attribution change. Evidence: conversions flatlining while sessions/clicks hold (cross-check `/tracking-health`).
-   - **External** — seasonality, a holiday, a competitor entering the auction, a demand shift. Evidence: same-period-last-year, category-wide movement, impression-share change.
+   - **External** — seasonality, a holiday, a demand shift, and on Google Ads / Meta a competitor entering the auction. Evidence: same-period-last-year, category-wide movement, and an impression-share change where the platform reports one.
    Run a **5-whys** chain until you reach a **controllable cause** (something the operator can change) or an **honest unknown** (say "root cause not determinable from available data" rather than forcing a story). Do not stop at the first symptom.
 
 4. **What-worked / what-didn't table** — grade the response, not just the incident:
