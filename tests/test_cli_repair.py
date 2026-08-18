@@ -510,6 +510,100 @@ class TestThePreviewIsTrue:
         assert "will NOT remove" in out
         assert state.read_bytes() == before
 
+    def test_a_kept_note_only_entry_is_not_said_to_hold_figures(
+        self, tmp_path: Path
+    ) -> None:
+        """#643's own doing. Before the note counted towards ``is_empty_stub``
+        a note-only entry was dropped as an empty stub, so it never reached
+        this refusal and "the only record of the figures below" was true of
+        everything that did. Keeping it routes exactly the entry with no
+        figures here, and the sentence has to name what is really there."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "1234567890",
+                        "not_collected": {
+                            "attempted_at": "2026-08-13T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "only record of the\n    figures below" not in out
+        assert "not figures but the note" in out
+        # …and the step it hands back does not send them to figures either.
+        assert "check the figures" not in out
+
+    def test_a_kept_entry_with_figures_keeps_the_original_sentence(
+        self, tmp_path: Path
+    ) -> None:
+        """The #616 case is untouched: an entry that does carry figures is
+        still described as the only record of them."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00Z",
+                        },
+                        "metrics_period": "LAST_30_DAYS",
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "only record of the\n    figures below, and mureo will" in out
+        assert "not figures but the note" not in out
+
+    def test_a_kept_entry_holding_both_names_both_losses(self, tmp_path: Path) -> None:
+        """Figures AND a note: neither half may be left out of the sentence
+        that argues for keeping the entry."""
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads_v2": {
+                        "account_id": "1234567890",
+                        "totals": {
+                            "spend": 128000.0,
+                            "fetched_at": "2026-08-13T23:10:00Z",
+                        },
+                        "not_collected": {
+                            "attempted_at": "2026-08-15T04:00:00+00:00",
+                            "reason": "the access token expired",
+                        },
+                    }
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        out = result.output
+        assert "figures below AND of why they stopped moving" in out
+
     def test_a_note_on_an_entry_being_dropped_is_stated_first(
         self, tmp_path: Path
     ) -> None:

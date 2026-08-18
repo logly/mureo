@@ -391,7 +391,7 @@ def _echo_kept_finding(finding: PlatformKeyFinding) -> None:
         unresolvable="mureo cannot resolve this key, and will NOT remove it.",
     )
     typer.echo("")
-    typer.echo(_KEPT_REASONS[finding.reason])
+    typer.echo(_kept_reason_line(finding))
     typer.echo("")
     typer.echo("    This entry holds:")
     _echo_entry_facts(finding.entry, "      ")
@@ -400,14 +400,63 @@ def _echo_kept_finding(finding: PlatformKeyFinding) -> None:
     typer.echo(_KEPT_NEXT_STEPS[finding.reason])
 
 
+def _kept_reason_line(finding: PlatformKeyFinding) -> str:
+    """The refusal, with its closing sentence made true of THIS entry.
+
+    Only :data:`KEEP_CARRIES_FIGURES` needs it: its whole argument is "the
+    entry may be the only record of what is below", and what is below is not
+    the same for every entry that reaches it. The other two refusals name a
+    field or the absence of a sibling, which is the same fact whatever the
+    entry holds.
+    """
+    reason = _KEPT_REASONS[finding.reason]
+    if finding.reason != KEEP_CARRIES_FIGURES:
+        return reason
+    return reason.format(loss=_what_removal_would_lose(finding.entry))
+
+
+def _what_removal_would_lose(facts: PlatformEntryFacts) -> str:
+    """What this kept entry is the only record OF (#643).
+
+    Before the note counted towards ``is_empty_stub``, a note-only entry was
+    dropped as an empty stub and never reached this refusal, so "the only
+    record of the figures below" was true of everything that did. Counting the
+    note routes exactly that entry here — the one with no figures at all — and
+    the sentence stopped being true the moment it could be printed.
+
+    The same shape as :func:`_what_a_sync_refills`: one fact, worded from what
+    the entry actually carries, rather than a claim that happens to hold for
+    the cases that used to arrive.
+    """
+    has_figures = bool(facts.campaign_count or facts.has_totals or facts.rollups)
+    if not facts.not_collected_reason:
+        return (
+            "So this entry may be the only record of the\n    figures below, and "
+            "mureo will not delete it on a guess."
+        )
+    if has_figures:
+        return (
+            "So this entry may be the only record of the\n    figures below AND of "
+            "why they stopped moving, and mureo will not delete\n    it on a guess."
+        )
+    return (
+        "What it holds is not figures but the note\n    below — the only record of "
+        "WHY this platform has none, on the very machine\n    where the platform is "
+        "invisible anyway. Nothing re-derives it, so mureo\n    will not delete it "
+        "on a guess."
+    )
+
+
+#: Why each kept entry stays. :data:`KEEP_CARRIES_FIGURES` is a TEMPLATE —
+#: its ``{loss}`` is filled by :func:`_what_removal_would_lose`, because what
+#: the entry would be the only record of is not the same for every entry that
+#: reaches that refusal. Read it through :func:`_kept_reason_line`, never raw.
 _KEPT_REASONS = {
     KEEP_CARRIES_FIGURES: (
         "    Why it stays: that is a fact about THIS machine, not about the "
         "entry — the\n    plugin that owns the key may simply not be installed "
         "here. Nothing in\n    STATE.json says the entry is wrong: no key mureo "
-        "can resolve holds its ad\n    account, and it is not empty. So this "
-        "entry may be the only record of the\n    figures below, and mureo will "
-        "not delete it on a guess."
+        "can resolve holds its ad\n    account, and it is not empty. {loss}"
     ),
     KEEP_CONVERSION_OVERRIDE: (
         "    Why it stays: it carries conversion_action_types — a conversion "
@@ -429,8 +478,8 @@ _KEPT_REASONS = {
 
 _KEPT_NEXT_STEPS = {
     KEEP_CARRIES_FIGURES: (
-        "    Yours to decide: install the plugin that owns this key, or check the "
-        "figures\n    and remove the entry yourself."
+        "    Yours to decide: install the plugin that owns this key, or check "
+        "what it\n    holds and remove the entry yourself."
     ),
     KEEP_CONVERSION_OVERRIDE: (
         "    Yours to decide: declare those action types on the entry you are "

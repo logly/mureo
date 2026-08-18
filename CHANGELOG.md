@@ -34,9 +34,14 @@
 
   It is not a veto the way `conversion_action_types` is: an entry duplicating
   a key mureo can resolve is still a duplicate, because what makes a duplicate
-  never depended on the entry being full. What changes is the claim printed
-  above it — *"holds nothing a sync cannot refill"* is not said of an entry
-  whose note the same block calls unrecoverable two lines further down.
+  never depended on the entry being full. What changes is the claims printed
+  around it, both of which stopped being true the moment such an entry could
+  reach them: *"holds nothing a sync cannot refill"* is not said of an entry
+  whose note the same block calls unrecoverable two lines further down, and
+  the refusal to delete a solitary entry no longer argues that it *"may be the
+  only record of the **figures** below"* when what it holds is the note and no
+  figures at all. Each sentence now names what that entry actually carries —
+  the figures, the note, or both.
 
 - **The block asking which duplicate to keep showed neither entry's figures**
   (#645). When one ad account is stored under two keys that BOTH name real
