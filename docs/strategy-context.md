@@ -219,7 +219,8 @@ under another is a silent join failure; see
 
 **A key mureo cannot resolve is rejected on create.** Creating a `platforms`
 entry through `upsert_campaign` / `set_platform_metrics` /
-`set_conversion_action_types` (and so through the `mureo_state_*` tools)
+`set_conversion_action_types` / `set_platform_not_collected` (and so through
+the `mureo_state_*` tools)
 requires the key to be one of: a first-class ad-platform key; a platform an
 **installed** plugin registered (its provider / analytics entry-point name,
 e.g. `logly_ads_context`); or a `plugin:<dist>:<provider>` key, which is
@@ -243,7 +244,8 @@ every entry, inflating spend, conversions and CPA together. The STATE.json
 write path therefore rejects a write that would **create** a second key for an
 `account_id` another key already holds, with an error naming both keys and the
 account. It applies to every writer that goes through `upsert_campaign`,
-`set_platform_metrics` or `set_conversion_action_types`, MCP or not.
+`set_platform_metrics`, `set_conversion_action_types` or
+`set_platform_not_collected`, MCP or not.
 
 "Would create a duplicate" is **not** "the key does not exist yet" — reusing a
 key while changing which account it points at manufactures a new duplicate just
@@ -554,6 +556,76 @@ This is per platform and **cannot** come from the document-level
 platform would otherwise make every other platform's stale numbers read as
 just-synced. `last_synced_at` still means exactly what it always did — the
 detail view shows it, labelled as the document sync it is.
+
+#### Why a platform's figures did not move
+
+Freshness says a figure is out of date. `platforms[<p>].not_collected` says
+**why** — the half an operator can act on. Without it, "not collected" and
+"collected, and the answer was zero" are the same document: a stopped ad
+account and a stopped collector produce an identical card, and the card that
+reported eleven-day-old figures sat untouched for eleven days because nobody
+could tell which it was.
+
+```json
+"not_collected": {
+  "attempted_at": "2026-08-18T09:00:00+09:00",
+  "reason": "Meta returned OAuthException 190: the access token expired"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `reason` | `string` | Yes | What happened, in words an operator can act on. A note with no reason is dropped on read: it would say something happened and refuse to say what. Truncated for display (500 characters), so write a sentence, not a stack trace |
+| `attempted_at` | `string` | No — server-stamped | ISO 8601 time of the failed collection, written by `set_platform_not_collected` / `mureo_state_platform_not_collected_set`. Absent means the age is stated as unknown rather than guessed |
+
+**It does not mean the figures are wrong.** `totals` / `periods` are left
+exactly as they were, because they are still the last numbers that were
+truly collected — writing `0` for a request that timed out would be the lie
+the merge semantics already avoid. The card says so in as many words: *"…
+could not be collected 2d ago: … The figures shown are the last ones
+collected — they are not wrong, they are older."* It renders directly under
+the stale note it explains, and above the repair hint.
+
+**Whoever collects clears it.** Set it with
+`set_platform_not_collected(path, platform, account_id, reason=...)` (or the
+`mureo_state_platform_not_collected_set` tool) when a collection fails, and
+call the same writer with `reason=None` — omit `reason` on the tool — on the
+next successful collection. No other write retires it: every targeted mutator
+treats an omitted field as *leave it alone*, and one window's rollup landing
+does not prove the platform-level collection recovered. A note that outlives
+its failure is permanently stale information stated with confidence, which is
+precisely the defect it exists to remove.
+
+**And the dashboard does not depend on that being honoured.** A note is not
+shown once any of the platform's rollups carries a `fetched_at` *later* than
+its `attempted_at` — a collection that succeeded after the failure has
+already answered it. The rule is applied server-side, once, exactly where the
+staleness verdict is, so the browser is handed a resolved answer rather than
+a second copy of the rule. Three deliberate limits:
+
+- **Any window counts.** The note is platform-level, so `YESTERDAY` landing
+  proves as much as `LAST_30_DAYS`; the comparison uses the newest
+  `fetched_at` in the entry, not the window on screen. Switching the period
+  toggle can never resurrect a retired note.
+- **No collection time, no retirement.** A platform with no `fetched_at`
+  anywhere has never been collected as far as the document knows, and that is
+  the case where the note is the only thing the card can say.
+- **Retirement is a proof, not a guess.** An unparseable `fetched_at`, or a
+  note with no `attempted_at`, leaves the question open — and open is not
+  retired, the same position the staleness verdict takes on a value it cannot
+  interpret.
+
+Re-pointing a platform key at a *different* ad account also drops the note,
+because it describes a failure for the account the entry used to name.
+
+Between the two, a card can never show a fresh figure and a stale reason at
+the same time: the contract stops the contradiction being written, the read
+rule stops it being shown when the contract was not honoured.
+
+Recording a failure is **not** a sync, so unlike every other platform write
+this one does not re-stamp `last_synced_at`: reporting the document as
+just-synced on the strength of nothing having been collected is the same
+false statement one field over.
 
 ### Fields
 

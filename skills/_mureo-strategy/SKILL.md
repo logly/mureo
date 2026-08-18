@@ -506,6 +506,44 @@ On the **`Write`** path nothing stamps for you, so write it yourself. A rollup
 that still has no `fetched_at` renders as *"update time unknown"* — never as
 fresh, because that would be a claim mureo cannot back.
 
+**When a platform could not be collected, say so — do not write zeros.**
+`platforms[<p>].not_collected` records WHY that platform's figures were not
+refreshed:
+
+```json
+"not_collected": {
+  "attempted_at": "2026-08-18T09:00:00+09:00",
+  "reason": "Meta returned OAuthException 190: the access token expired"
+}
+```
+
+Write it with `mureo_state_platform_not_collected_set` (pass `platform`,
+`account_id`, `reason`; `attempted_at` is stamped by the server), or the same
+object on the Code `Write` path. Without it, "not collected" and "collected,
+and the answer was zero" are the same document, and the card cannot tell an ad
+account that stopped delivering from a collector that stopped running.
+
+Two rules, both load-bearing:
+
+- **Leave the stored figures alone.** They are still the last numbers truly
+  collected — not wrong, just older than they should be. Never write `0` or a
+  guess for a window you could not pull; the card restates the old numbers
+  with their age and now also says why they did not move.
+- **Clear it on the next successful collection** — call the tool again with
+  `reason` omitted (or the Python helper with `reason=None`). No other write
+  retires the note: omitting a field means *leave it alone* everywhere in
+  STATE.json, so a note left behind would outlive its failure and become
+  permanently stale information stated with confidence. (The dashboard also
+  stops showing a note once a rollup carries a `fetched_at` later than the
+  note's `attempted_at`, so a card never shows fresh figures beside a stale
+  reason — but that is a backstop, not a substitute: the document itself is
+  yours to keep honest.)
+
+A `reason` with no text is dropped on read, and long text is truncated for
+display — write one sentence an operator can act on, not a stack trace.
+Recording a failure does not re-stamp `last_synced_at`: a collection that
+failed is not a sync.
+
 **Per-period rollups:** `platforms[<p>].periods` is an optional map keyed by a
 canonical period token, each value a totals-shaped object using the SAME
 vocabulary above — so the reporting dashboard can offer a period toggle. Use

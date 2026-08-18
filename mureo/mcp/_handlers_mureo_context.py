@@ -59,6 +59,7 @@ from mureo.context.state import (
     render_state,
     set_conversion_action_types,
     set_platform_metrics,
+    set_platform_not_collected,
     set_report,
     upsert_campaign,
 )
@@ -458,6 +459,32 @@ async def handle_state_platform_metrics_set(
     except ContextFileError as exc:
         # Surface as ValueError so the MCP dispatcher returns a clean tool
         # error rather than a 500-style server error (matches upsert_campaign).
+        raise ValueError(str(exc)) from exc
+    return _json_result(_state_to_dict(doc))
+
+
+async def handle_state_platform_not_collected_set(
+    arguments: dict[str, Any],
+) -> list[TextContent]:
+    """Record / clear why a platform's figures were not refreshed (#638).
+
+    An omitted (or null / blank) ``reason`` CLEARS the note. That is the
+    successful-collection half of the contract and it has to be reachable
+    from here: a note nothing can retire outlives its failure and becomes
+    permanently stale information stated with confidence.
+    """
+    platform = _require(arguments, "platform")
+    account_id = _require(arguments, "account_id")
+    reason = arguments.get("reason")
+    # Type-checked before it reaches the file: an object or a number here is
+    # a caller error, not a reason, and storing it would put something
+    # unreadable on an operator's card.
+    if reason is not None and not isinstance(reason, str):
+        raise ValueError("reason must be a string (omit it to clear the note)")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
+    try:
+        doc = set_platform_not_collected(path, platform, account_id, reason=reason)
+    except ContextFileError as exc:
         raise ValueError(str(exc)) from exc
     return _json_result(_state_to_dict(doc))
 

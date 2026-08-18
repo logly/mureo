@@ -1607,6 +1607,23 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   word-break: break-word;
 }
 
+/* Why this platform's figures did not move (#638). Warn, not danger: the
+   note above is mureo refusing to state a figure; this one explains it, and
+   the figures it explains are the last ones truly collected rather than
+   wrong ones. Interpolates a writer-supplied reason, so it wraps. */
+.reports-client-card-not-collected {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  background: var(--warn-tint);
+  border-radius: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* What to run about the note above (#636). Quiet, like the platform card's
    hint: it is the way out of a withheld total, not a third warning. */
 .reports-client-card-conflict-hint {
@@ -2089,6 +2106,21 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border-radius: 8px;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Why this platform's figures did not move (#638) — see
+   .reports-client-card-not-collected for why it is warn rather than danger. */
+.report-card-not-collected {
+  margin: 0;
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: var(--warn-tint);
+  border-radius: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* …and the figures themselves, restated with their age rather than hidden. */

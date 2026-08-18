@@ -1853,6 +1853,9 @@
   const reportsConflictsForKey = REPORTS_LOGIC.reportsConflictsForKey;
   const reportsFreshnessLabel = REPORTS_LOGIC.reportsFreshnessLabel;
   const reportsRowIsStale = REPORTS_LOGIC.reportsRowIsStale;
+  const reportsNotCollectedNote = REPORTS_LOGIC.reportsNotCollectedNote;
+  const reportsNotCollectedNotes = REPORTS_LOGIC.reportsNotCollectedNotes;
+  const reportsNotCollectedText = REPORTS_LOGIC.reportsNotCollectedText;
   const reportsCardFreshness = REPORTS_LOGIC.reportsCardFreshness;
   const aggregateClientKpis = REPORTS_LOGIC.aggregateClientKpis;
 
@@ -2068,6 +2071,19 @@
       hint.className = "report-card-conflict-hint";
       hint.textContent = reportsRepairHint(conflicts);
       card.appendChild(hint);
+    }
+
+    // Why this platform's figures did not move (#638), above the numbers it
+    // explains — and above BOTH early returns below, because the platform
+    // this is most true of is the one with no figures to show at all. On a
+    // single-client (OSS) install the client index never renders, so this
+    // card is the only place the note can surface.
+    const notCollected = reportsNotCollectedNote(platform);
+    if (notCollected) {
+      const why = document.createElement("p");
+      why.className = "report-card-not-collected";
+      why.textContent = reportsNotCollectedText(notCollected);
+      card.appendChild(why);
     }
 
     const totals =
@@ -2545,6 +2561,23 @@
       staleNote.textContent = MUREO.t("dashboard.reports_stale_kpis_withheld");
       card.appendChild(staleNote);
     }
+    // …and, directly under it, why they did not move (#638). The note above
+    // says mureo will not state these as the window's figures; this says
+    // what stopped newer ones from arriving, which is the half an operator
+    // can act on — a stopped ad account and a stopped collector produce the
+    // identical card otherwise, and the one that sat for eleven days was the
+    // second. It is not a claim that the stored figures are wrong; they are
+    // the last ones truly collected, and they are still shown.
+    //
+    // Rendered whenever a platform carries the note, stale or not: a
+    // collection that failed today has not aged the figures out yet, and
+    // that is the moment it is cheapest to fix.
+    reportsNotCollectedNotes(summary).forEach(function (note) {
+      const el = document.createElement("p");
+      el.className = "reports-client-card-not-collected";
+      el.textContent = reportsNotCollectedText(note);
+      card.appendChild(el);
+    });
     // The way out, under the notes that say why the figures are missing
     // (#636). This card withholds a client's totals "until this is
     // resolved" and named nothing that could resolve it: the repair would

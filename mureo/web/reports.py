@@ -48,6 +48,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
+# The stored shape's own length bound (#638), so the read side and the write
+# helper truncate a collection failure's reason to the same length.
+from mureo.context.models import NOT_COLLECTED_REASON_MAX_CHARS
 from mureo.context.platform_accounts import (
     duplicate_account_entries,
     normalize_account_id,
@@ -370,9 +373,11 @@ def build_report_summary(
 
     - ``platforms``: one row per key in ``platforms`` — built-in AND
       ``plugin:<dist>`` — each ``{key, display_name, totals, metrics_period,
-      campaign_count, freshness}``. A platform without metrics for the
-      resolved window still appears (``totals`` ``None`` /
-      ``metrics_period`` ``None``).
+      campaign_count, freshness, not_collected}``. A platform without metrics
+      for the resolved window still appears (``totals`` ``None`` /
+      ``metrics_period`` ``None``). ``not_collected`` is why that platform's
+      figures were not refreshed (#638), or ``None`` — see
+      :func:`_safe_not_collected`.
     - ``platform_conflicts``: reasons these rows must not be added together
       (#533) — see :func:`_build_platform_conflicts`. Always a list, empty
       when the document is healthy, and it carries NO ad account ids.
@@ -493,8 +498,14 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
 
     ``account_id`` stays off this row (a test pins the omission): identity is
     resolved server-side into ``platform_conflicts`` instead, so the browser
-    is never handed an ad account id to join on. ``freshness`` rides
-    ALONGSIDE the five original fields — see :func:`_platform_freshness`.
+    is never handed an ad account id to join on. ``freshness`` and
+    ``not_collected`` ride ALONGSIDE the five original fields — see
+    :func:`_platform_freshness` and :func:`_platform_not_collected`.
+
+    ``not_collected`` is resolved from the WHOLE platform entry rather than
+    from the window on screen: a note is about the platform, and the
+    collection that retires it may have written any window (see
+    :func:`_platform_not_collected`).
     """
     if period is None:
         totals = _safe_totals(state.totals)
@@ -512,6 +523,7 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
         "metrics_period": metrics_period,
         "campaign_count": len(state.campaigns),
         "freshness": _platform_freshness(totals, metrics_period),
+        "not_collected": _platform_not_collected(state),
     }
 
 
@@ -709,6 +721,111 @@ def _available_periods(doc: StateDocument | None) -> list[str]:
     known = [p for p in _PERIOD_ORDER if p in found]
     extra = sorted(p for p in found if p not in _PERIOD_ORDER)
     return known + extra
+
+
+def _platform_not_collected(state: PlatformState) -> dict[str, Any] | None:
+    """Why this platform's figures did not move — unless a later collection
+    already answered that (#638).
+
+    The stored note is dropped here when ANY of this platform's rollups was
+    collected AFTER the failure it describes. Retiring the note is the
+    collector's job (see
+    :func:`mureo.context.state.set_platform_not_collected`), but the
+    correctness of what an operator sees must not depend on a writer
+    remembering to do it: nothing in the ``mureo_state_platform_metrics_set``
+    path forces a second call, so a document would otherwise carry a fresh
+    ``fetched_at`` and a days-old collection failure at once, permanently,
+    and the card would render both. Two independent answers to one question,
+    with nothing checking them against each other, is the defect this whole
+    issue is about — a dashboard stating something untrue and no one able to
+    tell.
+
+    Decided ONCE, here, exactly as the staleness verdict is: the browser is
+    handed a resolved answer rather than a second copy of the rule.
+
+    Three deliberate asymmetries:
+
+    - **Any window counts.** The note is platform-level, so a daily-check
+      writing ``YESTERDAY`` proves the platform was reachable just as well as
+      a sync writing ``LAST_30_DAYS``. The comparison uses the NEWEST
+      ``fetched_at`` in the entry, not the window the toggle happens to show
+      — otherwise switching window could resurrect a retired note.
+    - **No collection time, no retirement.** A platform with no ``fetched_at``
+      anywhere has never been collected as far as the document knows, and
+      that is the case where the note is the only thing the card can say.
+    - **Retirement must be PROVED.** An unparseable ``fetched_at`` or a note
+      with no ``attempted_at`` (mureo's own writer always stamps one) leaves
+      the question open, and open is not retired — the same position
+      :func:`_platform_freshness` takes on a value it cannot interpret.
+    """
+    note = _safe_not_collected(state.not_collected)
+    if note is None:
+        return None
+    attempted = _parse_timestamp(note.get("attempted_at"))
+    if attempted is None:
+        return note
+    collected = _newest_collection(state)
+    if collected is not None and collected > attempted:
+        return None
+    return note
+
+
+def _newest_collection(state: PlatformState) -> datetime | None:
+    """The most recent ``fetched_at`` across ALL of a platform's rollups.
+
+    ``totals`` and every ``periods`` bucket, because any of them landing is
+    evidence the platform was reached. ``None`` when not one of them carries
+    a usable timestamp — which is not "never collected" as a fact about the
+    world, only about what the document can show.
+    """
+    rollups: list[Any] = [state.totals]
+    if isinstance(state.periods, dict):
+        rollups.extend(state.periods.values())
+    newest: datetime | None = None
+    for rollup in rollups:
+        if not isinstance(rollup, dict):
+            continue
+        raw = rollup.get("fetched_at")
+        parsed = _parse_timestamp(raw if isinstance(raw, str) else None)
+        if parsed is not None and (newest is None or parsed > newest):
+            newest = parsed
+    return newest
+
+
+def _safe_not_collected(note: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The stored "why the figures did not move" note, fit to render (#638).
+
+    Returns ``{"attempted_at", "reason"}`` — the two known keys and nothing
+    else, the same whitelist discipline :func:`_safe_totals` applies, so a
+    stray or secret-shaped key a buggy or hostile writer slipped in can never
+    reach the page. ``None`` when there is no usable note, and ``None`` is put
+    on the wire explicitly so every row has one shape.
+
+    ``reason`` is truncated to
+    :data:`~mureo.context.models.NOT_COLLECTED_REASON_MAX_CHARS`. The write
+    helper caps what it stores, but a digest can write the whole document
+    without going near it, and a page of raw API JSON in a card is not a
+    reason an operator can read.
+
+    A note with no usable ``reason`` is no note: it would say something
+    happened and refuse to say what, which is the state this field exists to
+    end. ``attempted_at`` is relayed verbatim, like ``fetched_at`` — the only
+    clue to the writer that produced an uninterpretable one.
+    """
+    if not isinstance(note, dict):
+        return None
+    reason = note.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return None
+    attempted_at = note.get("attempted_at")
+    return {
+        "attempted_at": (
+            attempted_at.strip()
+            if isinstance(attempted_at, str) and attempted_at.strip()
+            else None
+        ),
+        "reason": reason.strip()[:NOT_COLLECTED_REASON_MAX_CHARS],
+    }
 
 
 def _safe_totals(totals: dict[str, Any] | None) -> dict[str, Any] | None:

@@ -40,6 +40,7 @@ from dataclasses import fields as dataclass_fields
 from typing import Any
 
 from mureo.context.models import (
+    NOT_COLLECTED_REASON_MAX_CHARS,
     ActionLogEntry,
     AdState,
     BatchRecord,
@@ -100,6 +101,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "metrics_period",
                 "periods",
                 "conversion_action_types",
+                "not_collected",
             }
         ),
         "parse_state / _platform_state_to_dict",
@@ -330,6 +332,39 @@ def _parse_conversion_action_types(raw: Any) -> tuple[str, ...] | None:
     return cleaned or None
 
 
+def _parse_not_collected(raw: Any) -> dict[str, Any] | None:
+    """Parse a platform's "why the figures did not move" note (#638).
+
+    Returns ``{"attempted_at": ..., "reason": ...}`` (``attempted_at`` only
+    when it is a usable string), or ``None`` when there is no usable note.
+
+    **No reason means no note.** The reason IS the payload: a note carrying
+    only a timestamp tells an operator that something happened and refuses to
+    say what, which is the exact non-answer this field exists to end.
+
+    Tolerant like the other optional platform fields — a hand-edited value
+    costs the note, never the document — and normalising to the two known keys
+    here keeps every reader (dashboard, CLI, a plugin) working from one shape.
+
+    ``reason`` is capped at
+    :data:`~mureo.context.models.NOT_COLLECTED_REASON_MAX_CHARS`, the same
+    bound the write helper and the dashboard apply. Doing it on READ too is
+    what stops a page of API JSON from a hand edit or an outside writer being
+    re-serialised in full on every subsequent write.
+    """
+    if not isinstance(raw, dict):
+        return None
+    reason = raw.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return None
+    note: dict[str, Any] = {}
+    attempted_at = raw.get("attempted_at")
+    if isinstance(attempted_at, str) and attempted_at.strip():
+        note["attempted_at"] = attempted_at.strip()
+    note["reason"] = reason.strip()[:NOT_COLLECTED_REASON_MAX_CHARS]
+    return note
+
+
 def _parse_batches(raw: Any) -> tuple[BatchRecord, ...]:
     """Parse the declared bulk change sets (#549).
 
@@ -404,6 +439,7 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
                 conversion_action_types=_parse_conversion_action_types(
                     platform_data.get("conversion_action_types")
                 ),
+                not_collected=_parse_not_collected(platform_data.get("not_collected")),
             )
 
     # v2: action_log
@@ -525,6 +561,11 @@ def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
     # so legacy entries stay byte-stable.
     if ps.conversion_action_types:
         result["conversion_action_types"] = list(ps.conversion_action_types)
+    # #638 — why the figures did not move: emit only when there is a note, so
+    # a document that has never had a failed collection stays byte-stable, and
+    # a cleared note leaves no key behind to be read as a live one.
+    if ps.not_collected:
+        result["not_collected"] = copy.deepcopy(ps.not_collected)
     return result
 
 
