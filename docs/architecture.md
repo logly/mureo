@@ -142,6 +142,7 @@ mureo/
 │   ├── models.py            # Immutable dataclasses (ActionLogEntry.rollback_of / .batch_id, BatchRecord)
 │   ├── strategy.py          # STRATEGY.md parser / renderer
 │   ├── batch.py             # Batch id minting, the stamping rule, membership queries (#549)
+│   ├── monthly_budget.py    # `## Custom: Monthly Budget` reader (#652) — target, not a ceiling
 │   ├── state.py             # STATE.json read / mutate / atomic write + state lock (re-exports the two below)
 │   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
 │   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)

@@ -156,6 +156,12 @@ mureo/
 │   │                    #   past due (#651). ONE rule for `mureo_state_get(
 │   │                    #   action_log="pending")` and the Reports triage count;
 │   │                    #   two entry shapes (rendered dict / ActionLogEntry)
+│   ├── monthly_budget.py # The `## Custom: Monthly Budget` reader (#652) — the operator's
+│   │                     #   INTENDED monthly spend, twin of `guardrails_from_strategy_text`.
+│   │                     #   Separate type from `Guardrails` on purpose: a target is not a
+│   │                     #   ceiling. "Not set" is a first-class answer (never 0), a total
+│   │                     #   derived from `max_total_daily_budget` says so, and the figure
+│   │                     #   stays in STRATEGY.md — never copied into STATE.json
 │   ├── platform_guards.py # Write-time platform-key guards (#534/#609) — the one "is this key
 │   │                      #   real?" answer every other surface asks, including the read-side
 │   │                      #   label path (`installed_platform_names`, shared since #631)

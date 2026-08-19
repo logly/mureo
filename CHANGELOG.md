@@ -61,6 +61,46 @@
   parse as a date is not counted (unknown is not a verdict), and `oldest_due`
   is re-rendered from the date mureo itself parsed rather than echoed.
 
+- **The monthly budget target is now readable from code** (#652).
+  `## Custom: Monthly Budget` has been the home of an operator's monthly
+  spend target for a while — `/budget-pacing` reads it, and offers to
+  persist one in that shape when it is missing. Nothing else could. The
+  section was reachable only by an agent that had loaded the skill, so
+  "is this client over or under its intended spend" could not appear on
+  any surface that skill was not already running on, the Reports view
+  included.
+
+  `mureo.context.monthly_budget` is the twin of
+  `mureo.policy.strategy_gate.guardrails_from_strategy_text` for the
+  neighbouring section: `parse_monthly_budget`,
+  `monthly_budget_from_strategy_text`, and `resolve_monthly_budget`,
+  which applies the skill's precedence — the explicit section wins,
+  `## Guardrails` → `max_total_daily_budget` × days in month is the
+  fallback, and neither means the operator has to be asked. A test pins
+  that agreement against the skill file so the two cannot drift into two
+  different answers to one question.
+
+  It is deliberately **not** part of `Guardrails`. Guardrails carry
+  ceilings — figures whose job is to refuse an operation that exceeds
+  them. A monthly target is the intended spend: underspending it is a
+  problem too, and no operation should be blocked for approaching it.
+  Filing it there would make an intended figure look enforceable.
+
+  Three answers, kept distinguishable because collapsing them is how a
+  budget reader misleads. **Not set** is first class — `total is None`,
+  never `0`, never `100 %`, never "on pace" — so a client with no target
+  cannot be rendered as one that is on plan. A total **derived** from the
+  daily ceiling comes back with `is_derived` set, because a ceiling
+  stretched over a month is a cap and not a plan, and handing it over
+  unlabelled is the same failure in a different coat. A malformed section
+  degrades to "not set" rather than raising out of a read path, and an
+  unreadable sub-target bullet drops only itself.
+
+  The figure stays in STRATEGY.md, its single home: it is not copied into
+  STATE.json for a reader's convenience. A number in two places is a
+  number that will disagree with itself — which is the defect class
+  #631 / #636 / #638 / #647 each came from.
+
 - **A platform plugin can now state how its own platform works, on the one
   route that is always read** (#648). The only text a plugin could put in
   front of the agent unconditionally was its MCP tool names and tool
