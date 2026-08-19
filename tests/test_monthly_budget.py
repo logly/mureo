@@ -154,6 +154,17 @@ class TestMonthlyBudgetFromStrategyText:
     def test_empty_document_is_not_set(self) -> None:
         assert not monthly_budget_from_strategy_text("").is_set
 
+    def test_reads_a_crlf_document(self) -> None:
+        """A STRATEGY.md written on Windows must read the same."""
+        budget = monthly_budget_from_strategy_text(
+            _STRATEGY_WITH_TARGET.replace("\n", "\r\n")
+        )
+        assert budget.total == 300000
+        assert dict(budget.per_platform) == {
+            "google_ads": 180000,
+            "meta_ads": 120000,
+        }
+
 
 class TestResolveMonthlyBudgetPrecedence:
     def test_explicit_section_wins_over_the_daily_ceiling(self) -> None:
@@ -208,12 +219,18 @@ class TestSkillPrecedenceAgreement:
     """The reader must answer what ``/budget-pacing`` answers (issue #652)."""
 
     def _skill_text(self) -> str:
+        """The skill file, newline-normalised.
+
+        Read as bytes so the packaged/mirror comparison stays exact, then
+        normalised to ``\\n`` because a Windows checkout hands back CRLF and
+        the multi-line pins below would silently stop matching.
+        """
         packaged = _PACKAGED_SKILL.read_bytes()
         assert packaged == _MIRROR_SKILL.read_bytes(), (
             "budget-pacing: packaged skill and repo-root mirror have drifted; "
             "they must stay byte-identical."
         )
-        return packaged.decode("utf-8")
+        return packaged.decode("utf-8").replace("\r\n", "\n")
 
     def test_skill_still_names_the_section_this_reader_reads(self) -> None:
         assert "## Custom: Monthly Budget" in self._skill_text()
