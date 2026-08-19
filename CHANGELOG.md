@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-20
+
 ### Added
 
 - **A platform plugin can now state how its own platform works, on the one
