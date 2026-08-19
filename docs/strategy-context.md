@@ -410,7 +410,10 @@ What the dashboard does about it:
   skimmed as a healthy one, and the per-platform cards in the detail view
   carry the same finding (a single-client OSS install has no index grid, so
   that is the only surface it can appear on there);
-- nothing is merged, dropped or reordered. Detection, not repair.
+- nothing is merged, dropped or reordered. Detection, not repair;
+- and on a multi-client install the finding is also raised in the triage
+  layer above the grid, ranked first of all of them — see *Triaging many
+  clients at once* below.
 
 #### Repairing an entry filed under a key mureo cannot resolve
 
@@ -638,6 +641,75 @@ Recording a failure is **not** a sync, so unlike every other platform write
 this one does not re-stamp `last_synced_at`: reporting the document as
 just-synced on the strength of nothing having been collected is the same
 false statement one field over.
+
+#### Triaging many clients at once
+
+Everything above is rendered inside one client's card — which is exactly the
+problem when you run twenty-seven of them. A double-counted ad account and an
+eleven-day-old figure were both on screen, on the right card, in red, for
+days: they carried the same visual weight as everything on that card that was
+fine, and nothing said *which client to open first*. Neither was a missing
+signal. Both were unsurfaced ones.
+
+So the multi-client Reports view puts a **triage layer** above the client
+grid: the findings mureo has already made, aggregated across clients and
+ranked. It adds no new fact about an ad account.
+
+**It appears only where a client registry is wired in.** A single workspace
+has no second client to rank against, so the layer is *omitted* rather than
+shrunk to one row, and `/api/reports/summary` is byte-for-byte what it was
+before the layer existed — same keys, same order. The test is whether the
+active `StateStore` **declares** `list_clients`, not what calling it returns:
+`build_report_summary` runs once per client card and the dashboard fetches
+every visible client in parallel, so a predicate that called the registry
+would cost one registry read per client on the very screen this feature is
+for.
+
+The ranking is by what mureo can act on, and it is stated in code
+(`REPORTS_TRIAGE_KINDS` in `mureo/_data/web/reports_triage.js`), never left
+to render order:
+
+| Rank | Finding | What it means | What to run |
+|------|---------|---------------|-------------|
+| 1 | Totals double-counted | One ad account under two platform keys — the client's totals are withheld right now | `mureo repair platform-key --key <the key to remove> --drop-duplicate` |
+| 2 | Totals stale | The newest figures pre-date the window on screen, so they are not its answer | `/sync-state` for that client |
+| 3 | Not collected | A collection failed and said why. The figures have not aged out yet, and this is the cheapest moment to fix it | clear the stated cause, then `/sync-state` |
+| 4 | Unrecognised key | mureo cannot resolve an entry to a platform, so the client cannot be fully checked for a duplicate | `mureo repair platform-key` |
+| 5 | Observation due | A change mureo made is past its review date | `/daily-check` for that client |
+
+Three properties are load-bearing, and each is pinned by a test:
+
+- **Every row names something runnable.** #636 was reported precisely because
+  the dashboard said "resolve this" and no command existed that could. A row
+  with no next step is a bug in the row, not a display detail.
+- **"mureo cannot state this" is a row, not a blank.** The two withholding
+  findings say so in words. A client whose totals are withheld renders `—` on
+  its card, and an empty cell in an at-a-glance grid reads as zero, or as
+  fine — which is the one thing this view must never let happen.
+- **The count matches the grid.** If the layer says three clients need
+  attention, exactly three cards below it are marked; both read one list.
+  And when there is nothing, the layer renders nothing — no "0 alerts"
+  banner competing for attention with the cards.
+
+Four of the five findings are already on the wire per client (`freshness`,
+`not_collected`, `platform_conflicts`). The fifth is not, and cannot be
+derived in the browser: `recent_actions` is capped at the 20 most recent
+entries, and it carries neither `rollback_of` nor `evaluation_of`, so a
+count taken from it would both under-report a long log and keep asking for
+reviews that were already done. The summary therefore carries
+
+```json
+"observations_due": { "count": 2, "oldest_due": "2026-08-01" }
+```
+
+— present **only** under the client-registry seam. "Due" means the window has
+closed (`observation_due` on or before the server's local date) and nothing
+has closed the entry, which is the same rule
+`mureo_state_get(action_log="pending")` applies; it lives in
+`mureo.context.observations` so the two surfaces cannot drift. An
+`observation_due` mureo cannot parse as a date is not counted — it cannot be
+judged against today, and unknown is not a verdict — and `oldest_due` is
+re-rendered from the date mureo itself parsed rather than echoed.
 
 ### Fields
 

@@ -1809,6 +1809,8 @@
   //     severity, a param's detail line, a number's and a period's text.
   //   reports_order.js  (#556) — the operator's card order: where it is
   //     stored, how it is applied, and the two ways it changes.
+  //   reports_triage.js (#651) — which clients need attention today, in
+  //     what order, and what to run about each.
   //
   // Everything below still needs a DOM. The modules are bound here by their
   // original names so every call site downstream reads exactly as before.
@@ -1828,6 +1830,7 @@
     ["MUREO_REPORTS_LOGIC", "reports_logic.js"],
     ["MUREO_REPORTS_FORMAT", "reports_format.js"],
     ["MUREO_REPORTS_ORDER", "reports_order.js"],
+    ["MUREO_REPORTS_TRIAGE", "reports_triage.js"],
   ].filter(function (mod) {
     return !window[mod[0]];
   });
@@ -1873,6 +1876,12 @@
   const orderReportsClients = REPORTS_ORDER.orderReportsClients;
   const persistReportsOrderFromDom = REPORTS_ORDER.persistReportsOrderFromDom;
   const moveReportsCard = REPORTS_ORDER.moveReportsCard;
+
+  const REPORTS_TRIAGE = window.MUREO_REPORTS_TRIAGE;
+  const buildReportsTriage = REPORTS_TRIAGE.buildReportsTriage;
+  const triageMarksClient = REPORTS_TRIAGE.triageMarksClient;
+  const triageItemText = REPORTS_TRIAGE.triageItemText;
+  const triageItemNextStep = REPORTS_TRIAGE.triageItemNextStep;
 
   // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
   // is rendered separately. Order here is the on-card display order.
@@ -2479,13 +2488,25 @@
   // One grid cell: the card button plus its controls. The controls live
   // OUTSIDE the card because the card IS a button, and a button may not nest
   // interactive children.
-  function buildClientCardItem(client, summary, wrap) {
+  function buildClientCardItem(client, summary, wrap, triaged) {
     const slug = client && client.slug ? client.slug : "";
     const name = (client && (client.name || client.slug)) || "";
     const item = document.createElement("div");
-    item.className = "reports-client-card-item";
+    item.className =
+      "reports-client-card-item" + (triaged ? " is-triaged" : "");
     item.setAttribute("role", "listitem");
     item.setAttribute("data-client", slug);
+    // The other half of the triage layer above the grid (#651): if the layer
+    // says three clients need attention, exactly three cards are marked.
+    // Both read the same list, so they cannot drift. A class alone would be
+    // colour-only, and the grid is a list of buttons an operator may reach
+    // by keyboard, so the mark carries text too.
+    if (triaged) {
+      const mark = document.createElement("span");
+      mark.className = "reports-client-card-mark";
+      mark.textContent = MUREO.t("dashboard.reports_triage_card_marker");
+      item.appendChild(mark);
+    }
     item.appendChild(buildClientCard(client, summary));
 
     const tools = document.createElement("div");
@@ -2684,12 +2705,87 @@
     // again when there is something to list.
     const archived = document.querySelector("[data-reports-archived]");
     if (archived && view !== "index") archived.hidden = true;
+    // So does the triage layer, and for a stronger reason: it states
+    // findings ABOUT the grid, so left behind over a detail view it would be
+    // describing clients that are no longer on screen.
+    const triageBox = document.querySelector("[data-reports-triage]");
+    if (triageBox && view !== "index") triageBox.hidden = true;
     // The back link (under the "Reports" heading) and the client-name heading
     // appear only in a multi-client detail view — an OSS single client has no
     // index to go back to and no sibling to disambiguate.
     const showClientChrome = view === "detail" && reportsClients.length > 1;
     if (back) back.hidden = !showClientChrome;
     if (nameEl) nameEl.hidden = !showClientChrome;
+  }
+
+  // ------------------------------------------------------------------
+  // Triage layer (#651) — the index view's "what do I touch today?"
+  // ------------------------------------------------------------------
+
+  // Render the ranked findings above the client grid.
+  //
+  // Silence when there is nothing: no "0 alerts" banner competing for
+  // attention with the cards it sits above. The list is emptied BEFORE the
+  // early return so a row from a previous render cannot survive one that
+  // found nothing.
+  //
+  // Nothing here ranks, sorts or trims: the order and the membership are
+  // decided in reports_triage.js, where a test runner can execute them.
+  // Defensive about its argument for the usual reason — this runs
+  // mid-render, and a throw blanks the whole Reports view.
+  function renderReportsTriage(built) {
+    const box = document.querySelector("[data-reports-triage]");
+    const list = document.querySelector("[data-reports-triage-list]");
+    const heading = document.querySelector("[data-reports-triage-title]");
+    if (!box || !list) return;
+    const items = built && Array.isArray(built.items) ? built.items : [];
+    // The count is of CLIENTS, and it is the same array the grid marks from
+    // — one client raising four findings is still one card.
+    const marked = built && Array.isArray(built.clients) ? built.clients : [];
+    list.textContent = "";
+    box.hidden = !items.length;
+    if (!items.length) return;
+    if (heading) {
+      heading.textContent = MUREO.t("dashboard.reports_triage_title", {
+        n: marked.length,
+      });
+    }
+    items.forEach(function (item) {
+      list.appendChild(buildTriageRow(item));
+    });
+  }
+
+  // One finding: whose it is, what it is, and what to run about it.
+  //
+  // The next step is not a control — the Reports view does not mutate state
+  // — and it is not optional either: an item with no next step is a bug in
+  // the item, which is why the module refuses to produce one.
+  function buildTriageRow(item) {
+    const row = document.createElement("li");
+    row.className = "reports-triage-row";
+    row.setAttribute("data-triage-kind", item.kind);
+
+    const who = document.createElement("span");
+    who.className = "reports-triage-client";
+    who.textContent = item.name || item.slug;
+    row.appendChild(who);
+
+    const what = document.createElement("span");
+    what.className = "reports-triage-what";
+    // Writer-supplied text (a collection-failure reason out of STATE.json, a
+    // registry-controlled platform key) is interpolated into this sentence,
+    // so it is set as text and never as markup.
+    what.textContent = triageItemText(item);
+    row.appendChild(what);
+
+    const next = triageItemNextStep(item);
+    if (next) {
+      const step = document.createElement("span");
+      step.className = "reports-triage-next";
+      step.textContent = next;
+      row.appendChild(step);
+    }
+    return row;
   }
 
   // INDEX view: a card per client (KPIs + flags for the selected window).
@@ -2712,9 +2808,19 @@
     setReportsView("index");
     const freshness = document.querySelector("[data-reports-freshness]");
     if (freshness) freshness.textContent = "";
+    // Triage before the cards (#651): which of these clients needs attention
+    // today, ranked, with what to run about each. Built ONCE and handed to
+    // both the layer and the grid, so the count above and the marks below
+    // are the same list. This is the multi-client view, which is the only
+    // place the Agency seam produces — a single workspace opens the detail
+    // view directly and never reaches this function.
+    const triage = buildReportsTriage(rows, summaries);
+    renderReportsTriage(triage);
     wrap.textContent = "";
     rows.forEach(function (c, i) {
-      wrap.appendChild(buildClientCardItem(c, summaries[i], wrap));
+      wrap.appendChild(
+        buildClientCardItem(c, summaries[i], wrap, triageMarksClient(triage, i))
+      );
     });
     if (!rows.length) {
       // Every client archived: say so, and leave the disclosure below as the

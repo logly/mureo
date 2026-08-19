@@ -2,6 +2,65 @@
 
 ### Added
 
+- **The multi-client Reports view now says which client to open first**
+  (#651). The client grid was a flat wall of cards, and everything mureo knew
+  about a client that was *wrong* was rendered inside that client's own card,
+  at the same visual weight as everything that was fine. Two incidents this
+  cycle were on screen the whole time they cost money: a card carrying a
+  double-counted ad account, red and with its totals withheld (#636), and a
+  card showing an eleven-day-old figure as the selected window's spend after
+  delivery had stopped (#638). Neither was a missing signal. Both were
+  unsurfaced ones.
+
+  The triage layer above the grid is the surfacing. It adds no new fact about
+  an ad account: it aggregates the findings mureo already makes per client —
+  totals-withholding conflicts, stale rollups, why a platform was not
+  collected — and ranks them by what mureo can act on. The order is stated in
+  code rather than left to render order: a conflict that withholds a client's
+  totals outranks a stale figure, which outranks a collection failure, an
+  unresolvable platform key, and an observation past its review date.
+
+  **Every row names something runnable.** #636 was reported precisely because
+  the dashboard said "resolve this" and no command existed that could, so a
+  row with no next step is treated as a bug in the row: the two conflict
+  kinds reuse the `mureo repair platform-key` vocabulary the card already
+  renders, the collection findings point at `/sync-state`, and an overdue
+  observation points at `/daily-check`.
+
+  **"mureo cannot state this" is a row, not a blank.** #638 established that
+  mureo does not present a number it cannot vouch for; the card renders `—`
+  where it withholds, and an empty cell in an at-a-glance grid reads as zero
+  or as fine. Both withholding findings therefore say so in words. And the
+  layer renders nothing at all when there is nothing — no "0 alerts" banner
+  competing for attention with the cards.
+
+  **The count and the grid are one list.** If the layer says three clients
+  need attention, exactly three cards below it are marked; both read the same
+  array, and clients are identified by grid position rather than by a
+  registry-supplied slug, so two blank slugs cannot collapse into one mark.
+
+  It appears **only where a client registry is wired in**. A single workspace
+  has no second client to rank against, so the layer is omitted rather than
+  degraded to one row — and omitted all the way down: with no such seam,
+  `/api/reports/summary` keeps the exact keys, in the exact order, it had
+  before this existed. That test reads the seam's *declaration* and invokes
+  nothing, because it runs once per client card: asking the registry instead
+  would have cost one registry read per client on exactly the screen this
+  feature was added to.
+
+  One of the five findings could not be derived in the browser.
+  `recent_actions` is capped at the 20 most recent entries and carries
+  neither `rollback_of` nor `evaluation_of`, so a browser-side count of
+  overdue observations would both under-report a long log and keep asking for
+  reviews that were already done. The summary therefore carries
+  `observations_due` (`{count, oldest_due}`), resolved server-side over the
+  whole document by the rule that already defines
+  `mureo_state_get(action_log="pending")` — now shared, in
+  `mureo.context.observations`, so the two surfaces cannot give an operator
+  different answers about the same entry. An `observation_due` mureo cannot
+  parse as a date is not counted (unknown is not a verdict), and `oldest_due`
+  is re-rendered from the date mureo itself parsed rather than echoed.
+
 - **A platform plugin can now state how its own platform works, on the one
   route that is always read** (#648). The only text a plugin could put in
   front of the agent unconditionally was its MCP tool names and tool

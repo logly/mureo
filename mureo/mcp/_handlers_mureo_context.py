@@ -53,6 +53,7 @@ from mureo.context.models import (
     CampaignSnapshot,
     StateDocument,
 )
+from mureo.context.observations import closed_observation_indices
 from mureo.context.state import (
     append_action_log,
     read_state_file,
@@ -144,28 +145,20 @@ def _state_to_dict(doc: StateDocument) -> dict[str, Any]:
     return parsed
 
 
-#: Fields whose value is the positional index of an entry they CLOSE — a
-#: later rollback reverses the action, a later evaluation record reviews its
-#: outcome. Either takes the target out of the pending set. Shared by the
-#: pending filter and the append-time index validation so the two can never
-#: disagree about what "closes" an observation.
-_CLOSURE_INDEX_FIELDS = ("rollback_of", "evaluation_of")
-
-
 def _closed_indices(entries: list[dict[str, Any]]) -> set[int]:
     """Positional indices closed by a later ``rollback_of`` / ``evaluation_of``.
 
     ``entries`` is the full rendered list, so positional indices here match
     the indices the rollback executor and the daily-check evaluation records
     write.
+
+    Which fields close an observation is decided in
+    :mod:`mureo.context.observations` (:data:`~mureo.context.observations.
+    CLOSURE_INDEX_FIELDS`), because the Reports triage layer (#651) has to
+    ask the same question of the same log and a private copy is how two
+    surfaces start giving an operator different answers about one entry.
     """
-    closed: set[int] = set()
-    for entry in entries:
-        for field_name in _CLOSURE_INDEX_FIELDS:
-            value = entry.get(field_name)
-            if isinstance(value, int) and not isinstance(value, bool):
-                closed.add(value)
-    return closed
+    return closed_observation_indices(entries)
 
 
 def _pending_action_log(
