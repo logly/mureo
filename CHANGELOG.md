@@ -1,5 +1,56 @@
 ## [Unreleased]
 
+### Added
+
+- **A platform plugin can now state how its own platform works, on the one
+  route that is always read** (#648). The only text a plugin could put in
+  front of the agent unconditionally was its MCP tool names and tool
+  descriptions. A `SKILL.md` contributed through `mureo.skills` is
+  description-matched: the body is read only when the agent decides the
+  description applies, which does not happen on a daily-check or
+  weekly-report run. So a plugin could ship a correct, complete account of
+  its platform and have it never be read at the point where a borrowed
+  mental model does its damage — the report itself. #647 is the same gap
+  from the other side: mureo core asserting auction semantics, with no
+  unconditional place for a non-auction platform to say "not here".
+
+  `mureo.policy.platform_model.register_platform_model` is the missing
+  channel. A provider registers one capped paragraph — how its platform
+  selects and prices delivery, and what it therefore does *not* have — and
+  mureo renders it into the MCP server's `instructions`, which the client
+  receives inside the `initialize` response. That is before any tool call
+  and with no description to match, which is precisely what the skill route
+  could not offer. No new entry-point group: registration hangs off the
+  provider module `mureo.providers` already imports.
+
+  It is the prose half of `mureo.policy.learning_rules` (#548) and inherits
+  that module's discipline. Every model carries the same `Evidence` record —
+  first-party source, ISO retrieval date, the sentence it rests on — and a
+  model missing any of the three is refused at registration rather than
+  shipped: the failure mode being prevented is a *plausible* sentence, and a
+  plausible sentence with no source is indistinguishable from a correct one
+  until it costs money. mureo core registers **no** models of its own, so a
+  platform with no registered model contributes no text at all. Absence is
+  silence, never a default.
+
+  Two bounds, because always-on text is a budget shared with everything else
+  the agent has to read. One statement is capped at 400 characters (the
+  length of the single always-on string mureo already ships, the
+  workspace-routing notice) and refused at registration if longer or
+  multi-paragraph, so a plugin author finds out immediately instead of being
+  silently truncated. The whole block is capped at 2000 characters, past
+  which whole statements are dropped in platform order with a warning naming
+  them — half a platform model is worse than none, because a truncated
+  sentence still reads as a complete claim.
+
+  A model is rendered only when this server actually serves tools whose
+  names start with its `tool_prefix`, so a platform switched off by
+  `MUREO_DISABLE_*` or simply not installed costs no context. The default
+  single-workspace install with no such plugin still gets
+  `instructions=None` and a byte-identical `InitializeResult`, and a
+  multi-workspace install with no models gets exactly the workspace string
+  it got before.
+
 ### Fixed
 
 - **Auction and smart-bidding semantics were stated as unconditional facts**

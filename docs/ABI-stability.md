@@ -40,6 +40,7 @@ The mureo plugin ABI consists of exactly the following:
 | Domain Protocol method signatures (`CampaignProvider`, `KeywordProvider`, `AudienceProvider`, `ExtensionProvider`) | `mureo.core.providers.{campaign,keyword,audience,extension}` | Stable (Phase 1) |
 | `MCPToolProvider` Protocol shape (`mcp_tools()` + `async handle_mcp_tool()`) — the opt-in MCP-exposure secondary Protocol | `mureo.mcp.tool_provider` | Stable (Phase 1; structural / `runtime_checkable`) |
 | Plugin tool-call safety semantics: mureo reads **standard MCP** `Tool.annotations.readOnlyHint` (believed verbatim either way; when the hint is ABSENT the tool NAME decides via mureo's shared read vocabulary, and a name that does not read as a read ⇒ *mutating*, conservative default) and the optional `Tool` `_meta["mureo"]` keys `reversal` / `throttle` / `observation_days` / `identity`. No new required Protocol surface — purely additive & opt-in; undeclared behaviour is unchanged from Phase 1 (audited + throttled). A mutating plugin call additionally receives *structural* strategy parity (confirm + STRATEGY-gate are skill-mediated; action_log promotion + observation window + target identity + rollback-intent are mechanical) — not mureo's platform-specific analytics. | `mureo.mcp.{server,plugin_semantics}` | Stable (Phase 2/4; additive — these meta key names are the only contract) |
+| `PlatformModel` dataclass shape (`platform`, `tool_prefix`, `statement`, `evidence`) and `register_platform_model` — the always-on per-platform delivery-model contribution point (#648). Rendered into the MCP server's `instructions`, scoped to the platforms this server serves tools for. `Evidence` is required; `MAX_STATEMENT_CHARS` / `MAX_TOTAL_CHARS` are the documented caps and may only be **raised**, never lowered, within a major version. | `mureo.policy.platform_model` | Stable (additive) |
 | `ChangeFeedProvider` Protocol shape (`platform` + `async fetch_change_events()`) — the opt-in change-import secondary Protocol (#545) | `mureo.change_import.protocol` | Stable (structural / `runtime_checkable`) |
 | `ExternalChange` / `ChangeFeedResult` / `ChangeImportOutcome` dataclass shapes and the `ChangeImportStatus` / `ImportVerdict` **enum values** | `mureo.change_import.models` | Stable (additive evolution allowed) |
 | Model dataclass shapes (`Campaign`, `Ad`, `Keyword`, ...) | `mureo.core.providers.models` | Stable (Phase 1; additive evolution allowed) |
@@ -610,6 +611,16 @@ without a deprecation cycle:
   `default_registry`** singleton. The class `Registry` is exposed
   for tests / advanced use.
 
+- **Platform models default to silence**: mureo core registers no
+  `PlatformModel` of its own, and a platform with no registered model
+  contributes no text to `instructions`. mureo will not start
+  generating a default statement for an unregistered platform — that
+  would be the guess the mechanism exists to prevent.
+- **A refused `PlatformModel` raises, it is not truncated**: an
+  unsourced, over-long or multi-paragraph statement raises
+  `ValueError` at `register_platform_model`. Registration will not
+  become lossy-but-quiet.
+
 The thread-safety **non-property** is also documented and stable:
 discovery and registration are not thread-safe. Plugin authors
 should not assume otherwise.
@@ -757,6 +768,9 @@ A handy cheat sheet for mureo maintainers and curious plugin authors.
 | Change | Breaking? |
 |---|---|
 | Add new `Capability` member | No |
+| Raise `MAX_STATEMENT_CHARS` / `MAX_TOTAL_CHARS` | No |
+| Lower `MAX_STATEMENT_CHARS` / `MAX_TOTAL_CHARS` | Yes |
+| Add a required field to `PlatformModel` | Yes |
 | Rename `Capability` member | Yes |
 | Remove `Capability` member | Yes |
 | Add new Protocol | No |

@@ -874,6 +874,8 @@ Read-only: it calls no platform API and changes nothing.
 
 A plugin or bridge advertises its own platform's rules through `mureo.policy.learning_rules.register_platform_learning_rules`, the same registry pattern the budget/bid declarations use.
 
+**What a platform has no check for — only a wrong assumption.** The table above is the *data* half: facts mureo can verify. The prose half is `mureo.policy.platform_model.register_platform_model` (#648) — one capped paragraph stating how a platform selects and prices delivery, and what it therefore does not have. It is rendered into the server's MCP `instructions` (the `initialize` response), so it is read before any tool call and does not depend on a skill description matching; it appears only when this server serves tools for that platform. Every model carries the same first-party `Evidence` record, and mureo core registers none of its own — a platform with no registered model contributes nothing rather than a default. See [`plugin-authoring.md` §3](plugin-authoring.md#3-provider-protocols).
+
 **The state read is local by design.** A policy gate runs on every tool call and must not make network calls, so the learning state comes from STATE.json rather than from the platform. Keep it fresh (`google_ads_campaigns_get` / `google_ads_campaigns_diagnose` → `mureo_state_upsert_campaign`); a missing observation is reported `unknown`, never `steady`.
 
 ### Creative Studio
