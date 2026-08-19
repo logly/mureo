@@ -195,6 +195,9 @@ mureo/
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
 ├── policy/              # Built-in policy gates (strategy_gate) — ship with OSS, run by default
 │   ├── learning_rules.py     # Per-platform learning-period facts + their first-party sources (#548)
+│   ├── platform_model.py     # Per-platform delivery-model prose + first-party sources (#648) —
+│   │                         #   the ONLY always-on plugin channel: rendered into the MCP
+│   │                         #   server's `instructions`, scoped to the platforms served
 │   └── learning_reset.py     # Reset-class + learning-state pre-flight the gate refuses on
 ├── learning/            # Read-side /learn companion: insight federation across configured sources
 ├── creative_studio/     # Creator-grade ad-creative (image) generation via pluggable providers

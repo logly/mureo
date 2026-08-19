@@ -1412,7 +1412,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
 # ---------------------------------------------------------------------------
 
 
-def _server_instructions() -> str | None:
+def _workspace_instruction() -> str:
     """Server-level instructions that name the workspace this server is bound to.
 
     Some hosts expose *every* configured MCP server to *every* conversation at
@@ -1425,8 +1425,8 @@ def _server_instructions() -> str | None:
     ``InitializeResult`` the client shows the model) gives the model the signal it
     needs to pick the right server and to notice a mismatch instead of proceeding.
 
-    Returns ``None`` for the default single-workspace install so its
-    ``InitializeResult`` stays byte-identical — standalone OSS users see no change.
+    Returns ``""`` for the default single-workspace install — see
+    :func:`_server_instructions` for why that matters.
     """
     # Lazy import mirrors the throttle path above (``_acquire_plugin_throttle``):
     # keeping it inside the function pre-empts a cycle should
@@ -1443,9 +1443,9 @@ def _server_instructions() -> str | None:
         # A misconfigured factory is a real error, but it must surface where it
         # already does (first tool call), not by refusing to start the server.
         # Omit instructions and let startup proceed unchanged.
-        return None
+        return ""
     if workspace_id == DEFAULT_WORKSPACE_ID:
-        return None
+        return ""
     return (
         f"This mureo server is bound to workspace {workspace_id!r}. Every tool "
         f"here reads and writes ONLY that workspace's data. If the user is "
@@ -1453,6 +1453,84 @@ def _server_instructions() -> str | None:
         f"the mureo server bound to that workspace instead. Never assume a tool "
         f"call here acts on any workspace other than {workspace_id!r}."
     )
+
+
+def _platform_model_instruction() -> str:
+    """The registered platform delivery models this server actually serves (#648).
+
+    ``instructions`` is the only always-on prose slot an MCP server has: the
+    client receives it inside the ``initialize`` response, before any tool
+    call, and it does not depend on a description matching. That is precisely
+    what a contributed ``SKILL.md`` cannot offer — it is description-matched
+    and read on demand, so a plugin's account of how its platform really works
+    was never read on the routine reporting paths where a borrowed mental
+    model does its damage.
+
+    Scoped to what this server serves and to who contributed it, so a platform
+    this server does not serve (uninstalled, or switched off by
+    ``MUREO_DISABLE_*``) contributes nothing, and no plugin can publish text
+    under another platform's name. Returns ``""`` when no in-scope platform has
+    registered a model — which is every install with no such plugin, mureo core
+    shipping none of its own.
+    """
+    # Lazy import for the same reason as the runtime-context import above:
+    # nothing in the policy package is needed to define the tool list, and
+    # keeping it out of module import order pre-empts a cycle.
+    from mureo.policy.platform_model import platform_model_instructions
+
+    return platform_model_instructions(_plugin_tool_owners())
+
+
+def _plugin_tool_owners() -> dict[str, str]:
+    """Which provider contributed each plugin tool this server exposes (#648).
+
+    The ownership map ``platform_model_instructions`` decides scope from. Only
+    plugin tools appear: mureo's own built-in tools are deliberately absent, so
+    a third-party model claiming ``google_ads_`` or ``meta_ads_`` matches
+    nothing and renders nothing. Core registers no models, so leaving its tools
+    unowned costs nothing and removes a whole class of impersonation.
+
+    The owner is the breadcrumb ``collect_plugin_tools`` stamps from
+    ``ProviderEntry.name`` — the registry key, which is itself first-wins
+    protected — rather than an attribute the instance could restyle later. The
+    fallback to ``name`` covers the ``__slots__`` provider whose stamp the
+    collector had to skip.
+
+    Intersected with ``_ALL_TOOLS``: a dispatch entry with no exposed tool is
+    not a served tool, and only a served tool puts a platform in scope.
+    """
+    exposed = frozenset(tool.name for tool in _ALL_TOOLS)
+    owners: dict[str, str] = {}
+    for name, provider in _PLUGIN_DISPATCH.items():
+        if name not in exposed:
+            continue
+        owner = getattr(provider, "_mureo_provider_name", None) or getattr(
+            provider, "name", None
+        )
+        if isinstance(owner, str) and owner:
+            owners[name] = owner
+    return owners
+
+
+def _server_instructions() -> str | None:
+    """Compose the server's MCP ``instructions``, or ``None`` if there is none.
+
+    Two contributions today — the bound-workspace notice and the per-platform
+    delivery models (#648) — joined only when non-empty.
+
+    Returns ``None`` when both are empty, which is the default single-workspace
+    install with no platform model registered: its ``InitializeResult`` stays
+    byte-identical, so standalone OSS users see no change. A multi-workspace
+    install with no models gets exactly the workspace string it got before.
+    """
+    sections = [
+        section
+        for section in (_workspace_instruction(), _platform_model_instruction())
+        if section
+    ]
+    if not sections:
+        return None
+    return "\n\n".join(sections)
 
 
 def _create_server() -> Server:
