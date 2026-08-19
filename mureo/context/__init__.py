@@ -17,6 +17,16 @@ from mureo.context.models import (
     StateDocument,
     StrategyEntry,
 )
+from mureo.context.monthly_budget import (
+    MONTHLY_BUDGET_HEADING,
+    SOURCE_IMPLIED_DAILY_CEILING,
+    SOURCE_NOT_SET,
+    SOURCE_STRATEGY_SECTION,
+    MonthlyBudget,
+    monthly_budget_from_strategy_text,
+    parse_monthly_budget,
+    resolve_monthly_budget,
+)
 from mureo.context.state import (
     append_action_log,
     begin_batch,
@@ -54,6 +64,15 @@ __all__ = [
     "PlatformState",
     "StateDocument",
     "StrategyEntry",
+    # monthly budget target (#652)
+    "MONTHLY_BUDGET_HEADING",
+    "SOURCE_IMPLIED_DAILY_CEILING",
+    "SOURCE_NOT_SET",
+    "SOURCE_STRATEGY_SECTION",
+    "MonthlyBudget",
+    "monthly_budget_from_strategy_text",
+    "parse_monthly_budget",
+    "resolve_monthly_budget",
     # strategy
     "add_strategy_entry",
     "parse_strategy",

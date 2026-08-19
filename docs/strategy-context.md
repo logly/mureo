@@ -88,6 +88,41 @@ A section the STRATEGY.md parser preserves verbatim (it has no `context_type` of
 
 mureo parses this section itself — the agent passes the text through unchanged. Declaring nothing is fine: the zero-configuration checks still run. See [tracking-consistency.md](tracking-consistency.md).
 
+### `## Custom: Monthly Budget` (opt-in)
+
+The operator's **intended monthly spend** — what `/budget-pacing` reads, offers to persist, and paces against:
+
+```markdown
+## Custom: Monthly Budget
+- total: 300000
+- google_ads: 180000
+- meta_ads: 120000
+```
+
+`total:` is the whole-month figure and is required; every other numeric bullet is a per-platform sub-target, keyed by platform key (a plugin's own key works too). Code can read it too (#652), so monthly pacing can reach a surface the skill is not running on:
+
+```python
+from mureo.context import resolve_monthly_budget
+
+# days_in_month belongs to the caller: pacing's "today" comes from
+# server_now, never from this machine's clock.
+budget = resolve_monthly_budget(strategy_text, days_in_month=31)
+if not budget.is_set:
+    ...  # no target — ask the operator; do NOT render 0, 100%, or "on pace"
+elif budget.is_derived:
+    ...  # a ceiling stretched over a month; label it as an implied cap
+```
+
+The precedence is the skill's, matched rather than replaced:
+
+1. **`## Custom: Monthly Budget`** wins — `source == "strategy_section"`. A `total: 0` is a real target ("spend nothing"), not an absence.
+2. Otherwise **`## Guardrails` → `max_total_daily_budget` × days in month**, returned with `is_derived` set and `source == "implied_daily_ceiling"`. It is a **cap, not a plan**: show it as derived wherever it appears.
+3. Otherwise **not set** — `total is None`, `is_set` false. Ask the operator.
+
+A missing, empty or malformed section degrades to "not set" rather than raising; an unreadable sub-target bullet drops only itself.
+
+**This is not a guardrail.** `Guardrails` carries ceilings that refuse an operation; a monthly target is the intended spend, where underspending is a problem too and nothing should be blocked for approaching it. Hence a separate type (`MonthlyBudget`) and separate functions (`parse_monthly_budget`, `monthly_budget_from_strategy_text`, `resolve_monthly_budget`). The figure lives in STRATEGY.md only — it is deliberately not copied into STATE.json.
+
 ### Python API
 
 ```python
