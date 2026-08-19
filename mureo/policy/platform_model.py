@@ -42,20 +42,50 @@ Bounded by construction
 Always-on text is a budget shared by everything else the model has to read, so
 neither half of it is open-ended: one statement is capped at
 :data:`MAX_STATEMENT_CHARS` (refused at registration, so the plugin author
-finds out immediately) and the whole block at :data:`MAX_TOTAL_CHARS` (whole
-statements dropped in platform order, with a warning naming what was dropped).
+finds out immediately) and the rendered block at :data:`MAX_TOTAL_CHARS`.
+
+Truncation is never silent *to the reader*. A block that lost statements to
+the budget carries a line saying so, because the heading otherwise reads as a
+complete list and "not listed" would then mean both "has no model" and "had
+one, but it did not fit" — and the second of those is the #648 failure mode
+returning unannounced.
+
+Who may speak for a platform
+----------------------------
+Registration runs inside a third-party module import, so this contribution
+point is a **trust boundary**: it puts text in front of the agent
+unconditionally, which is exactly the power the module exists to grant. Two
+controls keep a plugin from using it to speak for someone else, matching the
+posture :mod:`mureo.core.providers.registry` already takes for provider names:
+
+1. **First wins.** A second registration for a platform key that is already
+   taken is dropped with a :class:`PlatformModelWarning`, never silently
+   overwritten — so a plugin installed *after* a legitimate one cannot take
+   the slot. ``warnings.filterwarnings("error", PlatformModelWarning)`` turns
+   that into a startup failure for operators who want to fail closed.
+2. **Only the owner is rendered.** Being registered is not enough. A model is
+   rendered only where a tool whose name starts with its ``tool_prefix`` was
+   *contributed by the platform the model names*, judged from the server's
+   tool-ownership map — not from "some tool somewhere matches the prefix".
+   A plugin claiming ``google_ads_`` therefore renders nothing: those tools
+   are mureo's own, and mureo registers no models. A plugin can state how its
+   own platform works; it cannot state how anyone else's does.
+
+Neither control judges whether a statement is *true* — nothing can. What they
+bound is whose name a statement can be published under.
 
 In scope, not installed
 -----------------------
-A model is rendered only when this server actually serves tools whose names
-start with its ``tool_prefix``. An installed-but-disabled platform
-(``MUREO_DISABLE_*``) exposes no tools and therefore contributes no prose, and
-no operator is charged always-on context for a platform they are not running.
+Even for the owner, a model is rendered only when this server actually serves
+its tools. An installed-but-disabled platform (``MUREO_DISABLE_*``) exposes no
+tools and therefore contributes no prose, and no operator is charged always-on
+context for a platform they are not running.
 """
 
 from __future__ import annotations
 
 import logging
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
@@ -63,7 +93,7 @@ from typing import TYPE_CHECKING
 from mureo.policy.learning_rules import Evidence
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +105,11 @@ logger = logging.getLogger(__name__)
 #: exist"; not enough for a manual.
 MAX_STATEMENT_CHARS = 400
 
-#: Longest the rendered lines may be in total (the block's heading is not
-#: counted). Roughly five full statements — more platforms than one mureo
-#: server serves in any install we know of — after which whole statements are
-#: dropped rather than letting the always-on block grow with the plugin list.
+#: Longest the **whole rendered block** may be — heading, statement lines, the
+#: newlines joining them and the truncation notice, all counted. Roughly four
+#: full statements, more platforms than one mureo server serves in any install
+#: we know of, after which whole statements are dropped rather than letting the
+#: always-on block grow with the plugin list.
 MAX_TOTAL_CHARS = 2000
 
 _HEADING = (
@@ -89,15 +120,41 @@ _HEADING = (
 )
 
 
+def _omission_note(count: int) -> str:
+    """The line that stops a truncated block reading as a complete one."""
+    return (
+        f"NOTE: this list is INCOMPLETE — {count} further platform model(s) "
+        f"did not fit in this block's length budget. For any platform not "
+        f"named above, assume nothing about how it selects or prices delivery; "
+        f"ask the operator rather than carrying over another platform's model."
+    )
+
+
+class PlatformModelWarning(UserWarning):
+    """Emitted when a registration is dropped because the slot is taken.
+
+    A :class:`UserWarning` subclass so operators can fail closed with
+    ``warnings.filterwarnings("error", category=PlatformModelWarning)``, the
+    same opt-in :class:`~mureo.core.providers.registry.RegistryWarning`
+    offers for a provider name collision.
+    """
+
+
 @dataclass(frozen=True)
 class PlatformModel:
     """One platform's own account of how it selects and prices delivery.
 
     ``statement`` is plain prose, one paragraph, addressed to the agent: how
     delivery is chosen and charged on this platform, and — the half that stops
-    a borrowed model — what it therefore does *not* have. ``tool_prefix`` is
-    how the platform is recognised as in scope, matching the attribution rule
-    :class:`~mureo.policy.learning_rules.PlatformLearningRules` already uses.
+    a borrowed model — what it therefore does *not* have.
+
+    ``platform`` must be the registering provider's own name: it is both the
+    label the statement is published under and the ownership key
+    :func:`models_in_scope` checks the tools against. ``tool_prefix`` selects
+    which of that provider's tools put it in scope, matching the attribution
+    rule :class:`~mureo.policy.learning_rules.PlatformLearningRules` already
+    uses — but here a prefix match alone renders nothing, because the prefix
+    is a claim and the ownership map is what settles it.
     """
 
     platform: str
@@ -151,7 +208,7 @@ def _validate(model: PlatformModel) -> None:
 
 
 def register_platform_model(model: PlatformModel) -> None:
-    """Register (or replace) one platform's delivery model.
+    """Register one platform's delivery model. First registration wins.
 
     The hook a provider, bridge or plugin uses to state how its own platform
     works on a route the agent always reads. It hangs off ordinary module
@@ -161,11 +218,32 @@ def register_platform_model(model: PlatformModel) -> None:
     ``mureo.providers`` calls this at import time and is registered before the
     server builds its ``instructions``.
 
+    **First wins, like provider names.** If ``model.platform`` is already
+    registered the new model is dropped with a :class:`PlatformModelWarning`,
+    never silently substituted, so a plugin installed after a legitimate one
+    cannot take over the slot. This mirrors
+    :meth:`mureo.core.providers.registry.Registry.register`; the repository
+    must not answer "can a later plugin steal a slot?" two different ways.
+
+    Registration is not permission to speak for the named platform — see
+    :func:`models_in_scope`, which renders a model only where that platform
+    actually contributed the tools.
+
     Raises :class:`ValueError` for a model that is unsourced, over-long or
     multi-paragraph, so a plugin author sees the boundary at registration
     rather than shipping prose that is silently truncated.
     """
     _validate(model)
+    existing = _MODELS.get(model.platform)
+    if existing is not None:
+        warnings.warn(
+            f"platform model for {model.platform!r} is already registered "
+            f"(source {existing.evidence.source!r}); the later registration "
+            f"is dropped (first wins)",
+            PlatformModelWarning,
+            stacklevel=2,
+        )
+        return
     _MODELS[model.platform] = model
 
 
@@ -184,45 +262,74 @@ def registered_platform_models() -> tuple[str, ...]:
     return tuple(sorted(_MODELS))
 
 
-def models_in_scope(tool_names: Iterable[str]) -> tuple[PlatformModel, ...]:
-    """Registered models whose ``tool_prefix`` claims at least one of
-    ``tool_names``, in platform order.
+def models_in_scope(tool_owners: Mapping[str, str]) -> tuple[PlatformModel, ...]:
+    """Registered models this server may render, in platform order.
 
-    Scope is decided from the tool list this server actually serves, not from
-    what is installed: a platform switched off by ``MUREO_DISABLE_*`` exposes
-    no tools and so contributes nothing.
+    ``tool_owners`` maps a tool name to the name of the provider that
+    contributed it. A model is in scope only when a tool starting with its
+    ``tool_prefix`` is owned by the platform the model *names* — matching the
+    prefix is not enough, or any plugin could annotate any other platform's
+    tools by choosing a prefix. mureo's own built-in tools are not in the map
+    at all, so nothing can be published under their platforms' names; mureo
+    core registers no models, and a claim on ``google_ads_`` renders nothing.
+
+    Scope is also decided from what this server actually serves, not from what
+    is installed: a platform switched off by ``MUREO_DISABLE_*`` exposes no
+    tools and so contributes nothing.
     """
-    names = tuple(tool_names)
+    owned = tuple(tool_owners.items())
     return tuple(
         model
         for _, model in sorted(_MODELS.items())
-        if any(name.startswith(model.tool_prefix) for name in names)
+        if any(
+            owner == model.platform and name.startswith(model.tool_prefix)
+            for name, owner in owned
+        )
     )
 
 
-def platform_model_instructions(tool_names: Iterable[str]) -> str:
-    """Render the always-on block for the platforms ``tool_names`` puts in
-    scope.
+def _fit(
+    models: tuple[PlatformModel, ...], reserve: int
+) -> tuple[list[str], list[str]]:
+    """Greedily fit statement lines into the budget, ``reserve`` held back.
 
-    Returns ``""`` when nothing is in scope, which is what keeps a default
-    install's ``InitializeResult`` byte-identical.
+    Whole statements only: half a platform model is worse than none, because a
+    truncated sentence still reads as a complete claim.
     """
-    models = models_in_scope(tool_names)
-    if not models:
-        return ""
     lines: list[str] = []
     dropped: list[str] = []
-    used = 0
+    used = len(_HEADING)
     for model in models:
         line = f"- {model.platform}: {model.statement}"
-        if used + len(line) > MAX_TOTAL_CHARS:
-            # Whole statements only: half a platform model is worse than none,
-            # because a truncated sentence still reads as a complete claim.
+        # +1 for the newline that joins this line to the block.
+        if used + 1 + len(line) + reserve > MAX_TOTAL_CHARS:
             dropped.append(model.platform)
             continue
-        used += len(line)
+        used += 1 + len(line)
         lines.append(line)
+    return lines, dropped
+
+
+def platform_model_instructions(tool_owners: Mapping[str, str]) -> str:
+    """Render the always-on block for the platforms in scope, within budget.
+
+    The returned string never exceeds :data:`MAX_TOTAL_CHARS` characters,
+    counting the heading, the statement lines, the newlines joining them and
+    the truncation notice. Returns ``""`` when nothing is in scope, which is
+    what keeps a default install's ``InitializeResult`` byte-identical.
+    """
+    models = models_in_scope(tool_owners)
+    if not models:
+        return ""
+    # First pass spends the whole budget on statements; only if something did
+    # not fit is a notice needed, and only then does it cost anything. The
+    # reserve is computed for the largest count the notice could ever carry,
+    # so the second pass cannot overshoot.
+    lines, dropped = _fit(models, reserve=0)
+    note = ""
     if dropped:
+        lines, dropped = _fit(models, reserve=1 + len(_omission_note(len(models))))
+        note = _omission_note(len(dropped))
         logger.warning(
             "platform model block exceeds %d characters; omitted: %s",
             MAX_TOTAL_CHARS,
@@ -230,13 +337,14 @@ def platform_model_instructions(tool_names: Iterable[str]) -> str:
         )
     if not lines:
         return ""
-    return "\n".join([_HEADING, *lines])
+    return "\n".join([_HEADING, *lines, *([note] if note else [])])
 
 
 __all__ = [
     "MAX_STATEMENT_CHARS",
     "MAX_TOTAL_CHARS",
     "PlatformModel",
+    "PlatformModelWarning",
     "models_in_scope",
     "platform_model",
     "platform_model_instructions",

@@ -485,8 +485,8 @@ built, which is before the server composes its `instructions`.
 
 | Field | Contract |
 |---|---|
-| `platform` | Your provider `name`. Shown verbatim as the label on the rendered line. |
-| `tool_prefix` | How mureo decides your platform is *in scope*. The statement is rendered only when this server actually serves at least one tool whose name starts with it — same attribution rule as `PlatformLearningRules`. |
+| `platform` | Your provider `name` — **must** match it, since it is both the label on the rendered line and the ownership key checked against the tools this server serves. |
+| `tool_prefix` | How mureo decides your platform is *in scope*. The statement is rendered only when this server serves at least one tool whose name starts with it **and which your provider contributed** — same attribution rule as `PlatformLearningRules`, plus an ownership check. |
 | `statement` | One paragraph of plain prose, at most `MAX_STATEMENT_CHARS` (400) characters, no line breaks. |
 | `evidence` | The same `Evidence` record the learning rules use: first-party `source`, ISO `retrieved` date, and the `quote` the statement rests on. |
 
@@ -497,13 +497,27 @@ Four rules the registry enforces, and why:
   refused with `ValueError`. The failure mode this exists to prevent is
   a *plausible* sentence; a plausible sentence with no source is
   indistinguishable from a correct one until it costs money.
-- **Length is capped.** Over 400 characters, or containing a line
-  break, is refused at registration rather than silently truncated, so
-  you find out immediately. The whole block is capped at
-  `MAX_TOTAL_CHARS` (2000) across every platform; past that, whole
-  statements are dropped in platform order and a warning names them.
-  Always-on text is a budget shared with everything else the agent has
-  to read.
+- **Length is capped.** A statement over 400 characters, or containing
+  a line break, is refused at registration rather than silently
+  truncated, so you find out immediately. The rendered block — heading,
+  statement lines, the newlines joining them and the truncation notice
+  — never exceeds `MAX_TOTAL_CHARS` (2000) in total; past that, whole
+  statements are dropped in platform order, a warning names them in the
+  log, and the block itself carries a line telling the agent the list is
+  incomplete. Always-on text is a budget shared with everything else the
+  agent has to read.
+- **You may only speak for yourself.** Registering is not permission.
+  A model is rendered only where a tool starting with its `tool_prefix`
+  was contributed by the provider named in `platform` — matching the
+  prefix is a claim, and the server's tool-ownership map is what settles
+  it. mureo's own built-in tools have no plugin owner, so a model
+  claiming `google_ads_` renders nothing no matter what `platform` says.
+- **First registration wins.** A second registration for a platform key
+  that is already taken is dropped with a `PlatformModelWarning`, never
+  substituted — the same rule provider names follow, so a package
+  installed after a legitimate one cannot take the slot. Operators can
+  fail closed with
+  `warnings.filterwarnings("error", category=PlatformModelWarning)`.
 - **Scope, not installation.** A platform whose tools this server does
   not serve contributes nothing, so an operator is never charged
   always-on context for a platform they are not running.
@@ -512,6 +526,18 @@ Four rules the registry enforces, and why:
   all. Absence is reported as silence, never filled in with a guess —
   the same rule `mureo.policy.learning_rules` applies to a platform it
   has no first-party enumeration for.
+
+> **This is a trust boundary, and the rules above are not a review.**
+> `register_platform_model` runs inside a third-party module import and
+> puts text in front of the agent unconditionally — that is the power it
+> exists to grant. What mureo enforces is *whose name* a statement can
+> be published under (ownership, first-wins) and *how much* of it there
+> can be (the caps). What mureo cannot enforce is whether the statement
+> is **true**: `Evidence` proves a source was named, not that the prose
+> follows from it. A `PlatformModel` therefore warrants the same
+> human, PR-level review as any other text your plugin publishes — read
+> the statement against the quoted source, and re-read it when the
+> platform's own documentation changes.
 
 What belongs in the statement: how delivery is **selected**, how it is
 **priced**, and — the half that stops another platform's model being

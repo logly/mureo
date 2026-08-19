@@ -38,10 +38,34 @@
   length of the single always-on string mureo already ships, the
   workspace-routing notice) and refused at registration if longer or
   multi-paragraph, so a plugin author finds out immediately instead of being
-  silently truncated. The whole block is capped at 2000 characters, past
-  which whole statements are dropped in platform order with a warning naming
-  them — half a platform model is worse than none, because a truncated
-  sentence still reads as a complete claim.
+  silently truncated. The rendered block — heading, statement lines, the
+  newlines joining them and the truncation notice — never exceeds 2000
+  characters, past which whole statements are dropped in platform order:
+  half a platform model is worse than none, because a truncated sentence
+  still reads as a complete claim. Dropping is not silent to either reader.
+  The log names the omitted platforms for the operator, and the block itself
+  carries a line telling the agent the list is incomplete — otherwise "not
+  listed" would mean both "has no model" and "had one that did not fit", and
+  a platform that merely sorts late would return to the pre-#648 failure mode
+  unannounced.
+
+  **A plugin may speak for itself, never for another platform.** This
+  contribution point runs inside a third-party module import and puts text in
+  front of the agent unconditionally, so it is a trust boundary and is
+  guarded like one. Registration is **first-wins**, matching provider names —
+  a second registration for a platform key already taken is dropped with a
+  `PlatformModelWarning` rather than substituted, so a package installed
+  after a legitimate one cannot take the slot, and
+  `warnings.filterwarnings("error", category=PlatformModelWarning)` turns
+  that into a startup failure for operators who want to fail closed. And
+  registering is not permission: a model is rendered only where a tool
+  matching its `tool_prefix` was **contributed by the provider the model
+  names**, judged from the server's tool-ownership map. mureo's built-in
+  tools have no plugin owner, so a plugin claiming `google_ads_` renders
+  nothing whatever `platform` it declares. Neither control judges whether a
+  statement is true — nothing can; what they bound is whose name it can be
+  published under, which is why a `PlatformModel` still warrants human,
+  PR-level review.
 
   A model is rendered only when this server actually serves tools whose
   names start with its `tool_prefix`, so a platform switched off by

@@ -1466,17 +1466,50 @@ def _platform_model_instruction() -> str:
     was never read on the routine reporting paths where a borrowed mental
     model does its damage.
 
-    Scoped to ``_ALL_TOOLS``, so a platform this server does not serve
-    (uninstalled, or switched off by ``MUREO_DISABLE_*``) contributes nothing.
-    Returns ``""`` when no in-scope platform has registered a model — which is
-    every install with no such plugin, mureo core shipping none of its own.
+    Scoped to what this server serves and to who contributed it, so a platform
+    this server does not serve (uninstalled, or switched off by
+    ``MUREO_DISABLE_*``) contributes nothing, and no plugin can publish text
+    under another platform's name. Returns ``""`` when no in-scope platform has
+    registered a model — which is every install with no such plugin, mureo core
+    shipping none of its own.
     """
     # Lazy import for the same reason as the runtime-context import above:
     # nothing in the policy package is needed to define the tool list, and
     # keeping it out of module import order pre-empts a cycle.
     from mureo.policy.platform_model import platform_model_instructions
 
-    return platform_model_instructions(tool.name for tool in _ALL_TOOLS)
+    return platform_model_instructions(_plugin_tool_owners())
+
+
+def _plugin_tool_owners() -> dict[str, str]:
+    """Which provider contributed each plugin tool this server exposes (#648).
+
+    The ownership map ``platform_model_instructions`` decides scope from. Only
+    plugin tools appear: mureo's own built-in tools are deliberately absent, so
+    a third-party model claiming ``google_ads_`` or ``meta_ads_`` matches
+    nothing and renders nothing. Core registers no models, so leaving its tools
+    unowned costs nothing and removes a whole class of impersonation.
+
+    The owner is the breadcrumb ``collect_plugin_tools`` stamps from
+    ``ProviderEntry.name`` — the registry key, which is itself first-wins
+    protected — rather than an attribute the instance could restyle later. The
+    fallback to ``name`` covers the ``__slots__`` provider whose stamp the
+    collector had to skip.
+
+    Intersected with ``_ALL_TOOLS``: a dispatch entry with no exposed tool is
+    not a served tool, and only a served tool puts a platform in scope.
+    """
+    exposed = frozenset(tool.name for tool in _ALL_TOOLS)
+    owners: dict[str, str] = {}
+    for name, provider in _PLUGIN_DISPATCH.items():
+        if name not in exposed:
+            continue
+        owner = getattr(provider, "_mureo_provider_name", None) or getattr(
+            provider, "name", None
+        )
+        if isinstance(owner, str) and owner:
+            owners[name] = owner
+    return owners
 
 
 def _server_instructions() -> str | None:
