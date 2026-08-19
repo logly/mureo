@@ -123,6 +123,24 @@ const MODULES = [
       "writeReportsOrder",
     ],
   },
+  {
+    file: "reports_triage.js",
+    global: "MUREO_REPORTS_TRIAGE",
+    bound: [
+      "buildReportsTriage",
+      "triageMarksClient",
+      "triageItemText",
+      "triageItemNextStep",
+    ],
+    moved: [
+      "buildReportsTriage",
+      "triageMarksClient",
+      "triageItemText",
+      "triageItemNextStep",
+      "triageItemsForClient",
+      "triageRank",
+    ],
+  },
 ];
 
 /** Every extracted module actually shipped, found rather than declared. */

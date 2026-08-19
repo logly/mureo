@@ -40,6 +40,22 @@ and which this module therefore resolves and puts on the wire:
 - each row's ``freshness`` — how old THAT platform's figures are, judged
   against the window they cover. The document-level ``last_synced_at`` is
   re-stamped on any platform write, so it cannot answer this.
+
+The multi-client triage layer (#651)
+------------------------------------
+Everything the Reports grid needs to say "this client, today" is already
+above — conflicts, freshness, ``not_collected`` — and needs no server-side
+addition to be ranked; the browser aggregates it (``reports_triage.js``).
+The one exception is how many ``action_log`` observations are past their
+review date, which ``recent_actions`` cannot answer: it is capped, and it
+carries none of the fields that close an observation. So
+``observations_due`` is resolved here.
+
+It rides on the summary **only when the Agency seam supplies clients**
+(:func:`~mureo.web.report_clients.agency_clients_supplied`). A single
+workspace has no second client to triage against, so the layer is omitted
+rather than degraded to one row — and omitted means the payload keeps the
+exact keys, in the exact order, it had before this existed.
 """
 
 from __future__ import annotations
@@ -51,6 +67,11 @@ from typing import TYPE_CHECKING, Any
 # The stored shape's own length bound (#638), so the read side and the write
 # helper truncate a collection failure's reason to the same length.
 from mureo.context.models import NOT_COLLECTED_REASON_MAX_CHARS
+
+# "Which observations are still owed a review" — the rule that already
+# defines ``mureo_state_get(action_log="pending")``, read here rather than
+# restated (#651).
+from mureo.context.observations import due_observation_dates
 from mureo.context.platform_accounts import (
     duplicate_account_entries,
     normalize_account_id,
@@ -61,6 +82,7 @@ from mureo.context.platform_accounts import (
 # above; see that module's "One enumeration, two surfaces".
 from mureo.context.platform_guards import installed_platform_names
 from mureo.context.state import read_state_file
+from mureo.core import clock
 from mureo.core.platform_keys import (
     BUILTIN_PLATFORM_DISPLAY_NAMES,
     PLUGIN_PLATFORM_PREFIX,
@@ -75,6 +97,7 @@ from mureo.web.report_clients import (
     ClientArchiveError,
     _active_state_store,
     _active_workspace_id,
+    agency_clients_supplied,
     list_report_clients,
     report_clients_payload,
     set_report_client_archived,
@@ -392,6 +415,10 @@ def build_report_summary(
       ``reversible_params`` (those can carry secrets or noise).
     - ``reports``: the daily/weekly/goal summaries verbatim (or ``None``).
     - ``client`` / ``period``: echoed back so the caller knows what was read.
+    - ``observations_due``: **only under the Agency seam** (#651) —
+      ``{count, oldest_due}`` for the logged changes whose review date has
+      passed. Absent, not zeroed, on a single-workspace install; see
+      :func:`_build_observations_due`.
 
     Period selection
     ----------------
@@ -412,7 +439,7 @@ def build_report_summary(
     doc = _read_state_safe(store)
     resolved_client = client or _active_workspace_id(_active_state_store())
 
-    return {
+    summary: dict[str, Any] = {
         "client": resolved_client,
         "period": period,
         "periods": _available_periods(doc),
@@ -427,6 +454,49 @@ def build_report_summary(
         # content, not arbitrary input — do not start echoing untrusted data
         # here without a whitelist.
         "reports": doc.reports if doc is not None else None,
+    }
+    # Appended LAST and only under the Agency seam (#651), so a
+    # single-workspace summary keeps the exact keys, in the exact order, it
+    # had before the triage layer existed. See
+    # :func:`_build_observations_due`.
+    if agency_clients_supplied():
+        summary["observations_due"] = _build_observations_due(doc)
+    return summary
+
+
+def _build_observations_due(doc: StateDocument | None) -> dict[str, Any]:
+    """How many of this client's logged changes are past their review date.
+
+    ``{"count": <int>, "oldest_due": <ISO date | None>}`` — the one triage
+    fact the browser cannot work out for itself, for two independent
+    reasons. ``recent_actions`` is capped at
+    :data:`_RECENT_ACTIONS_LIMIT`, so a count taken from it under-reports
+    exactly the operator this layer is for; and it deliberately carries no
+    ``rollback_of`` / ``evaluation_of``, so a browser-side count would keep
+    asking for reviews that were done. Both are answered here, over the
+    whole document, by the rule that already defines "pending" for
+    ``mureo_state_get`` (:func:`~mureo.context.observations.
+    due_observation_dates`).
+
+    ``oldest_due`` is re-rendered from the date mureo itself parsed, never
+    relayed verbatim: an ``observation_due`` is writer-supplied text, and an
+    entry whose value is not a date is not counted at all — it cannot be
+    judged against today, and unknown is not a verdict (the position
+    :func:`_platform_freshness` takes on an unparseable ``fetched_at``).
+
+    "Today" comes from :func:`mureo.core.clock.server_now` — the host's
+    local wall clock, the same one the skills anchor an ``observation_due``
+    to when they write it. Judging a local date against UTC would move the
+    boundary by a day for half the world, on a window measured in weeks.
+    """
+    due = (
+        due_observation_dates(doc.action_log, clock.server_now().date())
+        if doc is not None and doc.action_log
+        else []
+    )
+    return {
+        "count": len(due),
+        "oldest_due": min(due).isoformat() if due else None,
     }
 
 

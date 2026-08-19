@@ -152,6 +152,10 @@ mureo/
 │   ├── state.py         # STATE.json parser/writer
 │   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
+│   ├── observations.py  # What closes an action_log observation, and which are
+│   │                    #   past due (#651). ONE rule for `mureo_state_get(
+│   │                    #   action_log="pending")` and the Reports triage count;
+│   │                    #   two entry shapes (rendered dict / ActionLogEntry)
 │   ├── platform_guards.py # Write-time platform-key guards (#534/#609) — the one "is this key
 │   │                      #   real?" answer every other surface asks, including the read-side
 │   │                      #   label path (`installed_platform_names`, shared since #631)
@@ -382,6 +386,11 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     vocabulary (flag labels and severities, param detail, numbers, periods).
   - `reports_order.js` → `window.MUREO_REPORTS_ORDER` — the Reports index
     card order (localStorage, and the two ways the grid is reordered).
+  - `reports_triage.js` → `window.MUREO_REPORTS_TRIAGE` — the multi-client
+    triage layer (#651): which clients need attention, the ranking
+    (`REPORTS_TRIAGE_KINDS` — the array index IS the rank), and what to run
+    about each. Reads `MUREO_REPORTS_LOGIC` off the page at call time, so it
+    loads after it.
 
   Each carries an inert `module.exports` tail so `node --test
   tests/js/*.test.js` executes the exact bytes the browser is served, and

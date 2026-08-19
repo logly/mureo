@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ClientArchiveError",
+    "agency_clients_supplied",
     "list_report_clients",
     "report_clients_payload",
     "set_report_client_archived",
@@ -81,6 +82,24 @@ def list_report_clients() -> list[dict[str, Any]]:
         return rows
     slug = _active_workspace_id(store)
     return [{"slug": slug, "name": slug, "active": True, "archived": False}]
+
+
+def agency_clients_supplied() -> bool:
+    """Is the client list coming from the Agency seam (#651)?
+
+    ``True`` exactly when :func:`_agency_list_clients` answers — i.e. when
+    :func:`list_report_clients` is returning a registry's clients rather
+    than the synthesized single-workspace entry.
+
+    It exists because one surface has to be OMITTED without it, not degraded
+    to one row: the Reports triage layer ranks clients against each other,
+    and a single workspace has no second client to rank. Asking this rather
+    than counting :func:`list_report_clients` keeps that decision on the
+    seam itself — a registry that happens to hold exactly one client today
+    is still an Agency install, and the fallback entry is not a client
+    anybody registered.
+    """
+    return _agency_list_clients(_active_state_store()) is not None
 
 
 def report_clients_payload() -> dict[str, Any]:

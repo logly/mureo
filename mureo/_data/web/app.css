@@ -1760,6 +1760,96 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   outline-offset: 1px;
 }
 
+/* Triage layer (#651) — the ranked "what do I touch today?" list above the
+   client grid. It exists because a finding rendered inside a client's own
+   card carries the same visual weight as everything on that card that is
+   fine, and two field incidents sat on screen for days because of it.
+
+   It is hidden whenever it holds nothing (no "0 alerts" state), so nothing
+   here needs an empty treatment. */
+.reports-triage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 38%, transparent);
+  border-radius: 12px;
+  background: var(--danger-tint);
+  min-width: 0;
+}
+
+.reports-triage[hidden] {
+  display: none;
+}
+
+.reports-triage-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.reports-triage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One finding. Interpolates a writer-supplied reason and registry-controlled
+   platform keys, so every part of it has to be able to break. */
+.reports-triage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.reports-triage-client {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.reports-triage-what {
+  color: var(--ink-soft);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* What to run. Quiet, like the card's repair hint: it is the way out, not a
+   third warning — but it is never absent. */
+.reports-triage-next {
+  flex-basis: 100%;
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* The other half of the layer: exactly the clients it counts are marked in
+   the grid below. */
+.reports-client-card-item.is-triaged > .reports-client-card {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.reports-client-card-mark {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+
 /* "Every client is archived" — spans the whole grid so it reads as a state
    of the view rather than as a card. */
 .reports-clients-empty {
