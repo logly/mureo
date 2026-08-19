@@ -51,11 +51,13 @@ review date, which ``recent_actions`` cannot answer: it is capped, and it
 carries none of the fields that close an observation. So
 ``observations_due`` is resolved here.
 
-It rides on the summary **only when the Agency seam supplies clients**
-(:func:`~mureo.web.report_clients.agency_clients_supplied`). A single
-workspace has no second client to triage against, so the layer is omitted
-rather than degraded to one row — and omitted means the payload keeps the
-exact keys, in the exact order, it had before this existed.
+It rides on the summary **only when the active store declares the Agency
+client seam** (:func:`~mureo.web.report_clients.agency_client_seam_present`,
+which reads the declaration and invokes nothing — this runs once per client
+card per render). A single workspace has no second client to triage against,
+so the layer is omitted rather than degraded to one row — and omitted means
+the payload keeps the exact keys, in the exact order, it had before this
+existed.
 """
 
 from __future__ import annotations
@@ -97,7 +99,7 @@ from mureo.web.report_clients import (
     ClientArchiveError,
     _active_state_store,
     _active_workspace_id,
-    agency_clients_supplied,
+    agency_client_seam_present,
     list_report_clients,
     report_clients_payload,
     set_report_client_archived,
@@ -415,10 +417,10 @@ def build_report_summary(
       ``reversible_params`` (those can carry secrets or noise).
     - ``reports``: the daily/weekly/goal summaries verbatim (or ``None``).
     - ``client`` / ``period``: echoed back so the caller knows what was read.
-    - ``observations_due``: **only under the Agency seam** (#651) —
-      ``{count, oldest_due}`` for the logged changes whose review date has
-      passed. Absent, not zeroed, on a single-workspace install; see
-      :func:`_build_observations_due`.
+    - ``observations_due``: **only where the Agency client seam is
+      declared** (#651) — ``{count, oldest_due}`` for the logged changes
+      whose review date has passed. Absent, not zeroed, on a
+      single-workspace install; see :func:`_build_observations_due`.
 
     Period selection
     ----------------
@@ -455,11 +457,12 @@ def build_report_summary(
         # here without a whitelist.
         "reports": doc.reports if doc is not None else None,
     }
-    # Appended LAST and only under the Agency seam (#651), so a
-    # single-workspace summary keeps the exact keys, in the exact order, it
-    # had before the triage layer existed. See
-    # :func:`_build_observations_due`.
-    if agency_clients_supplied():
+    # Appended LAST and only where the Agency client seam is declared
+    # (#651), so a single-workspace summary keeps the exact keys, in the
+    # exact order, it had before the triage layer existed. The predicate
+    # reads a declaration and calls nothing — this function runs once per
+    # client card per render. See :func:`_build_observations_due`.
+    if agency_client_seam_present():
         summary["observations_due"] = _build_observations_due(doc)
     return summary
 

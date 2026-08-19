@@ -21,6 +21,12 @@ client to triage against, and the acceptance criterion is that the summary
 is byte-identical to what it was before this feature existed. That is
 pinned first below, because "omitted entirely" is the requirement — not
 "degraded to one row".
+
+And then how much ASKING costs, which is pinned right after it. This
+builder runs once per client card, and the dashboard fetches every visible
+client in parallel, so a seam predicate that invoked ``list_clients()``
+would scale the registry reads with the roster — on the screen a
+twenty-seven-client operator opens, which is the screen #651 exists for.
 """
 
 from __future__ import annotations
@@ -34,7 +40,7 @@ import pytest
 from mureo.context.models import ActionLogEntry, StateDocument
 from mureo.core.runtime_context import default_runtime_context, reset_runtime_context
 from mureo.core.state_store import FilesystemStateStore
-from mureo.web.reports import build_report_summary
+from mureo.web.reports import build_report_summary, list_report_clients
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -68,12 +74,22 @@ class _AgencyStore(FilesystemStateStore):
     Reads the same workspace as the default store, so a test can flip the
     seam on and off over one identical document — which is what makes the
     byte-identical assertion below about the seam and nothing else.
+
+    Counts its ``list_clients`` calls, because how OFTEN the seam is invoked
+    is itself a requirement here — see
+    :func:`test_the_summary_never_invokes_the_client_registry`.
     """
 
+    def __init__(self, workspace: Path | None = None, roster: int = 2) -> None:
+        super().__init__(workspace)
+        self.list_clients_calls = 0
+        self.roster = roster
+
     def list_clients(self) -> list[dict[str, Any]]:
+        self.list_clients_calls += 1
         return [
-            {"slug": "acme", "name": "Acme Co", "active": True},
-            {"slug": "globex", "name": "Globex", "active": False},
+            {"slug": f"c{i}", "name": f"Client {i}", "active": i == 0}
+            for i in range(self.roster)
         ]
 
 
@@ -84,13 +100,23 @@ def _write(workspace: Path, doc: StateDocument) -> None:
 
 
 def _use_workspace(
-    monkeypatch: pytest.MonkeyPatch, workspace: Path, *, agency: bool
-) -> None:
-    """Point the runtime context at ``workspace``, with or without the seam."""
+    monkeypatch: pytest.MonkeyPatch,
+    workspace: Path,
+    *,
+    agency: bool,
+    roster: int = 2,
+) -> _AgencyStore | None:
+    """Point the runtime context at ``workspace``, with or without the seam.
+
+    Returns the Agency store when there is one, so a test can read its call
+    counter.
+    """
     ctx = default_runtime_context(workspace=workspace)
-    if agency:
-        ctx = dataclasses.replace(ctx, state_store=_AgencyStore(workspace))
+    store = _AgencyStore(workspace, roster=roster) if agency else None
+    if store is not None:
+        ctx = dataclasses.replace(ctx, state_store=store)
     monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
+    return store
 
 
 def _due_doc(*entries: ActionLogEntry) -> StateDocument:
@@ -150,6 +176,60 @@ def test_the_seam_is_what_adds_the_layer(
     assert "observations_due" not in without
     assert with_seam["observations_due"] == {"count": 1, "oldest_due": "2020-01-01"}
     assert {k: v for k, v in with_seam.items() if k != "observations_due"} == without
+
+
+# ---------------------------------------------------------------------------
+# ...and asking that question must not cost a registry read per client
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_the_summary_never_invokes_the_client_registry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Deciding "is the Agency seam here?" reads a declaration, never calls it.
+
+    ``build_report_summary`` runs once per client card, and the dashboard
+    fetches every visible client's summary in parallel on every render of the
+    index. A predicate spelled ``_agency_list_clients(store) is not None``
+    would therefore turn one registry read per render into one per client —
+    on the exact screen #651 exists to serve, for an operator running
+    twenty-seven of them.
+    """
+    store = _use_workspace(monkeypatch, tmp_path, agency=True)
+    assert store is not None
+    _write(tmp_path, _due_doc(_action(due="2020-01-01")))
+
+    for _ in range(27):
+        assert "observations_due" in build_report_summary(client="c0")
+
+    assert store.list_clients_calls == 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("roster", [1, 27])
+def test_the_seam_cost_does_not_scale_with_the_roster(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, roster: int
+) -> None:
+    """One index render costs the SAME number of registry reads whether the
+    operator has one client or twenty-seven.
+
+    The dashboard's index render is ``/api/reports/clients`` once
+    (:func:`list_report_clients` — the one legitimate call) plus one
+    ``/api/reports/summary`` per visible client. Both halves are exercised
+    here, and the total is pinned to a constant rather than to ``roster`` —
+    a count that merely "looks small" would pass at N=2 and regress at N=27.
+    """
+    store = _use_workspace(monkeypatch, tmp_path, agency=True, roster=roster)
+    assert store is not None
+    _write(tmp_path, _due_doc(_action(due="2020-01-01")))
+
+    clients = list_report_clients()
+    assert len(clients) == roster
+    for row in clients:
+        build_report_summary(client=row["slug"])
+
+    assert store.list_clients_calls == 1
 
 
 # ---------------------------------------------------------------------------

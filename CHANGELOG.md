@@ -39,11 +39,14 @@
   array, and clients are identified by grid position rather than by a
   registry-supplied slug, so two blank slugs cannot collapse into one mark.
 
-  It appears **only where a client registry supplies the clients**. A single
-  workspace has no second client to rank against, so the layer is omitted
-  rather than degraded to one row — and omitted all the way down: with no
-  such seam, `/api/reports/summary` keeps the exact keys, in the exact order,
-  it had before this existed.
+  It appears **only where a client registry is wired in**. A single workspace
+  has no second client to rank against, so the layer is omitted rather than
+  degraded to one row — and omitted all the way down: with no such seam,
+  `/api/reports/summary` keeps the exact keys, in the exact order, it had
+  before this existed. That test reads the seam's *declaration* and invokes
+  nothing, because it runs once per client card: asking the registry instead
+  would have cost one registry read per client on exactly the screen this
+  feature was added to.
 
   One of the five findings could not be derived in the browser.
   `recent_actions` is capped at the 20 most recent entries and carries

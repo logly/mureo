@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ClientArchiveError",
-    "agency_clients_supplied",
+    "agency_client_seam_present",
     "list_report_clients",
     "report_clients_payload",
     "set_report_client_archived",
@@ -84,22 +84,44 @@ def list_report_clients() -> list[dict[str, Any]]:
     return [{"slug": slug, "name": slug, "active": True, "archived": False}]
 
 
-def agency_clients_supplied() -> bool:
-    """Is the client list coming from the Agency seam (#651)?
+def agency_client_seam_present() -> bool:
+    """Does the active store declare the Agency client seam (#651)?
 
-    ``True`` exactly when :func:`_agency_list_clients` answers — i.e. when
-    :func:`list_report_clients` is returning a registry's clients rather
-    than the synthesized single-workspace entry.
+    Read exactly like :func:`_client_archive_seam`: **declaring the
+    attribute IS the opt-in**, and a mistyped (non-callable) declaration
+    reads as absent rather than as a usable seam. Nothing is invoked.
 
-    It exists because one surface has to be OMITTED without it, not degraded
-    to one row: the Reports triage layer ranks clients against each other,
-    and a single workspace has no second client to rank. Asking this rather
-    than counting :func:`list_report_clients` keeps that decision on the
-    seam itself — a registry that happens to hold exactly one client today
-    is still an Agency install, and the fallback entry is not a client
-    anybody registered.
+    It exists because one surface has to be OMITTED where the seam is not,
+    not degraded to one row: the Reports triage layer ranks clients against
+    each other, and a single workspace has no second client to rank. Asking
+    this rather than counting :func:`list_report_clients` keeps that
+    decision on the seam itself — a registry that happens to hold exactly
+    one client today is still an Agency install, and the synthesized
+    fallback entry is not a client anybody registered.
+
+    **Why the declaration and not the answer.** The obvious spelling,
+    ``_agency_list_clients(store) is not None``, CALLS ``list_clients()`` —
+    a registry read, under a lock, in a backend mureo does not own. The one
+    caller is :func:`~mureo.web.reports.build_report_summary`, which the
+    dashboard invokes once per client card, in parallel, on every render of
+    a grid this feature exists to serve. That turns one registry read per
+    index render into one per client plus one, and #651 is about the
+    operator running twenty-seven of them: the triage layer would have paid
+    for itself out of the screen it was added to. This predicate does a
+    ``getattr`` and a ``callable`` instead, so the cost does not scale with
+    the roster and there is no cache to invalidate.
+
+    The two spellings differ only for a store that declares the seam and
+    then cannot honour it (``list_clients`` raises, or returns something
+    that is not a list of usable rows). :func:`list_report_clients` degrades
+    that case to the single-workspace entry, so the dashboard shows one
+    client, never reaches the index, and renders no triage layer — the
+    summary carries a key nobody reads. An OSS single-workspace store
+    declares no ``list_clients`` at all and is unaffected either way, which
+    is the case the omission is a promise about.
     """
-    return _agency_list_clients(_active_state_store()) is not None
+    fn = getattr(_active_state_store(), "list_clients", None)
+    return callable(fn)
 
 
 def report_clients_payload() -> dict[str, Any]:

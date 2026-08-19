@@ -655,10 +655,15 @@ So the multi-client Reports view puts a **triage layer** above the client
 grid: the findings mureo has already made, aggregated across clients and
 ranked. It adds no new fact about an ad account.
 
-**It appears only where a client registry supplies the clients.** A single
-workspace has no second client to rank against, so the layer is *omitted*
-rather than shrunk to one row, and `/api/reports/summary` is byte-for-byte
-what it was before the layer existed — same keys, same order.
+**It appears only where a client registry is wired in.** A single workspace
+has no second client to rank against, so the layer is *omitted* rather than
+shrunk to one row, and `/api/reports/summary` is byte-for-byte what it was
+before the layer existed — same keys, same order. The test is whether the
+active `StateStore` **declares** `list_clients`, not what calling it returns:
+`build_report_summary` runs once per client card and the dashboard fetches
+every visible client in parallel, so a predicate that called the registry
+would cost one registry read per client on the very screen this feature is
+for.
 
 The ranking is by what mureo can act on, and it is stated in code
 (`REPORTS_TRIAGE_KINDS` in `mureo/_data/web/reports_triage.js`), never left
