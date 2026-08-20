@@ -379,6 +379,7 @@ async def handle_state_upsert_campaign(
         bidding_strategy_type=raw.get("bidding_strategy_type"),
         bidding_details=raw.get("bidding_details"),
         daily_budget=raw.get("daily_budget"),
+        monthly_budget=raw.get("monthly_budget"),
         device_targeting=device_targeting,
         campaign_goal=raw.get("campaign_goal"),
         notes=raw.get("notes"),

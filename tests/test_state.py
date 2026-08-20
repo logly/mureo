@@ -3284,3 +3284,85 @@ class TestAdState:
         doc = read_state_file(path)
         ads = doc.platforms["meta_ads"].campaigns[0].ads
         assert ads is not None and ads[0].ad_id == "ad_1"
+
+
+class TestCampaignMonthlyBudget:
+    """The per-campaign monthly budget field (#656).
+
+    Some platforms carry a monthly figure natively, alongside the daily one.
+    It rides in the campaign snapshot for the same reason ``daily_budget``
+    does — it is what the platform is configured with, and a campaign's
+    configuration has one home. What is NOT stored is any sum over it: a
+    cached total goes stale the moment one campaign's budget changes.
+    """
+
+    @pytest.mark.unit
+    def test_round_trips_through_render_and_parse(self) -> None:
+        doc = StateDocument(
+            version="2",
+            platforms={
+                "acme_ads": PlatformState(
+                    account_id="123",
+                    campaigns=(
+                        CampaignSnapshot(
+                            campaign_id="c1",
+                            campaign_name="Always on",
+                            status="ACTIVE",
+                            daily_budget=4000.0,
+                            monthly_budget=120000.0,
+                        ),
+                    ),
+                )
+            },
+        )
+        reparsed = parse_state(render_state(doc))
+        campaign = reparsed.platforms["acme_ads"].campaigns[0]
+        assert campaign.monthly_budget == 120000.0
+        assert campaign.daily_budget == 4000.0
+
+    @pytest.mark.unit
+    def test_legacy_state_parses_and_gains_no_monthly_budget_key(self) -> None:
+        """A campaign written before this field must stay byte-stable."""
+        legacy = {
+            "version": "2",
+            "last_synced_at": "2026-07-01T00:00:00+09:00",
+            "customer_id": None,
+            "campaigns": [
+                {
+                    "campaign_id": "c1",
+                    "campaign_name": "Legacy",
+                    "status": "ENABLED",
+                    "bidding_strategy_type": None,
+                    "bidding_details": None,
+                    "daily_budget": 5000.0,
+                    "device_targeting": None,
+                    "campaign_goal": None,
+                    "notes": None,
+                }
+            ],
+            "platforms": None,
+            "action_log": [],
+        }
+        doc = parse_state(json.dumps(legacy))
+        assert doc.campaigns[0].monthly_budget is None
+        rendered = json.loads(render_state(doc))
+        assert "monthly_budget" not in rendered["campaigns"][0]
+        assert rendered == legacy
+
+    @pytest.mark.unit
+    def test_upsert_campaign_persists_the_monthly_budget(self, tmp_path: Path) -> None:
+        path = tmp_path / "STATE.json"
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1",
+                campaign_name="Always on",
+                status="ACTIVE",
+                monthly_budget=120000.0,
+            ),
+            platform="plugin:acme-ads:acme_ads",
+            account_id="123",
+        )
+        doc = read_state_file(path)
+        campaign = doc.platforms["plugin:acme-ads:acme_ads"].campaigns[0]
+        assert campaign.monthly_budget == 120000.0

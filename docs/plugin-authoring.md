@@ -545,6 +545,91 @@ borrowed — what your platform therefore does **not** have. What does
 not belong: workflow advice, tool usage, metric definitions, anything
 that changes per account. Those are skills.
 
+### Declaring that your campaigns carry a monthly budget (optional)
+
+Most platforms carry only a daily budget, and mureo's
+`CampaignSnapshot.daily_budget` is shaped for them. Some carry a
+**monthly** figure natively, alongside the daily one — and where an
+operator has set it, that *is* the intended monthly spend for that
+campaign, not a ceiling and not a derivation.
+
+Two things have to happen for mureo to read it (#656).
+
+**1. Write the figure with your campaign snapshots.** It rides in
+`CampaignSnapshot.monthly_budget`, beside `daily_budget`, via
+`mureo_state_upsert_campaign` or `mureo.context.state.upsert_campaign`.
+Omit it entirely on a per-day platform; never send a daily budget
+multiplied out, which is an implied cap and not what the campaign is
+set to spend. Do **not** write a total anywhere: mureo computes the
+sum on read, because a cached total is stale the moment one campaign's
+budget changes.
+
+**2. Declare that your platform has the concept**, at module import
+time, from the same module your `mureo.providers` entry point loads:
+
+```python
+from mureo.context.platform_monthly_budget import (
+    MonthlyBudgetSupport,
+    register_monthly_budget_support,
+)
+from mureo.policy.learning_rules import Evidence
+
+register_monthly_budget_support(
+    MonthlyBudgetSupport(
+        platform="acme_ads",
+        evidence=Evidence(
+            source="https://developers.acme.example/reference/campaigns",
+            retrieved="2026-08-19",
+            quote="A campaign body accepts monthly_budget alongside daily_budget.",
+        ),
+    )
+)
+```
+
+| Field | Contract |
+|---|---|
+| `platform` | The STATE.json `platforms` key you write your campaigns under — normally your provider `name`. A declaration under any other key never applies to anything. |
+| `evidence` | The same `Evidence` record the learning rules and platform models use: first-party `source`, ISO `retrieved` date, and the `quote` it rests on. Incomplete evidence is refused with `ValueError`. |
+
+The declaration is not ceremony. It answers a question no campaign row
+can: whether an absent `monthly_budget` is a **gap** or a field your
+platform simply does not have. Without it, "this campaign's figure was
+not synced" and "this platform has no such field" are the same absence,
+and mureo could not tell a complete campaign set from a short one.
+
+**First registration wins**, as for provider names and platform models:
+a second declaration for a taken key is dropped with a
+`MonthlyBudgetSupportWarning`, and
+`warnings.filterwarnings("error", category=MonthlyBudgetSupportWarning)`
+turns that into a startup failure for operators who want to fail closed.
+mureo core declares **no** platform of its own.
+
+What mureo then does with it, in
+`mureo.context.monthly_budget.resolve_monthly_budget`:
+
+- the operator's `## Custom: Monthly Budget` still wins — that is the
+  **agreed** figure, and a configured sum is not an agreement. The sum
+  comes back under its own `source` (`platform_configured_sum`, with
+  `is_platform_configured` set) so no surface can state it as a promise
+  a client made;
+- **an incomplete set is never summed.** If a campaign mureo holds for
+  your platform has no readable figure, if it holds none at all, or if
+  its last collection failed (`not_collected`), no total is produced —
+  an `IncompletePlatform(platform, reason)` record comes back in
+  `incomplete_platforms` instead, and one such platform withholds the
+  whole cross-platform total. Three of a client's five campaigns is a
+  smaller number, not a smaller budget.
+
+**If you declare the concept but never write the figures**, every
+account on your platform reports `reason="no_monthly_budgets"` and this
+rung stays off — permanently, since first-wins means no later
+registration can take the slot back. That is deliberate: a declaration
+mureo cannot act on subtracts an answer rather than inventing one. It is
+also the reason the reason codes exist, so an operator reading
+`IncompletePlatform.detail` is told to come to you rather than left
+wondering why a monthly figure never appears. Declare it in the same
+change that starts writing `monthly_budget`, not before.
+
 ### Domain Protocols (implement at least one)
 
 | Protocol | Purpose | Methods |

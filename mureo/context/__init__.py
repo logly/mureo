@@ -21,6 +21,7 @@ from mureo.context.monthly_budget import (
     MONTHLY_BUDGET_HEADING,
     SOURCE_IMPLIED_DAILY_CEILING,
     SOURCE_NOT_SET,
+    SOURCE_PLATFORM_CONFIGURED_SUM,
     SOURCE_STRATEGY_SECTION,
     MonthlyBudget,
     monthly_budget_from_strategy_text,
@@ -68,11 +69,17 @@ __all__ = [
     "MONTHLY_BUDGET_HEADING",
     "SOURCE_IMPLIED_DAILY_CEILING",
     "SOURCE_NOT_SET",
+    "SOURCE_PLATFORM_CONFIGURED_SUM",
     "SOURCE_STRATEGY_SECTION",
     "MonthlyBudget",
     "monthly_budget_from_strategy_text",
     "parse_monthly_budget",
     "resolve_monthly_budget",
+    # The platform-configured sum (#656) lives in
+    # ``mureo.context.platform_monthly_budget`` and is imported from there:
+    # re-exporting it would pull the Evidence record — and so the policy
+    # package — into every ``import mureo.context``, which the monthly-budget
+    # reader deliberately avoids.
     # strategy
     "add_strategy_entry",
     "parse_strategy",

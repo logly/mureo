@@ -19,17 +19,23 @@ should be blocked for approaching it. Hence a separate type and a separate
 function; putting the target into ``Guardrails`` would make an intended figure
 look enforceable.
 
-Three answers, and each has to stay distinguishable from the other two
+Four answers, and each has to stay distinguishable from the other three
 (:data:`SOURCE_NOT_SET` / :data:`SOURCE_STRATEGY_SECTION` /
-:data:`SOURCE_IMPLIED_DAILY_CEILING`):
+:data:`SOURCE_PLATFORM_CONFIGURED_SUM` / :data:`SOURCE_IMPLIED_DAILY_CEILING`):
 
 - **The operator wrote a target.** It wins, whatever the guardrails say —
   including a target of ``0``, which is a real instruction to spend nothing.
+- **No target, but the platforms hold monthly budgets of their own** (#656).
+  Summed, they are what the platforms are *configured* to spend, which is a
+  real figure and not a derivation — and still not what the client agreed to.
+  It is returned only with :attr:`MonthlyBudget.is_platform_configured` set,
+  so a display cannot state it as an agreement nobody made. See
+  :mod:`mureo.context.platform_monthly_budget`.
 - **No target, but a ``max_total_daily_budget`` ceiling.** ``ceiling × days in
   month`` is an *implied cap*, never a plan. It is returned only with
   :attr:`MonthlyBudget.is_derived` set, so a caller cannot render it as
   something the operator asked for.
-- **Neither.** "Not set", carrying ``total=None`` — never ``0``, never a
+- **None of those.** "Not set", carrying ``total=None`` — never ``0``, never a
   percentage, never "on pace". The skill's answer here is to ask the operator,
   and a caller cannot ask a question it was not told to ask.
 
@@ -49,6 +55,9 @@ from typing import TYPE_CHECKING, Final
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from mureo.context.models import PlatformState
+    from mureo.context.platform_monthly_budget import IncompletePlatform
+
 from mureo.context.strategy import parse_strategy
 
 #: The (case-insensitive) STRATEGY.md section title carrying the target. The
@@ -62,8 +71,15 @@ MONTHLY_BUDGET_HEADING: Final = "monthly budget"
 #: No target anywhere. ``total`` is ``None`` — the caller must not render a
 #: figure, a percentage, or a pacing verdict from this.
 SOURCE_NOT_SET: Final = "not_set"
-#: The operator's own figure, read from the STRATEGY.md section.
+#: The operator's own figure, read from the STRATEGY.md section. The only
+#: source that is an AGREEMENT; the other three are configuration, a ceiling,
+#: or nothing.
 SOURCE_STRATEGY_SECTION: Final = "strategy_section"
+#: Summed per-campaign monthly budgets, on platforms that declared they have
+#: that concept (#656). What the platforms are *configured* to spend — a real
+#: figure, neither derived from a ceiling nor agreed with a client. Label it
+#: as configured wherever it is shown.
+SOURCE_PLATFORM_CONFIGURED_SUM: Final = "platform_configured_sum"
 #: Derived: ``## Guardrails`` → ``max_total_daily_budget`` × days in month. A
 #: ceiling stretched over a month, not a plan. Label it as such wherever it
 #: is shown.
@@ -95,13 +111,35 @@ class MonthlyBudget:
             ``None`` and ``0.0`` are different answers: ``0.0`` is an
             operator who said "spend nothing", ``None`` is an operator who
             said nothing.
-        per_platform: Read-only per-platform sub-targets, keyed by platform
-            key (``google_ads``, ``meta_ads``, a plugin's own key). Empty
-            when the section names none, and always empty for a derived
-            total — a total ceiling says nothing about the split.
-        source: Which of the three answers this is — one of
+        per_platform: Read-only per-platform sub-targets **the operator
+            wrote**, keyed by platform key (``google_ads``, ``meta_ads``, a
+            plugin's own key). Empty when the section names none, and empty
+            for every other source — a ceiling says nothing about the split,
+            and a platform's own configuration is not a sub-target. The
+            invariant is enforced, not merely documented: see
+            :meth:`__post_init__`.
+        configured_per_platform: Read-only per-platform subtotals **the
+            platforms are configured with** (#656). Only ever populated for
+            :data:`SOURCE_PLATFORM_CONFIGURED_SUM`. It is a separate field
+            rather than a second meaning for ``per_platform`` because the
+            two answer different questions, and a renderer built for the
+            operator's split, pointed at a configured one, would otherwise
+            label configuration as agreement. Reading the wrong field yields
+            an empty mapping — nothing, never the other rung's figures.
+        source: Which of the four answers this is — one of
             :data:`SOURCE_NOT_SET`, :data:`SOURCE_STRATEGY_SECTION`,
+            :data:`SOURCE_PLATFORM_CONFIGURED_SUM`,
             :data:`SOURCE_IMPLIED_DAILY_CEILING`.
+        incomplete_platforms: The platforms that have a monthly-budget
+            concept but whose campaign set mureo cannot vouch for (#656), as
+            :class:`~mureo.context.platform_monthly_budget.
+            IncompletePlatform` records naming the platform AND why. Non-empty
+            means a platform sum was possible in principle and was
+            deliberately NOT taken: three of a client's five campaigns is a
+            smaller number, not a smaller budget. The records ride along
+            whatever answer was used instead, so every surface can say why
+            the sum is missing — and which fix it needs — rather than showing
+            a confident figure computed from part of the account.
     """
 
     total: float | None = None
@@ -109,6 +147,35 @@ class MonthlyBudget:
         default_factory=lambda: _EMPTY_PER_PLATFORM
     )
     source: str = SOURCE_NOT_SET
+    incomplete_platforms: tuple[IncompletePlatform, ...] = ()
+    configured_per_platform: Mapping[str, float] = field(
+        default_factory=lambda: _EMPTY_PER_PLATFORM
+    )
+
+    def __post_init__(self) -> None:
+        """Refuse a split that does not belong to this ``source``.
+
+        The two mappings mean different things, and the failure this guards
+        is a caller reusing the operator-split renderer on a configured sum
+        — which states what a client is *charged* as what a client *agreed*.
+        A docstring cannot stop that; an unconstructable object can. Raised
+        at construction, not at read time, so a wrong pairing surfaces where
+        it is made rather than on a screen.
+        """
+        if self.per_platform and self.source != SOURCE_STRATEGY_SECTION:
+            raise ValueError(
+                f"per_platform carries the sub-targets an operator wrote, so "
+                f"it must be empty for source {self.source!r}; a platform's "
+                f"own subtotals belong in configured_per_platform"
+            )
+        if (
+            self.configured_per_platform
+            and self.source != SOURCE_PLATFORM_CONFIGURED_SUM
+        ):
+            raise ValueError(
+                f"configured_per_platform carries what the platforms are set "
+                f"to spend, so it must be empty for source {self.source!r}"
+            )
 
     @property
     def is_set(self) -> bool:
@@ -119,6 +186,17 @@ class MonthlyBudget:
     def is_derived(self) -> bool:
         """True when ``total`` came from a ceiling, not from an operator."""
         return self.source == SOURCE_IMPLIED_DAILY_CEILING
+
+    @property
+    def is_platform_configured(self) -> bool:
+        """True when ``total`` is what the PLATFORMS are set to spend.
+
+        Never an agreement: a ¥300,000 configured ceiling routinely sits
+        above a ¥200,000 agreement, and the two are worth showing side by
+        side rather than collapsing. Only ``source ==``
+        :data:`SOURCE_STRATEGY_SECTION` is a figure someone promised.
+        """
+        return self.source == SOURCE_PLATFORM_CONFIGURED_SUM
 
 
 def _amount(raw: str | None) -> float | None:
@@ -191,22 +269,45 @@ def monthly_budget_from_strategy_text(text: str) -> MonthlyBudget:
     return MonthlyBudget()
 
 
-def resolve_monthly_budget(text: str, *, days_in_month: int) -> MonthlyBudget:
+def resolve_monthly_budget(
+    text: str,
+    *,
+    days_in_month: int,
+    platforms: Mapping[str, PlatformState] | None = None,
+) -> MonthlyBudget:
     """The monthly target for a month of ``days_in_month`` days.
 
     Applies ``skills/budget-pacing/SKILL.md`` step 3 in order: an explicit
-    ``## Custom: Monthly Budget`` wins; failing that, ``## Guardrails`` →
-    ``max_total_daily_budget`` × ``days_in_month`` is returned as an implied
-    cap with :attr:`MonthlyBudget.is_derived` set; failing both, "not set".
+    ``## Custom: Monthly Budget`` wins; failing that, the per-campaign monthly
+    budgets of the platforms that have that concept, summed and marked
+    :attr:`MonthlyBudget.is_platform_configured`; failing that,
+    ``## Guardrails`` → ``max_total_daily_budget`` × ``days_in_month`` as an
+    implied cap with :attr:`MonthlyBudget.is_derived` set; failing all three,
+    "not set".
 
     ``days_in_month`` belongs to the caller because pacing's "today" comes
     from ``server_now``, never from this machine's clock. It is validated
     here rather than defaulted — a wrong month length silently mis-states
     the cap.
 
+    Omitting ``platforms`` skips the platform rung entirely and answers
+    exactly what this function answered before that rung existed. Passing it
+    can only *add* an answer between the two the caller already had; it never
+    changes what an explicit section resolves to.
+
+    Where the platform rung is possible but its campaign set is incomplete,
+    no sum is returned — the answer falls through to the remaining rungs,
+    carrying :attr:`MonthlyBudget.incomplete_platforms` so the caller can say
+    that a platform figure exists and was not trustworthy, rather than
+    rendering a smaller number.
+
     Args:
         text: Full STRATEGY.md text.
         days_in_month: Length of the pacing month, 1..31.
+        platforms: STATE.json's ``platforms`` map, when the caller has it.
+            The legacy top-level ``campaigns`` list is not consulted: its
+            entries carry no platform key, so nothing can say whether the
+            platform they belong to has a monthly budget at all.
 
     Raises:
         ValueError: ``days_in_month`` is not a possible calendar-month
@@ -222,6 +323,19 @@ def resolve_monthly_budget(text: str, *, days_in_month: int) -> MonthlyBudget:
     if explicit.is_set:
         return explicit
 
+    # Local import, for the same reason the guardrail one below is local: the
+    # explicit section is the common case, and it should not pay for the
+    # registry or the state models.
+    from mureo.context.platform_monthly_budget import (
+        platform_configured_monthly_budget,
+    )
+
+    configured = platform_configured_monthly_budget(platforms)
+    if configured.is_set:
+        return configured
+    # Whatever answers instead has to carry the reason the sum did not.
+    incomplete = configured.incomplete_platforms
+
     # Local import: the ceiling is a guardrail, and this module stays out of
     # the policy package's import path for the (far more common) explicit
     # case. ``strategy_gate`` owns that section's parsing so the two readers
@@ -230,10 +344,11 @@ def resolve_monthly_budget(text: str, *, days_in_month: int) -> MonthlyBudget:
 
     ceiling = guardrails_from_strategy_text(text).max_total_daily_budget
     if ceiling is None or not math.isfinite(ceiling) or ceiling < 0:
-        return MonthlyBudget()
+        return MonthlyBudget(incomplete_platforms=incomplete)
     return MonthlyBudget(
         total=ceiling * days_in_month,
         source=SOURCE_IMPLIED_DAILY_CEILING,
+        incomplete_platforms=incomplete,
     )
 
 
@@ -241,6 +356,7 @@ __all__ = [
     "MONTHLY_BUDGET_HEADING",
     "SOURCE_IMPLIED_DAILY_CEILING",
     "SOURCE_NOT_SET",
+    "SOURCE_PLATFORM_CONFIGURED_SUM",
     "SOURCE_STRATEGY_SECTION",
     "MonthlyBudget",
     "monthly_budget_from_strategy_text",

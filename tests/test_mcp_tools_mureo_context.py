@@ -380,6 +380,43 @@ async def test_upsert_campaign_persists_metrics(cwd_to_tmp) -> None:
     assert snap["metrics"]["period"] == "LAST_30_DAYS"
 
 
+async def test_upsert_campaign_persists_the_monthly_budget(cwd_to_tmp) -> None:
+    """A platform whose campaigns carry a monthly budget can write it (#656).
+
+    This is the route by which a platform's own monthly figure reaches
+    mureo: the campaign snapshot, beside ``daily_budget``. No total is
+    written anywhere — the sum is computed on read, so it cannot go stale.
+    """
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    campaign = {
+        "campaign_id": "camp_xyz",
+        "campaign_name": "Always on",
+        "status": "ENABLED",
+        "daily_budget": 4000,
+        "monthly_budget": 120000,
+        "platform": "plugin:acme-ads:acme_ads",
+        "account_id": "act_123",
+    }
+    await mod.handle_tool("mureo_state_upsert_campaign", {"campaign": campaign})
+
+    result = await mod.handle_tool("mureo_state_get", {})
+    payload = json.loads(result[0].text)
+    plat = payload["platforms"]["plugin:acme-ads:acme_ads"]
+    snap = next(c for c in plat["campaigns"] if c["campaign_id"] == "camp_xyz")
+    assert snap["monthly_budget"] == 120000
+    assert snap["daily_budget"] == 4000
+
+
+async def test_upsert_campaign_schema_offers_the_monthly_budget(cwd_to_tmp) -> None:
+    """The field has to be discoverable, or only mureo's own code can write it."""
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_upsert_campaign")
+    campaign_schema = tool.inputSchema["properties"]["campaign"]
+    assert "monthly_budget" in campaign_schema["properties"]
+
+
 async def test_upsert_campaign_without_metrics_still_works(cwd_to_tmp) -> None:
     """Regression: an upsert with no ``metrics`` key still succeeds and the
     persisted snapshot carries no ``metrics`` field."""

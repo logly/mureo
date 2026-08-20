@@ -303,6 +303,18 @@ _CAMPAIGN_PROPERTY = {
             ),
         },
         "daily_budget": {"type": "number"},
+        "monthly_budget": {
+            "type": "number",
+            "description": (
+                "The campaign's own MONTHLY budget, on a platform that has "
+                "that concept alongside the daily one. Omit it entirely for "
+                "a platform configured per day (Google Ads, Meta) — do not "
+                "send a daily budget multiplied out, which is an implied cap "
+                "and not what the campaign is set to spend. mureo never "
+                "stores a total over these: it sums them on read, and only "
+                "where every campaign of a declaring platform carries one."
+            ),
+        },
         "device_targeting": {"type": "array"},
         "campaign_goal": {"type": "string"},
         "notes": {"type": "string"},
