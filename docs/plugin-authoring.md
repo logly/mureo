@@ -615,9 +615,20 @@ What mureo then does with it, in
 - **an incomplete set is never summed.** If a campaign mureo holds for
   your platform has no readable figure, if it holds none at all, or if
   its last collection failed (`not_collected`), no total is produced —
-  the key comes back in `incomplete_platforms` instead, and one such
-  platform withholds the whole cross-platform total. Three of a client's
-  five campaigns is a smaller number, not a smaller budget.
+  an `IncompletePlatform(platform, reason)` record comes back in
+  `incomplete_platforms` instead, and one such platform withholds the
+  whole cross-platform total. Three of a client's five campaigns is a
+  smaller number, not a smaller budget.
+
+**If you declare the concept but never write the figures**, every
+account on your platform reports `reason="no_monthly_budgets"` and this
+rung stays off — permanently, since first-wins means no later
+registration can take the slot back. That is deliberate: a declaration
+mureo cannot act on subtracts an answer rather than inventing one. It is
+also the reason the reason codes exist, so an operator reading
+`IncompletePlatform.detail` is told to come to you rather than left
+wondering why a monthly figure never appears. Declare it in the same
+change that starts writing `monthly_budget`, not before.
 
 ### Domain Protocols (implement at least one)
 

@@ -52,10 +52,22 @@ a platform is unusable when any of the following holds:
 
 One unusable platform withholds the WHOLE total, not just its own part: a
 cross-platform figure that silently drops a platform is the same defect one
-level up. The keys are returned in
+level up. They are returned as :class:`IncompletePlatform` records in
 :attr:`~mureo.context.monthly_budget.MonthlyBudget.incomplete_platforms` so
 the caller states the gap instead of rendering a smaller number — the same
 rule #638 established for stale rollups, applied to a total.
+
+Each record says WHICH gap, because the fixes differ and only one of them is
+permanent. A platform that declared the concept and carries no figure on any
+campaign (:data:`REASON_NO_FIGURES`) is a declaration that does not match its
+platform: this rung is off for every account there until the plugin is fixed,
+and first-wins means no later registration can take the slot back. That is
+the shape a mistaken declaration makes, and it is a subtraction rather than a
+fabrication — a wrong declaration can only ever remove an answer, never
+invent a figure, because every number comes from STATE.json. The remaining
+reasons are ordinary and recoverable. Nothing here logs any of it: the record
+IS the notification, it reaches whoever asked, and a log line saying the same
+thing would be a second account of one fact.
 
 Whether a paused or removed campaign "counts" is deliberately not decided
 here: status vocabularies are per-platform, and mureo does not read one
@@ -66,13 +78,12 @@ figure.
 
 from __future__ import annotations
 
-import logging
 import math
 import warnings
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from mureo.context.monthly_budget import (
     SOURCE_PLATFORM_CONFIGURED_SUM,
@@ -90,7 +101,55 @@ if TYPE_CHECKING:
 
     from mureo.context.models import PlatformState
 
-logger = logging.getLogger(__name__)
+
+#: The platform holds campaigns and NOT ONE of them carries a monthly
+#: budget. The shape a mistaken declaration makes: nothing will ever arrive,
+#: so this rung stays off for every account on that platform until the
+#: declaration is corrected — and first-wins means no later plugin can take
+#: the slot back. Distinguished from :data:`REASON_MISSING_FIGURES` for
+#: exactly that reason: one is a wiring fault, the other is a sync behind.
+REASON_NO_FIGURES: Final = "no_monthly_budgets"
+#: Some campaigns carry a monthly budget and some do not — a sync that has
+#: not covered the whole account yet. Re-running the collection fixes it.
+REASON_MISSING_FIGURES: Final = "missing_monthly_budgets"
+#: mureo holds no campaigns at all for this platform. Nothing to sum, and
+#: ``0`` would be a confident lie.
+REASON_NO_CAMPAIGNS: Final = "no_campaigns"
+#: The platform's last collection failed (#638). The set may be stale or
+#: short; the figures it does hold are not wrong, they are older than they
+#: should be.
+REASON_NOT_COLLECTED: Final = "not_collected"
+
+#: One operator-readable line per reason, ``{platform}`` substituted. Held
+#: here rather than in each caller so the dashboard, the CLI and a skill
+#: cannot give three different accounts of one fact — the same "one rule,
+#: two surfaces" discipline :mod:`mureo.context.observations` follows.
+_REASON_DETAIL: Final[dict[str, str]] = {
+    REASON_NO_FIGURES: (
+        "{platform}: declared as having monthly campaign budgets, but not one "
+        "of its campaigns carries one — this rung stays off until the platform "
+        "plugin writes them (or withdraws the declaration)."
+    ),
+    REASON_MISSING_FIGURES: (
+        "{platform}: some campaigns have no monthly budget mureo can read, so "
+        "the total would understate the account — re-run the platform sync."
+    ),
+    REASON_NO_CAMPAIGNS: (
+        "{platform}: mureo holds no campaigns for it, so there is nothing to "
+        "sum — re-run the platform sync."
+    ),
+    REASON_NOT_COLLECTED: (
+        "{platform}: its last collection failed, so the campaign set may be "
+        "stale or incomplete — see the platform's not_collected note."
+    ),
+}
+
+#: What an unrecognised reason renders as. A read path states what it knows
+#: rather than raising or, worse, saying nothing at all.
+_UNKNOWN_DETAIL: Final = (
+    "{platform}: mureo cannot vouch for its campaign set, so no monthly total "
+    "was taken from it."
+)
 
 
 class MonthlyBudgetSupportWarning(UserWarning):
@@ -101,6 +160,29 @@ class MonthlyBudgetSupportWarning(UserWarning):
     the same opt-in
     :class:`~mureo.policy.platform_model.PlatformModelWarning` offers.
     """
+
+
+@dataclass(frozen=True)
+class IncompletePlatform:
+    """A declaring platform whose campaign set mureo will not sum, and why.
+
+    The ``why`` is load-bearing rather than decoration. The fixes differ —
+    a wrong declaration needs the plugin author, a partial sync needs
+    ``/sync-state``, a failed collection needs credentials — and an operator
+    who only sees "no monthly budget available" cannot tell which they have.
+    It travels in the answer itself so no surface has to read a debug log to
+    explain a missing figure, and :attr:`detail` is the one wording every
+    surface uses.
+    """
+
+    platform: str
+    reason: str
+
+    @property
+    def detail(self) -> str:
+        """One operator-readable line naming the platform and the next step."""
+        template = _REASON_DETAIL.get(self.reason, _UNKNOWN_DETAIL)
+        return template.format(platform=self.platform)
 
 
 @dataclass(frozen=True)
@@ -212,20 +294,31 @@ def _readable_amount(value: object) -> float | None:
     return amount
 
 
-def _platform_subtotal(state: PlatformState) -> float | None:
-    """One platform's configured monthly spend, or ``None`` if unvouchable."""
-    not_collected = getattr(state, "not_collected", None)
-    if not_collected:
-        return None
+def _platform_subtotal(state: PlatformState) -> float | str:
+    """One platform's configured monthly spend, or the reason there is none.
+
+    Returns a ``float`` for a set mureo can vouch for, and one of the
+    ``REASON_*`` codes otherwise. Two codes for one shape of gap on purpose:
+    "not one campaign has a figure" is what a mistaken declaration looks
+    like, and "some do, some do not" is a sync that is behind. They need
+    different fixes, so they are not the same answer.
+    """
+    if getattr(state, "not_collected", None):
+        return REASON_NOT_COLLECTED
     campaigns = state.campaigns
     if not campaigns:
-        return None
+        return REASON_NO_CAMPAIGNS
     subtotal = 0.0
+    readable = 0
     for campaign in campaigns:
         amount = _readable_amount(getattr(campaign, "monthly_budget", None))
-        if amount is None:
-            return None
-        subtotal += amount
+        if amount is not None:
+            readable += 1
+            subtotal += amount
+    if readable == 0:
+        return REASON_NO_FIGURES
+    if readable < len(campaigns):
+        return REASON_MISSING_FIGURES
     return subtotal
 
 
@@ -254,33 +347,37 @@ def platform_configured_monthly_budget(
         return MonthlyBudget()
 
     subtotals: dict[str, float] = {}
-    incomplete: list[str] = []
+    incomplete: list[IncompletePlatform] = []
     for platform in sorted(_SUPPORTED):
         state = platforms.get(platform)
         if state is None:
             continue
         subtotal = _platform_subtotal(state)
-        if subtotal is None:
-            incomplete.append(platform)
+        if isinstance(subtotal, str):
+            incomplete.append(IncompletePlatform(platform=platform, reason=subtotal))
             continue
         subtotals[platform] = subtotal
 
     if incomplete:
-        logger.debug(
-            "monthly budget: no platform sum taken; incomplete campaign set " "for %s",
-            ", ".join(incomplete),
-        )
+        # No log line here: the records ARE the notification, and they reach
+        # the operator through whatever surface asked. A debug log saying the
+        # same thing would be a second account of one fact.
         return MonthlyBudget(incomplete_platforms=tuple(incomplete))
     if not subtotals:
         return MonthlyBudget()
     return MonthlyBudget(
         total=sum(subtotals.values()),
-        per_platform=MappingProxyType(subtotals),
+        configured_per_platform=MappingProxyType(subtotals),
         source=SOURCE_PLATFORM_CONFIGURED_SUM,
     )
 
 
 __all__ = [
+    "REASON_MISSING_FIGURES",
+    "REASON_NOT_COLLECTED",
+    "REASON_NO_CAMPAIGNS",
+    "REASON_NO_FIGURES",
+    "IncompletePlatform",
     "MonthlyBudgetSupport",
     "MonthlyBudgetSupportWarning",
     "platform_configured_monthly_budget",

@@ -145,7 +145,9 @@ mureo/
 │   ├── monthly_budget.py    # `## Custom: Monthly Budget` reader (#652) — target, not a ceiling
 │   ├── platform_monthly_budget.py # What the platforms are CONFIGURED to spend (#656) —
 │   │                        #   the concept is declared by a plugin, the figures are summed
-│   │                        #   on read, and an incomplete set is withheld, never shrunk
+│   │                        #   on read, an incomplete set is withheld (never shrunk) and
+│   │                        #   says WHICH gap it is, and the two per-platform splits are
+│   │                        #   separate fields the type refuses to cross
 │   ├── state.py             # STATE.json read / mutate / atomic write + state lock (re-exports the two below)
 │   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
 │   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)

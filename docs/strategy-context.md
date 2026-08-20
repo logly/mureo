@@ -120,7 +120,7 @@ elif budget.is_derived:
 The precedence is the skill's, matched rather than replaced:
 
 1. **`## Custom: Monthly Budget`** wins — `source == "strategy_section"`. A `total: 0` is a real target ("spend nothing"), not an absence.
-2. Otherwise the **sum of the per-campaign monthly budgets** held for platforms that declared they have that concept (#656), returned with `is_platform_configured` set and `source == "platform_configured_sum"`. It is what the platforms are **configured** to spend — a real figure, but not an agreement. `per_platform` carries each platform's subtotal.
+2. Otherwise the **sum of the per-campaign monthly budgets** held for platforms that declared they have that concept (#656), returned with `is_platform_configured` set and `source == "platform_configured_sum"`. It is what the platforms are **configured** to spend — a real figure, but not an agreement. Each platform's subtotal is in `configured_per_platform`, a **different field** from the operator's `per_platform` sub-targets: reading the wrong one gives an empty mapping rather than the other rung's figures under the other rung's label, and `MonthlyBudget` refuses to be constructed with a split that does not match its `source`.
 3. Otherwise **`## Guardrails` → `max_total_daily_budget` × days in month**, returned with `is_derived` set and `source == "implied_daily_ceiling"`. It is a **cap, not a plan**: show it as derived wherever it appears.
 4. Otherwise **not set** — `total is None`, `is_set` false. Ask the operator.
 
@@ -156,7 +156,18 @@ register_monthly_budget_support(
 
 The declaration answers a question no campaign row can: whether an absent figure is a **gap** or a field that platform simply does not have. Google Ads and Meta campaigns are configured per day, so they contribute nothing here rather than a multiplied-out daily figure.
 
-**An incomplete set is not a smaller budget.** A platform is not summed when a campaign it holds has no readable monthly budget, when it holds no campaigns at all, or when its last collection failed (`not_collected`, #638). One such platform withholds the *whole* total; the keys come back in `incomplete_platforms`, which rides along whatever answer is used instead, so a caller states the gap rather than rendering a confident figure computed from part of the account.
+**An incomplete set is not a smaller budget.** A platform is not summed when a campaign it holds has no readable monthly budget, when it holds no campaigns at all, or when its last collection failed (`not_collected`, #638). One such platform withholds the *whole* total.
+
+The platforms come back in `incomplete_platforms` as `IncompletePlatform(platform, reason)` records, which ride along whatever answer is used instead — so a caller states the gap rather than rendering a confident figure computed from part of the account, **and says which gap it is**:
+
+| `reason` | What it means | Fix |
+|---|---|---|
+| `no_monthly_budgets` | It holds campaigns and not one carries a monthly budget — what a mistaken declaration looks like, and it disables this rung for every account on that platform. | The platform plugin must write the figures, or withdraw its declaration. |
+| `missing_monthly_budgets` | Some campaigns have one, some do not — a sync that has not covered the account. | Re-run the platform sync. |
+| `no_campaigns` | mureo holds no campaigns for it. | Re-run the platform sync. |
+| `not_collected` | Its last collection failed (#638). | See that platform's `not_collected` note. |
+
+`IncompletePlatform.detail` renders the one operator-readable line for each — held in one place so a dashboard, a CLI and a skill cannot give three accounts of one fact. That is also why nothing here logs: the record *is* the notification, and it reaches whoever asked.
 
 **This is not a guardrail.** `Guardrails` carries ceilings that refuse an operation; a monthly target is the intended spend, where underspending is a problem too and nothing should be blocked for approaching it. Hence a separate type (`MonthlyBudget`) and separate functions (`parse_monthly_budget`, `monthly_budget_from_strategy_text`, `resolve_monthly_budget`). The agreed figure lives in STRATEGY.md only — it is deliberately not copied into STATE.json — and the platform-configured sum lives nowhere at all, being computed from the campaign snapshots on every read.
 

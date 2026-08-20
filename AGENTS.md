@@ -168,7 +168,12 @@ mureo/
 │   │                     #   declares none). A third `source`, so a configured sum is never
 │   │                     #   shown as an agreed target. No total is stored — it is computed
 │   │                     #   on read — and an incomplete or uncollected campaign set is
-│   │                     #   withheld with `incomplete_platforms` rather than summed short
+│   │                     #   withheld rather than summed short, reported as
+│   │                     #   `IncompletePlatform(platform, reason)` so an operator is told
+│   │                     #   WHICH gap it is (a wrong declaration, a sync behind, a failed
+│   │                     #   collection) instead of reading a debug log. The two splits are
+│   │                     #   separate fields — `per_platform` is only ever what the operator
+│   │                     #   wrote — and the type refuses a split that does not match `source`
 │   ├── platform_guards.py # Write-time platform-key guards (#534/#609) — the one "is this key
 │   │                      #   real?" answer every other surface asks, including the read-side
 │   │                      #   label path (`installed_platform_names`, shared since #631)

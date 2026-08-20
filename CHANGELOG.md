@@ -32,11 +32,36 @@
   figure, when it holds no campaigns at all, or when its last collection
   failed (`not_collected`, #638) — and one such platform withholds the
   *whole* cross-platform total rather than quietly dropping its own part. The
-  keys come back in `incomplete_platforms`, riding along whatever answer was
-  used instead, so a caller says a platform figure exists and was not
+  platforms come back in `incomplete_platforms`, riding along whatever answer
+  was used instead, so a caller says a platform figure exists and was not
   trustworthy rather than rendering a confident number computed from part of
   an account. This is the rule #638 established for stale rollups, applied to
   a total.
+
+  **And it says which gap it is.** Each entry is an
+  `IncompletePlatform(platform, reason)`, because the fixes differ and an
+  operator who sees only "no monthly total" cannot tell them apart: a
+  platform that declared the concept and whose campaigns carry no figure at
+  all (`no_monthly_budgets`) is a declaration that does not match its
+  platform — it disables this rung for every account there, and first-wins
+  means no later plugin can take the slot back. The others are ordinary:
+  `missing_monthly_budgets` is a sync that has not covered the account,
+  `no_campaigns` is nothing synced yet, `not_collected` is a failed
+  collection. `detail`
+  renders the one operator-readable line for each, held in one place so a
+  dashboard, a CLI and a skill cannot give three accounts of one fact, and
+  nothing logs it: the record is the notification, and it reaches whoever
+  asked.
+
+  **Two splits, two fields, and the type refuses to cross them.**
+  `per_platform` stays what it has always been — the sub-targets the operator
+  wrote — and a configured sum's subtotals arrive in
+  `configured_per_platform`. A renderer built for the operator's split and
+  pointed at a configured one therefore shows *nothing*, rather than
+  labelling what a client is charged as what a client agreed;
+  `MonthlyBudget` refuses to be constructed with a split that does not match
+  its `source`, so the rule is enforced where it is broken rather than
+  documented and hoped for.
 
   **Two routes, because one cannot carry both.** The figure is data:
   `CampaignSnapshot.monthly_budget`, optional and `None` by default, written

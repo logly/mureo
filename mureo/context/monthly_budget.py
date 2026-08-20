@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from mureo.context.models import PlatformState
+    from mureo.context.platform_monthly_budget import IncompletePlatform
 
 from mureo.context.strategy import parse_strategy
 
@@ -110,25 +111,35 @@ class MonthlyBudget:
             ``None`` and ``0.0`` are different answers: ``0.0`` is an
             operator who said "spend nothing", ``None`` is an operator who
             said nothing.
-        per_platform: Read-only per-platform sub-targets, keyed by platform
-            key (``google_ads``, ``meta_ads``, a plugin's own key). Empty
-            when the section names none, and always empty for a derived
-            total — a total ceiling says nothing about the split. For
-            :data:`SOURCE_PLATFORM_CONFIGURED_SUM` the values are that
-            platform's own subtotal rather than a sub-target.
+        per_platform: Read-only per-platform sub-targets **the operator
+            wrote**, keyed by platform key (``google_ads``, ``meta_ads``, a
+            plugin's own key). Empty when the section names none, and empty
+            for every other source — a ceiling says nothing about the split,
+            and a platform's own configuration is not a sub-target. The
+            invariant is enforced, not merely documented: see
+            :meth:`__post_init__`.
+        configured_per_platform: Read-only per-platform subtotals **the
+            platforms are configured with** (#656). Only ever populated for
+            :data:`SOURCE_PLATFORM_CONFIGURED_SUM`. It is a separate field
+            rather than a second meaning for ``per_platform`` because the
+            two answer different questions, and a renderer built for the
+            operator's split, pointed at a configured one, would otherwise
+            label configuration as agreement. Reading the wrong field yields
+            an empty mapping — nothing, never the other rung's figures.
         source: Which of the four answers this is — one of
             :data:`SOURCE_NOT_SET`, :data:`SOURCE_STRATEGY_SECTION`,
             :data:`SOURCE_PLATFORM_CONFIGURED_SUM`,
             :data:`SOURCE_IMPLIED_DAILY_CEILING`.
-        incomplete_platforms: Platform keys that have a monthly-budget
-            concept but whose campaign set mureo cannot vouch for (#656) —
-            a campaign with no readable figure, a platform holding none, or
-            one whose last collection failed. Non-empty means a platform sum
-            was possible in principle and was deliberately NOT taken: three
-            of a client's five campaigns is a smaller number, not a smaller
-            budget. The note rides along whatever answer was used instead,
-            so a caller can say why the sum is missing rather than showing a
-            confident figure computed from part of the account.
+        incomplete_platforms: The platforms that have a monthly-budget
+            concept but whose campaign set mureo cannot vouch for (#656), as
+            :class:`~mureo.context.platform_monthly_budget.
+            IncompletePlatform` records naming the platform AND why. Non-empty
+            means a platform sum was possible in principle and was
+            deliberately NOT taken: three of a client's five campaigns is a
+            smaller number, not a smaller budget. The records ride along
+            whatever answer was used instead, so every surface can say why
+            the sum is missing — and which fix it needs — rather than showing
+            a confident figure computed from part of the account.
     """
 
     total: float | None = None
@@ -136,7 +147,35 @@ class MonthlyBudget:
         default_factory=lambda: _EMPTY_PER_PLATFORM
     )
     source: str = SOURCE_NOT_SET
-    incomplete_platforms: tuple[str, ...] = ()
+    incomplete_platforms: tuple[IncompletePlatform, ...] = ()
+    configured_per_platform: Mapping[str, float] = field(
+        default_factory=lambda: _EMPTY_PER_PLATFORM
+    )
+
+    def __post_init__(self) -> None:
+        """Refuse a split that does not belong to this ``source``.
+
+        The two mappings mean different things, and the failure this guards
+        is a caller reusing the operator-split renderer on a configured sum
+        — which states what a client is *charged* as what a client *agreed*.
+        A docstring cannot stop that; an unconstructable object can. Raised
+        at construction, not at read time, so a wrong pairing surfaces where
+        it is made rather than on a screen.
+        """
+        if self.per_platform and self.source != SOURCE_STRATEGY_SECTION:
+            raise ValueError(
+                f"per_platform carries the sub-targets an operator wrote, so "
+                f"it must be empty for source {self.source!r}; a platform's "
+                f"own subtotals belong in configured_per_platform"
+            )
+        if (
+            self.configured_per_platform
+            and self.source != SOURCE_PLATFORM_CONFIGURED_SUM
+        ):
+            raise ValueError(
+                f"configured_per_platform carries what the platforms are set "
+                f"to spend, so it must be empty for source {self.source!r}"
+            )
 
     @property
     def is_set(self) -> bool:

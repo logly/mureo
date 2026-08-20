@@ -30,8 +30,14 @@ from mureo.context.monthly_budget import (
     SOURCE_NOT_SET,
     SOURCE_PLATFORM_CONFIGURED_SUM,
     SOURCE_STRATEGY_SECTION,
+    MonthlyBudget,
 )
 from mureo.context.platform_monthly_budget import (
+    REASON_MISSING_FIGURES,
+    REASON_NO_CAMPAIGNS,
+    REASON_NO_FIGURES,
+    REASON_NOT_COLLECTED,
+    IncompletePlatform,
     MonthlyBudgetSupport,
     MonthlyBudgetSupportWarning,
     platform_configured_monthly_budget,
@@ -70,6 +76,11 @@ def _campaign(
         daily_budget=daily_budget,
         monthly_budget=monthly_budget,  # type: ignore[arg-type]
     )
+
+
+def _incomplete_keys(budget: MonthlyBudget) -> tuple[str, ...]:
+    """The platform keys of ``incomplete_platforms``, for terse assertions."""
+    return tuple(entry.platform for entry in budget.incomplete_platforms)
 
 
 @pytest.fixture(autouse=True)
@@ -169,7 +180,7 @@ class TestCompleteSet:
         assert budget.source == SOURCE_PLATFORM_CONFIGURED_SUM
         assert budget.is_set
         assert budget.is_platform_configured
-        assert budget.incomplete_platforms == ()
+        assert _incomplete_keys(budget) == ()
 
     def test_the_sum_is_not_the_operators_agreed_target(self) -> None:
         """Rung 2 must never present itself as rung 1 (#656)."""
@@ -180,7 +191,7 @@ class TestCompleteSet:
         assert budget.source != SOURCE_STRATEGY_SECTION
         assert not budget.is_derived
 
-    def test_per_platform_carries_each_platforms_subtotal(self) -> None:
+    def test_configured_per_platform_carries_each_platforms_subtotal(self) -> None:
         register_monthly_budget_support(_support())
         register_monthly_budget_support(_support(platform="beta_ads"))
         budget = platform_configured_monthly_budget(
@@ -196,15 +207,10 @@ class TestCompleteSet:
             }
         )
         assert budget.total == 150
-        assert dict(budget.per_platform) == {"acme_ads": 100.0, "beta_ads": 50.0}
-
-    def test_per_platform_mapping_is_read_only(self) -> None:
-        register_monthly_budget_support(_support())
-        budget = platform_configured_monthly_budget(
-            {"acme_ads": PlatformState("123", (_campaign("1", monthly_budget=100),))}
-        )
-        with pytest.raises(TypeError):
-            budget.per_platform["acme_ads"] = 1.0  # type: ignore[index]
+        assert dict(budget.configured_per_platform) == {
+            "acme_ads": 100.0,
+            "beta_ads": 50.0,
+        }
 
     def test_a_configured_zero_is_a_real_figure(self) -> None:
         """Every campaign set to spend nothing is a readable, complete set."""
@@ -242,7 +248,7 @@ class TestUndeclaredPlatforms:
         assert not budget.is_set
         assert budget.total is None
         assert budget.source == SOURCE_NOT_SET
-        assert budget.incomplete_platforms == ()
+        assert _incomplete_keys(budget) == ()
 
     def test_an_undeclared_platform_is_not_counted_as_a_gap(self) -> None:
         """A per-day platform's absent monthly figure is not a missing one.
@@ -262,7 +268,7 @@ class TestUndeclaredPlatforms:
         )
         assert budget.total == 100
         assert budget.source == SOURCE_PLATFORM_CONFIGURED_SUM
-        assert budget.incomplete_platforms == ()
+        assert _incomplete_keys(budget) == ()
 
     def test_an_undeclared_platforms_monthly_figure_is_ignored(self) -> None:
         """Declaring the concept is the platform's own act, not a field's."""
@@ -277,7 +283,7 @@ class TestUndeclaredPlatforms:
         register_monthly_budget_support(_support())
         budget = platform_configured_monthly_budget(platforms)  # type: ignore[arg-type]
         assert not budget.is_set
-        assert budget.incomplete_platforms == ()
+        assert _incomplete_keys(budget) == ()
 
     def test_a_declared_platform_absent_from_the_document_says_nothing(self) -> None:
         register_monthly_budget_support(_support())
@@ -285,7 +291,7 @@ class TestUndeclaredPlatforms:
             {"google_ads": PlatformState("123", (_campaign("1", daily_budget=100),))}
         )
         assert not budget.is_set
-        assert budget.incomplete_platforms == ()
+        assert _incomplete_keys(budget) == ()
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +315,7 @@ class TestIncompleteSetIsRefused:
         )
         assert budget.total is None
         assert not budget.is_set
-        assert budget.incomplete_platforms == ("acme_ads",)
+        assert _incomplete_keys(budget) == ("acme_ads",)
 
     def test_the_partial_sum_is_never_the_answer(self) -> None:
         """Three of five campaigns is a smaller number, not a smaller budget."""
@@ -350,7 +356,7 @@ class TestIncompleteSetIsRefused:
             }
         )
         assert budget.total is None
-        assert budget.incomplete_platforms == ("acme_ads",)
+        assert _incomplete_keys(budget) == ("acme_ads",)
 
     def test_an_uncollected_platform_makes_the_set_unusable(self) -> None:
         """#638: mureo knows this platform did not refresh. It says so."""
@@ -368,7 +374,7 @@ class TestIncompleteSetIsRefused:
             }
         )
         assert budget.total is None
-        assert budget.incomplete_platforms == ("acme_ads",)
+        assert _incomplete_keys(budget) == ("acme_ads",)
 
     def test_a_platform_holding_no_campaigns_is_unusable_not_zero(self) -> None:
         register_monthly_budget_support(_support())
@@ -377,7 +383,7 @@ class TestIncompleteSetIsRefused:
         )
         assert budget.total is None
         assert budget.total != 0
-        assert budget.incomplete_platforms == ("acme_ads",)
+        assert _incomplete_keys(budget) == ("acme_ads",)
 
     def test_one_bad_platform_withholds_the_whole_sum(self) -> None:
         """A cross-platform total that silently drops a platform is the defect."""
@@ -390,7 +396,7 @@ class TestIncompleteSetIsRefused:
             }
         )
         assert budget.total is None
-        assert budget.incomplete_platforms == ("beta_ads",)
+        assert _incomplete_keys(budget) == ("beta_ads",)
 
     def test_every_unusable_platform_is_named_in_order(self) -> None:
         register_monthly_budget_support(_support())
@@ -401,4 +407,123 @@ class TestIncompleteSetIsRefused:
                 "acme_ads": PlatformState("123", (_campaign("1"),)),
             }
         )
-        assert budget.incomplete_platforms == ("acme_ads", "beta_ads")
+        assert _incomplete_keys(budget) == ("acme_ads", "beta_ads")
+
+
+# ---------------------------------------------------------------------------
+# Which mapping a caller reads, and why they cannot be confused
+# ---------------------------------------------------------------------------
+
+
+class TestTheTwoPerPlatformMappingsAreDistinct:
+    """A rung-1 renderer pointed at a rung-2 budget must show nothing.
+
+    ``per_platform`` is what the OPERATOR wrote; ``configured_per_platform``
+    is what the platforms are SET to. Reusing rung 1's display code on a
+    rung-2 budget is the easiest way to state a configured figure as an
+    agreed one, so the two never live in the same field.
+    """
+
+    def test_a_configured_sum_leaves_the_operator_mapping_empty(self) -> None:
+        register_monthly_budget_support(_support())
+        budget = platform_configured_monthly_budget(
+            {"acme_ads": PlatformState("123", (_campaign("1", monthly_budget=100),))}
+        )
+        assert dict(budget.per_platform) == {}
+        assert dict(budget.configured_per_platform) == {"acme_ads": 100.0}
+
+    def test_configured_mapping_is_read_only(self) -> None:
+        register_monthly_budget_support(_support())
+        budget = platform_configured_monthly_budget(
+            {"acme_ads": PlatformState("123", (_campaign("1", monthly_budget=100),))}
+        )
+        with pytest.raises(TypeError):
+            budget.configured_per_platform["acme_ads"] = 1.0  # type: ignore[index]
+
+
+# ---------------------------------------------------------------------------
+# Why a set is unusable — the operator-facing half
+# ---------------------------------------------------------------------------
+
+
+class TestIncompleteReasons:
+    """Each unusable platform says WHY, because the fixes differ.
+
+    A declaration that does not match its platform disables this rung
+    permanently and first-wins means no later plugin can take the slot back.
+    That case has to be distinguishable from a sync that is merely behind.
+    """
+
+    @staticmethod
+    def _only(budget: MonthlyBudget) -> IncompletePlatform:
+        assert len(budget.incomplete_platforms) == 1
+        return budget.incomplete_platforms[0]
+
+    def test_a_platform_whose_campaigns_never_carry_a_figure(self) -> None:
+        """The wrong-declaration shape: held campaigns, not one figure."""
+        register_monthly_budget_support(_support())
+        entry = self._only(
+            platform_configured_monthly_budget(
+                {"acme_ads": PlatformState("123", (_campaign("1"), _campaign("2")))}
+            )
+        )
+        assert entry.platform == "acme_ads"
+        assert entry.reason == REASON_NO_FIGURES
+
+    def test_a_platform_missing_some_figures(self) -> None:
+        """A sync that is behind, not a platform that has no such field."""
+        register_monthly_budget_support(_support())
+        entry = self._only(
+            platform_configured_monthly_budget(
+                {
+                    "acme_ads": PlatformState(
+                        "123",
+                        (_campaign("1", monthly_budget=100), _campaign("2")),
+                    )
+                }
+            )
+        )
+        assert entry.reason == REASON_MISSING_FIGURES
+
+    def test_a_platform_holding_no_campaigns(self) -> None:
+        register_monthly_budget_support(_support())
+        entry = self._only(
+            platform_configured_monthly_budget({"acme_ads": PlatformState("123", ())})
+        )
+        assert entry.reason == REASON_NO_CAMPAIGNS
+
+    def test_a_platform_whose_collection_failed(self) -> None:
+        register_monthly_budget_support(_support())
+        entry = self._only(
+            platform_configured_monthly_budget(
+                {
+                    "acme_ads": PlatformState(
+                        "123",
+                        (_campaign("1", monthly_budget=100),),
+                        not_collected={
+                            "attempted_at": "2026-08-19T09:00:00+09:00",
+                            "reason": "auth expired",
+                        },
+                    )
+                }
+            )
+        )
+        assert entry.reason == REASON_NOT_COLLECTED
+
+    def test_every_reason_renders_one_actionable_line(self) -> None:
+        """Every surface prints the same sentence: one rule, not one per view."""
+        for reason in (
+            REASON_NO_FIGURES,
+            REASON_MISSING_FIGURES,
+            REASON_NO_CAMPAIGNS,
+            REASON_NOT_COLLECTED,
+        ):
+            detail = IncompletePlatform(platform="acme_ads", reason=reason).detail
+            assert detail
+            assert "\n" not in detail
+            assert "acme_ads" in detail
+
+    def test_an_unknown_reason_still_renders_a_line(self) -> None:
+        """A read path never raises, not even on a reason it does not know."""
+        detail = IncompletePlatform(platform="acme_ads", reason="?").detail
+        assert "acme_ads" in detail
