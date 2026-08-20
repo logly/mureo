@@ -1,5 +1,94 @@
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-21
+
+### Added
+
+- **The Reports index reads as an account overview instead of a wall of
+  cards** (#663). An operator running twenty-seven clients opens the index to
+  answer one question — what do I touch today — and got a flat grid of cards
+  with a list of findings stacked above it: the roster's own figures were
+  nowhere, the grid could not be narrowed, and where the money went was on no
+  screen at all. The redesign follows a mockup mureo's own in-house agency
+  operators proposed, and the index now states, in this order:
+
+  - a **KPI strip** — what the roster spent, converted and paid per
+    conversion, and how many clients need attention;
+  - the **alerts that need action**, one row per KIND rather than one per
+    client (a real ten-client roster rendered sixteen rows, six of them the
+    same sentence under six names), opening at the top four with *Show all (N
+    more)* and the per-client detail and next step one click away;
+  - the **clients themselves** as compact cards — a status colour, a status
+    pill, the headline figures and short state badges — with a **health
+    filter** that hides rather than removes, so the operator's own card order
+    survives it;
+  - a **two-column body** (one column under 960px) whose right rail carries
+    **what mureo did today** above the **spend-by-platform** split.
+
+  **An alert row can be closed, and closing it resolves nothing.** The ✕
+  hides that row in this browser. While anything is hidden the panel says how
+  many, says in words that the conditions are still true and still counted,
+  and offers *Show them again*. A dismissal is keyed to a fingerprint of what
+  the row said, so a row whose finding changed is a different row and comes
+  back on its own — and the count never moves, because the condition exists
+  whether or not its row is on screen.
+
+  **The feed is the roster's day, dated by the server.** It lists the actions
+  mureo logged today — newest first, a time, a client and one sentence —
+  aggregated from the `action_log` entries every client's summary already
+  carries, so it costs no extra request. An action-log timestamp is stamped
+  from the host's wall clock, so the day is the host's too: the summary
+  states `server_today` and the browser compares strings against it rather
+  than asking its own clock, which would list nine hours of yesterday's work
+  as today's for an operator reading a distant host. A row is clamped to two
+  lines with the whole sentence on its `title` (a clamp, not a truncated
+  record — the action log renders in full on the client's detail view), and a
+  day with nothing logged renders no panel at all.
+
+  **All of this is the multi-client index's, and reaches nobody else.** The
+  KPI strip, the alert layer and the feed exist only where the Agency client
+  seam supplies a roster. A single-workspace install opens its client's
+  report directly and sees none of them, and its `/api/reports/summary`
+  response is unchanged down to the order of its keys — `server_today`, like
+  `observations_due` before it, is added under the seam only.
+
+- **A stored report's figures render as figures** (#663). A report summary
+  has always been {`totals` / `kpis`, `flags`, `narrative`}, and only the
+  last two were ever rendered — so a report that put its numbers where the
+  schema defines them looked exactly like one that folded them into the
+  paragraph, and what an operator got was a single ~700-character block with
+  the period, the figures, the per-ad findings, the goal status and the
+  proposal inside it. The client detail view now renders each part as what it
+  is: the headline figures as figures, the flags as tags, the narrative as
+  prose.
+
+  Which fields are headline figures is deliberately narrow: only the
+  canonical metric vocabulary (spend, conversions, cpa, ctr, clicks,
+  impressions), in display order, and only finite numbers. A formatted
+  string, a null, a metric mureo has no label for — all stay in the narrative
+  rather than being re-presented as a headline figure they may not be. Both
+  `totals` and `kpis` are read, because the product uses two names for the
+  same field. Reports already on disk state no structure and render exactly
+  as they did.
+
+### Fixed
+
+- **The left menu's "Reports" landed back on the open client instead of the
+  client list** (#663). Opening a client's report and then clicking *Reports*
+  in the left menu returned to that same client. The menu is the only global
+  way back to the list, so the list had no way back at all — only the
+  breadcrumb above the report.
+
+  `renderReports()` is both the section's entry point and its re-render, and
+  restoring the detail view is the right rule for a re-render — ejecting a
+  reader from the report they are on at every status poll would be the same
+  bug pointing the other way — and the wrong one for the menu. Nothing about
+  the state afterwards can tell the two apart, so the caller now states why
+  the render is happening: the menu always means the client list, and every
+  other entry keeps the current view while its client is alive. A
+  single-workspace install, which has no list to route to, still opens the
+  detail whatever the entry point.
+
 ## [0.11.0] - 2026-08-20
 
 ### Added
