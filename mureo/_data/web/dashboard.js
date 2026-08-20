@@ -1893,9 +1893,16 @@
   const triageMarksClient = REPORTS_TRIAGE.triageMarksClient;
   const triageItemText = REPORTS_TRIAGE.triageItemText;
   const triageItemNextStep = REPORTS_TRIAGE.triageItemNextStep;
+  const triageItemSeverity = REPORTS_TRIAGE.triageItemSeverity;
+  const triageItemTag = REPORTS_TRIAGE.triageItemTag;
+  const triageClientHealth = REPORTS_TRIAGE.triageClientHealth;
+  const triageHealthCounts = REPORTS_TRIAGE.triageHealthCounts;
 
   const REPORTS_OVERVIEW = window.MUREO_REPORTS_OVERVIEW;
   const reportsViewToShow = REPORTS_OVERVIEW.reportsViewToShow;
+  const buildReportsPortfolio = REPORTS_OVERVIEW.buildReportsPortfolio;
+  const clientPlatformSplit = REPORTS_OVERVIEW.clientPlatformSplit;
+  const platformColorSlot = REPORTS_OVERVIEW.platformColorSlot;
 
   // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
   // is rendered separately. Order here is the on-card display order.
@@ -2502,7 +2509,7 @@
   // One grid cell: the card button plus its controls. The controls live
   // OUTSIDE the card because the card IS a button, and a button may not nest
   // interactive children.
-  function buildClientCardItem(client, summary, wrap, triaged) {
+  function buildClientCardItem(client, summary, wrap, triaged, health) {
     const slug = client && client.slug ? client.slug : "";
     const name = (client && (client.name || client.slug)) || "";
     const item = document.createElement("div");
@@ -2510,6 +2517,10 @@
       "reports-client-card-item" + (triaged ? " is-triaged" : "");
     item.setAttribute("role", "listitem");
     item.setAttribute("data-client", slug);
+    // The health the filter chips above the grid select on. It comes from
+    // the triage layer's own findings, so a card the alerts call urgent can
+    // never be filtered away as a healthy one.
+    item.setAttribute("data-health", health || "ok");
     // The other half of the triage layer above the grid (#651): if the layer
     // says three clients need attention, exactly three cards are marked.
     // Both read the same list, so they cannot drift. A class alone would be
@@ -2521,7 +2532,7 @@
       mark.textContent = MUREO.t("dashboard.reports_triage_card_marker");
       item.appendChild(mark);
     }
-    item.appendChild(buildClientCard(client, summary));
+    item.appendChild(buildClientCard(client, summary, health));
 
     const tools = document.createElement("div");
     tools.className = "reports-client-tools";
@@ -2537,11 +2548,13 @@
     return item;
   }
 
-  function buildClientCard(client, summary) {
+  function buildClientCard(client, summary, health) {
     const slug = client && client.slug ? client.slug : "";
     const card = document.createElement("button");
     card.type = "button";
-    card.className = "reports-client-card";
+    // The health is a class AND the status tag below, never colour alone:
+    // the grid is a list of buttons an operator may reach by keyboard.
+    card.className = "reports-client-card is-health-" + (health || "ok");
     card.setAttribute("data-client", slug);
 
     const head = document.createElement("div");
@@ -2550,6 +2563,10 @@
     name.className = "reports-client-card-name";
     name.textContent = (client && (client.name || client.slug)) || "";
     head.appendChild(name);
+    const status = document.createElement("span");
+    status.className = "reports-client-card-status is-" + (health || "ok");
+    status.textContent = MUREO.t("dashboard.reports_health_" + (health || "ok"));
+    head.appendChild(status);
     // Per-platform freshness, NOT the document-level last_synced_at (#535):
     // that is re-stamped on any platform write, so a card whose numbers are
     // months old read as just-synced whenever a sibling platform synced.
@@ -2665,6 +2682,36 @@
       );
     }
 
+    // Where this client's spend went, as one bar. It is drawn only from the
+    // rows mureo is willing to state (reports_overview.js returns nothing
+    // for a withheld or stale client): the bar is the same claim as the
+    // number above it, and drawing shares of figures the card refuses to
+    // print would restate them in a shape that looks like a picture.
+    const split = clientPlatformSplit(summary);
+    if (split.length) {
+      const bar = document.createElement("div");
+      bar.className = "reports-client-split";
+      split.forEach(function (row) {
+        bar.appendChild(buildPlatformSlice(row, "reports-client-split-slice"));
+      });
+      card.appendChild(bar);
+      const legend = document.createElement("div");
+      legend.className = "reports-client-split-legend";
+      split.forEach(function (row) {
+        const entry = document.createElement("span");
+        entry.className = "reports-client-split-entry";
+        const dot = document.createElement("i");
+        dot.className = "reports-client-split-dot is-platform-" + platformColorSlot(row.key);
+        entry.appendChild(dot);
+        const label = document.createElement("span");
+        // Registry / plugin-controlled display name — text, never markup.
+        label.textContent = row.label;
+        entry.appendChild(label);
+        legend.appendChild(entry);
+      });
+      card.appendChild(legend);
+    }
+
     const flags = clientReportFlags(summary)
       .slice()
       .sort(function (a, b) {
@@ -2715,15 +2762,22 @@
     const nameEl = document.querySelector("[data-reports-detail-client]");
     if (index) index.hidden = view !== "index";
     if (detail) detail.hidden = view !== "detail";
+    // The two-column index shell (client portfolio + spend by platform).
+    const shell = document.querySelector("[data-reports-index-grid]");
+    if (shell) shell.hidden = view !== "index";
     // The archived list belongs to the index; renderReportsIndex un-hides it
     // again when there is something to list.
     const archived = document.querySelector("[data-reports-archived]");
     if (archived && view !== "index") archived.hidden = true;
     // So does the triage layer, and for a stronger reason: it states
     // findings ABOUT the grid, so left behind over a detail view it would be
-    // describing clients that are no longer on screen.
+    // describing clients that are no longer on screen. The portfolio strip
+    // is the same claim in numbers — a roster total sitting above one
+    // client's report reads as that client's.
     const triageBox = document.querySelector("[data-reports-triage]");
     if (triageBox && view !== "index") triageBox.hidden = true;
+    const kpiStrip = document.querySelector("[data-reports-kpis]");
+    if (kpiStrip && view !== "index") kpiStrip.hidden = true;
     // The back link (under the "Reports" heading) and the client-name heading
     // appear only in a multi-client detail view — an OSS single client has no
     // index to go back to and no sibling to disambiguate.
@@ -2764,6 +2818,14 @@
         n: marked.length,
       });
     }
+    // The same count again, as the panel's badge. It reads the same array as
+    // the heading and the grid's marks, so there is still exactly one list.
+    const badge = document.querySelector("[data-reports-triage-count]");
+    if (badge) {
+      badge.textContent = MUREO.t("dashboard.reports_triage_count", {
+        n: marked.length,
+      });
+    }
     items.forEach(function (item) {
       list.appendChild(buildTriageRow(item));
     });
@@ -2773,16 +2835,45 @@
   //
   // The next step is not a control — the Reports view does not mutate state
   // — and it is not optional either: an item with no next step is a bug in
-  // the item, which is why the module refuses to produce one.
+  // the item, which is why the module refuses to produce one. It is one
+  // click away rather than always open, like the flag chips' disclosure
+  // above: a list where every row states its remedy inline is a wall again,
+  // and the whole point of the layer is that it can be skimmed.
+  //
+  // The severity dot and the tag both come from the module's own kind table,
+  // so the colour of a row and the colour of that client's card cannot
+  // disagree.
+  let triageRowSeq = 0;
   function buildTriageRow(item) {
     const row = document.createElement("li");
     row.className = "reports-triage-row";
     row.setAttribute("data-triage-kind", item.kind);
+    const severity = triageItemSeverity(item);
+    row.setAttribute("data-severity", severity);
+
+    const stepId = "reports-triage-next-" + ++triageRowSeq;
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = "reports-triage-row-head";
+    head.setAttribute("aria-expanded", "false");
+    head.setAttribute("aria-controls", stepId);
+
+    const sig = document.createElement("span");
+    sig.className = "reports-triage-sig is-" + severity;
+    head.appendChild(sig);
 
     const who = document.createElement("span");
     who.className = "reports-triage-client";
     who.textContent = item.name || item.slug;
-    row.appendChild(who);
+    head.appendChild(who);
+
+    const tag = triageItemTag(item);
+    if (tag) {
+      const chip = document.createElement("span");
+      chip.className = "reports-triage-tag is-" + severity;
+      chip.textContent = tag;
+      head.appendChild(chip);
+    }
 
     const what = document.createElement("span");
     what.className = "reports-triage-what";
@@ -2790,16 +2881,253 @@
     // registry-controlled platform key) is interpolated into this sentence,
     // so it is set as text and never as markup.
     what.textContent = triageItemText(item);
-    row.appendChild(what);
+    head.appendChild(what);
+    row.appendChild(head);
 
     const next = triageItemNextStep(item);
     if (next) {
-      const step = document.createElement("span");
+      const step = document.createElement("p");
       step.className = "reports-triage-next";
+      step.id = stepId;
+      step.hidden = true;
       step.textContent = next;
       row.appendChild(step);
+      head.addEventListener("click", function () {
+        const show = step.hidden;
+        step.hidden = !show;
+        head.setAttribute("aria-expanded", show ? "true" : "false");
+      });
     }
     return row;
+  }
+
+  // ------------------------------------------------------------------
+  // The portfolio strip, the health filter and the platform split
+  // ------------------------------------------------------------------
+
+  // One cell of the strip: a label, a figure, and the coverage under it.
+  //
+  // A figure the module could state over NO client renders as "—" with the
+  // reason spelled out, never as a bare dash and never as 0. That is the
+  // rule the whole Reports view is built on (#638), and a roster total is
+  // the easiest place to break it: every client whose totals are withheld
+  // would otherwise be summed in as nothing.
+  function buildPortfolioCell(labelKey, text, note) {
+    const cell = document.createElement("div");
+    cell.className = "reports-kpi";
+    const label = document.createElement("span");
+    label.className = "reports-kpi-label";
+    label.textContent = MUREO.t(labelKey);
+    cell.appendChild(label);
+    const value = document.createElement("span");
+    value.className = "reports-kpi-value";
+    value.textContent = text;
+    cell.appendChild(value);
+    const foot = document.createElement("span");
+    foot.className = "reports-kpi-note";
+    foot.textContent = note;
+    cell.appendChild(foot);
+    return cell;
+  }
+
+  // A money cell: the figure when at least one client stated it, and how
+  // many clients that was whenever it was not all of them.
+  function buildPortfolioFigureCell(labelKey, figure, total, format) {
+    const stated = figure && typeof figure.stated === "number" ? figure.stated : 0;
+    const value = figure ? figure.value : null;
+    return buildPortfolioCell(
+      labelKey,
+      value != null ? format(value) : "—",
+      value == null
+        ? MUREO.t("dashboard.reports_portfolio_unstated")
+        : stated < total
+          ? MUREO.t("dashboard.reports_portfolio_coverage", {
+              stated: stated,
+              total: total,
+            })
+          : ""
+    );
+  }
+
+  // The strip above the alerts: what the roster spent and converted, what it
+  // paid per conversion, and how many of its clients need attention.
+  //
+  // Rendered only for the index — a roster total sitting above one client's
+  // report reads as that client's — and only when there is a roster: an
+  // empty grid gets no strip rather than four dashes.
+  function renderReportsPortfolio(portfolio, triage) {
+    const strip = document.querySelector("[data-reports-kpis]");
+    if (!strip) return;
+    strip.textContent = "";
+    strip.hidden = !portfolio.total;
+    if (!portfolio.total) return;
+    strip.appendChild(
+      buildPortfolioFigureCell(
+        "dashboard.reports_kpi_spend",
+        portfolio.spend,
+        portfolio.total,
+        formatNumber
+      )
+    );
+    strip.appendChild(
+      buildPortfolioFigureCell(
+        "dashboard.reports_kpi_conversions",
+        portfolio.conversions,
+        portfolio.total,
+        formatNumber
+      )
+    );
+    strip.appendChild(
+      buildPortfolioFigureCell(
+        "dashboard.reports_kpi_cpa",
+        portfolio.cpa,
+        portfolio.total,
+        function (value) {
+          return formatNumber(Math.round(value));
+        }
+      )
+    );
+    // The one cell that is never withheld: it counts findings mureo raised
+    // itself, not figures it collected. It reads the same array as the alert
+    // list's heading and the grid's marks.
+    const marked = triage && Array.isArray(triage.clients) ? triage.clients : [];
+    const counts = triageHealthCounts(triage, portfolio.total);
+    strip.appendChild(
+      buildPortfolioCell(
+        "dashboard.reports_portfolio_attention",
+        formatNumber(marked.length),
+        MUREO.t("dashboard.reports_portfolio_health_note", {
+          attention: counts.attention,
+          watch: counts.watch,
+        })
+      )
+    );
+  }
+
+  // Which health the grid is filtered to. "all" until the operator says
+  // otherwise, and reset on every index render: a filter that survived a
+  // re-render would leave cards missing with no visible reason.
+  let reportsHealthFilter = "all";
+
+  // Show only the cards at the selected health. The cards are hidden, never
+  // removed: the grid is also the operator's own card order (#556), and
+  // rebuilding it from a filtered list would reorder it.
+  function applyReportsHealthFilter() {
+    const wrap = document.querySelector("[data-reports-clients]");
+    if (!wrap) return;
+    Array.prototype.forEach.call(wrap.children, function (item) {
+      const health = item.getAttribute("data-health");
+      if (!health) return;
+      item.hidden = reportsHealthFilter !== "all" && health !== reportsHealthFilter;
+    });
+    const chips = document.querySelectorAll("[data-reports-filter]");
+    Array.prototype.forEach.call(chips, function (chip) {
+      const active = chip.getAttribute("data-reports-filter") === reportsHealthFilter;
+      chip.classList.toggle("is-active", active);
+      chip.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  // The health chips over the grid. Each carries its own count, so the
+  // operator can see there are three clients needing attention without
+  // clicking, and a chip whose count is zero is still rendered — a filter
+  // that appears and disappears is harder to use than one that says "0".
+  const REPORTS_HEALTH_FILTERS = [
+    ["all", "dashboard.reports_filter_all"],
+    ["attention", "dashboard.reports_health_attention"],
+    ["watch", "dashboard.reports_health_watch"],
+    ["ok", "dashboard.reports_health_ok"],
+  ];
+
+  function renderReportsFilters(counts) {
+    const wrap = document.querySelector("[data-reports-filters]");
+    if (!wrap) return;
+    wrap.textContent = "";
+    // Nothing to filter with one card, and nothing to filter with none.
+    wrap.hidden = counts.all < 2;
+    if (wrap.hidden) return;
+    REPORTS_HEALTH_FILTERS.forEach(function (row) {
+      const key = row[0];
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "reports-filter-chip";
+      chip.setAttribute("data-reports-filter", key);
+      if (key !== "all") {
+        const dot = document.createElement("span");
+        dot.className = "reports-filter-dot is-" + key;
+        chip.appendChild(dot);
+      }
+      const label = document.createElement("span");
+      label.textContent = MUREO.t(row[1]);
+      chip.appendChild(label);
+      const count = document.createElement("span");
+      count.className = "reports-filter-count";
+      count.textContent = formatNumber(counts[key]);
+      chip.appendChild(count);
+      chip.addEventListener("click", function () {
+        reportsHealthFilter = key;
+        applyReportsHealthFilter();
+      });
+      wrap.appendChild(chip);
+    });
+    applyReportsHealthFilter();
+  }
+
+  // One bar of a platform split: the coloured slice, sized by its share.
+  //
+  // The colour is chosen from the platform KEY (reports_overview.js), so the
+  // same platform is the same colour on every card and in the panel — the
+  // split is ranked by spend, and a colour that followed the ranking would
+  // change from card to card.
+  function buildPlatformSlice(row, className) {
+    const slice = document.createElement("span");
+    slice.className = className + " is-platform-" + platformColorSlot(row.key);
+    slice.style.width = (row.share * 100).toFixed(2) + "%";
+    return slice;
+  }
+
+  // The roster's spend by platform, beside the grid. Hidden entirely when no
+  // client's totals could be stated — an empty panel of zero-width bars says
+  // nothing, and a panel of bars drawn from withheld figures says something
+  // false.
+  function renderReportsPlatforms(portfolio) {
+    const panel = document.querySelector("[data-reports-platforms]");
+    const rows = document.querySelector("[data-reports-platform-rows]");
+    const note = document.querySelector("[data-reports-platform-note]");
+    if (!panel || !rows) return;
+    rows.textContent = "";
+    panel.hidden = !portfolio.platforms.length;
+    if (panel.hidden) return;
+    portfolio.platforms.forEach(function (row) {
+      const line = document.createElement("div");
+      line.className = "reports-platform-row";
+      const name = document.createElement("span");
+      name.className = "reports-platform-name";
+      // Registry / plugin-controlled display name — text, never markup.
+      name.textContent = row.label;
+      line.appendChild(name);
+      const track = document.createElement("span");
+      track.className = "reports-platform-track";
+      track.appendChild(buildPlatformSlice(row, "reports-platform-bar"));
+      line.appendChild(track);
+      const value = document.createElement("span");
+      value.className = "reports-platform-value";
+      value.textContent = formatNumber(Math.round(row.spend));
+      line.appendChild(value);
+      rows.appendChild(line);
+    });
+    // The panel is a sum over other people's numbers, so it says whose.
+    if (note) {
+      const stated = portfolio.spend.stated;
+      note.textContent =
+        stated < portfolio.total
+          ? MUREO.t("dashboard.reports_portfolio_coverage", {
+              stated: stated,
+              total: portfolio.total,
+            })
+          : "";
+      note.hidden = !note.textContent;
+    }
   }
 
   // INDEX view: a card per client (KPIs + flags for the selected window).
@@ -2829,13 +3157,35 @@
     // place the Agency seam produces — a single workspace opens the detail
     // view directly and never reaches this function.
     const triage = buildReportsTriage(rows, summaries);
+    // The roster's own figures, above the alerts — built from the same
+    // summaries the cards below are built from, and stating over how many
+    // clients each of them holds.
+    const portfolio = buildReportsPortfolio(rows, summaries);
+    renderReportsPortfolio(portfolio, triage);
     renderReportsTriage(triage);
+    renderReportsPlatforms(portfolio);
     wrap.textContent = "";
+    // A filter left over from a previous render would hide cards with no
+    // visible reason, so every index render starts on "all".
+    reportsHealthFilter = "all";
     rows.forEach(function (c, i) {
       wrap.appendChild(
-        buildClientCardItem(c, summaries[i], wrap, triageMarksClient(triage, i))
+        buildClientCardItem(
+          c,
+          summaries[i],
+          wrap,
+          triageMarksClient(triage, i),
+          triageClientHealth(triage, i)
+        )
       );
     });
+    const countBadge = document.querySelector("[data-reports-clients-count]");
+    if (countBadge) {
+      countBadge.textContent = MUREO.t("dashboard.reports_clients_count", {
+        n: rows.length,
+      });
+    }
+    renderReportsFilters(triageHealthCounts(triage, rows.length));
     if (!rows.length) {
       // Every client archived: say so, and leave the disclosure below as the
       // way back — an empty grid with no explanation reads as a broken view.

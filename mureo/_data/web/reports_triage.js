@@ -83,6 +83,42 @@
     observation_due: "dashboard.reports_triage_next_observations",
   };
 
+  // Kind → how the finding reads on the client's own card, and the short
+  // label the alert row carries.
+  //
+  // The severity line is the one reports_logic.js already draws and #638
+  // established: does this finding mean a number on that card is NOT the
+  // selected window's answer? The two withholding kinds say mureo cannot
+  // state the figures at all, so the card is red. The other three are real
+  // work — a collection that failed, an entry that resolves to nothing, a
+  // review that is owed — but nothing on screen is wrong because of them,
+  // so they are amber. Nothing here is a fourth opinion about the payload:
+  // the grid's colour and the alert list read one table, which is what
+  // stops a card the alert list calls urgent from being coloured green.
+  //
+  // Every kind in REPORTS_TRIAGE_KINDS must appear in both tables; the JS
+  // suite asserts it for each rather than for a sample.
+  const REPORTS_TRIAGE_SEVERITIES = {
+    totals_double_counted: "attention",
+    totals_stale: "attention",
+    not_collected: "watch",
+    unrecognized_key: "watch",
+    observation_due: "watch",
+  };
+
+  const REPORTS_TRIAGE_TAGS = {
+    totals_double_counted: "dashboard.reports_triage_tag_double_counted",
+    totals_stale: "dashboard.reports_triage_tag_stale",
+    not_collected: "dashboard.reports_triage_tag_not_collected",
+    unrecognized_key: "dashboard.reports_triage_tag_unknown_key",
+    observation_due: "dashboard.reports_triage_tag_observation_due",
+  };
+
+  // A client's health, worst first. "ok" is the absence of findings — it is
+  // never a claim that the client is performing well, only that mureo has
+  // nothing to raise about the state of its data.
+  const REPORTS_HEALTH_RANKS = ["attention", "watch", "ok"];
+
   // reports_logic.js's decisions — read off the page at call time. Its
   // answers (is this sum double-counted? is this row stale? does this row
   // say why it was not collected?) are the same ones the cards below use;
@@ -322,6 +358,55 @@
     }
   }
 
+  // How this finding reads on the card: "attention" or "watch".
+  //
+  // An item this module did not produce is "watch" rather than a throw or a
+  // blank — it renders as work to look at, which is the safe read for a
+  // finding whose meaning is unknown.
+  function triageItemSeverity(row) {
+    const kind = row && typeof row === "object" ? row.kind : null;
+    return REPORTS_TRIAGE_SEVERITIES[kind] || "watch";
+  }
+
+  // The short label the alert row carries next to the client's name. "" for
+  // a kind this module did not produce — an invented tag would name a
+  // finding that does not exist.
+  function triageItemTag(row) {
+    const key = row && typeof row === "object" ? REPORTS_TRIAGE_TAGS[row.kind] : null;
+    return key ? MUREO.t(key) : "";
+  }
+
+  // The health of the card at grid position `index`: the WORST severity it
+  // raised, or "ok" when it raised nothing.
+  //
+  // Worst, not last or first: a client that is both double-counted and
+  // merely overdue is not amber. By position for the same reason
+  // triageMarksClient is — a slug may be blank or repeated.
+  function triageClientHealth(built, index) {
+    const rows = built && Array.isArray(built.items) ? built.items : [];
+    let worst = REPORTS_HEALTH_RANKS.length - 1;
+    rows.forEach(function (row) {
+      if (!row || row.index !== index) return;
+      const rank = REPORTS_HEALTH_RANKS.indexOf(triageItemSeverity(row));
+      if (rank !== -1 && rank < worst) worst = rank;
+    });
+    return REPORTS_HEALTH_RANKS[worst];
+  }
+
+  // How many of the `total` cards on the grid sit at each health.
+  //
+  // Over the WHOLE grid, not over the findings: these counts sit on the
+  // filter chips above the cards, and a client that raised nothing is still
+  // a card the "ok" chip has to show.
+  function triageHealthCounts(built, total) {
+    const count = typeof total === "number" && total > 0 ? Math.floor(total) : 0;
+    const counts = { all: count, attention: 0, watch: 0, ok: 0 };
+    for (let i = 0; i < count; i++) {
+      counts[triageClientHealth(built, i)] += 1;
+    }
+    return counts;
+  }
+
   // What to RUN about this item, as one localized sentence.
   //
   // "" only for an item this module did not produce — every kind in
@@ -340,6 +425,10 @@
     triageMarksClient: triageMarksClient,
     triageItemText: triageItemText,
     triageItemNextStep: triageItemNextStep,
+    triageItemSeverity: triageItemSeverity,
+    triageItemTag: triageItemTag,
+    triageClientHealth: triageClientHealth,
+    triageHealthCounts: triageHealthCounts,
   };
 
   // Browser: the global the `<script>` tag exists to publish.

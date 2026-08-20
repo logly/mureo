@@ -133,6 +133,10 @@ const MODULES = [
       "triageMarksClient",
       "triageItemText",
       "triageItemNextStep",
+      "triageItemSeverity",
+      "triageItemTag",
+      "triageClientHealth",
+      "triageHealthCounts",
     ],
     moved: [
       "buildReportsTriage",
@@ -141,13 +145,29 @@ const MODULES = [
       "triageItemNextStep",
       "triageItemsForClient",
       "triageRank",
+      "triageItemSeverity",
+      "triageItemTag",
+      "triageClientHealth",
+      "triageHealthCounts",
     ],
   },
   {
     file: "reports_overview.js",
     global: "MUREO_REPORTS_OVERVIEW",
-    bound: ["reportsViewToShow"],
-    moved: ["reportsViewToShow"],
+    bound: [
+      "reportsViewToShow",
+      "buildReportsPortfolio",
+      "clientPlatformSplit",
+      "platformColorSlot",
+    ],
+    moved: [
+      "reportsViewToShow",
+      "buildReportsPortfolio",
+      "clientPlatformSplit",
+      "platformColorSlot",
+      "statedPlatformRows",
+      "splitBySpend",
+    ],
   },
 ];
 

@@ -508,3 +508,116 @@ test.describe("the count agrees with the cards below", function () {
     assert.equal(triage.triageMarksClient(null, 0), false);
   });
 });
+
+// ---------------------------------------------------------------------
+// 5. How a finding reads on the card it belongs to
+// ---------------------------------------------------------------------
+//
+// The index view colours a client's card and offers a "needs attention /
+// watch / ok" filter over the grid. Both must come from the findings this
+// module already produces rather than from a second opinion about the same
+// payload — a card the alert list calls urgent and the grid colours green
+// is the failure the whole layer exists to prevent.
+
+test.describe("a finding's severity", function () {
+  test.it("calls the two withholding kinds attention and the rest watch", function () {
+    // The line is the one reports_logic.js already draws: does this finding
+    // mean a number on the card is NOT the selected window's answer?
+    const severities = triage.REPORTS_TRIAGE_KINDS.map(function (kind) {
+      return triage.triageItemSeverity({ kind: kind });
+    });
+    assert.deepEqual(severities, [
+      "attention",
+      "attention",
+      "watch",
+      "watch",
+      "watch",
+    ]);
+  });
+
+  test.it("gives every kind a severity and a tag", function () {
+    // Derived from the ranking table, not restated: a kind added there
+    // without a severity would render an uncoloured, unlabelled alert.
+    triage.REPORTS_TRIAGE_KINDS.forEach(function (kind) {
+      const row = { kind: kind };
+      assert.ok(
+        ["attention", "watch"].indexOf(triage.triageItemSeverity(row)) !== -1,
+        kind + " has no severity"
+      );
+      assert.ok(triage.triageItemTag(row), kind + " has no tag");
+    });
+  });
+
+  test.it("never throws on a row it did not produce", function () {
+    [null, undefined, {}, "totals_stale", { kind: "invented" }].forEach(
+      function (row) {
+        assert.equal(typeof triage.triageItemSeverity(row), "string");
+        assert.equal(typeof triage.triageItemTag(row), "string");
+      }
+    );
+    assert.equal(triage.triageItemTag({ kind: "invented" }), "");
+  });
+});
+
+test.describe("a client's health, for the grid and its filter", function () {
+  const ROSTER = [client("conflicted"), client("overdue"), client("fine")];
+  const SUMMARIES = [doubleCountedSummary(), observationsDueSummary(), healthySummary()];
+
+  test.it("takes the worst severity the client raised", function () {
+    const built = triage.buildReportsTriage(ROSTER, SUMMARIES);
+    assert.equal(triage.triageClientHealth(built, 0), "attention");
+    assert.equal(triage.triageClientHealth(built, 1), "watch");
+    assert.equal(triage.triageClientHealth(built, 2), "ok");
+  });
+
+  test.it("does not let a lesser finding soften a withheld total", function () {
+    // A client that is BOTH double-counted and merely overdue is not amber.
+    const summary = doubleCountedSummary();
+    summary.observations_due = { count: 2, oldest_due: "2026-08-01" };
+    const built = triage.buildReportsTriage([client("busy")], [summary]);
+    assert.equal(triage.triageClientHealth(built, 0), "attention");
+  });
+
+  test.it("agrees with the marks: exactly the ok cards are unmarked", function () {
+    const built = triage.buildReportsTriage(ROSTER, SUMMARIES);
+    ROSTER.forEach(function (_c, index) {
+      assert.equal(
+        triage.triageClientHealth(built, index) === "ok",
+        !triage.triageMarksClient(built, index),
+        "card " + index + " is marked and healthy at once"
+      );
+    });
+  });
+
+  test.it("counts the grid by health, including the cards it never saw", function () {
+    // The counts sit on the filter chips, so they are over the WHOLE grid:
+    // a client with no findings raises no item and must still be counted.
+    const counts = triage.triageHealthCounts(
+      triage.buildReportsTriage(ROSTER, SUMMARIES),
+      ROSTER.length
+    );
+    assert.deepEqual(counts, { all: 3, attention: 1, watch: 1, ok: 1 });
+  });
+
+  test.it("counts a roster it has no findings for at all", function () {
+    const built = triage.buildReportsTriage([], []);
+    assert.deepEqual(triage.triageHealthCounts(built, 4), {
+      all: 4,
+      attention: 0,
+      watch: 0,
+      ok: 4,
+    });
+    assert.deepEqual(triage.triageHealthCounts(null, 0), {
+      all: 0,
+      attention: 0,
+      watch: 0,
+      ok: 0,
+    });
+  });
+
+  test.it("calls an unknown card healthy rather than throwing", function () {
+    const built = triage.buildReportsTriage(ROSTER, SUMMARIES);
+    assert.equal(triage.triageClientHealth(built, 99), "ok");
+    assert.equal(triage.triageClientHealth(null, 0), "ok");
+  });
+});

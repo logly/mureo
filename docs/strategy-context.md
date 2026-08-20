@@ -847,6 +847,55 @@ has closed the entry, which is the same rule
 judged against today, and unknown is not a verdict — and `oldest_due` is
 re-rendered from the date mureo itself parsed rather than echoed.
 
+#### Reading the roster at a glance
+
+Above the alerts the index states the roster's own figures — total spend,
+total conversions, the cost per conversion, and how many clients need
+attention — and beside the grid, where that spend went by platform.
+
+Every one of those is a sum over other clients' numbers, which is the
+easiest place in the product to hide one mureo cannot vouch for: a client
+whose totals are withheld would contribute a silent zero and nothing on
+screen would say so. So a cross-client figure is never just a number.
+
+- It is summed **only** over the clients whose totals mureo is willing to
+  state at all, using the same decision the cards use
+  (`aggregateClientKpis` in `reports_logic.js`) — not a second opinion about
+  the same payload.
+- It carries **how many clients that was**, whenever that is not all of
+  them: *"stated over 24 of 27 clients"*.
+- When no client stated it, the cell reads `—` with the reason under it,
+  never `0`.
+- The cost per conversion is taken from the clients that stated **both**
+  figures. Spend from one set of clients over conversions from another is
+  not a cost per anything.
+
+The spend-by-platform bars follow the same rule, on a card and across the
+roster: a client whose totals are withheld contributes no slice, because
+drawing the shares of figures the card refuses to print is the same claim in
+a shape that looks like a picture. A platform's colour is chosen from its
+key, so one platform is one colour on every card — the bars are ranked by
+spend, and a colour that followed the ranking would change from card to
+card.
+
+The grid can also be filtered to *needs attention* / *watch* / *nothing
+raised*. That verdict is the triage layer's own findings and not a fourth
+judgement: the two withholding findings (ranks 1–2 above) make a client
+*needs attention*, the rest make it *watch*, and a client that raised
+nothing is *nothing raised* — which says only that mureo has nothing to
+raise about the state of its data, never that the account is performing
+well. Cards are hidden by the filter, never removed, so your own card order
+survives it.
+
+#### Getting back to the list
+
+**Reports** in the left menu always opens the client list, whatever you had
+open before. Everything else that redraws the section — switching the
+period, a status refresh, archiving a client — leaves you where you are,
+because a redraw that ejected you from the report you were reading would be
+the same bug pointing the other way. A single-workspace install has no list,
+so it opens its one client's report either way.
+
 ### Fields
 
 #### Root
