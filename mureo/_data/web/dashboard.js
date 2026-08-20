@@ -1882,6 +1882,7 @@
   const buildFlagDetail = REPORTS_FORMAT.buildFlagDetail;
   const formatNumber = REPORTS_FORMAT.formatNumber;
   const formatKpi = REPORTS_FORMAT.formatKpi;
+  const reportSummaryTotals = REPORTS_FORMAT.reportSummaryTotals;
 
   const REPORTS_ORDER = window.MUREO_REPORTS_ORDER;
   const orderReportsClients = REPORTS_ORDER.orderReportsClients;
@@ -2232,6 +2233,30 @@
       period.className = "report-latest-period";
       period.textContent = String(report.period);
       body.appendChild(period);
+    }
+    // The headline figures the report stated, AS FIGURES (#662). The schema
+    // has always defined `totals` / `kpis` next to `flags` and `narrative`;
+    // what it had no way to do was make anything render them, so a report
+    // that put its numbers where they belong looked exactly like one that
+    // folded them into the paragraph. Only the canonical vocabulary and only
+    // real numbers reach this row — reports_format.js decides that — so a
+    // report already on disk states nothing here and stays readable below,
+    // as the prose it is.
+    const totals = reportSummaryTotals(report);
+    if (totals.length > 0) {
+      const row = document.createElement("div");
+      row.className = "report-latest-kpis";
+      totals.forEach(function (cell) {
+        row.appendChild(
+          clientKpiCell(
+            cell.key === "spend"
+              ? "dashboard.reports_kpi_spend"
+              : REPORTS_KPI_LABELS[cell.key],
+            formatKpi(cell.key, cell.key === "cpa" ? Math.round(cell.value) : cell.value)
+          )
+        );
+      });
+      body.appendChild(row);
     }
     // Flags as small tinted chips (warn/danger/success).
     const flags = Array.isArray(report.flags) ? report.flags : [];

@@ -94,6 +94,7 @@ const MODULES = [
       "buildFlagDetail",
       "formatNumber",
       "formatKpi",
+      "reportSummaryTotals",
     ],
     moved: [
       "reportsPeriodLabel",
@@ -111,6 +112,7 @@ const MODULES = [
       "flagChipKind",
       "flagParamLabel",
       "formatFlagParam",
+      "reportSummaryTotals",
     ],
   },
   {

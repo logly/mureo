@@ -401,7 +401,8 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
   - `reports_logic.js` → `window.MUREO_REPORTS_LOGIC` — the money-safety
     decisions (KPI withholding, freshness aggregation, conflict routing).
   - `reports_format.js` → `window.MUREO_REPORTS_FORMAT` — the display
-    vocabulary (flag labels and severities, param detail, numbers, periods).
+    vocabulary (flag labels and severities, param detail, numbers, periods,
+    and which of a stored report's fields are headline figures).
   - `reports_order.js` → `window.MUREO_REPORTS_ORDER` — the Reports index
     card order (localStorage, and the two ways the grid is reordered).
   - `reports_triage.js` → `window.MUREO_REPORTS_TRIAGE` — the multi-client

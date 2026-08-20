@@ -887,6 +887,20 @@ raise about the state of its data, never that the account is performing
 well. Cards are hidden by the filter, never removed, so your own card order
 survives it.
 
+#### The per-client report
+
+A report summary is `{totals, flags, narrative}`, and the detail view now
+renders each as what it is: the headline figures as figures, the flags as
+chips, the narrative as prose. Only the canonical metric vocabulary and only
+real numbers are rendered as figures — everything a report states outside
+that (a formatted string, a per-platform breakdown, a metric mureo has no
+label for) stays in the narrative rather than being re-presented as a
+headline number it may not be.
+
+A report that stated no structure at all renders exactly as it did before:
+reports already on disk are real content, and they stay readable as the
+prose they are rather than being reformatted by guesswork.
+
 #### Getting back to the list
 
 **Reports** in the left menu always opens the client list, whatever you had

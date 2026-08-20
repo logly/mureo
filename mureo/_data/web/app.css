@@ -2728,6 +2728,18 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--muted);
 }
 
+/* The headline figures the report itself stated (#662), above its flags and
+   its prose. Reuses the client card's KPI cell so a figure reads the same
+   wherever the Reports view prints one. A report that stated no structure
+   renders no row at all — nothing here is reserved space for a number. */
+.report-latest-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0 0 10px;
+  min-width: 0;
+}
+
 .report-latest-narrative {
   margin: 10px 0 0;
   font-size: 14px;

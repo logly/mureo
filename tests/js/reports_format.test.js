@@ -473,3 +473,102 @@ test.describe("buildFlagDetail", function () {
     assert.equal(fmt.buildFlagDetail({ code: "x", params: "nope" }), "");
   });
 });
+
+// ---------------------------------------------------------------------
+// The stored report's headline figures (#662)
+// ---------------------------------------------------------------------
+//
+// `mureo_state_report_set` defines the summary as {totals/kpis, flags,
+// narrative}, and the view rendered `narrative` into a single <p> on the
+// assumption that it is short. Real reports fold the period, the figures,
+// the per-ad findings and the proposal into that one string, and the
+// operator's verdict on it was that nobody reads it.
+//
+// This is the read half: figures the writer DID put in the structure are
+// rendered as figures. It is deliberately narrow — only the canonical
+// metric vocabulary, only real numbers — because everything it accepts it
+// presents as a headline figure, and a report already on disk must stay
+// readable rather than be reformatted by guesswork.
+
+test.describe("a stored report's headline figures", function () {
+  test.it("reads the canonical metrics in display order", function () {
+    assert.deepEqual(
+      fmt.reportSummaryTotals({
+        // Deliberately out of display order in the payload.
+        totals: { conversions: 50, spend: 773957, cpa: 15479 },
+      }),
+      [
+        { key: "spend", value: 773957 },
+        { key: "conversions", value: 50 },
+        { key: "cpa", value: 15479 },
+      ]
+    );
+  });
+
+  test.it("accepts `kpis`, the other spelling the schema documents", function () {
+    // The report-set tool's own description says "kpis (per-platform /
+    // totals headline numbers)"; #662 calls the same field `totals`. Both
+    // are the product's own words for it, so both are read.
+    assert.deepEqual(fmt.reportSummaryTotals({ kpis: { spend: 100 } }), [
+      { key: "spend", value: 100 },
+    ]);
+    // `totals` wins where a report carries both.
+    assert.deepEqual(
+      fmt.reportSummaryTotals({ totals: { spend: 1 }, kpis: { spend: 2 } }),
+      [{ key: "spend", value: 1 }]
+    );
+  });
+
+  test.it("unwraps a per-platform payload's own totals", function () {
+    // "per-platform / totals" — a writer may key by platform and put the
+    // roll-up under `totals`. The per-platform half is not headline figures.
+    assert.deepEqual(
+      fmt.reportSummaryTotals({
+        kpis: {
+          google_ads: { spend: 60 },
+          meta_ads: { spend: 40 },
+          totals: { spend: 100, conversions: 4 },
+        },
+      }),
+      [
+        { key: "spend", value: 100 },
+        { key: "conversions", value: 4 },
+      ]
+    );
+  });
+
+  test.it("takes only real numbers, and only the canonical vocabulary", function () {
+    // Everything this returns is presented as a headline figure. A string,
+    // a null or a name mureo has no label for belongs to the narrative.
+    assert.deepEqual(
+      fmt.reportSummaryTotals({
+        totals: {
+          spend: 100,
+          conversions: null,
+          cpa: "15,479 yen",
+          roas: 3.4,
+          clicks: NaN,
+          impressions: Infinity,
+        },
+      }),
+      [{ key: "spend", value: 100 }]
+    );
+  });
+
+  test.it("returns nothing for a report that stated no structure", function () {
+    // The reports already on disk. They stay readable — as prose, which is
+    // what they are — rather than being reformatted by guesswork.
+    [
+      { narrative: "one very long paragraph" },
+      { totals: null },
+      { totals: "773,957 yen" },
+      { totals: [] },
+      {},
+      null,
+      undefined,
+      "report",
+    ].forEach(function (report) {
+      assert.deepEqual(fmt.reportSummaryTotals(report), []);
+    });
+  });
+});
