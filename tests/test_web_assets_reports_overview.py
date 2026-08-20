@@ -171,7 +171,8 @@ def test_the_overview_sits_above_and_beside_the_grid_it_describes() -> None:
     html = _read("app.html")
     # The grid itself, not the count badge that shares its prefix.
     grid = html.index('class="dashboard-reports-clients"')
-    assert html.index("data-reports-kpis") < html.index("data-reports-triage")
+    assert html.index("data-reports-kpis") < html.index("data-reports-index-grid")
+    assert html.index("data-reports-index-grid") < html.index("data-reports-triage")
     assert html.index("data-reports-triage") < grid
     assert html.index("data-reports-filters") < grid
     assert grid < html.index("data-reports-platforms")
@@ -260,9 +261,9 @@ def test_the_new_rows_can_wrap() -> None:
     they need the break treatment every other note in this view has."""
     css = _read("app.css")
     for rule in (
-        ".reports-kpi-note",
         ".reports-platform-name",
         ".reports-client-split-entry",
+        ".reports-client-card-badge",
     ):
         body = css.split(rule + " {", 1)
         assert len(body) == 2, f"{rule} rule missing"
@@ -306,3 +307,72 @@ def test_the_unstated_string_says_mureo_cannot_state_it() -> None:
     key = "dashboard.reports_portfolio_unstated"
     assert "cannot" in data["en"][key], data["en"][key]
     assert "できません" in data["ja"][key], data["ja"][key]
+
+
+# ---------------------------------------------------------------------------
+# Height: the index has to fit on a screen an operator can read
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_the_index_body_is_two_columns_with_a_rail() -> None:
+    """Stacking every section full width made the index two screens tall
+    before the operator had read anything. The alerts and the grid they
+    triage share the main column; where the money went is a rail beside
+    them, and the whole thing stacks again on a narrow screen."""
+    html = _read("app.html")
+    css = _read("app.css")
+    # The alerts live INSIDE the main column now, still above the grid.
+    main = html.index('class="reports-index-main"')
+    assert main < html.index("data-reports-triage")
+    assert html.index("data-reports-triage") < html.index(
+        'class="dashboard-reports-clients"'
+    )
+    # …and the platform panel is outside it, in the rail.
+    assert html.index("data-reports-platforms") > html.index(
+        'class="dashboard-reports-clients"'
+    )
+    grid = css.split(".reports-index-grid {", 1)[1].split("}", 1)[0]
+    assert "grid-template-columns: minmax(0, 1fr) 340px" in grid
+    assert "@media (max-width: 960px)" in css
+
+
+@pytest.mark.unit
+def test_a_kpi_note_is_one_clipped_line_that_keeps_its_full_text() -> None:
+    """Four cells each wrapping a sentence is a strip taller than the alerts
+    under it. The note is clipped — and the whole sentence stays reachable,
+    because it is the half of the figure that says whose numbers are in it.
+    Shortened, never dropped."""
+    css = _read("app.css")
+    block = css.split(".reports-kpi-note {", 1)[1].split("}", 1)[0]
+    assert "text-overflow: ellipsis" in block
+    assert "white-space: nowrap" in block
+    # Reserved even when empty, so the four cells stay one height.
+    assert "min-height" in block
+    js = _read("dashboard.js")
+    cell = _function_body(js, "function buildPortfolioCell(")
+    assert "cell.title = full" in cell
+    figure = _function_body(js, "function buildPortfolioFigureCell(")
+    for key in (
+        "dashboard.reports_portfolio_unstated_short",
+        "dashboard.reports_portfolio_unstated",
+        "dashboard.reports_portfolio_coverage_short",
+        "dashboard.reports_portfolio_coverage",
+    ):
+        assert key in figure, f"{key} is not offered by the cell"
+
+
+@pytest.mark.unit
+def test_the_short_and_long_coverage_strings_are_localized() -> None:
+    data = json.loads(_read("i18n.json"))
+    for key in (
+        "dashboard.reports_portfolio_coverage_short",
+        "dashboard.reports_portfolio_unstated_short",
+    ):
+        for loc in ("en", "ja"):
+            assert data[loc].get(key), f"{key} missing in {loc}"
+        assert data["en"][key] != data["ja"][key], f"{key} not localized"
+    # The short form still says mureo CANNOT state it — an empty cell that
+    # reads as zero is the one thing this view must never produce (#638).
+    assert "cannot" in data["en"]["dashboard.reports_portfolio_unstated_short"]
+    assert "できません" in data["ja"]["dashboard.reports_portfolio_unstated_short"]

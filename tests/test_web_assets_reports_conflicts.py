@@ -108,13 +108,23 @@ def test_client_card_withholds_kpis_when_an_account_is_double_counted() -> None:
 
 @pytest.mark.unit
 def test_a_flagged_card_cannot_read_as_a_healthy_one() -> None:
-    """A conflicted card carries a visible modifier class AND a note, so the
-    at-a-glance grid never shows a flagged client as ordinary."""
-    js = _read_reports()
+    """A conflicted card carries a visible modifier class AND a mark that is
+    not colour, so the at-a-glance grid never shows a flagged client as
+    ordinary.
+
+    The mark used to be the conflict SENTENCE, rendered inside the card. It
+    is now a short badge: on a 27-client grid the sentences were three red
+    paragraphs inside a 230px card, and every one of them was already on
+    screen in the alert list directly above. The explanation moved there and
+    to the client's own detail view; what stayed is the state.
+    """
+    js = _read("dashboard.js")
     css = _read("app.css")
-    assert "reports-client-card-conflict" in js
+    card = _function_body(js, "function buildClientCard(")
+    assert 'card.classList.add("is-conflicted")' in card
+    assert "reports-client-card-badge" in card
     assert ".reports-client-card.is-conflicted" in css
-    assert ".reports-client-card-conflict" in css
+    assert ".reports-client-card-badge {" in css
 
 
 @pytest.mark.unit
@@ -178,7 +188,6 @@ def test_freshness_and_conflict_strings_are_localized_in_both_locales() -> None:
     data = json.loads(_read("i18n.json"))
     for key in (
         "dashboard.reports_conflict_double_counted",
-        "dashboard.reports_conflict_kpis_withheld",
         "dashboard.reports_conflict_unknown_key",
         "dashboard.reports_conflict_unknown_key_no_account",
         "dashboard.reports_platform_updated",
@@ -204,7 +213,9 @@ def test_untrusted_keys_and_names_can_wrap() -> None:
         ".report-card-name",
         ".report-card-conflict",
         ".reports-client-card-name",
-        ".reports-client-card-conflict",
+        # Where the index states a conflict now: one grouped alert row above
+        # the grid, whose per-client lines interpolate the keys.
+        ".reports-triage-detail-row",
     ):
         body = css.split(rule + " {", 1)
         assert len(body) == 2, f"{rule} rule missing"
@@ -322,22 +333,29 @@ def test_the_card_renders_a_spend_only_when_one_was_not_withheld() -> None:
 
 
 @pytest.mark.unit
-def test_the_withheld_warning_fires_on_the_conflicted_card() -> None:
-    """The other flip: `if (!kpis.doubleCounted)` would put "these figures
-    are withheld" on every healthy card and remove it from the one card it
-    describes — leaving the conflicted client silently short of KPIs with no
-    stated reason. Pinned as: the branch tests the TRUTHY case, and the
-    withheld string is reachable only from inside it."""
+def test_the_withheld_card_still_says_why_before_its_cells() -> None:
+    """A card that withholds a client's totals prints "—" where the figure
+    belongs, and a dash on its own reads as zero — which is #638, on this
+    exact grid. So the card must state the reason, and state it ABOVE the
+    cells.
+
+    The reason used to be a sentence the card composed from
+    ``kpis.doubleCounted``. It is now a badge out of the triage layer, which
+    raises its two withholding kinds from the SAME two conditions that null
+    the figures — ``tests/js/reports_triage.test.js`` asserts that link
+    directly ("a withheld card always says why"), which a substring pin
+    could never do. What is pinned here is that the card renders those
+    badges, and renders them first."""
     js = _read("dashboard.js")
     card = _function_body(js, "function buildClientCard(")
-    assert "if (kpis.doubleCounted) {" in card, (
-        "the withheld-KPIs warning no longer branches on the truthy "
-        "doubleCounted case"
-    )
-    branch = card.split("if (kpis.doubleCounted) {", 1)[1].split("\n    }", 1)[0]
-    assert "dashboard.reports_conflict_kpis_withheld" in branch
-    # …and nowhere else, so it cannot also be emitted on a healthy card.
-    assert js.count("dashboard.reports_conflict_kpis_withheld") == 1
+    assert "reports-client-card-badge" in card
+    assert card.index("reports-client-card-badges") < card.index(
+        'krow.className = "reports-client-card-kpis"'
+    ), "the state is stated after the cells it explains"
+    # The badges are the layer's own verdict, not a second opinion the card
+    # forms about the same payload.
+    index = _function_body(js, "async function renderReportsIndex(")
+    assert "triageClientBadges(triage, i)" in index
 
 
 @pytest.mark.unit
@@ -449,13 +467,23 @@ def test_a_double_counted_client_card_names_the_command_that_clears_it() -> None
     """
     js = _read("dashboard.js")
     catalog = json.loads(_read("i18n.json"))
-    card = _function_body(js, "function buildClientCard(")
-    assert "reportsRepairHint(conflicts)" in card, (
-        "the client index card no longer offers a way out — this is the "
+    # The way out is no longer inside the 230px card — it is one click away
+    # in the alert row above the grid (grouped by kind, every row carrying
+    # its next step) and on the client's own detail view, where the
+    # per-platform conflict note has always named it. What may never happen
+    # is a withheld total with nothing anywhere that clears it.
+    platform_card = _function_body(js, "function buildReportCard(")
+    assert "reportsRepairHint(conflicts)" in platform_card, (
+        "the client's detail view no longer offers a way out — this is the "
         "surface that withholds the client's totals"
     )
-    assert "reports-client-card-conflict-hint" in card
-    assert ".reports-client-card-conflict-hint" in _read("app.css")
+    assert "report-card-conflict-hint" in platform_card
+    assert ".report-card-conflict-hint" in _read("app.css")
+    # …and the alert row above the grid names it too, through the same
+    # string, chosen by kind in reports_triage.js.
+    assert "dashboard.reports_conflict_duplicate_repair_hint" in _read(
+        "reports_triage.js"
+    )
     for locale in ("en", "ja"):
         text = catalog[locale]["dashboard.reports_conflict_duplicate_repair_hint"]
         assert "mureo repair platform-key" in text

@@ -62,29 +62,36 @@ def test_the_renderer_binds_the_logic_module_rather_than_re_deciding() -> None:
 
 
 @pytest.mark.unit
-def test_the_client_card_states_the_reason_under_the_stale_note() -> None:
+def test_the_index_states_the_reason_without_opening_the_client() -> None:
     """ "These figures were collected before the window shown" is where the
-    operator stops reading. The reason belongs in the next sentence — not
-    below the numbers, and not in a place they reach only by opening the
-    client."""
-    card = _function_body(_read("dashboard.js"), "function buildClientCard(")
-    assert "reportsNotCollectedNotes(summary)" in card
-    assert "reportsNotCollectedText(" in card
-    assert card.index("dashboard.reports_stale_kpis_withheld") < card.index(
-        "reportsNotCollectedNotes(summary)"
-    ), "the reason no longer follows the note it explains"
+    operator stops reading. The reason belongs in the next sentence — and in
+    a place they reach WITHOUT opening the client.
+
+    It is no longer inside the card. On a 27-client grid the same sentence
+    was rendered twice on one screen: once in the card and once in the alert
+    row above it. It now lives only in the alert row — still on the index,
+    still one screen, still not behind a click into the client."""
+    js = _read("dashboard.js")
+    # reports_triage.js raises one item per platform that said why (its own
+    # suite executes that); the row renders it.
+    assert "not_collected" in _read("reports_triage.js")
+    assert "dashboard.reports_triage_not_collected" in _read("reports_triage.js")
+    row = _function_body(js, "function buildTriageRow(")
+    assert "triageItemText(item)" in row
 
 
 @pytest.mark.unit
-def test_the_reason_comes_before_the_repair_hint_and_the_cells() -> None:
-    """Three notes now share the space above the KPI cells and their order is
-    the argument they make: what is wrong (conflict), what mureo will not
-    state (stale), why (this), then what to run. The hint is what an operator
-    ACTS on, so nothing may be appended after it."""
-    card = _function_body(_read("dashboard.js"), "function buildClientCard(")
-    reason_at = card.index("reportsNotCollectedNotes(summary)")
-    assert reason_at < card.index("reportsRepairHint(conflicts)")
-    assert reason_at < card.index('krow.className = "reports-client-card-kpis"')
+def test_the_reason_comes_before_what_to_run_about_it() -> None:
+    """The order is the argument the row makes: what is wrong, then what to
+    run. The next step is what an operator ACTS on, so nothing may be
+    appended after it."""
+    row = _function_body(_read("dashboard.js"), "function buildTriageRow(")
+    assert row.index("triageItemText(item)") < row.index("triageItemNextStep(item)")
+    # And the client's own detail view still states both, per platform.
+    platform_card = _function_body(_read("dashboard.js"), "function buildReportCard(")
+    assert "reportsNotCollectedNote(" in platform_card
+    assert "report-card-not-collected" in platform_card
+    assert "reportsRepairHint(conflicts)" in platform_card
 
 
 @pytest.mark.unit
@@ -118,9 +125,12 @@ def test_the_reason_reaches_the_dom_as_text() -> None:
     """The reason is writer-supplied text from STATE.json — an API error
     string, in practice. It is set as text, never as markup."""
     js = _read("dashboard.js")
-    card = _function_body(js, "function buildClientCard(")
-    assert "reportsNotCollectedText(" in card
-    assert ".textContent = reportsNotCollectedText(" in card
+    # Twice over: the alert row above the index grid, and the per-platform
+    # card in the client's detail view.
+    row = _function_body(js, "function buildTriageRow(")
+    assert ".textContent = triageItemText(item)" in row
+    platform_card = _function_body(js, "function buildReportCard(")
+    assert ".textContent = reportsNotCollectedText(" in platform_card
     for name in _REPORTS_ASSETS:
         assert ".innerHTML" not in _read(name).replace("// innerHTML", ""), name
 
@@ -157,7 +167,7 @@ def test_the_note_blocks_have_styles_that_can_wrap() -> None:
     label into a flex card, so they need the same break treatment every other
     note in the card does."""
     css = _read("app.css")
-    for rule in (".report-card-not-collected", ".reports-client-card-not-collected"):
+    for rule in (".report-card-not-collected", ".reports-triage-detail-row"):
         body = css.split(rule + " {", 1)
         assert len(body) == 2, f"{rule} rule missing"
         block = body[1].split("}", 1)[0]

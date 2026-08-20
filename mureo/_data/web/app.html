@@ -202,55 +202,70 @@
                    rendered at least once. -->
               <div class="reports-kpis" data-reports-kpis hidden></div>
 
-              <!-- Triage layer (#651): which of the clients below needs
-                   attention today, ranked by what mureo can act on, each row
-                   naming what to run. It belongs ABOVE the grid it triages,
-                   and it renders only when it holds something — there is no
-                   "0 alerts" state. Index view only, so a single-workspace
-                   install (no Agency seam) never shows it. -->
-              <section class="reports-triage" data-reports-triage hidden
-                       aria-labelledby="reports-triage-title">
-                <div class="reports-panel-head">
-                  <h3 class="reports-triage-title" id="reports-triage-title"
-                      data-reports-triage-title></h3>
-                  <span class="reports-count-badge" data-reports-triage-count></span>
-                </div>
-                <ul class="reports-triage-list" data-reports-triage-list></ul>
-              </section>
 
-              <!-- INDEX view (#307): the client portfolio, and the roster's
-                   spend by platform beside it. Shown only for >1 client
-                   (Agency); a single-workspace OSS install skips the index
-                   and opens the detail directly. -->
+              <!-- INDEX body, two columns (one under 960px): the alerts
+                   and the client grid they triage on the left, and where the
+                   roster's money went on the right. -->
               <div class="reports-index-grid" data-reports-index-grid hidden>
-                <section class="reports-panel">
-                  <div class="reports-panel-head">
-                    <h3 data-i18n="dashboard.reports_clients_title">Clients</h3>
-                    <span class="reports-count-badge" data-reports-clients-count></span>
-                  </div>
+                <div class="reports-index-main">
+                  <!-- Triage layer (#651): which of the clients below needs
+                       attention today, ranked by what mureo can act on, each row
+                       naming what to run. It belongs ABOVE the grid it triages,
+                       and it renders only when it holds something — there is no
+                       "0 alerts" state. Index view only, so a single-workspace
+                       install (no Agency seam) never shows it. -->
+                  <section class="reports-triage" data-reports-triage hidden
+                           aria-labelledby="reports-triage-title">
+                    <div class="reports-panel-head">
+                      <h3 class="reports-triage-title" id="reports-triage-title"
+                          data-reports-triage-title></h3>
+                      <span class="reports-count-badge" data-reports-triage-count></span>
+                    </div>
+                    <ul class="reports-triage-list" data-reports-triage-list></ul>
+                    <!-- The list opens at its top rows (the ranking is stated
+                         in code, so "the top rows" means the ones mureo can do
+                         most about). This is the rest. The COUNT above is
+                         never collapsed — it is over every finding. -->
+                    <button type="button" class="reports-triage-more"
+                            data-reports-triage-more hidden></button>
+                    <!-- The price of the row-level dismiss control: an alert an
+                         operator closed is HIDDEN, not resolved, so while
+                         anything is hidden this says how many, says in words
+                         that closing them resolved nothing, and offers the way
+                         back. A finding that left no trace when it was closed is
+                         the failure mode this whole layer was built against. -->
+                    <div class="reports-triage-hidden" data-reports-triage-hidden hidden></div>
+                  </section>
 
-                  <!-- Health filter over the grid below. The chips are built
-                       from the triage layer's own findings, so a card the
-                       alerts call urgent cannot be filtered as healthy. -->
-                  <div class="reports-filters" data-reports-filters
-                       role="group" aria-label="Filter clients by health" hidden></div>
+                  <section class="reports-panel">
+                    <div class="reports-panel-head">
+                      <h3 data-i18n="dashboard.reports_clients_title">Clients</h3>
+                      <span class="reports-count-badge" data-reports-clients-count></span>
+                    </div>
 
-                  <!-- One card per client (KPIs + latest-report flags). Click
-                       a card → that client's DETAIL view. -->
-                  <div class="dashboard-reports-clients" data-reports-clients
-                       role="list" aria-label="Clients" hidden></div>
+                    <!-- Health filter over the grid below. The chips are built
+                         from the triage layer's own findings, so a card the
+                         alerts call urgent cannot be filtered as healthy. -->
+                    <div class="reports-filters" data-reports-filters
+                         role="group" aria-label="Filter clients by health" hidden></div>
 
-                  <!-- Archived clients. Un-archiving has to be reachable from
-                       this screen: if the only way back were editing the client
-                       registry by hand, archiving would be a trap. Collapsed and
-                       unobtrusive, and shown only when the registry reports at
-                       least one archived client. -->
-                  <details class="reports-archived" data-reports-archived hidden>
-                    <summary data-reports-archived-summary></summary>
-                    <p class="muted" data-i18n="dashboard.reports_archived_hint">Archived clients are not synced, so no figures are collected while they are archived. Restoring one resumes collection from that point; the gap is not backfilled.</p>
-                    <ul class="reports-archived-list" data-reports-archived-list></ul>
-                  </details>
-                </section>
+                    <!-- One card per client (KPIs + latest-report flags). Click
+                         a card → that client's DETAIL view. -->
+                    <div class="dashboard-reports-clients" data-reports-clients
+                         role="list" aria-label="Clients" hidden></div>
+
+                    <!-- Archived clients. Un-archiving has to be reachable from
+                         this screen: if the only way back were editing the client
+                         registry by hand, archiving would be a trap. Collapsed and
+                         unobtrusive, and shown only when the registry reports at
+                         least one archived client. -->
+                    <details class="reports-archived" data-reports-archived hidden>
+                      <summary data-reports-archived-summary></summary>
+                      <p class="muted" data-i18n="dashboard.reports_archived_hint">Archived clients are not synced, so no figures are collected while they are archived. Restoring one resumes collection from that point; the gap is not backfilled.</p>
+                      <ul class="reports-archived-list" data-reports-archived-list></ul>
+                    </details>
+                  </section>
+                </div>
 
                 <!-- Where the roster's money went. Summed over the clients
                      whose totals mureo can state, and it says how many that

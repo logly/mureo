@@ -1898,6 +1898,12 @@
   const triageItemTag = REPORTS_TRIAGE.triageItemTag;
   const triageClientHealth = REPORTS_TRIAGE.triageClientHealth;
   const triageHealthCounts = REPORTS_TRIAGE.triageHealthCounts;
+  const triageClientBadges = REPORTS_TRIAGE.triageClientBadges;
+  const groupReportsTriage = REPORTS_TRIAGE.groupReportsTriage;
+  const partitionTriageGroups = REPORTS_TRIAGE.partitionTriageGroups;
+  const dismissTriageGroup = REPORTS_TRIAGE.dismissTriageGroup;
+  const restoreTriageDismissals = REPORTS_TRIAGE.restoreTriageDismissals;
+  const collapseTriageGroups = REPORTS_TRIAGE.collapseTriageGroups;
 
   const REPORTS_OVERVIEW = window.MUREO_REPORTS_OVERVIEW;
   const reportsViewToShow = REPORTS_OVERVIEW.reportsViewToShow;
@@ -2534,7 +2540,7 @@
   // One grid cell: the card button plus its controls. The controls live
   // OUTSIDE the card because the card IS a button, and a button may not nest
   // interactive children.
-  function buildClientCardItem(client, summary, wrap, triaged, health) {
+  function buildClientCardItem(client, summary, wrap, triaged, health, badges) {
     const slug = client && client.slug ? client.slug : "";
     const name = (client && (client.name || client.slug)) || "";
     const item = document.createElement("div");
@@ -2557,7 +2563,7 @@
       mark.textContent = MUREO.t("dashboard.reports_triage_card_marker");
       item.appendChild(mark);
     }
-    item.appendChild(buildClientCard(client, summary, health));
+    item.appendChild(buildClientCard(client, summary, health, badges));
 
     const tools = document.createElement("div");
     tools.className = "reports-client-tools";
@@ -2573,7 +2579,24 @@
     return item;
   }
 
-  function buildClientCard(client, summary, health) {
+  // One card: who the client is, what state mureo is in about them, and the
+  // window's headline figures. A SUMMARY — deliberately not an explanation.
+  //
+  // It used to carry the full sentences too: which platform key could not be
+  // resolved, why a collection failed, and the repair command to run. On a
+  // twenty-seven-client grid that put three red paragraphs inside a 230px
+  // card, and every one of them was already on screen in the alert list
+  // directly above it. Two renderings of one finding is not twice the
+  // signal; it is a wall with the summary buried in it.
+  //
+  // What did NOT move is the state. A card whose figures mureo will not
+  // state still says so — the "—" and a short badge next to it ("Figures 29
+  // days old"), because a bare dash reads as zero and #638 is the incident
+  // where exactly that happened. The explanation and the way out live in the
+  // alert row above (grouped, one per kind) and on the client's own detail
+  // view, which is where the per-platform conflict note and its repair hint
+  // have always been rendered.
+  function buildClientCard(client, summary, health, badges) {
     const slug = client && client.slug ? client.slug : "";
     const card = document.createElement("button");
     card.type = "button";
@@ -2600,74 +2623,37 @@
     fresh.className =
       "reports-client-card-fresh" + (cardFresh.stale ? " is-stale" : "");
     fresh.textContent = cardFresh.text;
-    head.appendChild(fresh);
     card.appendChild(head);
+    // Freshness on its own line, under the name: in the head it competed
+    // with the name and the status pill for a 230px row, and the casualty
+    // was the name — a five-character Japanese client name was being broken
+    // across two lines.
+    card.appendChild(fresh);
 
-    // Conflicts before the KPIs, so a flagged card can never be skimmed as a
-    // healthy one: it carries a modifier class, a coloured note, and (for a
-    // double-counted account) no totals at all.
+    const badgeRow = document.createElement("div");
+    badgeRow.className = "reports-client-card-badges";
+
+    // A conflicted card still carries its modifier class, so it can never be
+    // skimmed as an ordinary one — but the sentence explaining the conflict
+    // is the alert row's job now, and the repair command is the detail
+    // view's. Both are one click from here and neither is duplicated.
     const conflicts =
       summary && Array.isArray(summary.platform_conflicts)
         ? summary.platform_conflicts
         : [];
-    if (conflicts.length) {
-      card.classList.add("is-conflicted");
-      const labels = reportsPlatformLabels(summary);
-      conflicts.forEach(function (row) {
-        const note = document.createElement("p");
-        note.className = "reports-client-card-conflict";
-        note.textContent = reportsConflictText(row, labels);
-        card.appendChild(note);
-      });
-    }
+    if (conflicts.length) card.classList.add("is-conflicted");
+
+    // The state, as badges: one per kind, short, no command and no prose.
+    // These are what keeps the "—" below from reading as zero.
+    (Array.isArray(badges) ? badges : []).forEach(function (badge) {
+      const el = document.createElement("span");
+      el.className = "reports-client-card-badge is-" + badge.severity;
+      el.textContent = badge.text;
+      badgeRow.appendChild(el);
+    });
+    if (badgeRow.childNodes.length) card.appendChild(badgeRow);
 
     const kpis = aggregateClientKpis(summary);
-    if (kpis.doubleCounted) {
-      const withheld = document.createElement("p");
-      withheld.className = "reports-client-card-conflict";
-      withheld.textContent = MUREO.t("dashboard.reports_conflict_kpis_withheld");
-      card.appendChild(withheld);
-    }
-    // The same treatment for the same reason (#638): a stale aggregate is
-    // not the selected window's total, so it is not printed in the cells
-    // that say it is. The note goes ABOVE the cells, like the conflict one,
-    // so the "—" is never read as "this client spent nothing".
-    if (kpis.staleFigures) {
-      const staleNote = document.createElement("p");
-      staleNote.className = "reports-client-card-conflict";
-      staleNote.textContent = MUREO.t("dashboard.reports_stale_kpis_withheld");
-      card.appendChild(staleNote);
-    }
-    // …and, directly under it, why they did not move (#638). The note above
-    // says mureo will not state these as the window's figures; this says
-    // what stopped newer ones from arriving, which is the half an operator
-    // can act on — a stopped ad account and a stopped collector produce the
-    // identical card otherwise, and the one that sat for eleven days was the
-    // second. It is not a claim that the stored figures are wrong; they are
-    // the last ones truly collected, and they are still shown.
-    //
-    // Rendered whenever a platform carries the note, stale or not: a
-    // collection that failed today has not aged the figures out yet, and
-    // that is the moment it is cheapest to fix.
-    reportsNotCollectedNotes(summary).forEach(function (note) {
-      const el = document.createElement("p");
-      el.className = "reports-client-card-not-collected";
-      el.textContent = reportsNotCollectedText(note);
-      card.appendChild(el);
-    });
-    // The way out, under the notes that say why the figures are missing
-    // (#636). This card withholds a client's totals "until this is
-    // resolved" and named nothing that could resolve it: the repair would
-    // not touch a duplicate whose two keys both resolve, so the card stayed
-    // red for good. A pointer, never a control — the Reports view does not
-    // mutate state — and the command itself is chosen by kind in
-    // reports_logic.js rather than re-decided here.
-    if (conflicts.length) {
-      const repairHint = document.createElement("p");
-      repairHint.className = "reports-client-card-conflict-hint";
-      repairHint.textContent = reportsRepairHint(conflicts);
-      card.appendChild(repairHint);
-    }
     const krow = document.createElement("div");
     krow.className = "reports-client-card-kpis";
     krow.appendChild(
@@ -2851,78 +2837,222 @@
         n: marked.length,
       });
     }
-    items.forEach(function (item) {
-      list.appendChild(buildTriageRow(item));
+    // One row per KIND, each naming the clients it covers — the grouping
+    // and the dismissal filter are both the module's (reports_triage.js).
+    // Neither changes `built.clients`, so the heading above and the marks
+    // below still count every client that raised anything.
+    reportsTriageBuilt = built;
+    const split = partitionTriageGroups(groupReportsTriage(built));
+    // …and only the top few of those, unless the operator asked for the
+    // rest. Which rows survive the collapse is the module's decision, for
+    // the same reason the ranking is: "the top four" is only defensible
+    // while it means the four mureo can do most about.
+    const shown = collapseTriageGroups(split.visible, reportsTriageShowAll);
+    shown.rows.forEach(function (group) {
+      list.appendChild(buildTriageRow(group));
     });
+    renderTriageMore(shown);
+    renderTriageDismissed(split.hidden);
   }
 
-  // One finding: whose it is, what it is, and what to run about it.
+  // Whether the alert list is showing every row it has. Reset on every index
+  // render — the list opens short each time the operator arrives, which is
+  // the whole point of opening short.
+  let reportsTriageShowAll = false;
+
+  // "Show all (N)". Absent when the list already fits: there is no
+  // "show all (0)", the same way there is no "0 alerts" banner.
+  function renderTriageMore(shown) {
+    const more = document.querySelector("[data-reports-triage-more]");
+    if (!more) return;
+    more.hidden = !shown.collapsed;
+    if (!shown.collapsed) return;
+    more.textContent = MUREO.t("dashboard.reports_triage_show_all", {
+      n: shown.remaining,
+    });
+    more.onclick = function () {
+      reportsTriageShowAll = true;
+      renderReportsTriage(reportsTriageBuilt);
+    };
+  }
+
+  // The layer as it was last built, so closing or restoring a row can redraw
+  // it without re-fetching every client's summary.
+  let reportsTriageBuilt = null;
+
+  // "N alerts hidden", with the way back.
   //
-  // The next step is not a control — the Reports view does not mutate state
-  // — and it is not optional either: an item with no next step is a bug in
-  // the item, which is why the module refuses to produce one. It is one
-  // click away rather than always open, like the flag chips' disclosure
-  // above: a list where every row states its remedy inline is a wall again,
-  // and the whole point of the layer is that it can be skimmed.
+  // This is the price of the ✗ and it is not optional. Closing a row hides
+  // it; it does not resolve anything, and a finding that left NO trace when
+  // it was closed would be the failure mode this entire layer was built
+  // against (#636, #638: the condition was true, and nothing said so). So
+  // the count is always on screen while anything is hidden, it says in words
+  // that hiding resolved nothing, and one button brings them all back.
+  function renderTriageDismissed(hidden) {
+    const box = document.querySelector("[data-reports-triage-hidden]");
+    if (!box) return;
+    box.textContent = "";
+    box.hidden = !hidden.length;
+    if (!hidden.length) return;
+    const title = document.createElement("span");
+    title.className = "reports-triage-hidden-title";
+    title.textContent = MUREO.t("dashboard.reports_triage_hidden_title", {
+      n: hidden.length,
+    });
+    box.appendChild(title);
+    const note = document.createElement("span");
+    note.className = "reports-triage-hidden-note";
+    note.textContent = MUREO.t("dashboard.reports_triage_hidden_note");
+    box.appendChild(note);
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.className = "reports-triage-restore";
+    restore.textContent = MUREO.t("dashboard.reports_triage_restore");
+    restore.addEventListener("click", function () {
+      restoreTriageDismissals();
+      renderReportsTriage(reportsTriageBuilt);
+    });
+    box.appendChild(restore);
+  }
+
+  // One row: one KIND of finding, the clients it covers, and — one click
+  // away — what each of them says and what to run about it.
   //
-  // The severity dot and the tag both come from the module's own kind table,
-  // so the colour of a row and the colour of that client's card cannot
+  // Per kind, not per client. On the twenty-seven-client install this layer
+  // was built for it rendered sixteen rows, six of them the same sentence
+  // about the same unresolvable platform key under six different names. The
+  // grouping is reports_triage.js's; nothing here re-orders or re-groups.
+  //
+  // The detail is one click away rather than always open, like the flag
+  // chips' disclosure above: a list where every row states its remedy inline
+  // is a wall again, and the whole point of the layer is that it can be
+  // skimmed. It is never absent — an item with no next step is a bug in the
+  // item, which is why the module refuses to produce one.
+  //
+  // The severity dot and the tag come from the module's own kind table, so
+  // the colour of a row and the colour of that client's card cannot
   // disagree.
   let triageRowSeq = 0;
-  function buildTriageRow(item) {
+  function buildTriageRow(group) {
+    const item = group.items[0];
     const row = document.createElement("li");
     row.className = "reports-triage-row";
-    row.setAttribute("data-triage-kind", item.kind);
-    const severity = triageItemSeverity(item);
-    row.setAttribute("data-severity", severity);
+    row.setAttribute("data-triage-kind", group.kind);
+    row.setAttribute("data-severity", group.severity);
 
-    const stepId = "reports-triage-next-" + ++triageRowSeq;
-    const head = document.createElement("button");
-    head.type = "button";
+    const detailId = "reports-triage-detail-" + ++triageRowSeq;
+    const head = document.createElement("div");
     head.className = "reports-triage-row-head";
-    head.setAttribute("aria-expanded", "false");
-    head.setAttribute("aria-controls", stepId);
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "reports-triage-toggle";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", detailId);
 
     const sig = document.createElement("span");
-    sig.className = "reports-triage-sig is-" + severity;
-    head.appendChild(sig);
-
-    const who = document.createElement("span");
-    who.className = "reports-triage-client";
-    who.textContent = item.name || item.slug;
-    head.appendChild(who);
+    sig.className = "reports-triage-sig is-" + group.severity;
+    toggle.appendChild(sig);
 
     const tag = triageItemTag(item);
     if (tag) {
       const chip = document.createElement("span");
-      chip.className = "reports-triage-tag is-" + severity;
+      chip.className = "reports-triage-tag is-" + group.severity;
       chip.textContent = tag;
-      head.appendChild(chip);
+      toggle.appendChild(chip);
     }
 
-    const what = document.createElement("span");
-    what.className = "reports-triage-what";
+    // Who it covers, named. Registry-controlled text — textContent, never
+    // markup (#533).
+    const who = document.createElement("span");
+    who.className = "reports-triage-client";
+    who.textContent = group.clients
+      .map(function (c) {
+        return c.name || c.slug;
+      })
+      .join(MUREO.t("dashboard.reports_triage_client_separator"));
+    toggle.appendChild(who);
+
+    if (group.clients.length > 1) {
+      const count = document.createElement("span");
+      count.className = "reports-count-badge";
+      count.textContent = MUREO.t("dashboard.reports_triage_count", {
+        n: group.clients.length,
+      });
+      toggle.appendChild(count);
+    }
+
+    // What it says, on ONE line, clipped by the stylesheet. A row is a thing
+    // to skim; the sentence wrapping to three lines was most of the height
+    // an operator complained about. The full text of every item on the row
+    // is in the disclosure below, and the `title` puts this one a hover
+    // away — the clip never has to be the only copy.
+    const summary = document.createElement("span");
+    summary.className = "reports-triage-summary";
     // Writer-supplied text (a collection-failure reason out of STATE.json, a
-    // registry-controlled platform key) is interpolated into this sentence,
-    // so it is set as text and never as markup.
-    what.textContent = triageItemText(item);
-    head.appendChild(what);
+    // registry-controlled platform key) — text, never markup.
+    summary.textContent = triageItemText(item);
+    summary.title = summary.textContent;
+    toggle.appendChild(summary);
+    head.appendChild(toggle);
+
+    // Closing a row is a VIEW operation and says so: the count above does
+    // not move, the client's card stays marked, and "N hidden" appears
+    // under the list with the way back. See renderTriageDismissed.
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "reports-triage-dismiss";
+    close.setAttribute(
+      "aria-label",
+      MUREO.t("dashboard.reports_triage_dismiss", { what: tag })
+    );
+    close.textContent = "✕";
+    close.addEventListener("click", function () {
+      dismissTriageGroup(group);
+      renderReportsTriage(reportsTriageBuilt);
+    });
+    head.appendChild(close);
     row.appendChild(head);
 
+    const detail = document.createElement("div");
+    detail.className = "reports-triage-detail";
+    detail.id = detailId;
+    detail.hidden = true;
+    const list = document.createElement("ul");
+    list.className = "reports-triage-detail-list";
+    group.items.forEach(function (item) {
+      const line = document.createElement("li");
+      line.className = "reports-triage-detail-row";
+      const name = document.createElement("span");
+      name.className = "reports-triage-client";
+      name.textContent = item.name || item.slug;
+      line.appendChild(name);
+      const what = document.createElement("span");
+      what.className = "reports-triage-what";
+      // Writer-supplied text (a collection-failure reason out of STATE.json,
+      // a registry-controlled platform key) is interpolated into this
+      // sentence, so it is set as text and never as markup.
+      what.textContent = triageItemText(item);
+      line.appendChild(what);
+      list.appendChild(line);
+    });
+    detail.appendChild(list);
+
+    // What to run. One per row because every item on it is the same kind,
+    // and the kind is what decides the next step.
     const next = triageItemNextStep(item);
     if (next) {
       const step = document.createElement("p");
       step.className = "reports-triage-next";
-      step.id = stepId;
-      step.hidden = true;
       step.textContent = next;
-      row.appendChild(step);
-      head.addEventListener("click", function () {
-        const show = step.hidden;
-        step.hidden = !show;
-        head.setAttribute("aria-expanded", show ? "true" : "false");
-      });
+      detail.appendChild(step);
     }
+    row.appendChild(detail);
+    toggle.addEventListener("click", function () {
+      const show = detail.hidden;
+      detail.hidden = !show;
+      toggle.setAttribute("aria-expanded", show ? "true" : "false");
+    });
     return row;
   }
 
@@ -2937,7 +3067,7 @@
   // rule the whole Reports view is built on (#638), and a roster total is
   // the easiest place to break it: every client whose totals are withheld
   // would otherwise be summed in as nothing.
-  function buildPortfolioCell(labelKey, text, note) {
+  function buildPortfolioCell(labelKey, text, note, full) {
     const cell = document.createElement("div");
     cell.className = "reports-kpi";
     const label = document.createElement("span");
@@ -2948,9 +3078,15 @@
     value.className = "reports-kpi-value";
     value.textContent = text;
     cell.appendChild(value);
+    // The note is ONE clipped line: four cells each carrying a wrapped
+    // sentence is a strip taller than the alerts under it. The whole
+    // sentence stays reachable on the cell as a title — it is the half of
+    // the figure that says whose numbers are in it, so it is shortened,
+    // never dropped.
     const foot = document.createElement("span");
     foot.className = "reports-kpi-note";
     foot.textContent = note;
+    if (full) cell.title = full;
     cell.appendChild(foot);
     return cell;
   }
@@ -2960,17 +3096,24 @@
   function buildPortfolioFigureCell(labelKey, figure, total, format) {
     const stated = figure && typeof figure.stated === "number" ? figure.stated : 0;
     const value = figure ? figure.value : null;
+    const params = { stated: stated, total: total };
+    const short =
+      value == null
+        ? "dashboard.reports_portfolio_unstated_short"
+        : stated < total
+          ? "dashboard.reports_portfolio_coverage_short"
+          : "";
+    const full =
+      value == null
+        ? "dashboard.reports_portfolio_unstated"
+        : stated < total
+          ? "dashboard.reports_portfolio_coverage"
+          : "";
     return buildPortfolioCell(
       labelKey,
       value != null ? format(value) : "—",
-      value == null
-        ? MUREO.t("dashboard.reports_portfolio_unstated")
-        : stated < total
-          ? MUREO.t("dashboard.reports_portfolio_coverage", {
-              stated: stated,
-              total: total,
-            })
-          : ""
+      short ? MUREO.t(short, params) : "",
+      full ? MUREO.t(full, params) : ""
     );
   }
 
@@ -3191,8 +3334,10 @@
     renderReportsPlatforms(portfolio);
     wrap.textContent = "";
     // A filter left over from a previous render would hide cards with no
-    // visible reason, so every index render starts on "all".
+    // visible reason, so every index render starts on "all" — and the alert
+    // list starts short again for the same reason it opens short at all.
     reportsHealthFilter = "all";
+    reportsTriageShowAll = false;
     rows.forEach(function (c, i) {
       wrap.appendChild(
         buildClientCardItem(
@@ -3200,7 +3345,8 @@
           summaries[i],
           wrap,
           triageMarksClient(triage, i),
-          triageClientHealth(triage, i)
+          triageClientHealth(triage, i),
+          triageClientBadges(triage, i)
         )
       );
     });

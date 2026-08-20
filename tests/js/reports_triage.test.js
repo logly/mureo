@@ -621,3 +621,510 @@ test.describe("a client's health, for the grid and its filter", function () {
     assert.equal(triage.triageClientHealth(null, 0), "ok");
   });
 });
+
+// ---------------------------------------------------------------------
+// 6. One row per kind, not one row per client
+// ---------------------------------------------------------------------
+//
+// Field report from the 27-client install: the layer rendered sixteen rows,
+// six of them the same sentence about the same unresolvable platform key
+// under six different client names. A list that repeats itself is a wall
+// again, which is the exact failure #651 exists to end — so the rows are
+// grouped by KIND and name the clients they cover.
+//
+// Grouping is a display aggregation and nothing more. The client set it
+// covers is the same set, which is what keeps "N clients need attention"
+// above it honest, and the kind order is still the ranking.
+
+test.describe("findings are grouped by kind", function () {
+  const ROSTER = [client("acme"), client("globex"), client("initech")];
+
+  test.it("puts one row per kind, in the ranking's order", function () {
+    const built = triage.buildReportsTriage(ROSTER, [
+      unknownKeySummary(),
+      staleSummary(),
+      unknownKeySummary(),
+    ]);
+    const groups = triage.groupReportsTriage(built);
+    assert.deepEqual(
+      groups.map(function (g) {
+        return g.kind;
+      }),
+      ["totals_stale", "unrecognized_key"]
+    );
+    assert.deepEqual(
+      groups.map(function (g) {
+        return g.rank;
+      }),
+      groups
+        .map(function (g) {
+          return triage.triageRank(g.kind);
+        })
+        .slice()
+    );
+  });
+
+  test.it("names every client the row covers, in card order", function () {
+    const built = triage.buildReportsTriage(ROSTER, [
+      unknownKeySummary(),
+      staleSummary(),
+      unknownKeySummary(),
+    ]);
+    const groups = triage.groupReportsTriage(built);
+    const unknown = groups[1];
+    assert.deepEqual(
+      unknown.clients.map(function (c) {
+        return c.name;
+      }),
+      ["ACME", "INITECH"]
+    );
+    assert.deepEqual(
+      unknown.clients.map(function (c) {
+        return c.index;
+      }),
+      [0, 2]
+    );
+  });
+
+  test.it("covers exactly the clients the heading counts", function () {
+    // The invariant grouping must not touch: the layer's count, the cards it
+    // marks and the clients these rows cover are ONE set. Aggregating rows
+    // for display may not quietly drop a client from it.
+    const built = triage.buildReportsTriage(ROSTER, [
+      doubleCountedSummary(),
+      staleSummary(),
+      healthySummary(),
+    ]);
+    const covered = {};
+    triage.groupReportsTriage(built).forEach(function (group) {
+      group.clients.forEach(function (c) {
+        covered[c.index] = true;
+      });
+    });
+    assert.deepEqual(
+      Object.keys(covered).sort(),
+      built.clients
+        .map(function (c) {
+          return String(c.index);
+        })
+        .sort()
+    );
+  });
+
+  test.it("counts one client once inside a group", function () {
+    // Two findings of the SAME kind for one client (two duplicate-account
+    // conflicts) is one client on that row, not two.
+    const summary = doubleCountedSummary();
+    summary.platform_conflicts.push({
+      kind: "duplicate_account",
+      platform_keys: ["google_ads", "plugin:other"],
+      account_known: true,
+    });
+    const groups = triage.groupReportsTriage(
+      triage.buildReportsTriage([client("busy")], [summary])
+    );
+    assert.equal(groups[0].items.length, 2);
+    assert.equal(groups[0].clients.length, 1);
+  });
+
+  test.it("carries the kind's severity onto the row", function () {
+    const groups = triage.groupReportsTriage(
+      triage.buildReportsTriage(
+        [client("a"), client("b")],
+        [staleSummary(), observationsDueSummary()]
+      )
+    );
+    assert.deepEqual(
+      groups.map(function (g) {
+        return g.severity;
+      }),
+      ["attention", "watch"]
+    );
+  });
+
+  test.it("groups nothing out of nothing", function () {
+    assert.deepEqual(triage.groupReportsTriage(null), []);
+    assert.deepEqual(triage.groupReportsTriage({}), []);
+    assert.deepEqual(
+      triage.groupReportsTriage(triage.buildReportsTriage([client("a")], [healthySummary()])),
+      []
+    );
+  });
+});
+
+// ---------------------------------------------------------------------
+// 7. The card's badges
+// ---------------------------------------------------------------------
+//
+// The same field report: each client card carried the full sentences AND
+// the repair command, and the identical text was already on screen in the
+// alert list directly above it. The card keeps the STATE — which is what
+// stops a "—" reading as zero — and gives up the explanation.
+
+test.describe("what a card says about its own findings", function () {
+  test.it("gives one short badge per kind, in ranking order", function () {
+    const summary = doubleCountedSummary();
+    summary.observations_due = { count: 2, oldest_due: "2026-08-01" };
+    const built = triage.buildReportsTriage([client("busy")], [summary]);
+    assert.deepEqual(
+      triage.triageClientBadges(built, 0).map(function (b) {
+        return b.kind;
+      }),
+      ["totals_double_counted", "observation_due"]
+    );
+  });
+
+  test.it("says how old a stale figure is, because that is the state", function () {
+    // "—" alone reads as zero. "— / figures 11 days old" does not, and it
+    // is a state, not an explanation: no command, no sentence.
+    const built = triage.buildReportsTriage([client("a")], [staleSummary()]);
+    const badge = triage.triageClientBadges(built, 0)[0];
+    assert.equal(badge.kind, "totals_stale");
+    assert.equal(calls[calls.length - 1].key, "dashboard.reports_triage_tag_stale_aged");
+    assert.ok(badge.text);
+  });
+
+  test.it("falls back to the plain tag when the age is unknown", function () {
+    const summary = staleSummary();
+    summary.platforms[0].freshness = { fetched_at: "not-a-date", stale: true };
+    const built = triage.buildReportsTriage([client("a")], [summary]);
+    const badge = triage.triageClientBadges(built, 0)[0];
+    assert.equal(badge.text, "dashboard.reports_triage_tag_stale");
+  });
+
+  test.it("gives a card with nothing raised no badges at all", function () {
+    const built = triage.buildReportsTriage([client("a")], [healthySummary()]);
+    assert.deepEqual(triage.triageClientBadges(built, 0), []);
+    assert.deepEqual(triage.triageClientBadges(null, 0), []);
+    assert.deepEqual(triage.triageClientBadges(built, 99), []);
+  });
+});
+
+// ---------------------------------------------------------------------
+// 8. Dismissing a row hides it and resolves nothing
+// ---------------------------------------------------------------------
+//
+// An operator can close an alert row. What must never follow from that is
+// the finding disappearing: hiding is a view operation, the condition is
+// still true, and #636/#638 both happened because something true was not
+// on screen. So the identity a dismissal is stored under is a fingerprint
+// of the row's CONTENT — when the content changes, the row is a different
+// row and comes back.
+
+test.describe("a dismissal is keyed to what the row said", function () {
+  function groupOf(summaries, roster) {
+    return triage.groupReportsTriage(
+      triage.buildReportsTriage(roster || [client("a")], summaries)
+    )[0];
+  }
+
+  test.it("is stable while nothing about the row changed", function () {
+    assert.equal(
+      triage.triageGroupKey(groupOf([staleSummary()])),
+      triage.triageGroupKey(groupOf([staleSummary()]))
+    );
+  });
+
+  test.it("changes when a stale figure gets another day older", function () {
+    const younger = staleSummary();
+    younger.platforms[0].freshness = { fetched_at: ago(11), stale: true };
+    const older = staleSummary();
+    older.platforms[0].freshness = { fetched_at: ago(29), stale: true };
+    assert.notEqual(
+      triage.triageGroupKey(groupOf([younger])),
+      triage.triageGroupKey(groupOf([older]))
+    );
+  });
+
+  test.it("changes when another client joins the row", function () {
+    assert.notEqual(
+      triage.triageGroupKey(groupOf([staleSummary()])),
+      triage.triageGroupKey(groupOf([staleSummary(), staleSummary()], [
+        client("a"),
+        client("b"),
+      ]))
+    );
+  });
+
+  test.it("changes when the reason a collection failed changes", function () {
+    const first = notCollectedSummary();
+    const second = notCollectedSummary();
+    second.platforms[0].not_collected.reason = "the account was suspended";
+    assert.notEqual(
+      triage.triageGroupKey(groupOf([first])),
+      triage.triageGroupKey(groupOf([second]))
+    );
+  });
+
+  test.it("changes when more observations fall due", function () {
+    const first = observationsDueSummary();
+    const second = observationsDueSummary();
+    second.observations_due = { count: 9, oldest_due: "2026-07-01" };
+    assert.notEqual(
+      triage.triageGroupKey(groupOf([first])),
+      triage.triageGroupKey(groupOf([second]))
+    );
+  });
+
+  test.it("tells two kinds apart even when they cover the same client", function () {
+    const summary = doubleCountedSummary();
+    summary.platforms[0].freshness = { fetched_at: ago(11), stale: true };
+    const groups = triage.groupReportsTriage(
+      triage.buildReportsTriage([client("a")], [summary])
+    );
+    assert.notEqual(triage.triageGroupKey(groups[0]), triage.triageGroupKey(groups[1]));
+  });
+});
+
+test.describe("a dismissed row is hidden, counted and restorable", function () {
+  const store = {};
+  globalThis.window.localStorage = {
+    getItem: function (k) {
+      return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null;
+    },
+    setItem: function (k, v) {
+      store[k] = String(v);
+    },
+  };
+
+  test.beforeEach(function () {
+    Object.keys(store).forEach(function (k) {
+      delete store[k];
+    });
+  });
+
+  function groups() {
+    return triage.groupReportsTriage(
+      triage.buildReportsTriage(
+        [client("a"), client("b")],
+        [staleSummary(), observationsDueSummary()]
+      )
+    );
+  }
+
+  test.it("hides only the row that was dismissed", function () {
+    triage.dismissTriageGroup(groups()[0]);
+    const split = triage.partitionTriageGroups(groups());
+    assert.deepEqual(
+      split.visible.map(function (g) {
+        return g.kind;
+      }),
+      ["observation_due"]
+    );
+    assert.deepEqual(
+      split.hidden.map(function (g) {
+        return g.kind;
+      }),
+      ["totals_stale"]
+    );
+  });
+
+  test.it("brings every hidden row back", function () {
+    groups().forEach(triage.dismissTriageGroup);
+    assert.equal(triage.partitionTriageGroups(groups()).visible.length, 0);
+    triage.restoreTriageDismissals();
+    assert.equal(triage.partitionTriageGroups(groups()).hidden.length, 0);
+    assert.equal(triage.partitionTriageGroups(groups()).visible.length, 2);
+  });
+
+  test.it("brings a row back by itself when its content changed", function () {
+    // The whole point: the row was hidden, the condition was not resolved,
+    // and the figures are a day older than they were. That is a different
+    // row and it is on screen again — nobody has to remember to look.
+    const young = staleSummary();
+    young.platforms[0].freshness = { fetched_at: ago(11), stale: true };
+    const old = staleSummary();
+    old.platforms[0].freshness = { fetched_at: ago(29), stale: true };
+    const roster = [client("a")];
+    const before = triage.groupReportsTriage(triage.buildReportsTriage(roster, [young]));
+    triage.dismissTriageGroup(before[0]);
+    assert.equal(triage.partitionTriageGroups(before).visible.length, 0);
+    const after = triage.groupReportsTriage(triage.buildReportsTriage(roster, [old]));
+    assert.equal(triage.partitionTriageGroups(after).visible.length, 1);
+  });
+
+  test.it("never hides anything when storage cannot be read", function () {
+    // Degrading to "everything is dismissed" would silence the layer on a
+    // browser with storage disabled. It degrades to showing all of them.
+    const real = globalThis.window.localStorage;
+    globalThis.window.localStorage = {
+      getItem: function () {
+        throw new Error("storage disabled");
+      },
+      setItem: function () {
+        throw new Error("storage disabled");
+      },
+    };
+    try {
+      triage.dismissTriageGroup(groups()[0]); // must not throw
+      assert.equal(triage.partitionTriageGroups(groups()).hidden.length, 0);
+    } finally {
+      globalThis.window.localStorage = real;
+    }
+  });
+
+  test.it("ignores a stored value that is not a list of keys", function () {
+    store["mureo.reports.triage.dismissed"] = '{"not":"an array"}';
+    assert.equal(triage.partitionTriageGroups(groups()).hidden.length, 0);
+    store["mureo.reports.triage.dismissed"] = "}}}not json";
+    assert.equal(triage.partitionTriageGroups(groups()).hidden.length, 0);
+  });
+
+  test.it("does not change which clients the layer counts", function () {
+    // Hiding a row is a view operation. The heading, the KPI cell and the
+    // marked cards all read built.clients, and dismissal never touches it.
+    const built = triage.buildReportsTriage(
+      [client("a"), client("b")],
+      [staleSummary(), observationsDueSummary()]
+    );
+    const before = built.clients.length;
+    triage.groupReportsTriage(built).forEach(triage.dismissTriageGroup);
+    assert.equal(built.clients.length, before);
+    assert.equal(triage.triageMarksClient(built, 0), true);
+    assert.equal(triage.triageMarksClient(built, 1), true);
+    assert.equal(triage.triageClientHealth(built, 0), "attention");
+  });
+
+  test.it("keeps the stored list bounded", function () {
+    // It is written on every dismissal and never expires by itself; an
+    // unbounded list would grow with every changed fingerprint forever.
+    for (let i = 0; i < 200; i++) {
+      triage.dismissTriageGroup({ kind: "totals_stale", items: [{ slug: "c" + i }] });
+    }
+    const stored = JSON.parse(store["mureo.reports.triage.dismissed"]);
+    assert.ok(stored.length <= triage.REPORTS_TRIAGE_DISMISS_CAP, stored.length);
+    // The most recent dismissal survives the trim.
+    assert.ok(
+      stored.indexOf(
+        triage.triageGroupKey({ kind: "totals_stale", items: [{ slug: "c199" }] })
+      ) !== -1
+    );
+  });
+});
+
+// ---------------------------------------------------------------------
+// 9. A withheld figure is never a bare dash
+// ---------------------------------------------------------------------
+//
+// The card slimmed down: the sentences and the repair command moved to the
+// alert row and the detail view. What could NOT move is the reason the card
+// prints "—" where a figure belongs, because a dash on its own reads as
+// zero — which is exactly #638, on this exact grid.
+//
+// The card renders `triageClientBadges`, so the guarantee is this: a client
+// whose totals reports_logic.js refuses to state always has at least one
+// badge. It holds by construction (the two withholding kinds are raised
+// from the same two conditions that null the figures), and it is asserted
+// here rather than assumed, because the two are now in different files.
+
+test.describe("a withheld card always says why", function () {
+  const logic = require(path.join(WEB, "reports_logic.js"));
+
+  [
+    ["double-counted", doubleCountedSummary],
+    ["stale", staleSummary],
+  ].forEach(function (row) {
+    test.it("badges a " + row[0] + " client whose figures are withheld", function () {
+      const summary = row[1]();
+      // Precondition: reports_logic.js really is withholding the figures.
+      assert.equal(logic.aggregateClientKpis(summary).spend, null);
+      const built = triage.buildReportsTriage([client("a")], [summary]);
+      const badges = triage.triageClientBadges(built, 0);
+      assert.ok(badges.length > 0, "a withheld card carries no badge");
+      assert.equal(badges[0].severity, "attention");
+    });
+  });
+
+  test.it("badges nothing on a card whose figures ARE stated", function () {
+    const summary = healthySummary();
+    assert.notEqual(logic.aggregateClientKpis(summary).spend, null);
+    const built = triage.buildReportsTriage([client("a")], [summary]);
+    assert.deepEqual(triage.triageClientBadges(built, 0), []);
+  });
+});
+
+// ---------------------------------------------------------------------
+// 10. The list opens short
+// ---------------------------------------------------------------------
+//
+// Grouping cut sixteen rows to six. Six rows of alerts plus ten client
+// cards is still two screens before the operator has read anything, and
+// the complaint that started this was the height of the page.
+//
+// So the list opens at its top few rows — the ranking is stated in code
+// precisely so that "the top few" is a defensible thing to show — with the
+// rest one click away. What is NOT collapsed is the count: the heading, the
+// KPI cell and the marked cards are all over every finding, whether its row
+// is on screen or not.
+
+test.describe("the alert list opens short", function () {
+  function groups(n) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      out.push({ kind: "k" + i, items: [], clients: [{ index: i }] });
+    }
+    return out;
+  }
+
+  test.it("shows the top rows and counts the rest", function () {
+    const shown = triage.collapseTriageGroups(groups(6), false);
+    assert.equal(shown.rows.length, triage.REPORTS_TRIAGE_COLLAPSED_ROWS);
+    assert.equal(shown.remaining, 6 - triage.REPORTS_TRIAGE_COLLAPSED_ROWS);
+    assert.equal(shown.collapsed, true);
+  });
+
+  test.it("keeps the ranking — the top rows are the top-ranked rows", function () {
+    const all = groups(6);
+    const shown = triage.collapseTriageGroups(all, false);
+    assert.deepEqual(
+      shown.rows.map(function (g) {
+        return g.kind;
+      }),
+      all
+        .map(function (g) {
+          return g.kind;
+        })
+        .slice(0, triage.REPORTS_TRIAGE_COLLAPSED_ROWS)
+    );
+  });
+
+  test.it("shows everything once the operator asks", function () {
+    const shown = triage.collapseTriageGroups(groups(6), true);
+    assert.equal(shown.rows.length, 6);
+    assert.equal(shown.remaining, 0);
+    assert.equal(shown.collapsed, false);
+  });
+
+  test.it("does not collapse a list that already fits", function () {
+    // No "show all (0)" control on a list of three.
+    const shown = triage.collapseTriageGroups(
+      groups(triage.REPORTS_TRIAGE_COLLAPSED_ROWS),
+      false
+    );
+    assert.equal(shown.remaining, 0);
+    assert.equal(shown.collapsed, false);
+    assert.equal(shown.rows.length, triage.REPORTS_TRIAGE_COLLAPSED_ROWS);
+  });
+
+  test.it("never throws on a list it did not expect", function () {
+    [null, undefined, "rows", 3].forEach(function (bad) {
+      const shown = triage.collapseTriageGroups(bad, false);
+      assert.deepEqual(shown.rows, []);
+      assert.equal(shown.remaining, 0);
+    });
+  });
+
+  test.it("collapsing hides rows and counts nothing out", function () {
+    // The property the collapse must not break: the layer's count is over
+    // every finding, not over the rows that happen to be on screen.
+    const built = triage.buildReportsTriage(
+      [client("a"), client("b"), client("c")],
+      [doubleCountedSummary(), staleSummary(), notCollectedSummary()]
+    );
+    const all = triage.groupReportsTriage(built);
+    const shown = triage.collapseTriageGroups(all, false);
+    assert.ok(shown.rows.length <= all.length);
+    assert.equal(built.clients.length, 3);
+    assert.equal(triage.triageHealthCounts(built, 3).ok, 0);
+  });
+});

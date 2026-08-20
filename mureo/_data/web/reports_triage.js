@@ -114,6 +114,33 @@
     observation_due: "dashboard.reports_triage_tag_observation_due",
   };
 
+  // Where a dismissal is remembered, and how many are kept.
+  //
+  // localStorage, like the card order (reports_order.js) and for the same
+  // reason: closing a row is one operator's view preference in one browser,
+  // and it resolves NOTHING. Server state would impose it on everyone and
+  // would look far too much like the finding having been dealt with.
+  //
+  // The list is written on every dismissal and nothing expires it, so it is
+  // capped: a fingerprint changes whenever the row's content does (see
+  // triageGroupKey), which means a long-lived install would otherwise
+  // accumulate one dead key per day per finding.
+  const REPORTS_TRIAGE_DISMISS_KEY = "mureo.reports.triage.dismissed";
+  const REPORTS_TRIAGE_DISMISS_CAP = 100;
+
+  // How many rows the list opens with.
+  //
+  // Grouping cut a real 27-client install from sixteen rows to six, and six
+  // rows of alerts above ten client cards is still two screens before the
+  // operator has read anything — the complaint that produced this number.
+  // Four is what fits above the fold beside the cards it triages.
+  //
+  // Showing "the top four" is only defensible because the ranking is stated
+  // in code (REPORTS_TRIAGE_KINDS): the rows that survive the collapse are
+  // the ones mureo can do the most about, not the ones that happened to
+  // render first.
+  const REPORTS_TRIAGE_COLLAPSED_ROWS = 4;
+
   // A client's health, worst first. "ok" is the absence of findings — it is
   // never a claim that the client is performing well, only that mureo has
   // nothing to raise about the state of its data.
@@ -407,6 +434,260 @@
     return counts;
   }
 
+  // ------------------------------------------------------------------
+  // What a CARD says about its own findings
+  // ------------------------------------------------------------------
+
+  // One short badge for a finding, for the client card in the grid.
+  //
+  // A badge is the STATE, never the explanation: no sentence, no command,
+  // nothing the alert list above the grid already says. It exists because
+  // the card renders "—" where a figure would be, and "—" on its own reads
+  // as zero — which #638 established is the one thing this view must never
+  // let happen. "Figures 29 days old" is not a warning; it is what the dash
+  // means.
+  //
+  // The stale badge carries the age for exactly that reason. Where mureo
+  // cannot quote an age it falls back to the plain tag rather than inventing
+  // one, the same position triageItemText takes.
+  function triageItemBadge(row) {
+    const kind = row && typeof row === "object" ? row.kind : null;
+    if (kind === "totals_stale" && row.fetched_at) {
+      return MUREO.t("dashboard.reports_triage_tag_stale_aged", {
+        ago: logic().relativeAge(row.fetched_at),
+      });
+    }
+    return triageItemTag(row);
+  }
+
+  // Every badge the card at grid position `index` carries: one per KIND, in
+  // the ranking's order. Deduplicated because a client with two
+  // duplicate-account conflicts has one state, not two.
+  function triageClientBadges(built, index) {
+    const rows = built && Array.isArray(built.items) ? built.items : [];
+    const seen = {};
+    const out = [];
+    rows.forEach(function (row) {
+      if (!row || row.index !== index || seen[row.kind]) return;
+      seen[row.kind] = true;
+      out.push({
+        kind: row.kind,
+        severity: triageItemSeverity(row),
+        text: triageItemBadge(row),
+      });
+    });
+    return out;
+  }
+
+  // ------------------------------------------------------------------
+  // One row per kind (grouping)
+  // ------------------------------------------------------------------
+
+  // The layer's items as one row per KIND, each naming the clients it
+  // covers.
+  //
+  // On a twenty-seven-client install the ungrouped layer rendered sixteen
+  // rows, six of them the same sentence about the same unresolvable platform
+  // key under six different client names. A list that repeats itself is a
+  // wall again, which is the failure this layer exists to end.
+  //
+  // Grouping is a DISPLAY aggregation and nothing else. It changes no
+  // client's finding, drops no client, and does not reorder: the groups come
+  // out in the ranking's order because `built.items` is already in it, and a
+  // group's clients keep the operator's own card order for the same reason.
+  // The union of the groups' clients is exactly `built.clients` — the set
+  // the heading counts and the grid marks — and the JS suite asserts it.
+  function groupReportsTriage(built) {
+    const rows = built && Array.isArray(built.items) ? built.items : [];
+    const byKind = {};
+    const order = [];
+    rows.forEach(function (row) {
+      if (!row || typeof row !== "object") return;
+      let group = byKind[row.kind];
+      if (!group) {
+        group = {
+          kind: row.kind,
+          rank: triageRank(row.kind),
+          severity: triageItemSeverity(row),
+          items: [],
+          clients: [],
+        };
+        byKind[row.kind] = group;
+        order.push(row.kind);
+      }
+      group.items.push(row);
+      // One client once per row, however many findings of this kind it
+      // raised — by POSITION, for the same reason triageMarksClient is: a
+      // slug is registry-controlled and may be blank or repeated.
+      const known = group.clients.some(function (c) {
+        return c.index === row.index;
+      });
+      if (!known) {
+        group.clients.push({ index: row.index, slug: row.slug, name: row.name });
+      }
+    });
+    return order.map(function (kind) {
+      return byKind[kind];
+    });
+  }
+
+  /**
+   * The rows to render, and how many are held back.
+   *
+   * Collapsing is a display budget and touches nothing else: the heading's
+   * count, the KPI cell and the marked cards are all over EVERY finding,
+   * whether its row is on screen or not. A list that already fits is not
+   * collapsed at all — there is no "show all (0)".
+   */
+  function collapseTriageGroups(groups, showAll) {
+    const rows = Array.isArray(groups) ? groups : [];
+    if (showAll || rows.length <= REPORTS_TRIAGE_COLLAPSED_ROWS) {
+      return { rows: rows, remaining: 0, collapsed: false };
+    }
+    return {
+      rows: rows.slice(0, REPORTS_TRIAGE_COLLAPSED_ROWS),
+      remaining: rows.length - REPORTS_TRIAGE_COLLAPSED_ROWS,
+      collapsed: true,
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // Dismissing a row (a view operation — it resolves nothing)
+  // ------------------------------------------------------------------
+
+  // What a finding SAYS, as a string, so a dismissal can be keyed to it.
+  //
+  // This is the whole safety property of the feature. An operator closes a
+  // row; the condition behind it is still true, and #636 and #638 both cost
+  // money precisely because something true was not on screen. So the key is
+  // a fingerprint of the row's CONTENT: when the content changes the row is
+  // a different row and comes back on its own, with nobody having to
+  // remember to look for it.
+  //
+  // Per kind, what "changed" means:
+  //
+  //   totals_stale        — the AGE in whole days. A figure that was eleven
+  //                         days old when it was dismissed and is now
+  //                         twenty-nine is a worse fact, so it is a new row.
+  //                         An unquotable age is its own value; it does not
+  //                         collapse into "0 days".
+  //   not_collected       — the platform and the reason it gave. A different
+  //                         failure is a different finding.
+  //   the two conflict kinds — the platform keys involved.
+  //   observation_due     — how many are due and how long the oldest has
+  //                         been.
+  //
+  // Plus the client it belongs to, always: a row that grows to cover a
+  // seventh client is not the row that was dismissed.
+  function triageItemFingerprint(row) {
+    if (!row || typeof row !== "object") return "";
+    const who = String(row.slug || row.name || "");
+    let what = "";
+    switch (row.kind) {
+      case "totals_stale": {
+        const ms = row.fetched_at ? Date.parse(row.fetched_at) : NaN;
+        what = Number.isNaN(ms)
+          ? "undated"
+          : String(Math.floor((Date.now() - ms) / 86400000));
+        break;
+      }
+      case "not_collected":
+        what =
+          String((row.note && (row.note.key || row.note.label)) || "") +
+          "\u0002" +
+          String((row.note && row.note.reason) || "");
+        break;
+      case "totals_double_counted":
+      case "unrecognized_key":
+        what = String(row.keys || "");
+        break;
+      case "observation_due":
+        what = String(row.count) + "\u0002" + String(row.oldest_due || "");
+        break;
+      default:
+        what = "";
+    }
+    return who + "\u0002" + what;
+  }
+
+  /** The identity a dismissed row is remembered under. */
+  function triageGroupKey(group) {
+    if (!group || typeof group !== "object") return "";
+    const items = Array.isArray(group.items) ? group.items : [];
+    return (
+      String(group.kind || "") +
+      "\u0000" +
+      items.map(triageItemFingerprint).join("\u0001")
+    );
+  }
+
+  // The dismissed keys, or [] on ANY problem (storage disabled, corrupt
+  // JSON, a non-array body). Degrading to "nothing is dismissed" is the only
+  // safe direction: the other one silences the layer on a browser whose
+  // storage is unavailable.
+  function readDismissedTriage() {
+    try {
+      const raw = window.localStorage.getItem(REPORTS_TRIAGE_DISMISS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(function (k) {
+        return typeof k === "string" && k;
+      });
+    } catch (_e) {
+      return []; // storage unavailable or corrupt — hide nothing
+    }
+  }
+
+  function writeDismissedTriage(keys) {
+    try {
+      window.localStorage.setItem(
+        REPORTS_TRIAGE_DISMISS_KEY,
+        JSON.stringify(keys.slice(-REPORTS_TRIAGE_DISMISS_CAP))
+      );
+    } catch (_e) {
+      /* storage unavailable — the row is closed for this render only */
+    }
+  }
+
+  /** Remember one row as dismissed. Never throws. */
+  function dismissTriageGroup(group) {
+    const key = triageGroupKey(group);
+    if (!key) return;
+    const keys = readDismissedTriage().filter(function (k) {
+      return k !== key;
+    });
+    keys.push(key);
+    writeDismissedTriage(keys);
+  }
+
+  /** Bring every hidden row back. */
+  function restoreTriageDismissals() {
+    writeDismissedTriage([]);
+  }
+
+  /**
+   * Split grouped rows into the ones to render and the ones to count as
+   * hidden.
+   *
+   * `hidden` is returned rather than dropped because the count has to reach
+   * the screen: a dismissal that left no trace would be a finding removed in
+   * silence, which is the failure mode this whole layer was built against.
+   * Nothing here touches `built.clients` — the heading's count, the KPI cell
+   * and the grid's marks stay true whatever is closed.
+   */
+  function partitionTriageGroups(groups) {
+    const rows = Array.isArray(groups) ? groups : [];
+    const dismissed = readDismissedTriage();
+    const visible = [];
+    const hidden = [];
+    rows.forEach(function (group) {
+      if (dismissed.indexOf(triageGroupKey(group)) === -1) visible.push(group);
+      else hidden.push(group);
+    });
+    return { visible: visible, hidden: hidden };
+  }
+
   // What to RUN about this item, as one localized sentence.
   //
   // "" only for an item this module did not produce — every kind in
@@ -429,6 +710,18 @@
     triageItemTag: triageItemTag,
     triageClientHealth: triageClientHealth,
     triageHealthCounts: triageHealthCounts,
+    triageItemBadge: triageItemBadge,
+    triageClientBadges: triageClientBadges,
+    groupReportsTriage: groupReportsTriage,
+    triageItemFingerprint: triageItemFingerprint,
+    triageGroupKey: triageGroupKey,
+    readDismissedTriage: readDismissedTriage,
+    dismissTriageGroup: dismissTriageGroup,
+    restoreTriageDismissals: restoreTriageDismissals,
+    partitionTriageGroups: partitionTriageGroups,
+    REPORTS_TRIAGE_DISMISS_CAP: REPORTS_TRIAGE_DISMISS_CAP,
+    REPORTS_TRIAGE_COLLAPSED_ROWS: REPORTS_TRIAGE_COLLAPSED_ROWS,
+    collapseTriageGroups: collapseTriageGroups,
   };
 
   // Browser: the global the `<script>` tag exists to publish.

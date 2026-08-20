@@ -827,6 +827,40 @@ Three properties are load-bearing, and each is pinned by a test:
   And when there is nothing, the layer renders nothing — no "0 alerts"
   banner competing for attention with the cards.
 
+#### How the layer is shown
+
+Everything below is display only. None of it changes which clients the layer
+counts: the heading, the "clients needing attention" cell and the marked
+cards all read one list, and that list is over every finding.
+
+- **One row per kind, not per client.** A 27-client install rendered sixteen
+  rows, six of them the same sentence about the same unresolvable platform
+  key under six different names. Rows now group by finding and name the
+  clients they cover; the per-client sentences are in the row's disclosure,
+  with what to run underneath them.
+- **The list opens short.** Four rows, then *Show all (N more)*. Showing
+  "the top four" is only defensible because the ranking is stated in code —
+  they are the four mureo can do most about, not the four that rendered
+  first. It opens short again every time you arrive.
+- **A row is one line.** The sentence is clipped to it (the full text is on
+  the row's `title`, and every item's full text is one click away).
+- **A row can be closed, and closing it resolves nothing.** The ✕ hides a
+  row in this browser. While anything is hidden the panel says how many, says
+  in words that the conditions are still true and still counted, and offers
+  *Show them again*. A dismissal is keyed to a fingerprint of what the row
+  SAID — the age of a stale figure in days, the reason a collection gave, the
+  keys in a conflict, the clients covered — so a row whose content has
+  changed is a different row and comes back on its own. It is stored in
+  `localStorage`, capped, and a browser that cannot read it hides nothing.
+
+The client cards below carry the same findings as short **badges** — "Figures
+29 days old", "Double-counted" — and no longer repeat the sentences or the
+repair command. A card that withholds a client's totals still prints `—`, and
+the badge next to it is what stops that dash reading as zero; the explanation
+is in the alert row directly above the grid, and the remedy is on the
+client's own detail view, where the per-platform conflict note has always
+named it.
+
 Four of the five findings are already on the wire per client (`freshness`,
 `not_collected`, `platform_conflicts`). The fifth is not, and cannot be
 derived in the browser: `recent_actions` is capped at the 20 most recent
@@ -900,6 +934,20 @@ headline number it may not be.
 A report that stated no structure at all renders exactly as it did before:
 reports already on disk are real content, and they stay readable as the
 prose they are rather than being reformatted by guesswork.
+
+#### The shape of the page
+
+The index is two columns above 960px: the alerts and the client grid they
+triage in the main column, and where the roster's money went in a 340px rail
+beside it. Below 960px it stacks. Stacking every section full width at every
+width was two screens of scrolling before the operator had read anything,
+which is what the rail, the grouped alert rows, the collapsed list and the
+slimmer cards are all for.
+
+`tests/js/reports_index_height.test.js` keeps that from creeping back: it is
+arithmetic over the box metrics `app.css` declares — not a browser
+measurement, and it says so — and it fails if the modelled index at ten
+clients grows past its budget.
 
 #### Getting back to the list
 

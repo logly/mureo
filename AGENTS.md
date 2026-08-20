@@ -408,8 +408,10 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
   - `reports_triage.js` → `window.MUREO_REPORTS_TRIAGE` — the multi-client
     triage layer (#651): which clients need attention, the ranking
     (`REPORTS_TRIAGE_KINDS` — the array index IS the rank), and what to run
-    about each. Reads `MUREO_REPORTS_LOGIC` off the page at call time, so it
-    loads after it.
+    about each — plus how the layer is SHOWN: one row per kind, the top few
+    of them, and which rows an operator has closed (keyed to a fingerprint of
+    what the row said, so a changed finding comes back). Reads
+    `MUREO_REPORTS_LOGIC` off the page at call time, so it loads after it.
   - `reports_overview.js` → `window.MUREO_REPORTS_OVERVIEW` — the Reports
     index view's own decisions: which view the section shows (the left menu
     always means the client list; a period switch or a status refresh keeps

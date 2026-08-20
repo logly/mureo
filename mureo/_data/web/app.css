@@ -1529,8 +1529,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .dashboard-reports-clients {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
-  margin: 12px 0 4px;
+  gap: 8px;
+  margin: 0 0 4px;
 }
 
 .dashboard-reports-clients[hidden] {
@@ -1544,8 +1544,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 13px;
+  gap: 6px;
+  padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: 12px;
@@ -1575,12 +1575,17 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* Client name comes from the Agency client list, which mureo does not
    control either. Same break treatment as .report-card-name. */
 .reports-client-card-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-weight: 640;
+  font-size: 13.5px;
   color: var(--ink);
   min-width: 0;
+  /* `keep-all` is the fix for a five-character Japanese client name being
+     broken as ビズヒ / ント: CJK text breaks between characters by default,
+     and this card is a 230px grid track. `anywhere` still permits a break
+     when a name genuinely cannot fit a line on its own, so a long
+     space-free name cannot push the card wider than its track. */
+  word-break: keep-all;
   overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .reports-client-card-fresh {
@@ -1601,50 +1606,6 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-client-card.is-conflicted {
   border-color: color-mix(in srgb, var(--danger) 45%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 22%, transparent);
-}
-
-/* Interpolates raw platform keys — see .report-card-conflict. */
-.reports-client-card-conflict {
-  margin: 0;
-  padding: 6px 8px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--danger);
-  background: var(--danger-tint);
-  border-radius: 8px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-/* Why this platform's figures did not move (#638). Warn, not danger: the
-   note above is mureo refusing to state a figure; this one explains it, and
-   the figures it explains are the last ones truly collected rather than
-   wrong ones. Interpolates a writer-supplied reason, so it wraps. */
-.reports-client-card-not-collected {
-  margin: 0;
-  padding: 6px 8px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--ink-soft);
-  background: var(--warn-tint);
-  border-radius: 8px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-/* What to run about the note above (#636). Quiet, like the platform card's
-   hint: it is the way out of a withheld total, not a third warning. */
-.reports-client-card-conflict-hint {
-  margin: 0;
-  padding: 0 8px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--muted);
-  min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .reports-client-card-kpis {
@@ -1780,7 +1741,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-triage {
   display: flex;
   flex-direction: column;
-  margin: 0 0 14px;
+  margin: 0;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
   border-radius: 14px;
@@ -1818,8 +1779,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 11px 12px;
-  margin-bottom: 7px;
+  padding: 8px 10px;
+  margin-bottom: 5px;
   border: 1px solid var(--hairline);
   border-radius: 10px;
   font-size: 12px;
@@ -1866,7 +1827,6 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    colours red belongs to a card the grid colours red. */
 .reports-triage-sig {
   flex-shrink: 0;
-  align-self: center;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -1884,6 +1844,26 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-triage-client {
   font-weight: 700;
   color: var(--ink);
+}
+
+/* Inside a row head, the names are clipped too — the row states WHICH
+   clients, and the full list is in the disclosure. */
+.reports-triage-toggle > .reports-triage-client {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* What the row says, clipped to the line. */
+.reports-triage-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* What KIND of finding, in two words, so the row can be skimmed without
@@ -1929,6 +1909,191 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-triage-next[hidden] {
   display: none;
+}
+
+/* The card's state, as badges. One per kind, short, no prose and no
+   command — the sentence and the remedy are the alert row's and the detail
+   view's. What a badge IS is the reading of the "—" under it: a dash with
+   nothing beside it says zero, which is the one thing this grid must never
+   say by accident (#638). */
+.reports-client-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.reports-client-card-badge {
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--surface-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reports-client-card-badge.is-attention {
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+
+.reports-client-card-badge.is-watch {
+  color: #7a5a12;
+  background: var(--warn-tint);
+}
+
+/* The row head holds two independent controls: the disclosure (everything
+   left of it) and the ✕. They are siblings, never nested — a button inside a
+   button is invalid, and closing a row must not also open it. */
+.reports-triage-toggle {
+  display: flex;
+  /* One line, always: a row is a thing to skim. The sentence wrapping to
+     three lines inside a bordered box was most of the height an operator
+     complained about — it is clipped here and complete in the disclosure
+     below (and in the row's `title`). */
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  appearance: none;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.reports-triage-toggle:focus-visible,
+.reports-triage-dismiss:focus-visible,
+.reports-triage-restore:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Hiding a row is a view operation, so its control is quiet — it is not an
+   action button and must not read as "resolve". */
+.reports-triage-dismiss {
+  flex-shrink: 0;
+  appearance: none;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-faint, var(--muted));
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.reports-triage-dismiss:hover {
+  color: var(--ink);
+}
+
+/* The per-client detail: what each of them says, then what to run. */
+.reports-triage-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.reports-triage-detail[hidden] {
+  display: none;
+}
+
+.reports-triage-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reports-triage-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* The rest of the list, one click away. Absent when the list already fits
+   — there is no "show all (0)", the same way there is no "0 alerts". */
+.reports-triage-more {
+  appearance: none;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.reports-triage-more[hidden] {
+  display: none;
+}
+
+.reports-triage-more:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* "N alerts hidden" — always on screen while anything is, because a closed
+   alert that left no trace is a true condition nobody can see. */
+.reports-triage-hidden {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--hairline);
+  font-size: 11.5px;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.reports-triage-hidden[hidden] {
+  display: none;
+}
+
+.reports-triage-hidden-title {
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.reports-triage-hidden-note {
+  flex: 1 1 100%;
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reports-triage-restore {
+  appearance: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 /* The other half of the layer: exactly the clients it counts are marked in
@@ -2017,7 +2182,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 .reports-kpis[hidden] {
@@ -2033,8 +2198,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-kpi {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 12px 14px;
+  gap: 3px;
+  padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: 14px;
@@ -2058,20 +2223,30 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 /* The coverage line. Quiet, and reserved even when empty: it is the half
    of the figure that says whose numbers are in it. */
+/* The coverage line: one clipped line, with the whole sentence on the
+   cell's `title`. It is the half of the figure that says whose numbers are
+   in it, so it is shortened — never dropped. Reserved even when empty, so
+   the four cells stay the same height. */
 .reports-kpi-note {
-  min-height: 1.35em;
-  font-size: 11px;
-  line-height: 1.35;
+  min-height: 1.3em;
+  font-size: 10.5px;
+  line-height: 1.3;
   color: var(--muted);
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The index shell: the client portfolio, and the platform split beside it.
    One column as soon as the rail would squeeze the cards. */
 .reports-index-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  /* The main column (alerts, then the grid they triage) and a 340px rail
+     for where the roster's money went. Stacking every section full width
+     made the index two screens tall before the operator had read anything,
+     which is the whole reason this is a grid. */
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: 14px;
   align-items: start;
 }
@@ -2080,10 +2255,18 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: none;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 960px) {
   .reports-index-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* The main column stacks: alerts above the cards they triage. */
+.reports-index-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
 }
 
 /* Health filter over the grid. The chips carry their own counts, so the
