@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-20
+
 ### Added
 
 - **mureo can read the monthly budget the platforms are already configured
