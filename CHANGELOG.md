@@ -1,5 +1,68 @@
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-21
+
+### Fixed
+
+- **The Reports health filter did nothing** (#665). Clicking 要対応 / 注視 /
+  指摘なし left every card on screen. The JavaScript was right, and had tests
+  proving it: `applyReportsHealthFilter` set `hidden` on exactly the cards it
+  should. `.reports-client-card-item` declares `display: flex` — an AUTHOR
+  rule, which beats the user agent's `[hidden] { display: none }`, so nothing
+  moved. No pin over `dashboard.js` could have caught it, because
+  `dashboard.js` was not wrong — the two files were, together.
+
+  So the `[hidden]` rule ships with the test that was missing. A DOM harness
+  parses the real `app.html`, evaluates the real modules and `dashboard.js`
+  against it, and answers *would an operator SEE this?* from the real
+  `app.css`, modelling the one piece of cascade that decides it and nothing
+  else. The new interaction test clicks the real chips and counts the cards on
+  screen; removing the one-line fix fails four of its assertions. The general
+  form is pinned too: every element the view hides by setting `.hidden` needs
+  a `[hidden]` rule of its own if its class declares a display.
+
+  The design is unchanged — the filter hides cards rather than removing them,
+  so the operator's own card order survives it.
+
+### Changed
+
+- **The app frame is wider, and the content uses it** (#665). At 1180px the
+  Reports card column fitted two cards abreast, so a twenty-seven-client
+  roster was fourteen rows of scrolling before the operator had read anything.
+  The shell is `min(1680px, 96vw)` now — one width for every left-nav item,
+  because a frame that resized as the operator moved between them would read
+  as a broken layout — which is three cards abreast at 1440px and four at
+  1920px, derived from the stylesheet's own numbers rather than from a
+  screenshot.
+
+  The content follows it: lists, rows and tables take the width they are
+  given. Two things do not survive being stretched, and both are handled
+  rather than capped and abandoned on the left of an empty frame. A
+  single-line field is not improved by 1600px of text input, so the fields
+  flow side by side instead, as many across as fit, stacking again on a narrow
+  screen. And a table whose two columns exist to ASSOCIATE a name with a value
+  keeps the width its content needs: stretched, About's package/version table
+  puts `mureo` and its version half a metre apart and stops doing the only
+  thing it is for. The test is whether stretching breaks the association, not
+  whether the table is small — BYOD's platform / mode / detail table keeps the
+  full width.
+
+- **An alert row's ✕ closes one message, not a category** (#665). The rows
+  group by kind and one can cover six clients, so *hide* took five findings
+  the operator had never read. A dismissal is keyed to one MESSAGE now, over
+  the same content fingerprint as before, and every message in an expanded row
+  carries its own ✕. The row's ✕ is defined as that control applied to every
+  message on the row, which is the only reading consistent with the new one.
+
+  The group row shrinks as its messages go: the count and the client names it
+  lists are recomputed from what is left, and the row goes with its last
+  message. Everything the receipt promised is kept, with its arithmetic
+  corrected — *N hidden* counts MESSAGES, still says in words that the
+  conditions are still true and still counted, and still offers the way back;
+  a row whose finding changed is still a different row and still comes back on
+  its own; and the layer's own count, the KPI cell and the marked cards are
+  untouched by any of it.
+
 ## [0.12.0] - 2026-08-21
 
 ### Added
