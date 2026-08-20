@@ -2423,6 +2423,99 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   flex-shrink: 0;
 }
 
+/* The rail: what mureo did today, then where the money went. */
+.reports-index-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* What mureo did today. A glance at the day, not the log — capped, newest
+   first, and absent entirely on a day nothing was logged. */
+.reports-feed-panel[hidden] {
+  display: none;
+}
+
+.reports-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.reports-feed-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  min-width: 0;
+}
+
+/* The clock time exactly as the server wrote it — tabular, so the column
+   lines up without the rows being a table. */
+.reports-feed-time {
+  flex-shrink: 0;
+  width: 38px;
+  padding-top: 1px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-feed-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.reports-feed-body {
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* The client name opens that client's report: the feed says something
+   happened to somebody, and "show me" is the only follow-up it can offer.
+   A real button, so the keyboard reaches it. */
+.reports-feed-client {
+  appearance: none;
+  padding: 0;
+  margin-right: 4px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.reports-feed-client:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.reports-feed-client:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.reports-feed-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* The roster's spend by platform. */
 .reports-platforms[hidden] {
   display: none;

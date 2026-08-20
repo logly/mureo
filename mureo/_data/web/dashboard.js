@@ -1910,6 +1910,7 @@
   const buildReportsPortfolio = REPORTS_OVERVIEW.buildReportsPortfolio;
   const clientPlatformSplit = REPORTS_OVERVIEW.clientPlatformSplit;
   const platformColorSlot = REPORTS_OVERVIEW.platformColorSlot;
+  const buildReportsActionFeed = REPORTS_OVERVIEW.buildReportsActionFeed;
 
   // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
   // is rendered separately. Order here is the on-card display order.
@@ -2789,6 +2790,10 @@
     if (triageBox && view !== "index") triageBox.hidden = true;
     const kpiStrip = document.querySelector("[data-reports-kpis]");
     if (kpiStrip && view !== "index") kpiStrip.hidden = true;
+    // …and the rail's "what mureo did today", which is the roster's day and
+    // not the day of whichever client a detail view is showing.
+    const feed = document.querySelector("[data-reports-feed]");
+    if (feed && view !== "index") feed.hidden = true;
     // The back link (under the "Reports" heading) and the client-name heading
     // appear only in a multi-client detail view — an OSS single client has no
     // index to go back to and no sibling to disambiguate.
@@ -3298,6 +3303,80 @@
     }
   }
 
+  // What mureo did today, across the roster — the rail's top panel.
+  //
+  // A day with nothing logged renders NO panel: the same default silence the
+  // alert layer keeps, and for the same reason. "0 actions today" is a frame
+  // competing for attention with the sections that do have something in it,
+  // and on a rail it would push the platform split below the fold to say so.
+  //
+  // Nothing here decides what "today" is — reports_overview.js does, from the
+  // date the SERVER stated, which a static pin could never check.
+  function renderReportsActionFeed(feed) {
+    const panel = document.querySelector("[data-reports-feed]");
+    const list = document.querySelector("[data-reports-feed-list]");
+    const count = document.querySelector("[data-reports-feed-count]");
+    const more = document.querySelector("[data-reports-feed-more]");
+    if (!panel || !list) return;
+    list.textContent = "";
+    panel.hidden = !feed.items.length;
+    if (!feed.items.length) return;
+    if (count) {
+      count.textContent = MUREO.t("dashboard.reports_feed_count", { n: feed.total });
+    }
+    feed.items.forEach(function (item) {
+      list.appendChild(buildReportsFeedRow(item));
+    });
+    if (more) {
+      more.textContent = feed.remaining
+        ? MUREO.t("dashboard.reports_feed_more", { n: feed.remaining })
+        : "";
+      more.hidden = !feed.remaining;
+    }
+  }
+
+  // One line of the feed: when, for whom, what.
+  //
+  // The client name is a button that opens that client's report — the feed
+  // says a thing happened to somebody, and "show me" is the only follow-up
+  // it can offer. It is a real button so the keyboard reaches it, and it
+  // sits OUTSIDE nothing: the row itself is not interactive.
+  function buildReportsFeedRow(item) {
+    const row = document.createElement("li");
+    row.className = "reports-feed-row";
+
+    const time = document.createElement("span");
+    time.className = "reports-feed-time";
+    // Sliced out of the server's own timestamp by reports_overview.js — not
+    // reformatted here, which would render it in the browser's timezone.
+    time.textContent = item.time;
+    row.appendChild(time);
+
+    const dot = document.createElement("span");
+    dot.className = "reports-feed-dot";
+    row.appendChild(dot);
+
+    const body = document.createElement("span");
+    body.className = "reports-feed-body";
+    const who = document.createElement("button");
+    who.type = "button";
+    who.className = "reports-feed-client";
+    // Registry-controlled text — textContent, never markup (#533).
+    who.textContent = item.name;
+    who.addEventListener("click", function () {
+      reportsActiveClient = item.slug;
+      showReportsClientDetail(item.slug);
+    });
+    body.appendChild(who);
+    const what = document.createElement("span");
+    what.className = "reports-feed-text";
+    // Writer-supplied text out of STATE.json's action log — text, not markup.
+    what.textContent = item.text;
+    body.appendChild(what);
+    row.appendChild(body);
+    return row;
+  }
+
   // INDEX view: a card per client (KPIs + flags for the selected window).
   // Fetches each client's summary in parallel; a period toggle built from the
   // union of windows lets the operator triage by Yesterday / Last 30 days.
@@ -3331,6 +3410,9 @@
     const portfolio = buildReportsPortfolio(rows, summaries);
     renderReportsPortfolio(portfolio, triage);
     renderReportsTriage(triage);
+    // The rail: what mureo did today, then where the money went. Both are
+    // built from the summaries already in hand — no extra request.
+    renderReportsActionFeed(buildReportsActionFeed(rows, summaries));
     renderReportsPlatforms(portfolio);
     wrap.textContent = "";
     // A filter left over from a previous render would hide cards with no

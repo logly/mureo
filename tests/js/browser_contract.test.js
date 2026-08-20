@@ -178,6 +178,7 @@ const MODULES = [
       "buildReportsPortfolio",
       "clientPlatformSplit",
       "platformColorSlot",
+      "buildReportsActionFeed",
     ],
     moved: [
       "reportsViewToShow",
@@ -186,6 +187,10 @@ const MODULES = [
       "platformColorSlot",
       "statedPlatformRows",
       "splitBySpend",
+      "buildReportsActionFeed",
+      "statedServerDate",
+      "stampParts",
+      "actionText",
     ],
   },
 ];

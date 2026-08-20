@@ -267,6 +267,23 @@
                   </section>
                 </div>
 
+                <div class="reports-index-rail">
+                <!-- What mureo did today, across the roster, newest first.
+                     Built from the `recent_actions` the index already
+                     fetched, so it costs no request — and dated by the
+                     SERVER (`server_today`), because a browser deciding the
+                     day from its own clock would list yesterday's work as
+                     today's for anyone outside the host's timezone. A day
+                     with nothing on it renders no panel at all. -->
+                <aside class="reports-panel reports-feed-panel" data-reports-feed hidden>
+                  <div class="reports-panel-head">
+                    <h3 data-i18n="dashboard.reports_feed_title">What mureo did today</h3>
+                    <span class="reports-count-badge" data-reports-feed-count></span>
+                  </div>
+                  <ul class="reports-feed" data-reports-feed-list></ul>
+                  <p class="reports-panel-note" data-reports-feed-more></p>
+                </aside>
+
                 <!-- Where the roster's money went. Summed over the clients
                      whose totals mureo can state, and it says how many that
                      was — hidden entirely when it is none. -->
@@ -277,6 +294,7 @@
                   <div data-reports-platform-rows></div>
                   <p class="reports-panel-note" data-reports-platform-note></p>
                 </aside>
+                </div>
               </div>
 
               <!-- DETAIL view: one client's full report. -->

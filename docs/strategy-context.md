@@ -935,11 +935,40 @@ A report that stated no structure at all renders exactly as it did before:
 reports already on disk are real content, and they stay readable as the
 prose they are rather than being reformatted by guesswork.
 
+#### What mureo did today
+
+Beside the grid, the index lists the actions mureo logged **today** across
+the whole roster — newest first, the client, the time, one sentence. It is
+built from the `recent_actions` every client's summary already carries, so
+it costs no extra request, and it is capped (6 rows) with the rest counted:
+a rail is a glance at the day, not the log.
+
+**The day is the server's.** An action-log `timestamp` is stamped
+server-side from `server_now` — the host's local wall clock, offset and all
+— so a browser deciding "today" from its own clock would draw the boundary
+in its own timezone, and an operator in London reading a Tokyo host would
+see nine hours of yesterday's work listed as today's. The summary therefore
+states
+
+```json
+"server_today": "2026-08-20"
+```
+
+— present **only** under the client-registry seam, like `observations_due`,
+so a single-workspace summary keeps the exact keys it had before. The
+browser compares the first ten characters of a timestamp against it: two
+strings out of one clock, and no timezone arithmetic anywhere. If the date
+is absent or malformed the feed is empty rather than dated by the browser —
+a feed headed "today" that lists yesterday is worse than no feed.
+
+A day with nothing logged renders no panel at all, the same default silence
+the alert layer keeps.
+
 #### The shape of the page
 
 The index is two columns above 960px: the alerts and the client grid they
-triage in the main column, and where the roster's money went in a 340px rail
-beside it. Below 960px it stacks. Stacking every section full width at every
+triage in the main column, and — in a 340px rail beside it — what mureo did
+today, then where the roster's money went. Below 960px it stacks. Stacking every section full width at every
 width was two screens of scrolling before the operator had read anything,
 which is what the rail, the grouped alert rows, the collapsed list and the
 slimmer cards are all for.

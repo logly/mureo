@@ -415,7 +415,9 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
   - `reports_overview.js` → `window.MUREO_REPORTS_OVERVIEW` — the Reports
     index view's own decisions: which view the section shows (the left menu
     always means the client list; a period switch or a status refresh keeps
-    the operator where they are), and the portfolio figures above the grid.
+    the operator where they are), the portfolio figures above the grid, and
+    the "what mureo did today" feed (dated by the summary's `server_today` —
+    this module never asks the browser what time it is).
 
   Each carries an inert `module.exports` tail so `node --test
   tests/js/*.test.js` executes the exact bytes the browser is served, and

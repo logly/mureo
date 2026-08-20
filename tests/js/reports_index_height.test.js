@@ -207,6 +207,32 @@ function clientPanelHeight() {
   );
 }
 
+/**
+ * The rail beside the main column: what mureo did today, then the platform
+ * split. Modelled only to CHECK it — the estimate below takes the main
+ * column's height as the page's, which is only true while the rail is
+ * shorter than it.
+ */
+function railHeight() {
+  const feedRows = TRIAGE_FEED_ROWS;
+  const feed =
+    frame(".reports-panel") +
+    line(".reports-panel-head h3") +
+    px(".reports-panel-head", "margin-bottom") +
+    feedRows * line(".reports-feed-row") +
+    Math.max(0, feedRows - 1) * px(".reports-feed", "gap");
+  const platforms =
+    frame(".reports-panel") +
+    line(".reports-panel-head h3") +
+    px(".reports-panel-head", "margin-bottom") +
+    3 * (px(".reports-platform-track", "height") + px(".reports-platform-row", "margin-bottom"));
+  return feed + px(".reports-index-rail", "gap") + platforms;
+}
+
+/** A full feed — the cap, which is the tallest the panel gets. */
+const TRIAGE_FEED_ROWS = require(path.join(WEB, "reports_overview.js"))
+  .REPORTS_ACTION_FEED_CAP;
+
 // ---------------------------------------------------------------------
 // The budgets
 // ---------------------------------------------------------------------
@@ -253,6 +279,18 @@ test.describe("the Reports index fits a screen an operator can read", function (
         "px"
     );
     assert.ok(total > 0);
+  });
+
+  test.it("keeps the rail shorter than the column the estimate measures", function () {
+    // The estimate above takes the main column as the page's height. That is
+    // only true while the rail — the action feed plus the platform split —
+    // is the shorter of the two.
+    const main = top + px(".reports-index-main", "gap") + clientPanelHeight();
+    const rail = railHeight();
+    assert.ok(
+      rail < main,
+      "the rail (~" + rail + "px) is taller than the main column (~" + main + "px)"
+    );
   });
 
   test.it("puts the platform rail beside the grid, not under it", function () {

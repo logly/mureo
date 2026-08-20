@@ -22,6 +22,17 @@
 //      never just a number — it carries how many clients it was stated
 //      over, and it is null rather than 0 when that count is zero.
 //
+//   3. WHAT MUREO DID TODAY, across the roster. Every client's summary
+//      already carries `recent_actions`, and the index fetches all of them
+//      in parallel to draw the cards, so the feed costs no request. What the
+//      browser cannot do by itself is decide what "today" IS: an action-log
+//      `timestamp` is stamped server-side from `server_now` — the HOST's
+//      local wall clock — so a browser drawing the boundary with its own
+//      clock would list nine hours of yesterday's work as today's for an
+//      operator in London reading a Tokyo host. The summary states
+//      `server_today`, and the comparison below is between two strings that
+//      came from that one clock. No timezone arithmetic happens anywhere.
+//
 // Not one new fact about an ad account is computed here. Whether a given
 // client's totals may be stated at all is reports_logic.js's decision
 // (`aggregateClientKpis`), read off the page at call time exactly as
@@ -100,6 +111,22 @@
       throw new Error(
         "reports_overview.js needs MUREO_REPORTS_LOGIC — load reports_logic.js " +
           "BEFORE reports_overview.js"
+      );
+    }
+    return api;
+  }
+
+  // reports_format.js's display vocabulary — read off the page at call
+  // time, exactly as reports_logic.js is. The feed asks it for one thing:
+  // how to render an action NAME when the entry carried no summary of its
+  // own, so `budget_update` reaches the operator as "Budget update" rather
+  // than as a wire token.
+  function format() {
+    const api = typeof window !== "undefined" ? window.MUREO_REPORTS_FORMAT : null;
+    if (!api) {
+      throw new Error(
+        "reports_overview.js needs MUREO_REPORTS_FORMAT — load " +
+          "reports_format.js BEFORE reports_overview.js"
       );
     }
     return api;
@@ -253,6 +280,113 @@
     };
   }
 
+  // ------------------------------------------------------------------
+  // What mureo did today
+  // ------------------------------------------------------------------
+
+  // How many rows the feed shows. It sits in a 340px rail beside the grid,
+  // so it is a glance at today rather than the log — the rest is counted,
+  // and the whole history is on each client's own detail view.
+  const REPORTS_ACTION_FEED_CAP = 6;
+
+  // A `YYYY-MM-DD` the server actually stated, or null.
+  //
+  // Null is the answer for an older daemon, a proxy that dropped the key,
+  // and a single-workspace install (which is never sent it) — and it makes
+  // the whole feed empty rather than dated by the browser's clock. Silence
+  // is the only safe degradation here: a feed headed "today" listing
+  // yesterday is worse than no feed.
+  function statedServerDate(summaries) {
+    const rows = Array.isArray(summaries) ? summaries : [];
+    for (let i = 0; i < rows.length; i++) {
+      const value = rows[i] && rows[i].server_today;
+      if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  // The date and the clock time an entry's timestamp CARRIES, sliced out of
+  // the string rather than parsed.
+  //
+  // Deliberately not `new Date(ts)`: parsing yields an instant, and turning
+  // an instant back into a date or a wall-clock time needs a timezone the
+  // browser would have to supply. The string already holds the server's
+  // answer — `server_now_iso()` writes the host's local time with its offset
+  // — so reading it is both simpler and the only correct thing.
+  function stampParts(timestamp) {
+    if (typeof timestamp !== "string") return null;
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(timestamp);
+    return m ? { date: m[1], time: m[2] } : null;
+  }
+
+  // What an action-log row SAYS, in one sentence.
+  //
+  // The writer's own summary when there is one; failing that the action's
+  // name, humanized. An entry with neither is dropped rather than rendered
+  // as a blank line with a timestamp beside it.
+  function actionText(row) {
+    const summary = row && typeof row.summary === "string" ? row.summary.trim() : "";
+    if (summary) return summary;
+    return format().humanizeFlagWords(row && row.action);
+  }
+
+  /**
+   * Today's logged actions across the whole roster, newest first.
+   *
+   * `clients` and `summaries` are positionally paired, exactly as
+   * renderReportsIndex holds them. Returns {items, total, remaining} — items
+   * capped at REPORTS_ACTION_FEED_CAP, `total` every action that qualified,
+   * and `remaining` the ones the cap held back.
+   *
+   * "Today" is the server's date (see `statedServerDate`), never the
+   * browser's. Sorting is on the timestamp STRING: every one of them was
+   * written by the same clock in the same format, so lexical order is
+   * chronological order and no instant has to be constructed.
+   *
+   * Defensive about every argument: this runs mid-render over a payload that
+   * may come from an older daemon, and a throw here blanks the Reports view.
+   */
+  function buildReportsActionFeed(clients, summaries) {
+    const rows = Array.isArray(clients) ? clients : [];
+    const bodies = Array.isArray(summaries) ? summaries : [];
+    const today = statedServerDate(bodies);
+    if (!today) return { items: [], total: 0, remaining: 0 };
+    const items = [];
+    rows.forEach(function (client, index) {
+      const summary = bodies[index];
+      const actions =
+        summary && Array.isArray(summary.recent_actions) ? summary.recent_actions : [];
+      actions.forEach(function (row) {
+        if (!row || typeof row !== "object") return;
+        const stamp = stampParts(row.timestamp);
+        if (!stamp || stamp.date !== today) return;
+        const text = actionText(row);
+        if (!text) return;
+        items.push({
+          index: index,
+          slug: (client && client.slug) || "",
+          name: (client && (client.name || client.slug)) || "",
+          time: stamp.time,
+          timestamp: row.timestamp,
+          text: text,
+        });
+      });
+    });
+    // Newest first. Ties keep the roster's order, which is the operator's
+    // own card order — the same tie-break the triage layer uses.
+    items.sort(function (a, b) {
+      if (a.timestamp === b.timestamp) return a.index - b.index;
+      return a.timestamp < b.timestamp ? 1 : -1;
+    });
+    return {
+      items: items.slice(0, REPORTS_ACTION_FEED_CAP),
+      total: items.length,
+      remaining: Math.max(0, items.length - REPORTS_ACTION_FEED_CAP),
+    };
+  }
+
   const api = {
     REPORTS_VIEW_INDEX: REPORTS_VIEW_INDEX,
     REPORTS_VIEW_DETAIL: REPORTS_VIEW_DETAIL,
@@ -263,6 +397,8 @@
     clientPlatformSplit: clientPlatformSplit,
     REPORTS_PLATFORM_COLOR_SLOTS: REPORTS_PLATFORM_COLOR_SLOTS,
     platformColorSlot: platformColorSlot,
+    REPORTS_ACTION_FEED_CAP: REPORTS_ACTION_FEED_CAP,
+    buildReportsActionFeed: buildReportsActionFeed,
   };
 
   // Browser: the global the `<script>` tag exists to publish.

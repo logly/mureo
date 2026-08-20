@@ -29,6 +29,7 @@ rendered at all.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -138,12 +139,14 @@ def test_only_the_multi_client_index_renders_the_overview() -> None:
         "renderReportsPortfolio(",
         "renderReportsPlatforms(",
         "renderReportsFilters(",
+        "renderReportsActionFeed(",
     ):
         assert js.count(call) == 2, f"{call} is called from more than the index"
         assert call in index, f"{call} is not the index's"
     detail = _function_body(js, "async function renderReportsSummary(")
     assert "Portfolio" not in detail, "the single-client view renders the strip"
     assert "Platforms" not in detail
+    assert "ActionFeed" not in detail
 
 
 @pytest.mark.unit
@@ -151,7 +154,7 @@ def test_leaving_the_index_hides_the_overview() -> None:
     """The strip states figures ABOUT the grid. Left behind over a detail
     view, a roster total reads as that one client's."""
     view = _function_body(_read("dashboard.js"), "function setReportsView(")
-    for target in ("data-reports-kpis", "data-reports-index-grid"):
+    for target in ("data-reports-kpis", "data-reports-index-grid", "data-reports-feed"):
         assert target in view, f"{target} survives a view change"
     assert 'view !== "index"' in view
     # Hidden in the markup too, so a page that never reaches the index shows
@@ -376,3 +379,125 @@ def test_the_short_and_long_coverage_strings_are_localized() -> None:
     # reads as zero is the one thing this view must never produce (#638).
     assert "cannot" in data["en"]["dashboard.reports_portfolio_unstated_short"]
     assert "できません" in data["ja"]["dashboard.reports_portfolio_unstated_short"]
+
+
+# ---------------------------------------------------------------------------
+# What mureo did today
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_the_feed_costs_no_request_and_is_built_once() -> None:
+    """Every client's ``recent_actions`` is already on the wire — the index
+    fetches all of them in parallel to draw the cards. A feed that re-asked
+    would scale a second round of requests with the roster, on the screen
+    a twenty-seven-client operator opens."""
+    js = _read("dashboard.js")
+    assert js.count("buildReportsActionFeed(") == 1
+    index = _function_body(js, "async function renderReportsIndex(")
+    assert "buildReportsActionFeed(rows, summaries)" in index
+    feed = _function_body(js, "function renderReportsActionFeed(")
+    assert "fetch(" not in feed
+
+
+@pytest.mark.unit
+def test_the_browser_never_decides_what_today_is() -> None:
+    """An action-log ``timestamp`` is stamped server-side from ``server_now``
+    — the HOST's local wall clock. A browser drawing the day boundary with
+    its own clock lists nine hours of yesterday's work as today's for an
+    operator outside the host's timezone.
+
+    So: the date comes from the summary's ``server_today``, the comparison is
+    between two strings out of that one clock, and this module never asks the
+    browser what time it is. ``tests/js/reports_overview.test.js`` executes
+    the boundary; the pin below is that there is no second opinion to
+    execute."""
+    overview = _read("reports_overview.js")
+    assert "server_today" in overview
+    # Comments are stripped first: the module explains at length why it does
+    # NOT call `new Date(ts)`, and the explanation must not read as the call.
+    code = re.sub(r"//[^\n]*|/\*[\s\S]*?\*/", "", overview)
+    assert "new Date(" not in code, "the feed constructs a browser Date"
+    assert "Date.now(" not in code, "the feed reads the browser's clock"
+    js = _read("dashboard.js")
+    for name in ("renderReportsActionFeed", "buildReportsFeedRow"):
+        body = _function_body(js, f"function {name}(")
+        assert "Date" not in body, f"{name} decides a date of its own"
+    assert "buildReportsActionFeed = REPORTS_OVERVIEW.buildReportsActionFeed" in js
+    assert "function buildReportsActionFeed(" not in js
+
+
+@pytest.mark.unit
+def test_a_quiet_day_renders_no_panel_at_all() -> None:
+    """No "0 actions today". The same default silence the alert layer keeps,
+    and on a 340px rail an empty frame would push the platform split down the
+    page to say nothing."""
+    feed = _function_body(_read("dashboard.js"), "function renderReportsActionFeed(")
+    assert "panel.hidden = !feed.items.length" in feed
+    assert "if (!feed.items.length) return;" in feed
+    # Cleared before the early return, so yesterday's rows cannot survive a
+    # render that found nothing.
+    assert feed.index('list.textContent = ""') < feed.index(
+        "panel.hidden = !feed.items.length"
+    )
+    html = _read("app.html")
+    block = html.split("data-reports-feed", 1)[1].split(">", 1)[0]
+    assert "hidden" in block
+
+
+@pytest.mark.unit
+def test_the_feed_is_capped_and_says_how_many_it_held_back() -> None:
+    """A rail is a glance at the day, not the log. What it does not show it
+    counts — the alternative is an operator believing six actions were all of
+    them."""
+    overview = _read("reports_overview.js")
+    assert "REPORTS_ACTION_FEED_CAP" in overview
+    feed = _function_body(_read("dashboard.js"), "function renderReportsActionFeed(")
+    assert "dashboard.reports_feed_more" in feed
+    assert "feed.remaining" in feed
+    assert "dashboard.reports_feed_count" in feed
+
+
+@pytest.mark.unit
+def test_the_feed_sits_above_the_platform_split_in_the_rail() -> None:
+    html = _read("app.html")
+    assert html.index("data-reports-feed") < html.index("data-reports-platforms")
+    # …and both are in the rail, beside the grid rather than under it.
+    rail = html.index('class="reports-index-rail"')
+    assert rail > html.index('class="dashboard-reports-clients"')
+    assert rail < html.index("data-reports-feed")
+
+
+@pytest.mark.unit
+def test_the_action_text_and_client_name_reach_the_dom_as_text() -> None:
+    """An action ``summary`` is writer-supplied text out of STATE.json and a
+    client name is registry-controlled."""
+    row = _function_body(_read("dashboard.js"), "function buildReportsFeedRow(")
+    assert "who.textContent = item.name" in row
+    assert "what.textContent = item.text" in row
+    assert ".innerHTML" not in row
+
+
+@pytest.mark.unit
+def test_the_feed_strings_are_localized_in_both_locales() -> None:
+    data = json.loads(_read("i18n.json"))
+    for key in (
+        "dashboard.reports_feed_title",
+        "dashboard.reports_feed_count",
+        "dashboard.reports_feed_more",
+    ):
+        for loc in ("en", "ja"):
+            assert data[loc].get(key), f"{key} missing in {loc}"
+        assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+def test_the_feed_rows_can_wrap() -> None:
+    """An action summary is a free-form sentence in a 340px rail."""
+    css = _read("app.css")
+    for rule in (".reports-feed-body", ".reports-feed-text"):
+        body = css.split(rule + " {", 1)
+        assert len(body) == 2, f"{rule} rule missing"
+        block = body[1].split("}", 1)[0]
+        assert "overflow-wrap" in block, f"{rule} has no overflow-wrap"
+        assert "min-width: 0" in block, f"{rule} has no min-width: 0"

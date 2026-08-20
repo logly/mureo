@@ -426,6 +426,12 @@ def build_report_summary(
       declared** (#651) — ``{count, oldest_due}`` for the logged changes
       whose review date has passed. Absent, not zeroed, on a
       single-workspace install; see :func:`_build_observations_due`.
+    - ``server_today``: **only where the Agency client seam is declared** —
+      the host's local date (``YYYY-MM-DD``) from
+      :func:`~mureo.core.clock.server_now`, the same clock that stamps an
+      action-log ``timestamp``. It is what lets the multi-client index say
+      which logged actions happened *today* without the browser guessing in
+      its own timezone.
 
     Period selection
     ----------------
@@ -470,6 +476,22 @@ def build_report_summary(
     # client card per render. See :func:`_build_observations_due`.
     if agency_client_seam_present():
         summary["observations_due"] = _build_observations_due(doc)
+        # What day it is on the machine that stamped the action log.
+        #
+        # The index renders a "what mureo did today" feed off
+        # ``recent_actions``, and the browser cannot decide what "today" is:
+        # a ``timestamp`` is stamped server-side (#460) from
+        # :func:`~mureo.core.clock.server_now`, the host's local wall clock,
+        # so a browser drawing the boundary in ITS timezone would list
+        # yesterday's work as today's for any operator not sitting in the
+        # host's zone. The date therefore comes from the same clock that
+        # wrote the timestamps, and the browser only ever compares two
+        # strings that came from that one source.
+        #
+        # A clock read, not a registry read — the cost this function guards
+        # against (see :func:`_build_observations_due`) is asking the client
+        # registry once per card, and this asks nothing.
+        summary["server_today"] = clock.server_now().date().isoformat()
     return summary
 
 

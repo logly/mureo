@@ -143,6 +143,9 @@ test.describe("it never throws on a state it did not expect", function () {
 // reports_overview.js reads reports_logic.js off the page global at CALL
 // time, exactly as reports_triage.js does. Here we ARE the page.
 require(path.join(WEB, "reports_logic.js"));
+// …and reports_format.js, for the same reason: the action feed asks it to
+// humanize an action name, off the page global, at call time.
+require(path.join(WEB, "reports_format.js"));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -368,5 +371,264 @@ test.describe("a platform's colour", function () {
       }
     );
     assert.equal(overview.platformColorSlot(null), 0);
+  });
+});
+
+// ---------------------------------------------------------------------
+// What mureo did today, across the roster
+// ---------------------------------------------------------------------
+//
+// Every client's summary already carries `recent_actions` — the index
+// fetches all of them in parallel to draw the cards, so the feed costs no
+// request. What it cannot do by itself is decide what "today" is.
+//
+// An action-log `timestamp` is stamped server-side from `server_now`: the
+// HOST's local wall clock, offset and all. A browser deciding the day from
+// its own clock draws the boundary in its own timezone, and an operator in
+// London reading a Tokyo host would see nine hours of yesterday's work
+// listed as today's. So the summary states `server_today` and the browser
+// compares the first ten characters of a timestamp against it — two strings
+// out of one clock, and no timezone arithmetic anywhere.
+
+function action(timestamp, summary, extra) {
+  const row = {
+    timestamp: timestamp,
+    action: "budget_update",
+    platform: "google_ads",
+    campaign_id: null,
+    summary: summary,
+    observation_due: null,
+  };
+  Object.keys(extra || {}).forEach(function (k) {
+    row[k] = extra[k];
+  });
+  return row;
+}
+
+function withActions(rows, today) {
+  const s = { platforms: [], platform_conflicts: [], recent_actions: rows };
+  if (today !== undefined) s.server_today = today;
+  return s;
+}
+
+const TODAY = "2026-08-20";
+
+test.describe("the day comes from the server, never from the browser", function () {
+  test.it("keeps the entries whose server date is today", function () {
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "acme", name: "Acme" }],
+      [
+        withActions(
+          [
+            action(TODAY + "T09:15:00+09:00", "raised the daily budget"),
+            action("2026-08-19T23:59:59+09:00", "yesterday, one second before"),
+          ],
+          TODAY
+        ),
+      ]
+    );
+    assert.equal(feed.items.length, 1);
+    assert.equal(feed.items[0].text, "raised the daily budget");
+  });
+
+  test.it("draws the boundary at the server's midnight, not at UTC's", function () {
+    // 00:00 local on the server's today is TODAY; the same instant is
+    // yesterday in UTC. Comparing the string is what keeps them apart.
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [
+        withActions(
+          [
+            action(TODAY + "T00:00:00+09:00", "just after midnight"),
+            action(TODAY + "T23:59:59+09:00", "just before the next one"),
+          ],
+          TODAY
+        ),
+      ]
+    );
+    assert.equal(feed.items.length, 2);
+  });
+
+  test.it("states nothing at all when the server did not state a date", function () {
+    // Silence, not a guess. An older daemon, a proxy, or a single-workspace
+    // install (which never sends it) must not produce a feed dated by the
+    // browser's own clock.
+    [undefined, null, "", "not-a-date", 20260820].forEach(function (today) {
+      const feed = overview.buildReportsActionFeed(
+        [{ slug: "a", name: "A" }],
+        [withActions([action(TODAY + "T09:15:00+09:00", "today's work")], today)]
+      );
+      assert.deepEqual(feed.items, [], String(today));
+    });
+  });
+
+  test.it("takes the date from the summary and not from Date.now()", function () {
+    // The strongest form of the rule: with the server a day behind this
+    // machine, the feed follows the SERVER.
+    const yesterday = "2026-08-19";
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [
+        withActions(
+          [
+            action(yesterday + "T10:00:00+09:00", "the server's today"),
+            action(TODAY + "T10:00:00+09:00", "the browser's today"),
+          ],
+          yesterday
+        ),
+      ]
+    );
+    assert.deepEqual(
+      feed.items.map(function (i) {
+        return i.text;
+      }),
+      ["the server's today"]
+    );
+  });
+
+  test.it("drops an entry whose timestamp it cannot read", function () {
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [
+        withActions(
+          [action(null, "no timestamp"), action(12345, "not a string"), action("", "")],
+          TODAY
+        ),
+      ]
+    );
+    assert.deepEqual(feed.items, []);
+  });
+});
+
+test.describe("the feed reads as a feed", function () {
+  test.it("is newest first, across every client", function () {
+    const feed = overview.buildReportsActionFeed(
+      [
+        { slug: "acme", name: "Acme" },
+        { slug: "globex", name: "Globex" },
+      ],
+      [
+        withActions([action(TODAY + "T09:00:00+09:00", "early")], TODAY),
+        withActions([action(TODAY + "T17:30:00+09:00", "late")], TODAY),
+      ]
+    );
+    assert.deepEqual(
+      feed.items.map(function (i) {
+        return i.text;
+      }),
+      ["late", "early"]
+    );
+    assert.deepEqual(
+      feed.items.map(function (i) {
+        return i.name;
+      }),
+      ["Globex", "Acme"]
+    );
+  });
+
+  test.it("carries the clock time as the server wrote it", function () {
+    // Sliced out of the string for the same reason the date is: converting
+    // the instant would render it in the browser's zone.
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [withActions([action(TODAY + "T17:05:00+09:00", "done")], TODAY)]
+    );
+    assert.equal(feed.items[0].time, "17:05");
+  });
+
+  test.it("names the client the way its card does", function () {
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "only-a-slug" }],
+      [withActions([action(TODAY + "T10:00:00+09:00", "done")], TODAY)]
+    );
+    assert.equal(feed.items[0].name, "only-a-slug");
+    assert.equal(feed.items[0].slug, "only-a-slug");
+    assert.equal(feed.items[0].index, 0);
+  });
+
+  test.it("falls back to the action name when there is no summary", function () {
+    // `summary` is optional on an action-log entry. The row still has to say
+    // what happened, so the action's own name is used — humanized by
+    // reports_format.js rather than printed as `budget_update`.
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [
+        withActions(
+          [action(TODAY + "T10:00:00+09:00", null, { action: "budget_update" })],
+          TODAY
+        ),
+      ]
+    );
+    assert.equal(feed.items[0].text, "Budget update");
+  });
+
+  test.it("drops an entry that says nothing at all", function () {
+    // No summary and no action name is not a row; it is a blank line.
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [
+        withActions(
+          [action(TODAY + "T10:00:00+09:00", "  ", { action: "" })],
+          TODAY
+        ),
+      ]
+    );
+    assert.deepEqual(feed.items, []);
+  });
+});
+
+test.describe("the feed is bounded", function () {
+  function manyToday(n) {
+    const rows = [];
+    for (let i = 0; i < n; i++) {
+      const hh = String(i % 24).padStart(2, "0");
+      rows.push(action(TODAY + "T" + hh + ":00:00+09:00", "action " + i));
+    }
+    return rows;
+  }
+
+  test.it("shows at most the cap and counts the rest", function () {
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [withActions(manyToday(20), TODAY)]
+    );
+    assert.equal(feed.items.length, overview.REPORTS_ACTION_FEED_CAP);
+    assert.equal(feed.total, 20);
+    assert.equal(feed.remaining, 20 - overview.REPORTS_ACTION_FEED_CAP);
+  });
+
+  test.it("counts nothing extra when everything fits", function () {
+    const feed = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [withActions(manyToday(2), TODAY)]
+    );
+    assert.equal(feed.items.length, 2);
+    assert.equal(feed.total, 2);
+    assert.equal(feed.remaining, 0);
+  });
+
+  test.it("says nothing on a day nothing happened", function () {
+    // No "0 actions" panel. The default is silence, exactly as it is for the
+    // alert layer that has nothing to raise.
+    const quiet = overview.buildReportsActionFeed(
+      [{ slug: "a", name: "A" }],
+      [withActions([action("2026-08-19T10:00:00+09:00", "yesterday")], TODAY)]
+    );
+    assert.deepEqual(quiet.items, []);
+    assert.equal(quiet.total, 0);
+    assert.equal(quiet.remaining, 0);
+  });
+
+  test.it("never throws on a payload it did not expect", function () {
+    [
+      [null, null],
+      [[{ slug: "a" }], [null]],
+      [[{ slug: "a" }], [{ recent_actions: "nope", server_today: TODAY }]],
+      ["clients", "summaries"],
+    ].forEach(function (args) {
+      const feed = overview.buildReportsActionFeed(args[0], args[1]);
+      assert.deepEqual(feed.items, []);
+      assert.equal(feed.total, 0);
+    });
   });
 });
