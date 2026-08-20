@@ -235,9 +235,26 @@ a {
  * <section data-dashboard> only loses its native `hidden` attribute
  * while the dashboard view is active (toggled in dashboard.js), so
  * scoping a wider max-width via :has() widens ONLY the dashboard.
- * Browsers without :has() simply fall back to the narrow width. */
+ * Browsers without :has() simply fall back to the narrow width.
+ *
+ * The width is what the widest screen here needs, and every screen gets it:
+ * Reports is a GRID OF CLIENTS, and at the old 1180px its card column fitted
+ * two cards abreast, so a twenty-seven-client roster was fourteen rows of
+ * scrolling before the operator had read anything. A shell that changed
+ * width as the operator moved between the left-nav items would read as a
+ * broken layout, so the frame is one width for all of them and the MEASURE
+ * inside it is what varies (see .dashboard-section > * below).
+ *
+ * `96vw` keeps the widest screens off the edge; the ceiling keeps the cards
+ * from stretching on a very large monitor. Together they are 3 card columns
+ * at 1440px and 4 at 1920px — derived from these numbers, not from a
+ * screenshot, in tests/js/reports_index_height.test.js. */
 .app-main:has([data-dashboard]:not([hidden])) {
-  max-width: 1180px;
+  max-width: min(1680px, 96vw);
+  /* A tighter gutter than the wizard's, for the same reason as the width:
+   * every pixel here is a pixel the card grid does not have, and at 1440px
+   * the third column turns on twelve of them. */
+  padding: 0 20px;
 }
 
 @keyframes rise {
@@ -812,6 +829,54 @@ input[type="checkbox"] {
   margin-top: 26px;
   padding-top: 26px;
   border-top: 1px solid var(--hairline);
+}
+
+/* Content follows the frame. The lists, tables and rows that make up most of
+ * these sections simply get wider, which is what the width was widened for.
+ *
+ * The one thing that does not survive being stretched is a single-line
+ * field: 1600px of text input is not an improvement. The answer is NOT to
+ * cap it and leave it alone on the left of an empty frame, which is the
+ * layout this width exists to end — so the fields FLOW instead. Each is a
+ * column of its own, as many across as the width fits, and the row fills.
+ * On a narrow screen `width: 100%` stacks them again. */
+.dashboard-section label {
+  display: inline-block;
+  vertical-align: top;
+  width: 100%;
+  max-width: 460px;
+  margin: 10px 18px 10px 0;
+}
+
+/* …except a field that is a block of text in its own right. Those keep a
+ * row to themselves, and a measure wide enough to read a command line in. */
+.dashboard-section label:has(textarea) {
+  display: block;
+  max-width: 760px;
+}
+
+/* A table follows the frame too. Left to itself it shrinks to its contents
+ * and hugs the left edge, which is the one shape this width must not
+ * produce. */
+.dashboard-section table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* …with one exception, and it is a real one: a table whose two columns exist
+ * to ASSOCIATE a name with a value. Stretched to 1600px, "mureo" and
+ * "0.12.0" end up half a metre apart and the eye can no longer carry one to
+ * the other — the table stops doing the only thing it is for.
+ *
+ * This is not "narrow tables look nicer": the BYOD status table beside it
+ * keeps the full width, because its columns are a platform, a mode and a
+ * free-text detail — reading across them is what it is for, and the detail
+ * wants the room. The test is whether stretching breaks the association, not
+ * whether the table is small. */
+.dashboard-about-table {
+  width: auto;
+  min-width: 320px;
+  max-width: 560px;
 }
 
 .dashboard-group > .dashboard-section:first-child {
@@ -1528,7 +1593,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    per-client detail. A single-workspace install shows one card. */
 .dashboard-reports-clients {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 8px;
   margin: 0 0 4px;
 }
@@ -1665,6 +1730,17 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+/* The health filter hides a card by setting `hidden` on this item, and the
+   explicit `display` above overrides the UA `[hidden] { display: none }` —
+   the same gotcha .dashboard-reports-period and .btn carry a note about.
+   Without this rule the filter sets the attribute on the right cards and
+   every one of them stays on screen, which is exactly what shipped in
+   v0.12.0. tests/js/reports_filter_interaction.test.js clicks the chip and
+   reads the cascade, so it cannot regress silently again. */
+.reports-client-card-item[hidden] {
+  display: none;
 }
 
 .reports-client-card-item > .reports-client-card {
@@ -2024,6 +2100,17 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* Every message carries its own ✕ — the row's control is the same thing
+   applied to all of them. The sentence takes the room; the control sits at
+   the end of the line and does not shrink away. */
+.reports-triage-detail-row > .reports-triage-what {
+  flex: 1 1 auto;
+}
+
+.reports-triage-detail-row > .reports-triage-dismiss {
+  margin-left: auto;
 }
 
 /* The rest of the list, one click away. Absent when the list already fits

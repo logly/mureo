@@ -801,28 +801,40 @@ test.describe("what a card says about its own findings", function () {
 });
 
 // ---------------------------------------------------------------------
-// 8. Dismissing a row hides it and resolves nothing
+// 8. Dismissing a MESSAGE hides it and resolves nothing
 // ---------------------------------------------------------------------
 //
-// An operator can close an alert row. What must never follow from that is
-// the finding disappearing: hiding is a view operation, the condition is
-// still true, and #636/#638 both happened because something true was not
-// on screen. So the identity a dismissal is stored under is a fingerprint
-// of the row's CONTENT — when the content changes, the row is a different
-// row and comes back.
+// An operator can close an alert. What must never follow from that is the
+// finding disappearing: hiding is a view operation, the condition is still
+// true, and #636/#638 both happened because something true was not on
+// screen. So the identity a dismissal is stored under is a fingerprint of
+// what the message SAID — when the content changes, it is a different
+// message and comes back.
+//
+// One message, not one row. The rows are grouped by kind, and a row can
+// cover six clients: closing "unknown key" as a category would take five
+// findings the operator never looked at with it. So the ✕ on a message
+// hides that message; the ✕ on the row is defined as "every message on it",
+// which is the only reading that stays consistent with the first.
 
-test.describe("a dismissal is keyed to what the row said", function () {
-  function groupOf(summaries, roster) {
-    return triage.groupReportsTriage(
-      triage.buildReportsTriage(roster || [client("a")], summaries)
-    )[0];
+test.describe("a dismissal is keyed to what the message said", function () {
+  function itemsOf(summaries, roster) {
+    return triage.buildReportsTriage(roster || [client("a")], summaries).items;
   }
 
-  test.it("is stable while nothing about the row changed", function () {
+  test.it("is stable while nothing about the message changed", function () {
     assert.equal(
-      triage.triageGroupKey(groupOf([staleSummary()])),
-      triage.triageGroupKey(groupOf([staleSummary()]))
+      triage.triageItemKey(itemsOf([staleSummary()])[0]),
+      triage.triageItemKey(itemsOf([staleSummary()])[0])
     );
+  });
+
+  test.it("tells two clients' identical findings apart", function () {
+    // The whole point of going per-message: six clients raising the same
+    // kind are six dismissals, not one.
+    const items = itemsOf([staleSummary(), staleSummary()], [client("a"), client("b")]);
+    assert.equal(items.length, 2);
+    assert.notEqual(triage.triageItemKey(items[0]), triage.triageItemKey(items[1]));
   });
 
   test.it("changes when a stale figure gets another day older", function () {
@@ -831,18 +843,8 @@ test.describe("a dismissal is keyed to what the row said", function () {
     const older = staleSummary();
     older.platforms[0].freshness = { fetched_at: ago(29), stale: true };
     assert.notEqual(
-      triage.triageGroupKey(groupOf([younger])),
-      triage.triageGroupKey(groupOf([older]))
-    );
-  });
-
-  test.it("changes when another client joins the row", function () {
-    assert.notEqual(
-      triage.triageGroupKey(groupOf([staleSummary()])),
-      triage.triageGroupKey(groupOf([staleSummary(), staleSummary()], [
-        client("a"),
-        client("b"),
-      ]))
+      triage.triageItemKey(itemsOf([younger])[0]),
+      triage.triageItemKey(itemsOf([older])[0])
     );
   });
 
@@ -851,8 +853,8 @@ test.describe("a dismissal is keyed to what the row said", function () {
     const second = notCollectedSummary();
     second.platforms[0].not_collected.reason = "the account was suspended";
     assert.notEqual(
-      triage.triageGroupKey(groupOf([first])),
-      triage.triageGroupKey(groupOf([second]))
+      triage.triageItemKey(itemsOf([first])[0]),
+      triage.triageItemKey(itemsOf([second])[0])
     );
   });
 
@@ -861,22 +863,26 @@ test.describe("a dismissal is keyed to what the row said", function () {
     const second = observationsDueSummary();
     second.observations_due = { count: 9, oldest_due: "2026-07-01" };
     assert.notEqual(
-      triage.triageGroupKey(groupOf([first])),
-      triage.triageGroupKey(groupOf([second]))
+      triage.triageItemKey(itemsOf([first])[0]),
+      triage.triageItemKey(itemsOf([second])[0])
     );
   });
 
   test.it("tells two kinds apart even when they cover the same client", function () {
     const summary = doubleCountedSummary();
     summary.platforms[0].freshness = { fetched_at: ago(11), stale: true };
-    const groups = triage.groupReportsTriage(
-      triage.buildReportsTriage([client("a")], [summary])
-    );
-    assert.notEqual(triage.triageGroupKey(groups[0]), triage.triageGroupKey(groups[1]));
+    const items = itemsOf([summary]);
+    assert.notEqual(triage.triageItemKey(items[0]), triage.triageItemKey(items[1]));
+  });
+
+  test.it("never throws on a row it did not produce", function () {
+    [null, undefined, {}, "totals_stale", 7].forEach(function (row) {
+      assert.equal(typeof triage.triageItemKey(row), "string");
+    });
   });
 });
 
-test.describe("a dismissed row is hidden, counted and restorable", function () {
+test.describe("a dismissed message is hidden, counted and restorable", function () {
   const store = {};
   globalThis.window.localStorage = {
     getItem: function (k) {
@@ -893,59 +899,124 @@ test.describe("a dismissed row is hidden, counted and restorable", function () {
     });
   });
 
-  function groups() {
-    return triage.groupReportsTriage(
-      triage.buildReportsTriage(
-        [client("a"), client("b")],
-        [staleSummary(), observationsDueSummary()]
-      )
-    );
+  /** Six clients raising the same kind, plus one raising another. */
+  function roster() {
+    const rows = [];
+    const bodies = [];
+    for (let i = 0; i < 6; i++) {
+      rows.push(client("unknown" + i));
+      bodies.push(unknownKeySummary());
+    }
+    rows.push(client("stale"));
+    bodies.push(staleSummary());
+    return triage.groupReportsTriage(triage.buildReportsTriage(rows, bodies));
   }
 
-  test.it("hides only the row that was dismissed", function () {
-    triage.dismissTriageGroup(groups()[0]);
-    const split = triage.partitionTriageGroups(groups());
+  test.it("hides only the message that was dismissed", function () {
+    const groups = roster();
+    const unknown = groups.find(function (g) {
+      return g.kind === "unrecognized_key";
+    });
+    triage.dismissTriageItem(unknown.items[0]);
+    const split = triage.partitionTriageGroups(roster());
+    const stillThere = split.visible.find(function (g) {
+      return g.kind === "unrecognized_key";
+    });
+    assert.equal(stillThere.items.length, 5);
+    assert.equal(split.hiddenCount, 1);
+  });
+
+  test.it("shrinks the row's own count as its messages go", function () {
+    // "unknown key x6" -> dismiss four -> "x2". The row names the clients it
+    // still covers, so the two have to be recomputed together.
+    const groups = roster();
+    const unknown = groups.find(function (g) {
+      return g.kind === "unrecognized_key";
+    });
+    unknown.items.slice(0, 4).forEach(triage.dismissTriageItem);
+    const split = triage.partitionTriageGroups(roster());
+    const left = split.visible.find(function (g) {
+      return g.kind === "unrecognized_key";
+    });
+    assert.equal(left.items.length, 2);
+    assert.equal(left.clients.length, 2);
+    assert.deepEqual(
+      left.clients.map(function (c) {
+        return c.name;
+      }),
+      ["UNKNOWN4", "UNKNOWN5"]
+    );
+    assert.equal(split.hiddenCount, 4);
+  });
+
+  test.it("drops the row entirely once every message on it is gone", function () {
+    const groups = roster();
+    const unknown = groups.find(function (g) {
+      return g.kind === "unrecognized_key";
+    });
+    unknown.items.forEach(triage.dismissTriageItem);
+    const split = triage.partitionTriageGroups(roster());
     assert.deepEqual(
       split.visible.map(function (g) {
         return g.kind;
       }),
-      ["observation_due"]
-    );
-    assert.deepEqual(
-      split.hidden.map(function (g) {
-        return g.kind;
-      }),
       ["totals_stale"]
     );
+    assert.equal(split.hiddenCount, 6);
   });
 
-  test.it("brings every hidden row back", function () {
-    groups().forEach(triage.dismissTriageGroup);
-    assert.equal(triage.partitionTriageGroups(groups()).visible.length, 0);
+  test.it("closes a whole row as every message on it", function () {
+    // The row-level ✕ is not a second concept: it is the message-level one
+    // applied to each message, so a row closed as a category and a row
+    // closed one message at a time end up in the same state.
+    const groups = roster();
+    triage.dismissTriageGroup(
+      groups.find(function (g) {
+        return g.kind === "unrecognized_key";
+      })
+    );
+    const split = triage.partitionTriageGroups(roster());
+    assert.equal(split.visible.length, 1);
+    assert.equal(split.hiddenCount, 6);
+  });
+
+  test.it("counts hidden MESSAGES, not hidden rows", function () {
+    // The "N hidden" line is the receipt for what was closed. Counting rows
+    // would say "1" for six findings nobody can see.
+    const groups = roster();
+    const unknown = groups.find(function (g) {
+      return g.kind === "unrecognized_key";
+    });
+    unknown.items.slice(0, 3).forEach(triage.dismissTriageItem);
+    assert.equal(triage.partitionTriageGroups(roster()).hiddenCount, 3);
+  });
+
+  test.it("brings every hidden message back", function () {
+    roster().forEach(triage.dismissTriageGroup);
+    assert.equal(triage.partitionTriageGroups(roster()).visible.length, 0);
     triage.restoreTriageDismissals();
-    assert.equal(triage.partitionTriageGroups(groups()).hidden.length, 0);
-    assert.equal(triage.partitionTriageGroups(groups()).visible.length, 2);
+    const split = triage.partitionTriageGroups(roster());
+    assert.equal(split.hiddenCount, 0);
+    assert.equal(split.visible.length, 2);
   });
 
-  test.it("brings a row back by itself when its content changed", function () {
-    // The whole point: the row was hidden, the condition was not resolved,
-    // and the figures are a day older than they were. That is a different
-    // row and it is on screen again — nobody has to remember to look.
+  test.it("brings a message back by itself when its content changed", function () {
+    // The whole point: it was hidden, the condition was not resolved, and
+    // the figures are eighteen days older than they were. That is a
+    // different message and it is on screen again.
     const young = staleSummary();
     young.platforms[0].freshness = { fetched_at: ago(11), stale: true };
     const old = staleSummary();
     old.platforms[0].freshness = { fetched_at: ago(29), stale: true };
-    const roster = [client("a")];
-    const before = triage.groupReportsTriage(triage.buildReportsTriage(roster, [young]));
-    triage.dismissTriageGroup(before[0]);
+    const rows = [client("a")];
+    const before = triage.groupReportsTriage(triage.buildReportsTriage(rows, [young]));
+    triage.dismissTriageItem(before[0].items[0]);
     assert.equal(triage.partitionTriageGroups(before).visible.length, 0);
-    const after = triage.groupReportsTriage(triage.buildReportsTriage(roster, [old]));
+    const after = triage.groupReportsTriage(triage.buildReportsTriage(rows, [old]));
     assert.equal(triage.partitionTriageGroups(after).visible.length, 1);
   });
 
   test.it("never hides anything when storage cannot be read", function () {
-    // Degrading to "everything is dismissed" would silence the layer on a
-    // browser with storage disabled. It degrades to showing all of them.
     const real = globalThis.window.localStorage;
     globalThis.window.localStorage = {
       getItem: function () {
@@ -956,8 +1027,8 @@ test.describe("a dismissed row is hidden, counted and restorable", function () {
       },
     };
     try {
-      triage.dismissTriageGroup(groups()[0]); // must not throw
-      assert.equal(triage.partitionTriageGroups(groups()).hidden.length, 0);
+      triage.dismissTriageItem(roster()[0].items[0]); // must not throw
+      assert.equal(triage.partitionTriageGroups(roster()).hiddenCount, 0);
     } finally {
       globalThis.window.localStorage = real;
     }
@@ -965,14 +1036,14 @@ test.describe("a dismissed row is hidden, counted and restorable", function () {
 
   test.it("ignores a stored value that is not a list of keys", function () {
     store["mureo.reports.triage.dismissed"] = '{"not":"an array"}';
-    assert.equal(triage.partitionTriageGroups(groups()).hidden.length, 0);
+    assert.equal(triage.partitionTriageGroups(roster()).hiddenCount, 0);
     store["mureo.reports.triage.dismissed"] = "}}}not json";
-    assert.equal(triage.partitionTriageGroups(groups()).hidden.length, 0);
+    assert.equal(triage.partitionTriageGroups(roster()).hiddenCount, 0);
   });
 
   test.it("does not change which clients the layer counts", function () {
-    // Hiding a row is a view operation. The heading, the KPI cell and the
-    // marked cards all read built.clients, and dismissal never touches it.
+    // Hiding is a view operation. The heading, the KPI cell and the marked
+    // cards all read built.clients, and dismissal never touches it.
     const built = triage.buildReportsTriage(
       [client("a"), client("b")],
       [staleSummary(), observationsDueSummary()]
@@ -986,18 +1057,16 @@ test.describe("a dismissed row is hidden, counted and restorable", function () {
   });
 
   test.it("keeps the stored list bounded", function () {
-    // It is written on every dismissal and never expires by itself; an
-    // unbounded list would grow with every changed fingerprint forever.
-    for (let i = 0; i < 200; i++) {
-      triage.dismissTriageGroup({ kind: "totals_stale", items: [{ slug: "c" + i }] });
+    // Written on every dismissal, expired by nothing; and now one entry per
+    // MESSAGE rather than per row, so it fills faster than it used to.
+    for (let i = 0; i < 400; i++) {
+      triage.dismissTriageItem({ kind: "totals_stale", slug: "c" + i });
     }
     const stored = JSON.parse(store["mureo.reports.triage.dismissed"]);
     assert.ok(stored.length <= triage.REPORTS_TRIAGE_DISMISS_CAP, stored.length);
     // The most recent dismissal survives the trim.
     assert.ok(
-      stored.indexOf(
-        triage.triageGroupKey({ kind: "totals_stale", items: [{ slug: "c199" }] })
-      ) !== -1
+      stored.indexOf(triage.triageItemKey({ kind: "totals_stale", slug: "c399" })) !== -1
     );
   });
 });

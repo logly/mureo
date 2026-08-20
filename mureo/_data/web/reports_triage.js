@@ -122,11 +122,13 @@
   // would look far too much like the finding having been dealt with.
   //
   // The list is written on every dismissal and nothing expires it, so it is
-  // capped: a fingerprint changes whenever the row's content does (see
-  // triageGroupKey), which means a long-lived install would otherwise
-  // accumulate one dead key per day per finding.
+  // capped: a fingerprint changes whenever the message's content does (see
+  // triageItemKey), which means a long-lived install would otherwise
+  // accumulate one dead key per day per finding. One entry per MESSAGE
+  // rather than per row, so it fills faster than the row-level list did —
+  // hence the larger cap.
   const REPORTS_TRIAGE_DISMISS_KEY = "mureo.reports.triage.dismissed";
-  const REPORTS_TRIAGE_DISMISS_CAP = 100;
+  const REPORTS_TRIAGE_DISMISS_CAP = 300;
 
   // How many rows the list opens with.
   //
@@ -610,15 +612,18 @@
     return who + "\u0002" + what;
   }
 
-  /** The identity a dismissed row is remembered under. */
-  function triageGroupKey(group) {
-    if (!group || typeof group !== "object") return "";
-    const items = Array.isArray(group.items) ? group.items : [];
-    return (
-      String(group.kind || "") +
-      "\u0000" +
-      items.map(triageItemFingerprint).join("\u0001")
-    );
+  /**
+   * The identity ONE MESSAGE is remembered under.
+   *
+   * Per message, not per row. The rows are grouped by kind and one of them
+   * can cover six clients; closing "unknown key" as a category would take
+   * five findings the operator never read with it. The row-level control
+   * still exists, and it is defined as this one applied to each message —
+   * the only reading that keeps the two consistent.
+   */
+  function triageItemKey(row) {
+    if (!row || typeof row !== "object") return "";
+    return String(row.kind || "") + "\u0000" + triageItemFingerprint(row);
   }
 
   // The dismissed keys, or [] on ANY problem (storage disabled, corrupt
@@ -650,9 +655,9 @@
     }
   }
 
-  /** Remember one row as dismissed. Never throws. */
-  function dismissTriageGroup(group) {
-    const key = triageGroupKey(group);
+  /** Remember one message as dismissed. Never throws. */
+  function dismissTriageItem(row) {
+    const key = triageItemKey(row);
     if (!key) return;
     const keys = readDismissedTriage().filter(function (k) {
       return k !== key;
@@ -661,18 +666,51 @@
     writeDismissedTriage(keys);
   }
 
+  /** Close a whole row: every message on it, one at a time. */
+  function dismissTriageGroup(group) {
+    const items = group && Array.isArray(group.items) ? group.items : [];
+    items.forEach(dismissTriageItem);
+  }
+
   /** Bring every hidden row back. */
   function restoreTriageDismissals() {
     writeDismissedTriage([]);
   }
 
+  // One group rebuilt around the messages that survived a dismissal. The
+  // clients are recomputed from those messages and not carried over, so the
+  // row's own count and the names it lists shrink with it: a row that said
+  // "unknown key — six clients" says "two" once four of them are closed.
+  function regroup(group, items) {
+    const clients = [];
+    items.forEach(function (row) {
+      const known = clients.some(function (c) {
+        return c.index === row.index;
+      });
+      if (!known) clients.push({ index: row.index, slug: row.slug, name: row.name });
+    });
+    return {
+      kind: group.kind,
+      rank: group.rank,
+      severity: group.severity,
+      items: items,
+      clients: clients,
+    };
+  }
+
   /**
-   * Split grouped rows into the ones to render and the ones to count as
-   * hidden.
+   * Grouped rows with the dismissed MESSAGES taken out.
    *
-   * `hidden` is returned rather than dropped because the count has to reach
-   * the screen: a dismissal that left no trace would be a finding removed in
-   * silence, which is the failure mode this whole layer was built against.
+   * Returns `{visible, hiddenCount}`. A row whose every message is closed is
+   * not rendered at all; a row with some of them closed is rendered smaller,
+   * naming only the clients it still covers.
+   *
+   * `hiddenCount` counts MESSAGES, and it is returned rather than dropped
+   * because it has to reach the screen: a dismissal that left no trace would
+   * be a finding removed in silence, which is the failure mode this whole
+   * layer was built against. Counting rows would report "1" for six findings
+   * nobody can see.
+   *
    * Nothing here touches `built.clients` — the heading's count, the KPI cell
    * and the grid's marks stay true whatever is closed.
    */
@@ -680,12 +718,16 @@
     const rows = Array.isArray(groups) ? groups : [];
     const dismissed = readDismissedTriage();
     const visible = [];
-    const hidden = [];
+    let hiddenCount = 0;
     rows.forEach(function (group) {
-      if (dismissed.indexOf(triageGroupKey(group)) === -1) visible.push(group);
-      else hidden.push(group);
+      const items = group && Array.isArray(group.items) ? group.items : [];
+      const kept = items.filter(function (row) {
+        return dismissed.indexOf(triageItemKey(row)) === -1;
+      });
+      hiddenCount += items.length - kept.length;
+      if (kept.length) visible.push(regroup(group, kept));
     });
-    return { visible: visible, hidden: hidden };
+    return { visible: visible, hiddenCount: hiddenCount };
   }
 
   // What to RUN about this item, as one localized sentence.
@@ -714,8 +756,9 @@
     triageClientBadges: triageClientBadges,
     groupReportsTriage: groupReportsTriage,
     triageItemFingerprint: triageItemFingerprint,
-    triageGroupKey: triageGroupKey,
+    triageItemKey: triageItemKey,
     readDismissedTriage: readDismissedTriage,
+    dismissTriageItem: dismissTriageItem,
     dismissTriageGroup: dismissTriageGroup,
     restoreTriageDismissals: restoreTriageDismissals,
     partitionTriageGroups: partitionTriageGroups,

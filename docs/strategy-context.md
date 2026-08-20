@@ -844,13 +844,17 @@ cards all read one list, and that list is over every finding.
   first. It opens short again every time you arrive.
 - **A row is one line.** The sentence is clipped to it (the full text is on
   the row's `title`, and every item's full text is one click away).
-- **A row can be closed, and closing it resolves nothing.** The ✕ hides a
-  row in this browser. While anything is hidden the panel says how many, says
-  in words that the conditions are still true and still counted, and offers
-  *Show them again*. A dismissal is keyed to a fingerprint of what the row
-  SAID — the age of a stale figure in days, the reason a collection gave, the
-  keys in a conflict, the clients covered — so a row whose content has
-  changed is a different row and comes back on its own. It is stored in
+- **A message can be closed, and closing it resolves nothing.** Expand a row
+  and every message on it carries its own ✕; the row's ✕ is the same thing
+  applied to all of them. Closing one shrinks the row — its count and the
+  clients it names — and the row goes when its last message does. While
+  anything is hidden the panel says how many MESSAGES (counting rows would
+  report "1" for six findings nobody can see), says in words that the
+  conditions are still true and still counted, and offers *Show them again*.
+  A dismissal is keyed to a fingerprint of what that message SAID — the age
+  of a stale figure in days, the reason a collection gave, the keys in a
+  conflict, the client it belongs to — so a message whose content has changed
+  is a different message and comes back on its own. It is stored in
   `localStorage`, capped, and a browser that cannot read it hides nothing.
 
 The client cards below carry the same findings as short **badges** — "Figures
@@ -976,9 +980,24 @@ make the same one at one line.
 
 #### The shape of the page
 
-The index is two columns above 960px: the alerts and the client grid they
-triage in the main column, and — in a 340px rail beside it — what mureo did
-today, then where the roster's money went. Below 960px it stacks. Stacking every section full width at every
+The dashboard's frame is one width for every left-nav item, and it is the
+width the widest screen needs: at the old 1180px the Reports card column
+fitted two cards abreast, so a 27-client roster was fourteen rows of
+scrolling. It is `min(1680px, 96vw)` now — three cards abreast at 1440px and
+four at 1920px — and the content follows it: lists, rows and tables take the
+width they are given. The exceptions are the two things that stretching
+actually breaks. A single-line field is not better at 1600px, so the fields
+flow side by side instead, as many across as fit — the freed space is used
+rather than left empty beside a narrow column. And a table whose two columns
+exist to ASSOCIATE a name with a value (About's package/version list) keeps
+the width its content needs: stretched, "mureo" and "0.12.0" end up half a
+metre apart and the table stops doing the only thing it is for. The test is
+whether stretching breaks the association, not whether the table is small —
+BYOD's platform / mode / detail table keeps the full width.
+
+The index itself is two columns above 960px: the alerts and the client grid
+they triage in the main column, and — in a 340px rail beside it — what mureo
+did today, then where the roster's money went. Below 960px it stacks. Stacking every section full width at every
 width was two screens of scrolling before the operator had read anything,
 which is what the rail, the grouped alert rows, the collapsed list and the
 slimmer cards are all for.

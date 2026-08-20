@@ -367,17 +367,23 @@ def test_the_rest_of_the_list_is_one_click_away_and_never_zero() -> None:
 
 @pytest.mark.unit
 def test_closing_an_alert_is_never_silent() -> None:
-    """The one thing the ✕ may not do. Hiding a row does not resolve the
-    condition behind it, and a finding that left NO trace when it was closed
-    is the failure mode this whole layer was built against (#636, #638). So
-    while anything is hidden: the count is on screen, the words say hiding
-    resolved nothing, and one button brings them all back."""
+    """The one thing the ✕ may not do. Hiding does not resolve the condition
+    behind it, and a finding that left NO trace when it was closed is the
+    failure mode this whole layer was built against (#636, #638). So while
+    anything is hidden: the count is on screen, the words say hiding resolved
+    nothing, and one button brings them all back.
+
+    The count is of MESSAGES. The rows group by kind and one can cover six
+    clients, so counting rows would report "1" for six findings nobody can
+    see — see ``tests/js/reports_dismiss_interaction.test.js``, which closes
+    them one at a time and reads the line."""
     js = _read("dashboard.js")
     row = _function_body(js, "function buildTriageRow(")
+    assert "dismissTriageItem(item)" in row, "a message has no control of its own"
     assert "dismissTriageGroup(group)" in row
     assert "reports-triage-dismiss" in row
     hidden = _function_body(js, "function renderTriageDismissed(")
-    assert "box.hidden = !hidden.length" in hidden
+    assert "box.hidden = !hiddenCount" in hidden
     assert "dashboard.reports_triage_hidden_title" in hidden
     assert "dashboard.reports_triage_hidden_note" in hidden
     assert "restoreTriageDismissals()" in hidden
@@ -399,6 +405,7 @@ def test_the_hidden_note_says_the_condition_is_still_true() -> None:
         "dashboard.reports_triage_hidden_note",
         "dashboard.reports_triage_restore",
         "dashboard.reports_triage_dismiss",
+        "dashboard.reports_triage_dismiss_group",
         "dashboard.reports_triage_client_separator",
         "dashboard.reports_triage_tag_stale_aged",
     ):
@@ -408,16 +415,24 @@ def test_the_hidden_note_says_the_condition_is_still_true() -> None:
 
 
 @pytest.mark.unit
-def test_a_dismissal_is_keyed_to_what_the_row_said() -> None:
-    """Hiding must not outlive the row's content: a stale figure that has
+def test_a_dismissal_is_keyed_to_what_the_message_said() -> None:
+    """Hiding must not outlive the message's content: a stale figure that has
     aged another eighteen days is a different, worse fact and comes back on
     its own. ``tests/js/reports_triage.test.js`` executes the fingerprint;
-    this pins that it is a fingerprint and not a kind name."""
+    this pins that it is a fingerprint of ONE MESSAGE and not of a kind.
+
+    Per message, because the rows group by kind: closing "unknown key" as a
+    category would take five findings the operator never read with it."""
     triage = _read("reports_triage.js")
     assert "function triageItemFingerprint(" in triage
-    assert "function triageGroupKey(" in triage
-    body = _function_body(triage, "function triageGroupKey(")
-    assert "items.map(triageItemFingerprint)" in body
+    assert "function triageItemKey(" in triage
+    assert "function triageGroupKey(" not in triage, "dismissal is per row again"
+    body = _function_body(triage, "function triageItemKey(")
+    assert "triageItemFingerprint(row)" in body
+    # The row-level control is the message-level one applied to each message,
+    # so the two cannot mean different things.
+    group = _function_body(triage, "function dismissTriageGroup(")
+    assert "items.forEach(dismissTriageItem)" in group
     # Storage that cannot be read hides NOTHING — the other direction would
     # silence the layer on a browser with storage disabled.
     read = _function_body(triage, "function readDismissedTriage(")
