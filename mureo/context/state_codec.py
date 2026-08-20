@@ -142,6 +142,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "bidding_strategy_type",
                 "bidding_details",
                 "daily_budget",
+                "monthly_budget",
                 "device_targeting",
                 "campaign_goal",
                 "notes",
@@ -500,6 +501,7 @@ def _parse_campaign(c: dict[str, Any], *, strict: bool = True) -> CampaignSnapsh
         bidding_strategy_type=c.get("bidding_strategy_type"),
         bidding_details=c.get("bidding_details"),
         daily_budget=c.get("daily_budget"),
+        monthly_budget=c.get("monthly_budget"),
         device_targeting=device_targeting,
         campaign_goal=c.get("campaign_goal"),
         notes=c.get("notes"),
@@ -643,6 +645,11 @@ def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
         "campaign_goal": c.campaign_goal,
         "notes": c.notes,
     }
+    # The campaign's own monthly budget (#656): emit only where the platform
+    # has that concept and it was read, so a per-day campaign stays
+    # byte-stable and an absent figure is never written as a 0.
+    if c.monthly_budget is not None:
+        result["monthly_budget"] = c.monthly_budget
     # Optional metrics: emit only when present so old STATE.json files don't
     # gain a new key (no diff churn / bloat).
     if c.metrics is not None:

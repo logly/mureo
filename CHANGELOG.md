@@ -2,6 +2,63 @@
 
 ### Added
 
+- **mureo can read the monthly budget the platforms are already configured
+  with** (#656). #652 gave code a way to read the monthly target an operator
+  wrote into `## Custom: Monthly Budget`, which closed the reading gap and
+  left the figure something a human types — once per client, and again
+  whenever it changes. For an operator running 27 clients that is 27
+  hand-entered numbers kept current by hand, while the platforms mureo
+  already syncs hold budget figures of their own.
+
+  So `resolve_monthly_budget` grows a second rung, between the two it had.
+  Where a platform's campaigns carry a monthly budget natively, their sum is
+  what that platform is **configured** to spend: a real figure, not a
+  derivation. Every existing rung is untouched — the operator's section still
+  wins, the `max_total_daily_budget` ceiling is still an implied cap, "not
+  set" is still first class — and the pin that holds the reader and
+  `/budget-pacing` to one answer now covers four rungs instead of three.
+
+  **The configured sum is not the agreed one, and gets its own `source`.**
+  `is_derived` distinguishes "derived from a ceiling" from "stated"; a summed
+  platform figure is neither, so it comes back as
+  `source == "platform_configured_sum"` with `is_platform_configured` set. A
+  configured ¥300,000 routinely sits above a ¥200,000 agreement — the
+  difference between those two numbers is worth showing, and collapsing them
+  is how a dashboard ends up asserting an agreement nobody made.
+
+  **An incomplete set is not a smaller budget.** If mureo holds three of a
+  client's five campaigns, summing three is not the client's budget. A
+  platform is therefore not summed when a campaign it holds has no readable
+  figure, when it holds no campaigns at all, or when its last collection
+  failed (`not_collected`, #638) — and one such platform withholds the
+  *whole* cross-platform total rather than quietly dropping its own part. The
+  keys come back in `incomplete_platforms`, riding along whatever answer was
+  used instead, so a caller says a platform figure exists and was not
+  trustworthy rather than rendering a confident number computed from part of
+  an account. This is the rule #638 established for stale rollups, applied to
+  a total.
+
+  **Two routes, because one cannot carry both.** The figure is data:
+  `CampaignSnapshot.monthly_budget`, optional and `None` by default, written
+  beside `daily_budget` and emitted only when set, so a STATE.json written
+  before it existed parses unchanged and gains no key. No *total* is stored
+  anywhere — the sum is computed on read, because a cached total is stale the
+  moment one campaign's budget changes, which is the defect shape of
+  #631 / #636 / #638 / #647.
+
+  The concept is declared:
+  `mureo.context.platform_monthly_budget.register_monthly_budget_support`,
+  the same import-time registry pattern as the learning rules and platform
+  models, carrying the same `Evidence` record and the same first-wins rule.
+  It answers a question no campaign row can — whether an absent figure is a
+  gap or a field that platform does not have. Google Ads and Meta campaigns
+  are configured per day, so their absence is not a gap; a platform that has
+  the concept and is missing one figure is an incomplete set. Without the
+  declaration those two absences are the same absence and the rule above
+  could not be enforced at all. mureo core declares no platform of its own,
+  and a wrong declaration cannot invent a figure — every number comes from
+  STATE.json — its only effect is to make mureo refuse a sum.
+
 - **The multi-client Reports view now says which client to open first**
   (#651). The client grid was a flat wall of cards, and everything mureo knew
   about a client that was *wrong* was rendered inside that client's own card,

@@ -73,6 +73,22 @@ class CampaignSnapshot:
     bidding_strategy_type: str | None = None
     bidding_details: dict[str, Any] | None = None
     daily_budget: float | None = None
+    # The campaign's own MONTHLY budget, where the platform has that concept
+    # (#656) — a figure some platforms accept alongside the daily one. It sits
+    # here, beside ``daily_budget``, because it is part of what the campaign is
+    # configured with, and a campaign's configuration has one home.
+    #
+    # ``None`` is "this platform has no such field, or mureo has not read it",
+    # which is why the platform-configured monthly total
+    # (:func:`mureo.context.platform_monthly_budget.
+    # platform_configured_monthly_budget`) is computed on READ and stored
+    # nowhere: a cached sum is stale the moment one campaign's budget changes.
+    # Whether an absent value is a gap is not decidable from this field alone —
+    # only a platform that declared the concept can be missing one.
+    #
+    # Optional with a None default so old STATE.json files parse unchanged and
+    # gain no new key on the next write.
+    monthly_budget: float | None = None
     device_targeting: tuple[dict[str, Any], ...] | None = None
     campaign_goal: str | None = None
     notes: str | None = None

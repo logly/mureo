@@ -7,6 +7,9 @@ read as one:
 - "not set" is a first-class answer, distinguishable from a target of ``0``;
 - a figure derived from the ``## Guardrails`` daily ceiling is labelled as
   derived, never handed back as if the operator had written it;
+- a sum of what the platforms are CONFIGURED to spend (#656) is labelled as
+  neither of those, and is withheld entirely when the campaign set it would
+  be computed from is incomplete;
 - a malformed section degrades to "not set" instead of raising out of a read
   path.
 
@@ -21,20 +24,29 @@ from __future__ import annotations
 
 import re
 import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
+from mureo.context.models import CampaignSnapshot, PlatformState
 from mureo.context.monthly_budget import (
     MONTHLY_BUDGET_HEADING,
     SOURCE_IMPLIED_DAILY_CEILING,
     SOURCE_NOT_SET,
+    SOURCE_PLATFORM_CONFIGURED_SUM,
     SOURCE_STRATEGY_SECTION,
     MonthlyBudget,
     monthly_budget_from_strategy_text,
     parse_monthly_budget,
     resolve_monthly_budget,
 )
+from mureo.context.platform_monthly_budget import (
+    MonthlyBudgetSupport,
+    register_monthly_budget_support,
+    reset_monthly_budget_support,
+)
+from mureo.policy.learning_rules import Evidence
 
 pytestmark = pytest.mark.unit
 
@@ -242,12 +254,26 @@ class TestSkillPrecedenceAgreement:
         assert (
             "This wins; it is the intended monthly spend, not a safety ceiling" in text
         )
-        # 2. the daily ceiling is an implied cap, used only in its absence.
+        # 2. per-campaign monthly budgets, summed, where the platform has the
+        #    concept — configured, never the agreed target, and only whole.
+        assert "Sum of the per-campaign monthly budgets" in text
+        assert "what the platforms are **configured** to spend" in text
+        assert "never as the agreed target" in text
+        assert "Only sum a complete set" in text
+        # 3. the daily ceiling is an implied cap, used only in its absence.
         assert "max_total_daily_budget" in text
         assert "Multiply by the number of days in the current calendar month" in text
         assert "prefer it only when no explicit Monthly Budget exists" in text
-        # 3. otherwise ask the operator — the reader's "not set".
+        # 4. otherwise ask the operator — the reader's "not set".
         assert "ask the operator" in text
+
+    def test_skill_states_the_rung_the_reader_puts_the_sum_at(self) -> None:
+        """The order matters as much as the rungs: 1 beats 2 beats 3."""
+        text = self._skill_text()
+        section = text.index("This wins; it is the intended monthly spend")
+        summed = text.index("Sum of the per-campaign monthly budgets")
+        ceiling = text.index("Multiply by the number of days in the current")
+        assert section < summed < ceiling
 
     def test_reader_parses_the_section_the_skill_persists(self) -> None:
         """The skill's own persist example must round-trip through the reader."""
@@ -280,3 +306,114 @@ class TestMonthlyBudgetDefaults:
         assert not budget.is_derived
         assert budget.total is None
         assert dict(budget.per_platform) == {}
+
+    def test_default_instance_reports_no_incomplete_platform(self) -> None:
+        """The #656 field is additive: an existing caller sees no change."""
+        assert MonthlyBudget().incomplete_platforms == ()
+        assert not MonthlyBudget().is_platform_configured
+
+    def test_a_strategy_target_is_not_platform_configured(self) -> None:
+        budget = parse_monthly_budget("- total: 300000\n")
+        assert not budget.is_platform_configured
+        assert budget.incomplete_platforms == ()
+
+
+class TestResolveWithPlatformConfiguredSum:
+    """Rung 2 of the precedence (#656): what the platforms are set to spend."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_registry(self) -> Iterator[None]:
+        reset_monthly_budget_support()
+        register_monthly_budget_support(
+            MonthlyBudgetSupport(
+                platform="acme_ads",
+                evidence=Evidence(
+                    source="https://example.invalid/acme/docs/campaigns",
+                    retrieved="2026-08-19",
+                    quote=(
+                        "A campaign body accepts monthly_budget alongside "
+                        "daily_budget."
+                    ),
+                ),
+            )
+        )
+        yield
+        reset_monthly_budget_support()
+
+    @staticmethod
+    def _platforms(
+        *monthly_budgets: float | None,
+    ) -> dict[str, PlatformState]:
+        return {
+            "acme_ads": PlatformState(
+                account_id="123",
+                campaigns=tuple(
+                    CampaignSnapshot(
+                        campaign_id=str(index),
+                        campaign_name=f"Campaign {index}",
+                        status="ENABLED",
+                        monthly_budget=amount,
+                    )
+                    for index, amount in enumerate(monthly_budgets)
+                ),
+            )
+        }
+
+    def test_the_operators_section_still_wins(self) -> None:
+        budget = resolve_monthly_budget(
+            _STRATEGY_WITH_TARGET,
+            days_in_month=31,
+            platforms=self._platforms(500000.0),
+        )
+        assert budget.total == 300000
+        assert budget.source == SOURCE_STRATEGY_SECTION
+        assert budget.incomplete_platforms == ()
+
+    def test_the_sum_beats_the_implied_daily_ceiling(self) -> None:
+        budget = resolve_monthly_budget(
+            _STRATEGY_CEILING_ONLY,
+            days_in_month=30,
+            platforms=self._platforms(120000.0, 80000.0),
+        )
+        assert budget.total == 200000
+        assert budget.source == SOURCE_PLATFORM_CONFIGURED_SUM
+        assert budget.is_platform_configured
+        assert not budget.is_derived
+        assert budget.total != 20000 * 30
+
+    def test_omitting_platforms_keeps_the_previous_answer(self) -> None:
+        """Back-compat: an existing two-argument call is unchanged."""
+        budget = resolve_monthly_budget(_STRATEGY_CEILING_ONLY, days_in_month=30)
+        assert budget.source == SOURCE_IMPLIED_DAILY_CEILING
+        assert budget.total == 600000
+
+    def test_an_incomplete_set_falls_through_and_says_so(self) -> None:
+        budget = resolve_monthly_budget(
+            _STRATEGY_CEILING_ONLY,
+            days_in_month=30,
+            platforms=self._platforms(120000.0, None),
+        )
+        assert budget.total == 600000
+        assert budget.source == SOURCE_IMPLIED_DAILY_CEILING
+        assert budget.is_derived
+        assert budget.incomplete_platforms == ("acme_ads",)
+
+    def test_an_incomplete_set_never_becomes_a_smaller_budget(self) -> None:
+        budget = resolve_monthly_budget(
+            "# Strategy\n\n## Persona\nHi\n",
+            days_in_month=30,
+            platforms=self._platforms(120000.0, None),
+        )
+        assert budget.total is None
+        assert budget.total != 120000
+        assert not budget.is_set
+        assert budget.source == SOURCE_NOT_SET
+        assert budget.incomplete_platforms == ("acme_ads",)
+
+    def test_a_complete_sum_carries_no_incompleteness_note(self) -> None:
+        budget = resolve_monthly_budget(
+            "# Strategy\n\n## Persona\nHi\n",
+            days_in_month=30,
+            platforms=self._platforms(120000.0),
+        )
+        assert budget.incomplete_platforms == ()

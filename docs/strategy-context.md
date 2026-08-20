@@ -106,9 +106,13 @@ from mureo.context import resolve_monthly_budget
 
 # days_in_month belongs to the caller: pacing's "today" comes from
 # server_now, never from this machine's clock.
-budget = resolve_monthly_budget(strategy_text, days_in_month=31)
+budget = resolve_monthly_budget(
+    strategy_text, days_in_month=31, platforms=state.platforms
+)
 if not budget.is_set:
     ...  # no target — ask the operator; do NOT render 0, 100%, or "on pace"
+elif budget.is_platform_configured:
+    ...  # what the platforms are SET to spend; never call it the agreed target
 elif budget.is_derived:
     ...  # a ceiling stretched over a month; label it as an implied cap
 ```
@@ -116,12 +120,45 @@ elif budget.is_derived:
 The precedence is the skill's, matched rather than replaced:
 
 1. **`## Custom: Monthly Budget`** wins — `source == "strategy_section"`. A `total: 0` is a real target ("spend nothing"), not an absence.
-2. Otherwise **`## Guardrails` → `max_total_daily_budget` × days in month**, returned with `is_derived` set and `source == "implied_daily_ceiling"`. It is a **cap, not a plan**: show it as derived wherever it appears.
-3. Otherwise **not set** — `total is None`, `is_set` false. Ask the operator.
+2. Otherwise the **sum of the per-campaign monthly budgets** held for platforms that declared they have that concept (#656), returned with `is_platform_configured` set and `source == "platform_configured_sum"`. It is what the platforms are **configured** to spend — a real figure, but not an agreement. `per_platform` carries each platform's subtotal.
+3. Otherwise **`## Guardrails` → `max_total_daily_budget` × days in month**, returned with `is_derived` set and `source == "implied_daily_ceiling"`. It is a **cap, not a plan**: show it as derived wherever it appears.
+4. Otherwise **not set** — `total is None`, `is_set` false. Ask the operator.
+
+Omitting `platforms` skips rung 2 entirely and answers exactly what the two-argument call answered before it existed.
 
 A missing, empty or malformed section degrades to "not set" rather than raising; an unreadable sub-target bullet drops only itself.
 
-**This is not a guardrail.** `Guardrails` carries ceilings that refuse an operation; a monthly target is the intended spend, where underspending is a problem too and nothing should be blocked for approaching it. Hence a separate type (`MonthlyBudget`) and separate functions (`parse_monthly_budget`, `monthly_budget_from_strategy_text`, `resolve_monthly_budget`). The figure lives in STRATEGY.md only — it is deliberately not copied into STATE.json.
+### Where the platform figure comes from (#656)
+
+Rung 2 has two halves, because one route cannot carry both:
+
+- **The figure is data.** `CampaignSnapshot.monthly_budget` — optional, `None` by default, emitted only when set, so a STATE.json written before it existed parses unchanged and gains no key. A collector writes it through `mureo_state_upsert_campaign` beside `daily_budget`. **No total is stored anywhere**: the sum is computed on read, because a cached total is stale the moment one campaign's budget changes.
+- **The concept is declared.** A provider, bridge or plugin registers it, and mureo core declares no platform of its own:
+
+```python
+from mureo.context.platform_monthly_budget import (
+    MonthlyBudgetSupport,
+    register_monthly_budget_support,
+)
+from mureo.policy.learning_rules import Evidence
+
+register_monthly_budget_support(
+    MonthlyBudgetSupport(
+        platform="acme_ads",  # the STATE.json platforms key this provider writes
+        evidence=Evidence(
+            source="https://developers.acme.example/reference/campaigns",
+            retrieved="2026-08-19",
+            quote="A campaign body accepts monthly_budget alongside daily_budget.",
+        ),
+    )
+)
+```
+
+The declaration answers a question no campaign row can: whether an absent figure is a **gap** or a field that platform simply does not have. Google Ads and Meta campaigns are configured per day, so they contribute nothing here rather than a multiplied-out daily figure.
+
+**An incomplete set is not a smaller budget.** A platform is not summed when a campaign it holds has no readable monthly budget, when it holds no campaigns at all, or when its last collection failed (`not_collected`, #638). One such platform withholds the *whole* total; the keys come back in `incomplete_platforms`, which rides along whatever answer is used instead, so a caller states the gap rather than rendering a confident figure computed from part of the account.
+
+**This is not a guardrail.** `Guardrails` carries ceilings that refuse an operation; a monthly target is the intended spend, where underspending is a problem too and nothing should be blocked for approaching it. Hence a separate type (`MonthlyBudget`) and separate functions (`parse_monthly_budget`, `monthly_budget_from_strategy_text`, `resolve_monthly_budget`). The agreed figure lives in STRATEGY.md only — it is deliberately not copied into STATE.json — and the platform-configured sum lives nowhere at all, being computed from the campaign snapshots on every read.
 
 ### Python API
 

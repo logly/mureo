@@ -162,6 +162,13 @@ mureo/
 │   │                     #   ceiling. "Not set" is a first-class answer (never 0), a total
 │   │                     #   derived from `max_total_daily_budget` says so, and the figure
 │   │                     #   stays in STRATEGY.md — never copied into STATE.json
+│   ├── platform_monthly_budget.py # Rung 2 of that precedence (#656): the sum of the
+│   │                     #   per-campaign monthly budgets, for platforms that DECLARED they
+│   │                     #   have the concept (`register_monthly_budget_support`; core
+│   │                     #   declares none). A third `source`, so a configured sum is never
+│   │                     #   shown as an agreed target. No total is stored — it is computed
+│   │                     #   on read — and an incomplete or uncollected campaign set is
+│   │                     #   withheld with `incomplete_platforms` rather than summed short
 │   ├── platform_guards.py # Write-time platform-key guards (#534/#609) — the one "is this key
 │   │                      #   real?" answer every other surface asks, including the read-side
 │   │                      #   label path (`installed_platform_names`, shared since #631)
