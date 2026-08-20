@@ -597,6 +597,59 @@ The write goes through `write_state_file`, the whole-document funnel the
 create guard deliberately does not police, so a document that is *already*
 duplicated stays repairable.
 
+#### The metrics-window vocabulary
+
+mureo reports on exactly three windows — `YESTERDAY`, `LAST_7_DAYS`,
+`LAST_30_DAYS` — and the rule points in opposite directions on the two sides
+of the file, deliberately (#659).
+
+**Writing is strict.** `set_platform_metrics` (and the
+`mureo_state_platform_metrics_set` tool over it) refuses a `metrics_period`
+or a `periods` key outside that set, before the document is touched, and the
+tool schema states the set as an `enum` rather than an example. A write that
+lands where no default view looks is not a successful write, it is a silent
+one: the reported failure had a daily check report *All persistence complete*
+truthfully while the card read stale for three days, because the figures had
+gone into `SINCE_LAUNCH_17D`. Both statements were true and nothing named the
+contradiction — refusing puts it in front of the caller at the one moment the
+figures are still in hand.
+
+**Nothing is normalised.** `LAST_8_DAYS` is refused, not mapped onto
+`LAST_7_DAYS`: that would present eight days of figures as a seven-day
+answer, the same mislabelling the staleness rule below exists to prevent.
+
+**Where the rule is stated matters more than the refusal.** The MCP
+dispatcher schema-validates before any handler runs, so an agent's refusal is
+the JSON-Schema one (`'SINCE_LAUNCH_17D' is not one of [...]`) and mureo's own
+message is never reached on that path. The allowed values survive it; the
+reason only does if it was already in the schema the model read. So the rule
+text lives in the `metrics_period` / `periods` descriptions and the raised
+`ValueError` appends the same constant — one explanation, shown on whichever
+path a caller takes.
+
+**What is not guarded.** The refusal is on the targeted writer
+(`set_platform_metrics`, and the MCP tool over it). A Code-mode agent writing
+STATE.json directly, and every whole-document path (`write_state_file`,
+imports, restores, a digest sync), are untouched — the same split the
+platform-key guard draws, and for the same reason: a document that arrived
+from elsewhere has no notion of which entry is new, and refusing it would
+strand an operator holding state they cannot repair. For those paths the
+vocabulary is documentation, not enforcement.
+
+**Reading is tolerant.** Labels already on disk were written before the guard
+existed. They are real figures, correctly collected, under a name no view
+expects, so `_available_periods` still surfaces them and their totals still
+resolve — refusing to read them would delete data mureo did collect in order
+to tidy a vocabulary. They are not quietly kept either: the report summary
+lists them in `non_canonical_periods` and the dashboard marks their toggle
+button as a window mureo does not define, so an operator can see what
+accumulated and decide what to do about it.
+
+The window's length is part of the definition, not decoration — the staleness
+threshold below is derived from it. That is why a fourth window is a
+deliberate decision with a defined length rather than something a caller can
+create by naming it.
+
 #### Per-platform freshness
 
 `fetched_at` (the metric-vocabulary key, see *Performance Metrics* in

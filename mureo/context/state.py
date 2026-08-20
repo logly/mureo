@@ -577,6 +577,21 @@ def set_platform_metrics(
     re-stamped. A value the caller did supply is relayed verbatim. See
     :func:`_stamp_fetched_at` (#637).
 
+    **The window vocabulary is closed (#659).** ``metrics_period`` and every
+    ``periods`` key must be one of
+    :data:`~mureo.core.metrics_windows.CANONICAL_METRICS_WINDOWS`; anything
+    else is REFUSED before the file is touched, and refused as spelled — a
+    ``LAST_8_DAYS`` rollup is never re-filed under ``LAST_7_DAYS``, because
+    that would present eight days of figures as a seven-day answer. A window
+    outside the set lands where no default view looks, so accepting it
+    produces a write that reports success while the dashboard truthfully
+    keeps reading stale, with nothing naming the contradiction. Refusing here
+    is the one moment the caller still holds the figures and can re-file
+    them. This is the WRITE half of a deliberate asymmetry: the read side
+    stays tolerant of labels already on disk (see
+    :func:`~mureo.web.reports._available_periods`), which are real figures
+    under an unexpected name.
+
     Re-stamps ``last_synced_at`` and writes back atomically under the state
     lock. Other document sections (root campaigns, action_log, reports) are
     preserved.
@@ -587,14 +602,18 @@ def set_platform_metrics(
             ``"plugin:<dist>"`` / …) — the ``platforms`` dict key.
         account_id: The platform account id, always written onto the entry.
         totals: The single-rollup totals to set (or ``None`` to preserve).
-        metrics_period: The window ``totals`` covers (or ``None`` to preserve).
-        periods: Per-window rollups to merge in (or ``None`` to preserve).
+        metrics_period: The window ``totals`` covers — a canonical window (or
+            ``None`` to preserve).
+        periods: Per-window rollups to merge in, keyed by canonical window
+            (or ``None`` to preserve).
 
     Returns:
         The updated :class:`StateDocument`.
 
     Raises:
-        ValueError: ``platform`` is not a usable platform key, names no
+        ValueError: ``metrics_period`` or a ``periods`` key is not a
+            canonical metrics window (#659), or ``platform`` is not a usable
+            platform key, names no
             platform mureo can resolve (a built-in, an installed plugin's
             platform, or a ``plugin:<dist>:<provider>`` key — checked on
             CREATE only, so an existing entry stays writable), or the write
@@ -602,6 +621,17 @@ def set_platform_metrics(
             holds (see
             :func:`mureo.context.platform_guards.guard_platform_entry_write`).
     """
+    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
+    # ``state_store`` -> this module, so a module-level import would be a
+    # cycle (same reason as ``platform_guards``).
+    from mureo.core.metrics_windows import reject_non_canonical_metrics_window
+
+    # Outside the lock and before the file is opened: a rejected write must
+    # leave the document exactly as it was, including its ``last_synced_at``.
+    if metrics_period is not None:
+        reject_non_canonical_metrics_window(metrics_period, field="metrics_period")
+    for window in periods or {}:
+        reject_non_canonical_metrics_window(window, field="periods key")
 
     def _build(doc: StateDocument) -> StateDocument:
         platforms = dict(doc.platforms) if doc.platforms else {}

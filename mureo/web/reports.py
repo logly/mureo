@@ -85,6 +85,10 @@ from mureo.context.platform_accounts import (
 from mureo.context.platform_guards import installed_platform_names
 from mureo.context.state import read_state_file
 from mureo.core import clock
+from mureo.core.metrics_windows import (
+    CANONICAL_METRICS_WINDOWS,
+    is_canonical_metrics_window,
+)
 from mureo.core.platform_keys import (
     BUILTIN_PLATFORM_DISPLAY_NAMES,
     PLUGIN_PLATFORM_PREFIX,
@@ -228,20 +232,18 @@ _OFFICIAL_BRIDGE_DISPLAY_NAMES: dict[str, str] = {
 # day's state is what an operator checks first; ``LAST_30_DAYS`` is the
 # trend window written by sync-state. Windows not listed here sort after
 # these, alphabetically (see :func:`_available_periods`).
-_PERIOD_ORDER: tuple[str, ...] = (
-    "YESTERDAY",
-    "LAST_7_DAYS",
-    "LAST_30_DAYS",
-)
+#
+# The table itself lives in ``mureo.core.metrics_windows`` (#659), for the
+# same reason the display names do: the WRITE guard has to refuse exactly the
+# windows this view cannot render, and ``mureo.context`` cannot import
+# ``mureo.web``. Two copies would be free to drift, and the drift is the bug
+# — a writer accepting a window nothing here reads.
+_PERIOD_ORDER: tuple[str, ...] = tuple(CANONICAL_METRICS_WINDOWS)
 
 # Canonical window → the length of that window in days. The stale threshold
 # is derived from this rather than written down as a per-window magic number,
 # so the rationale below is the only thing to check when a window is added.
-_PERIOD_LENGTH_DAYS: dict[str, int] = {
-    "YESTERDAY": 1,
-    "LAST_7_DAYS": 7,
-    "LAST_30_DAYS": 30,
-}
+_PERIOD_LENGTH_DAYS: dict[str, int] = dict(CANONICAL_METRICS_WINDOWS)
 
 _STALE_GRACE_DAYS = 1
 """Slack added to a window's own length before its figure is called stale.
@@ -410,6 +412,9 @@ def build_report_summary(
       (union over every platform's per-period rollups plus its legacy
       single-rollup window), in canonical order — so the dashboard renders a
       period toggle only for windows it can actually show.
+    - ``non_canonical_periods``: which of those windows are not windows
+      mureo defines (#659) — see :func:`_non_canonical_periods`. Always a
+      list, empty when the document only carries canonical windows.
     - ``last_synced_at``: the document's sync timestamp (or ``None``).
     - ``recent_actions``: the last :data:`_RECENT_ACTIONS_LIMIT` action-log
       entries, each ``{timestamp, action, platform, campaign_id, summary,
@@ -445,6 +450,7 @@ def build_report_summary(
         "client": resolved_client,
         "period": period,
         "periods": _available_periods(doc),
+        "non_canonical_periods": _non_canonical_periods(doc),
         "last_synced_at": doc.last_synced_at if doc is not None else None,
         "platforms": _build_platforms(doc, period),
         "platform_conflicts": _build_platform_conflicts(doc),
@@ -782,18 +788,55 @@ def _available_periods(doc: StateDocument | None) -> list[str]:
     ``metrics_period`` (so a legacy single-rollup window still advertises
     itself). Sorted with :data:`_PERIOD_ORDER` first, unknown windows
     appended alphabetically — gives the dashboard a stable toggle order.
+
+    **This stays tolerant of a non-canonical window, on purpose (#659).**
+    The write path now refuses one (see
+    :func:`~mureo.context.state.set_platform_metrics`), but a window already
+    on disk was written before that guard existed: real figures, correctly
+    collected, filed under a name no view expects. Refusing to READ them
+    would delete data mureo did collect in order to tidy a vocabulary. They
+    are surfaced separately instead — see :func:`_non_canonical_periods` —
+    so an operator can see what accumulated and decide, rather than have the
+    dashboard decide silently in either direction.
     """
     if doc is None or not doc.platforms:
         return []
+    found = _periods_present(doc)
+    known = [p for p in _PERIOD_ORDER if p in found]
+    extra = sorted(p for p in found if p not in _PERIOD_ORDER)
+    return known + extra
+
+
+def _periods_present(doc: StateDocument | None) -> set[str]:
+    """Every window token this document carries, canonical or not."""
+    if doc is None or not doc.platforms:
+        return set()
     found: set[str] = set()
     for state in doc.platforms.values():
         if state.periods:
             found.update(k for k in state.periods if isinstance(k, str) and k)
         if state.metrics_period:
             found.add(state.metrics_period)
-    known = [p for p in _PERIOD_ORDER if p in found]
-    extra = sorted(p for p in found if p not in _PERIOD_ORDER)
-    return known + extra
+    return found
+
+
+def _non_canonical_periods(doc: StateDocument | None) -> list[str]:
+    """Windows on disk that are not windows mureo defines (#659).
+
+    Neither silent option is right. Dropping them from the toggle hides
+    figures mureo really did collect; keeping them unmarked leaves an
+    operator choosing between seven tabs, four of which are one agent's
+    ad-hoc phrasings from one session, with no way to tell which window
+    their reports are keyed to. So the summary NAMES them, and the operator
+    decides.
+
+    Empty (never absent) on a healthy document, like ``platform_conflicts``:
+    "nothing accumulated" and "this mureo cannot tell you" must not be the
+    same payload.
+    """
+    return sorted(
+        p for p in _periods_present(doc) if not is_canonical_metrics_window(p)
+    )
 
 
 def _platform_not_collected(state: PlatformState) -> dict[str, Any] | None:

@@ -86,6 +86,7 @@ const MODULES = [
     global: "MUREO_REPORTS_FORMAT",
     bound: [
       "reportsPeriodLabel",
+      "isCanonicalReportsPeriod",
       "humanizeReportFlag",
       "reportFlagKind",
       "flagSeverityRank",
@@ -96,6 +97,7 @@ const MODULES = [
     ],
     moved: [
       "reportsPeriodLabel",
+      "isCanonicalReportsPeriod",
       "humanizeReportFlag",
       "reportFlagKind",
       "flagSeverityRank",

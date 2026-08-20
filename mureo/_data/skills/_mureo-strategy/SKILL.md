@@ -552,7 +552,21 @@ these exact tokens (they are Google Ads date-range tokens):
 | Token | Window | Written by |
 |-------|--------|------------|
 | `YESTERDAY` | The prior day | `daily-check` (runs daily) |
+| `LAST_7_DAYS` | Trailing 7 days | — (accepted; no built-in skill writes it) |
 | `LAST_30_DAYS` | Trailing 30 days | `sync-state` |
+
+**These three tokens are the whole vocabulary, and it is closed.**
+`mureo_state_platform_metrics_set` **refuses** any other window — as
+`metrics_period` or as a `periods` key — rather than storing it, and it never
+re-files your figures under a neighbouring window: `LAST_8_DAYS` is rejected,
+not rounded to `LAST_7_DAYS`, because eight days of spend is not a seven-day
+answer. If your analysis covers some other span (since launch, month-to-date),
+report it in your reply and in `reports.*`, but do **not** invent a window
+token: nothing reads it, so the write would report success while the dashboard
+truthfully kept showing the canonical numbers as stale — the operator sees a
+run that "worked" and a card that did not move. Windows already stored under a
+non-canonical label stay readable and are listed to the operator, so nothing
+collected is lost.
 
 Write a platform's rollup with the `mureo_state_platform_metrics_set` tool on
 hosts without filesystem access (Desktop / Cowork), or a direct file write in

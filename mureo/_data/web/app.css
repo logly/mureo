@@ -1503,6 +1503,16 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   box-shadow: var(--shadow-sm);
 }
 
+/* A window mureo does not define (#659): an agent's own label, kept because
+   the figures under it are real, marked because it is not a window mureo
+   keeps up to date. Dashed and dimmed — visibly a foreign tab, still
+   clickable. */
+.reports-period-btn.is-adhoc {
+  border: 1px dashed var(--hairline);
+  padding: 3px 11px;
+  opacity: 0.75;
+}
+
 .reports-period-btn:focus-visible {
   outline: 2px solid var(--accent-ring);
   outline-offset: 1px;

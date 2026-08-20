@@ -1864,6 +1864,7 @@
 
   const REPORTS_FORMAT = window.MUREO_REPORTS_FORMAT;
   const reportsPeriodLabel = REPORTS_FORMAT.reportsPeriodLabel;
+  const isCanonicalReportsPeriod = REPORTS_FORMAT.isCanonicalReportsPeriod;
   const humanizeReportFlag = REPORTS_FORMAT.humanizeReportFlag;
   const reportFlagKind = REPORTS_FORMAT.reportFlagKind;
   const flagSeverityRank = REPORTS_FORMAT.flagSeverityRank;
@@ -2911,6 +2912,11 @@
   // when there is a real choice (>= 2 windows); a single-window account has
   // nothing to switch, so the toggle stays hidden. Buttons are recreated on
   // every render, so their click handlers never accumulate.
+  //
+  // A window mureo does not define still gets a button — those are figures
+  // an agent really collected, under a name no view expects (#659) — but it
+  // is marked `is-adhoc` and carries the explanation, so the tab an agent
+  // invented is not mistaken for one mureo keeps up to date.
   function renderReportsPeriodToggle(periods) {
     const wrap = document.querySelector("[data-reports-period]");
     if (!wrap) return;
@@ -2927,12 +2933,23 @@
     wrap.hidden = false;
     list.forEach(function (token) {
       const active = token === reportsPeriod;
+      const adhoc = !isCanonicalReportsPeriod(token);
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "reports-period-btn" + (active ? " is-active" : "");
+      btn.className =
+        "reports-period-btn" +
+        (active ? " is-active" : "") +
+        (adhoc ? " is-adhoc" : "");
       btn.setAttribute("data-period", token);
       btn.setAttribute("aria-pressed", active ? "true" : "false");
       btn.textContent = reportsPeriodLabel(token);
+      if (adhoc) {
+        // Named, not hidden and not silently kept: the operator is told what
+        // this tab is so they can decide what to do with it.
+        const hint = MUREO.t("dashboard.reports_period_adhoc");
+        btn.title = hint;
+        btn.setAttribute("aria-label", token + " — " + hint);
+      }
       btn.addEventListener("click", function () {
         if (token === reportsPeriod) return;
         reportsPeriod = token;

@@ -16,6 +16,10 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import Tool
 
+from mureo.core.metrics_windows import (
+    CANONICAL_METRICS_WINDOWS,
+    METRICS_WINDOW_RULE,
+)
 from mureo.mcp._handlers_mureo_context import (
     handle_outcome_evaluate,
     handle_state_action_log_append,
@@ -31,6 +35,31 @@ from mureo.mcp._handlers_mureo_context import (
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
+
+
+# The windows a metrics rollup may be filed under (#659). Stated as an
+# allow-list, not an example: "e.g. ``LAST_30_DAYS``" gave an agent no way to
+# know the vocabulary is CLOSED, so one analysing "the last 8 days" wrote
+# ``LAST_8_DAYS`` — a bucket no default view reads. The write then succeeded,
+# the agent truthfully reported success, and the dashboard truthfully kept
+# reading stale, with nothing naming the contradiction.
+#
+# The ``enum`` is the load-bearing half and it fires EARLY: the dispatcher
+# schema-validates before any handler runs, so an agent sending
+# ``SINCE_LAUNCH_17D`` sees ``'SINCE_LAUNCH_17D' is not one of [...]`` and
+# never reaches mureo's own message. The allowed values survive that path;
+# the REASON only does if it is already in the description the model read
+# before calling — which is why ``METRICS_WINDOW_RULE`` is pasted below
+# rather than restated in the raiser alone.
+_METRICS_WINDOWS: list[str] = list(CANONICAL_METRICS_WINDOWS)
+
+_PERIOD_BUCKET_PROPERTY = {
+    "type": "object",
+    "description": (
+        "Totals-shaped rollup for this window (spend, impressions, clicks, "
+        "conversions, cpa, ctr, result_indicator, fetched_at)."
+    ),
+}
 
 
 _PATH_PROPERTY = {
@@ -535,7 +564,8 @@ TOOLS: list[Tool] = [
             '({"YESTERDAY": {…}, "LAST_30_DAYS": {…}}) for the per-window '
             "rollups the toggle reads. ``periods`` is merged per window key "
             "(a YESTERDAY write keeps a prior LAST_30_DAYS bucket); omitted "
-            "fields preserve their existing value. Every rollup you pass "
+            "fields preserve their existing value. **The window vocabulary "
+            "is closed** — see ``metrics_period``. Every rollup you pass "
             "without a usable ``fetched_at`` — omitted, null or blank — is "
             "stamped with the write time, so the dashboard can state an age "
             'instead of "update time unknown"; pass your own only when the '
@@ -596,17 +626,26 @@ TOOLS: list[Tool] = [
                 },
                 "metrics_period": {
                     "type": "string",
+                    "enum": _METRICS_WINDOWS,
                     "description": (
-                        "The window ``totals`` covers (e.g. ``LAST_30_DAYS``). "
-                        "Omit to preserve the existing value."
+                        "The window ``totals`` covers — the only windows "
+                        "mureo reports on. " + METRICS_WINDOW_RULE + " Omit "
+                        "to preserve the existing value."
                     ),
                 },
                 "periods": {
                     "type": "object",
+                    "properties": {
+                        window: dict(_PERIOD_BUCKET_PROPERTY)
+                        for window in _METRICS_WINDOWS
+                    },
+                    "additionalProperties": False,
                     "description": (
-                        "Per-window rollups keyed by period token "
-                        "(``YESTERDAY`` / ``LAST_30_DAYS`` / …); each value is "
-                        "a totals-shaped object. Merged per key into the "
+                        "Per-window rollups keyed by period token; each value "
+                        "is a totals-shaped object. The keys are the same "
+                        "closed set as ``metrics_period``, under the same "
+                        "rule: any other key is refused, never rounded onto a "
+                        "neighbouring window. Merged per key into the "
                         "existing map. Omit to preserve the existing map. "
                         "Each bucket you pass without a ``fetched_at`` is "
                         "stamped with the write time; a bucket this call "

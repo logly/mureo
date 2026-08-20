@@ -84,10 +84,56 @@ def test_period_label_keys_referenced() -> None:
 
 
 @pytest.mark.unit
+def test_the_browser_and_the_backend_agree_on_the_window_vocabulary() -> None:
+    """``reports_format.js`` carries the label table the browser marks tabs
+    from; ``mureo.core.metrics_windows`` carries the one the write guard
+    refuses from. They are two copies of one fact, and a drift between them
+    is exactly the #659 failure pointing the other way — a window mureo
+    accepts and the dashboard treats as an agent's invention."""
+    import re
+
+    from mureo.core.metrics_windows import CANONICAL_METRICS_WINDOWS
+
+    js = _read("reports_format.js")
+    block = re.search(r"const REPORTS_PERIOD_LABELS = \{(.*?)\};", js, re.S)
+    assert block is not None
+    tokens = re.findall(r"^\s*([A-Z0-9_]+):", block.group(1), re.M)
+    assert tokens == list(CANONICAL_METRICS_WINDOWS)
+
+
+@pytest.mark.unit
+def test_a_window_mureo_does_not_define_is_marked_not_hidden() -> None:
+    """#659 — labels an agent invented are already on disk. Dropping their
+    tab would hide figures mureo really collected; leaving them
+    indistinguishable leaves an operator unable to tell which window their
+    reports are keyed to. So the button renders, marked, with the reason."""
+    js = _read("dashboard.js")
+    assert "isCanonicalReportsPeriod(token)" in js
+    assert '" is-adhoc"' in js
+    assert "dashboard.reports_period_adhoc" in js
+    # The decision itself lives in the module a runner can execute (#556),
+    # not in an inline condition here.
+    assert "function isCanonicalReportsPeriod(" in _read("reports_format.js")
+
+
+@pytest.mark.unit
+def test_the_adhoc_window_hint_is_localized() -> None:
+    import json
+
+    data = json.loads(_read("i18n.json"))
+    key = "dashboard.reports_period_adhoc"
+    for loc in ("en", "ja"):
+        assert data[loc].get(key), f"{key} missing in {loc}"
+    assert data["en"][key] != data["ja"][key]
+
+
+@pytest.mark.unit
 def test_css_styles_active_period_segment() -> None:
     css = _read("app.css")
     assert ".reports-period-btn" in css
     assert ".reports-period-btn.is-active" in css
+    # A window mureo does not define reads as a foreign tab, not a peer.
+    assert ".reports-period-btn.is-adhoc" in css
 
 
 @pytest.mark.unit

@@ -43,6 +43,25 @@
     return key ? MUREO.t(key) : String(token);
   }
 
+  // Is this one of the windows mureo actually reports on (#659)?
+  //
+  // The map above IS that vocabulary — a token missing from it has no label
+  // because mureo does not define the window. Such a token can only be one an
+  // agent invented before the write path refused them: real figures,
+  // correctly collected, filed under a name no view expects. The toggle
+  // still renders it (dropping the tab would hide numbers mureo did collect)
+  // but marks it, because an operator picking between seven windows, four of
+  // them one session's ad-hoc phrasings, otherwise cannot tell which one
+  // their reports are keyed to.
+  //
+  // `hasOwnProperty` rather than a truthiness check: `reportsPeriodLabel`
+  // may fall back for a token, but "has no label" and "is not a window" must
+  // stay the same question asked of the same table, and a token like
+  // "constructor" must not inherit an answer from Object.prototype.
+  function isCanonicalReportsPeriod(token) {
+    return Object.prototype.hasOwnProperty.call(REPORTS_PERIOD_LABELS, token);
+  }
+
   // Report flags (reports.daily.flags) are free-form snake_case tags the
   // analysis skill authors (e.g. "cpa_over_target_logly"). Map the common
   // bases to friendly localized labels; anything unknown is humanized
@@ -303,6 +322,7 @@
     // nothing in the browser build touches it.
     REPORTS_FLAG_BASES: REPORTS_FLAG_BASES,
     reportsPeriodLabel: reportsPeriodLabel,
+    isCanonicalReportsPeriod: isCanonicalReportsPeriod,
     humanizeFlagWords: humanizeFlagWords,
     matchReportFlagBase: matchReportFlagBase,
     humanizeReportFlag: humanizeReportFlag,
