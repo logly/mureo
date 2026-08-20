@@ -492,6 +492,35 @@ def test_the_feed_strings_are_localized_in_both_locales() -> None:
 
 
 @pytest.mark.unit
+def test_a_feed_row_is_clamped_to_two_lines_and_keeps_its_full_text() -> None:
+    """An action-log ``summary`` is free-form text a skill wrote, and real
+    ones run to several hundred characters — one of them turned this rail
+    into a wall of prose, which is the failure the index redesign exists to
+    end.
+
+    A clamp is not a truncated record: the string is unaltered, the whole of
+    it is on the element's ``title``, and the action log is rendered in full
+    on the client's own detail view. The rule about never truncating silently
+    (#659) is about a stored VALUE mureo would be altering; how many lines of
+    an unchanged string a 340px rail shows is a display decision — the same
+    one the alert rows above already make at one line.
+    """
+    css = _read("app.css")
+    block = css.split(".reports-feed-body {", 1)[1].split("}", 1)[0]
+    assert "-webkit-line-clamp: 2" in block, "the feed body is not clamped"
+    assert "line-clamp: 2" in block
+    assert "overflow: hidden" in block
+    assert "-webkit-box" in block, "line-clamp needs the box display to apply"
+    # The name flows INTO the clamped box rather than taking one of its two
+    # lines for itself.
+    name = css.split(".reports-feed-client {", 1)[1].split("}", 1)[0]
+    assert "display: inline" in name
+    # …and the whole sentence is one hover away.
+    row = _function_body(_read("dashboard.js"), "function buildReportsFeedRow(")
+    assert "body.title = item.text" in row
+
+
+@pytest.mark.unit
 def test_the_feed_rows_can_wrap() -> None:
     """An action summary is a free-form sentence in a 340px rail."""
     css = _read("app.css")

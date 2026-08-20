@@ -219,7 +219,7 @@ function railHeight() {
     frame(".reports-panel") +
     line(".reports-panel-head h3") +
     px(".reports-panel-head", "margin-bottom") +
-    feedRows * line(".reports-feed-row") +
+    feedRows * FEED_CLAMP_LINES * line(".reports-feed-row") +
     Math.max(0, feedRows - 1) * px(".reports-feed", "gap");
   const platforms =
     frame(".reports-panel") +
@@ -228,6 +228,12 @@ function railHeight() {
     3 * (px(".reports-platform-track", "height") + px(".reports-platform-row", "margin-bottom"));
   return feed + px(".reports-index-rail", "gap") + platforms;
 }
+
+/**
+ * How many lines a feed row is allowed to take. Read from the stylesheet,
+ * because a clamp raised to three lines makes the rail half again as tall.
+ */
+const FEED_CLAMP_LINES = px(".reports-feed-body", "-webkit-line-clamp");
 
 /** A full feed — the cap, which is the tallest the panel gets. */
 const TRIAGE_FEED_ROWS = require(path.join(WEB, "reports_overview.js"))

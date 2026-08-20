@@ -964,6 +964,16 @@ a feed headed "today" that lists yesterday is worse than no feed.
 A day with nothing logged renders no panel at all, the same default silence
 the alert layer keeps.
 
+A row is **clamped to two lines**, with the whole sentence on its `title`. A
+real action-log `summary` runs to several hundred characters, and one of them
+is enough to turn the rail back into the wall of prose this redesign exists
+to end. Nothing is altered by the clamp — the string is unchanged, it is
+complete on the attribute, and the action log is rendered in full on the
+client's own detail view. mureo's rule about never truncating silently is
+about a stored VALUE it would be changing; how many lines of an unchanged
+string a 340px rail shows is a display decision, and the alert rows above
+make the same one at one line.
+
 #### The shape of the page
 
 The index is two columns above 960px: the alerts and the client grid they

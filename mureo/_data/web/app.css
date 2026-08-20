@@ -2477,7 +2477,24 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   background: var(--accent);
 }
 
+/* Two lines, then clipped. An action-log `summary` is free-form text a skill
+   wrote, and real ones run to several hundred characters — one of them turned
+   this rail into a wall of prose, which is the failure the whole index
+   redesign exists to end.
+
+   This is a CLAMP, not a truncation of the record: nothing is dropped or
+   rounded, the full sentence is on the element's `title`, and the action log
+   itself is rendered in full on the client's own detail view. The "never
+   truncate, refuse instead" rule (#659) is about a stored VALUE mureo would
+   be altering — a figure, a window, a narrative on disk. Deciding how many
+   lines of an unchanged string a 340px rail shows is a display decision, and
+   the same one the alert rows above already make at one line. */
 .reports-feed-body {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
   min-width: 0;
   color: var(--muted);
   overflow-wrap: anywhere;
@@ -2489,6 +2506,9 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    A real button, so the keyboard reaches it. */
 .reports-feed-client {
   appearance: none;
+  /* Inline, so the name flows into the clamped box with the sentence after
+     it rather than taking a line of the two for itself. */
+  display: inline;
   padding: 0;
   margin-right: 4px;
   font: inherit;

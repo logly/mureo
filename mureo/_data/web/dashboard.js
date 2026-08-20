@@ -3373,6 +3373,16 @@
     // Writer-supplied text out of STATE.json's action log — text, not markup.
     what.textContent = item.text;
     body.appendChild(what);
+    // …and clamped to two lines by the stylesheet, with the whole sentence
+    // here. A real `summary` runs to several hundred characters, and one of
+    // them turned this rail back into the wall of prose the index was
+    // redesigned to end. Nothing is lost by it: the string is unaltered, it
+    // is complete on this attribute, and the action log is rendered in full
+    // on the client's own detail view. mureo's "never truncate silently"
+    // rule is about a stored VALUE it would be changing; how many lines of
+    // an unchanged string a 340px rail shows is a display decision, and the
+    // alert rows above make the same one at one line.
+    body.title = item.text;
     row.appendChild(body);
     return row;
   }
