@@ -827,6 +827,40 @@ Three properties are load-bearing, and each is pinned by a test:
   And when there is nothing, the layer renders nothing — no "0 alerts"
   banner competing for attention with the cards.
 
+#### How the layer is shown
+
+Everything below is display only. None of it changes which clients the layer
+counts: the heading, the "clients needing attention" cell and the marked
+cards all read one list, and that list is over every finding.
+
+- **One row per kind, not per client.** A 27-client install rendered sixteen
+  rows, six of them the same sentence about the same unresolvable platform
+  key under six different names. Rows now group by finding and name the
+  clients they cover; the per-client sentences are in the row's disclosure,
+  with what to run underneath them.
+- **The list opens short.** Four rows, then *Show all (N more)*. Showing
+  "the top four" is only defensible because the ranking is stated in code —
+  they are the four mureo can do most about, not the four that rendered
+  first. It opens short again every time you arrive.
+- **A row is one line.** The sentence is clipped to it (the full text is on
+  the row's `title`, and every item's full text is one click away).
+- **A row can be closed, and closing it resolves nothing.** The ✕ hides a
+  row in this browser. While anything is hidden the panel says how many, says
+  in words that the conditions are still true and still counted, and offers
+  *Show them again*. A dismissal is keyed to a fingerprint of what the row
+  SAID — the age of a stale figure in days, the reason a collection gave, the
+  keys in a conflict, the clients covered — so a row whose content has
+  changed is a different row and comes back on its own. It is stored in
+  `localStorage`, capped, and a browser that cannot read it hides nothing.
+
+The client cards below carry the same findings as short **badges** — "Figures
+29 days old", "Double-counted" — and no longer repeat the sentences or the
+repair command. A card that withholds a client's totals still prints `—`, and
+the badge next to it is what stops that dash reading as zero; the explanation
+is in the alert row directly above the grid, and the remedy is on the
+client's own detail view, where the per-platform conflict note has always
+named it.
+
 Four of the five findings are already on the wire per client (`freshness`,
 `not_collected`, `platform_conflicts`). The fifth is not, and cannot be
 derived in the browser: `recent_actions` is capped at the 20 most recent
@@ -846,6 +880,122 @@ has closed the entry, which is the same rule
 `observation_due` mureo cannot parse as a date is not counted — it cannot be
 judged against today, and unknown is not a verdict — and `oldest_due` is
 re-rendered from the date mureo itself parsed rather than echoed.
+
+#### Reading the roster at a glance
+
+Above the alerts the index states the roster's own figures — total spend,
+total conversions, the cost per conversion, and how many clients need
+attention — and beside the grid, where that spend went by platform.
+
+Every one of those is a sum over other clients' numbers, which is the
+easiest place in the product to hide one mureo cannot vouch for: a client
+whose totals are withheld would contribute a silent zero and nothing on
+screen would say so. So a cross-client figure is never just a number.
+
+- It is summed **only** over the clients whose totals mureo is willing to
+  state at all, using the same decision the cards use
+  (`aggregateClientKpis` in `reports_logic.js`) — not a second opinion about
+  the same payload.
+- It carries **how many clients that was**, whenever that is not all of
+  them: *"stated over 24 of 27 clients"*.
+- When no client stated it, the cell reads `—` with the reason under it,
+  never `0`.
+- The cost per conversion is taken from the clients that stated **both**
+  figures. Spend from one set of clients over conversions from another is
+  not a cost per anything.
+
+The spend-by-platform bars follow the same rule, on a card and across the
+roster: a client whose totals are withheld contributes no slice, because
+drawing the shares of figures the card refuses to print is the same claim in
+a shape that looks like a picture. A platform's colour is chosen from its
+key, so one platform is one colour on every card — the bars are ranked by
+spend, and a colour that followed the ranking would change from card to
+card.
+
+The grid can also be filtered to *needs attention* / *watch* / *nothing
+raised*. That verdict is the triage layer's own findings and not a fourth
+judgement: the two withholding findings (ranks 1–2 above) make a client
+*needs attention*, the rest make it *watch*, and a client that raised
+nothing is *nothing raised* — which says only that mureo has nothing to
+raise about the state of its data, never that the account is performing
+well. Cards are hidden by the filter, never removed, so your own card order
+survives it.
+
+#### The per-client report
+
+A report summary is `{totals, flags, narrative}`, and the detail view now
+renders each as what it is: the headline figures as figures, the flags as
+chips, the narrative as prose. Only the canonical metric vocabulary and only
+real numbers are rendered as figures — everything a report states outside
+that (a formatted string, a per-platform breakdown, a metric mureo has no
+label for) stays in the narrative rather than being re-presented as a
+headline number it may not be.
+
+A report that stated no structure at all renders exactly as it did before:
+reports already on disk are real content, and they stay readable as the
+prose they are rather than being reformatted by guesswork.
+
+#### What mureo did today
+
+Beside the grid, the index lists the actions mureo logged **today** across
+the whole roster — newest first, the client, the time, one sentence. It is
+built from the `recent_actions` every client's summary already carries, so
+it costs no extra request, and it is capped (6 rows) with the rest counted:
+a rail is a glance at the day, not the log.
+
+**The day is the server's.** An action-log `timestamp` is stamped
+server-side from `server_now` — the host's local wall clock, offset and all
+— so a browser deciding "today" from its own clock would draw the boundary
+in its own timezone, and an operator in London reading a Tokyo host would
+see nine hours of yesterday's work listed as today's. The summary therefore
+states
+
+```json
+"server_today": "2026-08-20"
+```
+
+— present **only** under the client-registry seam, like `observations_due`,
+so a single-workspace summary keeps the exact keys it had before. The
+browser compares the first ten characters of a timestamp against it: two
+strings out of one clock, and no timezone arithmetic anywhere. If the date
+is absent or malformed the feed is empty rather than dated by the browser —
+a feed headed "today" that lists yesterday is worse than no feed.
+
+A day with nothing logged renders no panel at all, the same default silence
+the alert layer keeps.
+
+A row is **clamped to two lines**, with the whole sentence on its `title`. A
+real action-log `summary` runs to several hundred characters, and one of them
+is enough to turn the rail back into the wall of prose this redesign exists
+to end. Nothing is altered by the clamp — the string is unchanged, it is
+complete on the attribute, and the action log is rendered in full on the
+client's own detail view. mureo's rule about never truncating silently is
+about a stored VALUE it would be changing; how many lines of an unchanged
+string a 340px rail shows is a display decision, and the alert rows above
+make the same one at one line.
+
+#### The shape of the page
+
+The index is two columns above 960px: the alerts and the client grid they
+triage in the main column, and — in a 340px rail beside it — what mureo did
+today, then where the roster's money went. Below 960px it stacks. Stacking every section full width at every
+width was two screens of scrolling before the operator had read anything,
+which is what the rail, the grouped alert rows, the collapsed list and the
+slimmer cards are all for.
+
+`tests/js/reports_index_height.test.js` keeps that from creeping back: it is
+arithmetic over the box metrics `app.css` declares — not a browser
+measurement, and it says so — and it fails if the modelled index at ten
+clients grows past its budget.
+
+#### Getting back to the list
+
+**Reports** in the left menu always opens the client list, whatever you had
+open before. Everything else that redraws the section — switching the
+period, a status refresh, archiving a client — leaves you where you are,
+because a redraw that ejected you from the report you were reading would be
+the same bug pointing the other way. A single-workspace install has no list,
+so it opens its one client's report either way.
 
 ### Fields
 

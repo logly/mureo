@@ -286,6 +286,64 @@
     return formatNumber(value);
   }
 
+  // The canonical headline metrics a stored report may state, in the order
+  // the detail view renders them. Same vocabulary the platform cards use —
+  // a report is not a place to invent a metric name.
+  const REPORTS_SUMMARY_TOTAL_KEYS = [
+    "spend",
+    "conversions",
+    "cpa",
+    "ctr",
+    "clicks",
+    "impressions",
+  ];
+
+  /**
+   * A stored report's headline figures as [{key, value}] (#662).
+   *
+   * The report summary is a free-form object written by an agent, and what
+   * this returns is rendered AS FIGURES — so it is deliberately narrow:
+   * only the canonical vocabulary above, only finite numbers. Anything else
+   * (a formatted string, a per-platform breakdown, a metric mureo has no
+   * label for) belongs to the narrative and is left there. Reports already
+   * on disk state no structure at all and get an empty list — they stay
+   * readable as the prose they are, rather than being reformatted by
+   * guesswork.
+   *
+   * Two field names are read because the product uses two for the same
+   * thing: `mureo_state_report_set` documents `kpis (per-platform / totals
+   * headline numbers)`, and #662 calls it `totals`. `totals` wins where a
+   * report carries both, and a payload keyed by platform is unwrapped
+   * through its own `totals` — the per-platform half is not headline
+   * figures.
+   */
+  function reportSummaryTotals(report) {
+    const obj = report && typeof report === "object" ? report : null;
+    if (!obj) return [];
+    let source = null;
+    [obj.kpis, obj.totals].forEach(function (candidate) {
+      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+        source = candidate;
+      }
+    });
+    if (!source) return [];
+    if (
+      source.totals &&
+      typeof source.totals === "object" &&
+      !Array.isArray(source.totals)
+    ) {
+      source = source.totals;
+    }
+    const out = [];
+    REPORTS_SUMMARY_TOTAL_KEYS.forEach(function (key) {
+      const value = source[key];
+      if (typeof value === "number" && isFinite(value)) {
+        out.push({ key: key, value: value });
+      }
+    });
+    return out;
+  }
+
   // Map a free-form flag (string) to a chip kind. Defensive: any field may
   // be absent and the value may be an object with {level, label}.
   function flagChipKind(level) {
@@ -336,6 +394,8 @@
     formatFlagParam: formatFlagParam,
     formatNumber: formatNumber,
     formatKpi: formatKpi,
+    REPORTS_SUMMARY_TOTAL_KEYS: REPORTS_SUMMARY_TOTAL_KEYS,
+    reportSummaryTotals: reportSummaryTotals,
   };
 
   // Browser: the global the `<script>` tag exists to publish.

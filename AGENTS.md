@@ -401,14 +401,23 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
   - `reports_logic.js` → `window.MUREO_REPORTS_LOGIC` — the money-safety
     decisions (KPI withholding, freshness aggregation, conflict routing).
   - `reports_format.js` → `window.MUREO_REPORTS_FORMAT` — the display
-    vocabulary (flag labels and severities, param detail, numbers, periods).
+    vocabulary (flag labels and severities, param detail, numbers, periods,
+    and which of a stored report's fields are headline figures).
   - `reports_order.js` → `window.MUREO_REPORTS_ORDER` — the Reports index
     card order (localStorage, and the two ways the grid is reordered).
   - `reports_triage.js` → `window.MUREO_REPORTS_TRIAGE` — the multi-client
     triage layer (#651): which clients need attention, the ranking
     (`REPORTS_TRIAGE_KINDS` — the array index IS the rank), and what to run
-    about each. Reads `MUREO_REPORTS_LOGIC` off the page at call time, so it
-    loads after it.
+    about each — plus how the layer is SHOWN: one row per kind, the top few
+    of them, and which rows an operator has closed (keyed to a fingerprint of
+    what the row said, so a changed finding comes back). Reads
+    `MUREO_REPORTS_LOGIC` off the page at call time, so it loads after it.
+  - `reports_overview.js` → `window.MUREO_REPORTS_OVERVIEW` — the Reports
+    index view's own decisions: which view the section shows (the left menu
+    always means the client list; a period switch or a status refresh keeps
+    the operator where they are), the portfolio figures above the grid, and
+    the "what mureo did today" feed (dated by the summary's `server_today` —
+    this module never asks the browser what time it is).
 
   Each carries an inert `module.exports` tail so `node --test
   tests/js/*.test.js` executes the exact bytes the browser is served, and

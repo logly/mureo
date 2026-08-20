@@ -97,18 +97,27 @@ def test_the_client_card_states_why_a_stale_aggregate_is_withheld() -> None:
     """The aggregate is nulled in ``aggregateClientKpis`` (executed by the JS
     suite), so the cell renders "—" through the SAME comparison the conflict
     path already used. What is pinned here is that the card states the
-    reason: a bare "—" beside a stale badge reads as "no spend"."""
-    card = _function_body(_read("dashboard.js"), "function buildClientCard(")
-    assert (
-        "if (kpis.staleFigures) {" in card
-    ), "the client card no longer branches on the truthy staleFigures case"
-    note = card.split("if (kpis.staleFigures) {", 1)[1].split("\n    }", 1)[0]
-    assert "dashboard.reports_stale_kpis_withheld" in note
-    # The explanation comes BEFORE the cells, exactly like the conflict
-    # note, so the "—" is never skimmed without it.
-    assert card.index("dashboard.reports_stale_kpis_withheld") < card.index(
+    reason: a bare "—" reads as "no spend".
+
+    The reason is now a badge rather than a sentence — the sentence, and the
+    command, were duplicated in the alert row directly above the grid and
+    moved there. The badge carries the AGE, because how old the figures are
+    is the state the dash stands for; ``tests/js/reports_triage.test.js``
+    asserts a withheld client always has one."""
+    js = _read("dashboard.js")
+    card = _function_body(js, "function buildClientCard(")
+    assert "reports-client-card-badge" in card
+    # The explanation comes BEFORE the cells, so the "—" is never skimmed
+    # without it.
+    assert card.index("reports-client-card-badges") < card.index(
         'krow.className = "reports-client-card-kpis"'
     )
+    # The badge says how old, not merely that it is old.
+    triage = _read("reports_triage.js")
+    assert "dashboard.reports_triage_tag_stale_aged" in triage
+    assert "relativeAge(row.fetched_at)" in triage
+    # …and the withheld figures themselves are still restated on the card.
+    assert "reports-client-card-stale-figures" in card
 
 
 @pytest.mark.unit

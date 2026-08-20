@@ -231,9 +231,16 @@ def test_reports_index_detail_navigation() -> None:
 @pytest.mark.unit
 def test_reports_single_client_skips_index() -> None:
     """A single-client (OSS) install opens the detail directly — no index page,
-    no back bar — while >1 client (Agency) defaults to the index."""
+    no back bar — while >1 client (Agency) defaults to the index.
+
+    "Is there an index at all" moved into ``hasIndex``, which the routing
+    module is handed (see ``tests/js/reports_overview.test.js``): with no
+    index, no entry point — not even the left menu — can route to one.
+    """
     js = _read("dashboard.js")
-    assert "reportsClients.length <= 1" in js
+    assert "reportsClients.length > 1 || archivedReportsClients().length > 0" in js
+    assert "hasIndex: hasIndex" in js
+    assert "if (!hasIndex) {" in js
     # The back bar only appears when there is an index to return to.
     assert "reportsClients.length > 1" in js
 

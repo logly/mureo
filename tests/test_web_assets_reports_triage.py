@@ -293,3 +293,132 @@ def test_every_next_step_names_something_runnable() -> None:
         and "mureo repair platform-key" in data["en"][key]
     ]
     assert forked == [], f"the repair command is spelled out again in {forked}"
+
+
+# ---------------------------------------------------------------------------
+# One row per kind, opened short, and closable without going silent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_the_rows_are_grouped_and_collapsed_by_the_module() -> None:
+    """A 27-client install rendered sixteen rows, six of them the same
+    sentence under six names. Grouping by kind and opening at the top few are
+    both decisions — which clients a row covers, and which rows survive the
+    collapse — so both live where the JS suite executes them."""
+    js = _read("dashboard.js")
+    for name in ("groupReportsTriage", "collapseTriageGroups", "partitionTriageGroups"):
+        assert f"{name} = REPORTS_TRIAGE.{name}" in js, f"{name} is not bound"
+        assert f"function {name}(" not in js, f"{name} was copied into dashboard.js"
+    render = _function_body(js, "function renderReportsTriage(")
+    assert "groupReportsTriage(built)" in render
+    assert "collapseTriageGroups(split.visible, reportsTriageShowAll)" in render
+
+
+@pytest.mark.unit
+def test_neither_grouping_nor_collapsing_nor_hiding_moves_the_count() -> None:
+    """The acceptance criterion #651 shipped with, under three new ways to
+    show fewer rows. The heading, the KPI cell and the marked cards read
+    ``built.clients`` — which none of the three touches."""
+    js = _read("dashboard.js")
+    render = _function_body(js, "function renderReportsTriage(")
+    # The count is taken BEFORE anything is grouped, collapsed or filtered.
+    assert render.index("built.clients") < render.index("groupReportsTriage(built)")
+    assert "n: marked.length" in render
+    index = _function_body(js, "async function renderReportsIndex(")
+    assert "triageMarksClient(triage, i)" in index
+    assert "triageHealthCounts(triage, rows.length)" in index
+
+
+@pytest.mark.unit
+def test_a_row_is_one_line_and_keeps_its_full_text() -> None:
+    """The sentence wrapping to three lines inside a bordered box was most of
+    the height an operator complained about. Clipping it is only acceptable
+    because the whole text is one click away — and, meanwhile, on a title."""
+    js = _read("dashboard.js")
+    row = _function_body(js, "function buildTriageRow(")
+    assert "reports-triage-summary" in row
+    assert "summary.title = summary.textContent" in row
+    css = _read("app.css")
+    block = css.split(".reports-triage-summary {", 1)[1].split("}", 1)[0]
+    assert "text-overflow: ellipsis" in block
+    assert "white-space: nowrap" in block
+    toggle = css.split(".reports-triage-toggle {", 1)[1].split("}", 1)[0]
+    assert "flex-wrap: nowrap" in toggle
+    # The expanded per-client lines still wrap — that is where the full text
+    # of every item on the row is.
+    detail = css.split(".reports-triage-detail-row {", 1)[1].split("}", 1)[0]
+    assert "overflow-wrap" in detail
+
+
+@pytest.mark.unit
+def test_the_rest_of_the_list_is_one_click_away_and_never_zero() -> None:
+    """No "show all (0)" on a list that already fits, for the same reason
+    there is no "0 alerts" banner."""
+    js = _read("dashboard.js")
+    more = _function_body(js, "function renderTriageMore(")
+    assert "more.hidden = !shown.collapsed" in more
+    assert "if (!shown.collapsed) return;" in more
+    assert "dashboard.reports_triage_show_all" in more
+    # It opens short again on every arrival — the state is not remembered.
+    index = _function_body(js, "async function renderReportsIndex(")
+    assert "reportsTriageShowAll = false" in index
+
+
+@pytest.mark.unit
+def test_closing_an_alert_is_never_silent() -> None:
+    """The one thing the ✕ may not do. Hiding a row does not resolve the
+    condition behind it, and a finding that left NO trace when it was closed
+    is the failure mode this whole layer was built against (#636, #638). So
+    while anything is hidden: the count is on screen, the words say hiding
+    resolved nothing, and one button brings them all back."""
+    js = _read("dashboard.js")
+    row = _function_body(js, "function buildTriageRow(")
+    assert "dismissTriageGroup(group)" in row
+    assert "reports-triage-dismiss" in row
+    hidden = _function_body(js, "function renderTriageDismissed(")
+    assert "box.hidden = !hidden.length" in hidden
+    assert "dashboard.reports_triage_hidden_title" in hidden
+    assert "dashboard.reports_triage_hidden_note" in hidden
+    assert "restoreTriageDismissals()" in hidden
+    html = _read("app.html")
+    assert "data-reports-triage-hidden" in html
+
+
+@pytest.mark.unit
+def test_the_hidden_note_says_the_condition_is_still_true() -> None:
+    """In words, in both locales. "It is hidden" and "it is fixed" must not
+    be possible to confuse."""
+    data = json.loads(_read("i18n.json"))
+    note = "dashboard.reports_triage_hidden_note"
+    assert "not resolve" in data["en"][note], data["en"][note]
+    assert "解決していません" in data["ja"][note], data["ja"][note]
+    for key in (
+        "dashboard.reports_triage_show_all",
+        "dashboard.reports_triage_hidden_title",
+        "dashboard.reports_triage_hidden_note",
+        "dashboard.reports_triage_restore",
+        "dashboard.reports_triage_dismiss",
+        "dashboard.reports_triage_client_separator",
+        "dashboard.reports_triage_tag_stale_aged",
+    ):
+        for loc in ("en", "ja"):
+            assert data[loc].get(key), f"{key} missing in {loc}"
+        assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+def test_a_dismissal_is_keyed_to_what_the_row_said() -> None:
+    """Hiding must not outlive the row's content: a stale figure that has
+    aged another eighteen days is a different, worse fact and comes back on
+    its own. ``tests/js/reports_triage.test.js`` executes the fingerprint;
+    this pins that it is a fingerprint and not a kind name."""
+    triage = _read("reports_triage.js")
+    assert "function triageItemFingerprint(" in triage
+    assert "function triageGroupKey(" in triage
+    body = _function_body(triage, "function triageGroupKey(")
+    assert "items.map(triageItemFingerprint)" in body
+    # Storage that cannot be read hides NOTHING — the other direction would
+    # silence the layer on a browser with storage disabled.
+    read = _function_body(triage, "function readDismissedTriage(")
+    assert "return [];" in read

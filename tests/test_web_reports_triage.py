@@ -65,6 +65,13 @@ _LEGACY_SUMMARY_KEYS = [
 ]
 
 
+# The keys the Agency seam ADDS, and the only ones it may. Both are
+# multi-client facts: how many reviews are overdue, and what day it is on the
+# machine that stamped the action log. Neither exists on a single workspace,
+# where the summary is byte-identical to what it was before #651.
+_SEAM_ONLY_KEYS = {"observations_due", "server_today"}
+
+
 @pytest.fixture(autouse=True)
 def _reset_ctx() -> Iterator[None]:
     reset_runtime_context()
@@ -178,8 +185,9 @@ def test_the_seam_is_what_adds_the_layer(
     with_seam = build_report_summary()
 
     assert "observations_due" not in without
+    assert "server_today" not in without
     assert with_seam["observations_due"] == {"count": 1, "oldest_due": "2020-01-01"}
-    assert {k: v for k, v in with_seam.items() if k != "observations_due"} == without
+    assert {k: v for k, v in with_seam.items() if k not in _SEAM_ONLY_KEYS} == without
 
 
 # ---------------------------------------------------------------------------
@@ -375,3 +383,73 @@ def test_the_shared_rule_reads_a_dataclass_entry_and_a_rendered_one_alike() -> N
 
     assert closed_observation_indices([_action(evaluation_of=2)]) == {2}
     assert closed_observation_indices([{"rollback_of": True}]) == set()
+
+
+# ---------------------------------------------------------------------------
+# The server's own date, for the index's "what mureo did today" feed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_the_seam_states_the_servers_own_date(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The index feeds a "today" list off ``recent_actions``, and the browser
+    cannot decide what "today" is.
+
+    An action-log ``timestamp`` is stamped server-side (#460) from
+    ``server_now`` — the host's local wall clock. A browser deciding "today"
+    from its own clock would draw the boundary in ITS timezone: an operator
+    in London reading a Tokyo host sees the day roll over nine hours early,
+    and the feed silently lists yesterday's work as today's. So the date
+    comes from the same clock that wrote the timestamps, and the browser only
+    ever compares two strings that came from that one source.
+    """
+    from mureo.core import clock
+
+    _use_workspace(monkeypatch, tmp_path, agency=True)
+    _write(tmp_path, _due_doc(_action()))
+
+    summary = build_report_summary()
+
+    assert summary["server_today"] == clock.server_now().date().isoformat()
+
+
+@pytest.mark.unit
+def test_the_date_is_the_local_one_that_stamped_the_log(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Not UTC. ``server_now`` is ``datetime.now().astimezone()``, and an
+    action's timestamp carries that same local date in its first ten
+    characters — which is exactly what the browser compares against. Judging
+    a local timestamp against a UTC date moves the boundary by a day for half
+    the world."""
+    from datetime import datetime, timedelta, timezone
+
+    from mureo.core import clock
+
+    fixed = datetime(2026, 8, 20, 1, 30, tzinfo=timezone(timedelta(hours=9)))
+    monkeypatch.setattr(clock, "server_now", lambda: fixed)
+    _use_workspace(monkeypatch, tmp_path, agency=True)
+    _write(tmp_path, _due_doc(_action()))
+
+    summary = build_report_summary()
+
+    # 2026-08-20T01:30+09:00 is still 2026-08-19 in UTC. The answer is the
+    # host's date, because the host's date is what stamped the log.
+    assert summary["server_today"] == "2026-08-20"
+
+
+@pytest.mark.unit
+def test_a_single_workspace_is_told_no_date_at_all(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """It has no cross-client feed to date, and the byte-identical promise is
+    the whole reason the seam gates these keys."""
+    _use_workspace(monkeypatch, tmp_path, agency=False)
+    _write(tmp_path, _due_doc(_action()))
+
+    summary = build_report_summary()
+
+    assert list(summary) == _LEGACY_SUMMARY_KEYS
+    assert "server_today" not in json.dumps(summary)

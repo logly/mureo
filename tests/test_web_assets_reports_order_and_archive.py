@@ -225,19 +225,20 @@ def test_archived_clients_are_off_the_index_but_still_count_for_routing() -> Non
     assert "dashboard.reports_all_archived" in js
 
     routing = _function_body(js, "async function renderReports(")
-    # The single-client shortcut: the condition that skips the index.
-    assert "if (reportsClients.length" in routing, "routing condition missing"
-    condition = routing.split("if (reportsClients.length", 1)[1].split(") {", 1)[0]
+    # Whether an index exists at all — the input the routing module is handed
+    # (tests/js/reports_overview.test.js executes what it does with it).
+    assert "const hasIndex =" in routing, "routing condition missing"
+    condition = routing.split("const hasIndex =", 1)[1].split(";", 1)[0]
     assert "archivedReportsClients()" in condition, (
         "the detail-vs-index decision ignores archived clients: " + condition
     )
-    # …and it is indeed the branch that skips the index.
-    branch = routing.split("if (reportsClients.length", 1)[1].split("}", 1)[0]
+    # …and with no index it is indeed the detail that is shown.
+    branch = routing.split("if (!hasIndex) {", 1)[1]
     assert "showReportsClientDetail(" in branch
 
     # An archived client is not a live selection either, so archiving the one
     # on screen returns to the index rather than staying on its detail view.
-    selection = routing.split("const selectionAlive =", 1)[1].split(";", 1)[0]
+    selection = routing.split("selectionAlive:", 1)[1].split("});", 1)[0]
     assert "visibleReportsClients()" in selection, (
         "an archived client still counts as a live selection: " + selection
     )
