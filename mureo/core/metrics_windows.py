@@ -46,6 +46,7 @@ from __future__ import annotations
 
 __all__ = [
     "CANONICAL_METRICS_WINDOWS",
+    "METRICS_WINDOW_RULE",
     "is_canonical_metrics_window",
     "reject_non_canonical_metrics_window",
 ]
@@ -63,6 +64,36 @@ each window's staleness threshold from it (a figure older than the window it
 summarises no longer overlaps that window at all). A fourth window is
 therefore a deliberate decision with a defined length — never something a
 caller can bring into existence by naming it.
+"""
+
+
+METRICS_WINDOW_RULE = (
+    "A window outside this list is refused, never rounded onto a neighbour "
+    "(eight days of figures are not a seven-day answer). If your analysis "
+    "covers another span, report it in your reply instead of inventing a "
+    "window token: no view reads one, so the write would report success "
+    "while the dashboard truthfully keeps showing the last real figures as "
+    "stale."
+)
+"""The rule a caller needs, stated ONCE and shown on every path (#659).
+
+There are two ways a caller learns the vocabulary is closed, and they must
+not be two different explanations:
+
+- **Before the call** — the MCP tool schema pastes this into the
+  ``metrics_period`` / ``periods`` descriptions, next to the ``enum``. That
+  is the surface that actually matters: the ``enum`` makes the JSON-Schema
+  layer reject a bad window before any handler runs, so the agent's error
+  reads ``'SINCE_LAUNCH_17D' is not one of [...]`` and NOTHING mureo writes
+  reaches it. The allowed values survive that; the reason does not, unless
+  it was already in the schema the model read.
+- **On refusal** — :func:`reject_non_canonical_metrics_window` appends it to
+  the ``ValueError`` raised for callers that do not go through the schema
+  (an out-of-tree writer calling ``set_platform_metrics`` directly, or a
+  host that does not validate).
+
+Kept short on purpose: a tool description is loaded on every session, not
+only when something goes wrong.
 """
 
 
@@ -85,18 +116,23 @@ def reject_non_canonical_metrics_window(window: object, *, field: str) -> None:
 
     The message states the whole allow-list rather than only rejecting: an
     agent that reached for "since launch" needs to know what the alternatives
-    ARE, and the same message tells it mureo will not re-file the figures for
-    it — the near-miss (``LAST_8_DAYS``) is the case where a caller is most
-    likely to assume something helpful happened.
+    ARE. The reason comes from :data:`METRICS_WINDOW_RULE` rather than being
+    written out again here — the same sentences the tool schema shows, so a
+    caller cannot be told two different things depending on which path
+    refused it.
+
+    Note where this message does and does not surface: through the MCP
+    server the schema ``enum`` rejects a bad window first, so a normal tool
+    call never reaches this text. It is the message for the callers that
+    bypass the schema — a bridge or out-of-tree writer calling
+    :func:`~mureo.context.state.set_platform_metrics` directly, or a host
+    that does not validate — which is exactly why the rule itself has to
+    live in the schema too.
     """
     if is_canonical_metrics_window(window):
         return
     allowed = ", ".join(CANONICAL_METRICS_WINDOWS)
     raise ValueError(
         f"{field} {window!r} is not a mureo metrics window. "
-        f"Allowed windows: {allowed}. "
-        "Re-collect the figures for one of those windows and write them "
-        "under its token — mureo does not re-file figures under a window "
-        "they do not cover, and a window nothing reads would leave the "
-        "reporting dashboard stale while the write reported success."
+        f"Allowed windows: {allowed}. {METRICS_WINDOW_RULE}"
     )

@@ -33,7 +33,11 @@ import pytest
 
 from mureo.context.models import PlatformState, StateDocument
 from mureo.context.state import read_state_file, set_platform_metrics, write_state_file
-from mureo.core.metrics_windows import CANONICAL_METRICS_WINDOWS
+from mureo.core.metrics_windows import (
+    CANONICAL_METRICS_WINDOWS,
+    METRICS_WINDOW_RULE,
+    reject_non_canonical_metrics_window,
+)
 from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
@@ -351,8 +355,13 @@ def test_the_schema_states_the_allowed_windows_rather_than_an_example() -> None:
 
 
 async def test_the_mcp_tool_refuses_a_non_canonical_window(cwd_to_tmp) -> None:
-    """The schema is guidance; the handler is the boundary. A host that does
-    not validate against the schema must still be refused."""
+    """The handler refuses on its own, without the schema.
+
+    This calls the handler DIRECTLY, so the dispatcher's schema validation
+    never runs — which is the point: a host that does not validate against
+    the declared ``inputSchema`` must still be refused. What a real client
+    sees is pinned separately, through ``server.handle_call_tool``, below.
+    """
     mod = _import_tools()
     with pytest.raises(ValueError, match="SINCE_LAUNCH_17D"):
         await mod.handle_tool(
@@ -365,6 +374,126 @@ async def test_the_mcp_tool_refuses_a_non_canonical_window(cwd_to_tmp) -> None:
             },
         )
     assert not (cwd_to_tmp / "STATE.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# The path a real MCP client takes — schema validation runs BEFORE the handler
+# ---------------------------------------------------------------------------
+
+
+async def test_the_real_dispatch_path_refuses_a_non_canonical_window(
+    cwd_to_tmp,
+) -> None:
+    """What an MCP CLIENT actually observes.
+
+    ``handle_call_tool`` schema-validates against the declared ``inputSchema``
+    before any handler runs, so the ``enum`` fires first and mureo's own
+    message is never reached on this path (same shape as
+    ``test_empty_account_id_through_the_real_dispatcher``). Calling
+    ``tools_mureo_context.handle_tool`` directly, as the tests above do, skips
+    that layer — so it cannot pin what an agent is told, and a test that only
+    did that would be green for the wrong reason.
+    """
+    from mureo.mcp import server as server_mod
+
+    with pytest.raises(ValueError) as excinfo:
+        await server_mod.handle_call_tool(
+            "mureo_state_platform_metrics_set",
+            {
+                "platform": "google_ads",
+                "account_id": "123",
+                "totals": {"spend": 1.0},
+                "metrics_period": "SINCE_LAUNCH_17D",
+            },
+        )
+
+    message = str(excinfo.value)
+    assert "metrics_period" in message
+    assert "SINCE_LAUNCH_17D" in message
+    for window in CANONICAL_METRICS_WINDOWS:
+        assert window in message
+    assert not (cwd_to_tmp / "STATE.json").exists()
+
+
+async def test_the_real_dispatch_path_refuses_a_near_miss_periods_key(
+    cwd_to_tmp,
+) -> None:
+    """And refuses it as spelled: the ``LAST_7_DAYS`` bucket keeps the
+    seven-day figure rather than acquiring an eight-day one."""
+    from mureo.mcp import server as server_mod
+
+    await server_mod.handle_call_tool(
+        "mureo_state_platform_metrics_set",
+        {
+            "platform": "google_ads",
+            "account_id": "123",
+            "periods": {"LAST_7_DAYS": {"spend": 7.0}},
+        },
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        await server_mod.handle_call_tool(
+            "mureo_state_platform_metrics_set",
+            {
+                "platform": "google_ads",
+                "account_id": "123",
+                "periods": {"LAST_8_DAYS": {"spend": 8.0}},
+            },
+        )
+    assert "LAST_8_DAYS" in str(excinfo.value)
+
+    doc = read_state_file(cwd_to_tmp / "STATE.json")
+    assert doc.platforms is not None
+    entry = doc.platforms["google_ads"]
+    assert set(entry.periods or {}) == {"LAST_7_DAYS"}
+    assert entry.periods["LAST_7_DAYS"]["spend"] == 7.0
+
+
+async def test_the_real_dispatch_path_writes_a_window_the_default_view_reads(
+    monkeypatch: pytest.MonkeyPatch, cwd_to_tmp
+) -> None:
+    """The acceptance property, pinned on the path the field failure took:
+    a call an MCP client can actually make, whose success the default view
+    can read back."""
+    _use_workspace(monkeypatch, cwd_to_tmp)
+    from mureo.mcp import server as server_mod
+
+    await server_mod.handle_call_tool(
+        "mureo_state_platform_metrics_set",
+        {
+            "platform": "google_ads",
+            "account_id": "123",
+            "periods": {"YESTERDAY": {"spend": 12.5}},
+        },
+    )
+
+    summary = build_report_summary(period="YESTERDAY")
+    assert "YESTERDAY" in summary["periods"]
+    (row,) = summary["platforms"]
+    assert row["totals"]["spend"] == 12.5
+    assert summary["non_canonical_periods"] == []
+
+
+def test_the_reason_reaches_the_agent_before_it_calls() -> None:
+    """The ``enum`` rejects a bad window before any mureo code runs, so the
+    refusal an agent sees is the JSON-Schema one: it carries the allowed
+    values and nothing else. The near-miss guidance — do not round onto a
+    neighbour, report the other span in your reply instead — therefore has to
+    be in the SCHEMA, which the model reads before calling, not only in a
+    message it will never receive.
+
+    And it is one text, not two: the same constant the raiser appends, so the
+    two paths cannot drift into telling a caller different things.
+    """
+    props = _metrics_schema()["properties"]
+    assert METRICS_WINDOW_RULE in props["metrics_period"]["description"]
+    # The near-miss is the case a caller is most likely to assume mureo
+    # handled for them — the rule has to say it does not.
+    assert "never rounded" in METRICS_WINDOW_RULE
+
+    with pytest.raises(ValueError) as excinfo:
+        reject_non_canonical_metrics_window("LAST_8_DAYS", field="metrics_period")
+    assert METRICS_WINDOW_RULE in str(excinfo.value)
 
 
 async def test_the_mcp_tool_still_writes_a_canonical_window(cwd_to_tmp) -> None:

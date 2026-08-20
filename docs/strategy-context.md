@@ -618,6 +618,24 @@ figures are still in hand.
 `LAST_7_DAYS`: that would present eight days of figures as a seven-day
 answer, the same mislabelling the staleness rule below exists to prevent.
 
+**Where the rule is stated matters more than the refusal.** The MCP
+dispatcher schema-validates before any handler runs, so an agent's refusal is
+the JSON-Schema one (`'SINCE_LAUNCH_17D' is not one of [...]`) and mureo's own
+message is never reached on that path. The allowed values survive it; the
+reason only does if it was already in the schema the model read. So the rule
+text lives in the `metrics_period` / `periods` descriptions and the raised
+`ValueError` appends the same constant — one explanation, shown on whichever
+path a caller takes.
+
+**What is not guarded.** The refusal is on the targeted writer
+(`set_platform_metrics`, and the MCP tool over it). A Code-mode agent writing
+STATE.json directly, and every whole-document path (`write_state_file`,
+imports, restores, a digest sync), are untouched — the same split the
+platform-key guard draws, and for the same reason: a document that arrived
+from elsewhere has no notion of which entry is new, and refusing it would
+strand an operator holding state they cannot repair. For those paths the
+vocabulary is documentation, not enforcement.
+
 **Reading is tolerant.** Labels already on disk were written before the guard
 existed. They are real figures, correctly collected, under a name no view
 expects, so `_available_periods` still surfaces them and their totals still

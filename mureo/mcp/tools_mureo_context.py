@@ -16,7 +16,10 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import Tool
 
-from mureo.core.metrics_windows import CANONICAL_METRICS_WINDOWS
+from mureo.core.metrics_windows import (
+    CANONICAL_METRICS_WINDOWS,
+    METRICS_WINDOW_RULE,
+)
 from mureo.mcp._handlers_mureo_context import (
     handle_outcome_evaluate,
     handle_state_action_log_append,
@@ -40,6 +43,14 @@ if TYPE_CHECKING:
 # ``LAST_8_DAYS`` — a bucket no default view reads. The write then succeeded,
 # the agent truthfully reported success, and the dashboard truthfully kept
 # reading stale, with nothing naming the contradiction.
+#
+# The ``enum`` is the load-bearing half and it fires EARLY: the dispatcher
+# schema-validates before any handler runs, so an agent sending
+# ``SINCE_LAUNCH_17D`` sees ``'SINCE_LAUNCH_17D' is not one of [...]`` and
+# never reaches mureo's own message. The allowed values survive that path;
+# the REASON only does if it is already in the description the model read
+# before calling — which is why ``METRICS_WINDOW_RULE`` is pasted below
+# rather than restated in the raiser alone.
 _METRICS_WINDOWS: list[str] = list(CANONICAL_METRICS_WINDOWS)
 
 _PERIOD_BUCKET_PROPERTY = {
@@ -554,10 +565,7 @@ TOOLS: list[Tool] = [
             "rollups the toggle reads. ``periods`` is merged per window key "
             "(a YESTERDAY write keeps a prior LAST_30_DAYS bucket); omitted "
             "fields preserve their existing value. **The window vocabulary "
-            "is closed** — YESTERDAY / LAST_7_DAYS / LAST_30_DAYS — and a "
-            "window outside it is REFUSED rather than stored: it would land "
-            "where no view reads, leaving this call reporting success over a "
-            "dashboard that never moved. Every rollup you pass "
+            "is closed** — see ``metrics_period``. Every rollup you pass "
             "without a usable ``fetched_at`` — omitted, null or blank — is "
             "stamped with the write time, so the dashboard can state an age "
             'instead of "update time unknown"; pass your own only when the '
@@ -620,15 +628,9 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": _METRICS_WINDOWS,
                     "description": (
-                        "The window ``totals`` covers. These are the ONLY "
-                        "windows mureo reports on, and the list is closed: a "
-                        "window outside it is REJECTED, not stored and not "
-                        "remapped onto a neighbour (an 8-day figure is not a "
-                        "7-day answer). If the analysis you ran covers some "
-                        "other span, report it in your reply — do not file it "
-                        "as a window here; nothing would read it, and the "
-                        "dashboard would stay stale while this call reported "
-                        "success. Omit to preserve the existing value."
+                        "The window ``totals`` covers — the only windows "
+                        "mureo reports on. " + METRICS_WINDOW_RULE + " Omit "
+                        "to preserve the existing value."
                     ),
                 },
                 "periods": {
@@ -641,12 +643,13 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Per-window rollups keyed by period token; each value "
                         "is a totals-shaped object. The keys are the same "
-                        "closed set as ``metrics_period`` — any other key is "
-                        "REJECTED. Merged per key into the existing map. Omit "
-                        "to preserve the existing map. Each bucket you pass "
-                        "without a ``fetched_at`` is stamped with the write "
-                        "time; a bucket this call merely preserves is never "
-                        "re-stamped."
+                        "closed set as ``metrics_period``, under the same "
+                        "rule: any other key is refused, never rounded onto a "
+                        "neighbouring window. Merged per key into the "
+                        "existing map. Omit to preserve the existing map. "
+                        "Each bucket you pass without a ``fetched_at`` is "
+                        "stamped with the write time; a bucket this call "
+                        "merely preserves is never re-stamped."
                     ),
                 },
                 "path": _PATH_PROPERTY,

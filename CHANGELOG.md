@@ -276,9 +276,18 @@
 
   The vocabulary is now closed at the write boundary. `metrics_period` and
   every `periods` key must be a canonical window; anything else is refused
-  before STATE.json is touched, with the allowed values in the error, and the
-  MCP schema states them as an `enum` (and as the only accepted `periods`
-  keys) instead of an example.
+  before STATE.json is touched, and the MCP schema states them as an `enum`
+  (and as the only accepted `periods` keys) instead of an example. The schema
+  layer validates before any handler runs, so that `enum` is what an agent's
+  refusal quotes — the *reason* (do not round onto a neighbour; report
+  another span in your reply instead) therefore lives in the schema
+  description the model reads before calling, taken from the same one
+  constant the raised error appends.
+
+  A Code-mode agent writing STATE.json directly, and the whole-document paths
+  (`write_state_file`, imports, restores), are deliberately untouched — the
+  same split the platform-key guard draws. For those the vocabulary is
+  documentation, not enforcement.
 
   **A near miss is refused, not rounded.** `LAST_8_DAYS` is not remapped onto
   `LAST_7_DAYS`: filing eight days of figures under a seven-day label is
