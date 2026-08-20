@@ -143,6 +143,12 @@ const MODULES = [
       "triageRank",
     ],
   },
+  {
+    file: "reports_overview.js",
+    global: "MUREO_REPORTS_OVERVIEW",
+    bound: ["reportsViewToShow"],
+    moved: ["reportsViewToShow"],
+  },
 ];
 
 /** Every extracted module actually shipped, found rather than declared. */

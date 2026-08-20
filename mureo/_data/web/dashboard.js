@@ -174,6 +174,13 @@
       // `[hidden]{display:none}` rule — toggle display directly.
       rerun.style.display = name === "setup" ? "" : "none";
     }
+    // Asking for the Reports section is asking for the client list. The
+    // section keeps its own view state across renders (so a period switch
+    // does not eject a reader from a report), which is exactly why arriving
+    // from the menu has to say so — otherwise the menu item lands on
+    // whatever client was open last and there is no global way back to the
+    // list at all. See renderReports().
+    if (name === "reports") enterReportsSection();
   }
 
   function wireDashboardNav() {
@@ -1811,6 +1818,8 @@
   //     stored, how it is applied, and the two ways it changes.
   //   reports_triage.js (#651) — which clients need attention today, in
   //     what order, and what to run about each.
+  //   reports_overview.js — the index view's own decisions: which view the
+  //     Reports section shows, and the portfolio-level figures above the grid.
   //
   // Everything below still needs a DOM. The modules are bound here by their
   // original names so every call site downstream reads exactly as before.
@@ -1831,6 +1840,7 @@
     ["MUREO_REPORTS_FORMAT", "reports_format.js"],
     ["MUREO_REPORTS_ORDER", "reports_order.js"],
     ["MUREO_REPORTS_TRIAGE", "reports_triage.js"],
+    ["MUREO_REPORTS_OVERVIEW", "reports_overview.js"],
   ].filter(function (mod) {
     return !window[mod[0]];
   });
@@ -1883,6 +1893,9 @@
   const triageMarksClient = REPORTS_TRIAGE.triageMarksClient;
   const triageItemText = REPORTS_TRIAGE.triageItemText;
   const triageItemNextStep = REPORTS_TRIAGE.triageItemNextStep;
+
+  const REPORTS_OVERVIEW = window.MUREO_REPORTS_OVERVIEW;
+  const reportsViewToShow = REPORTS_OVERVIEW.reportsViewToShow;
 
   // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
   // is rendered separately. Order here is the on-card display order.
@@ -3047,19 +3060,23 @@
   }
 
   // Entry point: fetch the client list, then show the right view. Re-runnable
-  // (tab open, locale / period change, navigation). Routing:
-  //   • 0–1 client, none archived (OSS) → detail of the single client; no
-  //     index, no back.
-  //   • otherwise (Agency) → keep the current view across re-renders,
-  //     defaulting to the index on first entry (or when the selected client
-  //     disappears or is archived).
+  // (tab open, locale / period change, navigation).
+  //
+  // `entry` says WHY this render is happening, and it is the whole routing
+  // input the state cannot supply: the left menu asking for the section is a
+  // request for the client list, while a period switch or a status refresh
+  // is a redraw of whatever the operator is already reading. Both arrive
+  // here, and before this argument existed the second's rule ("keep the
+  // detail while its client is alive") also governed the first — so the menu
+  // could not get back to the list at all. The rule itself lives in
+  // reports_overview.js, where the JS suite executes it.
   //
   // The routing decision counts the WHOLE registry, archived rows included.
   // Counting only the visible ones would drop an operator who archived down
   // to one client into that client's detail view — and the index is the only
   // place an archived client can be restored from, so the feature would trap
   // them. A registry that has ever held more than one client keeps its index.
-  async function renderReports() {
+  async function renderReports(entry) {
     const cards = document.querySelector("[data-reports-cards]");
     if (!cards) return;
     const seq = ++reportsRenderSeq;
@@ -3068,27 +3085,39 @@
     reportsClients = body && Array.isArray(body.clients) ? body.clients : [];
     reportsCanArchive = !!(body && body.can_archive);
 
-    if (reportsClients.length <= 1 && !archivedReportsClients().length) {
-      // OSS single workspace: no index page — open the detail directly.
-      // showReportsClientDetail() sets the view + syncs the DOM.
-      reportsActiveClient = defaultClientSlug(reportsClients);
-      showReportsClientDetail(reportsActiveClient);
-      return;
-    }
-
     // An archived client is not a live selection: archiving the one on screen
     // returns the operator to the index rather than leaving them on a detail
     // view for a client that is no longer being collected.
-    const selectionAlive =
-      reportsActiveClient &&
-      visibleReportsClients().some(function (c) {
-        return c && c.slug === reportsActiveClient;
-      });
-    if (reportsView === "detail" && selectionAlive) {
-      showReportsClientDetail(reportsActiveClient);
-    } else {
+    const hasIndex =
+      reportsClients.length > 1 || archivedReportsClients().length > 0;
+    const view = reportsViewToShow({
+      entry: entry,
+      currentView: reportsView,
+      hasIndex: hasIndex,
+      selectionAlive:
+        reportsActiveClient &&
+        visibleReportsClients().some(function (c) {
+          return c && c.slug === reportsActiveClient;
+        }),
+    });
+    if (view === "index") {
       await renderReportsIndex(seq);
+      return;
     }
+    // OSS single workspace: no index page — the detail IS the section, so
+    // the client is resolved here rather than carried across renders.
+    if (!hasIndex) {
+      reportsActiveClient = defaultClientSlug(reportsClients);
+    }
+    // showReportsClientDetail() sets the view + syncs the DOM.
+    showReportsClientDetail(reportsActiveClient);
+  }
+
+  // Entering the Reports section from the left menu. Always the client list
+  // — see renderReports() above. Exported to selectNavGroup(), the one place
+  // that knows the operator clicked the menu item.
+  function enterReportsSection() {
+    renderReports(REPORTS_OVERVIEW.REPORTS_ENTRY_MENU);
   }
 
   // Wire the back-to-index button once. Re-fetches the client list (a fresh

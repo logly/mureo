@@ -409,6 +409,10 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     (`REPORTS_TRIAGE_KINDS` — the array index IS the rank), and what to run
     about each. Reads `MUREO_REPORTS_LOGIC` off the page at call time, so it
     loads after it.
+  - `reports_overview.js` → `window.MUREO_REPORTS_OVERVIEW` — the Reports
+    index view's own decisions: which view the section shows (the left menu
+    always means the client list; a period switch or a status refresh keeps
+    the operator where they are), and the portfolio figures above the grid.
 
   Each carries an inert `module.exports` tail so `node --test
   tests/js/*.test.js` executes the exact bytes the browser is served, and

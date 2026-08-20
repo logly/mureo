@@ -474,13 +474,15 @@
   <script src="/static/auth_wizards.js"></script>
   <!-- The Reports dashboard's DOM-free halves: the money-safety logic
        (#540), the display vocabulary and the card order (#556), and the
-       multi-client triage layer (#651, which reads the first at call time).
+       multi-client triage layer (#651, which reads the first at call time)
+       and the index view's own routing + portfolio figures.
        dashboard.js binds them all at load and throws naming the missing
        one, so they MUST come first. -->
   <script src="/static/reports_logic.js"></script>
   <script src="/static/reports_format.js"></script>
   <script src="/static/reports_order.js"></script>
   <script src="/static/reports_triage.js"></script>
+  <script src="/static/reports_overview.js"></script>
   <script src="/static/dashboard.js"></script>
   <script src="/static/extensions.js"></script>
 

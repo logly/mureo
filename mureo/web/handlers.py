@@ -291,6 +291,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "reports_format.js",
     "reports_order.js",
     "reports_triage.js",
+    "reports_overview.js",
     "dashboard.js",
     "extensions.js",
     "i18n.json",
