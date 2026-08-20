@@ -1902,6 +1902,7 @@
   const groupReportsTriage = REPORTS_TRIAGE.groupReportsTriage;
   const partitionTriageGroups = REPORTS_TRIAGE.partitionTriageGroups;
   const dismissTriageGroup = REPORTS_TRIAGE.dismissTriageGroup;
+  const dismissTriageItem = REPORTS_TRIAGE.dismissTriageItem;
   const restoreTriageDismissals = REPORTS_TRIAGE.restoreTriageDismissals;
   const collapseTriageGroups = REPORTS_TRIAGE.collapseTriageGroups;
 
@@ -2857,8 +2858,14 @@
       list.appendChild(buildTriageRow(group));
     });
     renderTriageMore(shown);
-    renderTriageDismissed(split.hidden);
+    renderTriageDismissed(split.hiddenCount);
   }
+
+  // Which rows are expanded, by kind. Dismissing one message re-renders the
+  // list, and a row that snapped shut after every ✕ would make closing six
+  // findings six trips through the disclosure. Reset with the list itself on
+  // every index render.
+  let reportsTriageOpenKinds = {};
 
   // Whether the alert list is showing every row it has. Reset on every index
   // render — the list opens short each time the operator arrives, which is
@@ -2893,16 +2900,18 @@
   // against (#636, #638: the condition was true, and nothing said so). So
   // the count is always on screen while anything is hidden, it says in words
   // that hiding resolved nothing, and one button brings them all back.
-  function renderTriageDismissed(hidden) {
+  function renderTriageDismissed(hiddenCount) {
     const box = document.querySelector("[data-reports-triage-hidden]");
     if (!box) return;
     box.textContent = "";
-    box.hidden = !hidden.length;
-    if (!hidden.length) return;
+    box.hidden = !hiddenCount;
+    if (!hiddenCount) return;
     const title = document.createElement("span");
     title.className = "reports-triage-hidden-title";
+    // MESSAGES, not rows. Counting rows would report "1" for six findings
+    // nobody can see, which is the silence this line exists to prevent.
     title.textContent = MUREO.t("dashboard.reports_triage_hidden_title", {
-      n: hidden.length,
+      n: hiddenCount,
     });
     box.appendChild(title);
     const note = document.createElement("span");
@@ -3001,15 +3010,20 @@
     toggle.appendChild(summary);
     head.appendChild(toggle);
 
-    // Closing a row is a VIEW operation and says so: the count above does
-    // not move, the client's card stays marked, and "N hidden" appears
+    // Closing a row is every message on it — the message-level control
+    // below applied to each, which is the only reading that keeps the two
+    // consistent. It is a VIEW operation and says so: the count above does
+    // not move, the clients' cards stay marked, and "N hidden" appears
     // under the list with the way back. See renderTriageDismissed.
     const close = document.createElement("button");
     close.type = "button";
     close.className = "reports-triage-dismiss";
     close.setAttribute(
       "aria-label",
-      MUREO.t("dashboard.reports_triage_dismiss", { what: tag })
+      MUREO.t("dashboard.reports_triage_dismiss_group", {
+        what: tag,
+        n: group.items.length,
+      })
     );
     close.textContent = "✕";
     close.addEventListener("click", function () {
@@ -3022,7 +3036,9 @@
     const detail = document.createElement("div");
     detail.className = "reports-triage-detail";
     detail.id = detailId;
-    detail.hidden = true;
+    const open = !!reportsTriageOpenKinds[group.kind];
+    detail.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
     const list = document.createElement("ul");
     list.className = "reports-triage-detail-list";
     group.items.forEach(function (item) {
@@ -3039,6 +3055,26 @@
       // sentence, so it is set as text and never as markup.
       what.textContent = triageItemText(item);
       line.appendChild(what);
+      // …and its own ✕. A row can cover six clients, and closing the KIND
+      // would take five findings the operator never read with it. The row's
+      // count and the clients it names shrink as these go; the row goes
+      // when the last of them does.
+      const drop = document.createElement("button");
+      drop.type = "button";
+      drop.className = "reports-triage-dismiss";
+      drop.setAttribute(
+        "aria-label",
+        MUREO.t("dashboard.reports_triage_dismiss", {
+          client: item.name || item.slug,
+          what: tag,
+        })
+      );
+      drop.textContent = "✕";
+      drop.addEventListener("click", function () {
+        dismissTriageItem(item);
+        renderReportsTriage(reportsTriageBuilt);
+      });
+      line.appendChild(drop);
       list.appendChild(line);
     });
     detail.appendChild(list);
@@ -3056,6 +3092,7 @@
     toggle.addEventListener("click", function () {
       const show = detail.hidden;
       detail.hidden = !show;
+      reportsTriageOpenKinds[group.kind] = show;
       toggle.setAttribute("aria-expanded", show ? "true" : "false");
     });
     return row;
@@ -3430,6 +3467,7 @@
     // list starts short again for the same reason it opens short at all.
     reportsHealthFilter = "all";
     reportsTriageShowAll = false;
+    reportsTriageOpenKinds = {};
     rows.forEach(function (c, i) {
       wrap.appendChild(
         buildClientCardItem(

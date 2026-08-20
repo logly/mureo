@@ -424,7 +424,18 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
   each is listed in `_STATIC_ALLOWLIST` with its `<script>` ahead of
   `dashboard.js` (which throws at load naming any that is missing).
   `tests/js/browser_contract.test.js` asserts the shipping contract for
-  every module from one table — add a row when you add a module. Put new
+  every module from one table — add a row when you add a module.
+
+  **Interaction tests.** `tests/js/dom_harness.js` (a helper, not a suite)
+  parses the real `app.html`, evaluates the real modules and `dashboard.js`
+  against it, and answers "would an operator SEE this?" from the real
+  `app.css` — modelling the one piece of cascade that decides it, the UA's
+  `[hidden] { display: none }` versus an author `display`. Use it whenever a
+  change is about what a click DOES: the v0.12.0 health filter shipped green
+  because every test asserted `hidden` was set on the right cards, and
+  `.reports-client-card-item { display: flex }` meant nothing moved. Anything
+  hidden by setting `.hidden` needs a `[hidden]` rule of its own; that list
+  is asserted in `tests/js/reports_filter_interaction.test.js`. Put new
   decision logic in one of these rather than in `dashboard.js`; a grep-pin
   cannot catch an inverted condition.
 
