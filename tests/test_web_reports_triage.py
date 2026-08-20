@@ -49,10 +49,14 @@ if TYPE_CHECKING:
 
 # The summary's keys, in order, as they were before #651. The triage layer
 # adds one MORE key and this list must stay the single-workspace answer.
+# ``non_canonical_periods`` joined the base shape in #659 — it is stated for
+# every install, Agency or not, because a window nothing reads is not a
+# multi-client problem.
 _LEGACY_SUMMARY_KEYS = [
     "client",
     "period",
     "periods",
+    "non_canonical_periods",
     "last_synced_at",
     "platforms",
     "platform_conflicts",

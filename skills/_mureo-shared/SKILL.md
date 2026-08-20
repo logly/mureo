@@ -521,6 +521,11 @@ shows fewer campaigns than you wrote — get these exact names right:
   everywhere, so it never joins with another entry and never matches a
   per-account override). Plus `campaigns[]` and the rollups the dashboard
   actually renders: `totals`, `metrics_period`, `periods[<window>]`.
+  **`metrics_period` and every `periods` key must be one of mureo's three
+  windows** — `YESTERDAY` / `LAST_7_DAYS` / `LAST_30_DAYS`. The set is closed:
+  any other token is refused rather than stored (and never rounded onto a
+  neighbouring window), because a window nothing reads makes a write that
+  reports success over a dashboard that never moves.
   **One ad account has exactly one platform key.** Before writing an entry,
   check whether that `account_id` is already stored under a *different* key
   and write to that key instead — the reporting view aggregates across

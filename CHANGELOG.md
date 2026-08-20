@@ -258,6 +258,46 @@
 
 ### Fixed
 
+- **Any string was accepted as a metrics window, so a daily check could
+  persist successfully into a bucket no view reads** (#659). mureo reports on
+  exactly three windows — `YESTERDAY`, `LAST_7_DAYS`, `LAST_30_DAYS` — and
+  nothing enforced them. `set_platform_metrics` took any `metrics_period` and
+  any `periods` key, and the MCP schema offered an example (`e.g.
+  LAST_30_DAYS`) rather than an allow-list. An agent analysing "since launch"
+  or "the last 8 days" wrote exactly that, and the label became a window.
+
+  Nothing errored and nobody lied. The daily check reported *All persistence
+  complete* because the write had succeeded; the card reported *古い数値 —
+  3日前に更新* because the canonical bucket really was stale. Both statements
+  were true, and nothing anywhere named the mismatch — an operator was left
+  with a check that "worked" and a dashboard that had not moved. It also
+  defeated #638: the staleness that change exists to surface was being
+  *caused* by a write that thought it had landed.
+
+  The vocabulary is now closed at the write boundary. `metrics_period` and
+  every `periods` key must be a canonical window; anything else is refused
+  before STATE.json is touched, with the allowed values in the error, and the
+  MCP schema states them as an `enum` (and as the only accepted `periods`
+  keys) instead of an example.
+
+  **A near miss is refused, not rounded.** `LAST_8_DAYS` is not remapped onto
+  `LAST_7_DAYS`: filing eight days of figures under a seven-day label is
+  exactly the mislabelling #638's staleness rule exists to prevent. Refusing
+  is honest; guessing is not.
+
+  **Reading stays deliberately tolerant.** Labels already on disk are real
+  figures, correctly collected, under a name no view expects — they remain
+  readable and keep their tab, because dropping them would delete data mureo
+  did collect in order to tidy a vocabulary. They are surfaced instead of
+  silently kept: the report summary names them (`non_canonical_periods`) and
+  the dashboard marks their toggle button as a window mureo does not define,
+  so an operator can see what accumulated and decide.
+
+  The canonical set is unchanged. "Since launch" is not added here: a window
+  needs a defined length for the staleness threshold to be derived from, and
+  STATE.json holds no launch date — adding it is a deliberate decision, not a
+  reaction to an agent having reached for the phrase.
+
 - **Auction and smart-bidding semantics were stated as unconditional facts**
   (#647). mureo's platform-agnostic instruction text and its shared entity
   vocabulary described bidding, auctions and smart-bidding learning phases as

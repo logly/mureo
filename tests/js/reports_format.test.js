@@ -78,6 +78,33 @@ test.describe("reportsPeriodLabel", function () {
   });
 });
 
+test.describe("isCanonicalReportsPeriod", function () {
+  test.it("knows the three windows mureo reports on", function () {
+    assert.equal(fmt.isCanonicalReportsPeriod("YESTERDAY"), true);
+    assert.equal(fmt.isCanonicalReportsPeriod("LAST_7_DAYS"), true);
+    assert.equal(fmt.isCanonicalReportsPeriod("LAST_30_DAYS"), true);
+  });
+
+  test.it("marks a window an agent invented (#659)", function () {
+    // These four are from the reported install. The toggle still renders
+    // them — the figures under them are real — but they are not windows
+    // mureo keeps up to date, and an operator has to be able to tell.
+    ["SINCE_LAUNCH_17D", "LAST_8_DAYS", "TO_DATE_1", "THIS_QUARTER"].forEach(
+      function (token) {
+        assert.equal(fmt.isCanonicalReportsPeriod(token), false, token);
+      }
+    );
+  });
+
+  test.it("does not inherit an answer from Object.prototype", function () {
+    // A truthiness check on the label map would call these windows.
+    assert.equal(fmt.isCanonicalReportsPeriod("constructor"), false);
+    assert.equal(fmt.isCanonicalReportsPeriod("toString"), false);
+    assert.equal(fmt.isCanonicalReportsPeriod(null), false);
+    assert.equal(fmt.isCanonicalReportsPeriod(undefined), false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Humanizing
 // ---------------------------------------------------------------------------
