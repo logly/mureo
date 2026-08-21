@@ -70,13 +70,33 @@ function rule(selector) {
   return out;
 }
 
+/**
+ * A `:root` custom property's declared value.
+ *
+ * #691 states the type scale as tokens, so a rule now says
+ * `font-size: var(--type-caption-size)` where it used to say `12px`. The
+ * number is still declared in app.css — one level further up — and resolving
+ * it here is what keeps this model coupled to the stylesheet rather than to a
+ * literal somebody would have to remember to update in two places.
+ *
+ * One level only, and deliberately: a token defined in terms of another token
+ * would be a scale nobody can read off the file either.
+ */
+function token(name) {
+  const m = new RegExp("\\" + name + ":\\s*([^;]+);").exec(CSS);
+  assert.ok(m, name + " is not declared in app.css");
+  return m[1].trim();
+}
+
 /** The first number in a declaration, or `fallback` when it is absent. */
 function px(selector, property, fallback) {
-  const raw = rule(selector)[property];
+  let raw = rule(selector)[property];
   if (raw === undefined) {
     assert.notEqual(fallback, undefined, selector + " has no " + property);
     return fallback;
   }
+  const ref = /^var\((--[\w-]+)\)$/.exec(raw.trim());
+  if (ref) raw = token(ref[1]);
   const m = /(-?[\d.]+)/.exec(raw);
   assert.ok(m, selector + " " + property + " is not a length: " + raw);
   return parseFloat(m[1]);
@@ -95,7 +115,11 @@ function frame(selector) {
 function line(selector, fallbackSize) {
   const decl = rule(selector);
   const size = px(selector, "font-size", fallbackSize);
-  const lh = decl["line-height"] ? parseFloat(decl["line-height"]) : DEFAULT_LINE_HEIGHT;
+  const lhRaw = decl["line-height"];
+  const lhRef = lhRaw && /^var\((--[\w-]+)\)$/.exec(lhRaw.trim());
+  const lh = lhRaw
+    ? parseFloat(lhRef ? token(lhRef[1]) : lhRaw)
+    : DEFAULT_LINE_HEIGHT;
   return Math.round(size * (lh > 3 ? 1 : lh));
 }
 

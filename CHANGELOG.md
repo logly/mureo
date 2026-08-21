@@ -2,6 +2,42 @@
 
 ### Changed
 
+- **A type scale, semantic status colours, and one KPI card anatomy** (#691,
+  phase 1 of 4). Operator feedback on the reports screens was that nothing
+  stands out and everything is too small. Measured, the complaint was
+  structural: 107 of 116 `font-size` declarations were 15px or under, the
+  headline figures were 15px over 10px labels, and eleven distinct
+  `font-weight` values crowded the 500–700 band, so no element on the page had
+  more emphasis than any other.
+
+  - **Type scale.** Six steps, three weights, stated once as custom
+    properties: page title 20/700, KPI figure 30/700 (20/700 inside a client
+    card, which is a 230px track), section heading 16/600, card title 14/600,
+    body 14/400, caption 12/400. All 105 literal `font-size` declarations now
+    reference the scale; the eleven weights collapse to 400, 600 and 700.
+  - **Proportional figures.** The monospace that was set on thirteen figure
+    rules is gone, replaced by `font-variant-numeric: tabular-nums` on the
+    body — digits still line up in a column, without the typewriter texture.
+    The three places that really are code (env-var names and values, the
+    connector URL) keep it.
+  - **Status tokens.** `--status-alert` / `--status-watch` / `--status-ok`
+    with background and border variants, in both themes. Red is now reserved
+    for act-now states: an update being available and an out-of-date install
+    become amber, and "not configured" and "step not done" become neutral —
+    they are states, not problems, and they were spending the one colour that
+    act-now needs. `--danger` stays, narrowed to what it always meant on a
+    button: a destructive action.
+  - **One card anatomy.** Caption then figure, 4px apart, on every KPI family.
+    The client card built its cells the other way round, so the two families
+    on the index read in opposite orders.
+
+  This is a restyle: no layout structure, DOM hierarchy or wording changed.
+  Deltas and sparklines are phase 4 and wait on the daily-history schema.
+
+  Also fixes a dark-theme bug found on the way: the amber "watch" badges
+  hard-coded a light-only `#7a5a12` foreground, which was unreadable on a dark
+  surface.
+
 - **The Reports view's state moved onto one object, and `dashboard_reports.js`
   split six ways** (#687). At 2,139 lines it was the one file #678 could not
   bring under the 800-line threshold, and the obstacle was not size but shape:

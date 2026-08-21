@@ -509,17 +509,23 @@
   // + latest report flags; clicking it loads the existing per-client detail.
   // ----------------------------------------------------------------------
 
+  // Label first, then the figure — the same anatomy the portfolio strip's
+  // cells already had (#691). This one was built the other way round, so the
+  // two KPI families on the index read in opposite orders; a reader scanning
+  // a column of figures had to work out which caption belonged to which
+  // number in each. Same two nodes, same parent, same classes: only the
+  // order they are appended in.
   function clientKpiCell(labelKey, value) {
     const cell = document.createElement("div");
     cell.className = "reports-client-kpi";
-    const v = document.createElement("span");
-    v.className = "reports-client-kpi-value";
-    v.textContent = value;
     const l = document.createElement("span");
     l.className = "reports-client-kpi-label";
     l.textContent = MUREO.t(labelKey);
-    cell.appendChild(v);
+    const v = document.createElement("span");
+    v.className = "reports-client-kpi-value";
+    v.textContent = value;
     cell.appendChild(l);
+    cell.appendChild(v);
     return cell;
   }
 

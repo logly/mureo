@@ -33,6 +33,29 @@
   --warn-tint: #fdf3da;
   --warn-line: #e6c463;
 
+  /* ---- status (#691) --------------------------------------------------
+     Three states, and only three. `alert` is reserved for ACT NOW — a
+     finding that withholds a figure or costs money while it stands. `watch`
+     is "look at this", `ok` is "nothing to do". Anything that is merely
+     informational stays neutral (--muted / --hairline): a fourth colour
+     would make the first three mean less.
+
+     Which state a thing is in is never decided here. reports_triage.js owns
+     that ranking and the markup carries it as .is-attention / .is-watch /
+     .is-ok, so this file only says what those look like.
+
+     Colour never carries the meaning alone — every element these paint also
+     carries a word (the badge text, the filter chip label, the row's tag). */
+  --status-alert: #dc2626;
+  --status-alert-bg: #fef2f2;
+  --status-alert-line: #f6cccc;
+  --status-watch: #b45309;
+  --status-watch-bg: #fffbeb;
+  --status-watch-line: #f0dcae;
+  --status-ok: #059669;
+  --status-ok-bg: #ecfdf5;
+  --status-ok-line: #a7f3d0;
+
   /* legacy token aliases — kept so existing rules and any consumer that
      references --color-* / --radius keep resolving. */
   --color-bg: var(--paper);
@@ -60,10 +83,46 @@
 
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  /* Inter and Noto Sans JP are named FIRST but never fetched: the CSP bans
+     web fonts and mureo runs offline, so this is "use them if the machine
+     already has them" and the system stack otherwise. Both faces have the
+     same metrics-friendly proportions the mockup was drawn at. */
+  --font-sans: "Inter", "Noto Sans JP", ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     monospace;
+
+  /* ---- type scale (#691) ----------------------------------------------
+     Five steps, three weights. The complaint this answers is that 107 of
+     116 font-size declarations were <=15px and eleven weights crowded the
+     500-700 band, so nothing on the page had more emphasis than anything
+     else. A figure an operator is meant to READ is 30px/700; everything
+     else is 16 / 14 / 12 at 600 or 400.
+
+     Weights are 400, 600 and 700 and nothing between. A 640 next to a 660
+     is not a distinction anybody can see; it is just two numbers. */
+  --type-kpi-size: 30px;
+  --type-kpi-weight: 700;
+  --type-kpi-line: 1.12;
+  --type-kpi-tracking: -0.025em;
+
+  /* The same figure inside a client card, which is a 230px grid track four
+     across rather than a full-width panel. */
+  --type-figure-size: 20px;
+  --type-figure-weight: 700;
+  --type-figure-tracking: -0.02em;
+
+  --type-title-size: 20px;
+  --type-title-weight: 700;
+  --type-heading-size: 16px;
+  --type-heading-weight: 600;
+  --type-card-title-size: 14px;
+  --type-card-title-weight: 600;
+  --type-body-size: 14px;
+  --type-body-weight: 400;
+  --type-caption-size: 12px;
+  --type-caption-weight: 400;
 
   color-scheme: light dark;
   font-family: var(--font-sans);
@@ -92,6 +151,19 @@
     --danger-tint: #2a1816;
     --warn-tint: #2a2410;
     --warn-line: #6b5a25;
+
+    /* Same three states, lifted for a dark surface. Each foreground clears
+       4.5:1 on --surface; the backgrounds are tints of the foreground rather
+       than the light values, which would glow. */
+    --status-alert: #f87171;
+    --status-alert-bg: #2a1615;
+    --status-alert-line: #5d2726;
+    --status-watch: #fbbf24;
+    --status-watch-bg: #2a2210;
+    --status-watch-line: #5c4a17;
+    --status-ok: #34d399;
+    --status-ok-bg: #10241d;
+    --status-ok-line: #1f4d3c;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 8px 26px -10px rgba(0, 0, 0, 0.65);
     --shadow-pop: 0 26px 70px -22px rgba(0, 0, 0, 0.8);
@@ -117,9 +189,13 @@ body {
   );
   background-attachment: fixed;
   color: var(--ink);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-weight);
+  line-height: 1.6;
   letter-spacing: 0.005em;
+  /* Figures line up in a column whatever the face — this is what replaces
+     the monospace that used to be set on every number in the product. */
+  font-variant-numeric: tabular-nums;
 }
 
 h1,
@@ -198,7 +274,7 @@ a {
   border-radius: var(--r-pill);
   padding: 6px 14px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   cursor: pointer;
   color: var(--muted);
   transition: color 0.15s var(--ease), border-color 0.15s var(--ease),
@@ -289,7 +365,7 @@ a {
 
 .landing-title {
   font-size: clamp(28px, 5vw, 38px);
-  font-weight: 660;
+  font-weight: 600;
   margin: 0 0 10px;
 }
 
@@ -297,13 +373,13 @@ a {
   color: var(--muted);
   margin: 0 auto 36px;
   max-width: 46ch;
-  font-size: 16px;
+  font-size: var(--type-heading-size);
 }
 
 .landing-cta {
   font: inherit;
-  font-size: 16px;
-  font-weight: 560;
+  font-size: var(--type-heading-size);
+  font-weight: 600;
   padding: 14px 40px;
   background: var(--accent);
   color: #fff;
@@ -335,22 +411,22 @@ a {
 
 .landing-legacy-notice {
   margin-top: 24px;
-  background: var(--warn-tint);
-  border: 1px solid var(--warn-line);
+  background: var(--status-watch-bg);
+  border: 1px solid var(--status-watch-line);
   border-radius: var(--r-md);
   padding: 18px 20px;
   text-align: left;
 }
 
 .landing-legacy-notice h2 {
-  font-size: 15px;
+  font-size: var(--type-body-size);
   margin: 0 0 6px;
 }
 
 .landing-legacy-notice p {
   margin: 0;
   color: var(--ink-soft);
-  font-size: 14px;
+  font-size: var(--type-body-size);
 }
 
 .landing-legacy-notice button {
@@ -361,7 +437,7 @@ a {
   border: 0;
   border-radius: var(--r-sm);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   cursor: pointer;
 }
 
@@ -387,8 +463,8 @@ a {
 
 .wizard-step h2 {
   margin: 0 0 6px;
-  font-size: 21px;
-  font-weight: 620;
+  font-size: var(--type-title-size);
+  font-weight: 600;
 }
 
 .wizard-step > p {
@@ -399,7 +475,7 @@ a {
 .wizard-step label {
   display: block;
   margin: 14px 0;
-  font-size: 14px;
+  font-size: var(--type-body-size);
 }
 
 .wizard-step label > span {
@@ -434,7 +510,7 @@ a {
   border-radius: var(--r-sm);
   cursor: pointer;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--type-body-size);
   border: 1px solid var(--hairline-strong);
   background: var(--surface);
   color: var(--ink);
@@ -477,7 +553,7 @@ a {
 .wizard-progress {
   text-align: right;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
   margin-top: 14px;
@@ -486,7 +562,7 @@ a {
 .wizard-advanced-skip {
   margin-top: 18px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   color: var(--muted);
 }
 
@@ -513,8 +589,8 @@ a {
   gap: 6px;
   padding: 5px 12px;
   border-radius: var(--r-pill);
-  font-size: 12.5px;
-  font-weight: 540;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   border: 1px solid transparent;
 }
 
@@ -524,10 +600,11 @@ a {
   border-color: color-mix(in srgb, var(--success) 30%, transparent);
 }
 
+/* A step not yet taken is progress, not a failure. */
 .wizard-step-pill.not-done {
-  background: var(--danger-tint);
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+  background: var(--surface-2);
+  color: var(--muted);
+  border-color: color-mix(in srgb, var(--muted) 28%, transparent);
 }
 
 .wizard-completed-summary {
@@ -545,14 +622,14 @@ a {
 
 .wizard-choice-already-done {
   margin-left: 8px;
-  font-size: 12px;
-  font-weight: 560;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   color: var(--success);
 }
 
 .wizard-choice-desc {
   margin: 4px 0 10px 26px;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   color: var(--muted);
 }
 
@@ -562,7 +639,7 @@ a {
   background: var(--accent-tint);
   border-left: 3px solid var(--accent);
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   color: var(--ink-soft);
 }
 
@@ -577,14 +654,14 @@ a {
 
 .auth-method-chooser-title {
   margin: 0 0 4px;
-  font-size: 15px;
+  font-size: var(--type-body-size);
   font-weight: 600;
   color: var(--ink);
 }
 
 .auth-method-chooser-sub {
   margin: 0 0 12px;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   color: var(--muted);
 }
 
@@ -628,7 +705,7 @@ a {
 }
 
 .auth-method-option-title {
-  font-size: 13.5px;
+  font-size: var(--type-body-size);
   font-weight: 600;
   color: var(--ink);
 }
@@ -639,12 +716,12 @@ a {
   border-radius: var(--r-pill);
   background: var(--success-tint);
   color: var(--success);
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
 }
 
 .auth-method-option-desc {
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
   color: var(--muted);
 }
@@ -659,8 +736,8 @@ a {
    toggle is redundant chrome — quieted down, never removed (it stays the
    card's summary element and a pinned downstream hook). */
 .meta-token-card-summary {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   color: var(--muted);
   cursor: pointer;
 }
@@ -679,8 +756,8 @@ a {
 }
 
 .dashboard-header h1 {
-  font-size: 22px;
-  font-weight: 640;
+  font-size: var(--type-title-size);
+  font-weight: 600;
   margin: 0;
 }
 
@@ -691,8 +768,8 @@ a {
   border-radius: var(--r-sm);
   padding: 9px 17px;
   font: inherit;
-  font-size: 14px;
-  font-weight: 520;
+  font-size: var(--type-body-size);
+  font-weight: 600;
   cursor: pointer;
   box-shadow: 0 6px 16px -10px var(--accent-ring);
   transition: background 0.15s var(--ease), transform 0.12s var(--ease);
@@ -741,8 +818,8 @@ a {
   color: var(--muted);
   text-decoration: none;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 520;
+  font-size: var(--type-body-size);
+  font-weight: 600;
   transition: color 0.14s var(--ease), background 0.14s var(--ease);
 }
 
@@ -759,7 +836,7 @@ a {
 .dashboard-nav-item[aria-current="page"] {
   background: var(--accent-tint);
   color: var(--accent);
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .dashboard-nav-item[aria-current="page"]::before {
@@ -799,7 +876,7 @@ a {
   box-sizing: border-box;
   padding: 9px 12px;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--type-body-size);
   color: var(--ink);
   background: var(--surface-2);
   border: 1px solid var(--hairline-strong);
@@ -885,18 +962,20 @@ input[type="checkbox"] {
   border-top: 0;
 }
 
+/* A section heading is a heading, not a caption. It was 13px uppercase
+   muted — smaller and quieter than the body under it, which is why the
+   screens read as one undifferentiated wall (#691). */
 .dashboard-section h2 {
   margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 640;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted);
+  font-size: var(--type-heading-size);
+  font-weight: var(--type-heading-weight);
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 
 .dashboard-section > p {
   color: var(--ink-soft);
-  font-size: 14px;
+  font-size: var(--type-body-size);
 }
 
 .dashboard-section ul {
@@ -912,7 +991,7 @@ input[type="checkbox"] {
   gap: 12px;
   padding: 11px 0;
   border-bottom: 1px solid var(--hairline);
-  font-size: 14px;
+  font-size: var(--type-body-size);
 }
 
 .dashboard-section li:last-child {
@@ -1031,7 +1110,7 @@ label > small {
   margin-top: 4px;
   margin-bottom: 14px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
 }
 
@@ -1047,7 +1126,7 @@ label > small {
   display: block;
   margin-bottom: 4px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--type-body-size);
 }
 [data-advisor-form] input,
 [data-advisor-form] select,
@@ -1061,7 +1140,7 @@ label > small {
 .advisor-mono {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   line-height: 1.55;
 }
 .advisor-field .field-hint {
@@ -1076,7 +1155,7 @@ label > small {
   color: var(--paper);
   padding: 13px 18px;
   border-radius: var(--r-md);
-  font-size: 14px;
+  font-size: var(--type-body-size);
   max-width: 340px;
   box-shadow: var(--shadow-pop);
   animation: toastIn 0.28s var(--ease) both;
@@ -1129,7 +1208,7 @@ dialog[data-confirm-dialog]::backdrop {
 
 dialog[data-confirm-dialog] [data-confirm-text] {
   margin: 0 0 20px;
-  font-size: 15px;
+  font-size: var(--type-body-size);
 }
 
 dialog[data-confirm-dialog] > div {
@@ -1144,7 +1223,7 @@ dialog[data-confirm-dialog] button {
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--type-body-size);
   cursor: pointer;
   margin-left: 8px;
 }
@@ -1176,8 +1255,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   background: var(--surface);
   color: var(--ink);
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 520;
+  font-size: var(--type-body-size);
+  font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
   white-space: nowrap;
@@ -1260,7 +1339,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .dashboard-danger p {
   margin: 0 auto 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--type-body-size);
 }
 
 /* Env vars listing — name + masked/plain value side by side. */
@@ -1279,13 +1358,13 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .dashboard-env-name {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   color: var(--ink);
 }
 
 .dashboard-env-value {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   word-break: break-all;
   text-align: right;
@@ -1326,13 +1405,13 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .connector-setup-card h4 {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: var(--type-body-size);
 }
 
 .connector-setup-card p.connector-setup-lead {
   margin: 0 0 10px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--type-body-size);
 }
 
 .connector-setup-card ol {
@@ -1343,7 +1422,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .connector-setup-card ol li {
   margin: 5px 0;
   line-height: 1.55;
-  font-size: 13.5px;
+  font-size: var(--type-body-size);
 }
 
 .connector-url-row {
@@ -1360,7 +1439,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border-radius: var(--r-sm);
   padding: 7px 10px;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   overflow-x: auto;
   white-space: nowrap;
 }
@@ -1370,7 +1449,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .wizard-pending-reminder {
-  font-size: 14px;
+  font-size: var(--type-body-size);
 }
 
 .wizard-pending-reminder strong {
@@ -1389,7 +1468,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .dashboard-provider-hosted-note {
   flex-basis: 100%;
   margin: 6px 0 2px;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   color: var(--muted);
   line-height: 1.55;
 }
@@ -1417,26 +1496,32 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    sibling data-i18n text node can't wipe them). */
 .mark-ok {
   color: var(--success);
-  font-weight: 660;
+  font-weight: 600;
 }
 
+/* 'Not configured' is a state, not an emergency — most installs leave
+   most of these off on purpose. The glyph already says which it is, so
+   red here only spent the colour that act-now needs (#691). */
 .mark-no {
-  color: var(--danger);
-  font-weight: 660;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 /* #239 — red "update available" indicator on the About nav item, plus
    the outdated package rows in the About tab's update area. */
+/* An update being available is something to LOOK at, not something that
+   is costing money while it stands (#691). Amber, not red. */
 .nav-badge-update {
-  color: var(--danger);
-  font-weight: 660;
+  color: var(--status-watch);
+  font-weight: 600;
   margin-left: 6px;
   font-size: 0.85em;
   line-height: 1;
 }
 
+/* Same demotion as the nav badge: out-of-date is a watch state. */
 .about-update-outdated {
-  color: var(--danger);
+  color: var(--status-watch);
   font-weight: 600;
 }
 
@@ -1505,7 +1590,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .dashboard-reports-client span {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1518,7 +1603,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .dashboard-reports-freshness {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1549,7 +1634,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 4px 12px;
@@ -1585,7 +1670,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .dashboard-reports-hint {
   margin: 4px 0 0;
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
@@ -1640,8 +1725,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* Client name comes from the Agency client list, which mureo does not
    control either. Same break treatment as .report-card-name. */
 .reports-client-card-name {
-  font-weight: 640;
-  font-size: 13.5px;
+  font-weight: var(--type-card-title-weight);
+  font-size: var(--type-card-title-size);
   color: var(--ink);
   min-width: 0;
   /* `keep-all` is the fix for a five-character Japanese client name being
@@ -1654,7 +1739,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-client-card-fresh {
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1662,15 +1747,15 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* Stale per-platform figures (#535): the aggregate is only as current as its
    oldest input, so the card's own freshness carries the marker. */
 .reports-client-card-fresh.is-stale {
-  color: var(--danger);
+  color: var(--status-alert);
   font-weight: 600;
 }
 
 /* A card whose KPIs must not be trusted (#533). The ring is what stops a
    flagged card reading as an ordinary one in the at-a-glance grid. */
 .reports-client-card.is-conflicted {
-  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 22%, transparent);
+  border-color: color-mix(in srgb, var(--status-alert) 45%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-alert) 22%, transparent);
 }
 
 .reports-client-card-kpis {
@@ -1683,7 +1768,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    second claim about the window on screen. */
 .reports-client-card-stale-figures {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   line-height: 1.45;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -1691,23 +1776,38 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   overflow-wrap: anywhere;
 }
 
+/* ---- KPI card anatomy (#691) ------------------------------------------
+   Every figure on the Reports screens is built the same way and in the same
+   order: caption, then the number. The gap is 4px because the caption
+   belongs to the figure under it — further apart and the column reads as
+   alternating rows of unrelated text, which is what it used to do.
+
+   Where a family has a third line (the portfolio strip's coverage note) it
+   sits under the figure at the same rhythm. */
 .reports-client-kpi {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 4px;
+  min-width: 0;
 }
 
+/* A client's headline figure. 20px rather than the 30px of a full-width
+   KPI panel because this one sits in a 230px grid track, four across —
+   the mockup draws both and they are deliberately different steps. */
 .reports-client-kpi-value {
-  font-size: 15px;
-  font-weight: 600;
-  font-family: var(--font-mono);
+  font-size: var(--type-figure-size);
+  font-weight: var(--type-figure-weight);
+  letter-spacing: var(--type-figure-tracking);
+  line-height: 1.3;
   color: var(--ink);
 }
 
+/* 10px small-caps was below the size anything should be asked to read.
+   At 12px sentence case the label is legible and the figure above it is
+   still unmistakably the thing to look at. */
 .reports-client-kpi-label {
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-caption-weight);
   color: var(--muted);
 }
 
@@ -1765,7 +1865,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   line-height: 1;
   padding: 2px 4px;
   border-radius: 6px;
@@ -1791,7 +1891,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   padding: 2px 4px;
   border-radius: 6px;
   color: var(--muted);
@@ -1819,7 +1919,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   flex-direction: column;
   margin: 0;
   padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-alert) 30%, transparent);
   border-radius: 14px;
   background: var(--surface);
   min-width: 0;
@@ -1831,9 +1931,9 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-triage-title {
   margin: 0;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--danger);
+  font-size: var(--type-card-title-size);
+  font-weight: var(--type-card-title-weight);
+  color: var(--status-alert);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -1859,7 +1959,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-bottom: 5px;
   border: 1px solid var(--hairline);
   border-radius: 10px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1910,11 +2010,11 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-triage-sig.is-attention {
-  background: var(--danger);
+  background: var(--status-alert);
 }
 
 .reports-triage-sig.is-watch {
-  background: var(--warn-line);
+  background: var(--status-watch);
 }
 
 .reports-triage-client {
@@ -1947,21 +2047,20 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-triage-tag {
   flex-shrink: 0;
   padding: 1px 7px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--type-caption-size);
   border-radius: 6px;
   color: var(--muted);
   background: var(--surface-2);
 }
 
 .reports-triage-tag.is-attention {
-  color: var(--danger);
-  background: var(--danger-tint);
+  color: var(--status-alert);
+  background: var(--status-alert-bg);
 }
 
 .reports-triage-tag.is-watch {
-  color: #7a5a12;
-  background: var(--warn-tint);
+  color: var(--status-watch);
+  background: var(--status-watch-bg);
 }
 
 .reports-triage-what {
@@ -2001,7 +2100,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-client-card-badge {
   padding: 1px 7px;
-  font-size: 10.5px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   border-radius: 6px;
   color: var(--muted);
@@ -2011,13 +2110,13 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-client-card-badge.is-attention {
-  color: var(--danger);
-  background: var(--danger-tint);
+  color: var(--status-alert);
+  background: var(--status-alert-bg);
 }
 
 .reports-client-card-badge.is-watch {
-  color: #7a5a12;
-  background: var(--warn-tint);
+  color: var(--status-watch);
+  background: var(--status-watch-bg);
 }
 
 /* The row head holds two independent controls: the disclosure (everything
@@ -2059,7 +2158,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   appearance: none;
   padding: 0 4px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   line-height: 1;
   color: var(--text-faint, var(--muted));
   background: transparent;
@@ -2121,7 +2220,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-top: 2px;
   padding: 0;
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   color: var(--accent);
   background: transparent;
@@ -2149,7 +2248,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px dashed var(--hairline);
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   min-width: 0;
 }
@@ -2174,7 +2273,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   appearance: none;
   padding: 0;
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   color: var(--accent);
   background: transparent;
@@ -2186,16 +2285,16 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* The other half of the layer: exactly the clients it counts are marked in
    the grid below. */
 .reports-client-card-item.is-triaged > .reports-client-card {
-  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  border-color: color-mix(in srgb, var(--status-alert) 45%, transparent);
 }
 
 .reports-client-card-mark {
   align-self: flex-start;
-  font-size: 10px;
+  font-size: var(--type-caption-size);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--danger);
+  color: var(--status-alert);
 }
 
 /* ------------------------------------------------------------------
@@ -2230,7 +2329,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-panel-head h3 {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--type-body-size);
   font-weight: 700;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -2239,8 +2338,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-count-badge {
   flex-shrink: 0;
   padding: 2px 9px;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   background: var(--surface-2);
   border: 1px solid var(--hairline);
@@ -2250,7 +2348,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-panel-note {
   margin: 8px 0 0;
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
   color: var(--muted);
   min-width: 0;
@@ -2285,7 +2383,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-kpi {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--hairline);
@@ -2294,16 +2392,18 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-kpi-label {
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-caption-weight);
   color: var(--muted);
 }
 
+/* The portfolio strip's figures — the largest thing on the index, and the
+   only thing at this step. */
 .reports-kpi-value {
-  font-family: var(--font-mono);
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--type-kpi-size);
+  font-weight: var(--type-kpi-weight);
+  line-height: var(--type-kpi-line);
+  letter-spacing: var(--type-kpi-tracking);
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -2316,7 +2416,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    the four cells stay the same height. */
 .reports-kpi-note {
   min-height: 1.3em;
-  font-size: 10.5px;
+  font-size: var(--type-caption-size);
   line-height: 1.3;
   color: var(--muted);
   min-width: 0;
@@ -2376,7 +2476,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   appearance: none;
   padding: 5px 11px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   color: var(--muted);
   background: transparent;
@@ -2402,8 +2502,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-filter-count {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -2416,15 +2515,15 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-filter-dot.is-attention {
-  background: var(--danger);
+  background: var(--status-alert);
 }
 
 .reports-filter-dot.is-watch {
-  background: var(--warn-line);
+  background: var(--status-watch);
 }
 
 .reports-filter-dot.is-ok {
-  background: var(--success);
+  background: var(--status-ok);
 }
 
 /* A client's health, as the card's left edge and as a tag in its head.
@@ -2435,21 +2534,21 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-client-card.is-health-attention {
-  border-left-color: var(--danger);
+  border-left-color: var(--status-alert);
 }
 
 .reports-client-card.is-health-watch {
-  border-left-color: var(--warn-line);
+  border-left-color: var(--status-watch);
 }
 
 .reports-client-card.is-health-ok {
-  border-left-color: var(--success);
+  border-left-color: var(--status-ok);
 }
 
 .reports-client-card-status {
   flex-shrink: 0;
   padding: 1px 7px;
-  font-size: 10px;
+  font-size: var(--type-caption-size);
   font-weight: 700;
   border-radius: 6px;
   color: var(--muted);
@@ -2457,18 +2556,18 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-client-card-status.is-attention {
-  color: var(--danger);
-  background: var(--danger-tint);
+  color: var(--status-alert);
+  background: var(--status-alert-bg);
 }
 
 .reports-client-card-status.is-watch {
-  color: #7a5a12;
-  background: var(--warn-tint);
+  color: var(--status-watch);
+  background: var(--status-watch-bg);
 }
 
 .reports-client-card-status.is-ok {
-  color: var(--success);
-  background: var(--success-tint);
+  color: var(--status-ok);
+  background: var(--status-ok-bg);
 }
 
 /* Where a client's spend went, as one bar. Drawn only from the rows mureo
@@ -2490,7 +2589,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 10px;
-  font-size: 10px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   min-width: 0;
 }
@@ -2538,7 +2637,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.45;
   min-width: 0;
 }
@@ -2549,8 +2648,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   flex-shrink: 0;
   width: 38px;
   padding-top: 1px;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -2633,7 +2731,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   align-items: center;
   gap: 10px;
   margin-bottom: 9px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   min-width: 0;
 }
 
@@ -2664,8 +2762,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-platform-value {
   flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -2703,14 +2800,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-clients-empty {
   grid-column: 1 / -1;
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
 /* Archived-clients disclosure: the (deliberately unobtrusive) way back. */
 .reports-archived {
   margin: 8px 0 4px;
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
@@ -2760,7 +2857,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   padding: 0;
   color: var(--accent);
@@ -2797,7 +2894,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-back {
   appearance: none;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   cursor: pointer;
   padding: 0;
@@ -2821,8 +2918,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    apart from the section heading + back link above it. */
 .dashboard-reports-detail-client {
   margin: 10px 0 16px;
-  font-size: 18px;
-  font-weight: 650;
+  font-size: var(--type-title-size);
+  font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
 }
@@ -2909,8 +3006,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    item shrink below its content; overflow-wrap gives the break. */
 .report-card-name {
   margin: 0;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--type-body-size);
+  font-weight: 600;
   color: var(--ink);
   letter-spacing: -0.01em;
   min-width: 0;
@@ -2921,8 +3018,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* metrics_period label, e.g. "LAST_30_DAYS" — quiet, mono, tinted pill. */
 .report-card-period {
   flex: none;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--type-caption-size);
   letter-spacing: 0.02em;
   color: var(--muted);
   background: var(--surface-2);
@@ -2935,20 +3031,20 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .report-card-headline {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .report-card-headline-value {
-  font-family: var(--font-mono);
-  font-size: 30px;
-  font-weight: 600;
-  line-height: 1.05;
+  font-size: var(--type-kpi-size);
+  font-weight: var(--type-kpi-weight);
+  line-height: var(--type-kpi-line);
+  letter-spacing: var(--type-kpi-tracking);
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
 .report-card-headline-label {
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -2964,15 +3060,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-card-kpis dt {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
 .report-card-kpis dd {
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--type-body-size);
+  font-weight: 600;
   color: var(--ink-soft);
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -2981,7 +3076,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* Advisory bridge / not-yet-synced card body. */
 .report-card-empty {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   color: var(--muted);
 }
 
@@ -2996,7 +3091,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-card-count {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -3004,14 +3099,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* Per-platform freshness (#535) — this platform's own fetched_at, never the
    document-level last_synced_at. */
 .report-card-fresh {
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .report-card-fresh.is-stale {
-  color: var(--danger);
+  color: var(--status-alert);
   font-weight: 600;
 }
 
@@ -3021,10 +3116,10 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .report-card-conflict {
   margin: 0;
   padding: 7px 9px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
-  color: var(--danger);
-  background: var(--danger-tint);
+  color: var(--status-alert);
+  background: var(--status-alert-bg);
   border-radius: 8px;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3037,10 +3132,10 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .report-card-stale {
   margin: 0;
   padding: 7px 9px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
-  color: var(--danger);
-  background: var(--danger-tint);
+  color: var(--status-alert);
+  background: var(--status-alert-bg);
   border-radius: 8px;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3051,10 +3146,10 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .report-card-not-collected {
   margin: 0;
   padding: 7px 9px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
   color: var(--ink-soft);
-  background: var(--warn-tint);
+  background: var(--status-watch-bg);
   border-radius: 8px;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3065,7 +3160,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .report-card-stale-figures {
   margin: 0;
   padding: 0 9px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -3078,7 +3173,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .report-card-conflict-hint {
   margin: 0;
   padding: 0 9px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
   color: var(--muted);
   min-width: 0;
@@ -3087,7 +3182,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-card.is-conflicted {
-  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  border-color: color-mix(in srgb, var(--status-alert) 45%, transparent);
 }
 
 /* Latest-report + recent-actions blocks share a quiet sub-section frame. */
@@ -3097,8 +3192,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .dashboard-reports-block h3 {
   margin: 0 0 12px;
-  font-size: 12px;
-  font-weight: 640;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--muted);
@@ -3106,8 +3201,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .report-latest-period {
   margin: 0 0 8px;
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
@@ -3138,8 +3232,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-stats-title {
-  font-size: 11px;
-  font-weight: 640;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
@@ -3149,7 +3243,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   line-height: 1.4;
   padding: 3px 8px;
   border-radius: 6px;
@@ -3164,25 +3258,24 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-stat-value {
-  font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
 
 .report-stat-more {
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
 .report-latest-narrative {
   margin: 10px 0 0;
-  font-size: 14px;
+  font-size: var(--type-body-size);
   line-height: 1.55;
   color: var(--ink-soft);
 }
 
 .report-latest-generated {
   margin: 10px 0 0;
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
@@ -3194,8 +3287,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-chip {
-  font-size: 11.5px;
-  font-weight: 550;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   line-height: 1;
   padding: 5px 9px;
   border-radius: 999px;
@@ -3211,15 +3304,15 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-chip.is-warn {
-  background: var(--warn-tint);
+  background: var(--status-watch-bg);
   border-color: transparent;
   color: var(--ink-soft);
 }
 
 .report-chip.is-danger {
-  background: var(--danger-tint);
+  background: var(--status-alert-bg);
   border-color: transparent;
-  color: var(--danger);
+  color: var(--status-alert);
 }
 
 /* Info: an intentional neutral bucket (baseline not yet established, pending
@@ -3235,8 +3328,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .report-chip.is-interactive {
   cursor: pointer;
   font: inherit;
-  font-size: 11.5px;
-  font-weight: 550;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   /* `font: inherit` resets line-height; restore it so the <button> chip
      matches the plain <span> chips' height in the same row. */
   line-height: 1;
@@ -3262,7 +3355,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-flag-detail {
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   line-height: 1.4;
   color: var(--ink-soft);
   padding: 2px 2px 0;
@@ -3294,14 +3387,13 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .report-action-name {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 550;
+  font-size: var(--type-body-size);
+  font-weight: 600;
   color: var(--ink);
 }
 
 .report-action-platform {
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   background: var(--surface-2);
   border: 1px solid var(--hairline);
@@ -3311,7 +3403,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .report-action-summary {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--type-body-size);
   color: var(--ink-soft);
 }
 
@@ -3319,7 +3411,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -3336,13 +3428,13 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .dashboard-reports-empty p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--type-body-size);
   color: var(--ink-soft);
 }
 
 .dashboard-reports-empty p.muted {
   margin-top: 6px;
-  font-size: 12.5px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
