@@ -26,6 +26,10 @@ once per process and the gate is a startup decision. Search Console is
 *always* registered regardless of env-var combinations — mureo is
 canonical for SC because no official MCP exists.
 
+A gated-off family still **owns its tool names**: they stay reserved
+against third-party plugins so a name cannot change owner between two
+runs of the same install (see ``_RESERVED_BUILTIN_NAMES``).
+
 The comparison is exact-string ``== "1"`` — any other value (``"0"``,
 ``""``, ``"true"``, ``"  1  "``) leaves tools enabled. Do not loosen this
 comparison; multiple tests pin the contract.
@@ -45,7 +49,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from mcp.types import Tool
 
@@ -146,19 +150,28 @@ _CREATIVE_STUDIO_ENABLED = not _is_disabled("MUREO_DISABLE_CREATIVE_STUDIO")
 # canonical for Search Console (no official MCP equivalent exists).
 # ---------------------------------------------------------------------------
 
+#: Every built-in tool family, paired with the gate that decides whether this
+#: run serves it. One table read two ways (#682): ``_ALL_TOOLS`` below takes
+#: only the enabled families, ``_RESERVED_BUILTIN_NAMES`` takes all of them.
+#: Keeping both answers on one line per family is what stops "what mureo
+#: serves" and "what names belong to mureo" from drifting apart.
+_BUILTIN_FAMILIES: tuple[tuple[Sequence[Tool], bool], ...] = (
+    (GOOGLE_ADS_TOOLS, _GOOGLE_ADS_ENABLED),
+    (META_ADS_TOOLS, _META_ADS_ENABLED),
+    (SEARCH_CONSOLE_TOOLS, True),
+    (ROLLBACK_TOOLS, True),
+    (BATCH_TOOLS, True),
+    (CHANGE_IMPORT_TOOLS, True),
+    (ANALYSIS_TOOLS, True),
+    (MUREO_CONTEXT_TOOLS, True),
+    (ANALYTICS_REGISTRY_TOOLS, True),
+    (LEARNING_TOOLS, True),
+    (LEARNING_PREFLIGHT_TOOLS, True),
+    (CREATIVE_STUDIO_TOOLS, _CREATIVE_STUDIO_ENABLED),
+)
+
 _ALL_TOOLS: list[Tool] = [
-    *(GOOGLE_ADS_TOOLS if _GOOGLE_ADS_ENABLED else []),
-    *(META_ADS_TOOLS if _META_ADS_ENABLED else []),
-    *SEARCH_CONSOLE_TOOLS,
-    *ROLLBACK_TOOLS,
-    *BATCH_TOOLS,
-    *CHANGE_IMPORT_TOOLS,
-    *ANALYSIS_TOOLS,
-    *MUREO_CONTEXT_TOOLS,
-    *ANALYTICS_REGISTRY_TOOLS,
-    *LEARNING_TOOLS,
-    *LEARNING_PREFLIGHT_TOOLS,
-    *(CREATIVE_STUDIO_TOOLS if _CREATIVE_STUDIO_ENABLED else []),
+    tool for family, enabled in _BUILTIN_FAMILIES if enabled for tool in family
 ]
 _GOOGLE_ADS_NAMES: frozenset[str] = (
     frozenset(t.name for t in GOOGLE_ADS_TOOLS) if _GOOGLE_ADS_ENABLED else frozenset()
@@ -185,16 +198,32 @@ _CREATIVE_STUDIO_NAMES: frozenset[str] = (
     else frozenset()
 )
 
-#: Every tool name mureo itself serves, derived from ``_ALL_TOOLS`` while it
-#: still holds only built-ins — plugin tools are appended further down. This
-#: is what a plugin may not claim (``reserved_names`` below).
+#: Every tool name mureo itself serves **this run**, derived from
+#: ``_ALL_TOOLS`` while it still holds only built-ins — plugin tools are
+#: appended further down. Gate-dependent by definition: a family switched off
+#: by its ``MUREO_DISABLE_*`` var is not served and is not in here.
 #:
 #: Derived, not hand-written (#680): the previous hand-maintained union of the
 #: per-family name sets was a second answer to "which names are built-in" and
 #: had silently fallen one family behind ``_ALL_TOOLS``, leaving
 #: ``mureo_learning_reset_preflight`` claimable by a plugin. Anything added to
-#: ``_ALL_TOOLS`` above is now reserved the moment it is served.
+#: ``_ALL_TOOLS`` above is now covered the moment it is served.
 _BUILTIN_NAMES: frozenset[str] = frozenset(t.name for t in _ALL_TOOLS)
+
+#: Every tool name that *belongs to* mureo — what a plugin may not claim
+#: (``reserved_names`` below). Derived from the family table above with the
+#: gates ignored.
+#:
+#: Deliberately not ``_BUILTIN_NAMES`` (#682): a name is reserved because it
+#: belongs to mureo, not because it happens to be served this run. Reserving
+#: only the served names let a plugin publish e.g. ``google_ads_get_campaigns``
+#: for as long as the operator kept ``MUREO_DISABLE_GOOGLE_ADS=1`` — the
+#: built-in reclaimed the name on the next start without the flag, so the same
+#: tool name silently changed owner, schema and behaviour between two runs of
+#: the same install.
+_RESERVED_BUILTIN_NAMES: frozenset[str] = frozenset(
+    tool.name for family, _ in _BUILTIN_FAMILIES for tool in family
+)
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +288,7 @@ def _discover_with_amazon() -> tuple[Any, ...]:
 _PLUGIN_TOOLS: list[Tool]
 _PLUGIN_DISPATCH: dict[str, MCPToolProvider]
 _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
-    reserved_names=_BUILTIN_NAMES,
+    reserved_names=_RESERVED_BUILTIN_NAMES,
     discover=_discover_with_amazon,
 )
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)

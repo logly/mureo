@@ -745,6 +745,12 @@ Rules the server enforces (a non-conforming provider is skipped with a
   but an operator running two bridges that share a generic name like
   `update_campaign` has one of them silently unavailable until they
   look. A prefix is the only reliable fix.
+
+  Reserved means **every** built-in name, including the families an
+  operator has switched off with a `MUREO_DISABLE_*` env var. A built-in
+  name belongs to mureo whether or not this particular run serves it, so
+  a disabled family is not an opening to claim its names — the tool would
+  otherwise change owner the moment the operator dropped the flag.
 - **Keep `inputSchema` honest — mureo enforces it server-side.** Since
   #324 the dispatcher validates every call against your declared
   `inputSchema` *before* it reaches your handler and rejects a violation

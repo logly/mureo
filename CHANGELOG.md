@@ -2,6 +2,24 @@
 
 ### Fixed
 
+- **A tool family disabled by its env gate keeps its names reserved against
+  plugins** (#682). `MUREO_DISABLE_GOOGLE_ADS=1` and friends drop a family out
+  of `_ALL_TOOLS`, and the reserved set derived from it (#680) dropped those
+  names with it — so while the flag was set, a plugin could register
+  `google_ads_get_campaigns` and mureo served it. Nothing was hijacked
+  permanently: removing the flag puts the built-in back first and the collision
+  guard drops the plugin duplicate on the next start. But across that toggle the
+  same tool name silently changed owner, schema and behaviour between two runs
+  of the same install, with no warning anywhere.
+
+  `reserved_names` is now derived from the built-in family table with the gates
+  ignored: a name is reserved because it belongs to mureo, not because it
+  happens to be served this run. `_ALL_TOOLS` and `_BUILTIN_NAMES` keep their
+  meaning — what this run serves — and come off the same table, so the two
+  answers cannot drift apart. A plugin claiming a gated-off family's tool name
+  is now dropped with the same `PluginToolWarning` it gets when the family is
+  enabled.
+
 - **The plugin name-collision guard now covers every built-in tool** (#680).
   The `reserved_names` set passed to `collect_plugin_tools` was a hand-written
   union of eleven per-family name sets, and the learning-preflight family
