@@ -1,5 +1,25 @@
 ## [Unreleased]
 
+### Fixed
+
+- **The documented MCP tool total is now checked against the registry** (#677).
+  `docs/architecture.md` still said 221 individual MCP tools while the server
+  exposed 224. Three of the four shipped documents that quote the number were
+  updated when #648/#661 grew the tool list; the fourth was not, because no
+  test read the docs. A stale count there does not read as an out-of-date
+  document — it reads as an install that is missing tools, with nothing
+  anywhere to correct that reading.
+
+  `tests/test_doc_claims.py` pins the prose the way `tests/test_mcp_server.py`
+  pins the code: it extracts the total stated in `README.md`, `README.ja.md`,
+  `docs/mcp-server.md` and `docs/architecture.md` and asserts each equals the
+  count summed from the per-family `TOOLS` constants — the shipped surface,
+  not the served list, which also carries whatever provider plugins a machine
+  has installed and honours the `MUREO_DISABLE_*` gates. A claim reworded past
+  its pattern fails a coverage test rather than passing by matching nothing,
+  and a tool family wired into the server but missing from the sum fails too,
+  so the next tool addition stops the suite until every document is updated.
+
 ## [0.13.0] - 2026-08-21
 
 ### Added
