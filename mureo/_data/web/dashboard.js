@@ -2257,9 +2257,11 @@
     stats.entries.forEach(function (entry) {
       row.appendChild(buildReportStatElement(entry));
     });
-    // Entries with no flat rendering (a deeper tree, a list) are stated as
+    // Fields with no flat rendering (a deeper tree, a list) are stated as
     // existing rather than dropped — being silently discarded is the whole
-    // of what #670 is about. The stored report is where they are read.
+    // of what #670 is about. The count is of FIELDS, which is what the
+    // string says: a fifty-element list is one of them. The stored report
+    // is where they are read.
     if (stats.hidden > 0) {
       const more = document.createElement("span");
       more.className = "report-stat-more";

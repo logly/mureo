@@ -340,13 +340,31 @@
   // headline row did NOT render" is only a true description while both
   // start from the same object.
   function reportTotalsBlock(report) {
+    return reportTotalsBlocks(report).winner;
+  }
+
+  // Both blocks, as `{winner, loser}`: the one the headline row reads, and
+  // the other spelling where a report carried both.
+  //
+  // The headline row only ever looks at the winner — that is #662's rule and
+  // it does not change here. But a key that exists ONLY on the losing block
+  // is then written, refused by nothing, and rendered nowhere, which is
+  // exactly the failure #670 is about. So the loser is kept, and the
+  // secondary row reads what the winner does not already carry.
+  //
+  // `loser` is null when a report states one block, or states the same
+  // object under both names.
+  function reportTotalsBlocks(report) {
     const obj = report && typeof report === "object" ? report : null;
-    if (!obj) return null;
-    let source = null;
+    const out = { winner: null, loser: null };
+    if (!obj) return out;
     [obj.kpis, obj.totals].forEach(function (candidate) {
-      if (isPlainObject(candidate)) source = candidate;
+      if (!isPlainObject(candidate)) return;
+      if (out.winner) out.loser = out.winner;
+      out.winner = candidate;
     });
-    return source;
+    if (out.loser === out.winner) out.loser = null;
+    return out;
   }
 
   // Did the headline row render this pair? (Canonical name, real number.)
@@ -389,22 +407,41 @@
    *     becomes visible — and anything deeper, or a list, is reported as
    *     existing so the operator knows to open the report itself.
    *
+   * Both blocks are read, not just the winning one. `totals` wins the
+   * headline row where a report carries both spellings, and a key that
+   * exists only on the losing block would otherwise be stored, refused by
+   * nothing and rendered nowhere — the very failure this function exists to
+   * end. A key the winner already carries is read from the WINNER and shown
+   * once: the headline block is the one the report meant, and printing two
+   * values under one name states a disagreement the report never wrote.
+   *
    * A key with no value (`null` / absent) is not an entry: nothing was
    * written there to be hidden.
    */
   function reportSecondaryStats(report) {
     const out = { entries: [], hidden: 0 };
-    const outer = reportTotalsBlock(report);
-    if (!outer) return out;
-    const headline = isPlainObject(outer.totals) ? outer.totals : outer;
-    collectReportStats(outer, outer === headline, headline, out);
+    const blocks = reportTotalsBlocks(report);
+    const winner = blocks.winner;
+    if (!winner) return out;
+    const headline = isPlainObject(winner.totals) ? winner.totals : winner;
+    collectReportStats(winner, winner === headline, headline, null, out);
+    // The other spelling, minus everything the winner already answered for.
+    // Nothing here was a headline figure — the headline row never looked at
+    // this block — so a canonical name on it is a stat like any other.
+    if (blocks.loser) {
+      collectReportStats(blocks.loser, false, headline, winner, out);
+    }
     return out;
   }
 
   // One totals block. Keys keep the author's order — a report's own stats
-  // have no canonical order to sort them into.
-  function collectReportStats(block, isHeadline, headline, out) {
+  // have no canonical order to sort them into. `alreadyRead`, when given, is
+  // the block whose keys have been read already (see reportSecondaryStats).
+  function collectReportStats(block, isHeadline, headline, alreadyRead, out) {
     Object.keys(block).forEach(function (key) {
+      if (alreadyRead && Object.prototype.hasOwnProperty.call(alreadyRead, key)) {
+        return;
+      }
       const value = block[key];
       if (value == null) return;
       if (isHeadline && isHeadlineFigure(key, value)) return;
@@ -416,7 +453,7 @@
         // The unwrapped headline block, reached from the outer one: its
         // own non-figure entries belong at the same level as the report's.
         if (value === headline) {
-          collectReportStats(value, true, headline, out);
+          collectReportStats(value, true, headline, null, out);
         } else {
           collectReportStatChildren(key, value, out);
         }

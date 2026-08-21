@@ -118,6 +118,7 @@ const MODULES = [
       "reportSecondaryStats",
       "reportStatLabel",
       "reportTotalsBlock",
+      "reportTotalsBlocks",
       "collectReportStats",
       "collectReportStatChildren",
     ],

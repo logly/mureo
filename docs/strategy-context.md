@@ -1001,11 +1001,18 @@ it, is what this particular report stated: `cvr 0.21%`, `goal target CPA
 **exactly as written**. mureo does not know that metric's unit, whether it
 is a ratio or what currency it is in, so it adds no separator, no symbol and
 no percentage heuristic: a figure re-derived by a view that does not know
-what it holds is a different number from the one the report wrote. An entry
-with no flat rendering — a deeper tree, a list — is counted (`+2 more
-entries in the report`) rather than dropped, because content that is
-accepted on write and then silently invisible is the failure this row exists
-to end.
+what it holds is a different number from the one the report wrote. A field
+with no flat rendering — a deeper tree, a list — is counted (`+2 more fields
+in the report`; the count is of fields, so a fifty-element list counts once)
+rather than dropped, because content that is accepted on write and then
+silently invisible is the failure this row exists to end.
+
+Both spellings are read here. `totals` wins the headline row where a report
+carries `totals` *and* `kpis`, and a key that lives only on the losing block
+would otherwise be stored, refused by nothing and rendered nowhere — the
+same failure one level down. A key both blocks carry is shown once, with the
+winning block's value: printing two numbers under one name would state a
+disagreement the report never wrote.
 
 A report that stated no structure at all renders exactly as it did before:
 reports already on disk are real content, and they stay readable as the

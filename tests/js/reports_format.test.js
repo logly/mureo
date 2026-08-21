@@ -684,6 +684,49 @@ test.describe("a stored report's own statistics", function () {
     });
   });
 
+  test.it("reads the block the headline row did NOT win with", function () {
+    // `totals` wins the headline row where a report carries both spellings
+    // — that is #662's rule and it is untouched. But a key that exists only
+    // on the losing block would then be stored, refused by nothing and
+    // rendered nowhere, which is the failure this whole row exists to end.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({ totals: { spend: 1 }, kpis: { roas: 3.4 } }),
+      { entries: [{ path: ["roas"], value: 3.4 }], hidden: 0 }
+    );
+    // Including what it cannot show flat: counted there too, never dropped.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({
+        totals: { spend: 1 },
+        kpis: { breakdown: { daily: { mon: 1 } } },
+      }),
+      { entries: [], hidden: 1 }
+    );
+  });
+
+  test.it("shows a key both blocks carry once, with the winner's value", function () {
+    // Two values under one name is a disagreement the report never wrote.
+    // The winning block is the one the headline row read, so it answers.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({
+        totals: { spend: 1, cvr: "0.21%" },
+        kpis: { spend: 2, cvr: "9.9%" },
+      }),
+      { entries: [{ path: ["cvr"], value: "0.21%" }], hidden: 0 }
+    );
+  });
+
+  test.it("excludes headline figures from the winning block only", function () {
+    // `clicks` IS canonical, but the headline row only ever reads the
+    // winner, so this one is rendered as a figure nowhere. Excluding it
+    // here on the strength of its name would hide it for good.
+    const report = { totals: { spend: 1 }, kpis: { clicks: 500 } };
+    assert.deepEqual(fmt.reportSummaryTotals(report), [{ key: "spend", value: 1 }]);
+    assert.deepEqual(fmt.reportSecondaryStats(report), {
+      entries: [{ path: ["clicks"], value: 500 }],
+      hidden: 0,
+    });
+  });
+
   test.it("labels a path with the humanizer the flag params already use", function () {
     // No new vocabulary is invented for a key mureo has no label for: the
     // same snake_case humanizer, one path segment at a time.

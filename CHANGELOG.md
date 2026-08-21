@@ -78,9 +78,16 @@
   also lifts a string figure nested under a platform key
   (`{"google_ads": {"spend": "¥773,957"}}`) out of invisibility — the write
   guard only ever read the flat headline dict, and that stays true. Anything
-  deeper, or a list, is *counted* (`+2 more entries in the report`) rather
-  than dropped: content accepted on write and then silently discarded is the
-  whole of what this issue is about.
+  deeper, or a list, is *counted* (`+2 more fields in the report`; the count
+  is of fields, so a fifty-element list counts once) rather than dropped:
+  content accepted on write and then silently discarded is the whole of what
+  this issue is about.
+
+  Both spellings are read. `totals` wins the headline row where a report
+  carries `totals` *and* `kpis` — unchanged — but a key that lives only on
+  the losing block would then be stored, refused by nothing and rendered
+  nowhere, which is this same bug one level down. A key both blocks carry is
+  shown once, with the winning block's value.
 
   The headline row is untouched, and a report that stated nothing outside the
   vocabulary renders no extra block at all.
