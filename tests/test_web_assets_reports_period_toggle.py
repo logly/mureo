@@ -33,7 +33,10 @@ def _read(name: str) -> str:
 #: guessing which file a given renderer ended up in.
 _REPORTS_LAYER = (
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -178,7 +181,7 @@ def test_report_flags_are_humanized_not_raw() -> None:
     assert "function humanizeReportFlag(" in js
     assert "REPORTS_FLAG_BASES" in js
     # The chip text must go through the humanizer for bare-string flags.
-    assert "humanizeReportFlag(flag)" in _read("dashboard_reports_cards.js")
+    assert "humanizeReportFlag(flag)" in _read("dashboard_reports_report.js")
 
 
 @pytest.mark.unit
@@ -210,7 +213,7 @@ def test_report_flags_get_severity_colored_chips() -> None:
     assert "function reportFlagKind(" in js
     assert '"is-warn"' in js
     assert '"is-danger"' in js
-    assert "reportFlagKind(flag)" in _read("dashboard_reports_cards.js")
+    assert "reportFlagKind(flag)" in _read("dashboard_reports_report.js")
 
 
 @pytest.mark.unit

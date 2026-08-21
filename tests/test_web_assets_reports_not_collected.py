@@ -34,7 +34,10 @@ _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 _REPORTS_ASSETS = (
     "reports_logic.js",
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -48,7 +51,10 @@ def _read(name: str) -> str:
 #: guessing which file a given renderer ended up in.
 _REPORTS_LAYER = (
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -90,7 +96,7 @@ def test_the_index_states_the_reason_without_opening_the_client() -> None:
     was rendered twice on one screen: once in the card and once in the alert
     row above it. It now lives only in the alert row — still on the index,
     still one screen, still not behind a click into the client."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_triage.js")
     # reports_triage.js raises one item per platform that said why (its own
     # suite executes that); the row renders it.
     assert "not_collected" in _read("reports_triage.js")
@@ -119,7 +125,7 @@ def test_the_platform_card_carries_its_own_reason() -> None:
     platform card is the ONLY place this can surface there — the same reason
     the conflict note is repeated on it."""
     card = _function_body(
-        _read("dashboard_reports_cards.js"), "function buildReportCard("
+        _read("dashboard_reports_report.js"), "function buildReportCard("
     )
     assert "reportsNotCollectedNote(platform)" in card
     # Above the headline, because it explains the figure (or its absence) —

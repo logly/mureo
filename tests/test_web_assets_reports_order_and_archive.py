@@ -48,7 +48,10 @@ def _read(name: str) -> str:
 #: guessing which file a given renderer ended up in.
 _REPORTS_LAYER = (
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 

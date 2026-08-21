@@ -189,6 +189,23 @@
     // (locale change, client switch, period switch) must not let a stale
     // result append.
     reportsRenderSeq: 0,
+
+    // Which rows are expanded, by kind. Dismissing one message re-renders the
+    // list, and a row that snapped shut after every ✕ would make closing six
+    // findings six trips through the disclosure. Reset with the list itself on
+    // every index render.
+    reportsTriageOpenKinds: {},
+    // Whether the alert list is showing every row it has. Reset on every index
+    // render — the list opens short each time the operator arrives, which is
+    // the whole point of opening short.
+    reportsTriageShowAll: false,
+    // The layer as it was last built, so closing or restoring a row can redraw
+    // it without re-fetching every client's summary.
+    reportsTriageBuilt: null,
+    // Which health the grid is filtered to. "all" until the operator says
+    // otherwise, and reset on every index render: a filter that survived a
+    // re-render would leave cards missing with no visible reason.
+    reportsHealthFilter: "all",
   };
 
 

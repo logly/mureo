@@ -57,7 +57,10 @@ _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 _REPORTS_ASSETS = (
     "reports_logic.js",
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -71,7 +74,10 @@ def _read(name: str) -> str:
 #: guessing which file a given renderer ended up in.
 _REPORTS_LAYER = (
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -384,7 +390,7 @@ def test_a_stale_freshness_marks_the_card_stale() -> None:
     every up-to-date card renders in stale-red and the stale one renders
     clean — the failure mode the freshness work exists to prevent. Both the
     client card and the per-platform card carry it."""
-    js = _read("dashboard_reports_cards.js")
+    js = _read_layer()
     client_card = _function_body(js, "function buildClientCard(")
     assert (
         '(cardFresh.stale ? " is-stale" : "")' in client_card
@@ -458,7 +464,7 @@ def test_a_conflicted_platform_card_points_at_the_repair_command() -> None:
     (#616/#617), and none of that evidence crosses the wire. The card
     therefore names the command and nothing more.
     """
-    js = _read("dashboard_reports_cards.js")
+    js = _read("dashboard_reports_report.js")
     css = _read("app.css")
     catalog = json.loads(_read("i18n.json"))
     assert "reportsRepairHint(conflicts)" in js
@@ -484,7 +490,7 @@ def test_a_double_counted_client_card_names_the_command_that_clears_it() -> None
     good. The hint under a duplicate therefore names the flag that records the
     operator's decision — the same one the CLI accepts.
     """
-    js = _read("dashboard_reports_cards.js")
+    js = _read("dashboard_reports_report.js")
     catalog = json.loads(_read("i18n.json"))
     # The way out is no longer inside the 230px card — it is one click away
     # in the alert row above the grid (grouped by kind, every row carrying

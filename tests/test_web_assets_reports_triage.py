@@ -46,7 +46,10 @@ def _read(name: str) -> str:
 #: guessing which file a given renderer ended up in.
 _REPORTS_LAYER = (
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -106,9 +109,7 @@ def test_the_renderer_binds_the_module_rather_than_re_deciding() -> None:
 def test_the_ranking_lives_in_the_module_and_nowhere_else() -> None:
     """ "State the ordering in code, do not leave it to render order." The
     renderer must not sort, slice or re-order the items it is handed."""
-    render = _function_body(
-        _read("dashboard_reports.js"), "function renderReportsTriage("
-    )
+    render = _function_body(_read_layer(), "function renderReportsTriage(")
     for forbidden in (".sort(", ".reverse(", ".slice("):
         assert forbidden not in render, f"the renderer re-orders items ({forbidden})"
     triage = _read("reports_triage.js")
@@ -161,7 +162,7 @@ def test_an_empty_layer_renders_nothing_at_all() -> None:
     is hidden and the list is emptied before the early return, so a stale row
     cannot survive a re-render that found nothing."""
     render = _function_body(
-        _read("dashboard_reports.js"), "function renderReportsTriage("
+        _read("dashboard_reports_triage.js"), "function renderReportsTriage("
     )
     assert "box.hidden = !items.length" in render
     empty_at = render.index('list.textContent = ""')
@@ -217,7 +218,9 @@ def test_a_marked_card_is_announced_and_not_only_coloured() -> None:
 def test_every_rendered_row_carries_its_next_step() -> None:
     """ "An item with no next step is a bug in the item, not a display
     detail." The renderer asks for one on every row."""
-    row = _function_body(_read("dashboard_reports.js"), "function buildTriageRow(")
+    row = _function_body(
+        _read("dashboard_reports_triage.js"), "function buildTriageRow("
+    )
     assert "triageItemNextStep(item)" in row
     assert "triageItemText(item)" in row
     assert row.index("triageItemText(item)") < row.index("triageItemNextStep(item)")
@@ -228,13 +231,15 @@ def test_writer_supplied_text_reaches_the_dom_as_text() -> None:
     """A collection-failure reason is an API error string out of STATE.json
     and a platform key is registry-controlled. Both are interpolated into
     these rows."""
-    row = _function_body(_read("dashboard_reports.js"), "function buildTriageRow(")
+    row = _function_body(
+        _read("dashboard_reports_triage.js"), "function buildTriageRow("
+    )
     assert ".textContent = triageItemText(item)" in row
     for name in (
         "reports_triage.js",
-        "dashboard_reports.js",
-        "dashboard_reports_cards.js",
-        "dashboard_reports_state.js",
+        "dashboard_reports_triage.js",
+        "dashboard_reports_triage.js",
+        "dashboard_reports_triage.js",
     ):
         assert ".innerHTML" not in _read(name).replace("// innerHTML", ""), name
 
@@ -337,7 +342,12 @@ def test_the_rows_are_grouped_and_collapsed_by_the_module() -> None:
         assert f"function {name}(" not in js, f"{name} was copied into dashboard.js"
     render = _function_body(js, "function renderReportsTriage(")
     assert "groupReportsTriage(built)" in render
-    assert "collapseTriageGroups(split.visible, reportsTriageShowAll)" in render
+    assert (
+        "collapseTriageGroups(\n"
+        "      split.visible,\n"
+        "      REPORTS_VIEW_STATE.reportsTriageShowAll\n"
+        "    )" in render
+    )
 
 
 @pytest.mark.unit
@@ -345,7 +355,7 @@ def test_neither_grouping_nor_collapsing_nor_hiding_moves_the_count() -> None:
     """The acceptance criterion #651 shipped with, under three new ways to
     show fewer rows. The heading, the KPI cell and the marked cards read
     ``built.clients`` — which none of the three touches."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     render = _function_body(js, "function renderReportsTriage(")
     # The count is taken BEFORE anything is grouped, collapsed or filtered.
     assert render.index("built.clients") < render.index("groupReportsTriage(built)")
@@ -360,7 +370,7 @@ def test_a_row_is_one_line_and_keeps_its_full_text() -> None:
     """The sentence wrapping to three lines inside a bordered box was most of
     the height an operator complained about. Clipping it is only acceptable
     because the whole text is one click away — and, meanwhile, on a title."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_triage.js")
     row = _function_body(js, "function buildTriageRow(")
     assert "reports-triage-summary" in row
     assert "summary.title = summary.textContent" in row
@@ -380,7 +390,7 @@ def test_a_row_is_one_line_and_keeps_its_full_text() -> None:
 def test_the_rest_of_the_list_is_one_click_away_and_never_zero() -> None:
     """No "show all (0)" on a list that already fits, for the same reason
     there is no "0 alerts" banner."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     more = _function_body(js, "function renderTriageMore(")
     assert "more.hidden = !shown.collapsed" in more
     assert "if (!shown.collapsed) return;" in more
@@ -402,7 +412,7 @@ def test_closing_an_alert_is_never_silent() -> None:
     clients, so counting rows would report "1" for six findings nobody can
     see — see ``tests/js/reports_dismiss_interaction.test.js``, which closes
     them one at a time and reads the line."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_triage.js")
     row = _function_body(js, "function buildTriageRow(")
     assert "dismissTriageItem(item)" in row, "a message has no control of its own"
     assert "dismissTriageGroup(group)" in row

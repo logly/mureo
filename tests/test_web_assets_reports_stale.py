@@ -36,7 +36,10 @@ _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 _REPORTS_ASSETS = (
     "reports_logic.js",
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -50,7 +53,10 @@ def _read(name: str) -> str:
 #: guessing which file a given renderer ended up in.
 _REPORTS_LAYER = (
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -79,7 +85,7 @@ def test_the_platform_headline_is_withheld_when_the_rollup_is_stale() -> None:
     about. Inverted, the one card that must not show a number is the only
     one that does."""
     card = _function_body(
-        _read("dashboard_reports_cards.js"), "function buildReportCard("
+        _read("dashboard_reports_report.js"), "function buildReportCard("
     )
     assert "const rowStale = reportsRowIsStale(platform);" in card, (
         "the platform card no longer asks the logic module whether its row " "is stale"
@@ -103,7 +109,7 @@ def test_a_stale_platform_card_never_reaches_the_kpi_grid() -> None:
     it; pinning that is what stops a later edit from re-appending the grid
     below the restated figures."""
     card = _function_body(
-        _read("dashboard_reports_cards.js"), "function buildReportCard("
+        _read("dashboard_reports_report.js"), "function buildReportCard("
     )
     assert "if (rowStale) {" in card
     stale_branch = card.split("if (rowStale) {", 1)[1].split("\n    }", 1)[0]
@@ -168,7 +174,7 @@ def test_the_restated_line_says_the_age_or_says_it_is_unknown() -> None:
     """The line's whole job is to date the figures. An age mureo cannot
     quote is stated as unknown rather than left blank — a dangling "Last
     collected : 25,862" would read as a claim about now."""
-    js = _read("dashboard_reports_cards.js")
+    js = _read("dashboard_reports_report.js")
     helper = _function_body(js, "function buildStaleFiguresElement(")
     assert "relativeAge(fetchedAt)" in helper
     assert "dashboard.reports_stale_last_collected" in helper
@@ -222,7 +228,7 @@ def test_stale_strings_are_localized_in_both_locales() -> None:
 def test_the_restated_figures_reach_the_dom_as_text() -> None:
     """The line interpolates figures and a localized age, and it is built the
     same way every other operator-visible string here is."""
-    js = _read("dashboard_reports_cards.js")
+    js = _read("dashboard_reports_report.js")
     helper = _function_body(js, "function buildStaleFiguresElement(")
     assert "el.textContent = MUREO.t(" in helper
     for name in _REPORTS_ASSETS:

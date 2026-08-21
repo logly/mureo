@@ -40,6 +40,23 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
+#: The Reports rendering layer, split six ways by #687. A test that asserts
+#: about symbols on more than one side of that split reads the whole layer
+#: rather than guessing which file a given renderer ended up in.
+_REPORTS_LAYER = (
+    "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
+    "dashboard_reports_state.js",
+)
+
+
+def _read_layer() -> str:
+    return "\n".join(_read(name) for name in _REPORTS_LAYER)
+
+
 def _function_body(js: str, signature: str) -> str:
     """Source of the top-level function opened by ``signature``.
 
@@ -65,9 +82,7 @@ def test_the_renderer_binds_the_vocabulary_rather_than_re_deciding_it() -> None:
 def test_the_figures_are_rendered_as_figures_above_the_flags_and_the_prose() -> None:
     """ "Figures as figures, flags as a list, narrative as prose" — in that
     order, because the order is what makes the block skimmable."""
-    body = _function_body(
-        _read("dashboard_reports_cards.js"), "function renderReportsLatest("
-    )
+    body = _function_body(_read_layer(), "function renderReportsLatest(")
     assert "reportSummaryTotals(report)" in body
     assert "report-latest-kpis" in body
     # Reuses the client card's KPI cell, so a figure reads the same wherever
@@ -81,9 +96,7 @@ def test_the_figures_are_rendered_as_figures_above_the_flags_and_the_prose() -> 
 def test_a_report_with_no_structure_still_renders_its_prose() -> None:
     """Reports already on disk are one paragraph and nothing else. They stay
     readable — the figure row is simply absent."""
-    body = _function_body(
-        _read("dashboard_reports_cards.js"), "function renderReportsLatest("
-    )
+    body = _function_body(_read_layer(), "function renderReportsLatest(")
     assert "if (totals.length > 0) {" in body
     assert "if (report.narrative) {" in body
 
@@ -127,13 +140,11 @@ def test_the_secondary_stats_are_read_from_the_vocabulary_module() -> None:
 def test_the_stats_sit_below_the_headline_row_and_above_the_flags() -> None:
     """Below, and visibly not part of it: these are the report's own words
     for something mureo has no headline label for."""
-    body = _function_body(
-        _read("dashboard_reports_cards.js"), "function renderReportsLatest("
-    )
+    body = _function_body(_read_layer(), "function renderReportsLatest(")
     assert "reportSecondaryStats(report)" in body
     assert "buildReportStatsRow(stats)" in body
     assert "report-latest-stats" in _function_body(
-        _read("dashboard_reports_cards.js"), "function buildReportStatsRow("
+        _read_layer(), "function buildReportStatsRow("
     )
     assert body.index("reportSummaryTotals(report)") < body.index(
         "reportSecondaryStats(report)"
@@ -147,9 +158,7 @@ def test_a_stat_value_is_printed_as_written() -> None:
     formatters here all answer a question about a metric mureo knows, and
     applying one to a figure it does not know is how a view ends up stating
     a number the report never wrote."""
-    helper = _function_body(
-        _read("dashboard_reports_cards.js"), "function buildReportStatElement("
-    )
+    helper = _function_body(_read_layer(), "function buildReportStatElement(")
     assert "textContent = String(" in helper
     assert "formatKpi(" not in helper
     assert "formatNumber(" not in helper
@@ -158,9 +167,7 @@ def test_a_stat_value_is_printed_as_written() -> None:
 @pytest.mark.unit
 def test_what_cannot_be_shown_flat_is_counted_not_dropped() -> None:
     """A silently discarded entry is the bug #670 was filed about."""
-    row = _function_body(
-        _read("dashboard_reports_cards.js"), "function buildReportStatsRow("
-    )
+    row = _function_body(_read_layer(), "function buildReportStatsRow(")
     assert "stats.hidden > 0" in row
     assert "dashboard.reports_stats_more" in row
 

@@ -71,7 +71,10 @@ _PARAM_LABEL_KEYS = (
 _FLAG_ASSETS = (
     "reports_format.js",
     "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
     "dashboard_reports_state.js",
 )
 
@@ -173,7 +176,7 @@ def test_flag_detail_drilldown_present() -> None:
     detail = _read("reports_format.js")
     assert "function buildFlagDetail(" in detail
     assert '"dashboard.reports_param_" + ' in detail
-    chip = _read("dashboard_reports_cards.js")
+    chip = _read("dashboard_reports_report.js")
     assert "function buildFlagChipElement(" in chip
     assert "buildFlagDetail(flag)" in chip
     assert "is-interactive" in chip
