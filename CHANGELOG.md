@@ -10,7 +10,7 @@
 
   | file | lines |
   |---|---|
-  | `dashboard.js` (shell: nav, `renderAll`, bootstrap) | 4,624 → 332 |
+  | `dashboard.js` (shell: nav, `renderAll`, bootstrap) | 4,624 → 374 |
   | `dashboard_reports.js` | 2,110 |
   | `dashboard_setup.js` | 720 |
   | `dashboard_plugins.js` | 629 |
