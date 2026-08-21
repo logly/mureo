@@ -1766,7 +1766,7 @@ class TestSetPlatformMetricsFetchedAt:
     ) -> None:
         """The read side deliberately relays an uninterpretable value rather
         than blanking it — it is the only clue to the writer that produced it
-        (see ``mureo.web.reports._platform_freshness``). Stamping over it here
+        (see ``mureo.web.report_document._platform_freshness``). Stamping over it here
         would throw that clue away before it ever reached the document."""
         fp = tmp_path / "STATE.json"
         write_state_file(fp, StateDocument(version="2"))

@@ -521,7 +521,7 @@ def _write_path_builtin_keys() -> set[str]:
     assert enumeration is not None, (
         "mureo_state_platform_metrics_set no longer describes its built-in "
         "platform keys as 'a built-in (...)'. This test anchors "
-        "mureo.web.reports._BUILTIN_DISPLAY_NAMES to that enumeration; "
+        "mureo.web.report_labels._BUILTIN_DISPLAY_NAMES to that enumeration; "
         "re-point it at the new wording rather than deleting it, or an "
         "unlisted native key silently earns a permanent 'unrecognized_key' "
         f"banner. Description was: {description!r}"

@@ -2,6 +2,32 @@
 
 ### Changed
 
+- **`mureo/web/reports.py` split into an assembly layer and the two layers it
+  asks** (#678). At 1,070 lines it held twenty-six functions covering platform
+  naming, the tolerant STATE.json read, conflict detection, freshness,
+  period vocabulary, `not_collected` notes, wire sanitisation and the summary
+  assembly itself — one file, eight concerns.
+
+  - `mureo/web/report_labels.py` — the platform key to display-name resolver.
+    Three cases, and the third carries weight: an unrecognisable key is
+    returned **unchanged**, which is precisely how `CONFLICT_UNRECOGNIZED_KEY`
+    is defined, so a prettier fallback here would silently switch off a
+    conflict finding a module away.
+  - `mureo/web/report_document.py` — everything asked OF one stored document:
+    the tolerant read, the two conflict findings (#533), freshness (#535), the
+    windows the document carries, its `not_collected` notes (#638), and the
+    canonical-key filter that decides what may reach the wire.
+  - `mureo/web/reports.py` — the assembly: resolve the store, walk the document
+    once, shape the payload.
+
+  No behaviour change and no API change. Every name is re-exported from
+  `mureo.web.reports`, including the four private tables the suite reads off
+  it, so `from mureo.web.reports import platform_display_name` and
+  `mureo.web.reports._BUILTIN_DISPLAY_NAMES` resolve exactly as before. All
+  twenty-six functions are AST-identical to the originals. The import
+  direction is one-way — `reports` to `report_document` to `report_labels` —
+  so there is no cycle.
+
 - **`mureo/mcp/server.py` gave up two self-contained blocks** (#678). At 1,587
   lines it had grown past the point where one reader could hold it, and the
   cost showed up on every recent change to it: implementers merge-conflicted

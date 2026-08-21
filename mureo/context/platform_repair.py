@@ -239,7 +239,7 @@ class PlatformEntryFacts:
     time, and no later run re-derives it — a successful one retires it, a
     second failure writes a new note about a new attempt. Relayed verbatim,
     and taken from the entry as STORED: whether a surface should still SHOW a
-    note is the read side's rule (:func:`mureo.web.reports.
+    note is the read side's rule (:func:`mureo.web.report_document.
     _platform_not_collected`), while what a removal would take is what the
     entry holds.
     """
