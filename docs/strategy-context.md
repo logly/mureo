@@ -650,6 +650,71 @@ threshold below is derived from it. That is why a fourth window is a
 deliberate decision with a defined length rather than something a caller can
 create by naming it.
 
+#### Day-grain history (#690)
+
+`periods` holds exactly ONE rollup per window and every collection overwrites
+it, so the value it replaces is gone. That is correct for a window — a
+`YESTERDAY` rollup collected today is what "yesterday" means today — but it
+leaves the document unable to answer *"was yesterday better than the day
+before?"*: no day-over-day delta, no trend line.
+
+`platforms[<platform>].daily` is the half that accumulates. Same shape and
+same merge rules as `periods`, with `YYYY-MM-DD` keys instead of window
+tokens:
+
+```json
+"daily": {
+  "2026-08-19": {"spend": 12400.0, "impressions": 88000, "clicks": 910,
+                 "conversions": 21, "fetched_at": "2026-08-20T09:05:00+09:00"},
+  "2026-08-20": {"spend": 13100.0, "impressions": 91500, "clicks": 940,
+                 "conversions": 19, "fetched_at": "2026-08-21T09:04:00+09:00"}
+}
+```
+
+It costs no extra platform call. Every family already ships a daily delivery
+report, and `daily-check`'s delivery-collapse step already pulls those rows —
+step 14 of that skill folds the rows it is holding into
+`mureo_state_platform_daily_set` instead of discarding them.
+
+Optional with a `None` default, like every field added to this document since
+v2: an entry that has never accumulated a day emits no key, so old files
+round-trip byte-for-byte.
+
+**Only complete past days are written.** `set_platform_daily` (and the tool
+over it) refuses a key that is not `YYYY-MM-DD`, one that is not a date that
+exists (`2026-02-30` matches the shape perfectly), and any date at or after
+the host's today — for the reason the collapse detector drops the current day
+before comparing anything: budget pacing spreads a day's delivery unevenly,
+so a part-spent day filed as a whole one is a false low, and nothing revisits
+a day already in the map. The refusal happens before the file is opened, so a
+rejected call leaves the document exactly as it was and the caller still
+holds every figure.
+
+**A missing day stays missing.** Nothing zero-fills a day that was not
+collected — "not collected" and "collected, and the answer was zero" are
+different facts, the same distinction the `not_collected` note exists for,
+and a manufactured zero both reads as an account that stopped spending and
+poisons the median the collapse detector baselines against. Readers render a
+gap as a gap.
+
+**The history is capped at 35 days on write.** 28 (`DEFAULT_BASELINE_DAYS`,
+the collapse detector's trailing baseline) plus margin for an operator who
+raises `delivery_collapse_baseline_days` and for the days a collector missed
+— a gap is not backfilled, so 35 stored keys are not 35 calendar days. A key
+mureo cannot date is kept and does not count towards the cap: the write guard
+refuses one today, but one already on disk is figures somebody collected, and
+a retention sweep is not the place to delete them (the same asymmetry the
+non-canonical windows above get).
+
+On the wire, each platform row carries `daily` — the most recent 7 days,
+ascending, gaps intact, each bucket whitelisted through the same canonical
+key list as `totals` — and `daily_delta`, the difference between the last two
+days. The delta is resolved server-side because it is one rule, and it is
+`null` whenever the comparison cannot honestly be made: fewer than two stored
+days, or two days that are not calendar neighbours. A difference computed
+across a collection gap is not a day-over-day change, and unknown is not
+zero.
+
 #### Per-platform freshness
 
 `fetched_at` (the metric-vocabulary key, see *Performance Metrics* in

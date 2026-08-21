@@ -88,6 +88,7 @@ from mureo.context.state import (
     read_state_file,
     render_state,
     set_conversion_action_types,
+    set_platform_daily,
     set_platform_metrics,
     set_platform_not_collected,
     set_report,
@@ -178,6 +179,7 @@ _PLATFORM_FIELD_VALUES: dict[str, Any] = {
     "totals": {"spend": 4200.0, "conversions": 12},
     "metrics_period": "LAST_30_DAYS",
     "periods": {"LAST_30_DAYS": {"spend": 4200.0}},
+    "daily": {"2026-08-07": {"spend": 140.0, "clicks": 11}},
     "conversion_action_types": ("offsite_conversion.custom.42",),
     "not_collected": {
         "attempted_at": "2026-08-08T09:00:00+09:00",
@@ -324,6 +326,15 @@ class TestDocumentLevelPreservation:
             before, after, changed={"last_synced_at", "platforms"}
         )
 
+    def test_set_platform_daily(self, seeded: tuple[Path, StateDocument]) -> None:
+        path, before = seeded
+        after = set_platform_daily(
+            path, _PLATFORM, _ACCOUNT, days={"2026-08-06": {"spend": 100.0}}
+        )
+        _assert_document_preserved(
+            before, after, changed={"last_synced_at", "platforms"}
+        )
+
     def test_set_conversion_action_types(
         self, seeded: tuple[Path, StateDocument]
     ) -> None:
@@ -406,6 +417,24 @@ class TestPlatformLevelPreservation:
         assert merged["YESTERDAY"]["spend"] == 100.0
         # A None argument means "leave as it was", not "clear it".
         assert self._platform(after).totals == _PLATFORM_FIELD_VALUES["totals"]
+
+    def test_daily_write_keeps_every_window_rollup(
+        self, seeded: tuple[Path, StateDocument]
+    ) -> None:
+        path, before = seeded
+        after = set_platform_daily(
+            path, _PLATFORM, _ACCOUNT, days={"2026-08-06": {"spend": 100.0}}
+        )
+        _assert_platform_preserved(
+            self._platform(before), self._platform(after), changed={"daily"}
+        )
+        # ``daily`` merges per DATE key, so the day already stored survives —
+        # down to its absent fetched_at, since the stamp lands only on the
+        # buckets a write actually supplies.
+        merged = self._platform(after).daily
+        assert merged is not None
+        assert merged["2026-08-07"] == {"spend": 140.0, "clicks": 11}
+        assert merged["2026-08-06"]["spend"] == 100.0
 
     def test_conversion_override_write_keeps_everything_else(
         self, seeded: tuple[Path, StateDocument]

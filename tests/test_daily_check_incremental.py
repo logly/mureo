@@ -38,8 +38,13 @@ def test_copies_are_byte_identical() -> None:
 
 
 def test_stays_readable_under_the_size_budget() -> None:
-    """The rewrite must stay ~150 lines — the skill is a prompt, not a manual."""
-    assert len(_body().splitlines()) <= 155
+    """The rewrite must stay ~150 lines — the skill is a prompt, not a manual.
+
+    Raised by exactly the two lines #690's persistence step costs (a step and
+    the blank line before it); the budget is a ceiling on prose, not a reason
+    to leave a step out.
+    """
+    assert len(_body().splitlines()) <= 157
 
 
 def test_two_modes_documented() -> None:

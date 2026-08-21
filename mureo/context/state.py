@@ -24,9 +24,10 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import tempfile
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -46,6 +47,7 @@ from mureo.context.batch import (
 from mureo.context.conversion_overrides import load_conversion_action_types
 from mureo.context.errors import ContextFileError
 from mureo.context.models import (
+    DAILY_DATE_KEY_PATTERN,
     NOT_COLLECTED_REASON_MAX_CHARS,
     BatchRecord,
     PlatformState,
@@ -58,6 +60,24 @@ from mureo.context.platform_guards import (
 )
 from mureo.context.state_codec import parse_state, render_state
 from mureo.fsutil import file_lock
+
+#: How many days of ``PlatformState.daily`` history a write keeps (#690).
+#:
+#: 28 + margin, not a round number: the delivery-collapse detector baselines
+#: a day against the trailing
+#: :data:`~mureo.analysis.delivery_collapse.DEFAULT_BASELINE_DAYS` (28) days
+#: of the same weekday, so a history shorter than that would be unable to
+#: answer the question it is collected for. The margin covers the operator who
+#: raises ``delivery_collapse_baseline_days`` a little in STRATEGY.md, and the
+#: days a collector missed — a gap is not backfilled, so 28 stored keys are
+#: not necessarily 28 calendar days.
+#:
+#: Applied at WRITE time rather than on read: an account collected every day
+#: for a year would otherwise grow STATE.json without bound, and the whole
+#: document is read and re-rendered on every mutation.
+DAILY_RETENTION_DAYS = 35
+
+_DAILY_DATE_KEY_RE = re.compile(DAILY_DATE_KEY_PATTERN)
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -694,6 +714,174 @@ def set_platform_metrics(
                 metrics_period if metrics_period is not None else base.metrics_period
             ),
             periods=merged_periods,
+        )
+
+        return replace(doc, last_synced_at=written_at, platforms=platforms)
+
+    return _locked_state_mutation(path, _build)
+
+
+def _reject_unusable_daily_keys(days: dict[str, Any]) -> None:
+    """Refuse a ``daily`` key that is not one COMPLETE PAST day (#690).
+
+    Two checks, both about shape rather than vocabulary — unlike a metrics
+    window, the set of valid dates cannot be enumerated:
+
+    - the key is ``YYYY-MM-DD`` (:data:`~mureo.context.models.
+      DAILY_DATE_KEY_PATTERN`) **and parses as a real date**. The pattern
+      alone is not validation: ``2026-02-30`` matches it perfectly, and a key
+      no reader can place on a timeline is a bucket nothing will ever show.
+    - the day is over. Today is still being spent into, so a rollup for it is
+      a partial day — the same reason
+      :mod:`mureo.analysis.delivery_collapse` drops everything at or after
+      ``as_of`` before comparing anything. Stored, it would be a false low
+      forever, because nothing revisits a day already in the map. A future
+      date is refused with it: it is not a day anyone collected.
+
+    "Today" is the HOST's local day (:func:`mureo.core.clock.server_now`), the
+    same clock the skills anchor their dates to — judging a local date against
+    UTC would move the boundary by a day for half the world.
+
+    Raises on the FIRST bad key, before the file is opened and before the lock
+    is taken, so a refused call leaves the document exactly as it was —
+    ``last_synced_at`` included — and the caller still holds every figure and
+    can re-file it. A half-written call is what makes that impossible.
+    """
+    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
+    # ``state_store`` -> this module, so a module-level import would be a
+    # cycle (same reason as ``metrics_windows`` above).
+    from mureo.core import clock
+
+    today = clock.server_now().date()
+    for key in days:
+        if not isinstance(key, str) or not _DAILY_DATE_KEY_RE.match(key):
+            raise ValueError(
+                f"daily key {key!r} is not a date: use YYYY-MM-DD, one key per "
+                "calendar day"
+            )
+        try:
+            day = date.fromisoformat(key)
+        except ValueError:
+            raise ValueError(
+                f"daily key {key!r} is not a date that exists (YYYY-MM-DD)"
+            ) from None
+        if day >= today:
+            raise ValueError(
+                f"daily key {key!r} is not a complete day yet (server today is "
+                f"{today.isoformat()}): write a day only once it is over, so a "
+                "part-spent day is never stored as the whole of it"
+            )
+
+
+def _capped_daily(daily: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """``daily`` trimmed to the most recent :data:`DAILY_RETENTION_DAYS` days.
+
+    Order is preserved (the merge appends, exactly as ``periods`` does); only
+    the oldest date keys beyond the cap are dropped.
+
+    A key this module could not have written — anything that is not
+    ``YYYY-MM-DD`` — is **kept, and does not count towards the cap**. The write
+    guard refuses such a key today, but one already on disk is still figures
+    somebody collected, filed under a name mureo cannot date; a retention
+    sweep has no way to tell whether it is the oldest entry or the newest, and
+    deleting data to tidy a vocabulary is the asymmetry the read side already
+    refuses to make (see :func:`~mureo.web.report_document._available_periods`).
+    """
+    dated = [key for key in daily if _DAILY_DATE_KEY_RE.match(key)]
+    if len(dated) <= DAILY_RETENTION_DAYS:
+        return daily
+    dropped = set(sorted(dated)[:-DAILY_RETENTION_DAYS])
+    return {key: value for key, value in daily.items() if key not in dropped}
+
+
+def set_platform_daily(
+    path: Path,
+    platform: str,
+    account_id: str,
+    *,
+    days: dict[str, dict[str, Any]],
+) -> StateDocument:
+    """Merge day-grain rollups into a platform's ``daily`` history (#690).
+
+    ``periods`` carries one rollup per WINDOW and every collection overwrites
+    it, so the figure it replaces is gone and nothing in the document can
+    answer "was yesterday better than the day before?". This map is the half
+    that accumulates: one totals-shaped bucket per ``YYYY-MM-DD``, the same
+    canonical metric vocabulary, merged PER DATE KEY.
+
+    Merge semantics:
+
+    - a date this call supplies REPLACES that day's bucket wholesale, so
+      re-writing a day is idempotent rather than additive;
+    - every OTHER date already stored is preserved — that is the whole point;
+    - the platform's campaigns, rollups, conversion override and
+      ``not_collected`` note, and every other platform, are untouched.
+
+    **A day nobody collected is not written.** Nothing here fills a gap with
+    zeros: "not collected" and "collected, and the answer was zero" are
+    different facts (the distinction ``not_collected`` exists for), and a
+    zero-filled day is indistinguishable from an account that stopped
+    spending — while also poisoning the median the collapse detector baselines
+    against. Supply only the days you actually pulled; readers render a gap as
+    a gap.
+
+    **Only complete past days are accepted.** Each key must be ``YYYY-MM-DD``,
+    must be a date that exists, and must be before the host's today — see
+    :func:`_reject_unusable_daily_keys`, which runs before the file is opened.
+
+    ``fetched_at`` is stamped with the write time on every bucket this call
+    supplies without one, and a day it merely preserves is never re-stamped —
+    the same contract :func:`set_platform_metrics` keeps (#637).
+
+    The stored history is capped at :data:`DAILY_RETENTION_DAYS` days on every
+    write (see :func:`_capped_daily`).
+
+    Re-stamps ``last_synced_at`` and writes back atomically under the state
+    lock.
+
+    Args:
+        path: STATE.json location.
+        platform: Platform key (``"google_ads"`` / ``"meta_ads"`` /
+            ``"plugin:<dist>:<provider>"`` / …) — the ``platforms`` dict key.
+        account_id: The platform account id, always written onto the entry.
+        days: Day-grain rollups keyed ``YYYY-MM-DD``. An empty map writes no
+            day and leaves the stored history alone.
+
+    Returns:
+        The updated :class:`StateDocument`.
+
+    Raises:
+        ValueError: a key is not a complete past calendar day (#690), or
+            ``platform`` is not a usable platform key, names no platform
+            mureo can resolve (checked on CREATE only, so an existing entry
+            stays writable), or the write would create a SECOND key for an
+            account another key already holds (see
+            :func:`mureo.context.platform_guards.guard_platform_entry_write`).
+    """
+    # Outside the lock and before the file is opened: a rejected write must
+    # leave the document exactly as it was, including its ``last_synced_at``.
+    _reject_unusable_daily_keys(days)
+
+    def _build(doc: StateDocument) -> StateDocument:
+        platforms = dict(doc.platforms) if doc.platforms else {}
+        guard_platform_entry_write(platforms, platform, account_id)
+
+        base = _platform_base(platforms, platform, account_id)
+        # One clock read for the whole write, so a bucket's age and the
+        # document's cannot disagree by a hair and read as two events.
+        written_at = _now_iso()
+
+        merged = dict(base.daily) if base.daily else {}
+        # Only the days THIS write supplies are stamped; the ones it merely
+        # preserves keep the age they were collected at.
+        merged.update(
+            {day: _stamp_fetched_at(bucket, written_at) for day, bucket in days.items()}
+        )
+
+        # Every other field has no input on a daily write and is carried over
+        # by ``replace``.
+        platforms[platform] = replace(
+            base, account_id=account_id, daily=_capped_daily(merged)
         )
 
         return replace(doc, last_synced_at=written_at, platforms=platforms)
