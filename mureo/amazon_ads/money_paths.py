@@ -13,10 +13,11 @@ declarations for this surface itself: the table below maps a bridged tool name
 to the exact nested paths its ``inputSchema`` carries money at, fed through the
 same :class:`~mureo.policy.declarations.BudgetDeclaration` /
 :class:`~mureo.policy.declarations.BidDeclaration` registry a plugin uses (see
-``mureo.mcp.server._register_bridged_money_declarations``), and enforced by the
-one built-in gate. The result is exact enforcement on the known surface,
-best-effort on everything else — an Amazon tool that is NOT in this table keeps
-the pattern fallback, so a newly added one still gets a cap rather than none.
+``mureo.mcp._plugin_declarations._register_bridged_money_declarations``), and
+enforced by the one built-in gate. The result is exact enforcement on the known
+surface, best-effort on everything else — an Amazon tool that is NOT in this
+table keeps the pattern fallback, so a newly added one still gets a cap rather
+than none.
 
 Provenance, and why that matters
 --------------------------------
