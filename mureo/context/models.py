@@ -24,7 +24,7 @@ EXTERNAL_ORIGIN = "external"
 #: (:func:`mureo.context.state.set_platform_not_collected` /
 #: :func:`mureo.context.state.set_workspace_not_collected`) and the dashboard's
 #: read (:func:`mureo.web.reports._platform_row` /
-#: :func:`mureo.web.reports._workspace_not_collected`) — because a document can
+#: :func:`mureo.web.report_document._workspace_not_collected`) — because a document can
 #: also be written wholesale by a digest that goes near neither.
 NOT_COLLECTED_REASON_MAX_CHARS = 500
 
@@ -378,7 +378,7 @@ class PlatformState:
     #
     # That contract is a duty, not a guarantee, so nothing an operator SEES
     # is allowed to depend on it: the read side drops a note that any later
-    # collection has already answered (:func:`mureo.web.reports.
+    # collection has already answered (:func:`mureo.web.report_document.
     # _platform_not_collected`). A document holding a fresh ``fetched_at``
     # and an older failure states two contradictory answers to one question;
     # the contract stops that being written, and the read rule stops it being
@@ -449,7 +449,7 @@ class StateDocument:
     # separate writers, and retired on separate evidence.
     #
     # Retirement follows #638's rule one level up: the read side
-    # (:func:`mureo.web.reports._workspace_not_collected`) drops the note once
+    # (:func:`mureo.web.report_document._workspace_not_collected`) drops the note once
     # ANY rollup anywhere in the document carries a ``fetched_at`` later than
     # ``attempted_at`` — a collection that succeeded after the failure has
     # already answered it. Clearing it is still the collector's duty

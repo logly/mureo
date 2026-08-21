@@ -271,7 +271,7 @@ def _stamp_fetched_at(rollup: Any, written_at: str) -> Any:
       timestamp at all: a caller writing a historical window is stating
       something the server cannot re-derive, and the read side keeps an
       uninterpretable string on purpose (see
-      :func:`mureo.web.reports._platform_freshness`) because it is the only
+      :func:`mureo.web.report_document._platform_freshness`) because it is the only
       clue to the writer that produced it.
     - **An empty rollup is left empty.** An advisory bridge keeps an entry
       with no figures; a lone ``fetched_at`` would turn "no synced metrics"
@@ -611,7 +611,7 @@ def set_platform_metrics(
     is the one moment the caller still holds the figures and can re-file
     them. This is the WRITE half of a deliberate asymmetry: the read side
     stays tolerant of labels already on disk (see
-    :func:`~mureo.web.reports._available_periods`), which are real figures
+    :func:`~mureo.web.report_document._available_periods`), which are real figures
     under an unexpected name.
 
     Re-stamps ``last_synced_at`` and writes back atomically under the state
@@ -736,7 +736,7 @@ def set_platform_not_collected(
 
     The dashboard does not TRUST that contract, and should not have to: it
     drops a note any later collection has already answered (see
-    :func:`mureo.web.reports._platform_not_collected`). Clearing it here is
+    :func:`mureo.web.report_document._platform_not_collected`). Clearing it here is
     still what keeps the document itself honest — the read rule only decides
     what is shown.
 
@@ -833,7 +833,7 @@ def set_workspace_not_collected(
     The read side does not TRUST that contract and should not have to: it
     drops a note that any later collection anywhere in the document has
     already answered (see
-    :func:`mureo.web.reports._workspace_not_collected`), the same
+    :func:`mureo.web.report_document._workspace_not_collected`), the same
     evidence-based retirement #638 gave the per-platform note.
 
     ``last_synced_at`` is deliberately NOT re-stamped, for the same reason

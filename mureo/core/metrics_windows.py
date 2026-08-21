@@ -30,7 +30,7 @@ The asymmetry is deliberate, and it is not an inconsistency:
 - **Read** — tolerate. Labels already on disk are real figures, correctly
   collected, filed under a name no view expects. Refusing to read them would
   delete data mureo did collect in order to tidy a vocabulary. So
-  :func:`~mureo.web.reports._available_periods` still surfaces them, and the
+  :func:`~mureo.web.report_document._available_periods` still surfaces them, and the
   report summary NAMES them (``non_canonical_periods``) so an operator can
   see what accumulated and decide.
 

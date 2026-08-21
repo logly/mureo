@@ -89,7 +89,7 @@ def due_observation_dates(entries: Sequence[Any], today: date) -> list[date]:
 
     An ``observation_due`` that is not an ISO date is skipped. It cannot be
     judged against ``today``, and unknown is not a verdict — the same
-    position :func:`mureo.web.reports._platform_freshness` takes on a
+    position :func:`mureo.web.report_document._platform_freshness` takes on a
     ``fetched_at`` it cannot parse. It is also writer-supplied text, so
     parsing is what keeps it from reaching a caller that relays the date.
 
