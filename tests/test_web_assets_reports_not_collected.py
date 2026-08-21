@@ -31,11 +31,36 @@ import pytest
 
 _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 
-_REPORTS_ASSETS = ("reports_logic.js", "dashboard_reports.js")
+_REPORTS_ASSETS = (
+    "reports_logic.js",
+    "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
+    "dashboard_reports_state.js",
+)
 
 
 def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
+
+
+#: The Reports rendering layer, split three ways by #687. A test that asserts
+#: about symbols on both sides of that split reads the whole layer rather than
+#: guessing which file a given renderer ended up in.
+_REPORTS_LAYER = (
+    "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
+    "dashboard_reports_state.js",
+)
+
+
+def _read_layer() -> str:
+    return "\n".join(_read(name) for name in _REPORTS_LAYER)
 
 
 def _function_body(js: str, signature: str) -> str:
@@ -55,7 +80,7 @@ def test_the_renderer_binds_the_logic_module_rather_than_re_deciding() -> None:
     it — is one decision, made in the module the JS suite executes. A
     renderer that re-derived it would drift from the shape the read side
     whitelists."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_state.js")
     for name in ("reportsNotCollectedNotes", "reportsNotCollectedText"):
         assert f"{name} = REPORTS_LOGIC.{name}" in js, f"{name} is not bound"
         assert f"function {name}(" not in js, f"{name} was copied into dashboard.js"
@@ -71,7 +96,7 @@ def test_the_index_states_the_reason_without_opening_the_client() -> None:
     was rendered twice on one screen: once in the card and once in the alert
     row above it. It now lives only in the alert row — still on the index,
     still one screen, still not behind a click into the client."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_triage.js")
     # reports_triage.js raises one item per platform that said why (its own
     # suite executes that); the row renders it.
     assert "not_collected" in _read("reports_triage.js")
@@ -85,12 +110,10 @@ def test_the_reason_comes_before_what_to_run_about_it() -> None:
     """The order is the argument the row makes: what is wrong, then what to
     run. The next step is what an operator ACTS on, so nothing may be
     appended after it."""
-    row = _function_body(_read("dashboard_reports.js"), "function buildTriageRow(")
+    row = _function_body(_read_layer(), "function buildTriageRow(")
     assert row.index("triageItemText(item)") < row.index("triageItemNextStep(item)")
     # And the client's own detail view still states both, per platform.
-    platform_card = _function_body(
-        _read("dashboard_reports.js"), "function buildReportCard("
-    )
+    platform_card = _function_body(_read_layer(), "function buildReportCard(")
     assert "reportsNotCollectedNote(" in platform_card
     assert "report-card-not-collected" in platform_card
     assert "reportsRepairHint(conflicts)" in platform_card
@@ -101,7 +124,9 @@ def test_the_platform_card_carries_its_own_reason() -> None:
     """A single-client (OSS) install never renders the client index, so the
     platform card is the ONLY place this can surface there — the same reason
     the conflict note is repeated on it."""
-    card = _function_body(_read("dashboard_reports.js"), "function buildReportCard(")
+    card = _function_body(
+        _read("dashboard_reports_report.js"), "function buildReportCard("
+    )
     assert "reportsNotCollectedNote(platform)" in card
     # Above the headline, because it explains the figure (or its absence) —
     # and before the two branches that RETURN early (no metrics at all, and
@@ -126,7 +151,7 @@ def test_the_note_never_touches_the_figures() -> None:
 def test_the_reason_reaches_the_dom_as_text() -> None:
     """The reason is writer-supplied text from STATE.json — an API error
     string, in practice. It is set as text, never as markup."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     # Twice over: the alert row above the index grid, and the per-platform
     # card in the client's detail view.
     row = _function_body(js, "function buildTriageRow(")

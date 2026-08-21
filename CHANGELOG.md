@@ -1,5 +1,39 @@
 ## [Unreleased]
 
+### Changed
+
+- **The Reports view's state moved onto one object, and `dashboard_reports.js`
+  split six ways** (#687). At 2,139 lines it was the one file #678 could not
+  bring under the 800-line threshold, and the obstacle was not size but shape:
+  ten `let`s were written on one side of every candidate seam and read on the
+  other, and two `<script>` IIFEs cannot share a `let`. They can share an
+  object.
+
+  | file | lines |
+  |---|---|
+  | `dashboard_reports.js` — the index: which clients, and what the roster says | 2,139 → 558 |
+  | `dashboard_reports_report.js` — one stored report, rendered | 543 |
+  | `dashboard_reports_cards.js` — one client's card in the grid | 511 |
+  | `dashboard_reports_overview.js` — the portfolio row, filters, platforms, feed | 399 |
+  | `dashboard_reports_triage.js` — the alert list | 343 |
+  | `dashboard_reports_state.js` — the `reports_*.js` bindings and `REPORTS_VIEW_STATE` | 277 |
+
+  `dashboard_reports.js` keeps its name and its global, because
+  `window.MUREO_DASHBOARD_REPORTS` is the contract `dashboard.js` binds.
+
+  The rewrite is one substitution and nothing else: `x` became
+  `REPORTS_VIEW_STATE.x` at 53 sites across the ten names, with zero residual
+  bare references. No branch, no control flow and no rendered output changed,
+  and all 45 functions moved verbatim. `reportsRenderSeq` — the #223
+  generation guard that drops a stale async render — reaches the same object
+  through one `const` binding, so `++state.reportsRenderSeq` and the
+  `seq !== ...` compare that follows still run against the same value in the
+  same tick.
+
+  Every file is now under 800 lines, and the dependency graph is one-way:
+  state → report → overview → cards → triage → index, with three names
+  resolved per call because their definition loads later.
+
 ## [0.13.1] - 2026-08-22
 
 ### Changed

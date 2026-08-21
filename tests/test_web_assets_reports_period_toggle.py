@@ -28,6 +28,23 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
+#: The Reports rendering layer, split three ways by #687. A test that asserts
+#: about symbols on both sides of that split reads the whole layer rather than
+#: guessing which file a given renderer ended up in.
+_REPORTS_LAYER = (
+    "dashboard_reports.js",
+    "dashboard_reports_report.js",
+    "dashboard_reports_overview.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_triage.js",
+    "dashboard_reports_state.js",
+)
+
+
+def _read_layer() -> str:
+    return "\n".join(_read(name) for name in _REPORTS_LAYER)
+
+
 @pytest.mark.unit
 def test_app_html_has_period_toggle_container() -> None:
     """The reports head carries the toggle mount point, hidden by default
@@ -53,7 +70,7 @@ def test_summary_request_sends_period_param() -> None:
     (encoded), or the backend returns the default passthrough and the
     toggle is inert."""
     js = _read("dashboard_reports.js")
-    assert "encodeURIComponent(reportsPeriod)" in js
+    assert "encodeURIComponent(REPORTS_VIEW_STATE.reportsPeriod)" in js
     assert '"period="' in js
 
 
@@ -61,8 +78,8 @@ def test_summary_request_sends_period_param() -> None:
 def test_default_window_is_yesterday() -> None:
     """Default view is the prior day — daily-check runs daily, so YESTERDAY
     is what an operator checks first."""
-    js = _read("dashboard_reports.js")
-    assert 'let reportsPeriod = "YESTERDAY"' in js
+    js = _read("dashboard_reports_state.js")
+    assert 'reportsPeriod: "YESTERDAY"' in js
 
 
 @pytest.mark.unit
@@ -164,7 +181,7 @@ def test_report_flags_are_humanized_not_raw() -> None:
     assert "function humanizeReportFlag(" in js
     assert "REPORTS_FLAG_BASES" in js
     # The chip text must go through the humanizer for bare-string flags.
-    assert "humanizeReportFlag(flag)" in _read("dashboard_reports.js")
+    assert "humanizeReportFlag(flag)" in _read("dashboard_reports_report.js")
 
 
 @pytest.mark.unit
@@ -196,7 +213,7 @@ def test_report_flags_get_severity_colored_chips() -> None:
     assert "function reportFlagKind(" in js
     assert '"is-warn"' in js
     assert '"is-danger"' in js
-    assert "reportFlagKind(flag)" in _read("dashboard_reports.js")
+    assert "reportFlagKind(flag)" in _read("dashboard_reports_report.js")
 
 
 @pytest.mark.unit
@@ -205,7 +222,7 @@ def test_reports_index_detail_navigation() -> None:
     client) navigation — not a single-select dropdown. Clicking a card opens
     its detail; a back bar returns to the index. The old <select> is gone."""
     html = _read("app.html")
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     css = _read("app.css")
     # Index grid + detail container present; old dropdown removed.
     assert "data-reports-clients" in html  # index grid
@@ -238,7 +255,10 @@ def test_reports_single_client_skips_index() -> None:
     index, no entry point — not even the left menu — can route to one.
     """
     js = _read("dashboard_reports.js")
-    assert "reportsClients.length > 1 || archivedReportsClients().length > 0" in js
+    assert (
+        "REPORTS_VIEW_STATE.reportsClients.length > 1 ||\n"
+        "      archivedReportsClients().length > 0" in js
+    )
     assert "hasIndex: hasIndex" in js
     assert "if (!hasIndex) {" in js
     # The back bar only appears when there is an index to return to.
@@ -249,7 +269,7 @@ def test_reports_single_client_skips_index() -> None:
 def test_reports_client_card_flags_are_severity_capped() -> None:
     """Client cards reuse the humanized + severity-coloured flag chips, sorted
     most-urgent-first and capped with a +N overflow."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     assert "REPORTS_CLIENT_FLAG_CAP" in js
     assert "flagSeverityRank" in js
     assert "humanizeReportFlag(flag)" in js
