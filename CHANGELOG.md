@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.13.1] - 2026-08-22
+
 ### Changed
 
 - **`dashboard.js` split into one shell and seven section modules** (#678). At
