@@ -1,5 +1,56 @@
 ## [Unreleased]
 
+### Added
+
+- **A workspace-level collection failure has a home in the schema** (#661).
+  #638 gave a platform somewhere to say why its figures did not move. There
+  was no equivalent for the workspace as a whole, and the per-platform field
+  could not be stretched to cover it: `set_platform_not_collected` requires a
+  platform key and an `account_id`, which are exactly what a collection that
+  died before reaching any platform failed to resolve. Writing the note onto
+  every existing entry would state a different fact ("Meta failed, and Google
+  failed, and…"), and a workspace that has *never* been collected — the case
+  the record matters most for — has no entry to write onto at all.
+
+  `StateDocument.workspace_not_collected` is that home: the same
+  `{attempted_at, reason}` shape, one level up, read through the same
+  normaliser and capped at the same 500 characters at both ends. Optional,
+  `None` by default, emitted only when set — a STATE.json written before it
+  existed parses unchanged and gains no key.
+
+  `set_workspace_not_collected(path, reason=...)` writes it and takes **no**
+  platform key and **no** account id; it creates no platform entry, works on a
+  STATE.json that does not exist yet, and leaves every platform — including
+  any per-platform note — untouched. `reason=None` clears it. Recording a
+  failure is not a sync, so `last_synced_at` is not re-stamped, for the same
+  reason one field over. `mureo_state_workspace_not_collected_set` exposes it
+  to agents (224 MCP tools now).
+
+  **Retired by evidence, not by discipline.** The read side drops the note
+  once any rollup *anywhere in the document* carries a `fetched_at` later than
+  its `attempted_at` — the note is about the workspace, so any platform being
+  reached proves the collection ran. #638's three limits carry over: any
+  window counts, no collection time means no retirement, and an unparseable
+  `fetched_at` (or a note with no `attempted_at`) leaves the question open,
+  which is not retired. Clearing it is still the collector's duty; nothing an
+  operator sees depends on that duty being honoured.
+
+  **Distinguishable from the per-platform note.** Separate fields, separate
+  writers, separate evidence, and separate keys on
+  `/api/reports/summary`: `workspace_not_collected` beside the document's
+  `last_synced_at`, `not_collected` inside each platform row. "This workspace
+  could not be collected" and "this workspace's Meta failed" never render as
+  one sentence. Drawing it belongs to the triage layer (#651) and is not wired
+  into the page yet — the reader had to exist first.
+
+  **The interim key is now a migration target, not a second home.**
+  mureo-agency records a workspace-level failure in
+  `StateDocument.reports["client_not_collected"]` (logly/mureo-agency#207)
+  because nothing better existed; `reports` is documented as holding stage-c
+  analysis summaries, and a failure record is not one. Downstream should move
+  to `workspace_not_collected`. The interim key is not read by OSS and is not
+  kept alive for compatibility.
+
 ## [0.12.1] - 2026-08-21
 
 ### Fixed

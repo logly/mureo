@@ -775,6 +775,81 @@ def set_platform_not_collected(
     return _locked_state_mutation(path, _build)
 
 
+def set_workspace_not_collected(
+    path: Path,
+    *,
+    reason: str | None,
+) -> StateDocument:
+    """Record — or clear — why this WORKSPACE could not be collected (#661).
+
+    Writes the document-level ``workspace_not_collected`` as
+    ``{"attempted_at": <now>, "reason": <reason>}``, or removes it when
+    ``reason`` is ``None`` / blank. ``attempted_at`` is stamped SERVER-side
+    (the #460 rule): the caller states what happened, never when.
+
+    **The counterpart of :func:`set_platform_not_collected`, one level up —
+    and it deliberately takes neither a platform key nor an ``account_id``.**
+    Those two are exactly what a collection that died before reaching any
+    platform failed to resolve, so requiring them to record "resolving them
+    failed" is circular. Writing the note onto every existing platform entry
+    would state a different fact ("Meta failed, and Google failed, and…"),
+    and a workspace that has NEVER been collected — the case this exists for
+    — has no entry to write onto: inventing one with a blank ``account_id``
+    creates the poisoned entry #533/#536 removed.
+
+    **Nothing else in the document is touched.** ``platforms`` is left
+    exactly as it was, including any per-platform note: the two record
+    different failures and neither implies the other. The stored figures are
+    still the last ones truly collected — this says they were not UPDATED,
+    never that they are wrong.
+
+    **A clear must be said, and whoever collects says it.** Call this with
+    ``reason=None`` on the next successful collection, in the same pass;
+    every targeted mutator in this module treats an omitted argument as
+    "leave it alone", so nothing else retires the note.
+
+    The read side does not TRUST that contract and should not have to: it
+    drops a note that any later collection anywhere in the document has
+    already answered (see
+    :func:`mureo.web.reports._workspace_not_collected`), the same
+    evidence-based retirement #638 gave the per-platform note.
+
+    ``last_synced_at`` is deliberately NOT re-stamped, for the same reason
+    :func:`set_platform_not_collected` does not: a collection that FAILED is
+    not a sync, and re-stamping it would report the document as just-synced
+    on the strength of nothing having been collected.
+
+    Args:
+        path: STATE.json location. Created (with an otherwise empty document)
+            when it does not exist — the absence of figures is the thing
+            being reported, so this write cannot be conditional on having any.
+        reason: What happened, in words an operator can act on (credentials
+            that could not be read, a run that never started, a client whose
+            workspace is missing). Truncated to
+            :data:`~mureo.context.models.NOT_COLLECTED_REASON_MAX_CHARS`
+            characters. ``None`` or blank CLEARS the note.
+
+    Returns:
+        The updated :class:`StateDocument`.
+    """
+    cleaned = reason.strip() if isinstance(reason, str) else ""
+
+    def _build(doc: StateDocument) -> StateDocument:
+        note = (
+            {
+                "attempted_at": _now_iso(),
+                "reason": cleaned[:NOT_COLLECTED_REASON_MAX_CHARS],
+            }
+            if cleaned
+            else None
+        )
+        # One field, by ``replace``: everything else — platforms and their own
+        # notes, campaigns, action_log, reports, batches — is carried over.
+        return replace(doc, workspace_not_collected=note)
+
+    return _locked_state_mutation(path, _build)
+
+
 def set_conversion_action_types(
     path: Path,
     platform: str,
@@ -867,6 +942,7 @@ __all__ = [
     "set_platform_metrics",
     "set_platform_not_collected",
     "set_report",
+    "set_workspace_not_collected",
     "upsert_campaign",
     "write_state_file",
 ]

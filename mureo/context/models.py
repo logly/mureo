@@ -14,13 +14,18 @@ from typing import Any
 #: do neither for a change made in a platform's UI.
 EXTERNAL_ORIGIN = "external"
 
-#: Longest ``PlatformState.not_collected["reason"]`` mureo stores or renders.
+#: Longest ``reason`` mureo stores or renders in EITHER collection-failure
+#: note — ``PlatformState.not_collected`` (#638) and
+#: ``StateDocument.workspace_not_collected`` (#661). One bound, because the
+#: two are the same shape shown in the same place.
 #: A collector's raw error can be a page of API JSON, while the card that has
 #: to show it has one line and STATE.json is read whole on every write. The
-#: cap is applied at BOTH boundaries — the write helper
-#: (:func:`mureo.context.state.set_platform_not_collected`) and the dashboard's
-#: read (:func:`mureo.web.reports._platform_row`) — because a document can also
-#: be written wholesale by a digest that goes near neither.
+#: cap is applied at BOTH boundaries — the write helpers
+#: (:func:`mureo.context.state.set_platform_not_collected` /
+#: :func:`mureo.context.state.set_workspace_not_collected`) and the dashboard's
+#: read (:func:`mureo.web.reports._platform_row` /
+#: :func:`mureo.web.reports._workspace_not_collected`) — because a document can
+#: also be written wholesale by a digest that goes near neither.
 NOT_COLLECTED_REASON_MAX_CHARS = 500
 
 
@@ -422,6 +427,35 @@ class StateDocument:
     # skill writes it yet. Optional with a None default so old STATE.json
     # files parse unchanged and emit no extra key.
     reports: dict[str, Any] | None = None
+    # Why THIS WORKSPACE could not be collected at all (#661), as
+    # ``{"attempted_at": <ISO 8601>, "reason": <human-readable>}`` — the same
+    # two fields as ``PlatformState.not_collected``, one level up. None (the
+    # default) is what every document written before this field existed
+    # carries, so a legacy STATE.json parses unchanged and emits no new key.
+    #
+    # The document-level counterpart exists because the per-platform field
+    # cannot carry a failure that happened BEFORE any platform was reached:
+    # ``set_platform_not_collected`` requires a platform key and an
+    # ``account_id``, and those are exactly what the dead process would have
+    # resolved. Writing the note onto every existing entry would say
+    # something else ("Meta failed, and Google failed, and…"), and a
+    # workspace that has never been collected — the case where the record
+    # matters most — has no entry to write onto at all.
+    #
+    # It is NOT a per-platform note repeated, and must never be rendered as
+    # one: "this workspace could not be collected" and "this workspace's Meta
+    # failed" call for different actions. The two are separate fields, set by
+    # separate writers, and retired on separate evidence.
+    #
+    # Retirement follows #638's rule one level up: the read side
+    # (:func:`mureo.web.reports._workspace_not_collected`) drops the note once
+    # ANY rollup anywhere in the document carries a ``fetched_at`` later than
+    # ``attempted_at`` — a collection that succeeded after the failure has
+    # already answered it. Clearing it is still the collector's duty
+    # (:func:`mureo.context.state.set_workspace_not_collected` with
+    # ``reason=None``), but nothing an operator SEES depends on that duty
+    # being honoured.
+    workspace_not_collected: dict[str, Any] | None = None
     # Declared bulk change sets (#549), open and closed. Empty by default and
     # emitted only when non-empty, so a STATE.json written before this field
     # existed parses unchanged and gains no new key.
@@ -437,3 +471,9 @@ class StateDocument:
             object.__setattr__(self, "batches", tuple(self.batches))
         if self.reports is not None:
             object.__setattr__(self, "reports", copy.deepcopy(self.reports))
+        if self.workspace_not_collected is not None:
+            object.__setattr__(
+                self,
+                "workspace_not_collected",
+                copy.deepcopy(self.workspace_not_collected),
+            )

@@ -58,9 +58,9 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_ten_tools() -> None:
+def test_tools_module_exports_eleven_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 10
+    assert len(mod.TOOLS) == 11
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
@@ -70,6 +70,7 @@ def test_tools_module_exports_ten_tools() -> None:
         "mureo_state_report_set",
         "mureo_state_platform_metrics_set",
         "mureo_state_platform_not_collected_set",
+        "mureo_state_workspace_not_collected_set",
         "mureo_state_set_conversion_events",
         "mureo_outcome_evaluate",
     }

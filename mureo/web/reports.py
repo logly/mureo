@@ -405,6 +405,11 @@ def build_report_summary(
       ``metrics_period`` ``None``). ``not_collected`` is why that platform's
       figures were not refreshed (#638), or ``None`` — see
       :func:`_safe_not_collected`.
+    - ``workspace_not_collected``: why the WHOLE workspace could not be
+      collected (#661), or ``None`` — a collection that died before any
+      platform was reached. A separate key from a row's ``not_collected``
+      because it is a separate fact, and retired on separate evidence; see
+      :func:`_workspace_not_collected`.
     - ``platform_conflicts``: reasons these rows must not be added together
       (#533) — see :func:`_build_platform_conflicts`. Always a list, empty
       when the document is healthy, and it carries NO ad account ids.
@@ -458,6 +463,9 @@ def build_report_summary(
         "periods": _available_periods(doc),
         "non_canonical_periods": _non_canonical_periods(doc),
         "last_synced_at": doc.last_synced_at if doc is not None else None,
+        # A document-level fact, so it sits beside the document-level sync
+        # time and above the platform rows — never inside one (#661).
+        "workspace_not_collected": _workspace_not_collected(doc),
         "platforms": _build_platforms(doc, period),
         "platform_conflicts": _build_platform_conflicts(doc),
         "recent_actions": _build_recent_actions(doc),
@@ -906,6 +914,62 @@ def _platform_not_collected(state: PlatformState) -> dict[str, Any] | None:
     if collected is not None and collected > attempted:
         return None
     return note
+
+
+def _workspace_not_collected(doc: StateDocument | None) -> dict[str, Any] | None:
+    """Why this WORKSPACE could not be collected — unless a later collection
+    already answered that (#661).
+
+    #638's retirement rule, one level up. The stored note is dropped here
+    when ANY rollup ANYWHERE in the document was collected after the failure
+    it describes: the note is about the workspace, so any platform being
+    reached is evidence the collection ran. Retiring it is the collector's
+    job (see :func:`mureo.context.state.set_workspace_not_collected`), but
+    what an operator SEES must not depend on a writer remembering — a
+    document carrying a fresh ``fetched_at`` and a days-old
+    "could not be collected" states two contradictory answers to one
+    question, and that is the defect this field exists to remove, not to
+    reintroduce.
+
+    Put on the wire under its OWN key, never merged into a platform row: the
+    acceptance condition is that "this workspace could not be collected" and
+    "this workspace's Meta failed" do not render as one sentence. Their
+    evidence differs too — a rollup on ANY platform retires this one, while a
+    platform's note is retired only by its own rollups — so one is never
+    computed from the other.
+
+    The same three limits as the per-platform rule: any window counts, no
+    collection time means no retirement, and retirement must be PROVED (an
+    unparseable ``fetched_at``, or a note with no ``attempted_at``, leaves
+    the question open, and open is not retired).
+    """
+    if doc is None:
+        return None
+    note = _safe_not_collected(doc.workspace_not_collected)
+    if note is None:
+        return None
+    attempted = _parse_timestamp(note.get("attempted_at"))
+    if attempted is None:
+        return note
+    collected = _newest_document_collection(doc)
+    if collected is not None and collected > attempted:
+        return None
+    return note
+
+
+def _newest_document_collection(doc: StateDocument) -> datetime | None:
+    """The most recent ``fetched_at`` across EVERY platform's rollups.
+
+    ``None`` when not one platform in the document carries a usable
+    timestamp — which is not "never collected" as a fact about the world,
+    only about what the document can show.
+    """
+    newest: datetime | None = None
+    for state in (doc.platforms or {}).values():
+        collected = _newest_collection(state)
+        if collected is not None and (newest is None or collected > newest):
+            newest = collected
+    return newest
 
 
 def _newest_collection(state: PlatformState) -> datetime | None:

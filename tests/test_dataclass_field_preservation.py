@@ -91,6 +91,7 @@ from mureo.context.state import (
     set_platform_metrics,
     set_platform_not_collected,
     set_report,
+    set_workspace_not_collected,
     upsert_campaign,
     write_state_file,
 )
@@ -193,6 +194,10 @@ _DOCUMENT_FIELD_VALUES: dict[str, Any] = {
     "platforms": {_PLATFORM: PlatformState(**_PLATFORM_FIELD_VALUES)},
     "action_log": (ActionLogEntry(**_ACTION_LOG_FIELD_VALUES),),
     "reports": {"daily": {"narrative": "healthy"}},
+    "workspace_not_collected": {
+        "attempted_at": "2026-08-08T08:00:00+09:00",
+        "reason": "the credentials file could not be read",
+    },
     "batches": (BatchRecord(**_BATCH_FIELD_VALUES),),
 }
 
@@ -340,6 +345,20 @@ class TestDocumentLevelPreservation:
         # just-synced on the strength of nothing having been collected.
         _assert_document_preserved(before, after, changed={"platforms"})
         assert after.last_synced_at == before.last_synced_at
+
+    def test_set_workspace_not_collected(
+        self, seeded: tuple[Path, StateDocument]
+    ) -> None:
+        path, before = seeded
+        after = set_workspace_not_collected(path, reason="the collection never ran")
+        # One field, and ``last_synced_at`` is not among them for the same
+        # reason as above: a collection that failed is not a sync. The
+        # PER-PLATFORM notes are not among them either — the two record
+        # different failures and neither implies the other.
+        _assert_document_preserved(before, after, changed={"workspace_not_collected"})
+        assert after.last_synced_at == before.last_synced_at
+        assert after.workspace_not_collected is not None
+        assert after.workspace_not_collected["reason"] == "the collection never ran"
 
 
 @pytest.mark.unit

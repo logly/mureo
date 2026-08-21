@@ -29,6 +29,7 @@ from mureo.mcp._handlers_mureo_context import (
     handle_state_report_set,
     handle_state_set_conversion_events,
     handle_state_upsert_campaign,
+    handle_state_workspace_not_collected_set,
     handle_strategy_get,
     handle_strategy_set,
 )
@@ -721,6 +722,48 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="mureo_state_workspace_not_collected_set",
+        description=(
+            "Record WHY THIS WHOLE WORKSPACE could not be collected — or "
+            "CLEAR that note once a collection succeeds again. Use this when "
+            "the run failed BEFORE any platform was reached (no credentials, "
+            "the workspace could not be opened, the collector never ran), "
+            "which is exactly when there is no platform key and no account id "
+            "to name: this tool asks for neither. Use "
+            "mureo_state_platform_not_collected_set instead when ONE "
+            "platform failed and others were collected — the two are "
+            "different facts calling for different actions, and neither is "
+            "written as the other. Nothing else in the document is touched: "
+            "the platforms, their own notes and every stored figure are left "
+            "as they were, because they are still the last ones truly "
+            "collected. ``attempted_at`` is stamped by the server — do not "
+            "compute it. **Omit ``reason`` (or send null / blank) to CLEAR "
+            "the note, and do that on the very next successful collection**: "
+            "a note that outlives its failure is permanently stale "
+            "information stated with confidence. ``last_synced_at`` is NOT "
+            "re-stamped (a failed collection is not a sync). Returns the "
+            "updated state document."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": (
+                        "What happened, in words an operator can act on — "
+                        '"the credentials file could not be read", "the '
+                        'nightly collection did not run". Not a stack trace: '
+                        "it is rendered on the client card, and long text is "
+                        "truncated. Omit / null / blank CLEARS the note."
+                    ),
+                },
+                "path": _PATH_PROPERTY,
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
         name="mureo_state_set_conversion_events",
         description=(
             "Declare which Meta Insights ``action_type`` rows count as THIS "
@@ -839,6 +882,9 @@ _HANDLERS = {
     "mureo_state_report_set": handle_state_report_set,
     "mureo_state_platform_metrics_set": handle_state_platform_metrics_set,
     "mureo_state_platform_not_collected_set": handle_state_platform_not_collected_set,
+    "mureo_state_workspace_not_collected_set": (
+        handle_state_workspace_not_collected_set
+    ),
     "mureo_state_set_conversion_events": handle_state_set_conversion_events,
     "mureo_outcome_evaluate": handle_outcome_evaluate,
 }
