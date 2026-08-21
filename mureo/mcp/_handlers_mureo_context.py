@@ -59,6 +59,7 @@ from mureo.context.state import (
     read_state_file,
     render_state,
     set_conversion_action_types,
+    set_platform_daily,
     set_platform_metrics,
     set_platform_not_collected,
     set_report,
@@ -451,6 +452,37 @@ async def handle_state_platform_metrics_set(
             metrics_period=metrics_period,
             periods=periods,
         )
+    except ContextFileError as exc:
+        # Surface as ValueError so the MCP dispatcher returns a clean tool
+        # error rather than a 500-style server error (matches upsert_campaign).
+        raise ValueError(str(exc)) from exc
+    return _json_result(_state_to_dict(doc))
+
+
+async def handle_state_platform_daily_set(
+    arguments: dict[str, Any],
+) -> list[TextContent]:
+    """Merge day-grain rollups into a platform's ``daily`` history (#690).
+
+    The date keys themselves are validated by
+    :func:`~mureo.context.state.set_platform_daily` (shape, real date, and
+    the day being over), so the rule lives in one place rather than being
+    half-checked here.
+    """
+    platform = _require(arguments, "platform")
+    account_id = _require(arguments, "account_id")
+    days = _require(arguments, "days")
+    # Shape-checked before it reaches the file, as the metrics handler checks
+    # its ``periods`` buckets: a number or a string where a rollup belongs is
+    # a caller error, and storing it would put an unreadable day in the map.
+    if not isinstance(days, dict):
+        raise ValueError("days must be an object keyed by YYYY-MM-DD")
+    for day, bucket in days.items():
+        if not isinstance(bucket, dict):
+            raise ValueError(f"days[{day!r}] must be an object")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
+    try:
+        doc = set_platform_daily(path, platform, account_id, days=days)
     except ContextFileError as exc:
         # Surface as ValueError so the MCP dispatcher returns a clean tool
         # error rather than a 500-style server error (matches upsert_campaign).

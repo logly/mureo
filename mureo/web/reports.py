@@ -114,6 +114,8 @@ from mureo.web.report_document import (  # noqa: F401
     CONFLICT_UNRECOGNIZED_KEY,
     _available_periods,
     _build_platform_conflicts,
+    _daily_delta,
+    _daily_series,
     _non_canonical_periods,
     _period_totals,
     _platform_freshness,
@@ -177,7 +179,12 @@ def build_report_summary(
       for the resolved window still appears (``totals`` ``None`` /
       ``metrics_period`` ``None``). ``not_collected`` is why that platform's
       figures were not refreshed (#638), or ``None`` — see
-      :func:`_safe_not_collected`.
+      :func:`_safe_not_collected`. ``daily`` is the last
+      :data:`~mureo.web.report_document._DAILY_SERIES_DAYS` days of day-grain
+      history, ascending and with its gaps intact, and ``daily_delta`` is how
+      the last day moved against the day before it — ``None`` when the two
+      most recent stored days are not calendar neighbours, because a
+      comparison across a collection gap is not a day-over-day change (#690).
     - ``workspace_not_collected``: why the WHOLE workspace could not be
       collected (#661), or ``None`` — a collection that died before any
       platform was reached. A separate key from a row's ``not_collected``
@@ -339,6 +346,13 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
     from the window on screen: a note is about the platform, and the
     collection that retires it may have written any window (see
     :func:`_platform_not_collected`).
+
+    ``daily`` / ``daily_delta`` (#690) ride alongside the window rollup and
+    are NOT resolved from ``period``: a day-grain history is not a window, so
+    selecting one must not replace or hide it. Both are always present — an
+    empty list and a ``None`` delta where there is no history — so the
+    frontend reads one shape for every row. See :func:`_daily_series` and
+    :func:`_daily_delta`.
     """
     if period is None:
         totals = _safe_totals(state.totals)
@@ -349,6 +363,7 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
         # so the frontend can tell "no data for this window" from "this data
         # covers <window>".
         metrics_period = period if totals is not None else None
+    daily = _daily_series(state)
     return {
         "key": key,
         "display_name": platform_display_name(key),
@@ -357,6 +372,8 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
         "campaign_count": len(state.campaigns),
         "freshness": _platform_freshness(totals, metrics_period),
         "not_collected": _platform_not_collected(state),
+        "daily": daily,
+        "daily_delta": _daily_delta(daily),
     }
 
 
