@@ -35,7 +35,7 @@ def test_wizard_gates_basic_mcp_on_multi_account() -> None:
 def test_dashboard_gates_basic_mcp_on_multi_account() -> None:
     """``dashboard.js`` skips the mureo_mcp basic-setup row when the status
     snapshot declares ``multi_account_auth``."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_setup.js")
     assert "multi_account_auth" in js
 
 

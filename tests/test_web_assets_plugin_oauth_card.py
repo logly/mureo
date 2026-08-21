@@ -27,7 +27,7 @@ def test_dashboard_renders_callback_url_input() -> None:
     """#216: the OAuth card renders an operator-supplied loopback callback
     URL input. Its name must match the server's ``_OAUTH_CALLBACK_URL_KEY``
     (``oauth_callback_url``) so the value reaches ``start_plugin_oauth``."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert "oauth_callback_url" in js
     assert "dashboard.plugin_oauth_callback_label" in js
     assert "dashboard.plugin_oauth_callback_hint" in js
@@ -38,7 +38,7 @@ def test_dashboard_renders_readonly_target_status() -> None:
     """#217: the OAuth ``target_field`` (the refresh token) is shown as a
     read-only status row, not a text input — it is obtained via
     Authenticate, never typed."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert "data-oauth-target-status" in js
     assert "dashboard.plugin_oauth_target_unset" in js
 
@@ -48,7 +48,7 @@ def test_dashboard_authenticate_sends_form_values() -> None:
     """#217: Authenticate IS save — ``startPluginOAuth`` takes the gathered
     form values and POSTs them (so the bridge can persist them with the
     token), instead of the old empty-body request."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert (
         "function startPluginOAuth(providerName, btn, statusNode, values)" in js
     ), "startPluginOAuth must accept the gathered form values"
@@ -60,7 +60,7 @@ def test_dashboard_authenticate_sends_form_values() -> None:
 def test_dashboard_surfaces_new_oauth_error_keys() -> None:
     """#216: the specific bind/validation failures map to dedicated toast
     strings, not the generic 'authentication failed'."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert "dashboard.plugin_oauth_callback_invalid" in js
     assert "dashboard.plugin_oauth_port_unavailable" in js
 
@@ -71,5 +71,5 @@ def test_dashboard_callback_url_prefill_consults_provider_default() -> None:
     ``default_callback_url`` (between the saved value and the generic
     fallback), so a provider with a fixed redirect_uri pre-fills the exact
     URL the operator must register."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert "default_callback_url" in js

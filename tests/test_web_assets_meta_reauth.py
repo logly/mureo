@@ -52,19 +52,19 @@ _NEW_KEYS = (
 @pytest.mark.unit
 class TestMetaRowCarriesTheControl:
     def test_dashboard_builds_the_meta_reauth_section(self) -> None:
-        js = _read("dashboard.js")
+        js = _read("dashboard_workspace.js")
         assert "MUREO_AUTH_META.buildMetaReauthSection" in js
         # Keyed off the Meta row so no other credential row grows one.
         assert 'row.key === "meta_ads"' in js
 
     def test_dashboard_renders_the_expiry_hint(self) -> None:
-        js = _read("dashboard.js")
+        js = _read("dashboard_workspace.js")
         assert "MUREO_AUTH_META.buildMetaExpiringHint" in js
 
     def test_saving_a_new_token_refreshes_the_dashboard(self) -> None:
         """The row must re-render after a save, or the operator is left
         looking at the warning that sent them there."""
-        js = _read("dashboard.js")
+        js = _read("dashboard_workspace.js")
         start = js.index("buildMetaReauthSection")
         block = js[start : start + 400]
         assert "MUREO.loadStatus()" in block

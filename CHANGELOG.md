@@ -2,6 +2,41 @@
 
 ### Changed
 
+- **`dashboard.js` split into one shell and seven section modules** (#678). At
+  4,624 lines and ~40 render functions across eight left-nav sections it was
+  the file every recent dashboard change merge-conflicted inside, and the one
+  a reviewer had to re-derive from scratch to know which renderer belonged to
+  which screen.
+
+  | file | lines |
+  |---|---|
+  | `dashboard.js` (shell: nav, `renderAll`, bootstrap) | 4,624 → 332 |
+  | `dashboard_reports.js` | 2,110 |
+  | `dashboard_setup.js` | 720 |
+  | `dashboard_plugins.js` | 629 |
+  | `dashboard_workspace.js` | 529 |
+  | `dashboard_about.js` | 431 |
+  | `dashboard_advisors.js` | 207 |
+  | `dashboard_creative.js` | 157 |
+
+  Each new file is the same shipping shape every module in that directory
+  already has: a plain `<script>`-loaded asset publishing one global, listed in
+  `_STATIC_ALLOWLIST` and loaded ahead of `dashboard.js` in `app.html`. No
+  bundler, no build step, no module system.
+
+  All 120 top-level functions moved verbatim — same bodies, same order — and
+  every call site in `renderAll()` and the `mureo:ready` listener reads exactly
+  as before, because the shell resolves each section module per call under its
+  original name rather than binding it at load. A dropped `<script>` tag now
+  names the file it dropped instead of blanking the configure UI.
+
+  `dashboard_reports.js` is 2,110 lines and did not split further. Six `let`s
+  — `reportsPeriod`, `reportsActiveClient`, `reportsView`, `reportsClients`,
+  `reportsCanArchive`, `reportsRenderSeq` — are written on one side of every
+  candidate seam and read on the other, and two `<script>` IIFEs cannot share
+  a `let`. Cutting there would mean promoting that state onto an object and
+  rewriting every read and write of it, which is a redesign rather than a move.
+
 - **`mureo/web/reports.py` split into an assembly layer and the two layers it
   asks** (#678). At 1,070 lines it held twenty-six functions covering platform
   naming, the tolerant STATE.json read, conflict detection, freshness,

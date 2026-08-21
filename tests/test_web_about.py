@@ -502,7 +502,7 @@ class TestAboutAssets:
         assert html.count('src="/static/logo-dark.png"') >= 2
 
     def test_dashboard_js_fetches_about_endpoint(self) -> None:
-        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        js = (_WEB / "dashboard_about.js").read_text(encoding="utf-8")
         assert "/api/about" in js
 
     def test_about_is_the_last_static_nav_item(self) -> None:
@@ -553,16 +553,16 @@ class TestUpdateAssets:
         assert 'data-dashboard-nav="about"' in html
 
     def test_dashboard_js_fetches_updates_endpoint(self) -> None:
-        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        js = (_WEB / "dashboard_about.js").read_text(encoding="utf-8")
         assert "/api/updates" in js
 
     def test_dashboard_js_posts_upgrade_endpoint(self) -> None:
-        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        js = (_WEB / "dashboard_about.js").read_text(encoding="utf-8")
         assert "/api/upgrade" in js
 
     def test_dashboard_js_adds_update_nav_badge(self) -> None:
         """The red indicator is wired to the About nav item."""
-        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        js = (_WEB / "dashboard_about.js").read_text(encoding="utf-8")
         assert "nav-badge-update" in js
         assert '[data-dashboard-nav="about"]' in js
 
@@ -570,7 +570,7 @@ class TestUpdateAssets:
         """ "Update all" upgrades DIRECTLY on click — the previous two-step
         in-page confirm panel was removed for a one-click flow, and the
         upgrade never triggers a native ``window.confirm`` dialog."""
-        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        js = (_WEB / "dashboard_about.js").read_text(encoding="utf-8")
         html = (_WEB / "app.html").read_text(encoding="utf-8")
         assert "data-about-update-confirm" not in js
         assert "data-about-update-confirm" not in html

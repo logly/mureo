@@ -40,7 +40,7 @@ def test_app_html_has_period_toggle_container() -> None:
 
 @pytest.mark.unit
 def test_dashboard_js_renders_and_wires_period_toggle() -> None:
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert "function renderReportsPeriodToggle(" in js
     assert "reports-period-btn" in js
     # The toggle and the active window state must exist.
@@ -52,7 +52,7 @@ def test_summary_request_sends_period_param() -> None:
     """The summary fetch must forward the selected window as ``?period=``
     (encoded), or the backend returns the default passthrough and the
     toggle is inert."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert "encodeURIComponent(reportsPeriod)" in js
     assert '"period="' in js
 
@@ -61,7 +61,7 @@ def test_summary_request_sends_period_param() -> None:
 def test_default_window_is_yesterday() -> None:
     """Default view is the prior day — daily-check runs daily, so YESTERDAY
     is what an operator checks first."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert 'let reportsPeriod = "YESTERDAY"' in js
 
 
@@ -69,7 +69,7 @@ def test_default_window_is_yesterday() -> None:
 def test_toggle_hidden_without_a_real_choice() -> None:
     """A single-window account has nothing to switch — the toggle stays
     hidden rather than showing one lone button."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert "list.length < 2" in js
 
 
@@ -80,7 +80,7 @@ def test_period_label_keys_referenced() -> None:
     assert "dashboard.reports_period_yesterday" in js
     assert "dashboard.reports_period_last_30_days" in js
     # …and the button still gets its text from the labeller (#556).
-    assert "reportsPeriodLabel(token)" in _read("dashboard.js")
+    assert "reportsPeriodLabel(token)" in _read("dashboard_reports.js")
 
 
 @pytest.mark.unit
@@ -107,7 +107,7 @@ def test_a_window_mureo_does_not_define_is_marked_not_hidden() -> None:
     tab would hide figures mureo really collected; leaving them
     indistinguishable leaves an operator unable to tell which window their
     reports are keyed to. So the button renders, marked, with the reason."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert "isCanonicalReportsPeriod(token)" in js
     assert '" is-adhoc"' in js
     assert "dashboard.reports_period_adhoc" in js
@@ -164,7 +164,7 @@ def test_report_flags_are_humanized_not_raw() -> None:
     assert "function humanizeReportFlag(" in js
     assert "REPORTS_FLAG_BASES" in js
     # The chip text must go through the humanizer for bare-string flags.
-    assert "humanizeReportFlag(flag)" in _read("dashboard.js")
+    assert "humanizeReportFlag(flag)" in _read("dashboard_reports.js")
 
 
 @pytest.mark.unit
@@ -196,7 +196,7 @@ def test_report_flags_get_severity_colored_chips() -> None:
     assert "function reportFlagKind(" in js
     assert '"is-warn"' in js
     assert '"is-danger"' in js
-    assert "reportFlagKind(flag)" in _read("dashboard.js")
+    assert "reportFlagKind(flag)" in _read("dashboard_reports.js")
 
 
 @pytest.mark.unit
@@ -205,7 +205,7 @@ def test_reports_index_detail_navigation() -> None:
     client) navigation — not a single-select dropdown. Clicking a card opens
     its detail; a back bar returns to the index. The old <select> is gone."""
     html = _read("app.html")
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     css = _read("app.css")
     # Index grid + detail container present; old dropdown removed.
     assert "data-reports-clients" in html  # index grid
@@ -237,7 +237,7 @@ def test_reports_single_client_skips_index() -> None:
     module is handed (see ``tests/js/reports_overview.test.js``): with no
     index, no entry point — not even the left menu — can route to one.
     """
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert "reportsClients.length > 1 || archivedReportsClients().length > 0" in js
     assert "hasIndex: hasIndex" in js
     assert "if (!hasIndex) {" in js
@@ -249,7 +249,7 @@ def test_reports_single_client_skips_index() -> None:
 def test_reports_client_card_flags_are_severity_capped() -> None:
     """Client cards reuse the humanized + severity-coloured flag chips, sorted
     most-urgent-first and capped with a +N overflow."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert "REPORTS_CLIENT_FLAG_CAP" in js
     assert "flagSeverityRank" in js
     assert "humanizeReportFlag(flag)" in js

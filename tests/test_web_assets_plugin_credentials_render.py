@@ -28,7 +28,7 @@ def test_render_plugin_credentials_is_generation_guarded() -> None:
     """#223: a module-level generation counter (declared, incremented, and
     compared after the await) drops a stale render so concurrent calls
     cannot double-append."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert js.count("pluginRenderSeq") >= 3
 
 
@@ -37,7 +37,7 @@ def test_credential_input_prefills_current_values() -> None:
     """#224: ``appendCredentialInput`` pre-fills a non-secret field from
     ``field.value`` and keys the secret placeholder off ``field.configured``
     (the secret value itself is never shipped)."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert "field.value" in js
     assert "field.configured" in js
 
@@ -46,7 +46,7 @@ def test_credential_input_prefills_current_values() -> None:
 def test_oauth_target_status_reflects_configured() -> None:
     """#338: the OAuth target status row shows "Configured ✓" when the token
     is already stored, instead of always prompting to Authenticate."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert "dashboard.plugin_oauth_target_configured" in js
     # Branch is keyed off the injected field.configured state.
     assert "field.configured" in js
@@ -58,7 +58,7 @@ def test_account_picker_rendered_for_picker_provider() -> None:
     """#336: a provider whose oauth block carries accounts_field +
     has_account_lister renders a post-auth account picker (Load → radios →
     Save) instead of a free-text input for that field."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert "appendAccountPicker" in js
     assert "oauth.accounts_field" in js
     assert "oauth.has_account_lister" in js
@@ -73,7 +73,7 @@ def test_picker_radios_excluded_from_form_values() -> None:
     """#336: the OAuth card's gatherFormValues must skip picker radios so
     they never leak into the Authenticate-is-save payload — the chosen
     account rides on the hidden input named after the field key."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_plugins.js")
     assert 'input.type === "radio"' in js
 
 

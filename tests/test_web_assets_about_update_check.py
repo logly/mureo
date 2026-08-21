@@ -57,7 +57,7 @@ def test_update_all_button_starts_hidden_in_markup() -> None:
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 def test_shared_poll_helper_exists() -> None:
-    js = _read("dashboard.js")
+    js = _read("dashboard_about.js")
     assert "function pollUpdatesUntilSettled" in js
 
 
@@ -66,9 +66,9 @@ def test_passive_render_polls_when_checking() -> None:
     """``renderUpdates`` (the on-load path) must hand off to the poll loop
     when the first ``/api/updates`` answer is ``checking`` — not just show
     the message and stop."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_about.js")
     start = js.index("async function renderUpdates()")
-    end = js.index("function renderAll", start)
+    end = js.index("const api = {", start)
     body = js[start:end]
     assert 'body.status === "checking"' in body
     assert "pollUpdatesUntilSettled()" in body
@@ -78,7 +78,7 @@ def test_passive_render_polls_when_checking() -> None:
 def test_manual_check_refreshes_then_polls() -> None:
     """The manual "check now" button still forces a fresh check
     (``/api/updates/refresh``) and then polls until it settles."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_about.js")
     start = js.index("async function runCheckNow()")
     end = js.index("async function renderUpdates()", start)
     body = js[start:end]

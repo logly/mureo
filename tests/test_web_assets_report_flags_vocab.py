@@ -68,7 +68,7 @@ _PARAM_LABEL_KEYS = (
 
 
 # The flag vocabulary module and the renderer that consumes it (#556).
-_FLAG_ASSETS = ("reports_format.js", "dashboard.js")
+_FLAG_ASSETS = ("reports_format.js", "dashboard_reports.js")
 
 
 def _read(name: str) -> str:
@@ -168,7 +168,7 @@ def test_flag_detail_drilldown_present() -> None:
     detail = _read("reports_format.js")
     assert "function buildFlagDetail(" in detail
     assert '"dashboard.reports_param_" + ' in detail
-    chip = _read("dashboard.js")
+    chip = _read("dashboard_reports.js")
     assert "function buildFlagChipElement(" in chip
     assert "buildFlagDetail(flag)" in chip
     assert "is-interactive" in chip
@@ -203,7 +203,7 @@ def test_the_flag_vocabulary_is_not_re_implemented_in_the_renderer() -> None:
     """One definition, executed by ``node --test tests/js/``. A copy left in
     dashboard.js would shadow the tested one and drift from it silently —
     the exact failure the split exists to end."""
-    dashboard = _read("dashboard.js")
+    dashboard = _read("dashboard_reports.js")
     fmt = _read("reports_format.js")
     for fn in (
         "humanizeReportFlag",

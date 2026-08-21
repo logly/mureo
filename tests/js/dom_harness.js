@@ -497,6 +497,13 @@ function loadDashboardPage(routes) {
     "reports_order.js",
     "reports_triage.js",
     "reports_overview.js",
+    "dashboard_setup.js",
+    "dashboard_workspace.js",
+    "dashboard_about.js",
+    "dashboard_advisors.js",
+    "dashboard_reports.js",
+    "dashboard_creative.js",
+    "dashboard_plugins.js",
     "dashboard.js",
   ]) {
     new vm.Script(fs.readFileSync(path.join(WEB, file), "utf-8"), {
