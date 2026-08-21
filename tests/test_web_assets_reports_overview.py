@@ -64,7 +64,7 @@ def test_the_renderer_binds_the_module_rather_than_re_deciding() -> None:
     are decisions the JS suite executes. A renderer that re-derived either
     would drift from the module, and a substring pin cannot catch an
     inverted comparison."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     for name in ("buildReportsPortfolio", "clientPlatformSplit", "platformColorSlot"):
         assert f"{name} = REPORTS_OVERVIEW.{name}" in js, f"{name} is not bound"
         assert f"function {name}(" not in js, f"{name} was copied into dashboard.js"
@@ -74,7 +74,7 @@ def test_the_renderer_binds_the_module_rather_than_re_deciding() -> None:
 def test_the_portfolio_is_built_once_from_the_cards_own_summaries() -> None:
     """The strip and the grid must be two views of ONE fetch. Built twice —
     or from a second request — they could state different windows."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert js.count("buildReportsPortfolio(") == 1, "the portfolio is built in >1 place"
     index = _function_body(js, "async function renderReportsIndex(")
     assert "buildReportsPortfolio(rows, summaries)" in index
@@ -90,7 +90,9 @@ def test_the_portfolio_is_built_once_from_the_cards_own_summaries() -> None:
 def test_an_unstated_total_is_a_dash_with_a_reason_never_a_zero() -> None:
     """The constraint the whole view is built on. A roster total is where a
     withheld client would otherwise be summed in as nothing."""
-    cell = _function_body(_read("dashboard.js"), "function buildPortfolioFigureCell(")
+    cell = _function_body(
+        _read("dashboard_reports.js"), "function buildPortfolioFigureCell("
+    )
     assert 'value != null ? format(value) : "—"' in cell
     assert "dashboard.reports_portfolio_unstated" in cell
     # …and a figure that IS stated says over how many clients, whenever that
@@ -101,7 +103,9 @@ def test_an_unstated_total_is_a_dash_with_a_reason_never_a_zero() -> None:
 
 @pytest.mark.unit
 def test_an_empty_roster_gets_no_strip_rather_than_four_dashes() -> None:
-    render = _function_body(_read("dashboard.js"), "function renderReportsPortfolio(")
+    render = _function_body(
+        _read("dashboard_reports.js"), "function renderReportsPortfolio("
+    )
     assert "strip.hidden = !portfolio.total" in render
     assert "if (!portfolio.total) return;" in render
     # Cleared before the early return, so a row from a previous render cannot
@@ -116,7 +120,9 @@ def test_the_platform_panel_is_hidden_rather_than_drawn_empty() -> None:
     """A panel of zero-width bars says nothing; a panel of bars drawn from
     withheld figures says something false. The module returns no split in
     either case, and the panel follows it."""
-    render = _function_body(_read("dashboard.js"), "function renderReportsPlatforms(")
+    render = _function_body(
+        _read("dashboard_reports.js"), "function renderReportsPlatforms("
+    )
     assert "panel.hidden = !portfolio.platforms.length" in render
     assert "if (panel.hidden) return;" in render
     assert (
@@ -133,7 +139,7 @@ def test_the_platform_panel_is_hidden_rather_than_drawn_empty() -> None:
 def test_only_the_multi_client_index_renders_the_overview() -> None:
     """The Agency seam is what supplies a second client. A single workspace
     opens the detail directly and must never see a roster figure."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     index = _function_body(js, "async function renderReportsIndex(")
     for call in (
         "renderReportsPortfolio(",
@@ -153,7 +159,7 @@ def test_only_the_multi_client_index_renders_the_overview() -> None:
 def test_leaving_the_index_hides_the_overview() -> None:
     """The strip states figures ABOUT the grid. Left behind over a detail
     view, a roster total reads as that one client's."""
-    view = _function_body(_read("dashboard.js"), "function setReportsView(")
+    view = _function_body(_read("dashboard_reports.js"), "function setReportsView(")
     for target in ("data-reports-kpis", "data-reports-index-grid", "data-reports-feed"):
         assert target in view, f"{target} survives a view change"
     assert 'view !== "index"' in view
@@ -190,7 +196,7 @@ def test_the_overview_sits_above_and_beside_the_grid_it_describes() -> None:
 def test_the_grid_filters_on_the_triage_layers_health() -> None:
     """A second opinion about the same payload is how a card the alert list
     calls urgent ends up filtered away as a healthy one."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     index = _function_body(js, "async function renderReportsIndex(")
     assert "triageClientHealth(triage, i)" in index
     assert "triageHealthCounts(triage, rows.length)" in index
@@ -203,7 +209,7 @@ def test_filtering_hides_cards_rather_than_rebuilding_the_grid() -> None:
     """The grid is also the operator's own card order (#556). Rebuilding it
     from a filtered list would reorder it."""
     apply_fn = _function_body(
-        _read("dashboard.js"), "function applyReportsHealthFilter("
+        _read("dashboard_reports.js"), "function applyReportsHealthFilter("
     )
     assert "item.hidden =" in apply_fn
     assert 'textContent = ""' not in apply_fn
@@ -213,7 +219,9 @@ def test_filtering_hides_cards_rather_than_rebuilding_the_grid() -> None:
 @pytest.mark.unit
 def test_a_filter_never_survives_a_re_render() -> None:
     """Cards missing with no visible reason is worse than no filter at all."""
-    index = _function_body(_read("dashboard.js"), "async function renderReportsIndex(")
+    index = _function_body(
+        _read("dashboard_reports.js"), "async function renderReportsIndex("
+    )
     assert 'reportsHealthFilter = "all"' in index
 
 
@@ -221,7 +229,7 @@ def test_a_filter_never_survives_a_re_render() -> None:
 def test_a_cards_health_is_announced_and_not_only_coloured() -> None:
     """Colour alone is not a status. The grid is a list of buttons an
     operator may reach by keyboard."""
-    card = _function_body(_read("dashboard.js"), "function buildClientCard(")
+    card = _function_body(_read("dashboard_reports.js"), "function buildClientCard(")
     assert '"reports-client-card is-health-"' in card
     assert 'MUREO.t("dashboard.reports_health_"' in card
 
@@ -234,10 +242,10 @@ def test_a_cards_health_is_announced_and_not_only_coloured() -> None:
 @pytest.mark.unit
 def test_platform_names_reach_the_dom_as_text() -> None:
     """A platform display name is registry- and plugin-controlled."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     panel = _function_body(js, "function renderReportsPlatforms(")
     assert "name.textContent = row.label" in panel
-    for name in ("reports_overview.js", "dashboard.js"):
+    for name in ("reports_overview.js", "dashboard_reports.js"):
         assert ".innerHTML" not in _read(name).replace("// innerHTML", ""), name
 
 
@@ -246,7 +254,7 @@ def test_a_platforms_colour_follows_its_key_and_the_stylesheet_has_the_slots() -
     """The split is ranked by spend, so a colour taken from the row's
     position would change from card to card and leave the legend as the only
     way to read the bar."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     slice_fn = _function_body(js, "function buildPlatformSlice(")
     assert "platformColorSlot(row.key)" in slice_fn
     css = _read("app.css")
@@ -352,7 +360,7 @@ def test_a_kpi_note_is_one_clipped_line_that_keeps_its_full_text() -> None:
     assert "white-space: nowrap" in block
     # Reserved even when empty, so the four cells stay one height.
     assert "min-height" in block
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     cell = _function_body(js, "function buildPortfolioCell(")
     assert "cell.title = full" in cell
     figure = _function_body(js, "function buildPortfolioFigureCell(")
@@ -392,7 +400,7 @@ def test_the_feed_costs_no_request_and_is_built_once() -> None:
     fetches all of them in parallel to draw the cards. A feed that re-asked
     would scale a second round of requests with the roster, on the screen
     a twenty-seven-client operator opens."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     assert js.count("buildReportsActionFeed(") == 1
     index = _function_body(js, "async function renderReportsIndex(")
     assert "buildReportsActionFeed(rows, summaries)" in index
@@ -419,7 +427,7 @@ def test_the_browser_never_decides_what_today_is() -> None:
     code = re.sub(r"//[^\n]*|/\*[\s\S]*?\*/", "", overview)
     assert "new Date(" not in code, "the feed constructs a browser Date"
     assert "Date.now(" not in code, "the feed reads the browser's clock"
-    js = _read("dashboard.js")
+    js = _read("dashboard_reports.js")
     for name in ("renderReportsActionFeed", "buildReportsFeedRow"):
         body = _function_body(js, f"function {name}(")
         assert "Date" not in body, f"{name} decides a date of its own"
@@ -432,7 +440,9 @@ def test_a_quiet_day_renders_no_panel_at_all() -> None:
     """No "0 actions today". The same default silence the alert layer keeps,
     and on a 340px rail an empty frame would push the platform split down the
     page to say nothing."""
-    feed = _function_body(_read("dashboard.js"), "function renderReportsActionFeed(")
+    feed = _function_body(
+        _read("dashboard_reports.js"), "function renderReportsActionFeed("
+    )
     assert "panel.hidden = !feed.items.length" in feed
     assert "if (!feed.items.length) return;" in feed
     # Cleared before the early return, so yesterday's rows cannot survive a
@@ -452,7 +462,9 @@ def test_the_feed_is_capped_and_says_how_many_it_held_back() -> None:
     them."""
     overview = _read("reports_overview.js")
     assert "REPORTS_ACTION_FEED_CAP" in overview
-    feed = _function_body(_read("dashboard.js"), "function renderReportsActionFeed(")
+    feed = _function_body(
+        _read("dashboard_reports.js"), "function renderReportsActionFeed("
+    )
     assert "dashboard.reports_feed_more" in feed
     assert "feed.remaining" in feed
     assert "dashboard.reports_feed_count" in feed
@@ -472,7 +484,7 @@ def test_the_feed_sits_above_the_platform_split_in_the_rail() -> None:
 def test_the_action_text_and_client_name_reach_the_dom_as_text() -> None:
     """An action ``summary`` is writer-supplied text out of STATE.json and a
     client name is registry-controlled."""
-    row = _function_body(_read("dashboard.js"), "function buildReportsFeedRow(")
+    row = _function_body(_read("dashboard_reports.js"), "function buildReportsFeedRow(")
     assert "who.textContent = item.name" in row
     assert "what.textContent = item.text" in row
     assert ".innerHTML" not in row
@@ -516,7 +528,7 @@ def test_a_feed_row_is_clamped_to_two_lines_and_keeps_its_full_text() -> None:
     name = css.split(".reports-feed-client {", 1)[1].split("}", 1)[0]
     assert "display: inline" in name
     # …and the whole sentence is one hover away.
-    row = _function_body(_read("dashboard.js"), "function buildReportsFeedRow(")
+    row = _function_body(_read("dashboard_reports.js"), "function buildReportsFeedRow(")
     assert "body.title = item.text" in row
 
 

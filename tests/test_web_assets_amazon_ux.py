@@ -43,7 +43,7 @@ def _load_i18n() -> dict[str, Any]:
 @pytest.mark.unit
 class TestDashboardAmazonRow:
     def test_native_sections_carry_an_amazon_row(self) -> None:
-        js = _read("dashboard.js")
+        js = _read("dashboard_workspace.js")
         assert '"amazon_ads"' in js
         assert "wizard.platforms.amazon_ads" in js
         # Driven by the existing status snapshot row, not a second probe.
@@ -53,7 +53,7 @@ class TestDashboardAmazonRow:
         """Amazon has a first-class card — the generic advanced env list must
         not render a second, worse form for the same fields (the precedent
         Creative Studio set)."""
-        js = _read("dashboard.js")
+        js = _read("dashboard_setup.js")
         assert "AMAZON_ENV_NAMES" in js
         assert "!AMAZON_ENV_NAMES[name]" in js
 
@@ -62,13 +62,13 @@ class TestDashboardAmazonRow:
         stray field reappears in the generic list."""
         from mureo.web.env_var_writer import allowed_env_var_names
 
-        js = _read("dashboard.js")
+        js = _read("dashboard_setup.js")
         for name in allowed_env_var_names():
             if name.startswith("AMAZON_ADS_"):
                 assert name in js, f"{name} missing from dashboard.js"
 
     def test_refresh_manifest_button_is_amazon_only(self) -> None:
-        js = _read("dashboard.js")
+        js = _read("dashboard_plugins.js")
         assert "/api/amazon/refresh-manifest" in js
         # Keyed off the provider name so no other plugin card grows a button.
         assert 'AMAZON_PROVIDER_NAME = "amazon_ads"' in js
@@ -125,13 +125,13 @@ class TestAmazonAuthorizeControls:
     def test_both_surfaces_reuse_the_shared_module(self) -> None:
         """No second copy of the flow: the dashboard card and the wizard
         step must both go through amazon_oauth.js."""
-        for name in ("dashboard.js", "auth_wizards.js"):
+        for name in ("dashboard_plugins.js", "auth_wizards.js"):
             js = _read(name)
             assert "MUREO_AMAZON_OAUTH" in js, f"{name} does not reuse the module"
             assert "/api/amazon/oauth/" not in js, f"{name} re-implements the flow"
 
     def test_dashboard_authorize_stays_amazon_only(self) -> None:
-        js = _read("dashboard.js")
+        js = _read("dashboard_plugins.js")
         block = js.split("plugin.provider_name === AMAZON_PROVIDER_NAME")[1][:600]
         assert "buildAuthorizeSection" in block
 

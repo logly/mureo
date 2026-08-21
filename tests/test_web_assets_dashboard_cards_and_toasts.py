@@ -267,7 +267,7 @@ def test_creative_studio_keys_excluded_from_generic_env_list() -> None:
     advanced env list (renderEnvVarsSection) so they are not listed twice —
     the dedicated Creative Studio section is their single editing surface.
     """
-    js = _read("dashboard.js")
+    js = _read("dashboard_setup.js")
     assert "CREATIVE_STUDIO_ENV_NAMES" in js
     for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "FAL_KEY"):
         assert name in js
@@ -287,7 +287,7 @@ def test_basic_install_button_toasts_every_outcome() -> None:
     success (``ok``), info for ``noop`` — distinguishing "already up to
     date" from "unsupported on Claude Desktop" — and the existing error.
     """
-    js = _read("dashboard.js")
+    js = _read("dashboard_setup.js")
     start = js.index("function buildBasicInstallButton")
     end = js.index("function renderBasicSection", start)
     block = js[start:end]

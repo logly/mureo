@@ -43,7 +43,7 @@ def test_creative_section_shell_present() -> None:
 
 @pytest.mark.unit
 def test_creative_render_wired_in_dashboard_js() -> None:
-    js = _read("dashboard.js")
+    js = _read("dashboard_creative.js")
     assert "function renderCreativeGallery(" in js
     assert "renderCreativeGallery()" in js  # wired into renderAll
     assert "/api/creative/runs" in js
@@ -54,7 +54,7 @@ def test_creative_render_wired_in_dashboard_js() -> None:
 def test_creative_image_urls_are_encoded() -> None:
     """run/file/client ride in a query string — they must be URI-encoded so
     a hostile-looking name cannot break out of the query component."""
-    js = _read("dashboard.js")
+    js = _read("dashboard_creative.js")
     assert "/api/creative/image?" in js
     start = js.index("/api/creative/image?")
     window = js[max(0, start - 400) : start + 400]
