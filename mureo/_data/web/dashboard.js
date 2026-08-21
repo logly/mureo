@@ -1884,6 +1884,8 @@
   const formatNumber = REPORTS_FORMAT.formatNumber;
   const formatKpi = REPORTS_FORMAT.formatKpi;
   const reportSummaryTotals = REPORTS_FORMAT.reportSummaryTotals;
+  const reportSecondaryStats = REPORTS_FORMAT.reportSecondaryStats;
+  const reportStatLabel = REPORTS_FORMAT.reportStatLabel;
 
   const REPORTS_ORDER = window.MUREO_REPORTS_ORDER;
   const orderReportsClients = REPORTS_ORDER.orderReportsClients;
@@ -2221,6 +2223,55 @@
     return foot;
   }
 
+  // One statistic the report stated outside the canonical vocabulary (#670),
+  // as a small "key value" chip.
+  //
+  // The value is NOT put through formatKpi / formatNumber. Those answer a
+  // question about a metric mureo knows — its unit, whether it is a ratio,
+  // whether a separator belongs in it — and this chip exists precisely for
+  // the ones it does not know. "0.21%" is the author's own rendering of a
+  // ratio and 30000 is a target in the account's currency; a heuristic
+  // applied to either prints a number the report never wrote.
+  function buildReportStatElement(entry) {
+    const el = document.createElement("span");
+    el.className = "report-stat";
+    const key = document.createElement("span");
+    key.className = "report-stat-key";
+    key.textContent = reportStatLabel(entry.path);
+    const value = document.createElement("span");
+    value.className = "report-stat-value";
+    value.textContent = String(entry.value);
+    el.appendChild(key);
+    el.appendChild(value);
+    return el;
+  }
+
+  // The row those chips sit in, titled so it is never read as the headline
+  // figures above it.
+  function buildReportStatsRow(stats) {
+    const row = document.createElement("div");
+    row.className = "report-latest-stats";
+    const title = document.createElement("span");
+    title.className = "report-stats-title";
+    title.textContent = MUREO.t("dashboard.reports_stats_title");
+    row.appendChild(title);
+    stats.entries.forEach(function (entry) {
+      row.appendChild(buildReportStatElement(entry));
+    });
+    // Fields with no flat rendering (a deeper tree, a list) are stated as
+    // existing rather than dropped — being silently discarded is the whole
+    // of what #670 is about. The count is of FIELDS, which is what the
+    // string says: a fifty-element list is one of them. The stored report
+    // is where they are read.
+    if (stats.hidden > 0) {
+      const more = document.createElement("span");
+      more.className = "report-stat-more";
+      more.textContent = MUREO.t("dashboard.reports_stats_more", { n: stats.hidden });
+      row.appendChild(more);
+    }
+    return row;
+  }
+
   // Render the "latest report" block from STATE.json's `reports` section.
   // The object is free-form; render defensively (any field may be absent).
   function renderReportsLatest(reports) {
@@ -2267,6 +2318,20 @@
         );
       });
       body.appendChild(row);
+    }
+    // What the report stated that is NOT one of the six canonical figures
+    // (#670). The writer accepts those keys deliberately (#662): a goal
+    // review carries a CVR, a per-goal target, a per-platform split, and
+    // refusing them sends that content straight back into the paragraph the
+    // length bound exists to empty. Nothing rendered them, so they were
+    // written successfully and then invisible for good.
+    //
+    // Below the headline row and shaped nothing like it: the row above
+    // states mureo's own metrics for the window, these are the report's own
+    // words for something mureo has no label for, printed as written.
+    const stats = reportSecondaryStats(report);
+    if (stats.entries.length > 0 || stats.hidden > 0) {
+      body.appendChild(buildReportStatsRow(stats));
     }
     // Flags as small tinted chips (warn/danger/success).
     const flags = Array.isArray(report.flags) ? report.flags : [];

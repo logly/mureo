@@ -661,3 +661,167 @@ test.describe("a stored report's headline figures", function () {
     });
   });
 });
+
+// ---------------------------------------------------------------------
+// The stats a report states that are not headline figures (#670)
+// ---------------------------------------------------------------------
+//
+// #662 chose, deliberately, to STORE what a report writes outside the six
+// canonical metrics: a goal review carries a CVR, a per-goal target and a
+// per-platform split, and refusing those sends exactly that content back
+// into the paragraph the length bound exists to empty. But nothing read
+// them — accepted on write, invisible for good, which is #659's shape one
+// field over.
+//
+// So this is the read half of that decision: everything in the block the
+// headline row read, minus what the headline row rendered. Two rules make
+// it safe to show content mureo has no vocabulary for:
+//
+//   • the VALUE is passed through untouched. "0.21%" stays "0.21%" and
+//     30000 stays 30000 — reformatting an author's figure is how a view
+//     ends up answering for a period it was never given.
+//   • what cannot be shown flat is COUNTED, never dropped. A silently
+//     discarded entry is the bug this issue is about.
+
+test.describe("a stored report's own statistics", function () {
+  test.it("returns what the headline row left behind, value untouched", function () {
+    assert.deepEqual(
+      fmt.reportSecondaryStats({
+        totals: { spend: 773957, cvr: "0.21%", goal_target_cpa: 30000 },
+      }),
+      {
+        entries: [
+          { path: ["cvr"], value: "0.21%" },
+          { path: ["goal_target_cpa"], value: 30000 },
+        ],
+        hidden: 0,
+      }
+    );
+  });
+
+  test.it("keeps a number a number, so the renderer prints what was written", function () {
+    // Not "30,000", not "¥30,000" — no separator, no unit, no rounding.
+    // The report's own figure, in the report's own words.
+    const stats = fmt.reportSecondaryStats({ totals: { goal_target_cpa: 30000 } });
+    assert.equal(typeof stats.entries[0].value, "number");
+    assert.equal(stats.entries[0].value, 30000);
+  });
+
+  test.it("shows a canonical figure the headline row could not render", function () {
+    // The write guard refuses `cpa: "15,479 yen"` at this level, so this is
+    // a report that arrived another way (a hand-written STATE.json, an
+    // import). The headline row still will not state it as a figure — but
+    // it is no longer invisible.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({ totals: { spend: 100, cpa: "15,479 yen" } }),
+      { entries: [{ path: ["cpa"], value: "15,479 yen" }], hidden: 0 }
+    );
+  });
+
+  test.it("flattens a per-platform split one level, strings and all", function () {
+    // The write guard's coverage stops at the flat headline dict, so a
+    // string figure nested under a platform is neither refused nor rendered
+    // as a figure. It is content an agent wrote, and it reads here as text.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({
+        kpis: {
+          google_ads: { spend: "¥773,957", clicks: 1200 },
+          totals: { spend: 773957, conversions: 50, cvr: "0.21%" },
+        },
+      }),
+      {
+        entries: [
+          { path: ["google_ads", "spend"], value: "¥773,957" },
+          { path: ["google_ads", "clicks"], value: 1200 },
+          { path: ["cvr"], value: "0.21%" },
+        ],
+        hidden: 0,
+      }
+    );
+  });
+
+  test.it("counts what it cannot show flat instead of dropping it", function () {
+    // A deeper tree and a list have no honest one-line rendering here. The
+    // operator is told they exist; the stored report is where they are read.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({
+        totals: { spend: 1, breakdown: { daily: { mon: 1 } }, top_terms: ["a", "b"] },
+      }),
+      { entries: [], hidden: 2 }
+    );
+  });
+
+  test.it("treats an absent value as absent, not as a hidden entry", function () {
+    assert.deepEqual(fmt.reportSecondaryStats({ totals: { spend: 1, note: null } }), {
+      entries: [],
+      hidden: 0,
+    });
+  });
+
+  test.it("has nothing to say about a report that stated no structure", function () {
+    [
+      { narrative: "one very long paragraph" },
+      { totals: null },
+      { totals: "773,957 yen" },
+      { totals: [] },
+      {},
+      null,
+      undefined,
+      "report",
+    ].forEach(function (report) {
+      assert.deepEqual(fmt.reportSecondaryStats(report), { entries: [], hidden: 0 });
+    });
+  });
+
+  test.it("reads the block the headline row did NOT win with", function () {
+    // `totals` wins the headline row where a report carries both spellings
+    // — that is #662's rule and it is untouched. But a key that exists only
+    // on the losing block would then be stored, refused by nothing and
+    // rendered nowhere, which is the failure this whole row exists to end.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({ totals: { spend: 1 }, kpis: { roas: 3.4 } }),
+      { entries: [{ path: ["roas"], value: 3.4 }], hidden: 0 }
+    );
+    // Including what it cannot show flat: counted there too, never dropped.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({
+        totals: { spend: 1 },
+        kpis: { breakdown: { daily: { mon: 1 } } },
+      }),
+      { entries: [], hidden: 1 }
+    );
+  });
+
+  test.it("shows a key both blocks carry once, with the winner's value", function () {
+    // Two values under one name is a disagreement the report never wrote.
+    // The winning block is the one the headline row read, so it answers.
+    assert.deepEqual(
+      fmt.reportSecondaryStats({
+        totals: { spend: 1, cvr: "0.21%" },
+        kpis: { spend: 2, cvr: "9.9%" },
+      }),
+      { entries: [{ path: ["cvr"], value: "0.21%" }], hidden: 0 }
+    );
+  });
+
+  test.it("excludes headline figures from the winning block only", function () {
+    // `clicks` IS canonical, but the headline row only ever reads the
+    // winner, so this one is rendered as a figure nowhere. Excluding it
+    // here on the strength of its name would hide it for good.
+    const report = { totals: { spend: 1 }, kpis: { clicks: 500 } };
+    assert.deepEqual(fmt.reportSummaryTotals(report), [{ key: "spend", value: 1 }]);
+    assert.deepEqual(fmt.reportSecondaryStats(report), {
+      entries: [{ path: ["clicks"], value: 500 }],
+      hidden: 0,
+    });
+  });
+
+  test.it("labels a path with the humanizer the flag params already use", function () {
+    // No new vocabulary is invented for a key mureo has no label for: the
+    // same snake_case humanizer, one path segment at a time.
+    assert.equal(fmt.reportStatLabel(["cvr"]), "CVR");
+    assert.equal(fmt.reportStatLabel(["goal_target_cpa"]), "Goal target CPA");
+    assert.equal(fmt.reportStatLabel(["google_ads", "spend"]), "Google ads · Spend");
+    assert.equal(fmt.reportStatLabel([]), "");
+  });
+});

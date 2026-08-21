@@ -45,9 +45,18 @@ write; a totals block also legitimately carries context that is not one of
 mureo's six metrics: a CVR, a per-goal target and current value, a
 per-platform split. Refusing those would send exactly that content back into
 the paragraph this issue exists to empty. So they are stored, and the read
-side already ignores them for the figure row (``reportSummaryTotals`` in
+side keeps them out of the figure row (``reportSummaryTotals`` in
 ``reports_format.js``) rather than presenting a metric mureo has no label
 for as a headline number.
+
+Stored is not enough on its own, though — #670 was filed because that was
+where it stopped: accepted on write and rendered nowhere is content the
+operator has no way to discover exists. So the same keys are read back by
+``reportSecondaryStats`` (same file) and shown BELOW the figure row, as the
+report's own words, with the value printed exactly as it was written. That
+is what makes storing them honest rather than merely permissive, and it is
+why a value here needs no type guard: nothing downstream claims to know what
+a metric mureo has no label for means.
 
 For the same reason there is no "at least one figure" requirement: a goal
 review's headline numbers are targets, not spend and CPA, and a report with

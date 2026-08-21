@@ -993,8 +993,26 @@ renders each as what it is: the headline figures as figures, the flags as
 chips, the narrative as prose. Only the canonical metric vocabulary and only
 real numbers are rendered as figures — everything a report states outside
 that (a formatted string, a per-platform breakdown, a metric mureo has no
-label for) stays in the narrative rather than being re-presented as a
-headline number it may not be.
+label for) is *not* re-presented as a headline number it may not be.
+
+It is still shown. Directly below the figure row, and shaped nothing like
+it, is what this particular report stated: `cvr 0.21%`, `goal target CPA
+30000`, `google ads · spend ¥773,957` — the key humanized, the value printed
+**exactly as written**. mureo does not know that metric's unit, whether it
+is a ratio or what currency it is in, so it adds no separator, no symbol and
+no percentage heuristic: a figure re-derived by a view that does not know
+what it holds is a different number from the one the report wrote. A field
+with no flat rendering — a deeper tree, a list — is counted (`+2 more fields
+in the report`; the count is of fields, so a fifty-element list counts once)
+rather than dropped, because content that is accepted on write and then
+silently invisible is the failure this row exists to end.
+
+Both spellings are read here. `totals` wins the headline row where a report
+carries `totals` *and* `kpis`, and a key that lives only on the losing block
+would otherwise be stored, refused by nothing and rendered nowhere — the
+same failure one level down. A key both blocks carry is shown once, with the
+winning block's value: printing two numbers under one name would state a
+disagreement the report never wrote.
 
 A report that stated no structure at all renders exactly as it did before:
 reports already on disk are real content, and they stay readable as the
@@ -1015,7 +1033,8 @@ and renders as nothing.
 What is *not* refused is a key outside the vocabulary. A totals block also
 carries a CVR, a per-goal target, a per-platform split — refusing those
 would send exactly that content back into the paragraph the bound exists to
-empty, so they are stored and simply not shown as headline numbers. The
+empty, so they are stored, shown in the row above as the report's own words,
+and never stated as one of mureo's headline figures. The
 rule is stated once (`mureo/core/report_summary.py`), pasted into the tool
 description an agent reads before it composes the report, and repeated in
 the refusal — the same shape #659 settled on for the metrics windows, minus
