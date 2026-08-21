@@ -214,6 +214,7 @@ _MUTATING_CATALOGUE: frozenset[str] = frozenset(
         "mureo_state_action_log_append",
         "mureo_state_report_set",
         "mureo_state_platform_metrics_set",
+        "mureo_state_platform_daily_set",
         "mureo_state_platform_not_collected_set",
         "mureo_state_workspace_not_collected_set",
     }

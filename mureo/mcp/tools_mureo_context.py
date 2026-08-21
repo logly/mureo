@@ -1,6 +1,6 @@
 """mureo's STRATEGY.md / STATE.json MCP tool surface.
 
-Eleven tools that expose mureo's context layer over MCP, so any MCP host
+Twelve tools that expose mureo's context layer over MCP, so any MCP host
 (Claude Desktop chat, claude.ai web, Codex/Cursor, …) can read and
 update STRATEGY.md / STATE.json without direct filesystem access.
 
@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import Tool
 
+from mureo.context.models import DAILY_DATE_KEY_PATTERN
+from mureo.context.state import DAILY_RETENTION_DAYS
 from mureo.core.metrics_windows import (
     CANONICAL_METRICS_WINDOWS,
     METRICS_WINDOW_RULE,
@@ -26,6 +28,7 @@ from mureo.mcp._handlers_mureo_context import (
     handle_outcome_evaluate,
     handle_state_action_log_append,
     handle_state_get,
+    handle_state_platform_daily_set,
     handle_state_platform_metrics_set,
     handle_state_platform_not_collected_set,
     handle_state_report_set,
@@ -60,6 +63,19 @@ _PERIOD_BUCKET_PROPERTY = {
     "type": "object",
     "description": (
         "Totals-shaped rollup for this window (spend, impressions, clicks, "
+        "conversions, cpa, ctr, result_indicator, fetched_at)."
+    ),
+}
+
+
+# One day's rollup in ``mureo_state_platform_daily_set`` (#690). Same shape as
+# a window bucket — the vocabulary does not change with the grain — declared
+# separately because it is the schema for EVERY property of a date-keyed
+# object rather than for one named window.
+_DAILY_BUCKET_PROPERTY = {
+    "type": "object",
+    "description": (
+        "Totals-shaped rollup for that ONE day (spend, impressions, clicks, "
         "conversions, cpa, ctr, result_indicator, fetched_at)."
     ),
 }
@@ -673,6 +689,89 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="mureo_state_platform_daily_set",
+        description=(
+            "Add DAY-GRAIN history to a platform in STATE.json's v2 "
+            "``platforms`` section, keyed by calendar date — the trend line "
+            "and day-over-day delta the reporting dashboard cannot show from "
+            "the window rollups alone. Distinct from "
+            "mureo_state_platform_metrics_set, which holds ONE rollup per "
+            "window (YESTERDAY / LAST_7_DAYS / LAST_30_DAYS) and overwrites "
+            "it on every collection, so the value it replaces is gone; this "
+            "map accumulates instead, merged PER DATE KEY. Re-writing a day "
+            "replaces that day only, and every other stored day survives. "
+            "**Write the daily rows you already fetched** (the delivery "
+            "report a health check pulls) — never fire an extra platform API "
+            "call to fill this in. **A day you did not collect is OMITTED, "
+            "never written as zeros**: a zero-filled day is indistinguishable "
+            "from an account that stopped spending, and the readers render a "
+            "gap as a gap. **Only complete PAST days are accepted** — today "
+            "is still being spent into, and half a day filed as a day is a "
+            "false low forever, because nothing revisits a day already in the "
+            "map. Each bucket you pass without a usable ``fetched_at`` is "
+            "stamped with the write time; a day this call merely preserves is "
+            "never re-stamped. mureo keeps the most recent "
+            f"{DAILY_RETENTION_DAYS} days and drops older ones on write. "
+            "Campaigns, the window rollups, the conversion override, any "
+            "``not_collected`` note and every other platform are preserved. "
+            "Returns the updated state document."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "platform": {
+                    "type": "string",
+                    # No enum: see mureo_state_platform_metrics_set.
+                    "minLength": 1,
+                    "description": (
+                        "Platform key: a built-in (``google_ads`` / "
+                        "``meta_ads`` / …), a platform an installed plugin "
+                        "registered, or ``plugin:<dist>:<provider>``. Use the "
+                        "SAME key the account is already stored under."
+                    ),
+                },
+                "account_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": (
+                        "The platform account id (Google customer_id / Meta "
+                        "act_*). Always written onto the platform entry, and "
+                        "used to detect a second entry for the same account."
+                    ),
+                },
+                "days": {
+                    "type": "object",
+                    # Date keys cannot be enumerated the way window tokens
+                    # can, so the shape is stated as a pattern over the
+                    # property NAMES. It fires at the dispatcher, before this
+                    # tool's handler runs, so the RULE is spelled out in the
+                    # description below — a caller who only ever sees the
+                    # JSON-Schema refusal ("does not match '^\\d{4}-...'")
+                    # learns the shape and none of the reasoning.
+                    "propertyNames": {"pattern": DAILY_DATE_KEY_PATTERN},
+                    "additionalProperties": dict(_DAILY_BUCKET_PROPERTY),
+                    "minProperties": 1,
+                    "description": (
+                        "Day-grain rollups keyed by calendar date in "
+                        "**YYYY-MM-DD** (zero-padded — ``2026-08-05``, not "
+                        "``2026-8-5``), one key per day, each value a "
+                        "totals-shaped object. Any other key shape is "
+                        "refused. Every key must be a day that has ENDED: "
+                        "today and any later date are refused, because a "
+                        "part-spent day stored as a whole one is a false low "
+                        "nothing ever corrects. Pass only the days you "
+                        "actually collected — omit a day you have no figures "
+                        "for rather than sending zeros for it. Merged per "
+                        "date key into the stored history."
+                    ),
+                },
+                "path": _PATH_PROPERTY,
+            },
+            "required": ["platform", "account_id", "days"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
         name="mureo_state_platform_not_collected_set",
         description=(
             "Record WHY a platform's figures could not be collected — or "
@@ -894,6 +993,7 @@ _HANDLERS = {
     "mureo_state_upsert_campaign": handle_state_upsert_campaign,
     "mureo_state_report_set": handle_state_report_set,
     "mureo_state_platform_metrics_set": handle_state_platform_metrics_set,
+    "mureo_state_platform_daily_set": handle_state_platform_daily_set,
     "mureo_state_platform_not_collected_set": handle_state_platform_not_collected_set,
     "mureo_state_workspace_not_collected_set": (
         handle_state_workspace_not_collected_set

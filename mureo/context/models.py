@@ -28,6 +28,20 @@ EXTERNAL_ORIGIN = "external"
 #: also be written wholesale by a digest that goes near neither.
 NOT_COLLECTED_REASON_MAX_CHARS = 500
 
+#: The shape of a ``PlatformState.daily`` key — one complete calendar day,
+#: ``YYYY-MM-DD`` (#690). Written down once, because three surfaces have to
+#: agree on it and a second copy is how they would drift: the writer refuses
+#: anything else (:func:`mureo.context.state.set_platform_daily`), the MCP
+#: tool states it as the ``propertyNames`` pattern of its ``days`` object
+#: (date keys cannot be enumerated the way window tokens can), and the
+#: dashboard uses it to decide which stored keys can be placed on a timeline
+#: at all (:func:`mureo.web.report_document._daily_series`).
+#:
+#: A shape, not a vocabulary. It says nothing about whether the date exists
+#: or is in the past — the writer parses it and checks both, because
+#: ``2026-02-30`` matches this perfectly.
+DAILY_DATE_KEY_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+
 
 @dataclass(frozen=True)
 class StrategyEntry:
@@ -340,6 +354,23 @@ class PlatformState:
     # legacy entries parse unchanged and emit no extra key. sync-state writes
     # LAST_30_DAYS; daily-check writes YESTERDAY.
     periods: dict[str, dict[str, Any]] | None = None
+    # Optional day-grain history keyed by calendar date (#690):
+    # ``{"2026-08-20": {<totals>}, "2026-08-19": {<totals>}}``. Same shape and
+    # merge rules as ``periods``, with :data:`DAILY_DATE_KEY_PATTERN` keys
+    # instead of window tokens, and None by default so legacy entries parse
+    # unchanged and emit no extra key.
+    #
+    # ``periods`` holds ONE rollup per window and every collection overwrites
+    # it, so the value it replaces is gone — nothing could answer "was
+    # yesterday better than the day before?". This map is what accumulates,
+    # and the day-grain rows every platform family already fetches are what
+    # fills it.
+    #
+    # **A missing day stays missing.** Nothing zero-fills a day that was not
+    # collected: "not collected" and "collected, and the answer was zero" are
+    # different facts (the same distinction ``not_collected`` exists for), so
+    # readers render a gap as a gap rather than as a day of no spend.
+    daily: dict[str, dict[str, Any]] | None = None
     # Optional operator-declared conversion ``action_type`` allow-list (#342).
     # When set (non-None), the Meta conversion counters treat EXACTLY these
     # action_types as this account's conversions — overriding the default
@@ -393,6 +424,8 @@ class PlatformState:
             object.__setattr__(self, "totals", copy.deepcopy(self.totals))
         if self.periods is not None:
             object.__setattr__(self, "periods", copy.deepcopy(self.periods))
+        if self.daily is not None:
+            object.__setattr__(self, "daily", copy.deepcopy(self.daily))
         if self.not_collected is not None:
             object.__setattr__(self, "not_collected", copy.deepcopy(self.not_collected))
         if self.conversion_action_types is not None and not isinstance(

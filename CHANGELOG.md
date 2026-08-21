@@ -1,5 +1,62 @@
 ## [Unreleased]
 
+### Added
+
+- **STATE.json remembers yesterday's yesterday** (#690). `platforms[<platform>]`
+  kept exactly one rollup per canonical window (`YESTERDAY` / `LAST_7_DAYS` /
+  `LAST_30_DAYS`) and every daily collection overwrote it, so the value it
+  replaced was gone. Nothing in the product could answer "was yesterday better
+  than the day before?" — no day-over-day delta, no trend line — even though
+  every platform family already ships a daily delivery report and
+  `daily-check`'s delivery-collapse step already pulls those rows, then
+  discards them.
+
+  `PlatformState.daily` is that missing history: one totals-shaped bucket per
+  `YYYY-MM-DD`, in the same canonical metric vocabulary as `periods` and
+  merged per DATE key, so re-writing a day replaces that day and every other
+  day survives. Optional with a `None` default and emitted only when non-empty,
+  so a document written before it existed parses unchanged and round-trips
+  byte-for-byte.
+
+  `set_platform_daily(path, platform, account_id, days=...)` writes it, and
+  three rules are enforced rather than documented:
+
+  - **Only complete past days.** A key must be `YYYY-MM-DD`, must be a date
+    that exists (`2026-02-30` matches the shape perfectly) and must be before
+    the host's today — the same reason the collapse detector drops the current
+    day: budget pacing spreads delivery unevenly, so a part-spent day filed as
+    a whole one is a false low, and nothing revisits a day already in the map.
+    The refusal happens before the file is opened, so a rejected call leaves
+    the document exactly as it was and the caller still holds every figure.
+  - **A missing day stays missing.** Nothing zero-fills a day that was not
+    collected — "not collected" and "collected, and the answer was zero" are
+    different facts (the distinction `not_collected` exists for), and an
+    invented zero both reads as an account that stopped spending and poisons
+    the median the collapse detector baselines against.
+  - **35 days are kept**, applied on write: 28 (`DEFAULT_BASELINE_DAYS`) plus
+    margin, so the history outlives the baseline that reads it without growing
+    STATE.json without bound. A key mureo cannot date is preserved and does not
+    count towards the cap — it is still figures somebody collected.
+
+  `mureo_state_platform_daily_set` exposes it over MCP (tool count 224 → 225).
+  Date keys cannot be enumerated the way window tokens can, so the schema
+  states them as a `propertyNames` pattern; because the dispatcher
+  schema-validates before any handler runs, the reasoning behind each refusal
+  lives in the description the model reads rather than only in the raised
+  error.
+
+  `daily-check` gains one sibling persistence step that folds the day-grain
+  rows step 4 already fetched into that tool — **zero extra platform API
+  calls**, since the rows exist and were being thrown away.
+
+  On the wire each platform row now carries `daily` (the most recent 7 days,
+  ascending, gaps intact, whitelisted through the same canonical key list as
+  `totals`) and `daily_delta` (the difference between the last two days,
+  resolved server-side). The delta is `null` whenever the comparison cannot
+  honestly be made — fewer than two stored days, or two days that are not
+  calendar neighbours — because a difference computed across a collection gap
+  is not a day-over-day change, and unknown is not zero.
+
 ### Changed
 
 - **The Reports view's state moved onto one object, and `dashboard_reports.js`

@@ -3,7 +3,8 @@
 Both directions of one contract. :func:`parse_state` and :func:`render_state`
 are inverses, and every field of the schema appears exactly twice — once in
 each — so the optionality rules that keep a round-trip byte-stable (emit
-``metrics`` / ``ads`` / ``periods`` / ``conversion_action_types`` only when
+``metrics`` / ``ads`` / ``periods`` / ``daily`` / ``conversion_action_types``
+only when
 they are actually present) can only be checked with both halves in front of
 you. Keeping them apart would let the two sides drift, and drift here silently
 rewrites an operator's STATE.json.
@@ -101,6 +102,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "totals",
                 "metrics_period",
                 "periods",
+                "daily",
                 "conversion_action_types",
                 "not_collected",
             }
@@ -445,6 +447,7 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
                 totals=platform_data.get("totals"),
                 metrics_period=platform_data.get("metrics_period"),
                 periods=platform_data.get("periods"),
+                daily=platform_data.get("daily"),
                 conversion_action_types=_parse_conversion_action_types(
                     platform_data.get("conversion_action_types")
                 ),
@@ -580,6 +583,11 @@ def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
     # entries with no per-period data) stay byte-stable on round-trip.
     if ps.periods:
         result["periods"] = copy.deepcopy(ps.periods)
+    # #690 — day-grain history: emit only when non-empty, on the same rule as
+    # ``periods``, so an entry that has never accumulated a day stays
+    # byte-stable on round-trip and gains no key.
+    if ps.daily:
+        result["daily"] = copy.deepcopy(ps.daily)
     # #342 — operator conversion override: emit only when set, as a JSON list,
     # so legacy entries stay byte-stable.
     if ps.conversion_action_types:
