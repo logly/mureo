@@ -245,6 +245,14 @@ skills/                       # Native slash skills — one `<name>/SKILL.md` pe
 docs/integrations.md          # Platform discovery + external MCP integration guide
 ```
 
+**The skill tree ships twice.** `skills/` is canonical; `mureo/_data/skills/`
+is the copy the wheel installs. Edit both, always — every skill present in
+either tree is byte-compared, whole directory against whole directory, by
+`tests/test_plugin_manifests.py::test_skill_copies_are_byte_identical`. The
+one exemption is `_mureo-pro-diagnosis` (canonical only, because `/learn`
+scaffolds the operator's own copy under `~/.claude/skills/`); it is declared
+in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
+
 ## MCP Tools
 
 ### Google Ads
