@@ -1000,6 +1000,44 @@ A report that stated no structure at all renders exactly as it did before:
 reports already on disk are real content, and they stay readable as the
 prose they are rather than being reformatted by guesswork.
 
+Rendering the structure only helps if there is one, and for a long time
+there was not: `mureo_state_report_set` documented the three fields and
+checked none of them, so a report that folded everything into the paragraph
+looked, to the writer, exactly like one that did not. `narrative` is
+therefore bounded — 400 characters, which is what a verdict and a proposal
+need once the figures are in `totals` and each finding is its own flag — and
+over the bound the write is **refused, not truncated**: a sentence cut in
+half reads like a bug in mureo, and nobody can tell what was removed. A
+canonical metric carrying a string (`"¥773,957"`) is refused for the same
+reason it was worth catching at all: it sits where the view reads a figure
+and renders as nothing.
+
+What is *not* refused is a key outside the vocabulary. A totals block also
+carries a CVR, a per-goal target, a per-platform split — refusing those
+would send exactly that content back into the paragraph the bound exists to
+empty, so they are stored and simply not shown as headline numbers. The
+rule is stated once (`mureo/core/report_summary.py`), pasted into the tool
+description an agent reads before it composes the report, and repeated in
+the refusal — the same shape #659 settled on for the metrics windows, minus
+the `enum` that prose cannot have.
+
+**What is not guarded.** The refusal is on the targeted writer
+(`set_report`, and the MCP tool over it). A Code-mode agent writing STATE.json
+directly with `Write`, and every whole-document path (`write_state_file`, an
+import, a restore), never reach `validate_report_summary` — the same split the
+metrics-window vocabulary draws above, and for the same reason: a document
+that arrived from elsewhere has no notion of which report is new, and refusing
+it would strand an operator holding state they cannot repair. So the skills
+route this write through `mureo_state_report_set` on every host, including
+Code — no hand-written alternative is offered for `reports`, and the Code
+`Write` path documented for the bulk snapshot does not describe the section.
+For anything that does hand-write it, the structure is documentation rather
+than enforcement.
+
+The bound applies to new writes only. A paragraph already in STATE.json is
+read, rendered and preserved exactly as it is, including when a later run
+writes a sibling report kind.
+
 #### What mureo did today
 
 Beside the grid, the index lists the actions mureo logged **today** across

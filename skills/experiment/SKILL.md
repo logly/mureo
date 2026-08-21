@@ -58,8 +58,9 @@ Read `../_mureo-learning/SKILL.md` first — its **Observation Windows** and **M
 12. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="experiment"` and a concise `summary` object so the read-only dashboard can render the experiment without re-running you. Follow this convention:
     - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
     - `period`: the experiment window (start_time..end_time) and its status (running / evaluated)
-    - `kpis`: per-variant `{metric_at_baseline, metric_final, verdict}` and the success metric name
+    - `totals`: the account's headline figures, using the canonical metric vocabulary — `spend`, `conversions`, `cpa`, `ctr`, `clicks`, `impressions`. This is the block the dashboard renders **as figures**. **Raw numbers only**: `773957`, not `"¥773,957"`; `0.0466`, not `"4.66%"` — one of those keys carrying a string is refused, because it sits where the view reads a figure and renders as nothing. A key outside the vocabulary may ride along: it is stored, just not shown as a headline number. Omit `totals` entirely if this run gathered no account-level figures.
+    - `kpis`: per-variant `{metric_at_baseline, metric_final, verdict}` and the success metric name — the breakdown, not the headline row
     - `flags`: notable items (e.g. `["underpowered_variant_B", "google_ads_manual_split_caveats_accepted"]`)
-    - `narrative`: the 1-2 sentence outcome (winner / no-difference / inconclusive, with confidence)
+    - `narrative`: the outcome (winner / no-difference / inconclusive, with confidence) and what you propose next, **at most 400 characters** — the tool refuses a longer one rather than truncating it (a sentence cut in half is worse than a long one). Do not restate the figures and do not list the findings here: numbers belong in `totals`, findings in `flags`.
 
     **Reflect the FINAL state, and persist this LAST** — after every `action_log` entry and any winner-promotion / loser-stop you applied this run. This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.

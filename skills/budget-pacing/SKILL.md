@@ -77,8 +77,9 @@ Track month-to-date spend against the monthly budget target, project the month-e
 12. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="pacing"` and a concise `summary` object so the read-only dashboard can render pacing without re-running you. Follow this convention:
     - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
     - `period`: the pacing month from `server_now` (e.g. `"2026-07"`) and elapsed/total days
-    - `kpis`: per-platform + total `{monthly_target, mtd_spend, run_rate, projected_landing, pct_vs_target}`
+    - `totals`: the account's headline figures, using the canonical metric vocabulary — `spend`, `conversions`, `cpa`, `ctr`, `clicks`, `impressions`. This is the block the dashboard renders **as figures**. **Raw numbers only**: `773957`, not `"¥773,957"`; `0.0466`, not `"4.66%"` — one of those keys carrying a string is refused, because it sits where the view reads a figure and renders as nothing. A key outside the vocabulary may ride along: it is stored, just not shown as a headline number. Omit `totals` entirely if this run gathered no account-level figures.
+    - `kpis`: per-platform + total `{monthly_target, mtd_spend, run_rate, projected_landing, pct_vs_target}` — the breakdown, not the headline row
     - `flags`: notable items (e.g. `["google_ads_overpacing_18pct", "low_confidence_early_month"]`)
-    - `narrative`: the 1-2 sentence pacing verdict (on-pace / overpacing / underpacing, with confidence)
+    - `narrative`: the pacing verdict (on-pace / overpacing / underpacing, with confidence) and what you propose next, **at most 400 characters** — the tool refuses a longer one rather than truncating it (a sentence cut in half is worse than a long one). Do not restate the figures and do not list the findings here: numbers belong in `totals`, findings in `flags`.
 
     **Reflect the FINAL state, and persist this LAST** — after every `action_log` entry and any budget change you applied this run. This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.

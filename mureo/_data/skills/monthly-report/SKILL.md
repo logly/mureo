@@ -80,9 +80,10 @@ Generate a client-facing monthly marketing operations report. This mirrors `/wee
 14. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="monthly"` and a concise `summary` object so the read-only dashboard can render this report without re-running you. Follow this convention:
     - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
     - `period`: the reporting month (e.g. `"2026-06"`), and whether full-month or MTD
-    - `kpis`: per-platform + totals headline numbers (spend, conversions, cpa, MoM change)
+    - `totals`: the account's headline figures, using the canonical metric vocabulary — `spend`, `conversions`, `cpa`, `ctr`, `clicks`, `impressions`. This is the block the dashboard renders **as figures**. **Raw numbers only**: `773957`, not `"¥773,957"`; `0.0466`, not `"4.66%"` — one of those keys carrying a string is refused, because it sits where the view reads a figure and renders as nothing. A key outside the vocabulary may ride along: it is stored, just not shown as a headline number. Omit `totals` entirely if this run gathered no account-level figures.
+    - `kpis`: the per-platform split (spend, conversions, cpa, MoM change) — the breakdown, not the headline row
     - `flags`: notable items (e.g. `["cv_goal_missed", "meta_cpa_up_12pct_mom"]`)
-    - `narrative`: the client-facing executive summary (plain language)
+    - `narrative`: the client-facing executive summary in plain language — the verdict and what you propose next, **at most 400 characters** — the tool refuses a longer one rather than truncating it (a sentence cut in half is worse than a long one). Do not restate the figures and do not list the findings here: numbers belong in `totals`, findings in `flags`.
 
     **Never persist a number you did not read.** For a platform that came back `"status": "auth_error"`, omit its `kpis` entry entirely rather than writing `0` — step 4(a) reads this rollup as NEXT month's MoM baseline, so a fabricated zero turns one month's credential problem into two months of phantom movement. Omit it from the blended totals too, or label those totals with the platforms they cover. Add a flag naming the partial read (e.g. `"partial_read_<platform>_<auth_cause>"`) and say so in `narrative`.
 

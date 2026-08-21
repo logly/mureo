@@ -51,6 +51,41 @@
   to `workspace_not_collected`. The interim key is not read by OSS and is not
   kept alive for compatibility.
 
+### Changed
+
+- **A report has to state its structure now** (#662). The per-client report
+  rendered as one unbroken paragraph — a real one ran to ~700 characters with
+  the period, the figures, the per-ad and per-adspot findings, the verdict and
+  the proposal all inside a single string. `totals` and `flags` existed for
+  most of it and went unused, and the operator's verdict was *このまま表示され
+  ているので見る気がしません*: not that the information was wrong, but that
+  nobody read it.
+
+  #663 renders the structure. This is the half that makes there be one.
+  `mureo_state_report_set` now bounds `narrative` at 400 characters — what a
+  verdict and a proposal need once the figures are in `totals` and each
+  finding is its own flag — and a longer one is **refused, never truncated**:
+  a sentence cut in half reads like a bug in mureo, and nobody can tell what
+  was removed. A canonical metric carrying a string (`"¥773,957"`) is refused
+  for the same reason it was worth catching: it sits where the view reads a
+  figure and renders as nothing.
+
+  A key *outside* the vocabulary is not refused. `totals` also carries a CVR,
+  a per-goal target, a per-platform split — refusing those would send exactly
+  that content back into the paragraph the bound exists to empty, so they are
+  stored and simply not shown as headline numbers.
+
+  Prose cannot have an `enum`, so the rule is written once
+  (`mureo/core/report_summary.py`), pasted into the tool description an agent
+  reads *before* it composes the report, and repeated in the refusal — #659's
+  shape, applied to a field no schema can constrain. Every skill that writes a
+  report now states the same division of labour, with the before/after of the
+  observed paragraph in the shared schema section they all cite.
+
+  Reports already on disk are untouched: the bound applies to new writes, a
+  stored paragraph still reads back verbatim, and writing today's weekly
+  report is not refused because last month's daily report is a wall.
+
 ## [0.12.1] - 2026-08-21
 
 ### Fixed
