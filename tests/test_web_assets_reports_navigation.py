@@ -67,7 +67,7 @@ def test_the_renderer_binds_the_routing_rather_than_re_deciding_it() -> None:
     """Which view to show is a decision the JS suite executes. A renderer
     that re-derived it would drift from the module, and a substring pin
     cannot catch an inverted comparison."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_state.js")
     assert "reportsViewToShow = REPORTS_OVERVIEW.reportsViewToShow" in js
     assert "function reportsViewToShow(" not in js
 

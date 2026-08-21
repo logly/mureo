@@ -501,6 +501,8 @@ function loadDashboardPage(routes) {
     "dashboard_workspace.js",
     "dashboard_about.js",
     "dashboard_advisors.js",
+    "dashboard_reports_state.js",
+    "dashboard_reports_cards.js",
     "dashboard_reports.js",
     "dashboard_creative.js",
     "dashboard_plugins.js",

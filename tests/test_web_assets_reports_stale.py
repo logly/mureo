@@ -33,11 +33,30 @@ import pytest
 _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 
 # The pure logic module and the renderer that consumes it (#540).
-_REPORTS_ASSETS = ("reports_logic.js", "dashboard_reports.js")
+_REPORTS_ASSETS = (
+    "reports_logic.js",
+    "dashboard_reports.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_state.js",
+)
 
 
 def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
+
+
+#: The Reports rendering layer, split three ways by #687. A test that asserts
+#: about symbols on both sides of that split reads the whole layer rather than
+#: guessing which file a given renderer ended up in.
+_REPORTS_LAYER = (
+    "dashboard_reports.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_state.js",
+)
+
+
+def _read_layer() -> str:
+    return "\n".join(_read(name) for name in _REPORTS_LAYER)
 
 
 def _function_body(js: str, signature: str) -> str:
@@ -59,7 +78,9 @@ def test_the_platform_headline_is_withheld_when_the_rollup_is_stale() -> None:
     this number, so a stale figure here IS the false statement #638 is
     about. Inverted, the one card that must not show a number is the only
     one that does."""
-    card = _function_body(_read("dashboard_reports.js"), "function buildReportCard(")
+    card = _function_body(
+        _read("dashboard_reports_cards.js"), "function buildReportCard("
+    )
     assert "const rowStale = reportsRowIsStale(platform);" in card, (
         "the platform card no longer asks the logic module whether its row " "is stale"
     )
@@ -81,7 +102,9 @@ def test_a_stale_platform_card_never_reaches_the_kpi_grid() -> None:
     conversions. The stale branch RETURNS, so the grid is unreachable from
     it; pinning that is what stops a later edit from re-appending the grid
     below the restated figures."""
-    card = _function_body(_read("dashboard_reports.js"), "function buildReportCard(")
+    card = _function_body(
+        _read("dashboard_reports_cards.js"), "function buildReportCard("
+    )
     assert "if (rowStale) {" in card
     stale_branch = card.split("if (rowStale) {", 1)[1].split("\n    }", 1)[0]
     assert (
@@ -104,7 +127,7 @@ def test_the_client_card_states_why_a_stale_aggregate_is_withheld() -> None:
     moved there. The badge carries the AGE, because how old the figures are
     is the state the dash stands for; ``tests/js/reports_triage.test.js``
     asserts a withheld client always has one."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     card = _function_body(js, "function buildClientCard(")
     assert "reports-client-card-badge" in card
     # The explanation comes BEFORE the cells, so the "—" is never skimmed
@@ -126,7 +149,9 @@ def test_the_stale_figures_are_restated_below_the_cells_not_inside_them() -> Non
     of the slot that asserts the window and into a line that states their
     age. If they were appended into ``krow`` instead they would be back in
     the position this issue is about."""
-    card = _function_body(_read("dashboard_reports.js"), "function buildClientCard(")
+    card = _function_body(
+        _read("dashboard_reports_cards.js"), "function buildClientCard("
+    )
     assert "buildStaleFiguresElement(" in card
     restated = card.split("card.appendChild(krow);", 1)
     assert len(restated) == 2, "the KPI row is no longer appended to the card"
@@ -143,7 +168,7 @@ def test_the_restated_line_says_the_age_or_says_it_is_unknown() -> None:
     """The line's whole job is to date the figures. An age mureo cannot
     quote is stated as unknown rather than left blank — a dangling "Last
     collected : 25,862" would read as a claim about now."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     helper = _function_body(js, "function buildStaleFiguresElement(")
     assert "relativeAge(fetchedAt)" in helper
     assert "dashboard.reports_stale_last_collected" in helper
@@ -158,7 +183,7 @@ def test_the_renderer_asks_the_logic_module_rather_than_re_deciding() -> None:
     reported. A renderer that re-derived it from ``fetched_at`` would drift
     from the window-scaled threshold the read side applies, and would have
     to re-decide what ``stale: null`` means every time."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     assert "reportsRowIsStale = REPORTS_LOGIC.reportsRowIsStale" in js
     for func in ("function buildReportCard(", "function buildClientCard("):
         body = _function_body(js, func)
@@ -197,7 +222,7 @@ def test_stale_strings_are_localized_in_both_locales() -> None:
 def test_the_restated_figures_reach_the_dom_as_text() -> None:
     """The line interpolates figures and a localized age, and it is built the
     same way every other operator-visible string here is."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     helper = _function_body(js, "function buildStaleFiguresElement(")
     assert "el.textContent = MUREO.t(" in helper
     for name in _REPORTS_ASSETS:

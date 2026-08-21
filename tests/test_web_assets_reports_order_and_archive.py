@@ -43,6 +43,20 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
+#: The Reports rendering layer, split three ways by #687. A test that asserts
+#: about symbols on both sides of that split reads the whole layer rather than
+#: guessing which file a given renderer ended up in.
+_REPORTS_LAYER = (
+    "dashboard_reports.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_state.js",
+)
+
+
+def _read_layer() -> str:
+    return "\n".join(_read(name) for name in _REPORTS_LAYER)
+
+
 def _function_body(js: str, signature: str) -> str:
     """Source of the top-level function opened by ``signature``.
 
@@ -76,14 +90,14 @@ def test_card_order_is_stored_per_operator_in_the_browser() -> None:
     assert "function readReportsOrder(" in js
     assert "function writeReportsOrder(" in js
     # Browser-local means browser-local: no endpoint records the arrangement.
-    assert "/api/reports/clients/order" not in _read("dashboard_reports.js")
+    assert "/api/reports/clients/order" not in _read("dashboard_reports_state.js")
 
 
 @pytest.mark.unit
 def test_the_ordering_rules_are_not_re_implemented_in_the_renderer() -> None:
     """One definition, executed by ``node --test tests/js/``. A copy left in
     dashboard.js would shadow the tested one and drift from it silently."""
-    dashboard = _read("dashboard_reports.js")
+    dashboard = _read("dashboard_reports_state.js")
     order = _read("reports_order.js")
     for fn in (
         "readReportsOrder",
@@ -103,7 +117,7 @@ def test_the_renderer_still_asks_the_module_to_order_and_to_persist() -> None:
     """The seam the JS suite cannot see: the module can be perfectly correct
     and unreached. The grid must be ordered through it, and both mutation
     paths — the drop handler and the keyboard handler — must end in it."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     index = _function_body(js, "async function renderReportsIndex(")
     assert "orderReportsClients(" in index
 
@@ -119,7 +133,7 @@ def test_drag_and_drop_has_a_keyboard_equivalent() -> None:
     """A control only a mouse can work excludes operators who do not use
     one. The drag handle is a real button that moves the card with the arrow
     keys, and both paths go through moveReportsCard."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     assert "dragstart" in js
     assert "dragover" in js
     assert "drop" in js
@@ -147,7 +161,7 @@ def test_archive_control_is_gated_on_the_backend_capability() -> None:
 
 @pytest.mark.unit
 def test_archiving_posts_to_the_server_seam() -> None:
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     assert "/api/reports/clients/archive" in js
     assert "function setReportsClientArchived(" in js
     assert "dashboard.reports_archive_failed" in js
@@ -160,7 +174,7 @@ def test_the_archive_click_handler_confirms_before_it_posts() -> None:
     then may the client be archived. A handler that fired the request and
     confirmed afterwards — or that confirmed and ignored the answer — would
     satisfy a "these identifiers appear in the file" check."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     handler = _function_body(js, "function buildReportsArchiveButton(")
     confirm_at = handler.find("MUREO.confirmAction(")
     bail_at = handler.find("if (!ok) return;")
@@ -186,7 +200,7 @@ def test_the_confirm_states_the_real_consequence() -> None:
     """Not "hide from this view": while archived, that client's figures are
     never collected, and un-archiving does not backfill the gap. The confirm
     string has to say so in both locales."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     assert "dashboard.reports_archive_confirm" in js
     data = json.loads(_read("i18n.json"))
     en = data["en"]["dashboard.reports_archive_confirm"]
@@ -219,7 +233,7 @@ def test_archived_clients_are_off_the_index_but_still_count_for_routing() -> Non
     Pinned on the condition itself, not on the helpers' existence — the
     regression to guard against is a routing test written against the
     *visible* count, which would still see both helpers defined."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     assert "function visibleReportsClients(" in js
     assert "function archivedReportsClients(" in js
     assert "dashboard.reports_all_archived" in js
@@ -281,7 +295,7 @@ def test_client_names_still_reach_the_dom_via_text_content() -> None:
     """Client names come from the Agency registry, which mureo does not
     control. The archived list renders them like every other untrusted
     string — neither file ever ASSIGNS innerHTML (#533)."""
-    for name in ("dashboard_reports.js", "reports_order.js"):
+    for name in ("dashboard_reports_state.js", "reports_order.js"):
         js = _read(name)
         assert ".innerHTML =" not in js, name
         assert ".innerHTML=" not in js, name

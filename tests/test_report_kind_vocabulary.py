@@ -161,7 +161,7 @@ def test_the_renderer_binds_the_pick_rather_than_re_deciding_it() -> None:
     choice lives in ``reports_format.js`` where the JS suite can execute it.
     A second copy in ``dashboard.js`` — which has no runner — is how the
     three-kind ``daily || weekly || goal`` pick survived six new kinds."""
-    js = (_ROOT / "mureo" / "_data" / "web" / "dashboard_reports.js").read_text(
+    js = (_ROOT / "mureo" / "_data" / "web" / "dashboard_reports_state.js").read_text(
         encoding="utf-8"
     )
     assert "latestReport = REPORTS_FORMAT.latestReport" in js

@@ -1,1072 +1,97 @@
-// dashboard_reports.js — the Reports section's rendering layer.
+// dashboard_reports.js — the Reports section's index: which clients, and what
+// the roster says about them.
 //
-// Lifted verbatim out of dashboard.js (#678). Nothing here changed in the
-// move: same functions, same bodies, same order, same module-level state.
+// This file used to be the whole Reports rendering layer at 2,139 lines, and
+// #687 cut it in three. What stayed here is the half that decides what an
+// operator is looking at rather than how one client is drawn:
 //
-// This is the DOM half. The decisions it renders live in the five DOM-free
-// modules loaded ahead of it — reports_logic.js, reports_format.js,
-// reports_order.js, reports_triage.js and reports_overview.js — and are bound
-// by their original names in the block below so every call site downstream
-// reads exactly as before. That binding block, and the guard that fails loudly
-// when one of those modules is missing, moved here with the code that needs
-// them: it is this file, not dashboard.js, that holds `undefined` if a
-// `<script>` tag is dropped.
+//   - which view the section shows (index / detail / archived), and the one
+//     entry point that says "the operator asked for the section" so a redraw
+//     cannot eject a reader from the report they are on;
+//   - the triage list: what is wrong across the roster, ranked, grouped and
+//     dismissible;
+//   - the portfolio row above the grid, the health filter, the platform split
+//     and the "what mureo did today" feed;
+//   - the period toggle, and the fetch/render cycle that ties it together.
 //
-// It did not split further, and the reason is worth stating so the next
-// reader does not try. Six `let`s — `reportsPeriod`, `reportsActiveClient`,
-// `reportsView`, `reportsClients`, `reportsCanArchive`, `reportsRenderSeq` —
-// are written on one side of every candidate seam and read on the other. Two
-// `<script>` IIFEs cannot share a `let`, so cutting here would mean promoting
-// that state onto an object and rewriting every read and write of it. That is
-// a redesign, not a move, and it is not what #678 asked for.
+// It keeps the name and the global (`window.MUREO_DASHBOARD_REPORTS`) because
+// that is dashboard.js's contract: `renderReports`, `enterReportsSection` and
+// `wireReportsBackButton` are what the shell binds.
 //
-// Shipping shape: a plain `<script>`-loaded file publishing ONE global,
-// `window.MUREO_DASHBOARD_REPORTS`. Must load AFTER the five reports_*.js
-// modules and BEFORE dashboard.js.
+// The other two thirds:
+//
+//   dashboard_reports_state.js — the reports_*.js load guard and bindings, and
+//     `REPORTS_VIEW_STATE`, the six values both halves mutate. Those six were
+//     `let`s in one closure, which is exactly why this file could not be cut
+//     before: two `<script>` IIFEs cannot share a `let`, but they can share an
+//     object.
+//   dashboard_reports_cards.js — one client's card and the stored report
+//     inside it. Its exports are bound below by their original names.
+//
+// Three functions here are called from the cards half, which loads FIRST:
+// `renderReports`, `showReportsClientDetail` and `buildPlatformSlice`. That
+// file resolves them per call rather than at load, so no call site in either
+// half had to change.
+//
+// Shipping shape is unchanged: a plain `<script>`-loaded file publishing one
+// global, loaded after dashboard_reports_cards.js and before dashboard.js.
 
 (function () {
   "use strict";
 
-  // ----------------------------------------------------------------------
-  // Reports dashboard (read-only, STATE.json-sourced via /api/reports/*).
-  //
-  // Platform-agnostic: a KPI card is rendered for EVERY platform the API
-  // returns — built-in google_ads/meta_ads AND plugin:<dist> bridges. A
-  // platform with no synced metrics (totals null/empty) still gets a card
-  // labelled "no synced metrics yet" instead of a broken/empty one.
-  //
-  // Period toggle (YESTERDAY default / LAST_30_DAYS): the summary carries a
-  // `periods` union of the windows that have data; the toggle is rendered
-  // ONLY for those, and only when there is a real choice (>= 2). Each call
-  // requests `?period=`, and the cards show that window's totals.
-  //
-  // Freshness (#535) is PER PLATFORM, from each row's own `freshness` block
-  // ({fetched_at, stale, stale_after_days}, resolved server-side against the
-  // window the figure covers). The document-level `last_synced_at` is
-  // re-stamped on ANY platform write, so it cannot stand in for it — it
-  // still shows in the detail view, labelled as the document sync it is.
-  //
-  // Conflicts (#533): `platform_conflicts` says when these rows must NOT be
-  // added together. The grouping is done server-side because the rows carry
-  // no account id (and must not start carrying one), so the browser only
-  // renders what it is told.
-  // ----------------------------------------------------------------------
-
-  // The parts of this section that need no DOM live in their own plain
-  // `<script>` modules, loaded ahead of this file (see app.html):
-  //
-  //   reports_logic.js  (#540) — the KPI-withholding condition, the
-  //     freshness aggregation and the conflict-kind routing.
-  //   reports_format.js (#556) — the display vocabulary: a flag's label and
-  //     severity, a param's detail line, a number's and a period's text.
-  //   reports_order.js  (#556) — the operator's card order: where it is
-  //     stored, how it is applied, and the two ways it changes.
-  //   reports_triage.js (#651) — which clients need attention today, in
-  //     what order, and what to run about each.
-  //   reports_overview.js — the index view's own decisions: which view the
-  //     Reports section shows, and the portfolio-level figures above the grid.
-  //
-  // Everything below still needs a DOM. The modules are bound here by their
-  // original names so every call site downstream reads exactly as before.
-  //
-  // Failing at load is deliberate — the alternative is a conflicted client's
-  // double-counted totals rendering because the withholding helper quietly
-  // became `undefined`. Everything above this point is declarations, so
-  // nothing observable has happened yet when this throws: no listener is
-  // registered, no fetch is issued, no node reaches the DOM. But it does
-  // take the whole configure UI with it, so it names WHICH modules are
-  // missing and what fixes it rather than leaving whoever hits it to
-  // reverse-engineer a bare "cannot read properties of undefined".
-  //
-  // ALL of them, not the first: a deployment that dropped the whole block of
-  // <script> tags would otherwise be diagnosed one reload at a time.
-  const missingReportsModules = [
-    ["MUREO_REPORTS_LOGIC", "reports_logic.js"],
-    ["MUREO_REPORTS_FORMAT", "reports_format.js"],
-    ["MUREO_REPORTS_ORDER", "reports_order.js"],
-    ["MUREO_REPORTS_TRIAGE", "reports_triage.js"],
-    ["MUREO_REPORTS_OVERVIEW", "reports_overview.js"],
-  ].filter(function (mod) {
-    return !window[mod[0]];
-  });
-  if (missingReportsModules.length) {
+  // dashboard_reports_state.js's exports, bound by their original names so every call
+  // site below reads exactly as it did when this was one file.
+  const REPORTS_SHARED = window.MUREO_DASHBOARD_REPORTS_STATE;
+  if (!REPORTS_SHARED) {
     throw new Error(
-      "dashboard.js: " +
-        missingReportsModules
-          .map(function (mod) {
-            return "window." + mod[0] + " (" + mod[1] + ")";
-          })
-          .join(", ") +
-        " is missing. Each must be served (see _STATIC_ALLOWLIST in " +
-        "mureo/web/handlers.py) and its <script> tag must come BEFORE " +
-        "dashboard.js in app.html."
+      "dashboard_reports.js needs MUREO_DASHBOARD_REPORTS_STATE — load " +
+        "dashboard_reports_state.js BEFORE dashboard_reports.js"
     );
   }
+  const relativeAge = REPORTS_SHARED.relativeAge;
+  const reportsPeriodLabel = REPORTS_SHARED.reportsPeriodLabel;
+  const isCanonicalReportsPeriod = REPORTS_SHARED.isCanonicalReportsPeriod;
+  const formatNumber = REPORTS_SHARED.formatNumber;
+  const orderReportsClients = REPORTS_SHARED.orderReportsClients;
+  const buildReportsTriage = REPORTS_SHARED.buildReportsTriage;
+  const triageMarksClient = REPORTS_SHARED.triageMarksClient;
+  const triageItemText = REPORTS_SHARED.triageItemText;
+  const triageItemNextStep = REPORTS_SHARED.triageItemNextStep;
+  const triageItemTag = REPORTS_SHARED.triageItemTag;
+  const triageClientHealth = REPORTS_SHARED.triageClientHealth;
+  const triageHealthCounts = REPORTS_SHARED.triageHealthCounts;
+  const triageClientBadges = REPORTS_SHARED.triageClientBadges;
+  const groupReportsTriage = REPORTS_SHARED.groupReportsTriage;
+  const partitionTriageGroups = REPORTS_SHARED.partitionTriageGroups;
+  const dismissTriageGroup = REPORTS_SHARED.dismissTriageGroup;
+  const dismissTriageItem = REPORTS_SHARED.dismissTriageItem;
+  const restoreTriageDismissals = REPORTS_SHARED.restoreTriageDismissals;
+  const collapseTriageGroups = REPORTS_SHARED.collapseTriageGroups;
+  const REPORTS_OVERVIEW = REPORTS_SHARED.REPORTS_OVERVIEW;
+  const reportsViewToShow = REPORTS_SHARED.reportsViewToShow;
+  const buildReportsPortfolio = REPORTS_SHARED.buildReportsPortfolio;
+  const platformColorSlot = REPORTS_SHARED.platformColorSlot;
+  const buildReportsActionFeed = REPORTS_SHARED.buildReportsActionFeed;
+  const REPORTS_VIEW_STATE = REPORTS_SHARED.REPORTS_VIEW_STATE;
 
-  const REPORTS_LOGIC = window.MUREO_REPORTS_LOGIC;
-  const relativeAge = REPORTS_LOGIC.relativeAge;
-  const reportsPlatformLabels = REPORTS_LOGIC.reportsPlatformLabels;
-  const reportsConflictText = REPORTS_LOGIC.reportsConflictText;
-  const reportsRepairHint = REPORTS_LOGIC.reportsRepairHint;
-  const reportsConflictsForKey = REPORTS_LOGIC.reportsConflictsForKey;
-  const reportsFreshnessLabel = REPORTS_LOGIC.reportsFreshnessLabel;
-  const reportsRowIsStale = REPORTS_LOGIC.reportsRowIsStale;
-  const reportsNotCollectedNote = REPORTS_LOGIC.reportsNotCollectedNote;
-  const reportsNotCollectedNotes = REPORTS_LOGIC.reportsNotCollectedNotes;
-  const reportsNotCollectedText = REPORTS_LOGIC.reportsNotCollectedText;
-  const reportsCardFreshness = REPORTS_LOGIC.reportsCardFreshness;
-  const aggregateClientKpis = REPORTS_LOGIC.aggregateClientKpis;
-
-  const REPORTS_FORMAT = window.MUREO_REPORTS_FORMAT;
-  const reportsPeriodLabel = REPORTS_FORMAT.reportsPeriodLabel;
-  const isCanonicalReportsPeriod = REPORTS_FORMAT.isCanonicalReportsPeriod;
-  const humanizeReportFlag = REPORTS_FORMAT.humanizeReportFlag;
-  const reportFlagKind = REPORTS_FORMAT.reportFlagKind;
-  const flagSeverityRank = REPORTS_FORMAT.flagSeverityRank;
-  const latestReport = REPORTS_FORMAT.latestReport;
-  const clientReportFlags = REPORTS_FORMAT.clientReportFlags;
-  const buildFlagDetail = REPORTS_FORMAT.buildFlagDetail;
-  const formatNumber = REPORTS_FORMAT.formatNumber;
-  const formatKpi = REPORTS_FORMAT.formatKpi;
-  const reportSummaryTotals = REPORTS_FORMAT.reportSummaryTotals;
-  const reportSecondaryStats = REPORTS_FORMAT.reportSecondaryStats;
-  const reportStatLabel = REPORTS_FORMAT.reportStatLabel;
-
-  const REPORTS_ORDER = window.MUREO_REPORTS_ORDER;
-  const orderReportsClients = REPORTS_ORDER.orderReportsClients;
-  const persistReportsOrderFromDom = REPORTS_ORDER.persistReportsOrderFromDom;
-  const moveReportsCard = REPORTS_ORDER.moveReportsCard;
-
-  const REPORTS_TRIAGE = window.MUREO_REPORTS_TRIAGE;
-  const buildReportsTriage = REPORTS_TRIAGE.buildReportsTriage;
-  const triageMarksClient = REPORTS_TRIAGE.triageMarksClient;
-  const triageItemText = REPORTS_TRIAGE.triageItemText;
-  const triageItemNextStep = REPORTS_TRIAGE.triageItemNextStep;
-  const triageItemSeverity = REPORTS_TRIAGE.triageItemSeverity;
-  const triageItemTag = REPORTS_TRIAGE.triageItemTag;
-  const triageClientHealth = REPORTS_TRIAGE.triageClientHealth;
-  const triageHealthCounts = REPORTS_TRIAGE.triageHealthCounts;
-  const triageClientBadges = REPORTS_TRIAGE.triageClientBadges;
-  const groupReportsTriage = REPORTS_TRIAGE.groupReportsTriage;
-  const partitionTriageGroups = REPORTS_TRIAGE.partitionTriageGroups;
-  const dismissTriageGroup = REPORTS_TRIAGE.dismissTriageGroup;
-  const dismissTriageItem = REPORTS_TRIAGE.dismissTriageItem;
-  const restoreTriageDismissals = REPORTS_TRIAGE.restoreTriageDismissals;
-  const collapseTriageGroups = REPORTS_TRIAGE.collapseTriageGroups;
-
-  const REPORTS_OVERVIEW = window.MUREO_REPORTS_OVERVIEW;
-  const reportsViewToShow = REPORTS_OVERVIEW.reportsViewToShow;
-  const buildReportsPortfolio = REPORTS_OVERVIEW.buildReportsPortfolio;
-  const clientPlatformSplit = REPORTS_OVERVIEW.clientPlatformSplit;
-  const platformColorSlot = REPORTS_OVERVIEW.platformColorSlot;
-  const buildReportsActionFeed = REPORTS_OVERVIEW.buildReportsActionFeed;
-
-  // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
-  // is rendered separately. Order here is the on-card display order.
-  const REPORTS_KPI_LABELS = {
-    conversions: "dashboard.reports_kpi_conversions",
-    cpa: "dashboard.reports_kpi_cpa",
-    ctr: "dashboard.reports_kpi_ctr",
-    clicks: "dashboard.reports_kpi_clicks",
-    impressions: "dashboard.reports_kpi_impressions",
-  };
-
-  // Build one flag chip element. A flag with drill-down detail becomes an
-  // interactive <button> that toggles a detail line (an ARIA disclosure);
-  // a flag without detail is a plain, non-interactive <span> tag.
-  let reportFlagDetailSeq = 0;
-  function buildFlagChipElement(flag) {
-    const label = String(humanizeReportFlag(flag));
-    const kind = reportFlagKind(flag);
-    const detail = buildFlagDetail(flag);
-    if (!detail) {
-      const chip = document.createElement("span");
-      chip.className = "report-chip " + kind;
-      chip.textContent = label;
-      return chip;
-    }
-    // Detail present → the chip stays coarse and the adspot / yen / ctr detail
-    // is one click away (and also visible in the narrative below).
-    const wrap = document.createElement("span");
-    wrap.className = "report-chip-wrap";
-    const detailId = "report-flag-detail-" + ++reportFlagDetailSeq;
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "report-chip is-interactive " + kind;
-    chip.textContent = label;
-    chip.setAttribute("aria-expanded", "false");
-    chip.setAttribute("aria-controls", detailId);
-    const det = document.createElement("span");
-    det.className = "report-flag-detail";
-    det.id = detailId;
-    det.hidden = true;
-    det.textContent = detail;
-    chip.addEventListener("click", function () {
-      const show = det.hidden;
-      det.hidden = !show;
-      chip.setAttribute("aria-expanded", show ? "true" : "false");
-    });
-    wrap.appendChild(chip);
-    wrap.appendChild(det);
-    return wrap;
-  }
-
-  // The selected window. Default = YESTERDAY (daily-check runs every day, so
-  // the prior day is what an operator checks first). Reconciled against the
-  // summary's `periods` union on each render — falls back to the first
-  // available window when YESTERDAY has no data yet.
-  let reportsPeriod = "YESTERDAY";
-
-  // The client whose detail is on screen — so the period toggle re-fetches
-  // the SAME client.
-  let reportsActiveClient = null;
-
-  // Reports navigation: "index" (the client overview grid) or "detail" (one
-  // client's full report). A single-client (OSS) install has no index and
-  // stays on "detail". The last-fetched client list is cached so a back /
-  // period re-render does not need to re-resolve it.
-  let reportsView = "index";
-  // EVERY client the registry returned, archived ones included. The index
-  // renders only the visible ones, but the routing decision counts them all
-  // — see renderReports().
-  let reportsClients = [];
-
-  // Whether the backing client registry can record an archive decision
-  // (`can_archive` off /api/reports/clients). False on an OSS-only install:
-  // there is no registry there, so the control is not rendered AT ALL rather
-  // than rendered and inert.
-  let reportsCanArchive = false;
-
-  // Monotonic render generation (mirrors renderPluginCredentials #223):
-  // the section clears then awaits a fetch, so an interleaved re-render
-  // (locale change, client switch, period switch) must not let a stale
-  // result append.
-  let reportsRenderSeq = 0;
-
-  // What separates the restated stale figures from one another. One place,
-  // because both the client card and the platform card render the line.
-  const STALE_FIGURE_SEPARATOR = " · ";
-
-  // The withheld figures restated as what they ARE — numbers collected at
-  // `fetchedAt`, not the selected window's answer (#638). Nothing is hidden;
-  // only the claim changes. An age mureo cannot quote is said to be unknown
-  // rather than guessed at.
-  function buildStaleFiguresElement(className, fetchedAt, figuresText) {
-    const el = document.createElement("p");
-    el.className = className;
-    const age = fetchedAt ? relativeAge(fetchedAt) : null;
-    el.textContent = MUREO.t(
-      age
-        ? "dashboard.reports_stale_last_collected"
-        : "dashboard.reports_stale_last_collected_unknown",
-      { ago: age, figures: figuresText }
+  // dashboard_reports_cards.js's exports, bound by their original names so every call
+  // site below reads exactly as it did when this was one file.
+  const REPORTS_CARDS = window.MUREO_DASHBOARD_REPORTS_CARDS;
+  if (!REPORTS_CARDS) {
+    throw new Error(
+      "dashboard_reports.js needs MUREO_DASHBOARD_REPORTS_CARDS — load " +
+        "dashboard_reports_cards.js BEFORE dashboard_reports.js"
     );
-    return el;
   }
-
-  // One platform's own rollup as a single labelled line, in the same order
-  // and the same vocabulary its KPI grid would have used.
-  function staleTotalsFiguresText(totals) {
-    const parts = [];
-    if (totals.spend != null) {
-      parts.push(
-        MUREO.t("dashboard.reports_kpi_spend") + " " + formatNumber(totals.spend)
-      );
-    }
-    Object.keys(REPORTS_KPI_LABELS).forEach(function (key) {
-      if (totals[key] == null) return;
-      parts.push(MUREO.t(REPORTS_KPI_LABELS[key]) + " " + formatKpi(key, totals[key]));
-    });
-    return parts.join(STALE_FIGURE_SEPARATOR);
-  }
-
-  // The same line for a client card's aggregate (spend / conversions / CPA).
-  function staleAggregateFiguresText(figures) {
-    const parts = [];
-    if (figures.spend != null) {
-      parts.push(
-        MUREO.t("dashboard.reports_kpi_spend") + " " + formatNumber(figures.spend)
-      );
-    }
-    if (figures.conversions != null) {
-      parts.push(
-        MUREO.t("dashboard.reports_kpi_conversions") +
-          " " +
-          formatNumber(figures.conversions)
-      );
-    }
-    if (figures.cpa != null) {
-      parts.push(
-        MUREO.t("dashboard.reports_kpi_cpa") +
-          " " +
-          formatNumber(Math.round(figures.cpa))
-      );
-    }
-    return parts.join(STALE_FIGURE_SEPARATOR);
-  }
-
-  // Build one KPI card for a single platform entry. `summary` is optional and
-  // supplies the conflict context (the platform row itself carries none).
-  function buildReportCard(platform, summary) {
-    const card = document.createElement("article");
-    card.className = "report-card";
-    // Defensive: a null/non-object element in the platforms array must not
-    // throw and break the whole render (Array.isArray guards the list, not
-    // its elements).
-    if (!platform || typeof platform !== "object") return card;
-
-    const head = document.createElement("header");
-    head.className = "report-card-head";
-    const name = document.createElement("h3");
-    name.className = "report-card-name";
-    name.textContent = platform.display_name || platform.key || "";
-    head.appendChild(name);
-    const period = platform.metrics_period;
-    if (period) {
-      const periodEl = document.createElement("span");
-      periodEl.className = "report-card-period";
-      periodEl.textContent = String(period);
-      head.appendChild(periodEl);
-    }
-    card.appendChild(head);
-
-    // Any conflict naming this key, before the numbers — the index card only
-    // renders for multi-client installs, so on a single-client (OSS) setup
-    // this platform card is the ONLY place the finding can surface.
-    const conflicts = reportsConflictsForKey(summary, platform.key);
-    if (conflicts.length) {
-      card.classList.add("is-conflicted");
-      const labels = reportsPlatformLabels(summary);
-      conflicts.forEach(function (row) {
-        const note = document.createElement("p");
-        note.className = "report-card-conflict";
-        note.textContent = reportsConflictText(row, labels);
-        card.appendChild(note);
-      });
-      // Where the way out lives (#610/#636). The repair is NOT offered as a
-      // button here. Since #631 this signal does agree with mureo's
-      // write-time answer — the CORRECT key in the reported incident
-      // (`logly_ads_context`) no longer fires it — but agreeing about the
-      // key is not deciding the repair: removal needs the DOCUMENT to show
-      // the entry wrong (a resolvable sibling on the same ad account, or an
-      // entry storing nothing) and is refused for one carrying
-      // `conversion_action_types` (#616/#617). None of that evidence is on
-      // the wire. This is a pointer, not an action — but since #636 it
-      // points at the command that actually ends THIS finding, which
-      // `reportsRepairHint` chooses from the kinds on the card.
-      const hint = document.createElement("p");
-      hint.className = "report-card-conflict-hint";
-      hint.textContent = reportsRepairHint(conflicts);
-      card.appendChild(hint);
-    }
-
-    // Why this platform's figures did not move (#638), above the numbers it
-    // explains — and above BOTH early returns below, because the platform
-    // this is most true of is the one with no figures to show at all. On a
-    // single-client (OSS) install the client index never renders, so this
-    // card is the only place the note can surface.
-    const notCollected = reportsNotCollectedNote(platform);
-    if (notCollected) {
-      const why = document.createElement("p");
-      why.className = "report-card-not-collected";
-      why.textContent = reportsNotCollectedText(notCollected);
-      card.appendChild(why);
-    }
-
-    const totals =
-      platform.totals && typeof platform.totals === "object"
-        ? platform.totals
-        : null;
-    const hasMetrics = totals && Object.keys(totals).length > 0;
-
-    if (!hasMetrics) {
-      // Advisory bridge / not-yet-synced platform: a deliberate, complete
-      // card (display name + status + campaign count), never empty.
-      const empty = document.createElement("p");
-      empty.className = "report-card-empty";
-      empty.textContent = MUREO.t("dashboard.reports_no_metrics");
-      card.appendChild(empty);
-      card.appendChild(buildReportCardFoot(platform));
-      return card;
-    }
-
-    // A rollup older than the window it summarises is not that window's
-    // answer, so it is not rendered as one (#638). The card's head states
-    // the selected period right above these numbers — putting a stale figure
-    // there asserts something mureo cannot back, exactly as a double-counted
-    // total does, and it gets the same treatment: withheld here, restated
-    // below with its age. `stale` unknown (#637) keeps its old rendering.
-    const rowStale = reportsRowIsStale(platform);
-
-    // Headline number: spend, large, mono so digits align.
-    const headline = document.createElement("div");
-    headline.className = "report-card-headline";
-    const headlineValue = document.createElement("span");
-    headlineValue.className = "report-card-headline-value";
-    // "—", never a 0: a figure mureo will not state is not a figure of zero.
-    headlineValue.textContent = rowStale
-      ? "—"
-      : formatNumber(totals.spend != null ? totals.spend : 0);
-    const headlineLabel = document.createElement("span");
-    headlineLabel.className = "report-card-headline-label";
-    headlineLabel.textContent = MUREO.t("dashboard.reports_kpi_spend");
-    headline.appendChild(headlineValue);
-    headline.appendChild(headlineLabel);
-    card.appendChild(headline);
-
-    if (rowStale) {
-      const note = document.createElement("p");
-      note.className = "report-card-stale";
-      note.textContent = MUREO.t("dashboard.reports_stale_kpis_withheld");
-      card.appendChild(note);
-      card.appendChild(
-        buildStaleFiguresElement(
-          "report-card-stale-figures",
-          platform.freshness.fetched_at,
-          staleTotalsFiguresText(totals)
-        )
-      );
-      card.appendChild(buildReportCardFoot(platform));
-      return card;
-    }
-
-    // Secondary KPIs in a tidy 2-col grid — only those present in totals.
-    const grid = document.createElement("dl");
-    grid.className = "report-card-kpis";
-    Object.keys(REPORTS_KPI_LABELS).forEach(function (key) {
-      if (totals[key] == null) return;
-      const term = document.createElement("dt");
-      term.textContent = MUREO.t(REPORTS_KPI_LABELS[key]);
-      const def = document.createElement("dd");
-      def.textContent = formatKpi(key, totals[key]);
-      grid.appendChild(term);
-      grid.appendChild(def);
-    });
-    if (grid.childNodes.length > 0) card.appendChild(grid);
-
-    card.appendChild(buildReportCardFoot(platform));
-    return card;
-  }
-
-  // Card footer: campaign count + THIS platform's own freshness (#535).
-  function buildReportCardFoot(platform) {
-    const foot = document.createElement("footer");
-    foot.className = "report-card-foot";
-    const count = document.createElement("span");
-    count.className = "report-card-count";
-    const n = typeof platform.campaign_count === "number" ? platform.campaign_count : 0;
-    count.textContent = MUREO.t("dashboard.reports_campaign_count", { n: n });
-    foot.appendChild(count);
-    // Per-platform, never the document-level last_synced_at: that is
-    // re-stamped on any platform write, so it would report this platform's
-    // months-old numbers as just-synced.
-    const fresh = reportsFreshnessLabel(platform.freshness);
-    const freshEl = document.createElement("span");
-    freshEl.className = "report-card-fresh" + (fresh.stale ? " is-stale" : "");
-    freshEl.textContent = fresh.text;
-    foot.appendChild(freshEl);
-    return foot;
-  }
-
-  // One statistic the report stated outside the canonical vocabulary (#670),
-  // as a small "key value" chip.
-  //
-  // The value is NOT put through formatKpi / formatNumber. Those answer a
-  // question about a metric mureo knows — its unit, whether it is a ratio,
-  // whether a separator belongs in it — and this chip exists precisely for
-  // the ones it does not know. "0.21%" is the author's own rendering of a
-  // ratio and 30000 is a target in the account's currency; a heuristic
-  // applied to either prints a number the report never wrote.
-  function buildReportStatElement(entry) {
-    const el = document.createElement("span");
-    el.className = "report-stat";
-    const key = document.createElement("span");
-    key.className = "report-stat-key";
-    key.textContent = reportStatLabel(entry.path);
-    const value = document.createElement("span");
-    value.className = "report-stat-value";
-    value.textContent = String(entry.value);
-    el.appendChild(key);
-    el.appendChild(value);
-    return el;
-  }
-
-  // The row those chips sit in, titled so it is never read as the headline
-  // figures above it.
-  function buildReportStatsRow(stats) {
-    const row = document.createElement("div");
-    row.className = "report-latest-stats";
-    const title = document.createElement("span");
-    title.className = "report-stats-title";
-    title.textContent = MUREO.t("dashboard.reports_stats_title");
-    row.appendChild(title);
-    stats.entries.forEach(function (entry) {
-      row.appendChild(buildReportStatElement(entry));
-    });
-    // Fields with no flat rendering (a deeper tree, a list) are stated as
-    // existing rather than dropped — being silently discarded is the whole
-    // of what #670 is about. The count is of FIELDS, which is what the
-    // string says: a fifty-element list is one of them. The stored report
-    // is where they are read.
-    if (stats.hidden > 0) {
-      const more = document.createElement("span");
-      more.className = "report-stat-more";
-      more.textContent = MUREO.t("dashboard.reports_stats_more", { n: stats.hidden });
-      row.appendChild(more);
-    }
-    return row;
-  }
-
-  // Render the "latest report" block from STATE.json's `reports` section.
-  // The object is free-form; render defensively (any field may be absent).
-  function renderReportsLatest(reports) {
-    const block = document.querySelector("[data-reports-latest]");
-    const body = document.querySelector("[data-reports-latest-body]");
-    if (!block || !body) return;
-    body.textContent = "";
-    // WHICH of the stored kinds is "the latest" is decided in
-    // reports_format.js, where the JS suite can execute it (#671) — nine
-    // skills write nine kinds, and this block used to know three.
-    const report = latestReport(reports);
-    if (!report) {
-      block.hidden = true;
-      return;
-    }
-    block.hidden = false;
-
-    if (report.period) {
-      const period = document.createElement("p");
-      period.className = "report-latest-period";
-      period.textContent = String(report.period);
-      body.appendChild(period);
-    }
-    // The headline figures the report stated, AS FIGURES (#662). The schema
-    // has always defined `totals` / `kpis` next to `flags` and `narrative`;
-    // what it had no way to do was make anything render them, so a report
-    // that put its numbers where they belong looked exactly like one that
-    // folded them into the paragraph. Only the canonical vocabulary and only
-    // real numbers reach this row — reports_format.js decides that — so a
-    // report already on disk states nothing here and stays readable below,
-    // as the prose it is.
-    const totals = reportSummaryTotals(report);
-    if (totals.length > 0) {
-      const row = document.createElement("div");
-      row.className = "report-latest-kpis";
-      totals.forEach(function (cell) {
-        row.appendChild(
-          clientKpiCell(
-            cell.key === "spend"
-              ? "dashboard.reports_kpi_spend"
-              : REPORTS_KPI_LABELS[cell.key],
-            formatKpi(cell.key, cell.key === "cpa" ? Math.round(cell.value) : cell.value)
-          )
-        );
-      });
-      body.appendChild(row);
-    }
-    // What the report stated that is NOT one of the six canonical figures
-    // (#670). The writer accepts those keys deliberately (#662): a goal
-    // review carries a CVR, a per-goal target, a per-platform split, and
-    // refusing them sends that content straight back into the paragraph the
-    // length bound exists to empty. Nothing rendered them, so they were
-    // written successfully and then invisible for good.
-    //
-    // Below the headline row and shaped nothing like it: the row above
-    // states mureo's own metrics for the window, these are the report's own
-    // words for something mureo has no label for, printed as written.
-    const stats = reportSecondaryStats(report);
-    if (stats.entries.length > 0 || stats.hidden > 0) {
-      body.appendChild(buildReportStatsRow(stats));
-    }
-    // Flags as small tinted chips (warn/danger/success).
-    const flags = Array.isArray(report.flags) ? report.flags : [];
-    if (flags.length > 0) {
-      const chips = document.createElement("div");
-      chips.className = "report-flags";
-      flags.forEach(function (flag) {
-        chips.appendChild(buildFlagChipElement(flag));
-      });
-      body.appendChild(chips);
-    }
-    if (report.narrative) {
-      const narrative = document.createElement("p");
-      narrative.className = "report-latest-narrative";
-      narrative.textContent = String(report.narrative);
-      body.appendChild(narrative);
-    }
-    if (report.generated_at) {
-      const gen = document.createElement("p");
-      gen.className = "report-latest-generated";
-      gen.textContent = MUREO.t("dashboard.reports_generated", {
-        ago: relativeAge(report.generated_at),
-      });
-      body.appendChild(gen);
-    }
-  }
-
-  // Render the recent-actions list from the action log.
-  function renderReportsActions(actions) {
-    const block = document.querySelector("[data-reports-actions]");
-    const list = document.querySelector("[data-reports-actions-list]");
-    if (!block || !list) return;
-    list.textContent = "";
-    const rows = Array.isArray(actions) ? actions : [];
-    if (rows.length === 0) {
-      block.hidden = true;
-      return;
-    }
-    block.hidden = false;
-    rows.forEach(function (a) {
-      const li = document.createElement("li");
-      li.className = "report-action";
-      const top = document.createElement("div");
-      top.className = "report-action-top";
-      const action = document.createElement("span");
-      action.className = "report-action-name";
-      action.textContent = a.action || "";
-      const platform = document.createElement("span");
-      platform.className = "report-action-platform";
-      platform.textContent = a.platform || "";
-      top.appendChild(action);
-      top.appendChild(platform);
-      li.appendChild(top);
-      if (a.summary) {
-        const summary = document.createElement("p");
-        summary.className = "report-action-summary";
-        summary.textContent = String(a.summary);
-        li.appendChild(summary);
-      }
-      const meta = document.createElement("div");
-      meta.className = "report-action-meta";
-      if (a.timestamp) {
-        const ts = document.createElement("span");
-        ts.textContent = relativeAge(a.timestamp);
-        meta.appendChild(ts);
-      }
-      if (a.observation_due) {
-        const due = document.createElement("span");
-        due.textContent = MUREO.t("dashboard.reports_observation_due", {
-          date: String(a.observation_due),
-        });
-        meta.appendChild(due);
-      }
-      if (meta.childNodes.length > 0) li.appendChild(meta);
-      list.appendChild(li);
-    });
-  }
-
-  // ----------------------------------------------------------------------
-  // Multi-client overview (#307): a card grid (one per client) replaces the
-  // old single-select dropdown. Each card shows that client's headline KPIs
-  // + latest report flags; clicking it loads the existing per-client detail.
-  // ----------------------------------------------------------------------
-
-  const REPORTS_CLIENT_FLAG_CAP = 3; // chips per card before collapsing to +N
-
-  // Fetch JSON defensively — null on any failure / non-object body.
-  async function fetchReportsJson(url) {
-    try {
-      const res = await fetch(url, { credentials: "same-origin" });
-      if (!res.ok) return null;
-      const body = await res.json();
-      return body && typeof body === "object" ? body : null;
-    } catch (_err) {
-      return null;
-    }
-  }
-
-  // Fetch a client's summary for its overview card. Honours the period toggle,
-  // and when the selected window has no totals (a period-bucketed client whose
-  // passthrough rollup is blank) falls back to the first window with data.
-  async function fetchClientCardSummary(slug) {
-    function summaryUrl(period) {
-      const params = [];
-      if (slug) params.push("client=" + encodeURIComponent(slug));
-      if (period) params.push("period=" + encodeURIComponent(period));
-      return (
-        "/api/reports/summary" + (params.length ? "?" + params.join("&") : "")
-      );
-    }
-    let summary = (await fetchReportsJson(summaryUrl(reportsPeriod))) || {};
-    const kpis = aggregateClientKpis(summary);
-    const periods = Array.isArray(summary.periods)
-      ? summary.periods.filter(function (p) {
-          return typeof p === "string" && p;
-        })
-      : [];
-    // `hasFigures`, not the rendered values: a conflicted client HAS data,
-    // it is just withheld, and re-fetching another window would not fix that
-    // (the conflict is a property of the document, not of the window).
-    if (!kpis.hasFigures && periods.length) {
-      const fallback = periods.indexOf(reportsPeriod) === -1 ? periods[0] : null;
-      if (fallback) {
-        const alt = await fetchReportsJson(summaryUrl(fallback));
-        if (alt) summary = alt;
-      }
-    }
-    return summary;
-  }
-
-  function clientKpiCell(labelKey, value) {
-    const cell = document.createElement("div");
-    cell.className = "reports-client-kpi";
-    const v = document.createElement("span");
-    v.className = "reports-client-kpi-value";
-    v.textContent = value;
-    const l = document.createElement("span");
-    l.className = "reports-client-kpi-label";
-    l.textContent = MUREO.t(labelKey);
-    cell.appendChild(v);
-    cell.appendChild(l);
-    return cell;
-  }
-
-  // The card being dragged, held as the NODE (never as a slug fed back into
-  // a selector — a client slug is registry-controlled text).
-  let reportsDragNode = null;
-
-  function wireReportsCardDrag(item, wrap) {
-    item.draggable = true;
-    item.addEventListener("dragstart", function (ev) {
-      reportsDragNode = item;
-      item.classList.add("is-dragging");
-      if (ev.dataTransfer) {
-        ev.dataTransfer.effectAllowed = "move";
-        // Some browsers cancel a drag that carries no payload.
-        try {
-          const slug = item.getAttribute("data-client") || "";
-          ev.dataTransfer.setData("text/plain", slug);
-        } catch (_e) {
-          /* payload optional */
-        }
-      }
-    });
-    item.addEventListener("dragend", function () {
-      reportsDragNode = null;
-      item.classList.remove("is-dragging");
-    });
-    item.addEventListener("dragover", function (ev) {
-      if (!reportsDragNode || reportsDragNode === item) return;
-      ev.preventDefault();
-      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
-    });
-    item.addEventListener("drop", function (ev) {
-      if (!reportsDragNode || reportsDragNode === item) return;
-      ev.preventDefault();
-      const items = Array.prototype.slice.call(wrap.children);
-      const from = items.indexOf(reportsDragNode);
-      const to = items.indexOf(item);
-      if (from === -1 || to === -1) return;
-      if (from < to) wrap.insertBefore(reportsDragNode, item.nextSibling);
-      else wrap.insertBefore(reportsDragNode, item);
-      persistReportsOrderFromDom(wrap);
-    });
-  }
-
-  // The drag handle. It is a real button so it is reachable by keyboard, and
-  // the arrow keys move the card — a reorder control that only a mouse can
-  // work excludes operators who do not use one. Both paths end in
-  // moveReportsCard, so mouse and keyboard can never drift apart.
-  function buildReportsDragHandle(item, name) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "reports-client-drag";
-    btn.setAttribute("data-reports-drag-handle", "");
-    btn.setAttribute(
-      "aria-label",
-      MUREO.t("dashboard.reports_reorder_handle", { name: name })
-    );
-    btn.title = MUREO.t("dashboard.reports_reorder_hint");
-    btn.textContent = "⠿";
-    btn.addEventListener("keydown", function (ev) {
-      let delta = 0;
-      if (ev.key === "ArrowUp" || ev.key === "ArrowLeft") delta = -1;
-      else if (ev.key === "ArrowDown" || ev.key === "ArrowRight") delta = 1;
-      if (!delta) return;
-      ev.preventDefault();
-      moveReportsCard(item, delta);
-      btn.focus();
-    });
-    return btn;
-  }
-
-  // --------------------------------------------------------------------
-  // Archiving (server-side — see mureo/web/reports.py)
-  // --------------------------------------------------------------------
-  function isArchivedClient(c) {
-    return !!(c && c.archived);
-  }
-
-  function visibleReportsClients() {
-    return reportsClients.filter(function (c) {
-      return !isArchivedClient(c);
-    });
-  }
-
-  function archivedReportsClients() {
-    return reportsClients.filter(isArchivedClient);
-  }
-
-  // Relay the decision to the client registry. Archiving is NOT a view
-  // preference: while it is set, that client's figures are never collected,
-  // so a browser-local flag could not reach the process that does the
-  // collecting. On success the whole view is re-rendered from the server's
-  // answer rather than from an optimistic local edit.
-  async function setReportsClientArchived(slug, archived) {
-    let res = null;
-    try {
-      res = await MUREO.postJson("/api/reports/clients/archive", {
-        slug: slug,
-        archived: archived,
-      });
-    } catch (_err) {
-      res = null;
-    }
-    if (!res || !res.ok || !res.body || res.body.status === "error") {
-      MUREO.toast(MUREO.t("dashboard.reports_archive_failed"), "error");
-      return;
-    }
-    reportsView = "index";
-    renderReports();
-  }
-
-  function buildReportsArchiveButton(slug, name) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "reports-client-archive";
-    btn.setAttribute(
-      "aria-label",
-      MUREO.t("dashboard.reports_archive_label", { name: name })
-    );
-    btn.textContent = MUREO.t("dashboard.reports_archive_action");
-    btn.addEventListener("click", async function () {
-      // The confirmation states the real consequence — figures stop being
-      // collected and the gap is never backfilled — not "hide from view".
-      const ok = await MUREO.confirmAction(
-        MUREO.t("dashboard.reports_archive_confirm", { name: name })
-      );
-      if (!ok) return;
-      await setReportsClientArchived(slug, true);
-    });
-    return btn;
-  }
-
-  // One grid cell: the card button plus its controls. The controls live
-  // OUTSIDE the card because the card IS a button, and a button may not nest
-  // interactive children.
-  function buildClientCardItem(client, summary, wrap, triaged, health, badges) {
-    const slug = client && client.slug ? client.slug : "";
-    const name = (client && (client.name || client.slug)) || "";
-    const item = document.createElement("div");
-    item.className =
-      "reports-client-card-item" + (triaged ? " is-triaged" : "");
-    item.setAttribute("role", "listitem");
-    item.setAttribute("data-client", slug);
-    // The health the filter chips above the grid select on. It comes from
-    // the triage layer's own findings, so a card the alerts call urgent can
-    // never be filtered away as a healthy one.
-    item.setAttribute("data-health", health || "ok");
-    // The other half of the triage layer above the grid (#651): if the layer
-    // says three clients need attention, exactly three cards are marked.
-    // Both read the same list, so they cannot drift. A class alone would be
-    // colour-only, and the grid is a list of buttons an operator may reach
-    // by keyboard, so the mark carries text too.
-    if (triaged) {
-      const mark = document.createElement("span");
-      mark.className = "reports-client-card-mark";
-      mark.textContent = MUREO.t("dashboard.reports_triage_card_marker");
-      item.appendChild(mark);
-    }
-    item.appendChild(buildClientCard(client, summary, health, badges));
-
-    const tools = document.createElement("div");
-    tools.className = "reports-client-tools";
-    tools.appendChild(buildReportsDragHandle(item, name));
-    // No registry, no archive control: an OSS-only single-workspace install
-    // has nowhere to record the decision, and must be completely unaffected.
-    if (reportsCanArchive && slug) {
-      tools.appendChild(buildReportsArchiveButton(slug, name));
-    }
-    item.appendChild(tools);
-
-    wireReportsCardDrag(item, wrap);
-    return item;
-  }
-
-  // One card: who the client is, what state mureo is in about them, and the
-  // window's headline figures. A SUMMARY — deliberately not an explanation.
-  //
-  // It used to carry the full sentences too: which platform key could not be
-  // resolved, why a collection failed, and the repair command to run. On a
-  // twenty-seven-client grid that put three red paragraphs inside a 230px
-  // card, and every one of them was already on screen in the alert list
-  // directly above it. Two renderings of one finding is not twice the
-  // signal; it is a wall with the summary buried in it.
-  //
-  // What did NOT move is the state. A card whose figures mureo will not
-  // state still says so — the "—" and a short badge next to it ("Figures 29
-  // days old"), because a bare dash reads as zero and #638 is the incident
-  // where exactly that happened. The explanation and the way out live in the
-  // alert row above (grouped, one per kind) and on the client's own detail
-  // view, which is where the per-platform conflict note and its repair hint
-  // have always been rendered.
-  function buildClientCard(client, summary, health, badges) {
-    const slug = client && client.slug ? client.slug : "";
-    const card = document.createElement("button");
-    card.type = "button";
-    // The health is a class AND the status tag below, never colour alone:
-    // the grid is a list of buttons an operator may reach by keyboard.
-    card.className = "reports-client-card is-health-" + (health || "ok");
-    card.setAttribute("data-client", slug);
-
-    const head = document.createElement("div");
-    head.className = "reports-client-card-head";
-    const name = document.createElement("span");
-    name.className = "reports-client-card-name";
-    name.textContent = (client && (client.name || client.slug)) || "";
-    head.appendChild(name);
-    const status = document.createElement("span");
-    status.className = "reports-client-card-status is-" + (health || "ok");
-    status.textContent = MUREO.t("dashboard.reports_health_" + (health || "ok"));
-    head.appendChild(status);
-    // Per-platform freshness, NOT the document-level last_synced_at (#535):
-    // that is re-stamped on any platform write, so a card whose numbers are
-    // months old read as just-synced whenever a sibling platform synced.
-    const cardFresh = reportsCardFreshness(summary);
-    const fresh = document.createElement("span");
-    fresh.className =
-      "reports-client-card-fresh" + (cardFresh.stale ? " is-stale" : "");
-    fresh.textContent = cardFresh.text;
-    card.appendChild(head);
-    // Freshness on its own line, under the name: in the head it competed
-    // with the name and the status pill for a 230px row, and the casualty
-    // was the name — a five-character Japanese client name was being broken
-    // across two lines.
-    card.appendChild(fresh);
-
-    const badgeRow = document.createElement("div");
-    badgeRow.className = "reports-client-card-badges";
-
-    // A conflicted card still carries its modifier class, so it can never be
-    // skimmed as an ordinary one — but the sentence explaining the conflict
-    // is the alert row's job now, and the repair command is the detail
-    // view's. Both are one click from here and neither is duplicated.
-    const conflicts =
-      summary && Array.isArray(summary.platform_conflicts)
-        ? summary.platform_conflicts
-        : [];
-    if (conflicts.length) card.classList.add("is-conflicted");
-
-    // The state, as badges: one per kind, short, no command and no prose.
-    // These are what keeps the "—" below from reading as zero.
-    (Array.isArray(badges) ? badges : []).forEach(function (badge) {
-      const el = document.createElement("span");
-      el.className = "reports-client-card-badge is-" + badge.severity;
-      el.textContent = badge.text;
-      badgeRow.appendChild(el);
-    });
-    if (badgeRow.childNodes.length) card.appendChild(badgeRow);
-
-    const kpis = aggregateClientKpis(summary);
-    const krow = document.createElement("div");
-    krow.className = "reports-client-card-kpis";
-    krow.appendChild(
-      clientKpiCell(
-        "dashboard.reports_kpi_spend",
-        // "—" (not 0) when absent — a no-data client must not read as zero
-        // spend in this at-a-glance triage view.
-        kpis.spend != null ? formatNumber(kpis.spend) : "—"
-      )
-    );
-    if (kpis.conversions != null) {
-      krow.appendChild(
-        clientKpiCell(
-          "dashboard.reports_kpi_conversions",
-          formatNumber(kpis.conversions)
-        )
-      );
-    }
-    if (kpis.cpa != null) {
-      krow.appendChild(
-        clientKpiCell(
-          "dashboard.reports_kpi_cpa",
-          formatNumber(Math.round(kpis.cpa))
-        )
-      );
-    }
-    card.appendChild(krow);
-    // …and the withheld figures restated below the cells, so the operator
-    // keeps every number they had before, correctly labelled.
-    if (kpis.staleFigures) {
-      card.appendChild(
-        buildStaleFiguresElement(
-          "reports-client-card-stale-figures",
-          kpis.staleFigures.fetched_at,
-          staleAggregateFiguresText(kpis.staleFigures)
-        )
-      );
-    }
-
-    // Where this client's spend went, as one bar. It is drawn only from the
-    // rows mureo is willing to state (reports_overview.js returns nothing
-    // for a withheld or stale client): the bar is the same claim as the
-    // number above it, and drawing shares of figures the card refuses to
-    // print would restate them in a shape that looks like a picture.
-    const split = clientPlatformSplit(summary);
-    if (split.length) {
-      const bar = document.createElement("div");
-      bar.className = "reports-client-split";
-      split.forEach(function (row) {
-        bar.appendChild(buildPlatformSlice(row, "reports-client-split-slice"));
-      });
-      card.appendChild(bar);
-      const legend = document.createElement("div");
-      legend.className = "reports-client-split-legend";
-      split.forEach(function (row) {
-        const entry = document.createElement("span");
-        entry.className = "reports-client-split-entry";
-        const dot = document.createElement("i");
-        dot.className = "reports-client-split-dot is-platform-" + platformColorSlot(row.key);
-        entry.appendChild(dot);
-        const label = document.createElement("span");
-        // Registry / plugin-controlled display name — text, never markup.
-        label.textContent = row.label;
-        entry.appendChild(label);
-        legend.appendChild(entry);
-      });
-      card.appendChild(legend);
-    }
-
-    const flags = clientReportFlags(summary)
-      .slice()
-      .sort(function (a, b) {
-        return flagSeverityRank(a) - flagSeverityRank(b);
-      });
-    if (flags.length) {
-      const chips = document.createElement("div");
-      chips.className = "reports-client-card-flags";
-      flags.slice(0, REPORTS_CLIENT_FLAG_CAP).forEach(function (flag) {
-        const chip = document.createElement("span");
-        chip.className = "report-chip " + reportFlagKind(flag);
-        chip.textContent = humanizeReportFlag(flag);
-        chips.appendChild(chip);
-      });
-      const overflow = flags.length - REPORTS_CLIENT_FLAG_CAP;
-      if (overflow > 0) {
-        const more = document.createElement("span");
-        more.className = "report-chip reports-client-flag-more";
-        more.textContent = "+" + overflow;
-        chips.appendChild(more);
-      }
-      card.appendChild(chips);
-    }
-
-    card.addEventListener("click", function () {
-      reportsActiveClient = slug;
-      showReportsClientDetail(slug);
-    });
-    return card;
-  }
+  const archivedReportsClients = REPORTS_CARDS.archivedReportsClients;
+  const buildClientCardItem = REPORTS_CARDS.buildClientCardItem;
+  const buildReportCard = REPORTS_CARDS.buildReportCard;
+  const fetchClientCardSummary = REPORTS_CARDS.fetchClientCardSummary;
+  const fetchReportsJson = REPORTS_CARDS.fetchReportsJson;
+  const renderReportsActions = REPORTS_CARDS.renderReportsActions;
+  const renderReportsLatest = REPORTS_CARDS.renderReportsLatest;
+  const setReportsClientArchived = REPORTS_CARDS.setReportsClientArchived;
+  const visibleReportsClients = REPORTS_CARDS.visibleReportsClients;
 
   // Default slug for a client list: the first active client, else the first.
   function defaultClientSlug(rows) {
@@ -1080,7 +105,7 @@
   // Toggle the index (client grid) vs detail (one client) views, and the
   // detail's back bar (only meaningful when there is an index to return to).
   function setReportsView(view) {
-    reportsView = view;
+    REPORTS_VIEW_STATE.reportsView = view;
     const index = document.querySelector("[data-reports-clients]");
     const detail = document.querySelector("[data-reports-detail]");
     const back = document.querySelector("[data-reports-back]");
@@ -1110,7 +135,8 @@
     // The back link (under the "Reports" heading) and the client-name heading
     // appear only in a multi-client detail view — an OSS single client has no
     // index to go back to and no sibling to disambiguate.
-    const showClientChrome = view === "detail" && reportsClients.length > 1;
+    const showClientChrome =
+      view === "detail" && REPORTS_VIEW_STATE.reportsClients.length > 1;
     if (back) back.hidden = !showClientChrome;
     if (nameEl) nameEl.hidden = !showClientChrome;
   }
@@ -1713,7 +739,7 @@
     // Registry-controlled text — textContent, never markup (#533).
     who.textContent = item.name;
     who.addEventListener("click", function () {
-      reportsActiveClient = item.slug;
+      REPORTS_VIEW_STATE.reportsActiveClient = item.slug;
       showReportsClientDetail(item.slug);
     });
     body.appendChild(who);
@@ -1750,7 +776,8 @@
         return fetchClientCardSummary(c && c.slug ? c.slug : "");
       })
     );
-    if (seq !== reportsRenderSeq) return; // superseded by a newer render
+    // superseded by a newer render
+    if (seq !== REPORTS_VIEW_STATE.reportsRenderSeq) return;
     // Commit the view switch only once the data is ready — switching before
     // the await would expose an empty index grid if this render is superseded.
     setReportsView("index");
@@ -1874,13 +901,13 @@
     setReportsView("detail");
     const nameEl = document.querySelector("[data-reports-detail-client]");
     if (nameEl) {
-      const c = reportsClients.find(function (r) {
+      const c = REPORTS_VIEW_STATE.reportsClients.find(function (r) {
         return r && r.slug === slug;
       });
       nameEl.textContent = c ? c.name || c.slug || "" : "";
     }
     // Bump the generation so any in-flight render is dropped, then load.
-    reportsRenderSeq++;
+    REPORTS_VIEW_STATE.reportsRenderSeq++;
     renderReportsSummary(slug || null);
   }
 
@@ -1908,7 +935,7 @@
     }
     wrap.hidden = false;
     list.forEach(function (token) {
-      const active = token === reportsPeriod;
+      const active = token === REPORTS_VIEW_STATE.reportsPeriod;
       const adhoc = !isCanonicalReportsPeriod(token);
       const btn = document.createElement("button");
       btn.type = "button";
@@ -1927,8 +954,8 @@
         btn.setAttribute("aria-label", token + " — " + hint);
       }
       btn.addEventListener("click", function () {
-        if (token === reportsPeriod) return;
-        reportsPeriod = token;
+        if (token === REPORTS_VIEW_STATE.reportsPeriod) return;
+        REPORTS_VIEW_STATE.reportsPeriod = token;
         // Re-render the CURRENT view for the new window: the index re-fetches
         // every client's card, the detail re-fetches the selected client.
         // renderReports() preserves the active view + client via state.
@@ -1940,7 +967,7 @@
 
   // Fetch + render the summary for a given client (or the default one).
   async function renderReportsSummary(client) {
-    const seq = reportsRenderSeq;
+    const seq = REPORTS_VIEW_STATE.reportsRenderSeq;
     // NB: reportsActiveClient is set only after the stale-render guards below,
     // so a superseded call can never reset it to a no-longer-shown client
     // (which would make the period toggle re-fetch the wrong one).
@@ -1953,7 +980,9 @@
     try {
       const params = [];
       if (client) params.push("client=" + encodeURIComponent(client));
-      if (reportsPeriod) params.push("period=" + encodeURIComponent(reportsPeriod));
+      if (REPORTS_VIEW_STATE.reportsPeriod) {
+        params.push("period=" + encodeURIComponent(REPORTS_VIEW_STATE.reportsPeriod));
+      }
       const url =
         "/api/reports/summary" + (params.length ? "?" + params.join("&") : "");
       const res = await fetch(url, { credentials: "same-origin" });
@@ -1963,8 +992,8 @@
       // Fetch/parse failed. Clear any prior render so a failed client switch
       // never leaves a different client's numbers on screen — degrade to the
       // empty state rather than stale data.
-      if (seq !== reportsRenderSeq) return;
-      reportsActiveClient = client || null;
+      if (seq !== REPORTS_VIEW_STATE.reportsRenderSeq) return;
+      REPORTS_VIEW_STATE.reportsActiveClient = client || null;
       cards.textContent = "";
       if (freshness) freshness.textContent = "";
       renderReportsPeriodToggle([]);
@@ -1973,8 +1002,9 @@
       if (empty) empty.hidden = false;
       return;
     }
-    if (seq !== reportsRenderSeq) return; // Superseded by a newer render.
-    reportsActiveClient = client || null;
+    // Superseded by a newer render.
+    if (seq !== REPORTS_VIEW_STATE.reportsRenderSeq) return;
+    REPORTS_VIEW_STATE.reportsActiveClient = client || null;
     // A 200 whose body is not a JSON object (null / string / number from a
     // misbehaving backend or proxy) must not crash the render — coerce to an
     // empty summary so the guarded accessors below fall back to the empty state.
@@ -1989,8 +1019,11 @@
           return typeof p === "string" && p;
         })
       : [];
-    if (available.length && available.indexOf(reportsPeriod) === -1) {
-      reportsPeriod =
+    if (
+      available.length &&
+      available.indexOf(REPORTS_VIEW_STATE.reportsPeriod) === -1
+    ) {
+      REPORTS_VIEW_STATE.reportsPeriod =
         available.indexOf("YESTERDAY") !== -1 ? "YESTERDAY" : available[0];
       return renderReportsSummary(client);
     }
@@ -2042,25 +1075,27 @@
   async function renderReports(entry) {
     const cards = document.querySelector("[data-reports-cards]");
     if (!cards) return;
-    const seq = ++reportsRenderSeq;
+    const seq = ++REPORTS_VIEW_STATE.reportsRenderSeq;
     const body = await fetchReportsJson("/api/reports/clients");
-    if (seq !== reportsRenderSeq) return;
-    reportsClients = body && Array.isArray(body.clients) ? body.clients : [];
-    reportsCanArchive = !!(body && body.can_archive);
+    if (seq !== REPORTS_VIEW_STATE.reportsRenderSeq) return;
+    REPORTS_VIEW_STATE.reportsClients =
+      body && Array.isArray(body.clients) ? body.clients : [];
+    REPORTS_VIEW_STATE.reportsCanArchive = !!(body && body.can_archive);
 
     // An archived client is not a live selection: archiving the one on screen
     // returns the operator to the index rather than leaving them on a detail
     // view for a client that is no longer being collected.
     const hasIndex =
-      reportsClients.length > 1 || archivedReportsClients().length > 0;
+      REPORTS_VIEW_STATE.reportsClients.length > 1 ||
+      archivedReportsClients().length > 0;
     const view = reportsViewToShow({
       entry: entry,
-      currentView: reportsView,
+      currentView: REPORTS_VIEW_STATE.reportsView,
       hasIndex: hasIndex,
       selectionAlive:
-        reportsActiveClient &&
+        REPORTS_VIEW_STATE.reportsActiveClient &&
         visibleReportsClients().some(function (c) {
-          return c && c.slug === reportsActiveClient;
+          return c && c.slug === REPORTS_VIEW_STATE.reportsActiveClient;
         }),
     });
     if (view === "index") {
@@ -2070,10 +1105,12 @@
     // OSS single workspace: no index page — the detail IS the section, so
     // the client is resolved here rather than carried across renders.
     if (!hasIndex) {
-      reportsActiveClient = defaultClientSlug(reportsClients);
+      REPORTS_VIEW_STATE.reportsActiveClient = defaultClientSlug(
+        REPORTS_VIEW_STATE.reportsClients
+      );
     }
     // showReportsClientDetail() sets the view + syncs the DOM.
-    showReportsClientDetail(reportsActiveClient);
+    showReportsClientDetail(REPORTS_VIEW_STATE.reportsActiveClient);
   }
 
   // Entering the Reports section from the left menu. Always the client list
@@ -2089,21 +1126,24 @@
     const back = document.querySelector("[data-reports-back]");
     if (!back) return;
     back.addEventListener("click", function () {
-      reportsView = "index";
+      REPORTS_VIEW_STATE.reportsView = "index";
       renderReports();
     });
   }
+
 
   const api = {
     renderReports: renderReports,
     enterReportsSection: enterReportsSection,
     wireReportsBackButton: wireReportsBackButton,
+    buildPlatformSlice: buildPlatformSlice,
+    showReportsClientDetail: showReportsClientDetail,
   };
 
   // Browser: the global the `<script>` tag exists to publish.
   if (typeof window !== "undefined") window.MUREO_DASHBOARD_REPORTS = api;
-  // Node (test runner only): `module` does not exist in a browser, so this
-  // branch is dead code there and adds no runtime module system.
+  // Node (test runner only): `module` does not exist in a browser, so
+  // this branch is dead code there and adds no runtime module system.
   if (typeof module === "object" && module && module.exports) {
     module.exports = api;
   }

@@ -54,11 +54,30 @@ import pytest
 _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 
 # The pure logic module and the renderer that consumes it (#540).
-_REPORTS_ASSETS = ("reports_logic.js", "dashboard_reports.js")
+_REPORTS_ASSETS = (
+    "reports_logic.js",
+    "dashboard_reports.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_state.js",
+)
 
 
 def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
+
+
+#: The Reports rendering layer, split three ways by #687. A test that asserts
+#: about symbols on both sides of that split reads the whole layer rather than
+#: guessing which file a given renderer ended up in.
+_REPORTS_LAYER = (
+    "dashboard_reports.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_state.js",
+)
+
+
+def _read_layer() -> str:
+    return "\n".join(_read(name) for name in _REPORTS_LAYER)
 
 
 def _read_reports() -> str:
@@ -103,7 +122,7 @@ def test_client_card_withholds_kpis_when_an_account_is_double_counted() -> None:
     # That the nulling CONDITION is the right way round is proved by
     # tests/js/reports_logic.test.js, which executes it; this pin only says
     # the helper still exists and is still where the card gets its figures.
-    assert "aggregateClientKpis(summary)" in _read("dashboard_reports.js")
+    assert "aggregateClientKpis(summary)" in _read("dashboard_reports_cards.js")
 
 
 @pytest.mark.unit
@@ -118,7 +137,7 @@ def test_a_flagged_card_cannot_read_as_a_healthy_one() -> None:
     screen in the alert list directly above. The explanation moved there and
     to the client's own detail view; what stayed is the state.
     """
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     css = _read("app.css")
     card = _function_body(js, "function buildClientCard(")
     assert 'card.classList.add("is-conflicted")' in card
@@ -266,7 +285,7 @@ def test_the_extracted_logic_is_not_re_implemented_in_the_renderer() -> None:
     """One definition, executed by ``node --test tests/js/``. A copy left
     behind in dashboard.js would shadow the tested one and drift from it
     silently — which is the exact failure #540 exists to end."""
-    dashboard = _read("dashboard_reports.js")
+    dashboard = _read("dashboard_reports_state.js")
     logic = _read("reports_logic.js")
     for fn in (
         "aggregateClientKpis",
@@ -313,7 +332,7 @@ def test_the_card_renders_a_spend_only_when_one_was_not_withheld() -> None:
     the worst outcome in the feature: a healthy client reads "—" while the
     double-counted one — whose figures were withheld precisely so nobody
     triages by them — is the only card showing a number."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     card = _function_body(js, "function buildClientCard(")
     assert "kpis.spend != null ? formatNumber(kpis.spend) : " in card, (
         "the spend cell no longer tests `kpis.spend != null` first — a "
@@ -346,7 +365,7 @@ def test_the_withheld_card_still_says_why_before_its_cells() -> None:
     directly ("a withheld card always says why"), which a substring pin
     could never do. What is pinned here is that the card renders those
     badges, and renders them first."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     card = _function_body(js, "function buildClientCard(")
     assert "reports-client-card-badge" in card
     assert card.index("reports-client-card-badges") < card.index(
@@ -365,7 +384,7 @@ def test_a_stale_freshness_marks_the_card_stale() -> None:
     every up-to-date card renders in stale-red and the stale one renders
     clean — the failure mode the freshness work exists to prevent. Both the
     client card and the per-platform card carry it."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     client_card = _function_body(js, "function buildClientCard(")
     assert (
         '(cardFresh.stale ? " is-stale" : "")' in client_card
@@ -388,7 +407,7 @@ def test_the_renderer_asks_the_logic_module_rather_than_re_deciding() -> None:
     card. A renderer that re-derived "is this double-counted?" from
     ``platform_conflicts`` itself would drift from the tested condition the
     first time the wire grows a third kind."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     card = _function_body(js, "function buildClientCard(")
     assert "aggregateClientKpis(summary)" in card
     assert "reportsCardFreshness(summary)" in card
@@ -409,7 +428,7 @@ def test_the_period_fallback_asks_hasfigures_not_the_rendered_values() -> None:
     Pinned separately from the card because ``aggregateClientKpis`` has two
     call sites, and a structure pin on one of them says nothing about the
     other."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     fetch = _function_body(js, "async function fetchClientCardSummary(")
     assert (
         "aggregateClientKpis(summary)" in fetch
@@ -439,7 +458,7 @@ def test_a_conflicted_platform_card_points_at_the_repair_command() -> None:
     (#616/#617), and none of that evidence crosses the wire. The card
     therefore names the command and nothing more.
     """
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     css = _read("app.css")
     catalog = json.loads(_read("i18n.json"))
     assert "reportsRepairHint(conflicts)" in js
@@ -465,7 +484,7 @@ def test_a_double_counted_client_card_names_the_command_that_clears_it() -> None
     good. The hint under a duplicate therefore names the flag that records the
     operator's decision — the same one the CLI accepts.
     """
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_cards.js")
     catalog = json.loads(_read("i18n.json"))
     # The way out is no longer inside the 230px card — it is one click away
     # in the alert row above the grid (grouped by kind, every row carrying

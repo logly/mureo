@@ -56,7 +56,7 @@ def test_the_renderer_binds_the_vocabulary_rather_than_re_deciding_it() -> None:
     """Everything that reaches the figure row is presented as a headline
     number, over an object an agent wrote. Which fields qualify is a
     decision the JS suite executes."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_state.js")
     assert "reportSummaryTotals = REPORTS_FORMAT.reportSummaryTotals" in js
     assert "function reportSummaryTotals(" not in js
 
@@ -66,7 +66,7 @@ def test_the_figures_are_rendered_as_figures_above_the_flags_and_the_prose() -> 
     """ "Figures as figures, flags as a list, narrative as prose" — in that
     order, because the order is what makes the block skimmable."""
     body = _function_body(
-        _read("dashboard_reports.js"), "function renderReportsLatest("
+        _read("dashboard_reports_cards.js"), "function renderReportsLatest("
     )
     assert "reportSummaryTotals(report)" in body
     assert "report-latest-kpis" in body
@@ -82,7 +82,7 @@ def test_a_report_with_no_structure_still_renders_its_prose() -> None:
     """Reports already on disk are one paragraph and nothing else. They stay
     readable — the figure row is simply absent."""
     body = _function_body(
-        _read("dashboard_reports.js"), "function renderReportsLatest("
+        _read("dashboard_reports_cards.js"), "function renderReportsLatest("
     )
     assert "if (totals.length > 0) {" in body
     assert "if (report.narrative) {" in body
@@ -118,7 +118,7 @@ def test_the_figure_row_has_no_reserved_empty_cells() -> None:
 def test_the_secondary_stats_are_read_from_the_vocabulary_module() -> None:
     """Same split as the headline row: dashboard.js renders, it does not
     decide what a report stated."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_state.js")
     assert "reportSecondaryStats = REPORTS_FORMAT.reportSecondaryStats" in js
     assert "function reportSecondaryStats(" not in js
 
@@ -128,12 +128,12 @@ def test_the_stats_sit_below_the_headline_row_and_above_the_flags() -> None:
     """Below, and visibly not part of it: these are the report's own words
     for something mureo has no headline label for."""
     body = _function_body(
-        _read("dashboard_reports.js"), "function renderReportsLatest("
+        _read("dashboard_reports_cards.js"), "function renderReportsLatest("
     )
     assert "reportSecondaryStats(report)" in body
     assert "buildReportStatsRow(stats)" in body
     assert "report-latest-stats" in _function_body(
-        _read("dashboard_reports.js"), "function buildReportStatsRow("
+        _read("dashboard_reports_cards.js"), "function buildReportStatsRow("
     )
     assert body.index("reportSummaryTotals(report)") < body.index(
         "reportSecondaryStats(report)"
@@ -148,7 +148,7 @@ def test_a_stat_value_is_printed_as_written() -> None:
     applying one to a figure it does not know is how a view ends up stating
     a number the report never wrote."""
     helper = _function_body(
-        _read("dashboard_reports.js"), "function buildReportStatElement("
+        _read("dashboard_reports_cards.js"), "function buildReportStatElement("
     )
     assert "textContent = String(" in helper
     assert "formatKpi(" not in helper
@@ -158,7 +158,9 @@ def test_a_stat_value_is_printed_as_written() -> None:
 @pytest.mark.unit
 def test_what_cannot_be_shown_flat_is_counted_not_dropped() -> None:
     """A silently discarded entry is the bug #670 was filed about."""
-    row = _function_body(_read("dashboard_reports.js"), "function buildReportStatsRow(")
+    row = _function_body(
+        _read("dashboard_reports_cards.js"), "function buildReportStatsRow("
+    )
     assert "stats.hidden > 0" in row
     assert "dashboard.reports_stats_more" in row
 

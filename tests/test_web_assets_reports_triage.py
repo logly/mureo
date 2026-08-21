@@ -41,6 +41,20 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
+#: The Reports rendering layer, split three ways by #687. A test that asserts
+#: about symbols on both sides of that split reads the whole layer rather than
+#: guessing which file a given renderer ended up in.
+_REPORTS_LAYER = (
+    "dashboard_reports.js",
+    "dashboard_reports_cards.js",
+    "dashboard_reports_state.js",
+)
+
+
+def _read_layer() -> str:
+    return "\n".join(_read(name) for name in _REPORTS_LAYER)
+
+
 def _function_body(js: str, signature: str) -> str:
     """Source of the top-level function opened by ``signature``.
 
@@ -77,7 +91,7 @@ def test_the_renderer_binds_the_module_rather_than_re_deciding() -> None:
     """Ranking a finding and naming its next step are decisions the JS suite
     executes. A renderer that re-derived either would drift from it, and a
     substring pin cannot catch an inverted comparison."""
-    js = _read("dashboard_reports.js")
+    js = _read("dashboard_reports_state.js")
     for name in (
         "buildReportsTriage",
         "triageItemText",
@@ -173,7 +187,7 @@ def test_the_heading_count_and_the_card_marks_come_from_one_list() -> None:
     """ "If the layer says three clients need attention, exactly three cards
     are marked." The two cannot drift while they read the same array — the
     JS suite pins the array itself."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     render = _function_body(js, "function renderReportsTriage(")
     assert "built.clients" in render, "the heading counts something else"
     assert "n: marked.length" in render, "the heading counts something else"
@@ -189,7 +203,7 @@ def test_a_marked_card_is_announced_and_not_only_coloured() -> None:
     """Colour alone is not a mark. The grid is a list of interactive cards,
     so the marker carries text an assistive technology can read."""
     item = _function_body(
-        _read("dashboard_reports.js"), "function buildClientCardItem("
+        _read("dashboard_reports_cards.js"), "function buildClientCardItem("
     )
     assert "dashboard.reports_triage_card_marker" in item
 
@@ -216,7 +230,12 @@ def test_writer_supplied_text_reaches_the_dom_as_text() -> None:
     these rows."""
     row = _function_body(_read("dashboard_reports.js"), "function buildTriageRow(")
     assert ".textContent = triageItemText(item)" in row
-    for name in ("reports_triage.js", "dashboard_reports.js"):
+    for name in (
+        "reports_triage.js",
+        "dashboard_reports.js",
+        "dashboard_reports_cards.js",
+        "dashboard_reports_state.js",
+    ):
         assert ".innerHTML" not in _read(name).replace("// innerHTML", ""), name
 
 
@@ -312,7 +331,7 @@ def test_the_rows_are_grouped_and_collapsed_by_the_module() -> None:
     sentence under six names. Grouping by kind and opening at the top few are
     both decisions — which clients a row covers, and which rows survive the
     collapse — so both live where the JS suite executes them."""
-    js = _read("dashboard_reports.js")
+    js = _read_layer()
     for name in ("groupReportsTriage", "collapseTriageGroups", "partitionTriageGroups"):
         assert f"{name} = REPORTS_TRIAGE.{name}" in js, f"{name} is not bound"
         assert f"function {name}(" not in js, f"{name} was copied into dashboard.js"
