@@ -12,6 +12,12 @@ skill does.
 Foundation skills (``_mureo-*`` prefix) are exempt: they are loaded as
 PREREQUISITEs by other skills, never fired from a user utterance.
 
+That exemption is about *triggers only*. This module used to also pin the
+``skills/`` ↔ ``mureo/_data/skills/`` byte-identity over the same filtered
+list, which quietly left every foundation skill unpinned there (#672). The
+byte-identity pin now lives in one place that covers both trees in full —
+``tests/test_plugin_manifests.py::test_skill_copies_are_byte_identical``.
+
 Marks: unit — pure on-disk file inspection, no network.
 """
 
@@ -26,7 +32,6 @@ from mureo.core.skills.parser import parse_skill_md
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _PACKAGED = REPO_ROOT / "mureo" / "_data" / "skills"
-_MIRROR = REPO_ROOT / "skills"
 
 # Hiragana, katakana, and CJK unified ideographs — any hit means the
 # description carries at least one Japanese trigger phrase.
@@ -64,14 +69,3 @@ class TestOperationalSkillJapaneseTriggers:
             "skill never firing (#396). Follow the enumeration style of "
             "ad-fatigue-check / audience-review."
         )
-
-    @pytest.mark.parametrize("skill_dir", _operational_skill_dirs(), ids=_skill_ids())
-    def test_packaged_and_mirror_copies_stay_identical(self, skill_dir: Path) -> None:
-        """The repo-root ``skills/`` mirror must match the packaged copy
-        byte-for-byte, so a trigger edit cannot land on one side only."""
-        mirror = _MIRROR / skill_dir.name / "SKILL.md"
-        assert mirror.exists(), f"missing mirror for {skill_dir.name}"
-        packaged_text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        assert (
-            mirror.read_text(encoding="utf-8") == packaged_text
-        ), f"{skill_dir.name}: skills/ mirror differs from mureo/_data/skills/"

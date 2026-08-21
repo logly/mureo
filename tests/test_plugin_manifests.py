@@ -149,35 +149,117 @@ def test_mcp_json_command_gates_missing_wrapper() -> None:
 _CANONICAL_SKILLS = REPO_ROOT / "skills"
 _PACKAGED_SKILLS = REPO_ROOT / "mureo" / "_data" / "skills"
 
+# The one deliberate asymmetry between the two trees, stated once and used
+# by every test below (#672). ``_mureo-pro-diagnosis`` is the operator's
+# *learnable* knowledge base: ``FilesystemKnowledgeStore`` scaffolds it into
+# ``~/.claude/skills/_mureo-pro-diagnosis/SKILL.md`` on the first ``/learn``
+# write, so the repo keeps the canonical catalogue while the wheel ships no
+# copy for that write to fork from. It has never existed under
+# ``mureo/_data/skills/`` (no commit in the history touches that path), and
+# ``tests/test_platform_conditional_bidding.py`` reads it from the repo root
+# for the same reason. Anything else appearing on one side only is drift.
+_CANONICAL_ONLY_SKILLS = frozenset({"_mureo-pro-diagnosis"})
+
 
 def _packaged_names() -> set[str]:
     return {p.name for p in _PACKAGED_SKILLS.iterdir() if p.is_dir()}
 
 
-def test_packaged_skills_match_canonical_byte_for_byte() -> None:
-    """``mureo/_data/skills/`` is what PyPI users get; ``skills/`` is
-    the canonical source. They must stay byte-identical for every skill
-    that the package ships, otherwise the docs on GitHub diverge from
-    what installed users see in their editors."""
+def _canonical_names() -> set[str]:
+    return {p.name for p in _CANONICAL_SKILLS.iterdir() if p.is_dir()}
+
+
+def _dual_tree_skill_names() -> list[str]:
+    """Every skill that must exist — byte-identical — in *both* trees.
+
+    Built from the union of the two trees rather than from either one, so a
+    skill added to one side only is a failure of the pair test rather than a
+    silently missing parametrization.
+    """
+    return sorted((_canonical_names() | _packaged_names()) - _CANONICAL_ONLY_SKILLS)
+
+
+def _relative_files(root: Path) -> set[Path]:
+    return {p.relative_to(root) for p in root.rglob("*") if p.is_file()}
+
+
+def test_dual_tree_population_covers_foundation_and_operational_skills() -> None:
+    """Structural anchor for the parametrized pair test below.
+
+    A parametrized suite over an empty (or foundation-free) list passes
+    vacuously, which is exactly the failure #672 reports: the previous
+    per-skill pin parametrized over a ``not name.startswith("_")`` filter, so
+    every ``_mureo-*`` skill was excluded and nothing said so.
+    """
+    names = set(_dual_tree_skill_names())
+    assert len(names) >= 20, f"implausibly few dual-tree skills: {sorted(names)}"
+    foundation = {n for n in names if n.startswith("_mureo-")}
+    assert foundation >= {
+        "_mureo-amazon-ads",
+        "_mureo-google-ads",
+        "_mureo-learning",
+        "_mureo-meta-ads",
+        "_mureo-shared",
+        "_mureo-strategy",
+    }, f"foundation skills dropped out of the pair test: {sorted(foundation)}"
+
+
+@pytest.mark.parametrize("skill", _dual_tree_skill_names())
+def test_skill_copies_are_byte_identical(skill: str) -> None:
+    """``mureo/_data/skills/`` is what PyPI users get; ``skills/`` is the
+    canonical source. Every skill present in either tree must exist in both
+    and match byte-for-byte across its **whole directory** — not just
+    ``SKILL.md`` — otherwise the docs on GitHub diverge from what installed
+    users see in their editors.
+
+    The whole directory, because a skill is free to carry ``references/`` and
+    other companion files alongside ``SKILL.md``; the two trees are copies of
+    each other, so the unit of the invariant is the directory.
+
+    Both directions, because a one-directional walk cannot see a file that
+    exists only on the side it walks *to*.
+    """
+    canonical_dir = _CANONICAL_SKILLS / skill
+    packaged_dir = _PACKAGED_SKILLS / skill
+    assert canonical_dir.is_dir(), (
+        f"{skill}: packaged but missing from canonical skills/ — add it there, "
+        "the packaged tree is a copy, not a source."
+    )
+    assert packaged_dir.is_dir(), (
+        f"{skill}: canonical but missing from mureo/_data/skills/ — add it "
+        "there, or add it to _CANONICAL_ONLY_SKILLS with a stated reason."
+    )
+
     drift: list[str] = []
-    for packaged_dir in sorted(p for p in _PACKAGED_SKILLS.iterdir() if p.is_dir()):
-        skill = packaged_dir.name
-        canonical_dir = _CANONICAL_SKILLS / skill
-        if not canonical_dir.exists():
-            drift.append(f"{skill}: missing in canonical skills/")
-            continue
-        for packaged_file in packaged_dir.rglob("*"):
-            if packaged_file.is_dir():
-                continue
-            rel = packaged_file.relative_to(packaged_dir)
-            canonical_file = canonical_dir / rel
-            if not canonical_file.exists():
-                drift.append(f"{skill}/{rel}: missing in canonical")
-                continue
-            if packaged_file.read_bytes() != canonical_file.read_bytes():
-                drift.append(f"{skill}/{rel}: contents differ")
-    assert not drift, "Drift between skills/ and mureo/_data/skills/:\n" + "\n".join(
-        f"  - {d}" for d in drift
+    for rel in sorted(_relative_files(canonical_dir) | _relative_files(packaged_dir)):
+        canonical_file = canonical_dir / rel
+        packaged_file = packaged_dir / rel
+        if not canonical_file.is_file():
+            drift.append(f"{rel}: missing in skills/")
+        elif not packaged_file.is_file():
+            drift.append(f"{rel}: missing in mureo/_data/skills/")
+        elif canonical_file.read_bytes() != packaged_file.read_bytes():
+            drift.append(f"{rel}: contents differ")
+    detail = "\n".join(f"  - {d}" for d in drift)
+    assert not drift, f"{skill}: skills/ and mureo/_data/skills/ drifted:\n{detail}"
+
+
+def test_canonical_only_exemptions_are_still_true() -> None:
+    """An exemption that no longer describes reality is a filter that hides
+    drift. Each name in ``_CANONICAL_ONLY_SKILLS`` must still be present in
+    ``skills/`` and still absent from ``mureo/_data/skills/`` — if one gets
+    packaged, the entry must go so the pair test starts guarding it."""
+    canonical = _canonical_names()
+    packaged = _packaged_names()
+    stale = sorted(n for n in _CANONICAL_ONLY_SKILLS if n not in canonical)
+    assert not stale, (
+        f"exempted skills no longer exist in skills/: {stale}. "
+        "Drop them from _CANONICAL_ONLY_SKILLS."
+    )
+    now_packaged = sorted(n for n in _CANONICAL_ONLY_SKILLS if n in packaged)
+    assert not now_packaged, (
+        f"exempted skills are now packaged: {now_packaged}. "
+        "Drop them from _CANONICAL_ONLY_SKILLS so they are byte-compared."
     )
 
 
@@ -245,19 +327,20 @@ def test_diagnostic_skills_invoke_consult_advisor() -> None:
 
 def test_canonical_skills_not_unexpectedly_richer() -> None:
     """Every skill in ``skills/`` must also be packaged unless it's an
-    explicit opt-out (currently: ``_mureo-pro-diagnosis``). Forgetting to
-    sync a new skill into ``mureo/_data/skills/`` would silently break
-    the PyPI install."""
-    intentional_canonical_only = {"_mureo-pro-diagnosis"}
-    canonical = {
-        p.name for p in _CANONICAL_SKILLS.iterdir() if p.is_dir()
-    } - intentional_canonical_only
+    explicit opt-out (``_CANONICAL_ONLY_SKILLS``). Forgetting to sync a new
+    skill into ``mureo/_data/skills/`` would silently break the PyPI install.
+
+    The whole-set view of what ``test_skill_copies_are_byte_identical``
+    reports one skill at a time: this one names every unpackaged skill in a
+    single message, which is the shape of the mistake when a new skill lands.
+    """
+    canonical = _canonical_names() - _CANONICAL_ONLY_SKILLS
     packaged = _packaged_names()
     missing = canonical - packaged
     assert not missing, (
         f"Skills in skills/ but not in mureo/_data/skills/: {sorted(missing)}. "
         "Either add them to the packaged copy or extend "
-        "intentional_canonical_only in this test."
+        "_CANONICAL_ONLY_SKILLS with a stated reason."
     )
 
 
