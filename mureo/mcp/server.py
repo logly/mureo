@@ -185,6 +185,17 @@ _CREATIVE_STUDIO_NAMES: frozenset[str] = (
     else frozenset()
 )
 
+#: Every tool name mureo itself serves, derived from ``_ALL_TOOLS`` while it
+#: still holds only built-ins — plugin tools are appended further down. This
+#: is what a plugin may not claim (``reserved_names`` below).
+#:
+#: Derived, not hand-written (#680): the previous hand-maintained union of the
+#: per-family name sets was a second answer to "which names are built-in" and
+#: had silently fallen one family behind ``_ALL_TOOLS``, leaving
+#: ``mureo_learning_reset_preflight`` claimable by a plugin. Anything added to
+#: ``_ALL_TOOLS`` above is now reserved the moment it is served.
+_BUILTIN_NAMES: frozenset[str] = frozenset(t.name for t in _ALL_TOOLS)
+
 
 # ---------------------------------------------------------------------------
 # Third-party plugin tools (entry-point–discovered providers implementing
@@ -248,19 +259,7 @@ def _discover_with_amazon() -> tuple[Any, ...]:
 _PLUGIN_TOOLS: list[Tool]
 _PLUGIN_DISPATCH: dict[str, MCPToolProvider]
 _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
-    reserved_names=(
-        _GOOGLE_ADS_NAMES
-        | _META_ADS_NAMES
-        | _SEARCH_CONSOLE_NAMES
-        | _ROLLBACK_NAMES
-        | _BATCH_NAMES
-        | _CHANGE_IMPORT_NAMES
-        | _ANALYSIS_NAMES
-        | _MUREO_CONTEXT_NAMES
-        | _ANALYTICS_REGISTRY_NAMES
-        | _LEARNING_NAMES
-        | _CREATIVE_STUDIO_NAMES
-    ),
+    reserved_names=_BUILTIN_NAMES,
     discover=_discover_with_amazon,
 )
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)

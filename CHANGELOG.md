@@ -2,6 +2,26 @@
 
 ### Fixed
 
+- **The plugin name-collision guard now covers every built-in tool** (#680).
+  The `reserved_names` set passed to `collect_plugin_tools` was a hand-written
+  union of eleven per-family name sets, and the learning-preflight family
+  (`mureo_learning_reset_preflight`, #548) was never added to it. A plugin
+  declaring that name was therefore collected instead of dropped: the name was
+  listed twice in `tools/list`, and — because the input validators are keyed by
+  tool name and plugin tools are appended last — the plugin's schema replaced
+  the built-in's, so mureo stopped enforcing the built-in's declared bounds on
+  it. Dispatch still reached the built-in, so the tool did not change hands;
+  what was lost was the guarantee that it could not.
+
+  The union was the root cause, not the missing line: it was a second answer to
+  "which names are built-in", maintained by hand next to `_ALL_TOOLS` itself,
+  and it had fallen one family behind without anything failing. `reserved_names`
+  is now derived from `_ALL_TOOLS` while it still holds only built-ins, so a
+  name is reserved the moment mureo serves it and the next new family cannot
+  repeat this. The only behaviour change is the intended one: a plugin claiming
+  a learning-preflight tool name is now dropped with the same
+  `PluginToolWarning` every other built-in family has always produced.
+
 - **The documented MCP tool total is now checked against the registry** (#677).
   `docs/architecture.md` still said 221 individual MCP tools while the server
   exposed 224. Three of the four shipped documents that quote the number were
