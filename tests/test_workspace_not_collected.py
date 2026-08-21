@@ -583,3 +583,57 @@ class TestTheMcpTool:
             t for t in TOOLS if t.name == "mureo_state_workspace_not_collected_set"
         ]
         assert "mureo_state_platform_not_collected_set" in workspace.description
+
+
+# ---------------------------------------------------------------------------
+# The skill that tells the caller it exists
+# ---------------------------------------------------------------------------
+#
+# A tool nothing points at is a tool nobody calls. ``_mureo-strategy`` is
+# where an agent learns how to write STATE.json, and it already routes the
+# per-platform failure; without the workspace-level half beside it, an agent
+# whose collection died before any platform was reached records nothing — or
+# reaches for one of the two workarounds #661 exists to retire (a platforms
+# entry with a blank account_id, or the ``reports`` section).
+#
+# No existing suite pins this file's mirror: tests/test_skill_ja_triggers.py
+# skips every ``_``-prefixed foundation skill, and
+# tests/test_skill_server_now_clock.py pins ``_mureo-shared`` only. So the
+# byte-identity check is made here rather than assumed.
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_PACKAGED_STRATEGY_SKILL = (
+    _REPO_ROOT / "mureo" / "_data" / "skills" / "_mureo-strategy" / "SKILL.md"
+)
+_MIRROR_STRATEGY_SKILL = _REPO_ROOT / "skills" / "_mureo-strategy" / "SKILL.md"
+
+
+class TestTheSkillRoutesTheCaller:
+    def test_the_skill_names_the_workspace_level_tool(self) -> None:
+        body = _PACKAGED_STRATEGY_SKILL.read_text(encoding="utf-8")
+        assert "mureo_state_workspace_not_collected_set" in body
+        assert "workspace_not_collected" in body
+
+    def test_it_says_which_of_the_two_to_use(self) -> None:
+        """Both tools named in one place, with the question that picks
+        between them — a skill that documents only one of a pair teaches the
+        wrong one for half the failures."""
+        body = _PACKAGED_STRATEGY_SKILL.read_text(encoding="utf-8")
+        assert "mureo_state_platform_not_collected_set" in body
+        assert "before any platform was reached" in body
+
+    def test_it_forbids_both_workarounds(self) -> None:
+        """The two shapes #661 exists to retire, named so an agent does not
+        reinvent either: a platforms entry that says nothing about an account,
+        and the analysis-summary section used as a failure log."""
+        body = _PACKAGED_STRATEGY_SKILL.read_text(encoding="utf-8")
+        assert "invent a `platforms` entry" in body
+        assert "`reports`" in body
+
+    def test_the_packaged_copy_and_the_mirror_are_identical(self) -> None:
+        """The repo-root ``skills/`` tree is what an operator reads and
+        ``mureo/_data/skills`` is what ships; an edit landing on one side only
+        is a rule that exists for half the hosts."""
+        assert (
+            _MIRROR_STRATEGY_SKILL.read_bytes() == _PACKAGED_STRATEGY_SKILL.read_bytes()
+        )
