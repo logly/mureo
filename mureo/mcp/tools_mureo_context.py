@@ -20,6 +20,7 @@ from mureo.core.metrics_windows import (
     CANONICAL_METRICS_WINDOWS,
     METRICS_WINDOW_RULE,
 )
+from mureo.core.report_summary import REPORT_SUMMARY_RULE
 from mureo.mcp._handlers_mureo_context import (
     handle_outcome_evaluate,
     handle_state_action_log_append,
@@ -508,12 +509,16 @@ TOOLS: list[Tool] = [
             "STATE.json's ``reports`` section so the read-only configure "
             "dashboard can render the latest daily / weekly / goal report "
             "without re-running the agent. ``report`` selects the kind "
-            "(daily / weekly / goal); ``summary`` is a free-form object — by "
-            "convention generated_at (ISO 8601), period, kpis (per-platform "
-            "/ totals headline numbers), flags (notable items), narrative "
-            "(short text). Other report kinds are preserved. Best-effort: a "
-            "skill should skip this silently where the context MCP is "
-            "unavailable. Returns the updated state document."
+            "(daily / weekly / goal); ``summary`` carries generated_at (ISO "
+            "8601), period, totals (headline figures), flags (one entry per "
+            "finding) and narrative (the judgement and the proposal). Each "
+            "part is rendered as what it is — figures as figures, flags as "
+            "chips, narrative as prose — so a summary that folds all of it "
+            "into the narrative renders as one unreadable paragraph, and the "
+            "narrative bound below is enforced. Other report kinds are "
+            "preserved. Best-effort: a skill should skip this silently where "
+            "the context MCP is unavailable. Returns the updated state "
+            "document."
         ),
         inputSchema={
             "type": "object",
@@ -529,9 +534,14 @@ TOOLS: list[Tool] = [
                 "summary": {
                     "type": "object",
                     "description": (
-                        "Free-form summary object. Convention: generated_at "
-                        "(ISO 8601), period, kpis (per-platform / totals "
-                        "headline numbers), flags, narrative (short text). "
+                        # The rule is pasted rather than restated (#662). No
+                        # ``enum`` can constrain prose, so the description IS
+                        # the constraint an agent meets before it composes the
+                        # report — the refusal only repeats it.
+                        REPORT_SUMMARY_RULE + " Fields: generated_at (ISO "
+                        "8601), period, totals (the headline figures above), "
+                        "kpis (the OPTIONAL per-platform split — the "
+                        "breakdown, not the headline row), flags, narrative. "
                         "Each flag is either a legacy snake_case string OR a "
                         "structured object {code, severity, params}: code is a "
                         "canonical vocabulary key (e.g. goals_met, "
@@ -539,8 +549,9 @@ TOOLS: list[Tool] = [
                         "zero_cv_adspots, spend_spike, anomaly_baseline_"
                         "insufficient), severity is action|watch|info|positive "
                         "(defaulted from code if omitted), and params holds the "
-                        "detail (adspot ids, yen, ctr) — keep detail in params "
-                        "/ narrative, NOT in the code. For a finding outside "
+                        "detail (adspot ids, yen, ctr) — keep detail in "
+                        "params, NOT in the code and NOT in the narrative. "
+                        "For a finding outside "
                         "the vocabulary use {code:'custom', severity, label} "
                         "where label is a string or {locale: text} map. Unknown "
                         "non-custom codes are rejected."

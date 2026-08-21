@@ -68,8 +68,9 @@ Reconcile **who you say you want** (the STRATEGY.md Persona / Target Audience) w
 11. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="audience"` and a concise `summary` object so the read-only dashboard can render this review without re-running you. Follow this convention:
     - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
     - `period`: the window analysed (e.g. `"LAST_30_DAYS"`)
-    - `kpis`: per-platform segment counts (targeted / excluded) and the worst-CPA segments vs Persona
+    - `totals`: the account's headline figures, using the canonical metric vocabulary — `spend`, `conversions`, `cpa`, `ctr`, `clicks`, `impressions`. This is the block the dashboard renders **as figures**. **Raw numbers only**: `773957`, not `"¥773,957"`; `0.0466`, not `"4.66%"` — one of those keys carrying a string is refused, because it sits where the view reads a figure and renders as nothing. A key outside the vocabulary may ride along: it is stored, just not shown as a headline number. Omit `totals` entirely if this run gathered no account-level figures.
+    - `kpis`: per-platform segment counts (targeted / excluded) and the worst-CPA segments vs Persona — the breakdown, not the headline row
     - `flags`: notable items (e.g. `["meta_audience_network_zero_conv", "google_mobile_cpa_1.8x", "persona_lookalike_missing"]`)
-    - `narrative`: the 1-2 sentence verdict (targeting matches Persona / drift found)
+    - `narrative`: the verdict (targeting matches Persona / drift found) and what you propose next, **at most 400 characters** — the tool refuses a longer one rather than truncating it (a sentence cut in half is worse than a long one). Do not restate the figures and do not list the findings here: numbers belong in `totals`, findings in `flags`.
 
     **Reflect the FINAL state, and persist this LAST** — after every `action_log` entry and any change you applied this run. This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.

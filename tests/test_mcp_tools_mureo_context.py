@@ -579,6 +579,98 @@ async def test_report_set_preserves_legacy_string_flags(cwd_to_tmp) -> None:
     assert payload["reports"]["daily"]["flags"] == ["cpa_over_target"]
 
 
+async def test_report_set_refuses_a_narrative_over_the_bound(cwd_to_tmp) -> None:
+    """#662: the paragraph is refused at the tool boundary, and refusing
+    writes nothing — the stored report is not replaced by a truncated one."""
+    from mureo.core.report_summary import NARRATIVE_MAX_CHARS
+
+    initial = {
+        "version": "2",
+        "platforms": {},
+        "action_log": [],
+        "reports": {"daily": {"narrative": "Healthy."}},
+    }
+    state_path = cwd_to_tmp / "STATE.json"
+    state_path.write_text(json.dumps(initial), encoding="utf-8")
+    before = state_path.read_text(encoding="utf-8")
+    mod = _import_tools()
+    with pytest.raises(ValueError) as excinfo:
+        await mod.handle_tool(
+            "mureo_state_report_set",
+            {
+                "report": "daily",
+                "summary": {"narrative": "x" * (NARRATIVE_MAX_CHARS + 1)},
+            },
+        )
+    assert str(NARRATIVE_MAX_CHARS) in str(excinfo.value)
+    assert state_path.read_text(encoding="utf-8") == before
+
+
+async def test_report_set_refuses_a_headline_figure_that_is_not_a_number(
+    cwd_to_tmp,
+) -> None:
+    """``"¥773,957"`` is written where the view reads figures and renders as
+    nothing — the same silent success #659 closed for metrics windows."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    state_path = cwd_to_tmp / "STATE.json"
+    state_path.write_text(json.dumps(initial), encoding="utf-8")
+    before = state_path.read_text(encoding="utf-8")
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="spend"):
+        await mod.handle_tool(
+            "mureo_state_report_set",
+            {"report": "daily", "summary": {"totals": {"spend": "¥773,957"}}},
+        )
+    assert state_path.read_text(encoding="utf-8") == before
+
+
+async def test_report_set_accepts_the_structured_report_it_asks_for(
+    cwd_to_tmp,
+) -> None:
+    """The shape the schema now instructs: figures in ``totals``, findings in
+    ``flags``, judgement and proposal in a short ``narrative``."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    summary = {
+        "generated_at": "2026-07-10T09:00:00+09:00",
+        "period": "LAST_30_DAYS",
+        "totals": {"spend": 773957, "conversions": 50, "cpa": 15479, "ctr": 0.0466},
+        "flags": [
+            {"code": "goals_met"},
+            {
+                "code": "invalid_traffic_suspected",
+                "params": {"adspot": "4311492", "spend": 115740, "cv": 0},
+            },
+        ],
+        "narrative": (
+            "Healthy: both goals are met on the current trend. Proposing a "
+            "move to SCALE_EXPANSION and restarting the paused SP/PSW "
+            "adspots — neither applied yet."
+        ),
+    }
+    result = await mod.handle_tool(
+        "mureo_state_report_set", {"report": "daily", "summary": summary}
+    )
+    payload = json.loads(result[0].text)
+    stored = payload["reports"]["daily"]
+    assert stored["totals"] == summary["totals"]
+    assert stored["flags"][0]["code"] == "goals_met"
+    assert stored["narrative"] == summary["narrative"]
+
+
+def test_report_set_schema_tells_the_writer_where_each_part_goes() -> None:
+    """#659's lesson applied to a free-form object: no ``enum`` can constrain
+    prose, so the rule has to be in the description the model reads BEFORE it
+    calls — not only in the error it gets after."""
+    from mureo.core.report_summary import REPORT_SUMMARY_RULE
+
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_report_set")
+    description = tool.inputSchema["properties"]["summary"]["description"]
+    assert REPORT_SUMMARY_RULE in description
+
+
 # ---------------------------------------------------------------------------
 # Path traversal gate (security)
 # ---------------------------------------------------------------------------

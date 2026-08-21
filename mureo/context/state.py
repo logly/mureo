@@ -524,6 +524,14 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
     ``None`` (old STATE.json), it starts from ``{}`` — so the call is
     backward compatible.
 
+    The summary must state its structure (#662): the narrative is bounded and
+    a headline figure is a number — see
+    :func:`~mureo.core.report_summary.validate_report_summary` for the rule
+    and for what is deliberately left free. Validation happens BEFORE the
+    lock is taken, so a refused write leaves the document byte-for-byte
+    untouched, and it is a WRITE rule only: a paragraph already on disk still
+    reads back verbatim and survives a write of a sibling report kind.
+
     Args:
         path: STATE.json location.
         report: Report kind key (``"daily"`` / ``"weekly"`` / ``"goal"``).
@@ -531,7 +539,14 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
 
     Returns:
         The updated :class:`StateDocument`.
+
+    Raises:
+        ValueError: if ``summary`` states a narrative over the bound, or a
+            headline figure that is not a number.
     """
+    from mureo.core.report_summary import validate_report_summary
+
+    validate_report_summary(summary)
 
     def _build(doc: StateDocument) -> StateDocument:
         # Start from a shallow copy of the existing reports (or {} when the

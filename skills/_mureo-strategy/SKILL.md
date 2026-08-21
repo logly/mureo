@@ -642,10 +642,44 @@ per-platform figures still render untouched.
 `reports` (top-level, optional) holds the latest agent-written summary per
 report kind so the dashboard can show it without re-running the agent:
 `reports = {"daily": {...}, "weekly": {...}, "goal": {...}}`. Each value is
-`{generated_at (ISO 8601), period, kpis (headline numbers using the vocabulary
-above), flags (list of notable items), narrative (short text)}`. Written via
-the `mureo_state_report_set` tool by `daily-check` / `weekly-report` /
-`goal-review`.
+`{generated_at (ISO 8601), period, totals (the headline figures, using the
+metric vocabulary above, as raw numbers), kpis (the optional per-platform
+split), flags (one entry per finding), narrative (the judgement and the
+proposal)}`. Written via the `mureo_state_report_set` tool by `daily-check` /
+`weekly-report` / `goal-review`.
+
+Each part is rendered as what it is — figures as figures, flags as chips,
+narrative as prose — so the split is what makes a report readable, not a
+convention. `narrative` is bounded at **at most 400 characters** and the tool
+**refuses a longer one rather than truncating it**: a sentence cut in half is
+worse than a long one. Reports already on disk are one paragraph and stay
+exactly as they are — the bound applies to new writes only.
+
+**Before** (what #662 reported — everything in `narrative`, ~700 characters in one paragraph, `totals` and `flags` unused):
+
+```
+日次チェック(EFFICIENCY_STABILIZE)。前回06-20から約20日ぶり。BizHint(PC)のみ稼働。直近30日(06-11〜07-10): 費用¥773,957/CV50/CPA¥15,479/CVR0.21%。前回比でCV 8→50(約6倍)、CPA ¥47,786→¥15,479(-68%)と大幅改善し、両Goal(CPA¥30k以下・月CV20以上)を現行トレンドで達成。CV計測は06-24頃から正常に登録開始。広告別: ad4623207が30CV/CPA¥12.4k主力…枠別: 4296399が費用68%集約、4311492は費用¥115,740で0CV・CTR4.66%と異常。判定=Healthy(目標達成)。CPA余裕大につきSCALE_EXPANSIONへの移行と停止中SP/PSW再開を提案(未実行)。
+```
+
+**After** — the same run and the same facts, in the fields that render:
+
+```json
+{
+  "generated_at": "2026-07-10T09:00:00+09:00",
+  "period": "2026-06-11..2026-07-10",
+  "totals": {"spend": 773957, "conversions": 50, "cpa": 15479, "ctr": 0.0466},
+  "kpis": {"google_ads": {"spend": 773957, "conversions": 50, "cpa": 15479}},
+  "flags": [
+    {"code": "goals_met", "params": {"cpa": 15479, "cpa_target": 30000, "cv": 50, "cv_target": 20}},
+    {"code": "invalid_traffic_suspected", "params": {"adspot": "4311492", "spend": 115740, "cv": 0, "ctr": 0.0466}},
+    {"code": "custom", "severity": "info", "label": "Adspot 4296399 carries 68% of spend"},
+    {"code": "custom", "severity": "info", "label": "Conversion tracking recording normally since 06-24"}
+  ],
+  "narrative": "Healthy: both goals are met on the current trend, and CPA has room (¥15,479 against a ¥30,000 target). Proposing a move to SCALE_EXPANSION and a restart of the paused SP/PSW adspots — neither applied yet."
+}
+```
+
+Nothing was dropped: every figure is a figure, every finding is its own flag with its numbers in `params`, and what is left in `narrative` is the verdict and the proposal — the two sentences an operator actually reads.
 
 **A report summary must reflect the FINAL state of the run that wrote it.**
 Persist it AFTER every STATE change and `action_log` entry the run made, and

@@ -68,14 +68,15 @@ Review progress toward all marketing goals across all platforms.
 9. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="goal"` and a concise `summary` object so the read-only dashboard can render this review without re-running you. Follow this convention:
    - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
    - `period`: the assessment window or "as of" date — the "as of" date is `server_now`'s date
-   - `kpis`: per-Goal headline numbers (target, current, % of target achieved)
+   - `totals`: the account's headline figures, using the canonical metric vocabulary — `spend`, `conversions`, `cpa`, `ctr`, `clicks`, `impressions`. This is the block the dashboard renders **as figures**. **Raw numbers only**: `773957`, not `"¥773,957"`; `0.0466`, not `"4.66%"` — one of those keys carrying a string is refused, because it sits where the view reads a figure and renders as nothing. A key outside the vocabulary may ride along: it is stored, just not shown as a headline number. Omit `totals` entirely if this run gathered no account-level figures.
+   - `kpis`: per-Goal numbers (target, current, % of target achieved) — the breakdown, not the headline row
    - `flags`: a list of **structured** flags — each a small object `{code, severity, params}` so the dashboard renders a coarse, localizable chip with the numbers on drill-down:
        - `code`: a canonical vocabulary key — one of `goals_met`, `cpa_over_target`, `cpa_under_target`, `cv_below_target`, `cv_above_target`, `spend_spike`, `cpa_spike`, `invalid_traffic_suspected`, `zero_cv_adspots`, `budget_overspend`, `budget_drift`, `tracking_suspect`, `zero_conversions`, `supply_tools_unconfigured`, `anomaly_baseline_insufficient`, `pending_observations`, `search_console_no_property`, `ga4_not_configured`.
        - `severity`: one of `action`/`watch`/`info`/`positive` (omit to take the code's default — `info`/`positive` keep informational and good-news flags visually distinct from alarms).
        - `params`: an object holding the DETAIL (target, current, % of target). Keep detail in `params`, **NOT baked into the code** — write `{"code":"cpa_over_target","params":{"cpa":15200}}`, never a slug like `goal_cpa_off_track`.
        - For a finding outside the vocabulary use `{code:"custom", severity, label}` where `label` is a string or a `{"ja":…,"en":…}` map. Unknown non-`custom` codes are rejected. (A legacy bare-string flag still works but renders without the drill-down — prefer the object form.)
        - Example: `[{"code":"cpa_over_target","params":{"cpa":15200}}, {"code":"cv_below_target","params":{"cv":18}}]`
-   - `narrative`: a short text summary of overall Goal health (on-track / at-risk / off-track)
+   - `narrative`: the overall Goal-health verdict (on-track / at-risk / off-track) and what you propose next, **at most 400 characters** — the tool refuses a longer one rather than truncating it (a sentence cut in half is worse than a long one). Do not restate the figures and do not list the findings here: numbers belong in `totals`, findings in `flags`.
 
    This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.
 
