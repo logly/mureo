@@ -202,22 +202,12 @@ def test_reserved_names_are_exactly_the_builtin_tool_names() -> None:
         t.name for t in mod._ALL_TOOLS if t.name not in mod._PLUGIN_NAMES
     )
     assert served_builtins == mod._BUILTIN_NAMES
-    # Every family that is served is reserved — the union the derivation
-    # replaced, plus the family (#680) it omitted, and nothing else.
-    assert mod._BUILTIN_NAMES == (
-        mod._GOOGLE_ADS_NAMES
-        | mod._META_ADS_NAMES
-        | mod._SEARCH_CONSOLE_NAMES
-        | mod._ROLLBACK_NAMES
-        | mod._BATCH_NAMES
-        | mod._CHANGE_IMPORT_NAMES
-        | mod._ANALYSIS_NAMES
-        | mod._MUREO_CONTEXT_NAMES
-        | mod._ANALYTICS_REGISTRY_NAMES
-        | mod._LEARNING_NAMES
-        | mod._CREATIVE_STUDIO_NAMES
-        | mod._LEARNING_PREFLIGHT_NAMES
-    )
+    # Deliberately NOT also asserted against a hand-written union of the
+    # per-family name sets: that would restore, inside the test, the second
+    # answer to "which names are built-in" that #680 removed — a new family
+    # would fail this test with the production code correct, and the fix
+    # would again be "add one term to a union". The equivalence (old union |
+    # _LEARNING_PREFLIGHT_NAMES == this set) was a one-time migration check.
 
 
 @pytest.mark.unit
