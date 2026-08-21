@@ -305,10 +305,10 @@
    * this returns is rendered AS FIGURES — so it is deliberately narrow:
    * only the canonical vocabulary above, only finite numbers. Anything else
    * (a formatted string, a per-platform breakdown, a metric mureo has no
-   * label for) belongs to the narrative and is left there. Reports already
-   * on disk state no structure at all and get an empty list — they stay
-   * readable as the prose they are, rather than being reformatted by
-   * guesswork.
+   * label for) is not a headline figure — `reportSecondaryStats` below
+   * shows it as what it is instead (#670). Reports already on disk state no
+   * structure at all and get an empty list — they stay readable as the
+   * prose they are, rather than being reformatted by guesswork.
    *
    * Two field names are read because the product uses two for the same
    * thing: `mureo_state_report_set` documents `kpis (per-platform / totals
@@ -318,30 +318,138 @@
    * figures.
    */
   function reportSummaryTotals(report) {
-    const obj = report && typeof report === "object" ? report : null;
-    if (!obj) return [];
-    let source = null;
-    [obj.kpis, obj.totals].forEach(function (candidate) {
-      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
-        source = candidate;
-      }
-    });
+    let source = reportTotalsBlock(report);
     if (!source) return [];
-    if (
-      source.totals &&
-      typeof source.totals === "object" &&
-      !Array.isArray(source.totals)
-    ) {
-      source = source.totals;
-    }
+    if (isPlainObject(source.totals)) source = source.totals;
     const out = [];
     REPORTS_SUMMARY_TOTAL_KEYS.forEach(function (key) {
       const value = source[key];
-      if (typeof value === "number" && isFinite(value)) {
-        out.push({ key: key, value: value });
-      }
+      if (isHeadlineFigure(key, value)) out.push({ key: key, value: value });
     });
     return out;
+  }
+
+  function isPlainObject(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+
+  // The block the view reads a report's headline figures FROM, or null.
+  // Both spellings the schema uses are read, `totals` wins where a report
+  // carries both. Factored out of reportSummaryTotals so the secondary row
+  // below cannot drift from what the headline row looked at — "what the
+  // headline row did NOT render" is only a true description while both
+  // start from the same object.
+  function reportTotalsBlock(report) {
+    const obj = report && typeof report === "object" ? report : null;
+    if (!obj) return null;
+    let source = null;
+    [obj.kpis, obj.totals].forEach(function (candidate) {
+      if (isPlainObject(candidate)) source = candidate;
+    });
+    return source;
+  }
+
+  // Did the headline row render this pair? (Canonical name, real number.)
+  function isHeadlineFigure(key, value) {
+    return (
+      REPORTS_SUMMARY_TOTAL_KEYS.indexOf(key) !== -1 &&
+      typeof value === "number" &&
+      isFinite(value)
+    );
+  }
+
+  // A value the secondary row can print as it stands. Strings, finite
+  // numbers and booleans stringify losslessly; anything else does not have
+  // a one-line rendering that is still the author's own.
+  function isPrintableStat(value) {
+    if (typeof value === "string" || typeof value === "boolean") return true;
+    return typeof value === "number" && isFinite(value);
+  }
+
+  /**
+   * What a report stated that the headline row did not render (#670).
+   *
+   * Returns `{entries: [{path, value}], hidden}`. #662 chose to STORE keys
+   * outside the canonical six rather than refuse them — a goal review
+   * carries a CVR, a per-goal target, a per-platform split, and refusing
+   * those sends exactly that content back into the paragraph the length
+   * bound exists to empty. Nothing read them back, so they were accepted on
+   * write and invisible for good. This is the read half of that choice.
+   *
+   * Two rules make it safe to show content mureo has no vocabulary for:
+   *
+   *   • the value is returned UNTOUCHED. The caller prints it as written —
+   *     "0.21%" is the author's own rendering of a ratio and 30000 is a
+   *     target in the account's currency, and a separator, a unit or a
+   *     percentage heuristic applied to either states a number the report
+   *     never wrote.
+   *   • what cannot be shown flat is COUNTED in `hidden`, never dropped. A
+   *     per-platform split is flattened one level (`google_ads · spend`) —
+   *     which is also where a string figure the write guard never reached
+   *     becomes visible — and anything deeper, or a list, is reported as
+   *     existing so the operator knows to open the report itself.
+   *
+   * A key with no value (`null` / absent) is not an entry: nothing was
+   * written there to be hidden.
+   */
+  function reportSecondaryStats(report) {
+    const out = { entries: [], hidden: 0 };
+    const outer = reportTotalsBlock(report);
+    if (!outer) return out;
+    const headline = isPlainObject(outer.totals) ? outer.totals : outer;
+    collectReportStats(outer, outer === headline, headline, out);
+    return out;
+  }
+
+  // One totals block. Keys keep the author's order — a report's own stats
+  // have no canonical order to sort them into.
+  function collectReportStats(block, isHeadline, headline, out) {
+    Object.keys(block).forEach(function (key) {
+      const value = block[key];
+      if (value == null) return;
+      if (isHeadline && isHeadlineFigure(key, value)) return;
+      if (isPrintableStat(value)) {
+        out.entries.push({ path: [key], value: value });
+        return;
+      }
+      if (isPlainObject(value)) {
+        // The unwrapped headline block, reached from the outer one: its
+        // own non-figure entries belong at the same level as the report's.
+        if (value === headline) {
+          collectReportStats(value, true, headline, out);
+        } else {
+          collectReportStatChildren(key, value, out);
+        }
+        return;
+      }
+      out.hidden += 1;
+    });
+  }
+
+  // One level down: a per-platform block's own values. Deeper than this is
+  // a tree, and a tree is read in the report, not in a row of chips.
+  function collectReportStatChildren(parent, block, out) {
+    Object.keys(block).forEach(function (key) {
+      const value = block[key];
+      if (value == null) return;
+      if (isPrintableStat(value)) {
+        out.entries.push({ path: [parent, key], value: value });
+        return;
+      }
+      out.hidden += 1;
+    });
+  }
+
+  // The label for a stat's path. No new vocabulary is invented for a key
+  // mureo has no label for: the same snake_case humanizer the flag params
+  // use, one segment at a time.
+  function reportStatLabel(path) {
+    if (!Array.isArray(path)) return "";
+    return path
+      .map(function (segment) {
+        return humanizeFlagWords(segment);
+      })
+      .join(" · ");
   }
 
   // Map a free-form flag (string) to a chip kind. Defensive: any field may
@@ -396,6 +504,8 @@
     formatKpi: formatKpi,
     REPORTS_SUMMARY_TOTAL_KEYS: REPORTS_SUMMARY_TOTAL_KEYS,
     reportSummaryTotals: reportSummaryTotals,
+    reportSecondaryStats: reportSecondaryStats,
+    reportStatLabel: reportStatLabel,
   };
 
   // Browser: the global the `<script>` tag exists to publish.

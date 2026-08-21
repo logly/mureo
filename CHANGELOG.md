@@ -51,6 +51,40 @@
   to `workspace_not_collected`. The interim key is not read by OSS and is not
   kept alive for compatibility.
 
+- **What a report stated outside mureo's six metrics is now on screen**
+  (#670). #662 chose to *accept* those keys rather than refuse them — a goal
+  review carries a CVR, a per-goal target, a per-platform split, and refusing
+  them sends exactly that content back into the paragraph the length bound
+  exists to empty. Nothing rendered them. `{"cvr": "0.21%",
+  "goal_target_cpa": 30000}` was written successfully and was then invisible
+  everywhere, permanently: the write side said so in its own docstring, so the
+  agent was not misled — the operator was, having no way to discover the
+  content existed at all. #659's shape, one field over.
+
+  The client detail view's *Latest report* now renders those entries directly
+  below the headline figures, as small `key value` chips labelled as this
+  report's own statement. Shaped nothing like the figure row above it,
+  because they are not the same claim: that row states mureo's canonical
+  metrics for the window, this one states what the report's author wrote.
+
+  **The value is printed exactly as written.** No thousands separator, no
+  currency symbol, no fraction-vs-percentage heuristic — those all answer a
+  question about a metric mureo knows the unit of, and this row exists
+  precisely for the ones it does not. `"0.21%"` renders as `0.21%` and
+  `30000` as `30000`; re-deriving either would put a number on screen that
+  the report never wrote.
+
+  A per-platform split is flattened one level (`google ads · spend`), which
+  also lifts a string figure nested under a platform key
+  (`{"google_ads": {"spend": "¥773,957"}}`) out of invisibility — the write
+  guard only ever read the flat headline dict, and that stays true. Anything
+  deeper, or a list, is *counted* (`+2 more entries in the report`) rather
+  than dropped: content accepted on write and then silently discarded is the
+  whole of what this issue is about.
+
+  The headline row is untouched, and a report that stated nothing outside the
+  vocabulary renders no extra block at all.
+
 ### Changed
 
 - **A report has to state its structure now** (#662). The per-client report

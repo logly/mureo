@@ -3123,6 +3123,56 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   min-width: 0;
 }
 
+/* The report's OWN statistics (#670), below the headline row: a CVR, a
+   per-goal target, a per-platform split — keys the writer accepts on
+   purpose (#662) and that nothing used to render. Small tagged pairs, not
+   KPI cells, because the row above states mureo's metrics for the window
+   and these are the report's own words, printed exactly as written. */
+.report-latest-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 10px;
+  min-width: 0;
+}
+
+.report-stats-title {
+  font-size: 11px;
+  font-weight: 640;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.report-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-soft);
+  min-width: 0;
+}
+
+.report-stat-key {
+  color: var(--muted);
+}
+
+.report-stat-value {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.report-stat-more {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
 .report-latest-narrative {
   margin: 10px 0 0;
   font-size: 14px;
