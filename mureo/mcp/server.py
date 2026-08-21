@@ -37,10 +37,8 @@ comparison; multiple tests pin the contract.
 
 from __future__ import annotations
 
-import inspect
 import logging
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import jsonschema
@@ -56,9 +54,23 @@ if TYPE_CHECKING:
     from mureo.core.policy import PolicyDecision, PolicyGate
     from mureo.mcp.tool_provider import MCPToolProvider
 
-from mureo.core.control_flow import STOP_EXCEPTIONS
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp._helpers import is_error_result
+from mureo.mcp._plugin_declarations import (
+    _register_bridged_money_declarations,
+    _register_plugin_bid_declarations,
+    _register_plugin_budget_declarations,
+    _register_plugin_pattern_fallbacks,
+    _register_plugin_read_only_hints,
+)
+from mureo.mcp._result_decorations import (
+    _capture_plugin_reversal,
+    _maybe_append_batch_reminder,
+    _maybe_append_learning_reset_notice,
+    _maybe_append_plugin_strategy_reminder,
+    _maybe_append_strategy_reminder,
+    _refuse_text_content,
+)
 from mureo.mcp.exclusion_preflight import (
     append_notice as append_exclusion_impact_notice,
 )
@@ -76,7 +88,6 @@ from mureo.mcp.plugin_semantics import (
     record_mutation_action_log,
 )
 from mureo.mcp.tool_provider import (
-    MCPReversibleToolProvider,
     collect_plugin_tools,
     plugin_provider_name,
     plugin_source,
@@ -388,254 +399,6 @@ _PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
     for name, sem in _PLUGIN_SEMANTICS.items()
     if sem.throttle is not None
 }
-
-
-def _register_plugin_budget_declarations(
-    semantics: dict[str, ToolSemantics],
-) -> None:
-    """Publish plugin budget declarations to the StrategyPolicyGate (#414).
-
-    The gate's built-in key scan only knows the Google/Meta argument
-    spellings, so a plugin tool's budget was invisible to it — every
-    ``## Guardrails`` cap was silently unenforced on that platform. A
-    plugin now declares its keys in standard MCP metadata and this wires
-    them into the gate's registry, so the ONE built-in gate enforces them
-    (no per-plugin hand-rolled gate). Best-effort: a registry failure must
-    not take the server down.
-    """
-    from mureo.policy.declarations import register_budget_declaration
-
-    for name, sem in semantics.items():
-        if sem.budget is None:
-            continue
-        try:
-            register_budget_declaration(name, sem.budget)
-        except Exception:  # noqa: BLE001 — never break startup on a hint
-            logger.warning(
-                "could not register budget declaration for plugin tool '%s'",
-                name,
-                exc_info=True,
-            )
-
-
-def _register_plugin_bid_declarations(
-    semantics: dict[str, ToolSemantics],
-) -> None:
-    """Publish plugin bid declarations to the StrategyPolicyGate.
-
-    The bid twin of :func:`_register_plugin_budget_declarations`: the gate's
-    built-in bid scan only knows the Meta/Google spellings, so a plugin bid
-    tool's ``bid_amount`` / ``cpc_bid`` cap was silently unenforced. A plugin
-    declares its keys in standard MCP metadata and this wires them into the
-    gate's registry, so the ONE built-in gate enforces them. Best-effort: a
-    registry failure must not take the server down.
-    """
-    from mureo.policy.declarations import register_bid_declaration
-
-    for name, sem in semantics.items():
-        if sem.bid is None:
-            continue
-        try:
-            register_bid_declaration(name, sem.bid)
-        except Exception:  # noqa: BLE001 — never break startup on a hint
-            logger.warning(
-                "could not register bid declaration for plugin tool '%s'",
-                name,
-                exc_info=True,
-            )
-
-
-def _register_plugin_read_only_hints(
-    semantics: dict[str, ToolSemantics],
-) -> None:
-    """Publish plugin ``readOnlyHint`` declarations to the pure policy layer.
-
-    The learning-period pre-flight (:mod:`mureo.policy.learning_reset`) has to
-    answer "is this call a mutation?" for a plugin/bridged tool too — a plugin
-    or bridge can register its own learning rules under a ``tool_prefix``, so
-    those names really do reach it. Without the declaration it had only the
-    NAME to go on and was wrong in both directions: a read-shaped name that
-    declares ``readOnlyHint=False`` got no learning-period notice and no
-    ``block_learning_resets`` refusal, and a mutation-shaped name that
-    declares ``readOnlyHint=True`` risked a spurious one. Only tools that
-    actually declared a hint are registered — absence must stay "undeclared",
-    never "read". Best-effort: a registry failure must not take the server
-    down.
-    """
-    from mureo.policy.declarations import register_read_only_hint
-
-    for name, sem in semantics.items():
-        if sem.read_only_hint is None:
-            continue
-        try:
-            register_read_only_hint(name, sem.read_only_hint)
-        except Exception:  # noqa: BLE001 — never break startup on a hint
-            logger.warning(
-                "could not register the readOnlyHint for plugin tool '%s'",
-                name,
-                exc_info=True,
-            )
-
-
-def _register_plugin_pattern_fallbacks(
-    semantics: dict[str, ToolSemantics],
-) -> None:
-    """Mark MUTATING plugin tools for the gate's pattern fallback.
-
-    The two registrations above only help a plugin that CAN declare. A bridged
-    tool surface — someone else's tool definitions forwarded verbatim, e.g. from
-    a manifest snapshot — carries no mureo ``_meta`` at all, so it declares
-    nothing and every ``## Guardrails`` budget/bid cap was silently unenforced
-    for its mutations. Registering the mutating tools here lets the gate fall
-    back to the best-effort key-shape scan
-    (:mod:`mureo.policy.pattern_scan`) for the channels no declaration covers.
-
-    Reads are deliberately excluded — they move no money, so scanning their
-    arguments could only produce false denials — and "read" is decided by
-    DECLARATION first, NAME second: the same precedence
-    :func:`~mureo.mcp.plugin_semantics.derive_semantics` itself uses, so the
-    two surfaces cannot answer "is this a read?" differently.
-
-    - ``annotations.readOnlyHint``, when the tool declares it. An explicit
-      ``False`` is a plugin author saying "this moves money"; overturning it
-      with a name guess silently dropped that tool's budget/bid cap, which is
-      the one failure this ordering exists to prevent. A declaration is
-      evidence, a name shape is a guess.
-    - the tool NAME, via the shared read vocabulary in
-      :mod:`mureo.core.tool_names`, single-sourced so the surfaces that use it
-      cannot drift — consulted ONLY for a tool that declared nothing, which is
-      the case the fallback was introduced for: a manifest snapshot carries no
-      annotations at all, so a bridged read whose arguments carry a numeric
-      budget-shaped FILTER would otherwise be refused outright. The error
-      costs are asymmetric there: platform mutations are consistently
-      verb-named (``create_`` / ``update_`` / ``delete_`` / ``set_``), so a
-      read-shaped name is almost never a mutation, whereas a mutation-shaped
-      name that is really a read costs only a wasted scan of arguments that
-      carry no budget.
-
-    The matcher here is the STRICT one, :func:`~mureo.core.tool_names.
-    is_read_only_tool_name`, and that is deliberate. The rollback planner uses
-    a looser sibling that also reads a verb at the END of a name, because
-    mureo's own tools are named that way; this gate does not, because it
-    decides about PLUGIN tools whose names mureo does not choose, and a
-    mutation admitted here silently loses its ``## Guardrails`` cap. Do not
-    "unify" the two — see that sibling's docstring for the argument.
-
-    For semantics produced by ``derive_semantics`` the undeclared read-shaped
-    case already arrives as ``mutating=False``, so the name check below is a
-    belt-and-braces guard for any semantics map NOT built by that function
-    rather than a load-bearing step on the normal path.
-
-    Annotation coverage on a real bridged surface is known rather than assumed
-    (#517): of 85 tools on one Amazon manifest, 83 declare ``readOnlyHint``
-    and 2 omit it — good enough to lead with the declaration, not good enough
-    to drop the name fallback.
-
-    Best-effort: a registry failure must not take the server down.
-    """
-    from mureo.core.tool_names import is_read_only_tool_name
-    from mureo.policy.pattern_scan import register_pattern_fallback_tool
-
-    for name, sem in semantics.items():
-        if not sem.mutating:
-            continue
-        # The name is a fallback, not an override: it decides only for a tool
-        # that declared no readOnlyHint at all.
-        if sem.read_only_hint is None and is_read_only_tool_name(name):
-            continue
-        try:
-            register_pattern_fallback_tool(name)
-        except Exception:  # noqa: BLE001 — never break startup on a hint
-            logger.warning(
-                "could not register the guardrail pattern fallback for "
-                "plugin tool '%s'",
-                name,
-                exc_info=True,
-            )
-
-
-def _declares_from_bridged_table(
-    name: str,
-    semantics: dict[str, ToolSemantics],
-    dispatch: dict[str, MCPToolProvider],
-) -> ToolSemantics | None:
-    """``name``'s semantics when mureo's bridged table may declare it, else None.
-
-    Three conditions, and the third is the one that matters. Tool names are
-    keyed WITHOUT plugin identity everywhere in this module, and the Amazon
-    manifest's names (``campaign_management-update_campaign``, …) are generic
-    enough that another provider could plausibly ship the same string. Hanging
-    exact money paths off a bare name would then point Amazon's schema at a
-    different platform's arguments, so the owning distribution is checked
-    against the tool's actual provider instance — the same breadcrumb the
-    audit trail attributes calls with.
-    """
-    from mureo.amazon_ads.provider import AMAZON_SOURCE_DISTRIBUTION
-
-    sem = semantics.get(name)
-    if sem is None or not sem.mutating:
-        return None
-    if plugin_source(dispatch.get(name)) != AMAZON_SOURCE_DISTRIBUTION:
-        return None
-    return sem
-
-
-def _register_bridged_money_declarations(
-    semantics: dict[str, ToolSemantics],
-    dispatch: dict[str, MCPToolProvider],
-) -> None:
-    """Publish mureo's OWN money declarations for a bridged surface (#527).
-
-    The two registrations above only reach a plugin that CAN declare, and the
-    pattern fallback below is best-effort by construction. A bridged surface
-    is neither: its tools are someone else's, so it declares nothing, yet its
-    money paths are *known* — enumerated from a real manifest and held in
-    :mod:`mureo.amazon_ads.money_paths`. Registering them here makes the known
-    part of that surface enforced EXACTLY, through the very registry a
-    declaring plugin uses, while the best-effort scan keeps running underneath
-    as a floor (see ``mureo.policy.declarations.raise_to_scan_floor``).
-
-    Only for a tool that is present, MUTATING and supplied by the Amazon
-    bridge (:func:`_declares_from_bridged_table`), and only when it declared
-    nothing itself: a plugin's own ``_meta`` always wins over mureo's table —
-    the tool author knows their vocabulary better than a snapshot does.
-    Best-effort: a registry failure must not take the server down, and neither
-    must a table that fails to import.
-    """
-    try:
-        from mureo.amazon_ads.money_paths import BID_DECLARATIONS, BUDGET_DECLARATIONS
-    except Exception:  # noqa: BLE001 — never break startup on a table
-        logger.warning("could not load the bridged money declarations", exc_info=True)
-        return
-    from mureo.policy.declarations import (
-        register_bid_declaration,
-        register_budget_declaration,
-    )
-
-    for name, budget in BUDGET_DECLARATIONS.items():
-        sem = _declares_from_bridged_table(name, semantics, dispatch)
-        if sem is None or sem.budget is not None:
-            continue
-        try:
-            register_budget_declaration(name, budget)
-        except Exception:  # noqa: BLE001 — never break startup on a hint
-            logger.warning(
-                "could not register the bridged budget declaration for '%s'",
-                name,
-                exc_info=True,
-            )
-    for name, bid in BID_DECLARATIONS.items():
-        sem = _declares_from_bridged_table(name, semantics, dispatch)
-        if sem is None or sem.bid is not None:
-            continue
-        try:
-            register_bid_declaration(name, bid)
-        except Exception:  # noqa: BLE001 — never break startup on a hint
-            logger.warning(
-                "could not register the bridged bid declaration for '%s'",
-                name,
-                exc_info=True,
-            )
 
 
 _register_plugin_budget_declarations(_PLUGIN_SEMANTICS)
@@ -1003,193 +766,6 @@ def _evaluate_policy_gates(
         if not decision.allowed:
             return decision
     return None
-
-
-def _refuse_text_content(name: str, decision: PolicyDecision) -> list[Any]:
-    """Build the TextContent payload returned to the agent when a
-    policy gate refuses a tool call. Kept here so the message format
-    has one source of truth.
-    """
-    from mcp.types import TextContent
-
-    reason = decision.reason.strip() or "(no reason provided by the policy gate)"
-    body = (
-        f"Tool call refused by policy gate.\n"
-        f"  Tool: {name}\n"
-        f"  Reason: {reason}\n"
-    )
-    return [TextContent(type="text", text=body)]
-
-
-def _maybe_append_batch_reminder(result: list[Any], *, is_mutation: bool) -> list[Any]:
-    """Warn, on a mutation, that a batch has been open too long (#549).
-
-    Push, not pull. ``mureo_batch_status`` reports the same staleness, but a
-    caller who FORGOT the batch is open is by definition not asking — and every
-    mutation dispatched meanwhile is another entry silently joining a change
-    set it does not belong to. So the warning rides out on the mutation itself,
-    the same soft-enforcement shape as the STRATEGY.md reminder.
-
-    Re-emitted per mutation rather than latched once per process: each one adds
-    a member, so each one is a new instance of the problem, not a repeat of the
-    old one. Never refuses, never replaces the tool's content, never raises;
-    suppress with ``MUREO_DISABLE_BATCH_REMINDER=1``.
-    """
-    if not is_mutation:
-        # Reads add no members, so a read is not another instance of the
-        # problem — warning on one would only cost context.
-        return result
-
-    from mcp.types import TextContent
-
-    from mureo.mcp._handlers_batch import maybe_build_batch_reminder
-
-    warning = maybe_build_batch_reminder()
-    if warning is None:
-        return result
-    return [*result, TextContent(type="text", text=warning)]
-
-
-def _maybe_append_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
-    """Best-effort soft-enforcement of the "strategy-driven" claim.
-
-    For built-in mutating tools, append a short TextContent reminder
-    listing STRATEGY.md section titles so the agent re-surfaces the
-    operator's declared strategy after every mutation. Never refuses,
-    never replaces the tool's content. Skipped when:
-
-    - ``MUREO_DISABLE_STRATEGY_REMINDER=1`` env var is set
-    - the tool is not a built-in mutating tool (read-only, discover,
-      plugin tools all skip)
-    - STRATEGY.md is empty / missing / unreadable
-
-    See :mod:`mureo.core.strategy_reminder` for the classification and
-    builder logic.
-    """
-    # Imported at the dispatcher's hot-path top rather than lazily on
-    # every call — review round 2 perf nit. TextContent is already in
-    # the module via TYPE_CHECKING; maybe_build_reminder is cheap.
-    from mcp.types import TextContent
-
-    from mureo.core.strategy_reminder import maybe_build_reminder
-
-    reminder = maybe_build_reminder(name)
-    if reminder is None:
-        return result
-    return [*result, TextContent(type="text", text=reminder)]
-
-
-def _maybe_append_plugin_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
-    """Plugin counterpart of :func:`_maybe_append_strategy_reminder`.
-
-    Called only for a successful *mutating* plugin tool (the dispatch branch
-    has already consulted ``derive_semantics``), so the reminder fires for a
-    plugin mutation exactly as it does for a built-in one — closing the
-    strategy-reminder guardrail gap. Same soft-enforcement contract: never
-    refuses, never replaces the tool's content, best-effort.
-    """
-    from mcp.types import TextContent
-
-    from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
-
-    reminder = maybe_build_reminder_for_plugin(name)
-    if reminder is None:
-        return result
-    return [*result, TextContent(type="text", text=reminder)]
-
-
-async def _capture_plugin_reversal(
-    provider: MCPToolProvider, name: str, arguments: dict[str, Any]
-) -> dict[str, Any] | None:
-    """Best-effort runtime-correct reversal capture for a plugin mutation (#327).
-
-    Mirrors :func:`mureo.mcp.native_reversal.capture_before_state`: when the
-    provider opts into :class:`MCPReversibleToolProvider`, call its
-    ``capture_reversal`` **before** the mutation so it can read prior state and
-    return a reversal carrying the actual entity id + prior value — something a
-    static tool-definition ``meta`` reversal can never express.
-
-    Returns ``None`` (and the caller falls back to the static ``meta``
-    reversal) when the provider does not opt in, when there is no STATE.json in
-    cwd to record into (so we skip the read entirely), when the call fails, or
-    when the returned value is not a well-formed ``{operation: str, params:
-    dict}``. A capture *failure* must not block the mutation, so it never
-    raises one.
-
-    A **stop is not a failure** — :data:`mureo.core.control_flow
-    .STOP_EXCEPTIONS` (cancellation, KeyboardInterrupt, SystemExit) is
-    re-raised. mureo's MCP server
-    runs each tool call in a task and cancels it when the client goes away, so
-    degrading that to "no reversal" would swallow the caller's own cancellation
-    and let the dispatch carry straight on into the mutation, for a caller that
-    is no longer waiting for the result — and would do so while the provider's
-    capture was still unwinding (:mod:`mureo.amazon_ads.batch` gives a capture
-    a session of its own). Same rule as
-    :func:`mureo.mcp.tools_analytics_registry._handle_analytics_run` and
-    :meth:`mureo.amazon_ads.bridge.AmazonAdsBridge.capture_reversal`.
-    """
-    if not isinstance(provider, MCPReversibleToolProvider):
-        return None
-    capture = getattr(provider, "capture_reversal", None)
-    if not inspect.iscoroutinefunction(capture):
-        return None
-    # No STATE.json ⇒ nothing will be recorded; skip the (network) read.
-    if not (Path.cwd() / "STATE.json").is_file():
-        return None
-    try:
-        reversal = await capture(name, dict(arguments))
-    except STOP_EXCEPTIONS:
-        raise
-    except BaseException:  # noqa: BLE001 — capture must never block the mutation
-        logger.warning(
-            "plugin capture_reversal failed for %r; falling back to static "
-            "meta reversal",
-            name,
-            exc_info=True,
-        )
-        return None
-    if (
-        isinstance(reversal, dict)
-        and isinstance(reversal.get("operation"), str)
-        and isinstance(reversal.get("params"), dict)
-    ):
-        return reversal
-    return None
-
-
-def _maybe_append_learning_reset_notice(
-    name: str, arguments: dict[str, Any], result: list[Any]
-) -> list[Any]:
-    """Append the #548 learning-period notice to a reset-triggering call.
-
-    Fires ONLY when :func:`mureo.policy.learning_reset.classify_change` says
-    the call restarts an automated bid strategy's learning period — a small,
-    evidence-backed set — so an ordinary read or a rename appends nothing. An
-    UNKNOWN verdict appends nothing either: it would fire on every mutation of
-    every platform mureo has no trigger list for, and a notice that always
-    fires is a notice nobody reads (the pre-flight tool still reports UNKNOWN
-    honestly when asked).
-
-    This runs AFTER the call, so for the call it rides on it is a record, not
-    a veto — MCP gives mureo no interposed confirmation step. What it buys is
-    the NEXT change in a troubleshooting sequence: the agent now knows the
-    campaign has just re-entered learning. The before-the-change surfaces are
-    ``mureo_learning_reset_preflight`` and the ``## Guardrails`` refusal.
-
-    Best-effort and never raises: a notice must not break a tool call.
-    """
-    try:
-        from mcp.types import TextContent
-
-        from mureo.policy.learning_reset import load_preflight, preflight_notice
-
-        notice = preflight_notice(load_preflight(name, arguments))
-        if notice is None:
-            return result
-        return [*result, TextContent(type="text", text=notice)]
-    except Exception:  # noqa: BLE001 — never let a notice break a tool call
-        logger.debug("learning-reset notice failed for %r", name, exc_info=True)
-        return result
 
 
 # Once-per-process latch: the stale-version banner is appended to the first
