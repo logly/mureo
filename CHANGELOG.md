@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-21
+
 ### Added
 
 - **A workspace-level collection failure has a home in the schema** (#661).
