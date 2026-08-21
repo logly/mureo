@@ -544,6 +544,51 @@ display — write one sentence an operator can act on, not a stack trace.
 Recording a failure does not re-stamp `last_synced_at`: a collection that
 failed is not a sync.
 
+**When the WHOLE workspace could not be collected, say that instead.**
+`workspace_not_collected` — at the document ROOT, not inside `platforms` —
+records why a collection died *before any platform was reached*: no
+credentials to load, the workspace could not be opened, the run never
+started.
+
+```json
+"workspace_not_collected": {
+  "attempted_at": "2026-08-18T09:00:00+09:00",
+  "reason": "the workspace credentials file could not be read"
+}
+```
+
+Write it with `mureo_state_workspace_not_collected_set` — `reason` only,
+because there is no platform key and no `account_id` to give: those are
+exactly what the failed run could not resolve. On the Code `Write` path,
+write the same object at the top level of STATE.json.
+
+**Which of the two to use** turns on one question — did you get as far as a
+platform?
+
+| What happened | Write |
+|---------------|-------|
+| One platform failed; others were collected | `mureo_state_platform_not_collected_set`, once per failed platform |
+| Nothing was collected: the run died before any platform was reached | `mureo_state_workspace_not_collected_set` |
+
+They are different facts and they render as different sentences — "this
+workspace could not be collected" is not "this workspace's Meta failed".
+Never say the second when you mean the first, and in particular **never**
+invent a `platforms` entry to hold the note (an entry with a blank
+`account_id` joins with nothing) or park it in `reports` (that section is for
+analysis summaries).
+
+Recording it touches nothing else — every stored figure, and every
+per-platform note, is left exactly as it was — and it does not re-stamp
+`last_synced_at` either.
+
+**You do not have to track this one.** Unlike the per-platform note it
+retires on evidence: it stops being shown as soon as any rollup anywhere in
+the document carries a `fetched_at` later than its `attempted_at`, which is
+precisely what your next successful collection writes. Clear it anyway when
+you are there (call the tool with `reason` omitted) — a workspace whose
+platforms are advisory-only writes no rollup to prove anything, and the
+document should not go on saying something that stopped being true.
+
 **Per-period rollups:** `platforms[<p>].periods` is an optional map keyed by a
 canonical period token, each value a totals-shaped object using the SAME
 vocabulary above — so the reporting dashboard can offer a period toggle. Use

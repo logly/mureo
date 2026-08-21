@@ -62,6 +62,7 @@ from mureo.context.state import (
     set_platform_metrics,
     set_platform_not_collected,
     set_report,
+    set_workspace_not_collected,
     upsert_campaign,
 )
 from mureo.context.strategy import RAW_HEADING_TYPE, parse_strategy, write_strategy_file
@@ -478,6 +479,31 @@ async def handle_state_platform_not_collected_set(
     path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     try:
         doc = set_platform_not_collected(path, platform, account_id, reason=reason)
+    except ContextFileError as exc:
+        raise ValueError(str(exc)) from exc
+    return _json_result(_state_to_dict(doc))
+
+
+async def handle_state_workspace_not_collected_set(
+    arguments: dict[str, Any],
+) -> list[TextContent]:
+    """Record / clear why the WORKSPACE could not be collected at all (#661).
+
+    Takes no ``platform`` and no ``account_id``: a collection that died
+    before reaching any platform is the one that could not resolve them, so
+    requiring them here would make the failure unrecordable exactly when it
+    happened. An omitted (or null / blank) ``reason`` CLEARS the note — the
+    successful-collection half of the contract, which has to be reachable
+    from here or a note nothing retires outlives its failure.
+    """
+    reason = arguments.get("reason")
+    # Type-checked before it reaches the file, as the per-platform handler
+    # does: an object or a number here is a caller error, not a reason.
+    if reason is not None and not isinstance(reason, str):
+        raise ValueError("reason must be a string (omit it to clear the note)")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
+    try:
+        doc = set_workspace_not_collected(path, reason=reason)
     except ContextFileError as exc:
         raise ValueError(str(exc)) from exc
     return _json_result(_state_to_dict(doc))

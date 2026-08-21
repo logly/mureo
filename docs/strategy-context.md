@@ -778,6 +778,67 @@ this one does not re-stamp `last_synced_at`: reporting the document as
 just-synced on the strength of nothing having been collected is the same
 false statement one field over.
 
+#### Why the whole workspace was not collected
+
+`platforms[<p>].not_collected` answers *"why did THIS platform's figures not
+move"*. It cannot answer *"why is there nothing here at all"* — because
+`set_platform_not_collected` requires a platform key and an `account_id`, and
+those are precisely what a collection that died before reaching any platform
+failed to resolve. Requiring them to record that resolving them failed is
+circular; writing the note onto every existing entry says something else
+("Meta failed, and Google failed, and…"); and a workspace that has **never**
+been collected — the case where the record matters most — has no entry to
+write it onto.
+
+So the document has its own note, at the root, with the same two fields
+(#661):
+
+```json
+{
+  "version": "2",
+  "workspace_not_collected": {
+    "attempted_at": "2026-08-18T09:00:00+09:00",
+    "reason": "the workspace credentials file could not be read"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `reason` | `string` | Yes | What happened, in words an operator can act on. A note with no reason is dropped on read, exactly as the per-platform one is. Truncated for display (500 characters) |
+| `attempted_at` | `string` | No — server-stamped | ISO 8601 time of the failed collection, written by `set_workspace_not_collected` / `mureo_state_workspace_not_collected_set` |
+
+**It is not the per-platform note repeated, and must never be rendered as
+one.** "This workspace could not be collected" and "this workspace's Meta
+failed" are different facts calling for different actions, so they are
+separate fields, written by separate calls, and put on the wire under
+separate keys (`workspace_not_collected` beside the document's
+`last_synced_at`; `not_collected` inside each platform row). Setting or
+clearing one never touches the other.
+
+**Writable with nothing collected.** The absence of figures is the thing
+being reported, so `set_workspace_not_collected(path, reason=...)` takes no
+platform key and no account id, creates no platform entry, and works on a
+STATE.json that does not exist yet.
+
+**Retired by evidence, not by discipline** — #638's rule, one level up. The
+note is not shown once **any** rollup **anywhere in the document** carries a
+`fetched_at` later than its `attempted_at`: the note is about the workspace,
+so any platform being reached is proof the collection ran. The same three
+limits apply — any window counts, no collection time means no retirement, and
+an unparseable `fetched_at` (or a note with no `attempted_at`) leaves the
+question open, and open is not retired. Clearing it is still the collector's
+job (call the same writer with `reason=None` on the next success), but
+nothing an operator sees depends on that being remembered.
+
+Recording it is **not** a sync, so `last_synced_at` is not re-stamped —
+same reason as one field over.
+
+It rides on `/api/reports/summary` as `workspace_not_collected` (whitelisted
+to the two keys, truncated, `null` when there is none). Drawing it is the
+triage layer's job (#651) and is not wired into the page yet; the reader had
+to exist first.
+
 #### Triaging many clients at once
 
 Everything above is rendered inside one client's card — which is exactly the
@@ -1026,6 +1087,7 @@ so it opens its one client's report either way.
 | `last_synced_at` | `string \| null` | ISO 8601 timestamp of last sync |
 | `platforms` | `object \| null` | Per-platform state (v2) |
 | `action_log` | `array` | Log of actions with outcome tracking |
+| `workspace_not_collected` | `object \| null` | Why the whole workspace could not be collected (see above). Absent until such a failure is recorded |
 | `batches` | `array` | Declared bulk change sets (see below). Absent until the first `mureo_batch_begin` |
 | `customer_id` | `string \| null` | Legacy v1 field (kept for backward compatibility) |
 | `campaigns` | `array` | Legacy v1 field (kept for backward compatibility) |

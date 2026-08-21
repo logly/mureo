@@ -51,13 +51,17 @@ if TYPE_CHECKING:
 # adds one MORE key and this list must stay the single-workspace answer.
 # ``non_canonical_periods`` joined the base shape in #659 — it is stated for
 # every install, Agency or not, because a window nothing reads is not a
-# multi-client problem.
+# multi-client problem. ``workspace_not_collected`` joined it in #661 for the
+# same reason: a workspace that could not be collected is not a multi-client
+# problem either, and the base shape states it as ``None`` when there is
+# nothing to say.
 _LEGACY_SUMMARY_KEYS = [
     "client",
     "period",
     "periods",
     "non_canonical_periods",
     "last_synced_at",
+    "workspace_not_collected",
     "platforms",
     "platform_conflicts",
     "recent_actions",

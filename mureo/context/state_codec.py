@@ -86,6 +86,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "platforms",
                 "action_log",
                 "reports",
+                "workspace_not_collected",
                 "batches",
             }
         ),
@@ -334,7 +335,14 @@ def _parse_conversion_action_types(raw: Any) -> tuple[str, ...] | None:
 
 
 def _parse_not_collected(raw: Any) -> dict[str, Any] | None:
-    """Parse a platform's "why the figures did not move" note (#638).
+    """Parse a "why this was not collected" note.
+
+    Both of them: a platform's ``not_collected`` (#638) and the document's
+    ``workspace_not_collected`` (#661). They are the same two fields under the
+    same rules, so they are normalised by one function — two copies is how the
+    two levels would start disagreeing about what a note IS, while an operator
+    reads them side by side. What they mean, and what retires each, is what
+    differs, and that is decided by the readers, not here.
 
     Returns ``{"attempted_at": ..., "reason": ...}`` (``attempted_at`` only
     when it is a usable string), or ``None`` when there is no usable note.
@@ -455,6 +463,11 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
         platforms=platforms,
         action_log=action_log,
         reports=data.get("reports"),
+        # #661 — the document-level counterpart of a platform's note, read
+        # through the SAME normaliser so the two shapes can never drift.
+        workspace_not_collected=_parse_not_collected(
+            data.get("workspace_not_collected")
+        ),
         batches=_parse_batches(data.get("batches")),
     )
 
@@ -534,6 +547,14 @@ def render_state(doc: StateDocument) -> str:
     # so old STATE.json files don't gain a new key.
     if doc.reports is not None:
         data["reports"] = copy.deepcopy(doc.reports)
+
+    # Why the WORKSPACE could not be collected (#661): emit only when there is
+    # a note, so a document that has never had a workspace-level failure stays
+    # byte-stable, and a cleared note leaves no key behind to be read as a
+    # live one. Deliberately NOT inside ``reports`` — that section holds
+    # stage-c analysis summaries, and a failure record is not one.
+    if doc.workspace_not_collected:
+        data["workspace_not_collected"] = copy.deepcopy(doc.workspace_not_collected)
 
     # Declared batches (#549): emit only when the workspace has any, so a
     # document written before this field existed stays byte-stable on
