@@ -425,7 +425,8 @@ def build_report_summary(
       entries, each ``{timestamp, action, platform, campaign_id, summary,
       observation_due}`` — NO ``command`` / ``metrics_at_action`` /
       ``reversible_params`` (those can carry secrets or noise).
-    - ``reports``: the daily/weekly/goal summaries verbatim (or ``None``).
+    - ``reports``: the stored report summaries verbatim, keyed by kind (or
+      ``None``).
     - ``client`` / ``period``: echoed back so the caller knows what was read.
     - ``observations_due``: **only where the Agency client seam is
       declared** (#651) — ``{count, oldest_due}`` for the logged changes

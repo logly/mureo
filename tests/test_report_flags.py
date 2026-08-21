@@ -1,7 +1,7 @@
 """Tests for the canonical report-flag vocabulary and normalization.
 
-A daily / weekly / goal report's ``flags`` list drives the coloured chips on
-the read-only Reports dashboard. Historically each flag was a free-form
+A stored report's ``flags`` list drives the coloured chips on the read-only
+Reports dashboard. Historically each flag was a free-form
 snake_case string with its detail baked in
 (``adspot_4311492_invalid_traffic_spike_115740yen_0cv_ctr4.66pct``), which the
 frontend could only render verbatim — cramming detail into a tag and never

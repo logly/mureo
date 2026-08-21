@@ -422,10 +422,11 @@ class StateDocument:
     action_log: tuple[ActionLogEntry, ...] = field(
         default_factory=tuple
     )  # v2: action log
-    # Forward-ready section for stage-c analysis summaries (e.g.
-    # {"daily": ..., "weekly": ..., "goal": ...}). Round-tripped now; no
-    # skill writes it yet. Optional with a None default so old STATE.json
-    # files parse unchanged and emit no extra key.
+    # Stage-c analysis summaries, keyed by report kind
+    # (mureo.core.report_kinds.REPORT_KINDS — one kind per skill that writes
+    # a report). Round-tripped as found: a key outside the vocabulary is
+    # preserved rather than dropped. Optional with a None default so old
+    # STATE.json files parse unchanged and emit no extra key.
     reports: dict[str, Any] | None = None
     # Why THIS WORKSPACE could not be collected at all (#661), as
     # ``{"attempted_at": <ISO 8601>, "reason": <human-readable>}`` — the same

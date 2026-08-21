@@ -641,12 +641,24 @@ per-platform figures still render untouched.
 
 `reports` (top-level, optional) holds the latest agent-written summary per
 report kind so the dashboard can show it without re-running the agent:
-`reports = {"daily": {...}, "weekly": {...}, "goal": {...}}`. Each value is
+`reports = {"daily": {...}, "monthly": {...}, "pacing": {...}}`. Each value is
 `{generated_at (ISO 8601), period, totals (the headline figures, using the
 metric vocabulary above, as raw numbers), kpis (the optional per-platform
 split), flags (one entry per finding), narrative (the judgement and the
-proposal)}`. Written via the `mureo_state_report_set` tool by `daily-check` /
-`weekly-report` / `goal-review`.
+proposal)}`. Written via the `mureo_state_report_set` tool.
+
+**The kind vocabulary is closed — one kind per skill that writes a report:**
+`daily` (daily-check), `weekly` (weekly-report), `monthly` (monthly-report),
+`goal` (goal-review), `audience` (audience-review), `experiment`, `fatigue`
+(ad-fatigue-check), `pacing` (budget-pacing), `tracking` (tracking-health).
+Use the kind your own skill names and no other: the tool **refuses** anything
+outside this list, and it refuses it before your call reaches mureo, so the
+error will not explain itself. A finding that does not fit your kind belongs
+in your report's `flags`, not in a new kind.
+
+`generated_at` is what decides which report the dashboard shows as the
+latest, so it is worth stamping correctly — an undated report ranks below
+every dated one.
 
 Each part is rendered as what it is — figures as figures, flags as chips,
 narrative as prose — so the split is what makes a report readable, not a

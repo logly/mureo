@@ -1878,6 +1878,7 @@
   const humanizeReportFlag = REPORTS_FORMAT.humanizeReportFlag;
   const reportFlagKind = REPORTS_FORMAT.reportFlagKind;
   const flagSeverityRank = REPORTS_FORMAT.flagSeverityRank;
+  const latestReport = REPORTS_FORMAT.latestReport;
   const clientReportFlags = REPORTS_FORMAT.clientReportFlags;
   const buildFlagDetail = REPORTS_FORMAT.buildFlagDetail;
   const formatNumber = REPORTS_FORMAT.formatNumber;
@@ -2271,17 +2272,18 @@
     return row;
   }
 
-  // Render the "latest report" block from reports.{daily|weekly|goal}. The
-  // object is free-form; render defensively (any field may be absent).
+  // Render the "latest report" block from STATE.json's `reports` section.
+  // The object is free-form; render defensively (any field may be absent).
   function renderReportsLatest(reports) {
     const block = document.querySelector("[data-reports-latest]");
     const body = document.querySelector("[data-reports-latest-body]");
     if (!block || !body) return;
     body.textContent = "";
-    const obj = reports && typeof reports === "object" ? reports : null;
-    // Prefer daily → weekly → goal, whichever is present.
-    const report = obj && (obj.daily || obj.weekly || obj.goal) ? obj.daily || obj.weekly || obj.goal : null;
-    if (!report || typeof report !== "object") {
+    // WHICH of the stored kinds is "the latest" is decided in
+    // reports_format.js, where the JS suite can execute it (#671) — nine
+    // skills write nine kinds, and this block used to know three.
+    const report = latestReport(reports);
+    if (!report) {
       block.hidden = true;
       return;
     }

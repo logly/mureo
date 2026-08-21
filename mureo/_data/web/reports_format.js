@@ -501,12 +501,70 @@
     return "";
   }
 
-  // Flags from a client's latest report (daily → weekly → goal).
+  // The report kinds mureo writes, mirrored from mureo/core/report_kinds.py
+  // and pinned to it by tests/test_report_kind_vocabulary.py (#671). Nine
+  // skills write nine kinds; this view used to know three of them.
+  //
+  // The order is the TIE-BREAK, not a preference — see latestReport.
+  const REPORT_KINDS = [
+    "daily",
+    "weekly",
+    "monthly",
+    "goal",
+    "audience",
+    "experiment",
+    "fatigue",
+    "pacing",
+    "tracking",
+  ];
+
+  /**
+   * The most recently generated of a client's stored reports, or null.
+   *
+   * "Latest" is by `generated_at`, and that is the whole point (#671): the
+   * pick used to be a fixed `daily || weekly || goal`, so once six more
+   * kinds could be written, a monthly report filed this morning would sit
+   * behind a daily one and never appear. A kind that can be written and
+   * cannot be seen is the same failure as one the schema refuses, reached
+   * from the other side.
+   *
+   * Defensive by construction — every field of a stored report is
+   * agent-written and any of it may be absent or the wrong type:
+   *
+   *   • a missing or unparseable `generated_at` does not disqualify a
+   *     report; it ranks below every dated one, and among the undated the
+   *     REPORT_KINDS order decides. That order — not the JSON's key order —
+   *     so the pick cannot change with how a document was serialized.
+   *   • a key outside REPORT_KINDS is ignored. Strict on write (the tool's
+   *     enum), tolerant on read (it stays in the document and reads back
+   *     verbatim), but it does not compete for this block.
+   */
+  function latestReport(reports) {
+    const obj = reports && typeof reports === "object" ? reports : null;
+    if (!obj) return null;
+    let best = null;
+    let bestTime = -Infinity;
+    REPORT_KINDS.forEach(function (kind) {
+      const report = obj[kind];
+      if (!report || typeof report !== "object" || Array.isArray(report)) return;
+      const parsed =
+        typeof report.generated_at === "string"
+          ? Date.parse(report.generated_at)
+          : NaN;
+      const time = isNaN(parsed) ? -Infinity : parsed;
+      // Strictly greater: iteration is in REPORT_KINDS order, so a tie keeps
+      // the earlier kind and the fallback order is the one stated above.
+      if (best === null || time > bestTime) {
+        best = report;
+        bestTime = time;
+      }
+    });
+    return best;
+  }
+
+  // Flags from a client's latest report.
   function clientReportFlags(summary) {
-    const reports =
-      summary && typeof summary.reports === "object" ? summary.reports : null;
-    if (!reports) return [];
-    const r = reports.daily || reports.weekly || reports.goal;
+    const r = latestReport(summary && summary.reports);
     return r && Array.isArray(r.flags) ? r.flags : [];
   }
 
@@ -533,6 +591,11 @@
     flagChipKind: flagChipKind,
     reportFlagKind: reportFlagKind,
     flagSeverityRank: flagSeverityRank,
+    // The write side's vocabulary, mirrored (#671). Exported so the JS suite
+    // can drive every kind through latestReport rather than restating the
+    // list, and so the Python pin has one place to compare against.
+    REPORT_KINDS: REPORT_KINDS,
+    latestReport: latestReport,
     clientReportFlags: clientReportFlags,
     buildFlagDetail: buildFlagDetail,
     flagParamLabel: flagParamLabel,

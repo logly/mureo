@@ -1057,6 +1057,27 @@ The bound applies to new writes only. A paragraph already in STATE.json is
 read, rendered and preserved exactly as it is, including when a later run
 writes a sibling report kind.
 
+**Which kinds exist.** One per skill that writes a report: `daily`
+(daily-check), `weekly` (weekly-report), `monthly` (monthly-report), `goal`
+(goal-review), `audience` (audience-review), `experiment`, `fatigue`
+(ad-fatigue-check), `pacing` (budget-pacing) and `tracking`
+(tracking-health). `mureo_state_report_set` refuses anything else, at the
+schema layer, before a handler runs — so the list is not advice. It was
+three for a while and nine skills instructed nine kinds (#671), which meant
+six shipped skills told an agent to do something the tool refused; the
+vocabulary now lives in one place (`mureo/core/report_kinds.py`) and the
+enum, the tool description and the dashboard's pick are all generated from
+or pinned to it.
+
+The "Latest report" block shows the **most recently generated** of them, not
+a fixed favourite. A daily check runs every day, so a `daily`-first
+preference would have hidden every other kind the moment more than one could
+be written — a kind that can be written and never seen is the same failure
+as one the schema refuses, from the other side. A report already on disk
+that carries no `generated_at` still ranks (below the dated ones), and a key
+outside the vocabulary is preserved and read back verbatim; it simply does
+not compete for that block.
+
 #### What mureo did today
 
 Beside the grid, the index lists the actions mureo logged **today** across

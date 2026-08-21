@@ -370,7 +370,7 @@ def upsert_campaign(
         )
 
         # ``reports`` and ``action_log`` are likewise untouched by construction;
-        # dropping the former used to wipe the daily/weekly/goal summaries the
+        # dropping the former used to wipe the stored report summaries the
         # dashboard renders on every upsert that followed a report write.
         return replace(
             doc,
@@ -517,12 +517,18 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
     """Persist a structured analysis ``summary`` into STATE.json ``reports``.
 
     Merges ``reports[report] = summary`` into the document's ``reports``
-    section (a free-form ``{"daily": ..., "weekly": ..., "goal": ...}`` map
-    the read-only dashboard renders), re-stamps ``last_synced_at``, and writes
-    back atomically. Other report keys and the rest of the document
-    (campaigns, platforms, action_log) are preserved. When ``reports`` is
-    ``None`` (old STATE.json), it starts from ``{}`` — so the call is
-    backward compatible.
+    section (a ``{<kind>: <summary>}`` map the read-only dashboard renders),
+    re-stamps ``last_synced_at``, and writes back atomically. Other report
+    keys and the rest of the document (campaigns, platforms, action_log) are
+    preserved. When ``reports`` is ``None`` (old STATE.json), it starts from
+    ``{}`` — so the call is backward compatible.
+
+    The kind is not checked here. The vocabulary
+    (:data:`~mureo.core.report_kinds.REPORT_KINDS`) is enforced on the MCP
+    tool over this function, as an ``enum`` the schema layer applies before
+    any handler runs — the same place the caller reads what the kinds ARE.
+    A document that arrived from elsewhere carrying some other key keeps it:
+    strict on write, tolerant on read (#671).
 
     The summary must state its structure (#662): the narrative is bounded and
     a headline figure is a number — see
@@ -534,7 +540,8 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
 
     Args:
         path: STATE.json location.
-        report: Report kind key (``"daily"`` / ``"weekly"`` / ``"goal"``).
+        report: Report kind key — see
+            :data:`~mureo.core.report_kinds.REPORT_KINDS`.
         summary: The free-form summary object to store under that key.
 
     Returns:

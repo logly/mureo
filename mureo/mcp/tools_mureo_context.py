@@ -20,6 +20,7 @@ from mureo.core.metrics_windows import (
     CANONICAL_METRICS_WINDOWS,
     METRICS_WINDOW_RULE,
 )
+from mureo.core.report_kinds import REPORT_KIND_DESCRIPTION, REPORT_KINDS
 from mureo.core.report_summary import REPORT_SUMMARY_RULE
 from mureo.mcp._handlers_mureo_context import (
     handle_outcome_evaluate,
@@ -507,9 +508,9 @@ TOOLS: list[Tool] = [
         description=(
             "Atomically persist a structured analysis report summary into "
             "STATE.json's ``reports`` section so the read-only configure "
-            "dashboard can render the latest daily / weekly / goal report "
-            "without re-running the agent. ``report`` selects the kind "
-            "(daily / weekly / goal); ``summary`` carries generated_at (ISO "
+            "dashboard can render the latest report without re-running the "
+            "agent. ``report`` selects the kind — one per skill, listed "
+            "below; ``summary`` carries generated_at (ISO "
             "8601), period, totals (headline figures), flags (one entry per "
             "finding) and narrative (the judgement and the proposal). Each "
             "part is rendered as what it is — figures as figures, flags as "
@@ -525,11 +526,12 @@ TOOLS: list[Tool] = [
             "properties": {
                 "report": {
                     "type": "string",
-                    "enum": ["daily", "weekly", "goal"],
-                    "description": (
-                        "Report kind: ``daily`` (daily-check), ``weekly`` "
-                        "(weekly-report), or ``goal`` (goal-review)."
-                    ),
+                    # The vocabulary and this list are one thing (#671): the
+                    # schema layer rejects a kind before any handler runs, so
+                    # an enum narrower than what the skills instruct refuses a
+                    # skill's own instructions.
+                    "enum": list(REPORT_KINDS),
+                    "description": REPORT_KIND_DESCRIPTION,
                 },
                 "summary": {
                     "type": "object",
