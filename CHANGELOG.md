@@ -86,6 +86,40 @@
   stored paragraph still reads back verbatim, and writing today's weekly
   report is not refused because last month's daily report is a wall.
 
+### Fixed
+
+- **The two skill trees are now pinned to each other in full** (#672).
+  `skills/` and `mureo/_data/skills/` are copies of one another — the second
+  is what a `pip install` puts in front of an agent — and the pin that says
+  so was assembled from pieces. One test parametrized over a
+  `not name.startswith("_")` filter, which excluded every `_mureo-*`
+  foundation skill; the aggregate test that did cover them walked the
+  packaged tree and looked up each file in the canonical one, so it could
+  only see a file that exists on the side it walked *from*. A `references/`
+  file added to `skills/<skill>/` and forgotten in the packaged copy was
+  invisible to the whole suite — verified, not assumed: the pre-change suite
+  passed with exactly that drift injected.
+
+  `test_skill_copies_are_byte_identical` replaces both. It parametrizes over
+  the **union** of the two trees, so a skill added to one side only fails as
+  that skill rather than as a missing parametrization, and compares the union
+  of relative paths under each pair of directories, so drift is caught in
+  either direction and for every file a skill carries, not just `SKILL.md`. A
+  one-character edit to any of `_mureo-google-ads`, `_mureo-meta-ads`,
+  `_mureo-amazon-ads`, `_mureo-learning`, `_mureo-shared` or
+  `_mureo-strategy` now fails CI naming that skill.
+
+  **The one asymmetry is declared, not filtered.** `_mureo-pro-diagnosis`
+  lives only in `skills/`: it is the operator's learnable knowledge base and
+  `/learn` scaffolds their own copy under `~/.claude/skills/`, so the wheel
+  ships nothing for that write to fork from. It has never existed under
+  `mureo/_data/skills/`. It is now named once, in `_CANONICAL_ONLY_SKILLS`,
+  with the reason attached — and a separate test fails if the exemption stops
+  being true, so it cannot decay into a filter that hides real drift.
+
+  No skill file changed: the two trees were already identical everywhere they
+  overlap.
+
 ## [0.12.1] - 2026-08-21
 
 ### Fixed
