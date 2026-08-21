@@ -95,6 +95,8 @@ const MODULES = [
       "formatNumber",
       "formatKpi",
       "reportSummaryTotals",
+      "reportSecondaryStats",
+      "reportStatLabel",
     ],
     moved: [
       "reportsPeriodLabel",
@@ -113,6 +115,12 @@ const MODULES = [
       "flagParamLabel",
       "formatFlagParam",
       "reportSummaryTotals",
+      "reportSecondaryStats",
+      "reportStatLabel",
+      "reportTotalsBlock",
+      "reportTotalsBlocks",
+      "collectReportStats",
+      "collectReportStatChildren",
     ],
   },
   {

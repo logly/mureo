@@ -27,6 +27,7 @@ enforced ``narrative`` bound — is the other half of #662 and is not here.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -92,3 +93,83 @@ def test_the_figure_row_has_no_reserved_empty_cells() -> None:
     assert len(body) == 2, ".report-latest-kpis rule missing"
     block = body[1].split("}", 1)[0]
     assert "min-width: 0" in block
+
+
+# ---------------------------------------------------------------------
+# The report's own statistics, below the headline row (#670)
+# ---------------------------------------------------------------------
+#
+# The other half of #662's write-side choice. Keys outside the canonical six
+# are STORED — a goal review's CVR, its per-goal target, a per-platform split
+# — because refusing them sends that content back into the paragraph the
+# length bound exists to empty. Nothing read them, so they were accepted on
+# write and invisible for good: #659's shape one field over.
+#
+# `tests/js/reports_latest_stats.test.js` drives this against the real DOM.
+# What is pinned here is the part a rendering test would still pass without:
+# that the values are not put through a formatter on the way out.
+
+
+@pytest.mark.unit
+def test_the_secondary_stats_are_read_from_the_vocabulary_module() -> None:
+    """Same split as the headline row: dashboard.js renders, it does not
+    decide what a report stated."""
+    js = _read("dashboard.js")
+    assert "reportSecondaryStats = REPORTS_FORMAT.reportSecondaryStats" in js
+    assert "function reportSecondaryStats(" not in js
+
+
+@pytest.mark.unit
+def test_the_stats_sit_below_the_headline_row_and_above_the_flags() -> None:
+    """Below, and visibly not part of it: these are the report's own words
+    for something mureo has no headline label for."""
+    body = _function_body(_read("dashboard.js"), "function renderReportsLatest(")
+    assert "reportSecondaryStats(report)" in body
+    assert "buildReportStatsRow(stats)" in body
+    assert "report-latest-stats" in _function_body(
+        _read("dashboard.js"), "function buildReportStatsRow("
+    )
+    assert body.index("reportSummaryTotals(report)") < body.index(
+        "reportSecondaryStats(report)"
+    )
+    assert body.index("reportSecondaryStats(report)") < body.index("report.flags")
+
+
+@pytest.mark.unit
+def test_a_stat_value_is_printed_as_written() -> None:
+    """No thousands separator, no percentage heuristic, no currency: the
+    formatters here all answer a question about a metric mureo knows, and
+    applying one to a figure it does not know is how a view ends up stating
+    a number the report never wrote."""
+    helper = _function_body(_read("dashboard.js"), "function buildReportStatElement(")
+    assert "textContent = String(" in helper
+    assert "formatKpi(" not in helper
+    assert "formatNumber(" not in helper
+
+
+@pytest.mark.unit
+def test_what_cannot_be_shown_flat_is_counted_not_dropped() -> None:
+    """A silently discarded entry is the bug #670 was filed about."""
+    row = _function_body(_read("dashboard.js"), "function buildReportStatsRow(")
+    assert "stats.hidden > 0" in row
+    assert "dashboard.reports_stats_more" in row
+
+
+@pytest.mark.unit
+def test_the_stats_strings_are_localized_in_both_locales() -> None:
+    data = json.loads(_read("i18n.json"))
+    for key in ("dashboard.reports_stats_title", "dashboard.reports_stats_more"):
+        for loc in ("en", "ja"):
+            assert data[loc].get(key), f"{key} missing in {loc}"
+        assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+def test_a_stat_chip_does_not_look_like_a_headline_figure() -> None:
+    """The row above states mureo's own metrics for the window. These are
+    the report's, and they must not be read as the same thing."""
+    css = _read("app.css")
+    for selector in (".report-latest-stats {", ".report-stat {"):
+        assert selector in css, f"{selector} rule missing"
+    block = css.split(".report-stat {", 1)[1].split("}", 1)[0]
+    assert "font-size" in block
