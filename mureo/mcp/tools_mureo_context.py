@@ -1,6 +1,6 @@
 """mureo's STRATEGY.md / STATE.json MCP tool surface.
 
-Ten tools that expose mureo's context layer over MCP, so any MCP host
+Eleven tools that expose mureo's context layer over MCP, so any MCP host
 (Claude Desktop chat, claude.ai web, Codex/Cursor, …) can read and
 update STRATEGY.md / STATE.json without direct filesystem access.
 
