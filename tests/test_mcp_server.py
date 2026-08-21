@@ -253,10 +253,15 @@ class TestCallToolErrors:
 
     async def test_report_set_invalid_report_rejected_by_schema(self) -> None:
         """mureo_state_report_set with a ``report`` outside the enum is rejected
-        by the dispatcher's schema pass (#277) before any handler runs."""
+        by the dispatcher's schema pass (#277) before any handler runs.
+
+        The kind used here has to be one NO shipped skill instructs (#671) —
+        this test previously used ``monthly``, which ``monthly-report`` writes
+        on every run, and asserting the refusal was asserting the drift.
+        """
         mod = _import_server_module()
         with pytest.raises(ValueError, match="report"):
             await mod.handle_call_tool(
                 "mureo_state_report_set",
-                {"report": "monthly", "summary": {"narrative": "x"}},
+                {"report": "quarterly", "summary": {"narrative": "x"}},
             )

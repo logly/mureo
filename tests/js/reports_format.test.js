@@ -345,10 +345,99 @@ test.describe("flagSeverityRank", function () {
 });
 
 // ---------------------------------------------------------------------------
+// Which of the stored reports is "the latest" (#671)
+// ---------------------------------------------------------------------------
+
+test.describe("latestReport", function () {
+  test.it("picks the newest generated_at, whatever kind wrote it", function () {
+    // The reason this is not a fixed preference list: daily-check runs every
+    // day, so a `daily`-first ranking would hide this month's monthly report
+    // — writable, and invisible.
+    const reports = {
+      daily: { generated_at: "2026-08-01T09:00:00+09:00", narrative: "d" },
+      monthly: { generated_at: "2026-08-03T09:00:00+09:00", narrative: "m" },
+      fatigue: { generated_at: "2026-07-30T09:00:00+09:00", narrative: "f" },
+    };
+    assert.equal(fmt.latestReport(reports).narrative, "m");
+  });
+
+  test.it("accepts every kind the write side accepts", function () {
+    // One kind at a time: each must be reachable on its own, or a skill can
+    // write a report no view will ever show.
+    fmt.REPORT_KINDS.forEach(function (kind) {
+      const reports = {};
+      reports[kind] = { generated_at: "2026-08-03T09:00:00+09:00", narrative: kind };
+      assert.equal(fmt.latestReport(reports).narrative, kind);
+    });
+  });
+
+  test.it("falls back to the stated kind order when nothing is dated", function () {
+    // Reports already on disk may carry no generated_at. The tie-break is
+    // REPORT_KINDS' order, not the JSON's key order — so the pick does not
+    // depend on how a document happened to be serialized.
+    const reports = {
+      goal: { narrative: "g" },
+      weekly: { narrative: "w" },
+      daily: { narrative: "d" },
+    };
+    assert.equal(fmt.latestReport(reports).narrative, "d");
+    delete reports.daily;
+    assert.equal(fmt.latestReport(reports).narrative, "w");
+    delete reports.weekly;
+    assert.equal(fmt.latestReport(reports).narrative, "g");
+  });
+
+  test.it("prefers a dated report over an undated one", function () {
+    const reports = {
+      daily: { narrative: "d" },
+      tracking: { generated_at: "2020-01-01T00:00:00Z", narrative: "t" },
+    };
+    assert.equal(fmt.latestReport(reports).narrative, "t");
+  });
+
+  test.it("ignores an unparseable generated_at rather than throwing", function () {
+    const reports = {
+      daily: { generated_at: "last tuesday", narrative: "d" },
+      weekly: { generated_at: "2026-08-03T09:00:00+09:00", narrative: "w" },
+    };
+    assert.equal(fmt.latestReport(reports).narrative, "w");
+  });
+
+  test.it("ignores a kind outside the vocabulary", function () {
+    // Strict on write (the enum), tolerant on read — but the view still
+    // only ranks kinds it knows, so a hand-written key cannot take over the
+    // block by carrying tomorrow's date.
+    const reports = {
+      quarterly: { generated_at: "2099-01-01T00:00:00Z", narrative: "q" },
+      daily: { generated_at: "2026-08-01T09:00:00+09:00", narrative: "d" },
+    };
+    assert.equal(fmt.latestReport(reports).narrative, "d");
+  });
+
+  test.it("is null rather than throwing when there is no report", function () {
+    [null, undefined, {}, "reports", 7, [], { daily: null }, { daily: "x" }].forEach(
+      function (reports) {
+        assert.equal(fmt.latestReport(reports), null);
+      }
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Which flags a client card shows
 // ---------------------------------------------------------------------------
 
 test.describe("clientReportFlags", function () {
+  test.it("reads the flags off the latest report", function () {
+    const summary = {
+      reports: {
+        daily: { generated_at: "2026-08-01T09:00:00+09:00", flags: ["a"] },
+        pacing: { generated_at: "2026-08-04T09:00:00+09:00", flags: ["p"] },
+      },
+    };
+    assert.deepEqual(fmt.clientReportFlags(summary), ["p"]);
+  });
+
   test.it("prefers daily, then weekly, then goal", function () {
     const summary = {
       reports: {

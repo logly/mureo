@@ -86,6 +86,42 @@
   stored paragraph still reads back verbatim, and writing today's weekly
   report is not refused because last month's daily report is a wall.
 
+### Fixed
+
+- **Six shipped skills instructed a report kind the tool refused** (#671).
+  `mureo_state_report_set`'s `report` was an `enum` of three — `daily`,
+  `weekly`, `goal` — while nine skills instructed nine kinds. The dispatcher
+  runs JSON-Schema *before* the handler (#277), so an agent that followed
+  `ad-fatigue-check`, `audience-review`, `budget-pacing`, `experiment`,
+  `monthly-report` or `tracking-health` to the letter had its report refused
+  with a generic jsonschema message naming neither the skill nor the
+  alternatives. The skills exist and ship, so the enum was the side that was
+  wrong: the vocabulary is now the nine kinds mureo actually writes, one per
+  skill that writes one.
+
+  **The read side moved with it.** Extending the enum alone would have traded
+  a refusal for a silence: the "Latest report" block and the client card's
+  flags both picked `reports.daily || reports.weekly || reports.goal`, and
+  since daily-check runs every day, a monthly report filed this morning would
+  have been written successfully and never shown. The pick is now the
+  *newest* `generated_at` across the stored kinds — which is what "latest"
+  claimed all along — with the vocabulary's order as the tie-break for
+  reports that carry no usable timestamp.
+
+  **Stated once, in one place.** `mureo/core/report_kinds.py` holds the kinds
+  and the skill that writes each; the tool's `enum` and its `report`
+  description are generated from it, and the browser's copy is pinned to it,
+  the shape #659 settled on for the metrics windows. Strict on write,
+  tolerant on read: a `reports` key outside the vocabulary (a hand-written
+  STATE.json, an import, an older mureo) is preserved and read back verbatim
+  — it just does not compete for the latest-report block.
+
+  **The pin that keeps them together.** A test extracts every kind the
+  shipped SKILL.md files instruct and checks it against the schema an agent
+  is actually validated by, in both directions — so a new skill reaching for
+  a kind nothing accepts, or a vocabulary entry no skill writes, fails in CI
+  rather than in a customer's run.
+
 ## [0.12.1] - 2026-08-21
 
 ### Fixed

@@ -509,12 +509,18 @@ async def test_report_set_requires_report_and_summary(cwd_to_tmp) -> None:
 
 
 def test_report_set_schema_enum_constrains_report() -> None:
-    """The tool's inputSchema constrains ``report`` to the three known kinds
-    so the dispatcher's schema pass (#277) rejects anything else."""
+    """The tool's inputSchema constrains ``report`` to the known kinds so the
+    dispatcher's schema pass (#277) rejects anything else.
+
+    WHICH kinds those are is the vocabulary's business — and that it covers
+    every kind a shipped skill instructs is pinned in
+    ``tests/test_report_kind_vocabulary.py`` (#671)."""
+    from mureo.core.report_kinds import REPORT_KINDS
+
     mod = _import_tools()
     tool = next(t for t in mod.TOOLS if t.name == "mureo_state_report_set")
     props = tool.inputSchema["properties"]
-    assert props["report"]["enum"] == ["daily", "weekly", "goal"]
+    assert props["report"]["enum"] == list(REPORT_KINDS)
     assert props["summary"]["type"] == "object"
     assert set(tool.inputSchema["required"]) == {"report", "summary"}
 
