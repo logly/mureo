@@ -1,5 +1,31 @@
 ## [Unreleased]
 
+### Changed
+
+- **`mureo/mcp/server.py` gave up two self-contained blocks** (#678). At 1,587
+  lines it had grown past the point where one reader could hold it, and the
+  cost showed up on every recent change to it: implementers merge-conflicted
+  inside it on unrelated features, and reviewers had to re-derive which of its
+  thirty-three top-level definitions belonged to which concern.
+
+  Two clusters moved out verbatim, chosen because each is a function of its
+  arguments and holds no module state:
+
+  - `mureo/mcp/_plugin_declarations.py` — the five best-effort registrars that
+    publish a plugin's or a bridged surface's declared budget/bid/`readOnlyHint`
+    semantics to the policy registries at startup.
+  - `mureo/mcp/_result_decorations.py` — the six helpers the dispatcher wraps
+    around a tool call: the policy-gate refusal payload, the batch/strategy/
+    learning-reset notices, and the pre-mutation plugin reversal capture.
+
+  No behaviour change and no API change: every name is re-exported from
+  `mureo.mcp.server`, so `mureo.mcp.server.X` resolves exactly as before, and
+  the twelve moved functions are AST-identical to the originals. The whole
+  registry, gating, policy-gate, throttle and dispatch layer deliberately
+  stayed put — `importlib.reload(mureo.mcp.server)` is how the env-gating suite
+  re-triggers startup, and the dispatch chain is what the suites monkey-patch,
+  so both must keep living in that one module body.
+
 ### Fixed
 
 - **A tool family disabled by its env gate keeps its names reserved against

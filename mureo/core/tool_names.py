@@ -181,7 +181,7 @@ def reads_as_a_report_only_action(name: str) -> bool:
 
     Why it is not simply added to :func:`is_read_only_tool_name`. That
     predicate has three other callers and every one of them is plugin-facing
-    and safety-relevant: ``mcp.server._register_plugin_pattern_fallbacks``
+    and safety-relevant: ``mcp._plugin_declarations._register_plugin_pattern_fallbacks``
     skips the guardrail money pattern-scan for a name that reads as a read,
     ``mcp.plugin_semantics.derive_semantics`` decides whether a call is
     promoted into ``action_log`` at all, and ``policy.learning_reset``
