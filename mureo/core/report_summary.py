@@ -138,6 +138,13 @@ def validate_report_summary(summary: dict[str, Any]) -> None:
 
     Called at the write boundary, so a refusal leaves the document exactly as
     it was: this runs before ``reports[kind]`` is replaced, never after.
+
+    What this does NOT reach: a Code-mode agent hand-writing STATE.json, and
+    every whole-document path (``write_state_file``, an import, a restore).
+    That is the same split the metrics-window vocabulary draws — a document
+    that arrived from elsewhere has no notion of which report is new — and it
+    is why the skills route this write through ``mureo_state_report_set`` on
+    every host. See ``docs/strategy-context.md`` -> *The per-client report*.
     """
     _reject_overlong_narrative(summary.get("narrative"))
     _reject_unrenderable_figures(summary)

@@ -1021,6 +1021,19 @@ description an agent reads before it composes the report, and repeated in
 the refusal — the same shape #659 settled on for the metrics windows, minus
 the `enum` that prose cannot have.
 
+**What is not guarded.** The refusal is on the targeted writer
+(`set_report`, and the MCP tool over it). A Code-mode agent writing STATE.json
+directly with `Write`, and every whole-document path (`write_state_file`, an
+import, a restore), never reach `validate_report_summary` — the same split the
+metrics-window vocabulary draws above, and for the same reason: a document
+that arrived from elsewhere has no notion of which report is new, and refusing
+it would strand an operator holding state they cannot repair. So the skills
+route this write through `mureo_state_report_set` on every host, including
+Code — no hand-written alternative is offered for `reports`, and the Code
+`Write` path documented for the bulk snapshot does not describe the section.
+For anything that does hand-write it, the structure is documentation rather
+than enforcement.
+
 The bound applies to new writes only. A paragraph already in STATE.json is
 read, rendered and preserved exactly as it is, including when a later run
 writes a sibling report kind.
