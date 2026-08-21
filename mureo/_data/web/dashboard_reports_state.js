@@ -1,4 +1,4 @@
-// dashboard_reports_state.js — what both halves of the Reports view share.
+// dashboard_reports_state.js — what every module of the Reports view shares.
 //
 // Split out of dashboard_reports.js (#687), which was 2,139 lines. Three
 // things live here, and the third is the one that made the split possible:
@@ -7,20 +7,24 @@
 //      the bindings that give their functions back their original names, so
 //      every call site downstream reads exactly as it did.
 //   2. `REPORTS_KPI_LABELS`, the secondary-KPI display vocabulary.
-//   3. `REPORTS_VIEW_STATE` — the six values the view mutates as an operator
+//   3. `REPORTS_VIEW_STATE` — the ten values the view mutates as an operator
 //      moves through it: the selected window, the client on screen, which of
 //      index/detail is showing, the cached roster, whether the registry can
-//      archive, and the monotonic render generation.
+//      archive, the monotonic render generation, and the four the alert list
+//      and the health filter keep between renders (which rows are open,
+//      whether the list is showing everything, the layer as it was last
+//      built, and the health the grid is filtered to).
 //
-// Those six used to be `let`s in one closure, and they are why this file was
-// not splittable: each is written on one side of the cards/index seam and
+// Those ten used to be `let`s in one closure, and they are why this file was
+// not splittable: each is written on one side of some seam in this layer and
 // read on the other, and two `<script>` IIFEs cannot share a `let`. They can
-// share an OBJECT, because both halves hold the same reference. That is the
-// entire change — same six values, same defaults, same prose.
+// share an OBJECT, because every module holds the same reference. That is the
+// entire change — same ten values, same defaults, same prose.
 //
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
 // `window.MUREO_DASHBOARD_REPORTS_STATE`. Must load AFTER the five
-// reports_*.js modules and BEFORE dashboard_reports_cards.js.
+// reports_*.js modules and BEFORE the five dashboard_reports*.js files that
+// bind from it — dashboard_reports_report.js is the first of them.
 
 (function () {
   "use strict";
@@ -144,14 +148,14 @@
     impressions: "dashboard.reports_kpi_impressions",
   };
 
-  // The Reports view's own state, on ONE object rather than six `let`s.
+  // The Reports view's own state, on ONE object rather than ten `let`s.
   //
-  // Six variables, and every one of them is written on one side of the
-  // cards/index seam and read on the other. Two `<script>` IIFEs cannot share
-  // a `let`, so a file this size could not be cut while they were bindings;
-  // an object CAN be shared, because both halves hold the same reference.
-  // That is the whole reason this exists — the fields below are the same six
-  // values, with the same defaults and the same prose.
+  // Ten variables, and every one of them is written on one side of some
+  // seam in this layer and read on the other. Two `<script>` IIFEs cannot
+  // share a `let`, so a file this size could not be cut while they were
+  // bindings; an object CAN be shared, because every module holds the same
+  // reference. That is the whole reason this exists — the fields below are
+  // the same ten values, with the same defaults and the same prose.
   //
   // `const`, and never reassigned: `reportsRenderSeq` is the #223 generation
   // guard, and both `++state.reportsRenderSeq` and the `seq !== ...` compare

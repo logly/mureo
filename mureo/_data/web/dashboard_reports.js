@@ -25,17 +25,19 @@
 //     `let`s in one closure, which is exactly why this file could not be cut
 //     before: two `<script>` IIFEs cannot share a `let`, but they can share
 //     an object.
-//   dashboard_reports_report.js — one stored report, rendered.
-//   dashboard_reports_cards.js  — one client's card in the grid.
-//   dashboard_reports_triage.js — the alert list.
+//   dashboard_reports_report.js   — one stored report, rendered.
+//   dashboard_reports_overview.js — the roster row above the grid, and
+//     `buildPlatformSlice`, which the cards module binds from it at load.
+//   dashboard_reports_cards.js    — one client's card in the grid.
+//   dashboard_reports_triage.js   — the alert list.
 //
-// Two functions here are called from the cards module, which loads FIRST:
-// `showReportsClientDetail` and `buildPlatformSlice`, plus `renderReports`
-// itself. That file resolves them per call rather than at load, so no call
-// site in either half had to change.
+// Two functions here are called from modules that load FIRST: the cards
+// module calls `renderReports` and `showReportsClientDetail`, and the overview
+// module calls `showReportsClientDetail`. Both resolve them per call rather
+// than at load, so no call site anywhere in the layer had to change.
 //
 // Shipping shape is unchanged: a plain `<script>`-loaded file publishing one
-// global, loaded last of the five and before dashboard.js.
+// global, loaded last of the six and before dashboard.js.
 
 (function () {
   "use strict";

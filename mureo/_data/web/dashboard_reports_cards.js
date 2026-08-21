@@ -14,10 +14,11 @@
 // rather than with the index: the card is the thing that knows it needs a
 // summary.
 //
-// Three functions it calls belong to the index (`renderReports`,
-// `showReportsClientDetail`, `buildPlatformSlice`) and that file loads LAST,
-// so they are resolved per call below. Everything else it needs is bound at
-// load from the two modules ahead of it.
+// Two functions it calls belong to the index (`renderReports` and
+// `showReportsClientDetail`), and that file loads LAST, so those two are
+// resolved per call below. Everything else is bound at load from the modules
+// ahead of it — `buildPlatformSlice` included, which is
+// dashboard_reports_overview.js's and loads before this file.
 //
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
 // `window.MUREO_DASHBOARD_REPORTS_CARDS`. Loads AFTER
