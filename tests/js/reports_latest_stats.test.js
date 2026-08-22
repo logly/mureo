@@ -72,7 +72,14 @@ test.describe("the stats a report stated outside the headline vocabulary", funct
     assert.ok(!texts[1].includes("30,000"), texts[1]);
   });
 
-  test.it("sits below the headline figures and above the flags", async function () {
+  test.it("sits below the headline figures, under the conclusion", async function () {
+    // Same pin, restated for the three-tier detail view (#691): the tier now
+    // leads with the narrative, because the conclusion is what an operator
+    // opened the page for, and the flag row moved to tier (2) — it is a list
+    // of what is WRONG, which is that tier's job.
+    //
+    // What this asserts has not changed: the stated-values block comes AFTER
+    // the headline figures, so it can never be read as them.
     const page = await openDetail({
       totals: { spend: 773957, cvr: "0.21%" },
       flags: ["cpa_under_target"],
@@ -80,11 +87,13 @@ test.describe("the stats a report stated outside the headline vocabulary", funct
     });
     const classes = body(page).children.map((el) => el.className);
     assert.deepEqual(classes, [
+      "report-latest-narrative",
       "report-latest-kpis",
       "report-latest-stats",
-      "report-flags",
-      "report-latest-narrative",
     ]);
+    // The flags are still rendered — in tier (2), not dropped.
+    const flags = page.root.querySelectorAll(".report-flags");
+    assert.equal(flags.length, 1, "the flag row left the page entirely");
   });
 
   test.it("leaves the headline row exactly as it was", async function () {

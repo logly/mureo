@@ -79,17 +79,28 @@ def test_the_renderer_binds_the_vocabulary_rather_than_re_deciding_it() -> None:
 
 
 @pytest.mark.unit
-def test_the_figures_are_rendered_as_figures_above_the_flags_and_the_prose() -> None:
-    """ "Figures as figures, flags as a list, narrative as prose" — in that
-    order, because the order is what makes the block skimmable."""
+def test_the_figures_are_rendered_as_figures_under_the_conclusion() -> None:
+    """ "Conclusion as prose, figures as figures" — in that order.
+
+    #691 turned this block into tier (1) of three and led it with the
+    narrative, because the report's opening sentence is its conclusion and it
+    is what an operator opened the page for. The flag row moved to tier (2),
+    which is the tier about what is WRONG — see ``buildReportFlagRow``.
+
+    What is pinned here is unchanged in substance: the figures are rendered
+    as figures, by the same cell the client card uses.
+    """
     body = _function_body(_read_layer(), "function renderReportsLatest(")
     assert "reportSummaryTotals(report)" in body
     assert "report-latest-kpis" in body
     # Reuses the client card's KPI cell, so a figure reads the same wherever
     # this view prints one.
     assert "clientKpiCell(" in body
-    assert body.index("reportSummaryTotals(report)") < body.index("report.flags")
-    assert body.index("report.flags") < body.index("report.narrative")
+    assert body.index("report.narrative") < body.index("reportSummaryTotals(report)")
+    # The flags are still rendered, and still capped — in tier (2).
+    flag_row = _function_body(_read_layer(), "function buildReportFlagRow(")
+    assert "report-flags" in flag_row
+    assert "REPORT_FLAG_CAP" in flag_row
 
 
 @pytest.mark.unit
@@ -137,9 +148,14 @@ def test_the_secondary_stats_are_read_from_the_vocabulary_module() -> None:
 
 
 @pytest.mark.unit
-def test_the_stats_sit_below_the_headline_row_and_above_the_flags() -> None:
+def test_the_stats_sit_below_the_headline_row() -> None:
     """Below, and visibly not part of it: these are the report's own words
-    for something mureo has no headline label for."""
+    for something mureo has no headline label for.
+
+    The "and above the flags" half of this pin retired with #691, which moved
+    the flag row to tier (2). What it was protecting — that these are never
+    read as the headline figures — is the ordering below, which still holds.
+    """
     body = _function_body(_read_layer(), "function renderReportsLatest(")
     assert "reportSecondaryStats(report)" in body
     assert "buildReportStatsRow(stats)" in body
@@ -149,7 +165,6 @@ def test_the_stats_sit_below_the_headline_row_and_above_the_flags() -> None:
     assert body.index("reportSummaryTotals(report)") < body.index(
         "reportSecondaryStats(report)"
     )
-    assert body.index("reportSecondaryStats(report)") < body.index("report.flags")
 
 
 @pytest.mark.unit
