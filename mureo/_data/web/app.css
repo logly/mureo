@@ -3043,11 +3043,12 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-variant-numeric: tabular-nums;
 }
 
+/* Sentence case, like every other caption on these screens. This was the
+   last rule still setting uppercase small-caps — beside a CPA label that is
+   not, on the same card. */
 .report-card-headline-label {
   font-size: var(--type-caption-size);
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-weight: var(--type-caption-weight);
   color: var(--muted);
 }
 

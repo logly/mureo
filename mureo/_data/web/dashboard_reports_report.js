@@ -246,7 +246,7 @@
     // below with its age. `stale` unknown (#637) keeps its old rendering.
     const rowStale = reportsRowIsStale(platform);
 
-    // Headline number: spend, large, mono so digits align.
+    // Headline number: spend, large, tabular so digits align.
     const headline = document.createElement("div");
     headline.className = "report-card-headline";
     const headlineValue = document.createElement("span");
@@ -258,8 +258,11 @@
     const headlineLabel = document.createElement("span");
     headlineLabel.className = "report-card-headline-label";
     headlineLabel.textContent = MUREO.t("dashboard.reports_kpi_spend");
-    headline.appendChild(headlineValue);
+    // Label, then figure — the anatomy every other cell on these screens
+    // uses (#691). This one was built the other way round, so the single card
+    // carrying both spend and CPA read in two directions at once.
     headline.appendChild(headlineLabel);
+    headline.appendChild(headlineValue);
     card.appendChild(headline);
 
     if (rowStale) {
