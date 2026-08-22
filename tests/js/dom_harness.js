@@ -622,6 +622,7 @@ function loadDashboardPage(routes) {
     "dashboard_reports_overview.js",
     "dashboard_reports_cards.js",
     "dashboard_reports_triage.js",
+    "dashboard_reports_table.js",
     "dashboard_reports.js",
     "dashboard_creative.js",
     "dashboard_plugins.js",

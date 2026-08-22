@@ -175,15 +175,41 @@
   // removed: the grid is also the operator's own card order (#556), and
   // rebuilding it from a filtered list would reorder it.
   function applyReportsHealthFilter() {
-    const wrap = document.querySelector("[data-reports-clients]");
-    if (!wrap) return;
-    Array.prototype.forEach.call(wrap.children, function (item) {
+    // Every roster row, in WHICHEVER view is on screen: the card grid's items
+    // and the table's rows both carry `data-health`, so one implementation
+    // hides both (#691 phase 3). Two would drift the moment one of them
+    // learned about a state the other did not.
+    //
+    // It also applies the client-name search, and that is deliberate rather
+    // than lazy: `hidden` on these rows has exactly one owner. Two functions
+    // both writing it would each undo the other's work depending on which ran
+    // last, which is the bug shape #665 is about.
+    const rows = document.querySelectorAll("[data-health]");
+    const search = document.querySelector("[data-reports-client-search]");
+    const query =
+      search && search.value ? String(search.value).trim().toLowerCase() : "";
+    // Counted over the rows the SEARCH can act on — the ones carrying a name
+    // hook. Both views' rows are in the DOM at once (the cards are built
+    // whether or not they are the view on screen), and the card grid carries
+    // no name, so counting those would mean an emptied search never looked
+    // empty.
+    let searchable = 0;
+    let shown = 0;
+    Array.prototype.forEach.call(rows, function (item) {
       const health = item.getAttribute("data-health");
       if (!health) return;
-      item.hidden =
+      const name = (item.getAttribute("data-client-name") || "").toLowerCase();
+      const wrongHealth =
         REPORTS_VIEW_STATE.reportsHealthFilter !== "all" &&
         health !== REPORTS_VIEW_STATE.reportsHealthFilter;
+      const missed = query && name && name.indexOf(query) === -1;
+      item.hidden = wrongHealth || !!missed;
+      if (!name) return;
+      searchable += 1;
+      if (!item.hidden) shown += 1;
     });
+    const empty = document.querySelector("[data-reports-search-empty]");
+    if (empty) empty.hidden = !(query && searchable > 0 && shown === 0);
     const chips = document.querySelectorAll("[data-reports-filter]");
     Array.prototype.forEach.call(chips, function (chip) {
       const active =
@@ -385,6 +411,7 @@
     buildPlatformSlice: buildPlatformSlice,
     renderReportsPortfolio: renderReportsPortfolio,
     renderReportsFilters: renderReportsFilters,
+    applyReportsHealthFilter: applyReportsHealthFilter,
     renderReportsPlatforms: renderReportsPlatforms,
     renderReportsActionFeed: renderReportsActionFeed,
   };

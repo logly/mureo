@@ -59,6 +59,47 @@
 
 ### Changed
 
+- **An agency roster with two or more clients opens as a dense table** (#691,
+  phase 3 of 4). A card grid answers "how is this client doing?" one client at
+  a time. Past a handful of clients the question becomes "which of these do I
+  open first?", and a grid answers that badly — the figures sit in a different
+  place on every card, so comparing two of them is a search rather than a
+  glance.
+
+  - **Status order by default**: needs-action, then watch, then clear, with
+    the biggest spender first inside each group. The ranking is
+    `reports_triage.js`'s own, not a second opinion — a row the alert list
+    calls urgent cannot sort as healthy. Any column header re-sorts, and
+    clicking the same one again flips the direction.
+  - **44px rows**, one metric per column: client, spend, CPA, conversions,
+    CTR, and when it was last updated. A figure mureo will not state is "—"
+    and sorts to the END in both directions — unknown is not a small number.
+    A CPA that cannot be divided (no conversions) says "not calculable"
+    rather than printing a zero.
+  - **A totals row** whose CPA is the weighted average (total spend over total
+    conversions), not the mean of the per-client CPAs, which would let a
+    client spending ¥12,000 pull the roster figure as hard as one spending
+    ¥128,000. Clients whose figures are withheld are left out of the sums
+    entirely. The roster has no single CTR or CPA target, so those cells are
+    "—" rather than an invented average.
+  - **The cards stay**, as a toggle, and the choice is remembered per browser.
+    A remembered "table" does not resurrect one for a roster that has shrunk
+    to a single client.
+  - **The health filter and a client-name search** both reach the table's
+    rows, through the same implementation that hides the cards' — one owner
+    for `hidden` on a roster row, so the two cannot disagree — and they
+    compose rather than override.
+
+  **Single-workspace (OSS) installs are unchanged**: they open a client's
+  detail directly and never see a roster at all.
+
+  The approved design also carries a CPA-vs-target column. Nothing on the
+  reports wire carries a target CPA today — there is no field on the summary,
+  and STRATEGY.md's guardrails do not reach any web payload — so the column is
+  **omitted rather than drawn empty**: a column of "—" would advertise a
+  comparison mureo cannot make. The renderer for it ships and is tested; it
+  appears the moment a target reaches the summary.
+
 - **The report detail view reads as three numbered tiers** (#691, phase 2 of
   4). The screen was a flat stack — platform cards, then a block whose last
   paragraph was the report's own conclusion, under two rows of chips. An

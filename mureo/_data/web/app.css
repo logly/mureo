@@ -3710,3 +3710,319 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border-top: 1px solid var(--hairline);
   color: var(--muted);
 }
+
+/* ===========================================================================
+ * Agency roster table (#691 phase 3)
+ * ======================================================================== */
+
+/* The toolbar over the roster: which view, what it is sorted by, and a name
+   search. Hidden entirely for a roster the table is not offered for. */
+.reports-roster-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+.reports-roster-tools[hidden] {
+  display: none;
+}
+
+.reports-view-switch {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+}
+
+.reports-view-btn {
+  appearance: none;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--type-caption-size);
+  cursor: pointer;
+}
+
+.reports-view-btn.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: var(--type-card-title-weight);
+  box-shadow: var(--shadow-sm);
+}
+
+.reports-view-btn:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+.reports-sorted-by {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+}
+
+.reports-sorted-by[hidden] {
+  display: none;
+}
+
+.reports-roster-search {
+  margin-left: auto;
+}
+
+.reports-roster-search input {
+  padding: 5px 10px;
+  min-width: 200px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--type-caption-size);
+}
+
+.reports-roster-search input:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+/* ---- the table itself -------------------------------------------------- */
+
+.reports-roster-table[hidden] {
+  display: none;
+}
+
+.roster {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-caption-size);
+}
+
+.roster th,
+.roster td {
+  padding: 0 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+/* 44px rows: dense enough that twenty clients are one screen, tall enough
+   that a row is a click target. */
+.roster tbody tr {
+  height: 44px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.roster tbody tr[hidden] {
+  display: none;
+}
+
+.roster thead th {
+  height: 34px;
+  border-bottom: 1px solid var(--hairline-strong);
+  font-weight: var(--type-body-weight);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* A figure column: right-aligned so the digits form a column, tabular so
+   they line up whatever the glyph widths are. */
+.roster .roster-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.roster-sort {
+  appearance: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.roster .roster-num .roster-sort {
+  flex-direction: row-reverse;
+}
+
+.roster-sort:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* The sorted column, and only it, is in full ink — plus an arrow, so the
+   direction survives for anyone the weight does not reach. */
+.roster thead th.is-sorted {
+  color: var(--ink);
+  font-weight: var(--type-card-title-weight);
+}
+
+.roster-sort-arrow {
+  /* Relative, so it stays proportional to the caption step rather than
+     being a seventh size in a scale that has six. */
+  font-size: 0.75em;
+  line-height: 1;
+}
+
+/* ---- a row ------------------------------------------------------------- */
+
+.roster-client {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.roster-name {
+  font-weight: var(--type-card-title-weight);
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roster-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hairline-strong);
+}
+
+.roster-dot.is-attention {
+  background: var(--status-alert);
+}
+
+.roster-dot.is-watch {
+  background: var(--status-watch);
+}
+
+.roster-dot.is-ok {
+  background: var(--status-ok);
+}
+
+/* A row that needs acting on carries the same left rule its card does, so
+   the two views mark the same clients the same way. */
+.roster-row.is-attention td:first-child {
+  box-shadow: inset 3px 0 0 var(--status-alert);
+}
+
+.roster-updated {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.roster-go {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.roster-go-link {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--type-caption-size);
+  cursor: pointer;
+}
+
+.roster-go-link:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---- CPA against its target -------------------------------------------- */
+
+.roster-ratio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.roster-ratio-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 54px;
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.roster-ratio-fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--status-ok);
+}
+
+.roster-ratio-fill.is-watch {
+  background: var(--status-watch);
+}
+
+.roster-ratio-fill.is-alert {
+  background: var(--status-alert);
+}
+
+/* Where the target sits on the track, so an overshoot is visible as a
+   distance rather than only as a number. */
+.roster-ratio-target {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 9px;
+  background: var(--ink-soft);
+}
+
+.roster-ratio-value {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--type-card-title-weight);
+}
+
+.roster-ratio-value.is-ok {
+  color: var(--status-ok);
+}
+
+.roster-ratio-value.is-watch {
+  color: var(--status-watch);
+}
+
+.roster-ratio-value.is-alert {
+  color: var(--status-alert);
+}
+
+/* No target, or no CPA to compare: stated in words, never as a figure. */
+.roster-ratio-value.is-void {
+  color: var(--muted);
+  font-weight: var(--type-body-weight);
+}
+
+/* ---- totals ------------------------------------------------------------ */
+
+.roster tfoot td {
+  height: 40px;
+  border-top: 1px solid var(--hairline-strong);
+  font-weight: var(--type-card-title-weight);
+  color: var(--ink);
+}
+
+.roster-total-label {
+  color: var(--muted);
+  font-weight: var(--type-body-weight);
+}
