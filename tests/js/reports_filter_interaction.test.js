@@ -92,6 +92,18 @@ async function openReportsIndex() {
   // renders the index (see renderReports / REPORTS_ENTRY_MENU).
   page.root.querySelector('[data-dashboard-nav="reports"]').click();
   await settle();
+  // This file is about the CARD GRID's filtering, and #691 phase 3 made the
+  // table the default for a roster this size (4 clients). So it says so: it
+  // switches to the cards explicitly rather than relying on a default that
+  // is no longer theirs. The same filter driving the TABLE's rows is covered
+  // in reports_roster_table.test.js — one implementation, both views, and a
+  // test for each.
+  const toCards = page.root
+    .querySelectorAll("[data-reports-view]")
+    .find((b) => b.getAttribute("data-reports-view") === "cards");
+  assert.ok(toCards, "the roster view switch is missing");
+  toCards.click();
+  await settle();
   return page;
 }
 

@@ -69,6 +69,16 @@
   const REPORTS_KPI_LABELS = REPORTS_SHARED.REPORTS_KPI_LABELS;
   const REPORTS_VIEW_STATE = REPORTS_SHARED.REPORTS_VIEW_STATE;
 
+  // dashboard_reports_table.js — the Agency roster's table view and the
+  // toolbar that switches between it and the cards.
+  const REPORTS_TABLE = window.MUREO_DASHBOARD_REPORTS_TABLE;
+  if (!REPORTS_TABLE) {
+    throw new Error(
+      "dashboard_reports.js needs MUREO_DASHBOARD_REPORTS_TABLE — load " +
+        "dashboard_reports_table.js BEFORE dashboard_reports.js"
+    );
+  }
+
   // dashboard_reports_report.js's exports, bound by their original names so every call
   // site below reads exactly as it did when this was one file.
   const R_REPORT = window.MUREO_DASHBOARD_REPORTS_REPORT;
@@ -232,6 +242,11 @@
           triageClientBadges(triage, i)
         )
       );
+    });
+    // Both views are built from the roster already in hand; which one is
+    // SHOWN is the table module's decision, and it remembers the operator's.
+    REPORTS_TABLE.renderRoster(rows, summaries, function (i) {
+      return triageClientHealth(triage, i);
     });
     const countBadge = document.querySelector("[data-reports-clients-count]");
     if (countBadge) {

@@ -1,0 +1,448 @@
+// The agency roster as a table (#691 phase 3).
+//
+// Run with:  node --test tests/js/*.test.js
+//
+// Drives the real dashboard against the real app.html AND the real app.css,
+// because half of what this feature is are things a DOM assertion cannot see:
+// whether a row is on screen, whether the filter still reaches it after a
+// re-sort, and whether the view an operator chose survives.
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+
+const { loadDashboardPage, settle, isVisible, cascade } = require("./dom_harness.js");
+
+//: The storage key, restated here because the view has to be seeded BEFORE
+//: the page evaluates its scripts. A test below asserts the module agrees,
+//: so the two cannot drift apart silently.
+const ROSTER_VIEW_KEY = "mureo.reports.roster_view";
+
+/**
+ * The table module as the BROWSER has it.
+ *
+ * It reads `window.MUREO_DASHBOARD_REPORTS_STATE` at load, so `require()`-ing
+ * it in Node throws — the same shape every dashboard_reports_*.js module has.
+ * Reaching it through the evaluated page is not a workaround: it is the only
+ * way to exercise the bytes that actually ship.
+ */
+const tableApi = (page) => page.sandbox.MUREO_DASHBOARD_REPORTS_TABLE;
+
+const DAY = 86400000;
+const ago = (d) => new Date(Date.now() - d * DAY).toISOString();
+
+/**
+ * One client's summary. `kind` picks what the triage layer makes of it:
+ *   stale -> "attention" (its totals are withheld)
+ *   ok    -> "ok"
+ */
+function summaryFor(slug, kind, totals) {
+  return {
+    client: slug,
+    period: "YESTERDAY",
+    periods: ["YESTERDAY"],
+    non_canonical_periods: [],
+    last_synced_at: ago(0),
+    platforms: [
+      {
+        key: "google_ads",
+        display_name: "Google Ads",
+        totals: totals,
+        metrics_period: "YESTERDAY",
+        campaign_count: 2,
+        freshness: {
+          fetched_at: ago(kind === "stale" ? 11 : 0),
+          stale: kind === "stale",
+          stale_after_days: 2,
+        },
+        not_collected: null,
+        daily: [],
+        daily_delta: null,
+      },
+    ],
+    platform_conflicts: [],
+    recent_actions: [],
+    reports: {},
+    observations_due: { count: 0, oldest_due: null },
+    server_today: new Date().toISOString().slice(0, 10),
+  };
+}
+
+const CLIENTS = {
+  alpha: summaryFor("alpha", "stale", { spend: 63000, conversions: 15, cpa: 4200, ctr: 2.22 }),
+  bravo: summaryFor("bravo", "ok", { spend: 128400, conversions: 46, cpa: 2791, ctr: 3.1 }),
+  carol: summaryFor("carol", "ok", { spend: 35800, conversions: 22, cpa: 1627, ctr: 3.76 }),
+};
+
+const ROSTER = [
+  { slug: "alpha", name: "Alpha Trading", active: true },
+  { slug: "bravo", name: "Bravo Logistics", active: true },
+  { slug: "carol", name: "Carol Foods", active: true },
+];
+
+async function openRoster(options) {
+  const opts = options || {};
+  const clients = opts.clients || ROSTER;
+  const page = loadDashboardPage({
+    "/api/reports/clients": { clients: clients, can_archive: false },
+    "/api/reports/summary": (url) => {
+      const m = /client=([^&]+)/.exec(url);
+      const slug = m ? decodeURIComponent(m[1]) : clients[0].slug;
+      return (opts.summaries || CLIENTS)[slug] || summaryFor(slug, "ok", { spend: 1 });
+    },
+  });
+  // Seed the remembered view BEFORE the render, which is when it is read.
+  if (opts.stored) page.localStore.set(ROSTER_VIEW_KEY, opts.stored);
+  page.document.dispatchEvent({ type: "mureo:ready" });
+  await settle();
+  page.root.querySelector('[data-dashboard-nav="reports"]').click();
+  await settle();
+  return page;
+}
+
+const rows = (page) => page.root.querySelectorAll(".roster-row");
+const names = (page) =>
+  rows(page).map((r) => r.getAttribute("data-client-name"));
+const visibleNames = (page) =>
+  rows(page).filter(isVisible).map((r) => r.getAttribute("data-client-name"));
+
+function viewButton(page, view) {
+  return page.root
+    .querySelectorAll("[data-reports-view]")
+    .find((b) => b.getAttribute("data-reports-view") === view);
+}
+
+function sortHeader(page, key) {
+  return page.root
+    .querySelectorAll("[data-reports-sort]")
+    .find((b) => b.getAttribute("data-reports-sort") === key);
+}
+
+// ---------------------------------------------------------------------
+// Who gets the table
+// ---------------------------------------------------------------------
+
+test.describe("the table is for a roster worth comparing", function () {
+  test.it("is the default view at two or more clients", async function () {
+    const page = await openRoster();
+    const host = page.root.querySelector("[data-reports-roster-table]");
+    assert.equal(host.hidden, false, "the table is hidden by default");
+    assert.ok(isVisible(host), "the table computes to display:none");
+    assert.equal(rows(page).length, 3);
+    // …and the grid steps aside rather than both being on screen.
+    assert.equal(
+      isVisible(page.root.querySelector("[data-reports-clients]")),
+      false,
+      "the card grid is still showing under the table"
+    );
+  });
+
+  test.it("is not offered at all for a single visible client", async function () {
+    // A one-row table is a worse card. The index still renders — an archived
+    // sibling is what put it there — but the toggle is not on screen.
+    const page = await openRoster({
+      clients: [
+        { slug: "alpha", name: "Alpha Trading", active: true },
+        { slug: "zulu", name: "Zulu Ltd", active: false, archived: true },
+      ],
+    });
+    const tools = page.root.querySelector("[data-reports-roster-tools]");
+    assert.equal(tools.hidden, true, "the view switch is offered for one client");
+    assert.equal(rows(page).length, 0, "a table was built for one client");
+    assert.ok(
+      isVisible(page.root.querySelector("[data-reports-clients]")),
+      "the cards are not showing"
+    );
+  });
+
+  test.it("agrees with the module's own threshold and storage key", async function () {
+    const api = tableApi(await openRoster());
+    assert.equal(api.ROSTER_TABLE_MIN, 2);
+    assert.equal(api.rosterViewFor(1), "cards");
+    assert.equal(api.rosterViewFor(2), "table");
+    assert.equal(api.ROSTER_VIEW_KEY, ROSTER_VIEW_KEY, "the storage key drifted");
+  });
+});
+
+// ---------------------------------------------------------------------
+// Order
+// ---------------------------------------------------------------------
+
+test.describe("status order is the default, and it is an argument", function () {
+  test.it("puts the clients needing action first", async function () {
+    const page = await openRoster();
+    // Alpha is stale -> attention. Bravo and Carol are ok, and within a
+    // status group the bigger spender leads.
+    assert.deepEqual(names(page), ["Alpha Trading", "Bravo Logistics", "Carol Foods"]);
+  });
+
+  test.it("says what it is sorted by", async function () {
+    const page = await openRoster();
+    const label = page.root.querySelector("[data-reports-sorted-by]");
+    assert.equal(label.hidden, false);
+    assert.match(label.textContent, /status/i);
+  });
+
+  test.it("sorts by a column when its header is clicked", async function () {
+    const page = await openRoster();
+    sortHeader(page, "spend").click();
+    await settle();
+    // First click on a figure column is descending — the biggest first is
+    // what somebody clicking "spend" is looking for. Alpha is last in BOTH
+    // directions: it is stale, so its spend is withheld rather than small.
+    assert.deepEqual(names(page), ["Bravo Logistics", "Carol Foods", "Alpha Trading"]);
+  });
+
+  test.it("flips direction on a second click of the same column", async function () {
+    const page = await openRoster();
+    sortHeader(page, "spend").click();
+    await settle();
+    sortHeader(page, "spend").click();
+    await settle();
+    assert.deepEqual(names(page), ["Carol Foods", "Bravo Logistics", "Alpha Trading"]);
+  });
+
+  test.it("marks the sorted column, and only it", async function () {
+    const page = await openRoster();
+    sortHeader(page, "spend").click();
+    await settle();
+    const marked = page.root
+      .querySelectorAll(".roster-head")
+      .filter((th) => (th.className || "").split(/\s+/).includes("is-sorted"));
+    assert.equal(marked.length, 1, "more than one column claims to be sorted");
+    // The direction is a character too, not colour and weight alone.
+    assert.equal(page.root.querySelectorAll(".roster-sort-arrow").length, 1);
+  });
+
+  test.it("sorts a figure mureo will not state to the end, both ways", async function () {
+    // "Unknown" is not a small number. Floating it to the top of an ascending
+    // sort would put the least informative rows where the most urgent belong.
+    const api = tableApi(await openRoster());
+    const withNull = [
+      { slug: "a", name: "A", health: "ok", spend: 10, cpa: null },
+      { slug: "b", name: "B", health: "ok", spend: 20, cpa: 5 },
+    ];
+    assert.deepEqual(
+      api.sortRows(withNull, { key: "cpa", dir: "asc" }).map((r) => r.name),
+      ["B", "A"]
+    );
+    assert.deepEqual(
+      api.sortRows(withNull, { key: "cpa", dir: "desc" }).map((r) => r.name),
+      ["B", "A"]
+    );
+  });
+});
+
+// ---------------------------------------------------------------------
+// The view switch, and remembering it
+// ---------------------------------------------------------------------
+
+test.describe("the operator's choice of view survives", function () {
+  test.it("switches to the cards and back", async function () {
+    const page = await openRoster();
+    viewButton(page, "cards").click();
+    await settle();
+    assert.ok(isVisible(page.root.querySelector("[data-reports-clients]")));
+    assert.equal(isVisible(page.root.querySelector("[data-reports-roster-table]")), false);
+    viewButton(page, "table").click();
+    await settle();
+    assert.ok(isVisible(page.root.querySelector("[data-reports-roster-table]")));
+  });
+
+  test.it("writes the choice to storage", async function () {
+    const page = await openRoster();
+    viewButton(page, "cards").click();
+    await settle();
+    assert.equal(page.localStore.get(ROSTER_VIEW_KEY), "cards");
+  });
+
+  test.it("opens on the remembered choice", async function () {
+    const page = await openRoster({ stored: "cards" });
+    assert.ok(
+      isVisible(page.root.querySelector("[data-reports-clients]")),
+      "a remembered 'cards' did not survive the reload"
+    );
+    assert.equal(rows(page).length, 0);
+  });
+
+  test.it("does not resurrect a table for a roster that shrank to one", async function () {
+    // A remembered "table" must not outlive the roster that earned it.
+    const page = await openRoster({ stored: "table" });
+    assert.equal(tableApi(page).rosterViewFor(1), "cards");
+  });
+
+  test.it("marks the active button for a screen reader too", async function () {
+    const page = await openRoster();
+    assert.equal(viewButton(page, "table").getAttribute("aria-pressed"), "true");
+    assert.equal(viewButton(page, "cards").getAttribute("aria-pressed"), "false");
+  });
+});
+
+// ---------------------------------------------------------------------
+// The filter and the search reach the table's rows
+// ---------------------------------------------------------------------
+
+test.describe("filtering works in the table, not only in the grid", function () {
+  async function clickFilter(page, name) {
+    const chip = page.root
+      .querySelectorAll("[data-reports-filter]")
+      .find((c) => c.getAttribute("data-reports-filter") === name);
+    assert.ok(chip, "no filter chip for " + name);
+    chip.click();
+    await settle();
+    return chip;
+  }
+
+  test.it("hides the rows at other healths", async function () {
+    const page = await openRoster();
+    await clickFilter(page, "attention");
+    assert.deepEqual(visibleNames(page), ["Alpha Trading"]);
+  });
+
+  test.it("brings them back on All", async function () {
+    const page = await openRoster();
+    await clickFilter(page, "attention");
+    await clickFilter(page, "all");
+    assert.equal(visibleNames(page).length, 3);
+  });
+
+  test.it("keeps the filter across a re-sort", async function () {
+    // The rows are new nodes after a sort, so a filter that was not
+    // re-applied would silently come undone.
+    const page = await openRoster();
+    await clickFilter(page, "attention");
+    sortHeader(page, "spend").click();
+    await settle();
+    assert.deepEqual(visibleNames(page), ["Alpha Trading"]);
+  });
+
+  test.it("keeps the filter across a view switch", async function () {
+    const page = await openRoster();
+    await clickFilter(page, "attention");
+    viewButton(page, "cards").click();
+    await settle();
+    const shown = page.root
+      .querySelector("[data-reports-clients]")
+      .querySelectorAll("[data-health]")
+      .filter(isVisible);
+    assert.equal(shown.length, 1, "the filter did not follow to the cards");
+  });
+
+  test.it("hides a row the stylesheet would otherwise still show", async function () {
+    // #665's discipline, for the new rows: `hidden` only works if nothing
+    // gives the element a display that outranks the UA rule.
+    const page = await openRoster();
+    await clickFilter(page, "attention");
+    const hiddenRow = rows(page).find((r) => r.hidden);
+    assert.ok(hiddenRow, "nothing was hidden");
+    const display = cascade(hiddenRow, "display");
+    assert.ok(
+      display && display.value === "none",
+      "a hidden row computes display:" +
+        (display && display.value) +
+        " via `" +
+        (display && display.selector) +
+        "`"
+    );
+  });
+
+  test.it("narrows to a client by name, and says when nothing matches", async function () {
+    const page = await openRoster();
+    const search = page.root.querySelector("[data-reports-client-search]");
+    search.value = "bravo";
+    search.dispatchEvent({ type: "input" });
+    await settle();
+    assert.deepEqual(visibleNames(page), ["Bravo Logistics"]);
+
+    search.value = "nothing-like-this";
+    search.dispatchEvent({ type: "input" });
+    await settle();
+    assert.deepEqual(visibleNames(page), []);
+    assert.equal(
+      page.root.querySelector("[data-reports-search-empty]").hidden,
+      false,
+      "an empty result says nothing at all"
+    );
+  });
+
+  test.it("composes the search with the health filter", async function () {
+    // Both narrow; neither overrides. The intersection is what is left.
+    const page = await openRoster();
+    await clickFilter(page, "attention");
+    const search = page.root.querySelector("[data-reports-client-search]");
+    search.value = "bravo";
+    search.dispatchEvent({ type: "input" });
+    await settle();
+    assert.deepEqual(visibleNames(page), []);
+  });
+});
+
+// ---------------------------------------------------------------------
+// The figures
+// ---------------------------------------------------------------------
+
+test.describe("the table states figures it can and refuses the rest", function () {
+  test.it("omits the CPA-target column when no client has a target", async function () {
+    // Nothing on the reports wire carries a target CPA today. A column that
+    // said "—" the whole way down would advertise a comparison mureo cannot
+    // make, so the column is not drawn at all.
+    const page = await openRoster();
+    const headers = page.root
+      .querySelectorAll("[data-reports-sort]")
+      .map((b) => b.getAttribute("data-reports-sort"));
+    assert.ok(!headers.includes("cpaRatio"), "a target column with no targets");
+  });
+
+  test.it("draws the column as soon as one client has a target", async function () {
+    // The renderer is ready; only the datum is missing. Feeding one proves
+    // the path is live rather than dead code.
+    const withGoal = Object.assign({}, CLIENTS);
+    withGoal.bravo = Object.assign({}, CLIENTS.bravo, {
+      goals: { target_cpa: 2000 },
+    });
+    const page = await openRoster({ summaries: withGoal });
+    const headers = page.root
+      .querySelectorAll("[data-reports-sort]")
+      .map((b) => b.getAttribute("data-reports-sort"));
+    assert.ok(headers.includes("cpaRatio"), "the target column did not appear");
+    const value = page.root.querySelector(".roster-ratio-value");
+    assert.ok(value, "no ratio was rendered");
+  });
+
+  test.it("says a CPA is not calculable rather than printing a zero", async function () {
+    const row = tableApi(await openRoster()).rosterRow(
+      { slug: "z", name: "Z" },
+      summaryFor("z", "ok", { spend: 48500, conversions: 0, ctr: 1.86 }),
+      "attention"
+    );
+    assert.equal(row.cpa, null, "a CPA was invented from zero conversions");
+    assert.equal(row.cpaUnavailable, true);
+  });
+
+  test.it("totals spend and conversions, and weights the CPA", async function () {
+    const page = await openRoster();
+    const foot = page.root
+      .querySelector(".roster-total")
+      .children.map((td) => td.textContent);
+    // Alpha is stale, so mureo will not state its figures and they are not in
+    // the total either — a roster sum that quietly included a withheld client
+    // would be the #638 bug one level up.
+    //
+    // Bravo + Carol: 128,400 + 35,800 = 164,200 over 46 + 22 = 68, which is
+    // 2,415. NOT the mean of 2,791 and 1,627 (2,209): a weighted average is
+    // what stops the smaller spender pulling the roster figure as hard as the
+    // larger one.
+    assert.match(foot.join(" "), /164,200/);
+    assert.match(foot.join(" "), /68/);
+    assert.match(foot.join(" "), /2,415/);
+  });
+
+  test.it("leaves CTR out of the totals rather than averaging it", async function () {
+    // Averaging CTRs across clients with different impression volumes states
+    // a number nobody measured.
+    const page = await openRoster();
+    const foot = page.root
+      .querySelector(".roster-total")
+      .children.map((td) => td.textContent);
+    assert.equal(foot[foot.length - 3], "—", "a roster CTR was invented");
+  });
+});
