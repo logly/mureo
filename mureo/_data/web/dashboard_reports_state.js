@@ -98,6 +98,7 @@
   const reportsPeriodLabel = REPORTS_FORMAT.reportsPeriodLabel;
   const isCanonicalReportsPeriod = REPORTS_FORMAT.isCanonicalReportsPeriod;
   const humanizeReportFlag = REPORTS_FORMAT.humanizeReportFlag;
+  const humanizeFlagWords = REPORTS_FORMAT.humanizeFlagWords;
   const reportFlagKind = REPORTS_FORMAT.reportFlagKind;
   const flagSeverityRank = REPORTS_FORMAT.flagSeverityRank;
   const latestReport = REPORTS_FORMAT.latestReport;
@@ -231,6 +232,7 @@
     reportsPeriodLabel: reportsPeriodLabel,
     isCanonicalReportsPeriod: isCanonicalReportsPeriod,
     humanizeReportFlag: humanizeReportFlag,
+    humanizeFlagWords: humanizeFlagWords,
     reportFlagKind: reportFlagKind,
     flagSeverityRank: flagSeverityRank,
     latestReport: latestReport,
