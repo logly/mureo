@@ -64,6 +64,9 @@
   const reportsViewToShow = REPORTS_SHARED.reportsViewToShow;
   const buildReportsPortfolio = REPORTS_SHARED.buildReportsPortfolio;
   const buildReportsActionFeed = REPORTS_SHARED.buildReportsActionFeed;
+  const latestReport = REPORTS_SHARED.latestReport;
+  const formatKpi = REPORTS_SHARED.formatKpi;
+  const REPORTS_KPI_LABELS = REPORTS_SHARED.REPORTS_KPI_LABELS;
   const REPORTS_VIEW_STATE = REPORTS_SHARED.REPORTS_VIEW_STATE;
 
   // dashboard_reports_report.js's exports, bound by their original names so every call
@@ -78,6 +81,7 @@
   const buildReportCard = R_REPORT.buildReportCard;
   const renderReportsActions = R_REPORT.renderReportsActions;
   const renderReportsLatest = R_REPORT.renderReportsLatest;
+  const buildReportFlagRow = R_REPORT.buildReportFlagRow;
 
   // dashboard_reports_overview.js's exports, bound by their original names so every call
   // site below reads exactly as it did when this was one file.
@@ -376,6 +380,166 @@
   }
 
   // Fetch + render the summary for a given client (or the default one).
+
+  // ------------------------------------------------------------------
+  // (2) Today's changes
+  // ------------------------------------------------------------------
+
+  // Which metrics a change card may be about, most consequential first.
+  //
+  // FIXED ORDER, and not "the largest movement". #690 gives absolute
+  // differences only — `after - before`, per metric — because a percentage
+  // needs a rule for a zero baseline that nobody has agreed. Absolute
+  // differences in different UNITS cannot be ranked against each other: a
+  // spend that moved by 6,500 yen and a CTR that moved by 0.4 points are not
+  // 16,000x apart, they are incomparable, and sorting them would be this
+  // file inventing a comparison and presenting it as a measurement.
+  //
+  // So the ranking is stated instead, and it is an argument about money: CPA
+  // is what an operator is judged on, spend is what is being consumed,
+  // conversions are what it bought. The three delivery metrics below them
+  // explain those three but are not themselves the news.
+  const REPORTS_CHANGE_PRIORITY = [
+    "cpa",
+    "spend",
+    "conversions",
+    "ctr",
+    "clicks",
+    "impressions",
+  ];
+
+  // How many change cards the tier shows. Three, because the tier is the
+  // answer to "what should I look at first" and a list of nine is not one.
+  const REPORTS_CHANGE_CAP = 3;
+
+  /**
+   * The change cards to render, or [] when none can be honestly made.
+   *
+   * A metric qualifies when its platform states a `daily_delta` (#690 —
+   * present only when two CALENDAR-adjacent days are stored, so a gap is
+   * never rendered as a day-over-day move) and its difference is non-zero.
+   * Zero is not a change; a card saying "0" would be noise with the same
+   * weight as the ones that matter.
+   */
+  function changeHighlights(platforms) {
+    const rows = [];
+    (Array.isArray(platforms) ? platforms : []).forEach(function (p) {
+      const delta = p && p.daily_delta;
+      const metrics = delta && delta.metrics;
+      if (!metrics || typeof metrics !== "object") return;
+      REPORTS_CHANGE_PRIORITY.forEach(function (key) {
+        const diff = metrics[key];
+        if (typeof diff !== "number" || !isFinite(diff) || diff === 0) return;
+        const now = p.totals && p.totals[key];
+        rows.push({
+          platform: p,
+          key: key,
+          diff: diff,
+          value: typeof now === "number" && isFinite(now) ? now : null,
+          rank: REPORTS_CHANGE_PRIORITY.indexOf(key),
+        });
+      });
+    });
+    // Priority first; platform order (the order the API returned) breaks a
+    // tie, so two platforms moving the same metric read in a stable order.
+    rows.sort(function (a, b) {
+      return a.rank - b.rank;
+    });
+    return rows.slice(0, REPORTS_CHANGE_CAP);
+  }
+
+  // Is a movement in this metric bad news? Only CPA is stated here, and only
+  // because "up is worse" is true of it in a way it is not true of anything
+  // else on the row: spend rising may be intended, conversions rising is
+  // good, and a CTR that moved is not good or bad without a target nobody
+  // has given this view. Everything else is neutral — coloured as movement,
+  // not as a verdict.
+  function changeTone(key, diff) {
+    if (key === "cpa") return diff > 0 ? "is-bad" : "is-good";
+    if (key === "conversions") return diff > 0 ? "is-good" : "is-bad";
+    return "is-flat";
+  }
+
+  // One change card: label, figure, and what it moved from.
+  function buildChangeCard(row) {
+    const card = document.createElement("div");
+    card.className = "reports-change";
+
+    const label = document.createElement("span");
+    label.className = "reports-change-label";
+    const name = row.platform && row.platform.display_name;
+    const metric =
+      row.key === "spend"
+        ? MUREO.t("dashboard.reports_kpi_spend")
+        : MUREO.t(REPORTS_KPI_LABELS[row.key] || row.key);
+    label.textContent = name ? name + " ・ " + metric : metric;
+    card.appendChild(label);
+
+    const value = document.createElement("span");
+    value.className = "reports-change-value";
+    value.textContent =
+      row.value === null
+        ? MUREO.t("dashboard.reports_no_metrics")
+        : formatKpi(row.key, row.key === "cpa" ? Math.round(row.value) : row.value);
+    card.appendChild(value);
+
+    const delta = document.createElement("span");
+    delta.className = "reports-change-delta " + changeTone(row.key, row.diff);
+    const arrow = document.createElement("b");
+    // The arrow is the direction, and it is a character rather than colour
+    // alone so the card still reads for anyone the colour does not.
+    arrow.textContent =
+      (row.diff > 0 ? "↑ " : "↓ ") +
+      formatKpi(row.key, row.key === "cpa" ? Math.round(row.diff) : Math.abs(row.diff));
+    delta.appendChild(arrow);
+    if (row.value !== null) {
+      const prev = document.createElement("span");
+      prev.className = "reports-change-prev";
+      prev.textContent = MUREO.t("dashboard.reports_delta_prev", {
+        value: formatKpi(
+          row.key,
+          row.key === "cpa"
+            ? Math.round(row.value - row.diff)
+            : row.value - row.diff
+        ),
+      });
+      delta.appendChild(prev);
+    }
+    card.appendChild(delta);
+    return card;
+  }
+
+  /**
+   * Render tier (2): what moved, and what is wrong.
+   *
+   * Two independent contents, and the tier appears when EITHER has something
+   * to say. The change cards need #690's `daily_delta`, which is `null` for a
+   * first day, for a gap between the last two stored days, and for a metric
+   * only one side carries — all three mean the comparison cannot honestly be
+   * made, so no card is drawn rather than a fabricated zero. The flag row
+   * comes from the report and needs no history at all, so an install with one
+   * day of data still gets its findings here.
+   *
+   * The heading's note is about the change cards specifically, so it is
+   * hidden when there are none: "the metrics that moved most" over a row of
+   * flags would describe something that is not on screen.
+   */
+  function renderReportsChanges(platforms, report) {
+    const block = document.querySelector("[data-reports-changes]");
+    const body = document.querySelector("[data-reports-changes-body]");
+    const note = document.querySelector("[data-reports-changes-note]");
+    if (!block || !body) return;
+    body.textContent = "";
+    const rows = changeHighlights(platforms);
+    rows.forEach(function (row) {
+      body.appendChild(buildChangeCard(row));
+    });
+    const flagRow = buildReportFlagRow(report);
+    if (flagRow) body.appendChild(flagRow);
+    if (note) note.hidden = rows.length === 0;
+    block.hidden = rows.length === 0 && !flagRow;
+  }
+
   async function renderReportsSummary(client) {
     const seq = REPORTS_VIEW_STATE.reportsRenderSeq;
     // NB: reportsActiveClient is set only after the stale-render guards below,
@@ -408,6 +572,8 @@
       if (freshness) freshness.textContent = "";
       renderReportsPeriodToggle([]);
       renderReportsLatest(null);
+      renderReportsChanges([], null);
+      renderReportsPlatformTier([]);
       renderReportsActions(null);
       if (empty) empty.hidden = false;
       return;
@@ -461,8 +627,28 @@
       });
     }
 
+    // The three tiers, in the order an operator reads them (#691): what the
+    // report concluded, what moved since yesterday, then everything.
     renderReportsLatest(summary.reports);
+    renderReportsChanges(platforms, latestReport(summary.reports));
+    renderReportsPlatformTier(platforms);
     renderReportsActions(summary.recent_actions);
+  }
+
+  // Tier (3)'s frame: shown whenever there is at least one platform card in
+  // it, with the count the heading states. The cards themselves are appended
+  // by renderReportsSummary — this only owns the section around them.
+  function renderReportsPlatformTier(platforms) {
+    const block = document.querySelector("[data-reports-platforms]");
+    const count = document.querySelector("[data-reports-platform-count]");
+    if (!block) return;
+    const rows = Array.isArray(platforms) ? platforms : [];
+    block.hidden = rows.length === 0;
+    if (count) {
+      count.textContent = rows.length
+        ? MUREO.t("dashboard.reports_platform_count", { n: rows.length })
+        : "";
+    }
   }
 
   // Entry point: fetch the client list, then show the right view. Re-runnable

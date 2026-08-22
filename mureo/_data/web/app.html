@@ -302,14 +302,50 @@
                 <!-- Selected client name (multi-client / Agency only). -->
                 <h3 class="dashboard-reports-detail-client" data-reports-detail-client hidden></h3>
 
-                <!-- Per-platform KPI cards (generic over the API's platforms). -->
-                <div class="dashboard-reports-cards" data-reports-cards></div>
+                <!-- The detail view is three numbered tiers (#691): what the
+                     report CONCLUDED, what CHANGED since yesterday, then
+                     everything. The order is the argument — the conclusion is
+                     the thing an operator came for, and it used to be the last
+                     paragraph under two rows of chips. -->
 
-                <!-- Latest generated report summary (daily/weekly/goal). -->
-                <div class="dashboard-reports-block" data-reports-latest hidden>
-                  <h3 data-i18n="dashboard.reports_latest_title">Latest report</h3>
+                <!-- (1) Summary: the latest report's narrative, conclusion first. -->
+                <section class="reports-tier" data-reports-latest hidden>
+                  <div class="reports-tier-head">
+                    <h3>
+                      <span class="reports-tier-no" aria-hidden="true">&#9312;</span>
+                      <span data-i18n="dashboard.reports_latest_title">Latest report</span>
+                    </h3>
+                    <span class="reports-tier-note" data-reports-latest-period></span>
+                  </div>
                   <div data-reports-latest-body></div>
-                </div>
+                </section>
+
+                <!-- (2) Today's changes: the metrics that moved most against the
+                     day before. Hidden outright when no platform carries a
+                     day-over-day delta — see buildChangeHighlights. -->
+                <section class="reports-tier" data-reports-changes hidden>
+                  <div class="reports-tier-head">
+                    <h3>
+                      <span class="reports-tier-no" aria-hidden="true">&#9313;</span>
+                      <span data-i18n="dashboard.reports_tier_changes">Today's changes</span>
+                    </h3>
+                    <span class="reports-tier-note" data-reports-changes-note data-i18n="dashboard.reports_tier_changes_note">The metrics that moved most against the day before</span>
+                  </div>
+                  <div class="reports-changes" data-reports-changes-body></div>
+                </section>
+
+                <!-- (3) By platform: per-platform KPI cards (generic over the
+                     API's platforms). -->
+                <section class="reports-tier" data-reports-platforms hidden>
+                  <div class="reports-tier-head">
+                    <h3>
+                      <span class="reports-tier-no" aria-hidden="true">&#9314;</span>
+                      <span data-i18n="dashboard.reports_tier_platforms">By platform</span>
+                    </h3>
+                    <span class="reports-tier-note" data-reports-platform-count></span>
+                  </div>
+                  <div class="dashboard-reports-cards" data-reports-cards></div>
+                </section>
 
                 <!-- Recent autonomous actions from the action log. -->
                 <div class="dashboard-reports-block" data-reports-actions hidden>
