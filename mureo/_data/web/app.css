@@ -1951,9 +1951,16 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    what kind of finding it is, and what it says. Interpolates a
    writer-supplied reason and registry-controlled platform keys, so every
    part of it has to be able to break. */
-.reports-triage-row {
+/* Scoped for the same reason the action rows are: this is an <li> inside a
+   .dashboard-section, so the generic `.dashboard-section li` (0,1,1) outranks
+   a bare `.reports-triage-row` (0,1,0) and was supplying `align-items:
+   center` — which on a column centres every child — plus its own padding,
+   which flattened the inset inside this row's rounded border. */
+.reports-triage-list .reports-triage-row {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 8px;
   padding: 8px 10px;
   margin-bottom: 5px;
@@ -3322,7 +3329,20 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    no left edge, so a column of them read as loose centred text rather than
    as a log. The rail gives it the one thing it was missing: a place where
    every row starts. */
-.dashboard-reports-actions-list {
+/* SCOPED, and that is the whole point of the extra class.
+   `.dashboard-section ul` and `.dashboard-section li` are the setup screens'
+   generic row styling, and they are (0,1,1) — MORE specific than a bare
+   `.report-action` (0,1,0). Everything this block and the next one declared
+   that those two also declare was silently losing: the list's left padding,
+   and the row's padding, gap, border and — the visible symptom — its
+   `align-items` and `justify-content`.
+   `.dashboard-section li` sets `align-items: center`, which on a
+   flex-direction:column row centres every child horizontally. That is the
+   "text is centred" the owner reported; no rule ever said `text-align:
+   center`, and looking for one found nothing.
+   Two classes (0,2,0) beat (0,1,1) outright, so this no longer depends on
+   which rule happens to come later in the file. */
+.dashboard-reports-block .dashboard-reports-actions-list {
   list-style: none;
   margin: 0;
   /* Room for the dots, which straddle the rail. */
@@ -3330,23 +3350,27 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border-left: 1px solid var(--hairline);
 }
 
-.report-action {
+.dashboard-reports-actions-list .report-action {
   position: relative;
   display: flex;
   flex-direction: column;
+  /* Stated, not defaulted: `.dashboard-section li` supplies `center` for
+     both of these, and a centred column is the bug. */
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 4px;
   padding: 12px 0 12px 20px;
   border-bottom: 1px solid var(--hairline);
   text-align: left;
 }
 
-.report-action:last-child {
+.dashboard-reports-actions-list .report-action:last-child {
   border-bottom: 0;
 }
 
 /* One node on the rail, per entry. Drawn on the border rather than beside it
    so the eye reads a single axis down the list. */
-.report-action::before {
+.dashboard-reports-actions-list .report-action::before {
   content: "";
   position: absolute;
   left: -6px;
@@ -3356,10 +3380,6 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border-radius: 50%;
   background: var(--surface);
   border: 2px solid var(--hairline-strong);
-}
-
-.report-action:last-child {
-  border-bottom: 0;
 }
 
 /* WHEN and WHAT KIND, on one line above the sentence. Wraps rather than
