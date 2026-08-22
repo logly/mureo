@@ -448,16 +448,34 @@
     return rows.slice(0, REPORTS_CHANGE_CAP);
   }
 
-  // Is a movement in this metric bad news? Only CPA is stated here, and only
-  // because "up is worse" is true of it in a way it is not true of anything
-  // else on the row: spend rising may be intended, conversions rising is
-  // good, and a CTR that moved is not good or bad without a target nobody
-  // has given this view. Everything else is neutral — coloured as movement,
-  // not as a verdict.
+  // Which way is bad, per metric — and for most of them the answer is
+  // "neither", which is the point of writing it down.
+  //
+  // Colour is a VERDICT, so it is spent only where mureo can actually reach
+  // one from the number alone:
+  //
+  //   cpa         — up is worse, down is better. The one unambiguous axis.
+  //   conversions — down is worse, up is better.
+  //   ctr         — down is worse. Up is NOT called good: a CTR that rose a
+  //                 tenth of a point is noise, and calling it a win teaches
+  //                 an operator to read the colour instead of the number.
+  //   spend       — neutral in BOTH directions. Spending more is not a
+  //   clicks        failure; it is usually the plan. Painting a spend rise
+  //   impressions   red is the single most misleading thing this card could
+  //                 do, and it is what the first cut of it did.
+  //
+  // A metric absent from this table is neutral. Direction still reaches the
+  // reader — the card prints an arrow — so nothing is lost by not colouring.
+  const REPORTS_CHANGE_TONE = {
+    cpa: { up: "is-bad", down: "is-good" },
+    conversions: { up: "is-good", down: "is-bad" },
+    ctr: { up: "is-flat", down: "is-bad" },
+  };
+
   function changeTone(key, diff) {
-    if (key === "cpa") return diff > 0 ? "is-bad" : "is-good";
-    if (key === "conversions") return diff > 0 ? "is-good" : "is-bad";
-    return "is-flat";
+    const axis = REPORTS_CHANGE_TONE[key];
+    if (!axis) return "is-flat";
+    return diff > 0 ? axis.up : axis.down;
   }
 
   // One change card: label, figure, and what it moved from.
@@ -639,7 +657,12 @@
   // it, with the count the heading states. The cards themselves are appended
   // by renderReportsSummary — this only owns the section around them.
   function renderReportsPlatformTier(platforms) {
-    const block = document.querySelector("[data-reports-platforms]");
+    // `data-reports-platform-tier`, NOT `data-reports-platforms`: that one is
+    // the INDEX rail's "Spend by platform" aside (see
+    // dashboard_reports_overview.js). Reusing it meant querySelector returned
+    // the rail, this tier was never un-hidden, and the rail was being toggled
+    // by a function that knows nothing about it.
+    const block = document.querySelector("[data-reports-platform-tier]");
     const count = document.querySelector("[data-reports-platform-count]");
     if (!block) return;
     const rows = Array.isArray(platforms) ? platforms : [];

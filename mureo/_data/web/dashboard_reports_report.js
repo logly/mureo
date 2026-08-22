@@ -441,28 +441,38 @@
    * to lead with it — and it is the thing an operator opened the page for. It
    * used to be the last paragraph on the screen, under two rows of chips.
    *
-   * The split rule is deliberately dumb: everything up to and including the
-   * first `。`. No sentence tokeniser, no abbreviation table, no attempt at
-   * English full stops — a period is not a reliable sentence end in a text
-   * that contains figures like `3.42%`. When there is no `。` nothing is
-   * emphasised and the whole narrative renders as plain prose, which is the
-   * honest outcome for a text this cannot parse: bolding half a sentence
-   * would be worse than bolding none of it.
+   * The split rule is deliberately dumb: whichever comes FIRST of `。` and
+   * `". "` — a full stop followed by a space. Both locales write reports, and
+   * a rule that only knew `。` left every English narrative unemphasised,
+   * which is what the capture review caught.
+   *
+   * `". "` and not `"."`: a bare period is not a sentence end in a text
+   * carrying figures like `3.42%` or `v0.13.1`, and requiring the space is
+   * what keeps those intact. No tokeniser, no abbreviation table — when
+   * neither stop is present nothing is emphasised and the narrative renders
+   * whole and plain, which is the honest outcome for a text this cannot
+   * parse: bolding half a sentence is worse than bolding none of it.
    */
   function buildNarrativeElement(text) {
     const el = document.createElement("p");
     el.className = "report-latest-narrative";
     const whole = String(text);
-    const at = whole.indexOf("。");
-    if (at === -1) {
+    // Both candidates, and the earlier one wins. `。` carries its own break,
+    // `". "` needs the period kept and the space dropped from the lead.
+    const ja = whole.indexOf("。");
+    const en = whole.indexOf(". ");
+    let cut = -1;
+    if (ja !== -1 && (en === -1 || ja < en)) cut = ja + 1;
+    else if (en !== -1) cut = en + 1;
+    if (cut === -1) {
       el.textContent = whole;
       return el;
     }
     const lead = document.createElement("b");
     lead.className = "report-latest-lead";
-    lead.textContent = whole.slice(0, at + 1);
+    lead.textContent = whole.slice(0, cut);
     el.appendChild(lead);
-    const rest = whole.slice(at + 1);
+    const rest = whole.slice(cut);
     if (rest) el.appendChild(document.createTextNode(rest));
     return el;
   }

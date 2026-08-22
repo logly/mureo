@@ -3217,61 +3217,15 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   min-width: 0;
 }
 
-/* The report's OWN statistics (#670), below the headline row: a CVR, a
-   per-goal target, a per-platform split — keys the writer accepts on
-   purpose (#662) and that nothing used to render. Small tagged pairs, not
-   KPI cells, because the row above states mureo's metrics for the window
-   and these are the report's own words, printed exactly as written. */
-.report-latest-stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-  margin: 0 0 10px;
-  min-width: 0;
-}
+/* The report's OWN statistics (#670) are a TABLE now, and the narrative
+   leads the tier — both are styled further down, under "Reports detail —
+   three numbered tiers" (#691 phase 2).
 
-.report-stats-title {
-  font-size: var(--type-caption-size);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.report-stat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: var(--type-caption-size);
-  line-height: 1.4;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-  color: var(--ink-soft);
-  min-width: 0;
-}
-
-.report-stat-key {
-  color: var(--muted);
-}
-
-.report-stat-value {
-  overflow-wrap: anywhere;
-}
-
-.report-stat-more {
-  font-size: var(--type-caption-size);
-  color: var(--muted);
-}
-
-.report-latest-narrative {
-  margin: 10px 0 0;
-  font-size: var(--type-body-size);
-  line-height: 1.55;
-  color: var(--ink-soft);
-}
+   The chip rules that used to be here are DELETED rather than left dormant.
+   `.report-stat` is a <tr>: an `inline-flex` on it silently defeats table
+   layout, so the rows rendered as a wrap of rounded pills and the table never
+   laid out at all. A superseded rule for an element whose tag changed is not
+   dead code, it is a live bug. */
 
 .report-latest-generated {
   margin: 10px 0 0;
