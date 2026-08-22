@@ -59,8 +59,12 @@ def test_copies_are_byte_identical() -> None:
 
 
 def test_stays_readable_under_the_size_budget() -> None:
-    """The branch has to fit the prompt's budget, not grow a manual."""
-    assert len(_body().splitlines()) <= 155
+    """The branch has to fit the prompt's budget, not grow a manual.
+
+    Raised by exactly the two lines #690's persistence step costs — see the
+    same pin in ``test_daily_check_incremental``.
+    """
+    assert len(_body().splitlines()) <= 157
 
 
 def test_names_the_absent_tool_surface_condition() -> None:

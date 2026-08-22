@@ -42,12 +42,17 @@ is how this layer and the grid it describes would start disagreeing.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
-# The stored shape's own length bound (#638), so the read side and the write
-# helper truncate a collection failure's reason to the same length.
-from mureo.context.models import NOT_COLLECTED_REASON_MAX_CHARS
+# The stored shapes' own bounds, so the read side and the write helpers agree
+# on them: the length a collection failure's reason is truncated to (#638),
+# and what a day-grain history key looks like (#690).
+from mureo.context.models import (
+    DAILY_DATE_KEY_PATTERN,
+    NOT_COLLECTED_REASON_MAX_CHARS,
+)
 from mureo.context.platform_accounts import (
     duplicate_account_entries,
     normalize_account_id,
@@ -148,6 +153,32 @@ _PERIOD_ORDER: tuple[str, ...] = tuple(CANONICAL_METRICS_WINDOWS)
 # is derived from this rather than written down as a per-window magic number,
 # so the rationale below is the only thing to check when a window is added.
 _PERIOD_LENGTH_DAYS: dict[str, int] = dict(CANONICAL_METRICS_WINDOWS)
+
+_DAILY_SERIES_DAYS = 7
+"""How many days of ``daily`` history a platform row carries (#690).
+
+A week, because that is the span a day-over-day question is asked inside —
+"is today's dip the weekend again?" — and because a row is a summary, not the
+archive. The document keeps more (see
+:data:`~mureo.context.state.DAILY_RETENTION_DAYS`); nothing is lost by the
+row showing less.
+"""
+
+_DAILY_DATE_KEY_RE = re.compile(DAILY_DATE_KEY_PATTERN)
+
+_DAILY_DELTA_KEYS: tuple[str, ...] = tuple(
+    key
+    for key in _CANONICAL_TOTAL_KEYS
+    if key not in {"result_indicator", "period", "fetched_at"}
+)
+"""The canonical keys a day-over-day delta is computed for.
+
+Derived from :data:`_CANONICAL_TOTAL_KEYS` rather than written out again, so
+a metric added to the vocabulary is deltaed without a second list being
+remembered. The three excluded keys are the non-numeric ones — subtracting
+two ``fetched_at`` strings, or two ``result_indicator`` labels, is not a
+change in performance.
+"""
 
 _STALE_GRACE_DAYS = 1
 """Slack added to a window's own length before its figure is called stale.
@@ -390,6 +421,104 @@ def _period_totals(state: PlatformState, period: str) -> dict[str, Any] | None:
     if state.metrics_period == period:
         return _safe_totals(state.totals)
     return None
+
+
+def _daily_series(
+    state: PlatformState, days: int = _DAILY_SERIES_DAYS
+) -> list[dict[str, Any]]:
+    """The platform's most recent ``days`` of day-grain history, ascending.
+
+    ``[{"date": "2026-08-19", "totals": {...}}, …]`` — oldest first, because
+    that is the order a trend is read in, and each bucket whitelisted through
+    :func:`_safe_totals` exactly as a window rollup is, so a stray or
+    secret-shaped key a writer slipped in never reaches the page.
+
+    **Gaps are not filled.** A day the collector missed is simply absent from
+    the list; nothing invents a zero for it, because "not collected" and
+    "collected, and the answer was zero" are different facts and a
+    manufactured zero would show as a day of no spend. The consumer is handed
+    a list of the days that exist, never a fixed-length week with holes
+    guessed at.
+
+    A key that is not ``YYYY-MM-DD`` is left out — not as a judgement on it,
+    but because a timeline is the one thing that cannot be drawn without a
+    date. It stays in the document (the write side keeps it too, see
+    :func:`~mureo.context.state._capped_daily`); it simply has no position
+    here.
+    """
+    stored = state.daily
+    if not isinstance(stored, dict):
+        return []
+    dated = sorted(
+        key for key in stored if isinstance(key, str) and _DAILY_DATE_KEY_RE.match(key)
+    )
+    return [
+        {
+            "date": key,
+            "totals": _safe_totals(
+                stored[key] if isinstance(stored[key], dict) else None
+            ),
+        }
+        for key in dated[-days:]
+    ]
+
+
+def _daily_delta(series: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """How the last day moved against the day before it, or ``None`` (#690).
+
+    ``{"from": <date>, "to": <date>, "metrics": {<key>: <after - before>}}``
+    — absolute differences only, for every
+    :data:`canonical numeric metric <_DAILY_DELTA_KEYS>` BOTH days carry. A
+    percentage would need a rule for a zero baseline, and picking one metric
+    to be *the* delta would be this layer deciding what an operator cares
+    about; the renderer chooses from the ones that are real.
+
+    Resolved here rather than in the browser for the reason every other
+    verdict on this page is: it is one rule, and a second copy of it is how
+    two surfaces start answering one question differently.
+
+    ``None`` — *unknown*, and unknown is not zero — in every case the
+    comparison cannot honestly be made:
+
+    - **fewer than two days.** There is nothing to compare against, and a
+      first day is not a change.
+    - **a gap between the last two.** They are stored neighbours, not
+      calendar neighbours: a Monday and the Thursday before it differ by
+      three days of something, and calling that a day-over-day change is a
+      made-up comparison presented as a measurement.
+    - **no metric the two days share**, or one carried as a non-number. There
+      is a difference to state only where both sides are figures.
+    """
+    if len(series) < 2:
+        return None
+    previous, latest = series[-2], series[-1]
+    try:
+        gap = date.fromisoformat(latest["date"]) - date.fromisoformat(previous["date"])
+    except ValueError:
+        # A key that matched the shape but is not a real date (2026-02-30).
+        # The write guard refuses one; a document written elsewhere may not.
+        return None
+    if gap != timedelta(days=1):
+        return None
+    before = previous.get("totals") or {}
+    after = latest.get("totals") or {}
+    metrics = {
+        key: after[key] - before[key]
+        for key in _DAILY_DELTA_KEYS
+        if _is_number(after.get(key)) and _is_number(before.get(key))
+    }
+    if not metrics:
+        return None
+    return {"from": previous["date"], "to": latest["date"], "metrics": metrics}
+
+
+def _is_number(value: Any) -> bool:
+    """Is ``value`` a figure that can be subtracted from another one?
+
+    ``bool`` is excluded on purpose: it is an ``int`` in Python, and
+    ``True - False`` is a number nobody meant.
+    """
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _available_periods(doc: StateDocument | None) -> list[str]:
