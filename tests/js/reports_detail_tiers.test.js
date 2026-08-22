@@ -30,6 +30,7 @@ const {
   settle,
   isVisible,
   DISPLAY_BY_CLASS,
+  cascade,
 } = require("./dom_harness.js");
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -95,6 +96,44 @@ async function openIndex() {
     "/api/reports/summary": () =>
       summaryWith({
         platforms: [platform("google_ads", { spend: 1000, conversions: 10 })],
+      }),
+  });
+  page.document.dispatchEvent({ type: "mureo:ready" });
+  await settle();
+  page.root.querySelector('[data-dashboard-nav="reports"]').click();
+  await settle();
+  return page;
+}
+
+/**
+ * A two-client roster whose figures are STALE, so the alert list has a row in
+ * it. `openIndex` above deliberately has no findings — the portfolio strip it
+ * exists to render is present either way — and an empty alert list would make
+ * the assertions below pass by checking nothing.
+ */
+async function openIndexWithAlert() {
+  const stale = new Date(Date.now() - 11 * 86400000).toISOString();
+  const roster = [
+    { slug: "alpha", name: "Alpha", active: true },
+    { slug: "beta", name: "Beta", active: true },
+  ];
+  const page = loadDashboardPage({
+    "/api/reports/clients": { clients: roster, can_archive: false },
+    "/api/reports/summary": () =>
+      summaryWith({
+        platforms: [
+          {
+            key: "google_ads",
+            display_name: "Google Ads",
+            totals: { spend: 1000 },
+            metrics_period: "YESTERDAY",
+            campaign_count: 1,
+            freshness: { fetched_at: stale, stale: true, stale_after_days: 2 },
+            not_collected: null,
+            daily: [],
+            daily_delta: null,
+          },
+        ],
       }),
   });
   page.document.dispatchEvent({ type: "mureo:ready" });
@@ -459,6 +498,143 @@ test.describe("recent actions render as a timeline", function () {
     assert.match(
       page.root.querySelector(".report-action-summary").textContent,
       /Something happened/
+    );
+  });
+});
+
+// ---------------------------------------------------------------------
+// The action row, by what it COMPUTES to
+// ---------------------------------------------------------------------
+
+test.describe("the action row wins its own layout", function () {
+  // THE BUG THIS EXISTS FOR, and why the tests above did not catch it.
+  //
+  // `.report-action` declared `flex-direction: column`. `.dashboard-section
+  // li` — the setup screens' generic row styling, which this list sits inside
+  // — declared `align-items: center` and `justify-content: space-between`.
+  // The generic rule is (0,1,1); the specific one was (0,1,0). The generic
+  // rule WON, and `align-items: center` on a column centres every child
+  // horizontally. That is the "text is centred" the owner reported twice.
+  //
+  // Every check written before this one missed it, for the same reason:
+  //
+  //   • the DOM was correct — right nodes, right classes, right order;
+  //   • `text-align: center` appeared nowhere, so a grep for it found
+  //     nothing and "proved" the opposite of what was on screen;
+  //   • the declaration-absence test added in the previous round asserts that
+  //     `.report-action { }` does not CONTAIN centring. It still passes with
+  //     the bug present, because the centring was never in that block. That
+  //     test is kept — it pins the literal complaint — but it cannot catch
+  //     this shape and this comment is here so nobody assumes it does.
+  //
+  // What catches it is asking the cascade, which is what a browser does.
+  const LAYOUT = {
+    "flex-direction": "column",
+    "align-items": "flex-start",
+    "justify-content": "flex-start",
+  };
+
+  async function actionRow() {
+    const page = await openDetail({
+      platforms: [platform("google_ads", { spend: 1000 })],
+      recent_actions: [
+        {
+          timestamp: new Date().toISOString(),
+          action: "budget_update",
+          platform: "google_ads",
+          summary: "Raised the daily budget.",
+          observation_due: "2026-08-27",
+        },
+      ],
+    });
+    const row = page.root.querySelector(".report-action");
+    assert.ok(row, "no action row rendered");
+    return row;
+  }
+
+  test.it("stacks its children and starts them at the left edge", async function () {
+    const row = await actionRow();
+    for (const [property, expected] of Object.entries(LAYOUT)) {
+      const won = cascade(row, property);
+      assert.ok(won, ".report-action computes no " + property + " at all");
+      assert.equal(
+        won.value,
+        expected,
+        property + " computes to '" + won.value + "' via `" + won.selector + "`"
+      );
+    }
+  });
+
+  test.it("keeps the padding that makes room for the rail", async function () {
+    // The same collision took the row's padding: `.dashboard-section li` sets
+    // `padding: 11px 0`, so the 20px left inset the timeline dots sit in was
+    // being discarded and the markers landed on top of the text.
+    const row = await actionRow();
+    const padding = cascade(row, "padding");
+    assert.ok(padding, "the row computes no padding");
+    assert.match(
+      padding.value,
+      /20px$/,
+      "padding computes to '" + padding.value + "' via `" + padding.selector + "`"
+    );
+  });
+
+  test.it("keeps the rail on the list itself", async function () {
+    const row = await actionRow();
+    const list = row.parentNode;
+    const border = cascade(list, "border-left");
+    assert.ok(
+      border && !/^0/.test(border.value),
+      "the rail computes to '" + (border && border.value) + "'"
+    );
+    const padding = cascade(list, "padding");
+    assert.match(
+      padding.value,
+      /2px$/,
+      "the list padding computes to '" +
+        padding.value +
+        "' via `" +
+        padding.selector +
+        "`"
+    );
+  });
+
+  test.it("the alert list rows win theirs too", async function () {
+    // Same trap, one element away: .reports-triage-row is also an <li> in a
+    // .dashboard-section, was also flex-direction:column, and was also being
+    // centred by the generic rule. Found by running the resolver above over
+    // every list row on these screens rather than by waiting for a third
+    // capture review.
+    const page = await openIndexWithAlert();
+    const row = page.root.querySelector(".reports-triage-row");
+    assert.ok(row, "no alert row rendered");
+    for (const [property, expected] of Object.entries(LAYOUT)) {
+      const won = cascade(row, property);
+      assert.equal(
+        won && won.value,
+        expected,
+        property +
+          " computes to '" +
+          (won && won.value) +
+          "' via `" +
+          (won && won.selector) +
+          "`"
+      );
+    }
+  });
+
+  test.it("resolves specificity the way a browser does", async function () {
+    // A guard on the guard: if `specificity` ever scored a two-part selector
+    // below a one-class one, every assertion above would silently invert.
+    const { specificity } = require("./dom_harness.js");
+    assert.ok(
+      specificity(".dashboard-section li") > specificity(".report-action"),
+      "a descendant selector must outrank a bare class"
+    );
+    assert.ok(
+      specificity(".dashboard-reports-actions-list .report-action") >
+        specificity(".dashboard-section li"),
+      "two classes must outrank one class plus a type"
     );
   });
 });

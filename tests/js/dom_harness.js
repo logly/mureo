@@ -403,6 +403,122 @@ function computedDisplay(el) {
   return "block";
 }
 
+// ---------------------------------------------------------------------
+// A real cascade, for the properties a layout depends on
+// ---------------------------------------------------------------------
+
+/**
+ * Every rule in app.css, as `{ selector, declarations, order }`.
+ *
+ * `DISPLAY_BY_CLASS` above only understands a bare `.cls` selector, which is
+ * enough for "is this hidden" and is NOT enough for anything else: it cannot
+ * see `.dashboard-section li`, so it cannot see that a two-part selector
+ * OUTRANKS a one-class rule and takes the property away from it.
+ *
+ * That is not hypothetical. `.report-action` (0,1,0) declared
+ * `flex-direction: column`, and `.dashboard-section li` (0,1,1) supplied
+ * `align-items: center` — which on a column centres every child. The rendered
+ * screen was centred text; the stylesheet contained no `text-align: center`
+ * anywhere near it; and a test asserting "no rule declares centring" passed
+ * happily while the bug was on screen.
+ */
+const RULES = [];
+{
+  let order = 0;
+  for (const [, selectors, body] of CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    // Skip at-rule preambles (@media ... {) — the harness models one theme.
+    if (/@/.test(selectors)) continue;
+    const declarations = {};
+    for (const part of body.split(";")) {
+      const i = part.indexOf(":");
+      if (i === -1) continue;
+      declarations[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+    }
+    for (const raw of selectors.split(",")) {
+      RULES.push({ selector: raw.trim(), declarations, order: order++ });
+    }
+  }
+}
+
+/** (ids, classes/attrs/pseudo-classes, types) — CSS specificity. */
+function specificity(selector) {
+  const bare = selector.replace(/::[a-z-]+/g, "");
+  const ids = (bare.match(/#[\w-]+/g) || []).length;
+  const classes = (bare.match(/\.[\w-]+|\[[^\]]+\]|:[a-z-]+(\([^)]*\))?/g) || [])
+    .length;
+  const types = (bare.match(/(^|[\s>+~])[a-z]+[\w-]*/gi) || []).length;
+  return ids * 10000 + classes * 100 + types;
+}
+
+/** Does one compound (`li.report-action:last-child`) match this element? */
+function matchesCompound(el, compound) {
+  const classes = el._classSet ? el._classSet() : new Set();
+  const parts = compound.match(/[.#\[:]?[^.#\[:]+/g) || [];
+  for (const part of parts) {
+    if (part.startsWith(".")) {
+      if (!classes.has(part.slice(1))) return false;
+    } else if (part.startsWith("[")) {
+      const name = part.slice(1, -1).split("=")[0].trim();
+      if (el.getAttribute(name) === null) return false;
+    } else if (part.startsWith(":")) {
+      // Structural pseudo-classes are not modelled; treat as matching so a
+      // rule is never wrongly discarded (this errs toward reporting MORE
+      // competing rules, which is the safe direction for a guard).
+      continue;
+    } else if (part.startsWith("#")) {
+      return false;
+    } else if (!/^[a-z]+$/i.test(part)) {
+      return false;
+    } else if (el.tagName !== part.toUpperCase()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Does `selector` (descendant combinators only) match `el`? */
+function selectorMatches(el, selector) {
+  if (/[>+~]/.test(selector)) return false; // not modelled; skip rather than guess
+  const compounds = selector.replace(/::[a-z-]+/g, "").trim().split(/\s+/);
+  if (!matchesCompound(el, compounds[compounds.length - 1])) return false;
+  let node = el.parentNode;
+  for (let i = compounds.length - 2; i >= 0; i--) {
+    let found = false;
+    while (node && node.nodeType === 1) {
+      if (matchesCompound(node, compounds[i])) {
+        found = true;
+        node = node.parentNode;
+        break;
+      }
+      node = node.parentNode;
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+/**
+ * What `property` computes to on `el`, by specificity then source order.
+ *
+ * Returns `{ value, selector }` so a failure can name the rule that won —
+ * which is the whole difficulty when one is losing a cascade it did not know
+ * it was in. `undefined` when nothing declares it.
+ */
+function cascade(el, property) {
+  let best = null;
+  for (const rule of RULES) {
+    const value = rule.declarations[property];
+    if (value === undefined) continue;
+    if (/::/.test(rule.selector)) continue; // pseudo-elements are not this element
+    if (!selectorMatches(el, rule.selector)) continue;
+    const rank = specificity(rule.selector);
+    if (!best || rank > best.rank || (rank === best.rank && rule.order > best.order)) {
+      best = { rank, order: rule.order, value, selector: rule.selector };
+    }
+  }
+  return best ? { value: best.value, selector: best.selector } : undefined;
+}
+
 /** Would an operator see this element, given app.css? */
 function isVisible(el) {
   let node = el;
@@ -527,6 +643,8 @@ async function settle(ticks = 12) {
 }
 
 module.exports = {
+  cascade,
+  specificity,
   Element,
   TextNode,
   parseHtml,
