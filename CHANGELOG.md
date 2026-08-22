@@ -59,6 +59,42 @@
 
 ### Changed
 
+- **The report detail view reads as three numbered tiers** (#691, phase 2 of
+  4). The screen was a flat stack — platform cards, then a block whose last
+  paragraph was the report's own conclusion, under two rows of chips. An
+  operator opening a client came for that paragraph and reached it last.
+
+  - **① Summary.** The latest report's narrative is promoted to the top of the
+    page, and its opening sentence — the conclusion the writer is instructed
+    to lead with — is set in bold. The split rule is deliberately dumb:
+    everything up to the first `。`. A narrative without one renders whole and
+    plain rather than being guessed at.
+  - **② Today's changes.** Up to three cards for the metrics that moved
+    against the day before, from the `daily_delta` #690 put on each platform
+    row. The tier is **hidden outright** when no platform can state one — a
+    first day, a gap between stored days, and a metric only one side carries
+    are all "unknown", and unknown is not zero. A delta is coloured only on an
+    axis where the direction means something — CPA and conversions both ways,
+    a falling CTR — and never for spend, clicks or impressions: spending more
+    is usually the plan, not a failure. The report's flag chips move here and
+    cap at four, with "+N more" for the rest; nothing is dropped.
+  - **③ By platform.** CPA joins spend at the top of each platform card,
+    where it belongs — it was previously the same size as impressions, four
+    rows down. Anything the canonical vocabulary has no slot for moves behind
+    a "Show all metrics" disclosure, rendered only when there is something in
+    it.
+
+  **The values a report stated** (#670) are a two-column table now instead of
+  a chip row: label left, figure right and tabular, one per row. The "+N more
+  fields" line and the pointer to the report body are unchanged, and so is the
+  data layer — `reportSecondaryStats` still decides what is shown and what is
+  counted as hidden.
+
+  Which metric a change card is about is a **stated priority** (CPA, spend,
+  conversions, then the three delivery metrics), not the largest movement:
+  #690 gives absolute differences only, and differences in different units
+  cannot be ranked against one another without inventing a comparison.
+
 - **A type scale, semantic status colours, and one KPI card anatomy** (#691,
   phase 1 of 4). Operator feedback on the reports screens was that nothing
   stands out and everything is too small. Measured, the complaint was

@@ -79,17 +79,28 @@ def test_the_renderer_binds_the_vocabulary_rather_than_re_deciding_it() -> None:
 
 
 @pytest.mark.unit
-def test_the_figures_are_rendered_as_figures_above_the_flags_and_the_prose() -> None:
-    """ "Figures as figures, flags as a list, narrative as prose" — in that
-    order, because the order is what makes the block skimmable."""
+def test_the_figures_are_rendered_as_figures_under_the_conclusion() -> None:
+    """ "Conclusion as prose, figures as figures" — in that order.
+
+    #691 turned this block into tier (1) of three and led it with the
+    narrative, because the report's opening sentence is its conclusion and it
+    is what an operator opened the page for. The flag row moved to tier (2),
+    which is the tier about what is WRONG — see ``buildReportFlagRow``.
+
+    What is pinned here is unchanged in substance: the figures are rendered
+    as figures, by the same cell the client card uses.
+    """
     body = _function_body(_read_layer(), "function renderReportsLatest(")
     assert "reportSummaryTotals(report)" in body
     assert "report-latest-kpis" in body
     # Reuses the client card's KPI cell, so a figure reads the same wherever
     # this view prints one.
     assert "clientKpiCell(" in body
-    assert body.index("reportSummaryTotals(report)") < body.index("report.flags")
-    assert body.index("report.flags") < body.index("report.narrative")
+    assert body.index("report.narrative") < body.index("reportSummaryTotals(report)")
+    # The flags are still rendered, and still capped — in tier (2).
+    flag_row = _function_body(_read_layer(), "function buildReportFlagRow(")
+    assert "report-flags" in flag_row
+    assert "REPORT_FLAG_CAP" in flag_row
 
 
 @pytest.mark.unit
@@ -137,9 +148,14 @@ def test_the_secondary_stats_are_read_from_the_vocabulary_module() -> None:
 
 
 @pytest.mark.unit
-def test_the_stats_sit_below_the_headline_row_and_above_the_flags() -> None:
+def test_the_stats_sit_below_the_headline_row() -> None:
     """Below, and visibly not part of it: these are the report's own words
-    for something mureo has no headline label for."""
+    for something mureo has no headline label for.
+
+    The "and above the flags" half of this pin retired with #691, which moved
+    the flag row to tier (2). What it was protecting — that these are never
+    read as the headline figures — is the ordering below, which still holds.
+    """
     body = _function_body(_read_layer(), "function renderReportsLatest(")
     assert "reportSecondaryStats(report)" in body
     assert "buildReportStatsRow(stats)" in body
@@ -149,7 +165,6 @@ def test_the_stats_sit_below_the_headline_row_and_above_the_flags() -> None:
     assert body.index("reportSummaryTotals(report)") < body.index(
         "reportSecondaryStats(report)"
     )
-    assert body.index("reportSecondaryStats(report)") < body.index("report.flags")
 
 
 @pytest.mark.unit
@@ -182,11 +197,26 @@ def test_the_stats_strings_are_localized_in_both_locales() -> None:
 
 
 @pytest.mark.unit
-def test_a_stat_chip_does_not_look_like_a_headline_figure() -> None:
+def test_a_stated_value_does_not_look_like_a_headline_figure() -> None:
     """The row above states mureo's own metrics for the window. These are
-    the report's, and they must not be read as the same thing."""
+    the report's, and they must not be read as the same thing.
+
+    #691 phase 2 made this block a table, so the mechanism changed: it was a
+    chip rule carrying its own font-size, and it is now the table's own scale
+    plus a caption naming it. What is pinned is what it always was — this
+    block is set SMALLER than the figures above it, and it is labelled.
+
+    The `.report-stat { ... }` rule this used to require is deliberately gone
+    rather than updated. `.report-stat` is a <tr> now, and the chip rule that
+    outlived the tag change is what made the table render as a wrap of pills.
+    """
     css = _read("app.css")
-    for selector in (".report-latest-stats {", ".report-stat {"):
-        assert selector in css, f"{selector} rule missing"
-    block = css.split(".report-stat {", 1)[1].split("}", 1)[0]
-    assert "font-size" in block
+    assert ".report-latest-stats {" in css, "the stated-values rule is missing"
+    block = css.split(".report-latest-stats {", 1)[1].split("}", 1)[0]
+    # Caption scale, which is the smallest step — never the KPI step.
+    assert "--type-caption-size" in block
+    assert "--type-kpi-size" not in block
+    # And it says what it is, so it is never mistaken for the row above.
+    assert "caption.report-stats-title" in css
+    # A display that would defeat table layout must not come back.
+    assert ".report-stat {" not in css, "the chip rule is back on a <tr>"
