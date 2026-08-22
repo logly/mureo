@@ -354,3 +354,111 @@ test.describe("every KPI cell reads label-then-figure", function () {
     assert.deepEqual(missed, [], "these families were never rendered, so never checked");
   });
 });
+
+// ---------------------------------------------------------------------
+// The action log reads as a log
+// ---------------------------------------------------------------------
+
+test.describe("recent actions render as a timeline", function () {
+  // The complaint was that the list read as centred text. Nothing centred it
+  // — only three rules in app.css set `text-align: center` and none is on
+  // this path. What it actually lacked was an AXIS: three stacked blocks per
+  // entry, the sentence in the middle and the time underneath, with no left
+  // edge for the eye to return to. So what is pinned here is the structure
+  // that fixes it, not the absence of a rule nobody wrote.
+  async function openWithActions(actions) {
+    return openDetail({
+      platforms: [platform("google_ads", { spend: 1000 })],
+      recent_actions: actions,
+    });
+  }
+
+  const ACTION = {
+    timestamp: new Date().toISOString(),
+    action: "budget_update",
+    platform: "google_ads",
+    campaign_id: "c-1",
+    summary: "Raised the daily budget to 18,000.",
+    observation_due: "2026-08-27",
+  };
+
+  test.it("puts the time and kind ABOVE the sentence", async function () {
+    const page = await openWithActions([ACTION]);
+    const row = page.root.querySelector(".report-action");
+    assert.ok(row, "no action row rendered");
+    const classes = row.children.map((el) => el.className);
+    // meta line, then the sentence, then what is still owed.
+    assert.deepEqual(classes, [
+      "report-action-top",
+      "report-action-summary",
+      "report-action-meta",
+    ]);
+    const top = page.root.querySelector(".report-action-top");
+    const inTop = top.children.map((el) => el.className);
+    assert.equal(inTop[0], "report-action-time", "the time does not lead the row");
+  });
+
+  test.it("keeps every row left-aligned", async function () {
+    // Belt and braces against the complaint literally coming back: no rule on
+    // the row or its list may centre it.
+    const css = require("node:fs").readFileSync(
+      require("node:path").join(
+        __dirname, "..", "..", "mureo", "_data", "web", "app.css"
+      ),
+      "utf-8"
+    );
+    for (const sel of [".report-action {", ".dashboard-reports-actions-list {"]) {
+      const at = css.indexOf(sel);
+      assert.notEqual(at, -1, sel + " is gone");
+      const block = css.slice(at, css.indexOf("}", at));
+      assert.ok(
+        !/text-align:\s*center/.test(block),
+        sel + " centres its text again"
+      );
+    }
+  });
+
+  test.it("draws the rail the rows hang off", async function () {
+    const css = require("node:fs").readFileSync(
+      require("node:path").join(
+        __dirname, "..", "..", "mureo", "_data", "web", "app.css"
+      ),
+      "utf-8"
+    );
+    const list = css.slice(
+      css.indexOf(".dashboard-reports-actions-list {"),
+      css.indexOf("}", css.indexOf(".dashboard-reports-actions-list {"))
+    );
+    assert.match(list, /border-left/, "the timeline rail is gone");
+    assert.ok(css.includes(".report-action::before"), "the row markers are gone");
+  });
+
+  test.it("spells a wire token as words", async function () {
+    // `budget_update` is what the action log stores. An operator should not
+    // have to read snake_case, and the humanizer is the flag chips' own so
+    // the page spells a token one way.
+    const page = await openWithActions([ACTION]);
+    const name = page.root.querySelector(".report-action-name");
+    assert.equal(name.textContent, "Budget update");
+  });
+
+  test.it("keeps the observation deadline rather than dropping it", async function () {
+    const page = await openWithActions([ACTION]);
+    const meta = page.root.querySelector(".report-action-meta");
+    assert.ok(meta, "the owed-review line is gone");
+    assert.match(meta.textContent, /2026-08-27/);
+  });
+
+  test.it("renders a row that carries only a summary", async function () {
+    // Every field but `summary` is optional in the stored shape.
+    const page = await openWithActions([{ summary: "Something happened." }]);
+    const row = page.root.querySelector(".report-action");
+    assert.ok(row, "a summary-only entry rendered nothing");
+    assert.equal(page.root.querySelectorAll(".report-action-time").length, 0);
+    assert.equal(page.root.querySelectorAll(".report-action-platform").length, 0);
+    assert.match(
+      page.root.querySelector(".report-action-summary").textContent,
+      /Something happened/
+    );
+  });
+});

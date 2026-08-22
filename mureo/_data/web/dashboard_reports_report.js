@@ -41,6 +41,7 @@
   const reportsNotCollectedNote = REPORTS_SHARED.reportsNotCollectedNote;
   const reportsNotCollectedText = REPORTS_SHARED.reportsNotCollectedText;
   const humanizeReportFlag = REPORTS_SHARED.humanizeReportFlag;
+  const humanizeFlagWords = REPORTS_SHARED.humanizeFlagWords;
   const reportFlagKind = REPORTS_SHARED.reportFlagKind;
   const latestReport = REPORTS_SHARED.latestReport;
   const buildFlagDetail = REPORTS_SHARED.buildFlagDetail;
@@ -605,16 +606,32 @@
     rows.forEach(function (a) {
       const li = document.createElement("li");
       li.className = "report-action";
+      // WHEN and WHAT KIND, on one quiet line above the sentence — the shape
+      // the mockup draws. This was three stacked blocks with the sentence in
+      // the middle, which reads as a loose column of text rather than as a
+      // log with a time axis.
       const top = document.createElement("div");
       top.className = "report-action-top";
+      if (a.timestamp) {
+        const ts = document.createElement("span");
+        ts.className = "report-action-time";
+        ts.textContent = relativeAge(a.timestamp);
+        top.appendChild(ts);
+      }
       const action = document.createElement("span");
       action.className = "report-action-name";
-      action.textContent = a.action || "";
-      const platform = document.createElement("span");
-      platform.className = "report-action-platform";
-      platform.textContent = a.platform || "";
+      // `budget_update` reaches the operator as "Budget update". The same
+      // helper the flag chips use, so a wire token is spelled one way on this
+      // page — and it is the ONLY transformation: an action mureo has no
+      // words for keeps its own, rather than being renamed by guesswork.
+      action.textContent = humanizeFlagWords(a.action || "");
       top.appendChild(action);
-      top.appendChild(platform);
+      if (a.platform) {
+        const platform = document.createElement("span");
+        platform.className = "report-action-platform";
+        platform.textContent = a.platform;
+        top.appendChild(platform);
+      }
       li.appendChild(top);
       if (a.summary) {
         const summary = document.createElement("p");
@@ -622,13 +639,9 @@
         summary.textContent = String(a.summary);
         li.appendChild(summary);
       }
+      // What is still OWED about this change, under the sentence it is about.
       const meta = document.createElement("div");
       meta.className = "report-action-meta";
-      if (a.timestamp) {
-        const ts = document.createElement("span");
-        ts.textContent = relativeAge(a.timestamp);
-        meta.appendChild(ts);
-      }
       if (a.observation_due) {
         const due = document.createElement("span");
         due.textContent = MUREO.t("dashboard.reports_observation_due", {

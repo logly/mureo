@@ -3317,34 +3317,72 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 /* Recent-actions list — one quiet row per logged autonomous action. */
+/* The action log, as a timeline (#691). It was three stacked blocks per
+   entry with the sentence in the middle and the time underneath — no axis,
+   no left edge, so a column of them read as loose centred text rather than
+   as a log. The rail gives it the one thing it was missing: a place where
+   every row starts. */
 .dashboard-reports-actions-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* Room for the dots, which straddle the rail. */
+  padding: 0 0 0 2px;
+  border-left: 1px solid var(--hairline);
 }
 
 .report-action {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 12px 0;
+  padding: 12px 0 12px 20px;
   border-bottom: 1px solid var(--hairline);
+  text-align: left;
 }
 
 .report-action:last-child {
   border-bottom: 0;
 }
 
+/* One node on the rail, per entry. Drawn on the border rather than beside it
+   so the eye reads a single axis down the list. */
+.report-action::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 17px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--hairline-strong);
+}
+
+.report-action:last-child {
+  border-bottom: 0;
+}
+
+/* WHEN and WHAT KIND, on one line above the sentence. Wraps rather than
+   clipping: a long platform name must not push the time off the row. */
 .report-action-top {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The time leads the row and is tabular, so the column scans down. */
+.report-action-time {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .report-action-name {
-  font-size: var(--type-body-size);
-  font-weight: 600;
-  color: var(--ink);
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-card-title-weight);
+  color: var(--ink-soft);
 }
 
 .report-action-platform {
@@ -3356,10 +3394,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   padding: 1px 8px;
 }
 
+/* The sentence is the row's content and the only thing at body size. */
 .report-action-summary {
   margin: 0;
   font-size: var(--type-body-size);
+  line-height: 1.6;
   color: var(--ink-soft);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .report-action-meta {
