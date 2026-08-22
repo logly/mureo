@@ -13,6 +13,7 @@ so the EN/JA parity of the key is asserted here against the bundled
 from __future__ import annotations
 
 import json
+import re
 from importlib import resources
 from typing import Any
 
@@ -577,3 +578,28 @@ class TestMetaConnectionMethodChooserKeys:
         key = "wizard.auth.meta_method_chooser_subtitle"
         assert "not need both" in data["en"][key]
         assert "どちらか一方" in data["ja"][key]
+
+
+@pytest.mark.unit
+def test_every_data_i18n_key_in_app_html_is_translated() -> None:
+    """Every ``data-i18n`` hook in the markup resolves in BOTH locales.
+
+    Nothing checked this, and #691 phase 2 proved what that costs: a new
+    heading was added with ``data-i18n="dashboard.reports_tier_summary"`` and
+    the catalog entry was not, so app.js found no string and left the English
+    fallback baked into the HTML. In English that is invisible. In Japanese it
+    is an English word in the middle of the page — and the whole point of the
+    attribute is that the fallback is never what an operator reads.
+
+    The list is derived from the markup rather than declared here, so a hook
+    added tomorrow is covered without anybody remembering this test.
+    """
+    ref = resources.files("mureo") / "_data" / "web" / "app.html"
+    with resources.as_file(ref) as path:
+        html = path.read_text(encoding="utf-8")
+    catalog = _load_i18n()
+    keys = sorted(set(re.findall(r'data-i18n="([^"]+)"', html)))
+    assert keys, "no data-i18n hooks found — the regex stopped matching"
+    for locale in ("en", "ja"):
+        missing = [k for k in keys if not catalog[locale].get(k)]
+        assert not missing, f"{locale} has no string for: {missing}"

@@ -197,11 +197,26 @@ def test_the_stats_strings_are_localized_in_both_locales() -> None:
 
 
 @pytest.mark.unit
-def test_a_stat_chip_does_not_look_like_a_headline_figure() -> None:
+def test_a_stated_value_does_not_look_like_a_headline_figure() -> None:
     """The row above states mureo's own metrics for the window. These are
-    the report's, and they must not be read as the same thing."""
+    the report's, and they must not be read as the same thing.
+
+    #691 phase 2 made this block a table, so the mechanism changed: it was a
+    chip rule carrying its own font-size, and it is now the table's own scale
+    plus a caption naming it. What is pinned is what it always was — this
+    block is set SMALLER than the figures above it, and it is labelled.
+
+    The `.report-stat { ... }` rule this used to require is deliberately gone
+    rather than updated. `.report-stat` is a <tr> now, and the chip rule that
+    outlived the tag change is what made the table render as a wrap of pills.
+    """
     css = _read("app.css")
-    for selector in (".report-latest-stats {", ".report-stat {"):
-        assert selector in css, f"{selector} rule missing"
-    block = css.split(".report-stat {", 1)[1].split("}", 1)[0]
-    assert "font-size" in block
+    assert ".report-latest-stats {" in css, "the stated-values rule is missing"
+    block = css.split(".report-latest-stats {", 1)[1].split("}", 1)[0]
+    # Caption scale, which is the smallest step — never the KPI step.
+    assert "--type-caption-size" in block
+    assert "--type-kpi-size" not in block
+    # And it says what it is, so it is never mistaken for the row above.
+    assert "caption.report-stats-title" in css
+    # A display that would defeat table layout must not come back.
+    assert ".report-stat {" not in css, "the chip rule is back on a <tr>"

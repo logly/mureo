@@ -73,8 +73,11 @@
     against the day before, from the `daily_delta` #690 put on each platform
     row. The tier is **hidden outright** when no platform can state one — a
     first day, a gap between stored days, and a metric only one side carries
-    are all "unknown", and unknown is not zero. The report's flag chips move
-    here and cap at four, with "+N more" for the rest; nothing is dropped.
+    are all "unknown", and unknown is not zero. A delta is coloured only on an
+    axis where the direction means something — CPA and conversions both ways,
+    a falling CTR — and never for spend, clicks or impressions: spending more
+    is usually the plan, not a failure. The report's flag chips move here and
+    cap at four, with "+N more" for the rest; nothing is dropped.
   - **③ By platform.** CPA joins spend at the top of each platform card,
     where it belongs — it was previously the same size as impressions, four
     rows down. Anything the canonical vocabulary has no slot for moves behind
