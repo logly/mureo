@@ -84,6 +84,26 @@ async function openDetail(overrides) {
   return page;
 }
 
+/** A two-client roster, which routes to the index (portfolio strip + grid). */
+async function openIndex() {
+  const roster = [
+    { slug: "alpha", name: "Alpha", active: true },
+    { slug: "beta", name: "Beta", active: true },
+  ];
+  const page = loadDashboardPage({
+    "/api/reports/clients": { clients: roster, can_archive: false },
+    "/api/reports/summary": () =>
+      summaryWith({
+        platforms: [platform("google_ads", { spend: 1000, conversions: 10 })],
+      }),
+  });
+  page.document.dispatchEvent({ type: "mureo:ready" });
+  await settle();
+  page.root.querySelector('[data-dashboard-nav="reports"]').click();
+  await settle();
+  return page;
+}
+
 // ---------------------------------------------------------------------
 // (3) By platform — the tier that vanished
 // ---------------------------------------------------------------------
@@ -264,5 +284,73 @@ test.describe("the summary leads with its conclusion", function () {
 
   test.it("emphasises nothing when it cannot find a sentence end", async function () {
     assert.equal(await leadOf("one long clause with no stop"), null);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Card anatomy — caption, then figure, on every family
+// ---------------------------------------------------------------------
+
+test.describe("every KPI cell reads label-then-figure", function () {
+  // Twice now a cell has been built figure-first and shipped: the client
+  // card's in phase 1, and the platform card's spend headline in phase 2 —
+  // the latter sitting on the SAME card as a CPA cell built the right way
+  // round, so one card read in two directions at once.
+  //
+  // Both were invisible to every existing test, because both produced a
+  // correct DOM with correct class names in a plausible order. So this pins
+  // the whole family at once rather than one cell at a time: for each
+  // `<label, value>` pair, the label must come first among its parent's
+  // children. A new family added later should be added here.
+  const FAMILIES = [
+    ["reports-kpi", "reports-kpi-label", "reports-kpi-value"],
+    ["reports-client-kpi", "reports-client-kpi-label", "reports-client-kpi-value"],
+    ["report-card-headline", "report-card-headline-label", "report-card-headline-value"],
+    ["report-card-second", "report-card-second-label", "report-card-second-value"],
+    ["reports-change", "reports-change-label", "reports-change-value"],
+  ];
+
+  /** Every `<label, value>` pair on a page, checked in order. */
+  function auditAnatomy(page, seen) {
+    for (const [cell, labelClass, valueClass] of FAMILIES) {
+      for (const parent of page.root.querySelectorAll("." + cell)) {
+        const classes = parent.children.map((el) => el.className);
+        const label = classes.findIndex((c) => c.split(/\s+/).includes(labelClass));
+        const value = classes.findIndex((c) => c.split(/\s+/).includes(valueClass));
+        if (label === -1 || value === -1) continue;
+        assert.ok(
+          label < value,
+          cell + " puts its figure above its label: " + classes.join(", ")
+        );
+        seen.add(cell);
+      }
+    }
+  }
+
+  test.it("puts the caption above the number in all of them", async function () {
+    const seen = new Set();
+
+    // The detail view carries four of the five families.
+    auditAnatomy(
+      await openDetail({
+        platforms: [
+          platform(
+            "google_ads",
+            { spend: 42400, cpa: 3855, conversions: 11 },
+            { from: "2026-08-20", to: "2026-08-21", metrics: { cpa: 200 } }
+          ),
+        ],
+        reports: { daily: { totals: { spend: 42400 }, narrative: "x。y" } },
+      }),
+      seen
+    );
+
+    // The portfolio strip is the INDEX's, so it needs a roster of two.
+    auditAnatomy(await openIndex(), seen);
+
+    // Without this the test would pass by checking nothing the day a family
+    // stops rendering — which is exactly how the two bugs above survived.
+    const missed = FAMILIES.map((f) => f[0]).filter((c) => !seen.has(c));
+    assert.deepEqual(missed, [], "these families were never rendered, so never checked");
   });
 });
