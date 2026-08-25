@@ -50,6 +50,12 @@
   //     and one command clears it once the operator has chosen a key.
   //   totals_stale — the totals are withheld too, but the fix is to collect
   //     again; nothing about the document is wrong.
+  //   report_flag — an analysis skill's own finding about the campaigns
+  //     themselves. The figures are fine; what they SAY is the problem, and
+  //     it is the only kind here that is about the advertising rather than
+  //     about mureo's grip on the data. It ranks below the withholding kinds
+  //     because a finding drawn from figures mureo cannot vouch for has to
+  //     wait for figures it can.
   //   not_collected — a collection failed and said why. It has not aged the
   //     figures out yet, and that is the cheapest moment to fix it.
   //   unrecognized_key — an entry mureo cannot resolve to a platform. It
@@ -63,10 +69,25 @@
   const REPORTS_TRIAGE_KINDS = [
     "totals_double_counted",
     "totals_stale",
+    "report_flag",
     "not_collected",
     "unrecognized_key",
     "observation_due",
   ];
+
+  // A report flag's chip colour → the health it gives the client (#699).
+  //
+  // The severity vocabulary itself lives in mureo/analysis/report_flags.py
+  // and is not restated here: this maps the CSS class `reportFlagKind`
+  // already returns, so a flag's chip and its client's health cannot come
+  // apart. `is-info` and `is-success` are deliberately absent — an
+  // informational or positive flag ("baseline not yet established", "goals
+  // met") raises nothing, and the whole point of keeping that axis separate
+  // is that good news must never be filed as work.
+  const REPORTS_FLAG_HEALTH = {
+    "is-danger": "attention",
+    "is-warn": "watch",
+  };
 
   // Kind → the i18n key naming what to RUN. Every kind in the table above
   // must appear here; `triageItemNextStep` is what the JS suite asserts it
@@ -78,6 +99,11 @@
   const REPORTS_TRIAGE_NEXT_STEPS = {
     totals_double_counted: "dashboard.reports_conflict_duplicate_repair_hint",
     totals_stale: "dashboard.reports_triage_next_collect",
+    // A flag is an analysis skill's finding, and what to DO about it is in
+    // the report that raised it — mureo does not have a command that
+    // resolves "conversions have gone to zero". So the next step is to go
+    // read it, which is a real step and not a placeholder.
+    report_flag: "dashboard.reports_triage_next_report",
     not_collected: "dashboard.reports_triage_next_not_collected",
     unrecognized_key: "dashboard.reports_conflict_repair_hint",
     observation_due: "dashboard.reports_triage_next_observations",
@@ -89,18 +115,27 @@
   // The severity line is the one reports_logic.js already draws and #638
   // established: does this finding mean a number on that card is NOT the
   // selected window's answer? The two withholding kinds say mureo cannot
-  // state the figures at all, so the card is red. The other three are real
-  // work — a collection that failed, an entry that resolves to nothing, a
-  // review that is owed — but nothing on screen is wrong because of them,
-  // so they are amber. Nothing here is a fourth opinion about the payload:
-  // the grid's colour and the alert list read one table, which is what
-  // stops a card the alert list calls urgent from being coloured green.
+  // state the figures at all, so the card is red. The data-integrity rest —
+  // a collection that failed, an entry that resolves to nothing, a review
+  // that is owed — are real work, but nothing on screen is wrong because of
+  // them, so they are amber. Nothing here is a fourth opinion about the
+  // payload: the grid's colour and the alert list read one table, which is
+  // what stops a card the alert list calls urgent from being coloured green.
   //
   // Every kind in REPORTS_TRIAGE_KINDS must appear in both tables; the JS
   // suite asserts it for each rather than for a sample.
+  //
+  // `report_flag` is the one kind whose severity is NOT fixed by its kind,
+  // because the finding is not mureo's: an analysis skill raised it and
+  // graded it, using the vocabulary in mureo/analysis/report_flags.py. The
+  // item is stamped with that grade at build time and `triageItemSeverity`
+  // reads it first. The entry below is the floor for an item that somehow
+  // arrives without one — "watch", this table's answer for every finding
+  // whose weight is unknown.
   const REPORTS_TRIAGE_SEVERITIES = {
     totals_double_counted: "attention",
     totals_stale: "attention",
+    report_flag: "watch",
     not_collected: "watch",
     unrecognized_key: "watch",
     observation_due: "watch",
@@ -109,6 +144,7 @@
   const REPORTS_TRIAGE_TAGS = {
     totals_double_counted: "dashboard.reports_triage_tag_double_counted",
     totals_stale: "dashboard.reports_triage_tag_stale",
+    report_flag: "dashboard.reports_triage_tag_report_flag",
     not_collected: "dashboard.reports_triage_tag_not_collected",
     unrecognized_key: "dashboard.reports_triage_tag_unknown_key",
     observation_due: "dashboard.reports_triage_tag_observation_due",
@@ -162,6 +198,35 @@
       );
     }
     return api;
+  }
+
+  // reports_format.js's reading of a report flag — read off the page at call
+  // time, exactly as `logic()` is. What matters is WHICH function: the chip
+  // an operator sees on the card is coloured by `reportFlagKind`, so taking
+  // the client's health from the same call makes the two the same judgement
+  // rather than two that agree today. That is the whole of #699: the roster
+  // said "nothing raised" about clients whose own cards were showing a red
+  // chip.
+  function format() {
+    const api = typeof window !== "undefined" ? window.MUREO_REPORTS_FORMAT : null;
+    if (!api) {
+      throw new Error(
+        "reports_triage.js needs MUREO_REPORTS_FORMAT — load reports_format.js " +
+          "BEFORE reports_triage.js"
+      );
+    }
+    return api;
+  }
+
+  // A flag's stable identity, for the dismissal fingerprint. Structured
+  // flags carry a `code`; the legacy shape is a bare string that IS the
+  // code. Anything else has no identity worth keeping, and "" is honest
+  // about that — such a flag simply cannot be dismissed durably.
+  function flagCode(flag) {
+    if (flag && typeof flag === "object") {
+      return typeof flag.code === "string" ? flag.code : "";
+    }
+    return typeof flag === "string" ? flag : "";
   }
 
   function triageRank(kind) {
@@ -266,6 +331,38 @@
           fetched_at: oldestStaleFetchedAt(summary),
         })
       );
+    }
+
+    // What the ANALYSIS said (#699). Every other finding here is about
+    // mureo's own grip on the data; these are about the advertising, and
+    // until now they reached the client's card as a coloured chip and
+    // reached the roster not at all — so a client carrying a red
+    // "conversions have gone to zero" was filed under "nothing raised".
+    //
+    // Only findings that are already flagged as work are lifted: `is-info`
+    // and `is-success` have no entry in REPORTS_FLAG_HEALTH, so a positive
+    // or informational flag raises nothing here, which is the distinction
+    // report_flags.py keeps that axis separate for.
+    //
+    // Withheld figures suppress these entirely. A flag is a reading OF the
+    // numbers, and mureo has just said it will not stand behind those
+    // numbers; repeating a conclusion drawn from them would be stating
+    // through the back door exactly what #638 stopped it stating at the
+    // front. The withholding item itself is already on the list, at
+    // attention, so nothing goes unsaid.
+    if (!kpis.doubleCounted && !kpis.stale) {
+      const F = format();
+      F.clientReportFlags(summary).forEach(function (flag) {
+        const severity = REPORTS_FLAG_HEALTH[F.reportFlagKind(flag)];
+        if (!severity) return;
+        items.push(
+          item("report_flag", client, index, {
+            severity: severity,
+            code: flagCode(flag),
+            label: F.humanizeReportFlag(flag),
+          })
+        );
+      });
     }
 
     // Why the figures did not move — one item per platform that says so.
@@ -375,6 +472,13 @@
           platform: (row.note && (row.note.label || row.note.key)) || "",
           reason: (row.note && row.note.reason) || "",
         });
+      case "report_flag":
+        // The flag's own label, through the same humanizer that writes the
+        // chip on the client's card — so the alert list and the card call
+        // the finding by one name.
+        return MUREO.t("dashboard.reports_triage_report_flag", {
+          flag: row.label || "",
+        });
       case "unrecognized_key":
         return MUREO.t("dashboard.reports_triage_unknown_key", { keys: row.keys });
       case "observation_due":
@@ -393,8 +497,14 @@
   // blank — it renders as work to look at, which is the safe read for a
   // finding whose meaning is unknown.
   function triageItemSeverity(row) {
-    const kind = row && typeof row === "object" ? row.kind : null;
-    return REPORTS_TRIAGE_SEVERITIES[kind] || "watch";
+    if (!row || typeof row !== "object") return "watch";
+    // An item may carry its own severity, and one kind does: a report flag's
+    // weight is the flag's, not the kind's (#699). Only the two values this
+    // axis has are honoured, so a malformed item cannot invent a third.
+    if (row.severity === "attention" || row.severity === "watch") {
+      return row.severity;
+    }
+    return REPORTS_TRIAGE_SEVERITIES[row.kind] || "watch";
   }
 
   // The short label the alert row carries next to the client's name. "" for
@@ -603,6 +713,12 @@
       case "unrecognized_key":
         what = String(row.keys || "");
         break;
+      case "report_flag":
+        // The code, plus the severity it was raised at: a flag that has
+        // escalated from watch to action is a different finding from the one
+        // the operator dismissed, and must come back.
+        what = String(row.code || "") + "\u0002" + String(row.severity || "");
+        break;
       case "observation_due":
         what = String(row.count) + "\u0002" + String(row.oldest_due || "");
         break;
@@ -742,6 +858,12 @@
 
   const api = {
     REPORTS_TRIAGE_KINDS: REPORTS_TRIAGE_KINDS,
+    // Exported for the drift pins (#699). The JS suite derives its cases
+    // from this rather than restating them, and the Python pin compares it
+    // against mureo/analysis/report_flags.py's own vocabulary so the two
+    // sides cannot disagree about what "action" means. Read-only by
+    // convention — nothing in the browser build writes to it.
+    REPORTS_FLAG_HEALTH: REPORTS_FLAG_HEALTH,
     triageRank: triageRank,
     triageItemsForClient: triageItemsForClient,
     buildReportsTriage: buildReportsTriage,

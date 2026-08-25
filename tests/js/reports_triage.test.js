@@ -43,6 +43,12 @@ globalThis.MUREO = {
 // (app.html) is the only coupling. Here we ARE the page.
 globalThis.window = globalThis;
 require(path.join(WEB, "reports_logic.js"));
+// reports_format.js too, since #699: the layer reads a report flag's chip
+// severity through it, so that a flag's colour on the card and the health it
+// gives its client are one decision. Loading it here mirrors the <script>
+// order app.html already pins — it is the module's dependency, not a test
+// fixture.
+require(path.join(WEB, "reports_format.js"));
 const triage = require(path.join(WEB, "reports_triage.js"));
 
 test.beforeEach(function () {
@@ -76,6 +82,24 @@ function healthySummary() {
     platform_conflicts: [],
     observations_due: { count: 0, oldest_due: null },
   };
+}
+
+/**
+ * A healthy client whose latest report raises one flag (#699).
+ *
+ * `severity` is the analysis layer's own canonical grade — the same
+ * vocabulary mureo/analysis/report_flags.py defines — so this drives the
+ * real join rather than a shape invented for the test.
+ */
+function flaggedSummary(severity) {
+  const s = healthySummary();
+  s.reports = {
+    daily: {
+      generated_at: ago(0),
+      flags: [{ code: "zero_conversions", severity: severity || "action" }],
+    },
+  };
+  return s;
 }
 
 /** A client whose totals are withheld because one account is counted twice. */
@@ -174,6 +198,11 @@ test.describe("the ranking is stated in code", function () {
     assert.deepEqual(triage.REPORTS_TRIAGE_KINDS, [
       "totals_double_counted",
       "totals_stale",
+      // #699. Below the two withholding kinds: a finding read OFF the
+      // figures has to wait for figures mureo will vouch for. Above the
+      // data-integrity rest, because it is the only kind here about the
+      // advertising rather than about mureo's grip on the data.
+      "report_flag",
       "not_collected",
       "unrecognized_key",
       "observation_due",
@@ -262,6 +291,7 @@ test.describe("every item says what to do next", function () {
   const EVERY_KIND = [
     doubleCountedSummary(),
     staleSummary(),
+    flaggedSummary("action"),
     notCollectedSummary(),
     unknownKeySummary(),
     observationsDueSummary(),
@@ -529,6 +559,10 @@ test.describe("a finding's severity", function () {
     assert.deepEqual(severities, [
       "attention",
       "attention",
+      // report_flag: the FLOOR only. This asks each kind what it is worth
+      // with no item behind it, and a flag's worth is the flag's, not the
+      // kind's — see the #699 block below, which drives it from real items.
+      "watch",
       "watch",
       "watch",
       "watch",
@@ -1195,5 +1229,145 @@ test.describe("the alert list opens short", function () {
     assert.ok(shown.rows.length <= all.length);
     assert.equal(built.clients.length, 3);
     assert.equal(triage.triageHealthCounts(built, 3).ok, 0);
+  });
+});
+
+// ---------------------------------------------------------------------
+// What the analysis said reaches the roster (#699)
+// ---------------------------------------------------------------------
+
+test.describe("a report's own findings reach the roster", function () {
+  const logic = require(path.join(WEB, "reports_logic.js"));
+
+  const healthOf = (summary) =>
+    triage.triageClientHealth(
+      triage.buildReportsTriage([client("acme")], [summary]),
+      0
+    );
+
+  test.it("makes an action flag attention WHILE still stating the figures", function () {
+    // THE REGRESSION, and the state the product did not previously have.
+    // Every other attention path (stale, double-counted) withholds, so
+    // before this "needs attention" and "figures unavailable" were the same
+    // thing. A client that is spending fine as DATA but has stopped
+    // converting is the case that had nowhere to appear.
+    const summary = flaggedSummary("action");
+    assert.equal(healthOf(summary), "attention");
+
+    const kpis = logic.aggregateClientKpis(summary);
+    assert.equal(kpis.spend, 1000, "the figures were withheld after all");
+    assert.equal(kpis.conversions, 10);
+    assert.equal(kpis.stale, false);
+    assert.equal(kpis.doubleCounted, false);
+  });
+
+  test.it("makes a watch flag watch, not attention", function () {
+    assert.equal(healthOf(flaggedSummary("watch")), "watch");
+  });
+
+  test.it("leaves a client with no flags alone", function () {
+    assert.equal(healthOf(healthySummary()), "ok");
+  });
+
+  test.it("files no work for informational or positive findings", function () {
+    // Keeping this axis separate is the whole reason report_flags.py has
+    // one: "goals met" must never arrive as something to do.
+    ["info", "positive"].forEach(function (severity) {
+      assert.equal(
+        healthOf(flaggedSummary(severity)),
+        "ok",
+        "a " + severity + " flag was filed as work"
+      );
+    });
+  });
+
+  test.it("takes the health from the same call that colours the chip", function () {
+    // Not "the two agree today" — the SAME decision. Driven from the
+    // exported table rather than restated, so a chip class added there
+    // without a health, or vice versa, shows up here.
+    const format = require(path.join(WEB, "reports_format.js"));
+    Object.keys(triage.REPORTS_FLAG_HEALTH).forEach(function (chipClass) {
+      const severity = chipClass === "is-danger" ? "action" : "watch";
+      const flag = { code: "zero_conversions", severity: severity };
+      assert.equal(
+        format.reportFlagKind(flag),
+        chipClass,
+        severity + " no longer paints " + chipClass
+      );
+      assert.equal(
+        healthOf(flaggedSummary(severity)),
+        triage.REPORTS_FLAG_HEALTH[chipClass]
+      );
+    });
+  });
+
+  test.it("says which finding it is, and what to do about it", function () {
+    const built = triage.buildReportsTriage([client("acme")], [flaggedSummary("action")]);
+    const row = built.items.find((i) => i.kind === "report_flag");
+    assert.ok(row, "no item was raised");
+    assert.equal(triage.triageItemText(row), "dashboard.reports_triage_report_flag");
+    // The flag's own label is interpolated, and the assertion is against the
+    // humanizer the card's chip calls rather than against a literal: one
+    // name for one finding is the property, and a literal here would also be
+    // pinning this stub's i18n behaviour (MUREO.t echoes keys, so the lookup
+    // reads as a miss and the humanizer's fallback runs).
+    const format = require(path.join(WEB, "reports_format.js"));
+    const call = calls.find((c) => c.key === "dashboard.reports_triage_report_flag");
+    assert.equal(
+      call.params.flag,
+      format.humanizeReportFlag({ code: "zero_conversions", severity: "action" })
+    );
+    assert.equal(triage.triageItemNextStep(row), "dashboard.reports_triage_next_report");
+  });
+
+  test.it("stays quiet when mureo will not vouch for the numbers", function () {
+    // A flag is a reading OF the figures. Having just refused to state them
+    // (#638), restating a conclusion drawn from them would be saying through
+    // the back door what the front door refused. The withholding item is
+    // already on the list at attention, so nothing goes unsaid.
+    const stale = staleSummary();
+    stale.reports = flaggedSummary("action").reports;
+    const built = triage.buildReportsTriage([client("acme")], [stale]);
+    assert.deepEqual(kinds(built), ["totals_stale"]);
+    assert.equal(triage.triageClientHealth(built, 0), "attention");
+
+    const dup = doubleCountedSummary();
+    dup.reports = flaggedSummary("action").reports;
+    assert.deepEqual(
+      kinds(triage.buildReportsTriage([client("acme")], [dup])),
+      ["totals_double_counted"]
+    );
+  });
+
+  test.it("keeps a re-graded flag distinct from the one that was dismissed", function () {
+    // A dismissal is keyed to what the message SAID. A flag that has
+    // escalated from watch to action is not the finding the operator waved
+    // away, and has to come back.
+    const at = (severity) =>
+      triage.triageItemFingerprint(
+        triage
+          .buildReportsTriage([client("acme")], [flaggedSummary(severity)])
+          .items.find((i) => i.kind === "report_flag")
+      );
+    assert.notEqual(at("action"), at("watch"));
+    assert.equal(at("action"), at("action"));
+  });
+
+  test.it("survives a malformed report rather than blanking the view", function () {
+    // This runs mid-render over a payload that may come from an older
+    // daemon, and a throw here takes the whole Reports view with it.
+    [
+      { daily: { generated_at: ago(0), flags: "not-an-array" } },
+      { daily: { generated_at: ago(0), flags: [null, 7, "zero_conversions"] } },
+      { daily: null },
+      "nope",
+      null,
+    ].forEach(function (reports) {
+      const s = healthySummary();
+      s.reports = reports;
+      assert.doesNotThrow(function () {
+        triage.buildReportsTriage([client("acme")], [s]);
+      }, "threw on reports = " + JSON.stringify(reports));
+    });
   });
 });
