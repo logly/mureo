@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-26
+
 ### Added
 
 - **STATE.json remembers yesterday's yesterday** (#690). `platforms[<platform>]`
@@ -280,6 +282,33 @@
   name, which is survivable for a tint and not for telling an operator which
   client to open; `critical_mass_reached` is good news containing "critical".
   Such a flag still shows its chip and contributes nothing to the roster.
+
+- **A marked client card names its own severity, not the loudest one** (#697).
+  The Reports grid marks every client the triage layer put on its list, and that
+  list holds watch clients as well as attention ones. The marker was a single
+  fixed "needs attention" string in the alert colour, so a watch client got an
+  urgent word above its card and alert red around it, while the status badge
+  inside the same card said "watch". The card contradicted itself, and red —
+  reserved for act-now since #693 — was being spent on clients nobody had to
+  act on today.
+
+  The severity was already in hand. `buildClientCardItem` receives `health` and
+  uses it two lines below for the badge; only the marker ignored it. The marker
+  now reuses the badge's own `dashboard.reports_health_*` strings, which is what
+  keeps the two from ever disagreeing again — one source for the word, not two
+  that happen to agree — and carries an `is-<health>` class, so the marker and
+  the card border take their colour from the matching `--status-*` token instead
+  of a hard-coded alert one. `dashboard.reports_triage_card_marker` has no
+  remaining caller and is removed from both locales.
+
+  The DOM harness could not have caught this. `selectorMatches` returned false
+  for any selector containing a combinator, which is not caution: a rule it
+  refuses to match is dropped from the cascade, so `cascade()` would hand back a
+  rule the browser had overruled. The card border is styled through
+  `... > .reports-client-card`, so it sat in exactly that hole. Child
+  combinators are now modelled, which changed no existing result; sibling ones
+  are still skipped, and the docstring now says plainly that the skip is unsound
+  rather than safe.
 
 ## [0.13.1] - 2026-08-22
 
