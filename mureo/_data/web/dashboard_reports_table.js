@@ -351,6 +351,7 @@
     let conversions = 0;
     let anySpend = false;
     let anyConv = false;
+    let stated = 0;
     rows.forEach(function (r) {
       if (r.spend !== null) {
         spend += r.spend;
@@ -360,24 +361,37 @@
         conversions += r.conversions;
         anyConv = true;
       }
+      // A client mureo will not state figures for adds nothing to any sum
+      // above. Counting the ones that DO is what lets the label below say so.
+      if (r.spend !== null || r.conversions !== null) stated += 1;
     });
     // Under a filter or a search the row sums what is ON SCREEN, and says so.
     // A total that kept counting the whole roster while two rows were visible
     // is not wrong so much as unreadable: the operator cannot tell which
     // question it answers, and the one they are asking is about the rows they
     // just narrowed to.
-    tr.appendChild(
-      cell(
-        "td",
-        "roster-total-label",
-        MUREO.t(
-          filtered
-            ? "dashboard.reports_roster_total_shown"
-            : "dashboard.reports_roster_total",
-          { n: rows.length }
-        )
-      )
-    );
+    //
+    // And when some of those rows are withheld, the label says how many
+    // actually contributed. "3 clients" over a figure built from one is the
+    // reading the withholding discipline exists to prevent: the point of
+    // refusing to state a client's figures is lost if the roster total then
+    // presents the remainder as though it covered everybody. Naming the
+    // contributing count discloses the gap instead of hiding it.
+    //
+    // Only when there IS a gap. With every visible client stating figures the
+    // count would repeat the number beside it, and a label that restates
+    // itself is one an operator stops reading.
+    const complete = stated === rows.length;
+    const key =
+      (filtered
+        ? "dashboard.reports_roster_total_shown"
+        : "dashboard.reports_roster_total") + (complete ? "" : "_stated");
+    // Only the params the chosen string actually interpolates: handing a
+    // formatter a value its template ignores is a claim that it matters.
+    const params = complete
+      ? { n: rows.length }
+      : { n: rows.length, stated: stated };
+    tr.appendChild(cell("td", "roster-total-label", MUREO.t(key, params)));
     tr.appendChild(
       cell("td", "roster-num", anySpend ? formatKpi("spend", spend) : "—")
     );

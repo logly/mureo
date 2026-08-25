@@ -625,13 +625,19 @@ test.describe("the total follows the filter", function () {
     const page = await openRoster();
     const t = (k, p) => page.sandbox.MUREO.t(k, p);
 
-    // Unfiltered: the plain roster label, counting every client.
-    assert.equal(foot(page)[0], t("dashboard.reports_roster_total", { n: 3 }));
+    // Unfiltered: every client counted. Alpha is stale and states nothing,
+    // so the label also discloses how many of the three are behind the
+    // figures — see the withholding block below.
+    assert.equal(
+      foot(page)[0],
+      t("dashboard.reports_roster_total_stated", { n: 3, stated: 2 })
+    );
 
     const search = page.root.querySelector("[data-reports-client-search]");
     search.value = "bravo";
     search.dispatchEvent({ type: "input" });
     await settle();
+    // One row, and it states figures, so there is no gap to disclose.
     assert.equal(foot(page)[0], t("dashboard.reports_roster_total_shown", { n: 1 }));
     assert.notEqual(
       t("dashboard.reports_roster_total_shown", { n: 1 }),
@@ -639,12 +645,91 @@ test.describe("the total follows the filter", function () {
       "the two labels are the same string, so this test proves nothing"
     );
 
-    // Cleared: back to the whole roster, and back to the plain label.
+    // Cleared: back to the whole roster.
     search.value = "";
     search.dispatchEvent({ type: "input" });
     await settle();
-    assert.equal(foot(page)[0], t("dashboard.reports_roster_total", { n: 3 }));
+    assert.equal(
+      foot(page)[0],
+      t("dashboard.reports_roster_total_stated", { n: 3, stated: 2 })
+    );
     assert.match(foot(page).join(" "), /164,200/);
+  });
+
+  // A roster built for these two tests: two clients whose names share a
+  // token, so one search can select exactly them and the only thing that
+  // varies between the cases is whether one of them withholds.
+  // Three, not two: the search has to NARROW for the "shown" label to
+  // apply at all, so there must be a client it excludes.
+  const PAIR = [
+    { slug: "north", name: "Delta North", active: true },
+    { slug: "south", name: "Delta South", active: true },
+    { slug: "omega", name: "Omega Ltd", active: true },
+  ];
+  const pairSummaries = (northKind) => ({
+    omega: summaryFor("omega", "ok", {
+      spend: 11000, conversions: 4, cpa: 2750, ctr: 1.5,
+      clicks: 300, impressions: 20000,
+    }),
+    north: summaryFor("north", northKind, {
+      spend: 40000, conversions: 10, cpa: 4000, ctr: 2.0,
+      clicks: 800, impressions: 40000,
+    }),
+    south: summaryFor("south", "ok", {
+      spend: 60000, conversions: 20, cpa: 3000, ctr: 2.5,
+      clicks: 1500, impressions: 60000,
+    }),
+  });
+
+  async function searchFor(page, text) {
+    const search = page.root.querySelector("[data-reports-client-search]");
+    search.value = text;
+    search.dispatchEvent({ type: "input" });
+    await settle();
+  }
+
+  test.it("says how many clients are behind the figures when some are not", async function () {
+    // "2 shown" over a figure built from one is the reading the whole
+    // withholding discipline exists to prevent: refusing to state a client's
+    // numbers achieves nothing if the roster total then presents what is
+    // left as though it covered everybody. The label names the contributing
+    // count rather than leaving the gap to be inferred.
+    const page = await openRoster({
+      clients: PAIR,
+      summaries: pairSummaries("stale"),
+    });
+    const t = (k, p) => page.sandbox.MUREO.t(k, p);
+    await searchFor(page, "delta");
+    // Attention leads, so the withheld client is first.
+    assert.deepEqual(visibleNames(page), ["Delta North", "Delta South"]);
+    assert.equal(
+      foot(page)[0],
+      t("dashboard.reports_roster_total_shown_stated", { n: 2, stated: 1 })
+    );
+    // And the figures really are South's alone.
+    assert.match(foot(page).join(" "), /60,000/);
+    assert.ok(!foot(page).join(" ").includes("100,000"), "a withheld client was summed");
+    assert.ok(!foot(page).join(" ").includes("11,000"), "a hidden client was summed");
+  });
+
+  test.it("stays quiet about the count when every visible client states figures", async function () {
+    // A label that restates the number beside it is one an operator stops
+    // reading, so the disclosure appears only where there is something to
+    // disclose.
+    const page = await openRoster({
+      clients: PAIR,
+      summaries: pairSummaries("ok"),
+    });
+    const t = (k, p) => page.sandbox.MUREO.t(k, p);
+    await searchFor(page, "delta");
+    assert.deepEqual(visibleNames(page).slice().sort(), ["Delta North", "Delta South"]);
+    assert.equal(foot(page)[0], t("dashboard.reports_roster_total_shown", { n: 2 }));
+    assert.ok(
+      !/stated=/.test(foot(page)[0]),
+      "the plain label carries a contributor count: " + foot(page)[0]
+    );
+    // Both counted: 40,000 + 60,000.
+    assert.match(foot(page).join(" "), /100,000/);
   });
 
   test.it("survives a re-sort with the filter still on", async function () {
