@@ -2299,12 +2299,26 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    the grid below — each in ITS OWN severity, not all in the loudest one.
    Red is reserved for act-now, and a watch client painted alert-red spends
    that reservation on a client nobody has to act on today. */
+/* THREE SIDES, not `border-color`. The left edge belongs to the health rule
+   further down (`.reports-client-card.is-health-*`) and is meant to be
+   solid. The shorthand sets all four sides and outranks that rule (three
+   classes to two), so it repainted the left edge at 45% alpha as well —
+   leaving an "act now" card with a FAINTER status rule than a card with
+   nothing raised at all, the emphasis exactly backwards. Measured in
+   Chrome: attention resolved to `color(srgb 0.86 0.15 0.15 / 0.45)` while
+   an untriaged card kept a full-strength `rgb(5, 150, 105)`. Naming the
+   three sides this soft outline actually means lets each rule own its own
+   edge, with no specificity contest to win. */
 .reports-client-card-item.is-attention > .reports-client-card {
-  border-color: color-mix(in srgb, var(--status-alert) 45%, transparent);
+  border-top-color: color-mix(in srgb, var(--status-alert) 45%, transparent);
+  border-right-color: color-mix(in srgb, var(--status-alert) 45%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--status-alert) 45%, transparent);
 }
 
 .reports-client-card-item.is-watch > .reports-client-card {
-  border-color: color-mix(in srgb, var(--status-watch) 45%, transparent);
+  border-top-color: color-mix(in srgb, var(--status-watch) 45%, transparent);
+  border-right-color: color-mix(in srgb, var(--status-watch) 45%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--status-watch) 45%, transparent);
 }
 
 .reports-client-card-mark {
