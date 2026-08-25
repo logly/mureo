@@ -67,10 +67,22 @@ function summaryFor(slug, kind, totals) {
   };
 }
 
+// clicks + impressions are carried because a client CTR is DERIVED from them
+// (total clicks over total impressions), not read off a platform row — the
+// real payload carries all four.
 const CLIENTS = {
-  alpha: summaryFor("alpha", "stale", { spend: 63000, conversions: 15, cpa: 4200, ctr: 2.22 }),
-  bravo: summaryFor("bravo", "ok", { spend: 128400, conversions: 46, cpa: 2791, ctr: 3.1 }),
-  carol: summaryFor("carol", "ok", { spend: 35800, conversions: 22, cpa: 1627, ctr: 3.76 }),
+  alpha: summaryFor("alpha", "stale", {
+    spend: 63000, conversions: 15, cpa: 4200, ctr: 2.22,
+    clicks: 1400, impressions: 63000,
+  }),
+  bravo: summaryFor("bravo", "ok", {
+    spend: 128400, conversions: 46, cpa: 2791, ctr: 3.1,
+    clicks: 3980, impressions: 128400,
+  }),
+  carol: summaryFor("carol", "ok", {
+    spend: 35800, conversions: 22, cpa: 1627, ctr: 3.76,
+    clicks: 1346, impressions: 35800,
+  }),
 };
 
 const ROSTER = [
@@ -434,6 +446,39 @@ test.describe("the table states figures it can and refuses the rest", function (
     assert.match(foot.join(" "), /164,200/);
     assert.match(foot.join(" "), /68/);
     assert.match(foot.join(" "), /2,415/);
+  });
+
+  test.it("prints a real CTR per row and in no total", async function () {
+    // The regression this pins: aggregateClientKpis carried no `ctr` at all,
+    // so every row of this column rendered "—" — a dead column, which is the
+    // very thing the CPA-target column is omitted to avoid.
+    const page = await openRoster();
+    const ctrs = rows(page).map((r) => r.children[4].textContent);
+    // Alpha is stale so its figures are withheld; the other two are stated.
+    assert.deepEqual(ctrs.filter((t) => t !== "—").length, 2, ctrs.join(" | "));
+    assert.ok(
+      ctrs.some((t) => /%/.test(t)),
+      "no row printed a percentage: " + ctrs.join(" | ")
+    );
+    // The roster has no single CTR worth stating, so the total stays "—".
+    const foot = page.root
+      .querySelector(".roster-total")
+      .children.map((td) => td.textContent);
+    assert.equal(foot[foot.length - 3], "—");
+  });
+
+  test.it("shows a dash when the client carried no impressions", async function () {
+    const noImpressions = Object.assign({}, CLIENTS);
+    noImpressions.bravo = summaryFor("bravo", "ok", {
+      spend: 128400,
+      conversions: 46,
+      clicks: 3980,
+    });
+    const page = await openRoster({ summaries: noImpressions });
+    const bravo = rows(page).find(
+      (r) => r.getAttribute("data-client-name") === "Bravo Logistics"
+    );
+    assert.equal(bravo.children[4].textContent, "—", "a CTR was invented");
   });
 
   test.it("leaves CTR out of the totals rather than averaging it", async function () {

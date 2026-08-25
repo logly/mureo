@@ -806,3 +806,54 @@ test.describe("i18n", function () {
     }
   });
 });
+
+test.describe("aggregateClientKpis: the client's click-through rate", function () {
+  // A ratio is summed as its two parts and divided ONCE. Averaging the
+  // platform rates would let a platform with 800 impressions weigh as much as
+  // one with 63,000 — and the roster table prints this figure per client, so
+  // the error would be on screen twenty times.
+  const row = (spend, conv, clicks, impressions, stale) => ({
+    key: "k",
+    totals: { spend, conversions: conv, clicks, impressions },
+    freshness: { fetched_at: new Date().toISOString(), stale: !!stale, stale_after_days: 2 },
+  });
+
+  test.it("divides total clicks by total impressions, not the mean of rates", function () {
+    const kpis = logic.aggregateClientKpis({
+      platforms: [row(1000, 10, 1400, 63000), row(500, 5, 100, 800)],
+    });
+    // 1,500 / 63,800 = 2.3511%. The mean of 2.2222% and 12.5% is 7.3611%.
+    assert.ok(Math.abs(kpis.ctr - (1500 / 63800) * 100) < 1e-9, String(kpis.ctr));
+    assert.ok(kpis.ctr < 3, "the rates were averaged instead of weighted");
+  });
+
+  test.it("is null, never zero, when nothing carried impressions", function () {
+    // A rate over an unstated denominator is not a rate, and 0% is a claim
+    // that nobody clicked.
+    assert.equal(logic.aggregateClientKpis({ platforms: [row(1000, 10, 50)] }).ctr, null);
+    assert.equal(
+      logic.aggregateClientKpis({ platforms: [row(1000, 10, 50, 0)] }).ctr,
+      null
+    );
+    assert.equal(logic.aggregateClientKpis({ platforms: [] }).ctr, null);
+  });
+
+  test.it("is withheld exactly when the other figures are", function () {
+    // Stale, and double-counted: both mean mureo will not state this
+    // client's totals, and a rate derived from them is one of those totals.
+    const staleKpis = logic.aggregateClientKpis({
+      platforms: [row(1000, 10, 1400, 63000, true)],
+    });
+    assert.equal(staleKpis.spend, null);
+    assert.equal(staleKpis.ctr, null, "a stale client still stated a CTR");
+
+    const doubled = logic.aggregateClientKpis({
+      platforms: [row(1000, 10, 1400, 63000)],
+      platform_conflicts: [
+        { kind: "duplicate_account", platform_keys: ["a", "b"], account_known: true },
+      ],
+    });
+    assert.equal(doubled.spend, null);
+    assert.equal(doubled.ctr, null, "a double-counted client still stated a CTR");
+  });
+});
