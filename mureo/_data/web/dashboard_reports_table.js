@@ -239,13 +239,9 @@
     if (row.cpaRatio === null) {
       // No target, or no CPA to compare. Either way there is no ratio, and a
       // bar drawn without one would be a claim about a target nobody set.
-      wrap.appendChild(
-        cell(
-          "b",
-          "roster-ratio-value is-void",
-          row.cpaUnavailable ? MUREO.t("dashboard.reports_cpa_unavailable") : "—"
-        )
-      );
+      // Plain "—": the reason a CPA is missing is stated once, on the CPA
+      // cell, and repeating it here would say it twice on the same row.
+      wrap.appendChild(cell("b", "roster-ratio-value is-void", "—"));
       td.appendChild(wrap);
       return td;
     }
@@ -284,11 +280,25 @@
     tr.appendChild(
       cell("td", "roster-num", row.spend === null ? "—" : formatKpi("spend", row.spend))
     );
+    // Two different absences share the "—" glyph and must not be read as the
+    // same thing: a withheld CPA (we do not trust the numbers behind it) and
+    // one that cannot be divided at all (spend, but zero conversions). The
+    // second gets "算出不可" underneath so the row says which it is.
+    //
+    // This caption used to hang off the CPA-vs-target cell, a column that is
+    // dropped whenever no client has a target — which is every install today,
+    // so it never actually reached a screen. It belongs here, on the column
+    // that always renders.
     const cpaCell = cell(
       "td",
       "roster-num roster-cpa",
       row.cpa === null ? "—" : formatKpi("cpa", Math.round(row.cpa))
     );
+    if (row.cpaUnavailable) {
+      cpaCell.appendChild(
+        cell("small", "roster-note", MUREO.t("dashboard.reports_cpa_unavailable"))
+      );
+    }
     tr.appendChild(cpaCell);
     if (withRatio) tr.appendChild(buildRatioCell(row));
     tr.appendChild(
@@ -546,11 +556,18 @@
               col: MUREO.t(SORT_LABELS[sort.key] || sort.key),
             });
     }
-    wireOnce(
-      document.querySelector("[data-reports-client-search]"),
-      "input",
-      applyReportsHealthFilter
-    );
+    const search = document.querySelector("[data-reports-client-search]");
+    // The placeholder is this field's only visible label, and app.js's
+    // `data-i18n` sweep only replaces text nodes — it has no placeholder
+    // mechanism — so it is set here, on every draw, which is also what makes
+    // it follow a locale change.
+    if (search) {
+      search.setAttribute(
+        "placeholder",
+        MUREO.t("dashboard.reports_search_clients")
+      );
+    }
+    wireOnce(search, "input", applyReportsHealthFilter);
   }
 
   /** A header click: the same column flips, a new column starts fresh. */

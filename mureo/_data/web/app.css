@@ -3715,6 +3715,25 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
  * Agency roster table (#691 phase 3)
  * ======================================================================== */
 
+/* Reachable by a screen reader, absent from the screen. The clip-rect idiom
+   rather than `display: none`, which would take the text out of the
+   accessibility tree along with the layout — the whole point of these nodes
+   is that they are announced.
+
+   Defined because #691 phase 3 used the class before this file had it, so
+   two labels intended for assistive tech were simply visible. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* The toolbar over the roster: which view, what it is sorted by, and a name
    search. Hidden entirely for a roster the table is not offered for. */
 .reports-roster-tools {
@@ -3837,6 +3856,17 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   white-space: nowrap;
 }
 
+/* Why a "—" is a "—". Sits under the dash on its own line, quiet enough that
+   it reads as an annotation on the figure rather than a second figure. */
+.roster-note {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--type-caption-size);
+  font-weight: 400;
+  color: var(--muted);
+  font-variant-numeric: normal;
+}
+
 .roster-sort {
   appearance: none;
   display: inline-flex;
@@ -3876,24 +3906,31 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 /* ---- a row ------------------------------------------------------------- */
 
-.roster-client {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
+/* NOT `display: flex`. This is a <td>, and giving a table cell a flex display
+   takes it out of the row's layout: it stops sharing the baseline its
+   siblings sit on, and the name renders a line above its own figures. The
+   capture review for #696 caught exactly that.
 
-.roster-name {
-  font-weight: var(--type-card-title-weight);
-  color: var(--ink);
+   The dot and the name are laid out inline instead, which is what a table
+   cell is already good at. */
+.roster-client {
   min-width: 0;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.roster-name {
+  vertical-align: middle;
+  font-weight: var(--type-card-title-weight);
+  color: var(--ink);
+}
+
 .roster-dot {
-  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
   width: 8px;
   height: 8px;
   border-radius: 50%;

@@ -430,6 +430,84 @@ test.describe("the table states figures it can and refuses the rest", function (
     assert.equal(row.cpaUnavailable, true);
   });
 
+  test.it("prints 'not calculable' on the CPA cell, which always renders", async function () {
+    // The distinction this pins: two rows both show "—" in the CPA column,
+    // and they mean different things. Carol's is withheld; Zero's cannot be
+    // divided. Only the second carries the note.
+    //
+    // It has to hang off the CPA cell specifically. It first shipped on the
+    // CPA-vs-target cell, a column that is dropped when no client has a
+    // target — so on every install that exists, the note never rendered. A
+    // pin on `row.cpaUnavailable` alone (above) stayed green throughout that,
+    // which is why this one reads the cell.
+    const withZero = Object.assign({}, CLIENTS, {
+      zero: summaryFor("zero", "ok", {
+        spend: 46900, conversions: 0, cpa: null, ctr: 2.67,
+        clicks: 1250, impressions: 46900,
+      }),
+    });
+    const page = await openRoster({
+      clients: ROSTER.concat([{ slug: "zero", name: "Zero Convert", active: true }]),
+      summaries: withZero,
+    });
+
+    const rowFor = (name) =>
+      rows(page).find((r) => r.getAttribute("data-client-name") === name);
+
+    const notes = rowFor("Zero Convert").querySelectorAll(".roster-note");
+    assert.equal(notes.length, 1, "the CPA cell carried no explanation");
+    const cpaCell = rowFor("Zero Convert").querySelector(".roster-cpa");
+    assert.equal(
+      cpaCell.querySelectorAll(".roster-note").length,
+      1,
+      "the note is not on the CPA cell"
+    );
+    assert.match(cpaCell.textContent, /—/, "the dash it explains is missing");
+    assert.ok(isVisible(notes[0]), "the note rendered but is not on screen");
+
+    // A client whose CPA is simply withheld says nothing extra: it is not
+    // "not calculable", it is "not vouched for", and claiming the first would
+    // be wrong about why.
+    assert.equal(
+      rowFor("Alpha Trading").querySelectorAll(".roster-note").length,
+      0,
+      "a withheld CPA was labelled as non-calculable"
+    );
+  });
+
+  test.it("keeps the screen-reader labels off the screen", async function () {
+    // `.sr-only` was used by the toolbar markup before app.css defined it,
+    // so both labels simply rendered as body text next to the controls.
+    // Asserting the rule exists would not have caught it either — this reads
+    // the resolved cascade the browser would.
+    const page = await openRoster();
+    const labels = page.root.querySelectorAll(".sr-only");
+    assert.ok(labels.length >= 2, "the toolbar labels are gone entirely");
+    labels.forEach((el) => {
+      assert.equal(
+        cascade(el, "position").value,
+        "absolute",
+        "a .sr-only label is still in the layout: " + el.textContent
+      );
+      assert.equal(cascade(el, "width").value, "1px");
+    });
+  });
+
+  test.it("labels the client search in the operator's language", async function () {
+    // app.js's `data-i18n` sweep only rewrites text nodes, so a placeholder
+    // set in the markup stays English forever. With the visible label now
+    // correctly hidden, the placeholder is the field's only label.
+    const page = await openRoster();
+    const search = page.root.querySelector("[data-reports-client-search]");
+    const placeholder = search.getAttribute("placeholder");
+    assert.ok(placeholder, "the search field has no placeholder at all");
+    assert.equal(
+      placeholder,
+      page.sandbox.MUREO.t("dashboard.reports_search_clients"),
+      "the placeholder is not the translated string"
+    );
+  });
+
   test.it("totals spend and conversions, and weights the CPA", async function () {
     const page = await openRoster();
     const foot = page.root
