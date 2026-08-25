@@ -352,8 +352,16 @@
       summary && Array.isArray(summary.platforms) ? summary.platforms : [];
     let spend = 0;
     let conv = 0;
+    // CTR is a RATIO, so it is summed as its two parts and divided once at
+    // the end — not averaged across platforms. A client running 37,540
+    // impressions on one platform and 800 on another has one click-through
+    // rate, and the mean of the two platform rates is not it.
+    let clicks = 0;
+    let impressions = 0;
     let hasSpend = false;
     let hasConv = false;
+    let hasClicks = false;
+    let hasImpressions = false;
     let stale = false;
     let staleSince = null;
     let staleSinceMs = Infinity;
@@ -367,6 +375,14 @@
       if (typeof t.conversions === "number" && isFinite(t.conversions)) {
         conv += t.conversions;
         hasConv = true;
+      }
+      if (typeof t.clicks === "number" && isFinite(t.clicks)) {
+        clicks += t.clicks;
+        hasClicks = true;
+      }
+      if (typeof t.impressions === "number" && isFinite(t.impressions)) {
+        impressions += t.impressions;
+        hasImpressions = true;
       }
       // Only a row that CONTRIBUTES can date the aggregate — an advisory
       // bridge adds nothing to the sum, so its age says nothing about it.
@@ -385,6 +401,13 @@
       spend: !withheld && hasSpend ? spend : null,
       conversions: !withheld && hasConv ? conv : null,
       cpa: !withheld && hasSpend && hasConv && conv > 0 ? spend / conv : null,
+      // Percent, like every other CTR mureo prints. `null` — never 0 — when
+      // the client carried no impressions to divide by, or when the totals
+      // are withheld: a rate over an unstated denominator is not a rate.
+      ctr:
+        !withheld && hasClicks && hasImpressions && impressions > 0
+          ? (clicks / impressions) * 100
+          : null,
       hasFigures: hasSpend || hasConv,
       doubleCounted: doubleCounted,
       stale: stale,

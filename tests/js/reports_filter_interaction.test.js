@@ -92,6 +92,18 @@ async function openReportsIndex() {
   // renders the index (see renderReports / REPORTS_ENTRY_MENU).
   page.root.querySelector('[data-dashboard-nav="reports"]').click();
   await settle();
+  // This file is about the CARD GRID's filtering, and #691 phase 3 made the
+  // table the default for a roster this size (4 clients). So it says so: it
+  // switches to the cards explicitly rather than relying on a default that
+  // is no longer theirs. The same filter driving the TABLE's rows is covered
+  // in reports_roster_table.test.js — one implementation, both views, and a
+  // test for each.
+  const toCards = page.root
+    .querySelectorAll("[data-reports-view]")
+    .find((b) => b.getAttribute("data-reports-view") === "cards");
+  assert.ok(toCards, "the roster view switch is missing");
+  toCards.click();
+  await settle();
   return page;
 }
 
@@ -298,9 +310,45 @@ test.describe("a marked card names its own severity (#697)", function () {
       cards(page)
         .find((c) => c.getAttribute("data-health") === health)
         .querySelector(".reports-client-card");
-    const alert = cascade(cardOf("attention"), "border-color");
-    const watch = cascade(cardOf("watch"), "border-color");
+    const alert = cascade(cardOf("attention"), "border-top-color");
+    const watch = cascade(cardOf("watch"), "border-top-color");
     assert.match(alert.value, /--status-alert/, "won by: " + alert.selector);
     assert.match(watch.value, /--status-watch/, "won by: " + watch.selector);
+  });
+
+  test.it("does not repaint the left status rule with the outline shorthand", function () {
+    // The soft outline above and the solid left rule are two different marks
+    // on the same element. Written as `border-color` the outline set all four
+    // sides and outranked the left rule (three classes to two), so an "act
+    // now" card ended up with a FAINTER status rule than a card with nothing
+    // raised — in Chrome, `color(srgb 0.86 0.15 0.15 / 0.45)` against an
+    // untriaged card's full-strength `rgb(5, 150, 105)`. The emphasis was
+    // exactly backwards.
+    //
+    // THIS IS A DECLARATION CHECK, and a weaker thing than it looks. The
+    // obvious test — resolve `border-left-color` on each card and assert it
+    // is not washed out — CANNOT catch this: the harness matches declared
+    // property names literally and does not expand shorthands, so a
+    // `border-color` declaration never competes for `border-left-color` and
+    // the assertion passes whether or not the bug is present. That was
+    // confirmed by re-introducing the shorthand and watching such a test stay
+    // green. Catching it properly needs shorthand expansion in the harness;
+    // until then this pins the one thing that is actually checkable, which is
+    // that these two rules name their sides.
+    const css = require("node:fs").readFileSync(
+      require("node:path").join(__dirname, "..", "..", "mureo", "_data", "web", "app.css"),
+      "utf8"
+    );
+    ["is-attention", "is-watch"].forEach(function (cls) {
+      const marker = ".reports-client-card-item." + cls + " > .reports-client-card {";
+      const at = css.indexOf(marker);
+      assert.notEqual(at, -1, "the " + cls + " outline rule is gone");
+      const block = css.slice(at + marker.length, css.indexOf("}", at));
+      assert.ok(
+        !/(^|[\s;])border-color\s*:/.test(block),
+        cls + " outlines with the shorthand, which also repaints the left rule"
+      );
+      assert.match(block, /border-top-color\s*:/, cls + " sets no top edge");
+    });
   });
 });

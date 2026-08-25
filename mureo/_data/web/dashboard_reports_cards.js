@@ -415,8 +415,13 @@
     );
     if (kpis.conversions != null) {
       krow.appendChild(
+        // The SHORT label. A card cell is a third of a card wide, and the
+        // long name does not fit one: it broke mid-word ("コンバージョ /
+        // ン"), which reads as a typo rather than as a wrap. The table has
+        // a whole column and keeps the full name — this is about the space
+        // the label is given, not about what the metric is called.
         clientKpiCell(
-          "dashboard.reports_kpi_conversions",
+          "dashboard.reports_kpi_conversions_short",
           formatNumber(kpis.conversions)
         )
       );

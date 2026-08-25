@@ -249,6 +249,30 @@
                     <div class="reports-filters" data-reports-filters
                          role="group" aria-label="Filter clients by health" hidden></div>
 
+                    <!-- Roster view switch + client-name search. Shown only
+                         for a roster the table is offered for (2+ visible
+                         clients) — see dashboard_reports_table.js. -->
+                    <div class="reports-roster-tools" data-reports-roster-tools hidden>
+                      <div class="reports-view-switch" role="group" data-reports-view-switch>
+                        <span class="sr-only" data-i18n="dashboard.reports_view_switch">Roster view</span>
+                        <button type="button" class="reports-view-btn" data-reports-view="table" aria-pressed="true" data-i18n="dashboard.reports_view_table">Table</button>
+                        <button type="button" class="reports-view-btn" data-reports-view="cards" aria-pressed="false" data-i18n="dashboard.reports_view_cards">Cards</button>
+                      </div>
+                      <span class="reports-sorted-by" data-reports-sorted-by></span>
+                      <label class="reports-roster-search">
+                        <span class="sr-only" data-i18n="dashboard.reports_search_clients">Search by client name</span>
+                        <input type="search" data-reports-client-search>
+                      </label>
+                    </div>
+
+                    <!-- The dense roster table (Agency, 2+ clients). Empty and
+                         hidden whenever the card grid is the chosen view. -->
+                    <div class="reports-roster-table" data-reports-roster-table hidden></div>
+
+                    <!-- Every row filtered out by the search. -->
+                    <p class="reports-clients-empty" data-reports-search-empty hidden
+                       data-i18n="dashboard.reports_search_no_match">No client matches that name.</p>
+
                     <!-- One card per client (KPIs + latest-report flags). Click
                          a card → that client's DETAIL view. -->
                     <div class="dashboard-reports-clients" data-reports-clients
@@ -600,6 +624,7 @@
   <script src="/static/dashboard_reports_overview.js"></script>
   <script src="/static/dashboard_reports_cards.js"></script>
   <script src="/static/dashboard_reports_triage.js"></script>
+  <script src="/static/dashboard_reports_table.js"></script>
   <script src="/static/dashboard_reports.js"></script>
   <script src="/static/dashboard_creative.js"></script>
   <script src="/static/dashboard_plugins.js"></script>
