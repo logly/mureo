@@ -206,6 +206,52 @@
 
 ### Fixed
 
+- **Yesterday's movement and the week behind it, on the figures they belong
+  to** (#691 phase 4). #690 has been storing day-grain history and computing a
+  day-over-day delta since it landed; nothing outside the change-cards tier
+  drew either, so a platform card stated today's spend with no indication of
+  whether it was ordinary.
+
+  Each KPI cell on a platform card now carries the absolute difference from
+  the day before and a seven-day line. Both are annotations sized to stay
+  that — caption-sized text and a 28px chart — and both are optional: an
+  install whose daily history has not started accumulating renders neither,
+  with no empty frame, no dash and no reserved space. That is the state every
+  install begins in, so it is the one the layout is pinned in.
+
+  **Gaps are drawn as gaps.** `daily` omits a day the collector missed rather
+  than zero-filling it, so points are placed on a DATE axis and a run of days
+  that are not calendar-adjacent is a break in the line, never a segment
+  across it. Plotting the buckets at even intervals would have quietly
+  repaired every gap: a Monday and the Thursday before it would sit one step
+  apart and read as an ordinary day-over-day move. A day whose neighbours are
+  both missing is drawn as a dot, because a one-point line paints nothing and
+  the measurement is real.
+
+  Colour is unchanged from the table #694 introduced, now shared by both
+  tiers rather than copied: CPA up is bad and down is good, conversions the
+  reverse, CTR down is bad and up is neutral, and spend, clicks and
+  impressions are never coloured at all — volume rising is neither good nor
+  bad without a target nothing puts on the wire.
+
+  **Both figures in a delta come from the same place.** The day a metric moved
+  FROM is read out of `daily` by date, never computed as headline minus
+  difference — those two come from different parts of the payload (the window
+  rollup and the day-grain series), and subtracting one from the other printed
+  a figure that existed in neither. Where the rollup and the newest stored day
+  disagree about the same day, or where the series does not back the
+  difference it is said to summarise, no movement is stated at all: which of
+  the two is right is exactly what this layer cannot tell. It also means a
+  one-day movement is not shown under a multi-day window total, which was
+  never a comparison worth making.
+
+  No percentages anywhere. #690 carries absolute differences only, and a
+  percentage needs a rule for a zero baseline that nothing in the product has
+  chosen. The roster table carries neither chart nor delta: its rows are
+  per-client while this history is per-platform, and summing it across a
+  client's platforms would state a figure nobody measured whenever one
+  platform has a day another does not.
+
 - **What the analysis flagged now reaches the Reports roster** (#699). A client
   whose latest report raised `zero_conversions` — the analysis layer's loudest
   grade, the one it paints red — was filed by the roster under "Nothing

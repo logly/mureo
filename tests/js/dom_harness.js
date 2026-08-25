@@ -569,6 +569,13 @@ function loadDashboardPage(routes) {
     documentElement: root,
     body: body,
     createElement: (tag) => new Element(tag),
+    // SVG. The namespace is dropped on purpose: this harness models
+    // elements by tag name and by the `class` attribute the cascade reads,
+    // and nothing it answers questions about depends on which namespace a
+    // node was born in. Present because reports_sparkline.js builds real
+    // SVG, and a missing createElementNS would fail as "not a function"
+    // rather than as whatever the test was actually asking.
+    createElementNS: (_ns, tag) => new Element(tag),
     createTextNode: (text) => new TextNode(text),
     querySelector: (s) => root.querySelector(s),
     querySelectorAll: (s) => root.querySelectorAll(s),
@@ -629,6 +636,7 @@ function loadDashboardPage(routes) {
   for (const file of [
     "reports_logic.js",
     "reports_format.js",
+  "reports_sparkline.js",
     "reports_order.js",
     "reports_triage.js",
     "reports_overview.js",

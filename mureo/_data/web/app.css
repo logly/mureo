@@ -3647,6 +3647,84 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* ---- (3) per platform -------------------------------------------------- */
 
 /* CPA, beside spend and at the same weight. Two figures, then the rest. */
+/* ------------------------------------------------------------------
+   Day-over-day movement and the seven-day line (#691 phase 4).
+
+   Both are ANNOTATIONS on a figure, and are sized to stay that: the delta
+   is caption-sized and the chart is 28px tall, so a KPI cell that gains
+   them does not become a cell with two figures in it. Neither reserves
+   space — an install with no daily history yet renders neither element at
+   all, and the cell looks exactly as it did before this feature existed.
+   ------------------------------------------------------------------ */
+
+.report-delta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-delta-move {
+  font-weight: var(--type-card-title-weight);
+  color: var(--ink-soft);
+}
+
+/* Only the axes where a direction MEANS something are coloured. Spend,
+   clicks and impressions keep the neutral ink above — see
+   REPORTS_CHANGE_TONE, and #694, where colouring all of them red made the
+   colour worth nothing. */
+.report-delta.is-bad .report-delta-move {
+  color: var(--status-alert);
+}
+
+.report-delta.is-good .report-delta-move {
+  color: var(--status-ok);
+}
+
+.report-delta-prev {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sparkline {
+  display: block;
+  width: 100%;
+  max-width: 120px;
+  height: 28px;
+  margin-top: 2px;
+  overflow: visible;
+}
+
+.sparkline-line {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* The line is scaled non-uniformly by preserveAspectRatio, which would
+     stretch the stroke with it and leave a week reading thicker than a
+     fortnight. */
+  vector-effect: non-scaling-stroke;
+}
+
+/* The newest day — the one whose value is printed above — in the accent, so
+   the eye lands on the figure the text is talking about. */
+.sparkline-head {
+  fill: var(--accent);
+  stroke: none;
+}
+
+/* A day whose neighbours are both missing. It is a real measurement and a
+   one-point polyline paints nothing, so it is drawn as a dot rather than
+   silently dropped. */
+.sparkline-gap-point {
+  fill: var(--hairline-strong);
+  stroke: none;
+}
+
 .report-card-second {
   display: flex;
   flex-direction: column;

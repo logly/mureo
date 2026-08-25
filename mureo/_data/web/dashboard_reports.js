@@ -92,6 +92,13 @@
   const renderReportsActions = R_REPORT.renderReportsActions;
   const renderReportsLatest = R_REPORT.renderReportsLatest;
   const buildReportFlagRow = R_REPORT.buildReportFlagRow;
+  // The tone table and the trend builders live in the report module now,
+  // bound by their original names so every call site below reads unchanged
+  // (#691 phase 4 — tier (3) draws deltas too, and one movement must not
+  // be good news on one tier and bad on the other).
+  const changeTone = R_REPORT.changeTone;
+  const deltaEndpoints = R_REPORT.deltaEndpoints;
+  const buildMetricSparkline = R_REPORT.buildMetricSparkline;
 
   // dashboard_reports_overview.js's exports, bound by their original names so every call
   // site below reads exactly as it did when this was one file.
@@ -446,11 +453,21 @@
         const diff = metrics[key];
         if (typeof diff !== "number" || !isFinite(diff) || diff === 0) return;
         const now = p.totals && p.totals[key];
+        const value = typeof now === "number" && isFinite(now) ? now : null;
+        // Both figures on this card have to come from `daily` — the movement
+        // AND the day it moved from. deltaEndpoints reads them out of the
+        // series by date and refuses when the series and the window rollup
+        // disagree about the same day, which is the mixture that put a
+        // "from 1,712" under a card whose stored days said 2,992 → 3,855.
+        // A card that cannot state where it moved from is not drawn.
+        const ends = deltaEndpoints(p, key, value);
+        if (!ends) return;
         rows.push({
           platform: p,
           key: key,
           diff: diff,
-          value: typeof now === "number" && isFinite(now) ? now : null,
+          value: value,
+          previous: ends.previous,
           rank: REPORTS_CHANGE_PRIORITY.indexOf(key),
         });
       });
@@ -481,18 +498,6 @@
   //
   // A metric absent from this table is neutral. Direction still reaches the
   // reader — the card prints an arrow — so nothing is lost by not colouring.
-  const REPORTS_CHANGE_TONE = {
-    cpa: { up: "is-bad", down: "is-good" },
-    conversions: { up: "is-good", down: "is-bad" },
-    ctr: { up: "is-flat", down: "is-bad" },
-  };
-
-  function changeTone(key, diff) {
-    const axis = REPORTS_CHANGE_TONE[key];
-    if (!axis) return "is-flat";
-    return diff > 0 ? axis.up : axis.down;
-  }
-
   // One change card: label, figure, and what it moved from.
   function buildChangeCard(row) {
     const card = document.createElement("div");
@@ -525,20 +530,26 @@
       (row.diff > 0 ? "↑ " : "↓ ") +
       formatKpi(row.key, row.key === "cpa" ? Math.round(row.diff) : Math.abs(row.diff));
     delta.appendChild(arrow);
-    if (row.value !== null) {
-      const prev = document.createElement("span");
-      prev.className = "reports-change-prev";
-      prev.textContent = MUREO.t("dashboard.reports_delta_prev", {
-        value: formatKpi(
-          row.key,
-          row.key === "cpa"
-            ? Math.round(row.value - row.diff)
-            : row.value - row.diff
-        ),
-      });
-      delta.appendChild(prev);
-    }
+    // The stored figure for the day it moved from, never `value - diff`:
+    // those two come from different places on the wire and subtracting one
+    // from the other printed a number that was in neither.
+    const prev = document.createElement("span");
+    prev.className = "reports-change-prev";
+    prev.textContent = MUREO.t("dashboard.reports_delta_prev", {
+      value: formatKpi(
+        row.key,
+        row.key === "cpa" ? Math.round(row.previous) : row.previous
+      ),
+    });
+    delta.appendChild(prev);
     card.appendChild(delta);
+    // The week behind the one-day move (#691 phase 4). A row only reaches
+    // this function when `daily_delta` gave it a movement, so there are at
+    // least two adjacent days — but not necessarily two PLOTTABLE ones for
+    // this metric, so the result is still optional and simply absent when
+    // there is no line to draw.
+    const spark = buildMetricSparkline(row.platform, row.key);
+    if (spark) card.appendChild(spark);
     return card;
   }
 

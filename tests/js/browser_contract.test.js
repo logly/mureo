@@ -138,6 +138,16 @@ const MODULES = [
     ],
   },
   {
+    file: "reports_sparkline.js",
+    global: "MUREO_REPORTS_SPARKLINE",
+    // `bound` names the exports a caller reaches for. Only the builder is
+    // used in the product; the rest are exported for the JS suite, which
+    // drives the axis and the gap-splitting directly rather than inferring
+    // them from a rendered <svg>.
+    bound: ["buildSparkline"],
+    moved: ["buildSparkline", "dayNumber", "points", "runs"],
+  },
+  {
     file: "reports_triage.js",
     global: "MUREO_REPORTS_TRIAGE",
     bound: [

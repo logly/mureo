@@ -154,6 +154,184 @@
     return parts.join(STALE_FIGURE_SEPARATOR);
   }
 
+  // ------------------------------------------------------------------
+  // Day-over-day movement (#691 phase 4)
+  // ------------------------------------------------------------------
+
+  /**
+   * Which direction of a metric is worth colouring, and how.
+   *
+   * Spend, clicks and impressions are absent on purpose: they are volume,
+   * and volume going up is neither good nor bad without a target nobody has
+   * put on the wire. Colouring them was the #694 capture's finding — every
+   * delta arrived red, including a spend rise, which trains an operator to
+   * ignore the colour entirely. CTR rising is "is-flat" for the narrower
+   * version of the same reason: a small rise is not an achievement worth
+   * announcing, while a fall is worth a look.
+   *
+   * Lives here rather than in dashboard_reports.js because BOTH tiers draw
+   * deltas now — the change cards in (2) and the platform cards in (3) — and
+   * a second copy is how two rows describing the same movement start
+   * disagreeing about whether it was good news.
+   */
+  const REPORTS_CHANGE_TONE = {
+    cpa: { up: "is-bad", down: "is-good" },
+    conversions: { up: "is-good", down: "is-bad" },
+    ctr: { up: "is-flat", down: "is-bad" },
+  };
+
+  function changeTone(key, diff) {
+    const axis = REPORTS_CHANGE_TONE[key];
+    if (!axis) return "is-flat";
+    return diff > 0 ? axis.up : axis.down;
+  }
+
+  /** CPA is carried to the yen; the rest keep whatever precision they have. */
+  function roundedFor(key, value) {
+    return key === "cpa" ? Math.round(value) : value;
+  }
+
+  /**
+   * The two days `daily_delta` compared, READ OUT OF `daily`, or `null`.
+   *
+   * This exists because the previous day's figure used to be back-calculated
+   * as `headline - diff`, and those two numbers come from different places:
+   * the headline is the window rollup (`periods`), the difference is derived
+   * from `daily`. Subtracting one from the other produced a figure that
+   * existed in NEITHER — a card reading "CPA 2,575, ↑ 863, from 1,712" while
+   * the stored days said 2,992 → 3,855. Nothing on the wire had ever said
+   * 1,712. That is the #659/#671 shape: one question, two sources, and an
+   * answer assembled from both.
+   *
+   * So the previous value is now looked up by DATE. `daily_delta` names the
+   * two days it compared (`from`/`to`), which is the only unambiguous link
+   * between the difference and the series behind it — the last two entries
+   * of `daily` are usually those days but are not guaranteed to be.
+   *
+   * `null`, meaning "not comparable", in every case where the two sources
+   * cannot be reconciled:
+   *
+   * - **no movement stated.** #690 gave no `daily_delta`, or none for this
+   *   metric — fewer than two days, a calendar gap, or a metric only one
+   *   side carries.
+   * - **the named days are not in `daily`,** or do not state this metric as
+   *   a number. There is nothing to read.
+   * - **the series disagrees with the difference.** `latest - previous`
+   *   ought to be exactly `diff`; where it is not, one of the two is wrong
+   *   and this layer cannot tell which.
+   * - **the headline disagrees with the newest day.** The card's figure and
+   *   the series' last day describe the same day and should be the same
+   *   number. They can drift when a window rollup and the daily bucket were
+   *   collected at different moments, and a day-over-day delta under a
+   *   headline it was not computed from is exactly the mixture this function
+   *   exists to prevent. Note this also, correctly, suppresses the delta
+   *   when the operator selects a multi-day window: a one-day movement under
+   *   a thirty-day total is not that total's movement.
+   *
+   * A headline of `null` is not a disagreement — there is nothing to
+   * contradict, and both figures below still come from `daily` alone.
+   */
+  function deltaEndpoints(platform, key, headline) {
+    const delta = platform && platform.daily_delta;
+    if (!delta || typeof delta !== "object") return null;
+    const metrics = delta.metrics;
+    const diff = metrics && typeof metrics === "object" ? metrics[key] : undefined;
+    if (typeof diff !== "number" || !isFinite(diff)) return null;
+
+    const series = Array.isArray(platform.daily) ? platform.daily : [];
+    const valueOn = function (date) {
+      let found = null;
+      series.forEach(function (bucket) {
+        if (!bucket || typeof bucket !== "object" || bucket.date !== date) return;
+        const totals = bucket.totals;
+        const value = totals && typeof totals === "object" ? totals[key] : undefined;
+        if (typeof value === "number" && isFinite(value)) found = value;
+      });
+      return found;
+    };
+    const previous = valueOn(delta.from);
+    const latest = valueOn(delta.to);
+    if (previous === null || latest === null) return null;
+    if (latest - previous !== diff) return null;
+    if (typeof headline === "number" && isFinite(headline) && headline !== latest) {
+      return null;
+    }
+    return { previous: previous, latest: latest, diff: diff };
+  }
+
+  /**
+   * "↑ 1,200  from 4,200" for one metric, or `null`.
+   *
+   * Everything it states comes from `daily` — see deltaEndpoints for the
+   * reconciliation, and for why the answer is `null` rather than a
+   * best-effort number whenever the sources do not line up.
+   *
+   * Absolute difference only. A percentage needs a rule for a zero baseline
+   * and #690 does not carry one, so inventing it here would be this layer
+   * making up the very thing the server refused to.
+   */
+  function buildDeltaElement(platform, key, headline) {
+    const ends = deltaEndpoints(platform, key, headline);
+    if (!ends) return null;
+    const diff = ends.diff;
+
+    const el = document.createElement("span");
+    el.className = "report-delta " + changeTone(key, diff);
+    const arrow = document.createElement("b");
+    // The direction is a character before it is a colour, so the row still
+    // reads for anyone the colour does not reach.
+    arrow.className = "report-delta-move";
+    arrow.textContent =
+      (diff > 0 ? "↑ " : diff < 0 ? "↓ " : "± ") +
+      formatKpi(key, roundedFor(key, Math.abs(diff)));
+    el.appendChild(arrow);
+    // The stored figure for that day, not `headline - diff`. See
+    // deltaEndpoints: the subtraction mixed two sources and printed a number
+    // neither of them held.
+    const prev = document.createElement("span");
+    prev.className = "report-delta-prev";
+    prev.textContent = MUREO.t("dashboard.reports_delta_prev", {
+      value: formatKpi(key, roundedFor(key, ends.previous)),
+    });
+    el.appendChild(prev);
+    return el;
+  }
+
+  /**
+   * The sparkline for one metric of one platform, or `null`.
+   *
+   * Resolved at call time: reports_sparkline.js publishes its global the same
+   * way every module in this family does, and a missing one is a load-order
+   * bug rather than something to paper over.
+   */
+  function buildMetricSparkline(platform, key) {
+    const api = typeof window !== "undefined" ? window.MUREO_REPORTS_SPARKLINE : null;
+    if (!api) {
+      throw new Error(
+        "MUREO_REPORTS_SPARKLINE (reports_sparkline.js) is missing — its " +
+          "<script> tag must come BEFORE dashboard_reports_report.js."
+      );
+    }
+    return api.buildSparkline(platform && platform.daily, key);
+  }
+
+  /**
+   * Append the delta and the sparkline for `key` to a KPI cell, if any.
+   *
+   * Both are optional and independent: an install with two days has a delta
+   * and a two-point line, one with a gap before yesterday has a line and no
+   * delta, and a fresh install has neither and gets neither — no empty
+   * frame, no dash, no reserved space. That is the DEFAULT state of this
+   * feature until daily-check has run for a while, so it is the one the
+   * layout has to look right in.
+   */
+  function appendTrend(cell, platform, key, current) {
+    const delta = buildDeltaElement(platform, key, current);
+    if (delta) cell.appendChild(delta);
+    const spark = buildMetricSparkline(platform, key);
+    if (spark) cell.appendChild(spark);
+  }
+
   // Build one KPI card for a single platform entry. `summary` is optional and
   // supplies the conflict context (the platform row itself carries none).
   function buildReportCard(platform, summary) {
@@ -264,6 +442,10 @@
     // carrying both spend and CPA read in two directions at once.
     headline.appendChild(headlineLabel);
     headline.appendChild(headlineValue);
+    // The two slots phase 1 reserved in the card anatomy (label → value →
+    // delta → sparkline), filled. Below the withholding branch it would be
+    // unreachable for a stale row, which is right: see the note there.
+    if (!rowStale) appendTrend(headline, platform, "spend", totals.spend);
     card.appendChild(headline);
 
     if (rowStale) {
@@ -297,6 +479,7 @@
       label.textContent = MUREO.t(REPORTS_KPI_LABELS.cpa);
       second.appendChild(label);
       second.appendChild(value);
+      appendTrend(second, platform, "cpa", totals.cpa);
       card.appendChild(second);
     }
 
@@ -682,6 +865,14 @@
 
 
   const api = {
+    // Shared with dashboard_reports.js so tier (2)'s change cards and tier
+    // (3)'s platform cards colour one movement one way (#691 phase 4).
+    REPORTS_CHANGE_TONE: REPORTS_CHANGE_TONE,
+    changeTone: changeTone,
+    deltaEndpoints: deltaEndpoints,
+    buildDeltaElement: buildDeltaElement,
+    buildMetricSparkline: buildMetricSparkline,
+    appendTrend: appendTrend,
     buildStaleFiguresElement: buildStaleFiguresElement,
     staleAggregateFiguresText: staleAggregateFiguresText,
     clientKpiCell: clientKpiCell,
