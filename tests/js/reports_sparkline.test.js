@@ -38,22 +38,68 @@ const DAY = 86400000;
 const dayBefore = (n) =>
   new Date(Date.parse(TODAY + "T00:00:00Z") - n * DAY).toISOString().slice(0, 10);
 
-/** A `daily` series from `[daysAgo, spend]` pairs, ascending. */
+/**
+ * A `daily` series from `[daysAgo, spend, conversions]` triples, ascending.
+ *
+ * Conversions are given rather than derived from spend so that CPA actually
+ * MOVES between days. Deriving them kept the ratio constant, which made the
+ * CPA delta zero and let a test about colouring a CPA fall pass without one.
+ */
 const series = (pairs) =>
   pairs
     .slice()
     .sort((a, b) => b[0] - a[0])
-    .map(([ago, spend]) => ({
-      date: dayBefore(ago),
-      totals: { spend: spend, conversions: Math.round(spend / 1000) },
-    }));
+    .map(([ago, spend, conversions]) => {
+      return {
+        date: dayBefore(ago),
+        totals: {
+          spend: spend,
+          conversions: conversions,
+          cpa: Math.round(spend / conversions),
+        },
+      };
+    });
 
+/**
+ * The `daily_delta` the server would compute from `daily`, or null.
+ *
+ * Derived rather than declared, because since the mixed-source fix the
+ * renderer reconciles the two: a hand-written delta that does not match the
+ * series it claims to summarise is a shape the wire cannot produce, and the
+ * renderer now (correctly) declines to draw it. Deriving keeps every fixture
+ * honest by construction.
+ */
+function deltaFrom(daily) {
+  if (daily.length < 2) return null;
+  const previous = daily[daily.length - 2];
+  const latest = daily[daily.length - 1];
+  if (spark.dayNumber(latest.date) - spark.dayNumber(previous.date) !== 1) return null;
+  const metrics = {};
+  Object.keys(latest.totals).forEach(function (key) {
+    if (typeof previous.totals[key] === "number") {
+      metrics[key] = latest.totals[key] - previous.totals[key];
+    }
+  });
+  return { from: previous.date, to: latest.date, metrics: metrics };
+}
+
+/** The window rollup the card's headline shows: the newest day, as stored. */
+const headlineOf = (daily) =>
+  daily.length ? Object.assign({}, daily[daily.length - 1].totals) : {};
+
+// The last two days move spend DOWN (15,000 -> 13,000) and CPA DOWN
+// (1,500 -> 1,000): one axis mureo has no verdict on, one where falling is
+// unambiguously good news. Both directions are asserted below.
 const WEEK = series([
-  [6, 10000], [5, 12000], [4, 9000], [3, 14000], [2, 11000], [1, 15000], [0, 13000],
+  [6, 10000, 10], [5, 12000, 10], [4, 9000, 9],
+  [3, 14000, 10], [2, 11000, 10], [1, 15000, 10], [0, 13000, 13],
 ]);
-const TWO_DAYS = series([[1, 10000], [0, 12000]]);
+const TWO_DAYS = series([[1, 10000, 10], [0, 12000, 10]]);
 // Day 3 never collected — the list simply does not contain it.
-const GAPPED = series([[6, 10000], [5, 12000], [4, 9000], [2, 11000], [1, 15000], [0, 13000]]);
+const GAPPED = series([
+  [6, 10000, 10], [5, 12000, 10], [4, 9000, 9],
+  [2, 11000, 10], [1, 15000, 10], [0, 13000, 13],
+]);
 
 // ---------------------------------------------------------------------
 // The axis
@@ -223,10 +269,17 @@ test.describe("what it draws", function () {
 const TODAY_ISO = new Date().toISOString();
 
 function platformWith(daily, delta) {
+  const stored = daily && daily.length ? daily : [];
   return {
     key: "google_ads",
     display_name: "Google Ads",
-    totals: { spend: 13000, conversions: 13, cpa: 1000, ctr: 2.2, clicks: 400, impressions: 18000 },
+    // The headline is the window rollup, and for YESTERDAY it describes the
+    // same day as the series' last bucket — so it IS that bucket here. Where
+    // the two disagree the renderer withholds the delta, which has its own
+    // test below.
+    totals: stored.length
+      ? headlineOf(stored)
+      : { spend: 13000, conversions: 13, cpa: 1000 },
     metrics_period: "YESTERDAY",
     campaign_count: 3,
     freshness: { fetched_at: TODAY_ISO, stale: false },
@@ -281,13 +334,7 @@ test.describe("the platform card in each of the four states", function () {
   });
 
   test.it("(b) two days: a chart and, with a delta on the wire, a delta", async function () {
-    const page = await openDetail(
-      platformWith(TWO_DAYS, {
-        from: dayBefore(1),
-        to: dayBefore(0),
-        metrics: { spend: 2000, cpa: -150 },
-      })
-    );
+    const page = await openDetail(platformWith(TWO_DAYS, deltaFrom(TWO_DAYS)));
     assert.ok(sparks(page).length >= 1, "two days drew no chart");
     const spendDelta = page.root
       .querySelector(".report-card-headline")
@@ -326,11 +373,7 @@ test.describe("the platform card in each of the four states", function () {
   test.it("withholds the chart from a row whose figures are withheld", async function () {
     // A stale row states no figures (#638). A chart of the days behind them
     // would be the same claim in a shape that is harder to argue with.
-    const stale = platformWith(WEEK, {
-      from: dayBefore(1),
-      to: dayBefore(0),
-      metrics: { spend: 2000 },
-    });
+    const stale = platformWith(WEEK, deltaFrom(WEEK));
     stale.freshness = { fetched_at: dayBefore(11) + "T00:00:00Z", stale: true };
     const page = await openDetail(stale);
     assert.match(page.root.querySelector(".report-card").textContent, /—/);
@@ -376,13 +419,7 @@ test.describe("a delta only where one was measured", function () {
   test.it("states an absolute difference and never a percentage", async function () {
     // #690 carries absolute differences only; a percentage needs a rule for a
     // zero baseline that nothing in the product has chosen.
-    const page = await openDetail(
-      platformWith(WEEK, {
-        from: dayBefore(1),
-        to: dayBefore(0),
-        metrics: { spend: 2000, cpa: -150 },
-      })
-    );
+    const page = await openDetail(platformWith(WEEK, deltaFrom(WEEK)));
     const text = page.root
       .querySelector(".report-card-headline")
       .querySelector(".report-delta").textContent;
@@ -394,34 +431,25 @@ test.describe("a delta only where one was measured", function () {
     // The #694 finding: every delta arrived red, including a spend rise, and
     // a colour that is always on says nothing. Spend is volume — up is
     // neither good nor bad without a target nobody has put on the wire.
-    const page = await openDetail(
-      platformWith(WEEK, {
-        from: dayBefore(1),
-        to: dayBefore(0),
-        metrics: { spend: 2000, cpa: -150 },
-      })
-    );
+    const page = await openDetail(platformWith(WEEK, deltaFrom(WEEK)));
     const spend = page.root
       .querySelector(".report-card-headline")
       .querySelector(".report-delta");
     const cpa = page.root
       .querySelector(".report-card-second")
       .querySelector(".report-delta");
-    assert.ok(spend.classList.contains("is-flat"), "a spend rise was given a verdict");
+    assert.ok(spend.classList.contains("is-flat"), "a spend move was given a verdict");
     // CPA falling is good news, and is the one axis where that is unambiguous.
+    // 1,500 -> 1,000, so there is a real movement behind this.
+    assert.match(cpa.textContent, /500/, "the CPA delta is zero, so this proves nothing");
     assert.ok(cpa.classList.contains("is-good"), "a CPA fall was not good news");
     const tone = cascade(cpa.querySelector(".report-delta-move"), "color");
     assert.match(tone.value, /--status-ok/, "won by: " + tone.selector);
   });
 
   test.it("carries the direction as a character, not as colour alone", async function () {
-    const page = await openDetail(
-      platformWith(WEEK, {
-        from: dayBefore(1),
-        to: dayBefore(0),
-        metrics: { spend: -500 },
-      })
-    );
+    // WEEK ends 15,000 -> 13,000, so the real movement is downwards.
+    const page = await openDetail(platformWith(WEEK, deltaFrom(WEEK)));
     assert.match(
       page.root
         .querySelector(".report-card-headline")
@@ -463,11 +491,7 @@ test.describe("the roster carries neither, and that is the decision", function (
           non_canonical_periods: [],
           last_synced_at: TODAY_ISO,
           platforms: [
-            platformWith(daily, {
-              from: dayBefore(1),
-              to: dayBefore(0),
-              metrics: { spend: 2000, cpa: -150 },
-            }),
+            platformWith(daily, deltaFrom(daily)),
           ],
           platform_conflicts: [],
           recent_actions: [],
@@ -499,5 +523,143 @@ test.describe("the roster carries neither, and that is the decision", function (
     const height = cascade(page.root.querySelector(".roster-row"), "height");
     assert.ok(height, "nothing sets a row height");
     assert.equal(height.value, "44px", "won by: " + height.selector);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Every figure on the card comes from one place
+// ---------------------------------------------------------------------
+
+test.describe("the previous day is read, never back-calculated", function () {
+  // THE DEFECT, as it reached a capture. The headline came from the window
+  // rollup (`periods`) and the difference from `daily`, and the "from" figure
+  // was computed as headline - diff. With the two sources 2,575 and 3,855
+  // apart that printed "from 1,712" — a number that appears in neither, on a
+  // card whose stored days said 2,992 -> 3,855.
+  //
+  // Same shape as #659/#671: one question, two sources, an answer assembled
+  // out of both.
+
+  const DIVERGENT = {
+    key: "google_ads",
+    display_name: "Google Ads",
+    // The rollup disagrees with the newest stored day.
+    totals: { spend: 51500, conversions: 20, cpa: 2575 },
+    metrics_period: "YESTERDAY",
+    campaign_count: 3,
+    freshness: { fetched_at: TODAY_ISO, stale: false },
+    not_collected: null,
+    daily: [
+      { date: dayBefore(1), totals: { spend: 41888, conversions: 14, cpa: 2992 } },
+      { date: dayBefore(0), totals: { spend: 50115, conversions: 13, cpa: 3855 } },
+    ],
+    daily_delta: {
+      from: dayBefore(1),
+      to: dayBefore(0),
+      metrics: { spend: 8227, conversions: -1, cpa: 863 },
+    },
+  };
+
+  test.it("prints a previous value that exists in the series", async function () {
+    // Read off the SCREEN and checked for membership in the stored days,
+    // rather than compared against a figure this test computed the same way
+    // the renderer does — which would only prove the two agree with
+    // themselves.
+    //
+    // Worth knowing what this can and cannot catch. Once the two guards hold
+    // (the headline equals the newest stored day, and latest - previous
+    // equals the stated difference), `headline - diff` is ALGEBRAICALLY the
+    // stored previous value — so reading and back-calculating cannot be told
+    // apart from outside, and the two tests below, which drive the guards, are
+    // what actually keep the invented figure off the card. This pins the
+    // property an operator cares about: whatever route it took, the number on
+    // screen is a day that was really collected.
+    const page = await openDetail(platformWith(WEEK, deltaFrom(WEEK)));
+    const shown = page.root
+      .querySelector(".report-card-headline")
+      .querySelector(".report-delta")
+      .textContent.match(/[\d,]+/g)
+      .map((n) => Number(n.replace(/,/g, "")));
+    const stored = WEEK.map((b) => b.totals.spend);
+    const previous = WEEK[WEEK.length - 2].totals.spend;
+    assert.ok(
+      shown.includes(previous),
+      "the previous day is not on the card: " + shown.join(" ")
+    );
+    shown.forEach(function (n) {
+      // Every figure the delta prints is either a stored day or the size of
+      // the move between two of them. Nothing else has a source.
+      const isStored = stored.includes(n);
+      const isMove = stored.some((a) => stored.some((b) => Math.abs(a - b) === n));
+      assert.ok(isStored || isMove, n + " appears in no stored day");
+    });
+  });
+
+  test.it("invents nothing when the rollup and the newest day disagree", async function () {
+    const page = await openDetail(DIVERGENT);
+    const card = page.root.querySelector(".report-card");
+    assert.ok(card, "the card did not render");
+    // The headline is still stated — it is a real figure from a real source.
+    assert.match(card.textContent, /2,575/);
+    // But no movement is claimed, because which day it moved from is exactly
+    // what mureo cannot tell.
+    assert.equal(
+      page.root.querySelectorAll(".report-delta").length,
+      0,
+      "a delta was drawn across two disagreeing sources"
+    );
+    // And above all, the back-calculated figure is nowhere on the card.
+    assert.ok(
+      !card.textContent.includes("1,712"),
+      "the invented previous value is still on screen: " + card.textContent
+    );
+  });
+
+  test.it("keeps the same rule on the change cards in tier 2", async function () {
+    // The tier-2 card had its own copy of the subtraction. Both now read the
+    // one resolver, so neither can state a day the other would not.
+    const page = await openDetail(DIVERGENT);
+    const changes = page.root.querySelectorAll(".reports-change");
+    changes.forEach(function (card) {
+      assert.ok(
+        !card.textContent.includes("1,712"),
+        "tier 2 back-calculated: " + card.textContent
+      );
+    });
+    assert.equal(changes.length, 0, "a change card was built from mixed sources");
+  });
+
+  test.it("refuses when the series does not back the difference it claims", async function () {
+    // A payload whose `daily_delta` does not match the days it names. One of
+    // the two is wrong and this layer cannot tell which, so it states neither.
+    const inconsistent = JSON.parse(JSON.stringify(DIVERGENT));
+    inconsistent.totals = { spend: 50115, conversions: 13, cpa: 3855 };
+    inconsistent.daily_delta.metrics.cpa = 999;
+    const page = await openDetail(inconsistent);
+    const second = page.root.querySelector(".report-card-second");
+    assert.equal(
+      second.querySelectorAll(".report-delta").length,
+      0,
+      "a difference the series contradicts was rendered"
+    );
+    // Spend is untouched by the tampering and still states its movement.
+    assert.ok(
+      page.root
+        .querySelector(".report-card-headline")
+        .querySelector(".report-delta"),
+      "the whole card was suppressed instead of the one bad metric"
+    );
+  });
+
+  test.it("refuses when the named days are not in the series", async function () {
+    const orphaned = JSON.parse(JSON.stringify(DIVERGENT));
+    orphaned.totals = { spend: 50115, conversions: 13, cpa: 3855 };
+    orphaned.daily = [];
+    const page = await openDetail(orphaned);
+    assert.equal(
+      page.root.querySelectorAll(".report-delta").length,
+      0,
+      "a movement was stated with no series behind it"
+    );
   });
 });

@@ -192,22 +192,88 @@
   }
 
   /**
+   * The two days `daily_delta` compared, READ OUT OF `daily`, or `null`.
+   *
+   * This exists because the previous day's figure used to be back-calculated
+   * as `headline - diff`, and those two numbers come from different places:
+   * the headline is the window rollup (`periods`), the difference is derived
+   * from `daily`. Subtracting one from the other produced a figure that
+   * existed in NEITHER — a card reading "CPA 2,575, ↑ 863, from 1,712" while
+   * the stored days said 2,992 → 3,855. Nothing on the wire had ever said
+   * 1,712. That is the #659/#671 shape: one question, two sources, and an
+   * answer assembled from both.
+   *
+   * So the previous value is now looked up by DATE. `daily_delta` names the
+   * two days it compared (`from`/`to`), which is the only unambiguous link
+   * between the difference and the series behind it — the last two entries
+   * of `daily` are usually those days but are not guaranteed to be.
+   *
+   * `null`, meaning "not comparable", in every case where the two sources
+   * cannot be reconciled:
+   *
+   * - **no movement stated.** #690 gave no `daily_delta`, or none for this
+   *   metric — fewer than two days, a calendar gap, or a metric only one
+   *   side carries.
+   * - **the named days are not in `daily`,** or do not state this metric as
+   *   a number. There is nothing to read.
+   * - **the series disagrees with the difference.** `latest - previous`
+   *   ought to be exactly `diff`; where it is not, one of the two is wrong
+   *   and this layer cannot tell which.
+   * - **the headline disagrees with the newest day.** The card's figure and
+   *   the series' last day describe the same day and should be the same
+   *   number. They can drift when a window rollup and the daily bucket were
+   *   collected at different moments, and a day-over-day delta under a
+   *   headline it was not computed from is exactly the mixture this function
+   *   exists to prevent. Note this also, correctly, suppresses the delta
+   *   when the operator selects a multi-day window: a one-day movement under
+   *   a thirty-day total is not that total's movement.
+   *
+   * A headline of `null` is not a disagreement — there is nothing to
+   * contradict, and both figures below still come from `daily` alone.
+   */
+  function deltaEndpoints(platform, key, headline) {
+    const delta = platform && platform.daily_delta;
+    if (!delta || typeof delta !== "object") return null;
+    const metrics = delta.metrics;
+    const diff = metrics && typeof metrics === "object" ? metrics[key] : undefined;
+    if (typeof diff !== "number" || !isFinite(diff)) return null;
+
+    const series = Array.isArray(platform.daily) ? platform.daily : [];
+    const valueOn = function (date) {
+      let found = null;
+      series.forEach(function (bucket) {
+        if (!bucket || typeof bucket !== "object" || bucket.date !== date) return;
+        const totals = bucket.totals;
+        const value = totals && typeof totals === "object" ? totals[key] : undefined;
+        if (typeof value === "number" && isFinite(value)) found = value;
+      });
+      return found;
+    };
+    const previous = valueOn(delta.from);
+    const latest = valueOn(delta.to);
+    if (previous === null || latest === null) return null;
+    if (latest - previous !== diff) return null;
+    if (typeof headline === "number" && isFinite(headline) && headline !== latest) {
+      return null;
+    }
+    return { previous: previous, latest: latest, diff: diff };
+  }
+
+  /**
    * "↑ 1,200  from 4,200" for one metric, or `null`.
    *
-   * `null` whenever #690 declined to state the movement — fewer than two
-   * days, a calendar gap between the last two, or a metric only one of them
-   * carries. All three mean the comparison cannot honestly be made, and a
-   * caller that appends whatever it gets then shows nothing rather than a
-   * fabricated zero.
+   * Everything it states comes from `daily` — see deltaEndpoints for the
+   * reconciliation, and for why the answer is `null` rather than a
+   * best-effort number whenever the sources do not line up.
    *
    * Absolute difference only. A percentage needs a rule for a zero baseline
    * and #690 does not carry one, so inventing it here would be this layer
    * making up the very thing the server refused to.
    */
-  function buildDeltaElement(delta, key, current) {
-    const metrics = delta && typeof delta === "object" ? delta.metrics : null;
-    const diff = metrics && typeof metrics === "object" ? metrics[key] : undefined;
-    if (typeof diff !== "number" || !isFinite(diff)) return null;
+  function buildDeltaElement(platform, key, headline) {
+    const ends = deltaEndpoints(platform, key, headline);
+    if (!ends) return null;
+    const diff = ends.diff;
 
     const el = document.createElement("span");
     el.className = "report-delta " + changeTone(key, diff);
@@ -219,14 +285,15 @@
       (diff > 0 ? "↑ " : diff < 0 ? "↓ " : "± ") +
       formatKpi(key, roundedFor(key, Math.abs(diff)));
     el.appendChild(arrow);
-    if (typeof current === "number" && isFinite(current)) {
-      const prev = document.createElement("span");
-      prev.className = "report-delta-prev";
-      prev.textContent = MUREO.t("dashboard.reports_delta_prev", {
-        value: formatKpi(key, roundedFor(key, current - diff)),
-      });
-      el.appendChild(prev);
-    }
+    // The stored figure for that day, not `headline - diff`. See
+    // deltaEndpoints: the subtraction mixed two sources and printed a number
+    // neither of them held.
+    const prev = document.createElement("span");
+    prev.className = "report-delta-prev";
+    prev.textContent = MUREO.t("dashboard.reports_delta_prev", {
+      value: formatKpi(key, roundedFor(key, ends.previous)),
+    });
+    el.appendChild(prev);
     return el;
   }
 
@@ -259,7 +326,7 @@
    * layout has to look right in.
    */
   function appendTrend(cell, platform, key, current) {
-    const delta = buildDeltaElement(platform && platform.daily_delta, key, current);
+    const delta = buildDeltaElement(platform, key, current);
     if (delta) cell.appendChild(delta);
     const spark = buildMetricSparkline(platform, key);
     if (spark) cell.appendChild(spark);
@@ -802,6 +869,7 @@
     // (3)'s platform cards colour one movement one way (#691 phase 4).
     REPORTS_CHANGE_TONE: REPORTS_CHANGE_TONE,
     changeTone: changeTone,
+    deltaEndpoints: deltaEndpoints,
     buildDeltaElement: buildDeltaElement,
     buildMetricSparkline: buildMetricSparkline,
     appendTrend: appendTrend,

@@ -234,6 +234,17 @@
   impressions are never coloured at all — volume rising is neither good nor
   bad without a target nothing puts on the wire.
 
+  **Both figures in a delta come from the same place.** The day a metric moved
+  FROM is read out of `daily` by date, never computed as headline minus
+  difference — those two come from different parts of the payload (the window
+  rollup and the day-grain series), and subtracting one from the other printed
+  a figure that existed in neither. Where the rollup and the newest stored day
+  disagree about the same day, or where the series does not back the
+  difference it is said to summarise, no movement is stated at all: which of
+  the two is right is exactly what this layer cannot tell. It also means a
+  one-day movement is not shown under a multi-day window total, which was
+  never a comparison worth making.
+
   No percentages anywhere. #690 carries absolute differences only, and a
   percentage needs a rule for a zero baseline that nothing in the product has
   chosen. The roster table carries neither chart nor delta: its rows are

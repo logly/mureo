@@ -54,6 +54,33 @@ function summaryWith(overrides) {
   );
 }
 
+/**
+ * The `daily` series a `daily_delta` was derived from.
+ *
+ * The server never emits one without the other — the delta IS
+ * `latest - previous` over these two buckets — and since #691 phase 4 the
+ * renderer reads the day it moved FROM out of this series rather than
+ * back-calculating it from the window rollup. A fixture with a delta and no
+ * series is a shape the wire cannot produce, and it would now (correctly)
+ * render no delta at all, so the two are built together here.
+ *
+ * The newest day is given `totals` verbatim, because the card's headline and
+ * the series' last day describe the same day; where they disagree the
+ * renderer withholds the delta, which is its own test below.
+ */
+function dailyFor(totals, delta) {
+  if (!delta || !delta.metrics) return [];
+  const before = {};
+  Object.keys(delta.metrics).forEach(function (key) {
+    const now = totals[key];
+    if (typeof now === "number") before[key] = now - delta.metrics[key];
+  });
+  return [
+    { date: delta.from, totals: before },
+    { date: delta.to, totals: Object.assign({}, totals) },
+  ];
+}
+
 /** One platform row, optionally carrying a day-over-day delta. */
 function platform(key, totals, delta) {
   return {
@@ -64,7 +91,7 @@ function platform(key, totals, delta) {
     campaign_count: 3,
     freshness: { fetched_at: new Date().toISOString(), stale: false },
     not_collected: null,
-    daily: [],
+    daily: dailyFor(totals, delta),
     daily_delta: delta || null,
   };
 }
