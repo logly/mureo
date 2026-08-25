@@ -28,6 +28,7 @@ holds a string grep both as a single source (``_FLAG_ASSETS``), the way
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -256,3 +257,58 @@ def test_css_has_info_chip_and_detail_styles() -> None:
     assert ".report-chip.is-info" in css
     assert ".report-chip.is-interactive" in css
     assert ".report-flag-detail" in css
+
+
+# ---------------------------------------------------------------------------
+# The severity axis reaches the roster (#699)
+# ---------------------------------------------------------------------------
+
+
+def _js_object(js: str, name: str) -> dict[str, str]:
+    """The string-valued entries of a top-level ``const <name> = { ... }``."""
+    start = js.index(f"const {name} = {{")
+    body = js[start : js.index("};", start)]
+    return dict(re.findall(r'"?([\w-]+)"?\s*:\s*"([^"]*)"', body.split("{", 1)[1]))
+
+
+def test_every_python_severity_has_a_chip_in_the_browser() -> None:
+    """One vocabulary, two runtimes.
+
+    ``mureo/analysis/report_flags.py`` is where a flag's severity is decided;
+    ``reports_format.js`` is what paints it. A severity added on the Python
+    side with no entry here would reach the browser and fall through to the
+    legacy keyword inference, which is how a finding ends up coloured by
+    whether its name happens to contain an alarming word.
+    """
+    from mureo.analysis.report_flags import SEVERITIES
+
+    chips = _js_object(_read("reports_format.js"), "SEVERITY_CHIP")
+    missing = sorted(set(SEVERITIES) - set(chips))
+    assert not missing, f"severities the browser cannot colour: {missing}"
+
+
+def test_the_alarming_severities_and_only_those_reach_the_roster() -> None:
+    """#699: a client with an ``action`` flag must not read as "nothing raised".
+
+    The roster's health is keyed on the CHIP CLASS rather than on the severity
+    word, so the colour an operator sees on the card and the health the roster
+    files them under are one decision and cannot drift apart. This pins the
+    join: exactly the two alarming severities are lifted, and ``info`` /
+    ``positive`` are not — good news filed as work is the failure that keeps
+    the severity axis separate in the first place.
+    """
+    from mureo.analysis.report_flags import FLAG_SEVERITY, SEVERITIES
+
+    chips = _js_object(_read("reports_format.js"), "SEVERITY_CHIP")
+    health = _js_object(_read("reports_triage.js"), "REPORTS_FLAG_HEALTH")
+
+    assert health.get(chips["action"]) == "attention"
+    assert health.get(chips["watch"]) == "watch"
+    for quiet in ("info", "positive"):
+        assert chips[quiet] not in health, f"{quiet} flags are being filed as work"
+    # And nothing else: an extra key here would be a health for a chip class
+    # the severity vocabulary does not produce.
+    assert set(health) == {chips["action"], chips["watch"]}
+    # The vocabulary actually uses both alarming levels, so neither branch
+    # above is pinning a value nothing can reach.
+    assert {"action", "watch"} <= set(FLAG_SEVERITY.values()) <= set(SEVERITIES)

@@ -163,6 +163,37 @@
   state → report → overview → cards → triage → index, with three names
   resolved per call because their definition loads later.
 
+### Fixed
+
+- **What the analysis flagged now reaches the Reports roster** (#699). A client
+  whose latest report raised `zero_conversions` — the analysis layer's loudest
+  grade, the one it paints red — was filed by the roster under "Nothing
+  raised". The client's own card showed a red chip at the same time. Two parts
+  of mureo answered "does this client need me today?" and disagreed, and the
+  surface an operator actually scans gave the reassuring answer.
+
+  `reports_triage.js` did not read `flags` at all. Its only two `attention`
+  kinds are raised behind the same conditions under which `aggregateClientKpis`
+  withholds every figure, so "needs attention" and "figures unavailable" were
+  one state — and a client that was spending normally as *data* but had stopped
+  converting had nowhere in the roster to appear.
+
+  A flag's grade now sets the client's health: `action` → needs attention,
+  `watch` → watch. The vocabulary is not restated in the browser; it stays in
+  `mureo/analysis/report_flags.py`, and a test compares that against the
+  frontend tables so the two cannot drift. `info` and `positive` are
+  deliberately not mapped — filing "goals met" as work is the failure that
+  severity axis exists to prevent.
+
+  Two limits are deliberate. Withheld figures suppress flag findings entirely:
+  a flag is a reading *of* the numbers, and having just refused to state them
+  (#638), restating a conclusion drawn from them would say through the back
+  door what the front door refused. And only a flag GRADED by the vocabulary
+  counts — the chip colour has a fallback that guesses from words in a flag's
+  name, which is survivable for a tint and not for telling an operator which
+  client to open; `critical_mass_reached` is good news containing "critical".
+  Such a flag still shows its chip and contributes nothing to the roster.
+
 ## [0.13.1] - 2026-08-22
 
 ### Changed
