@@ -210,6 +210,13 @@
     });
     const empty = document.querySelector("[data-reports-search-empty]");
     if (empty) empty.hidden = !(query && searchable > 0 && shown === 0);
+    // The table's totals row sums what is on screen, so the thing that just
+    // changed what is on screen has to say so. Resolved at call time:
+    // dashboard_reports_table.js loads AFTER this file, and this is the same
+    // backwards edge every other pair in the family uses.
+    const table =
+      typeof window !== "undefined" ? window.MUREO_DASHBOARD_REPORTS_TABLE : null;
+    if (table) table.refreshTotals();
     const chips = document.querySelectorAll("[data-reports-filter]");
     Array.prototype.forEach.call(chips, function (chip) {
       const active =

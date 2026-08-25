@@ -1805,10 +1805,16 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* 10px small-caps was below the size anything should be asked to read.
    At 12px sentence case the label is legible and the figure above it is
    still unmistakably the thing to look at. */
+/* A metric's NAME never breaks across lines. Japanese has no spaces, so the
+   browser is free to wrap it anywhere at all, and in a card cell a third of
+   a card wide it did: "コンバージョ / ン", which reads as a typo. The short
+   labels are what make it fit; this is what keeps any future label from
+   quietly doing the same thing again. */
 .reports-client-kpi-label {
   font-size: var(--type-caption-size);
   font-weight: var(--type-caption-weight);
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .reports-client-card-flags {

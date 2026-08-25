@@ -344,7 +344,7 @@
    * target to be a ratio against, and averaging CTRs across clients with
    * different impression volumes states a number nobody measured.
    */
-  function buildTotals(rows, withRatio) {
+  function buildTotals(rows, withRatio, filtered) {
     const tr = document.createElement("tr");
     tr.className = "roster-total";
     let spend = 0;
@@ -361,11 +361,21 @@
         anyConv = true;
       }
     });
+    // Under a filter or a search the row sums what is ON SCREEN, and says so.
+    // A total that kept counting the whole roster while two rows were visible
+    // is not wrong so much as unreadable: the operator cannot tell which
+    // question it answers, and the one they are asking is about the rows they
+    // just narrowed to.
     tr.appendChild(
       cell(
         "td",
         "roster-total-label",
-        MUREO.t("dashboard.reports_roster_total", { n: rows.length })
+        MUREO.t(
+          filtered
+            ? "dashboard.reports_roster_total_shown"
+            : "dashboard.reports_roster_total",
+          { n: rows.length }
+        )
       )
     );
     tr.appendChild(
@@ -452,15 +462,39 @@
     table.className = "roster";
     table.appendChild(buildHead(sort, withRatio, onSort));
     const tbody = document.createElement("tbody");
-    sortRows(rows, sort).forEach(function (row) {
+    const ordered = sortRows(rows, sort);
+    ordered.forEach(function (row) {
       tbody.appendChild(buildRow(row, withRatio));
     });
     table.appendChild(tbody);
     const tfoot = document.createElement("tfoot");
-    tfoot.appendChild(buildTotals(rows, withRatio));
+    tfoot.appendChild(buildTotals(ordered, withRatio, false));
     table.appendChild(tfoot);
     host.appendChild(table);
+    // What refreshTotals needs to re-add the visible rows later. `ordered`
+    // and `tbody.children` are the same sequence, so which row a <tr> stands
+    // for is its position — no lookup by name, which two clients could share.
+    drawn = { rows: ordered, withRatio: withRatio, tbody: tbody, tfoot: tfoot };
     return true;
+  }
+
+  /**
+   * Re-total over the rows still on screen.
+   *
+   * Called by the filter, which owns `hidden` on these rows and is the only
+   * thing that knows a row went away. The totals cannot subscribe to that
+   * themselves without keeping a second copy of the filter rule, which is
+   * the split-ownership shape #665 is about.
+   */
+  function refreshTotals() {
+    if (!drawn || !drawn.tfoot.parentNode) return;
+    const visible = drawn.rows.filter(function (_row, i) {
+      const tr = drawn.tbody.children[i];
+      return tr && !tr.hidden;
+    });
+    const filtered = visible.length !== drawn.rows.length;
+    drawn.tfoot.textContent = "";
+    drawn.tfoot.appendChild(buildTotals(visible, drawn.withRatio, filtered));
   }
 
 
@@ -482,6 +516,10 @@
   // switch can redraw without re-fetching every client's summary.
   let roster = null;
   let sort = { key: "status", dir: "asc" };
+  //: The table as last drawn — its row objects in render order, plus the
+  //: <tbody>/<tfoot> they were drawn into. Null whenever the cards are the
+  //: view on screen, which is what refreshTotals checks before doing work.
+  let drawn = null;
 
   /** Remember the roster and draw whichever view it should open on. */
   function renderRoster(clients, summaries, healthOf) {
@@ -514,6 +552,7 @@
       host.textContent = "";
       host.hidden = true;
       grid.hidden = false;
+      drawn = null;
     }
     drawToolbar(offered, view);
     // The table's rows are new nodes on every draw, so a filter or a search
@@ -597,6 +636,7 @@
     buildRosterTable: buildRosterTable,
     renderRoster: renderRoster,
     setRosterView: setRosterView,
+    refreshTotals: refreshTotals,
   };
 
   // Browser: the global the `<script>` tag exists to publish.

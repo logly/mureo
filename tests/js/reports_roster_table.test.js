@@ -569,3 +569,152 @@ test.describe("the table states figures it can and refuses the rest", function (
     assert.equal(foot[foot.length - 3], "—", "a roster CTR was invented");
   });
 });
+
+// ---------------------------------------------------------------------
+// The totals row answers the question the operator narrowed to
+// ---------------------------------------------------------------------
+
+test.describe("the total follows the filter", function () {
+  const foot = (page) =>
+    page.root.querySelector(".roster-total").children.map((td) => td.textContent);
+
+  async function clickFilter(page, name) {
+    const chip = page.root
+      .querySelectorAll("[data-reports-filter]")
+      .find((c) => c.getAttribute("data-reports-filter") === name);
+    assert.ok(chip, "no filter chip for " + name);
+    chip.click();
+    await settle();
+    return chip;
+  }
+
+  test.it("sums only the rows on screen once a filter is applied", async function () {
+    // Alpha is stale, so it withholds its figures and contributes nothing to
+    // any total. Bravo (128,400 / 46) and Carol (35,800 / 22) are the whole
+    // roster's stated figures, so the unfiltered total is both of them.
+    const page = await openRoster();
+    assert.match(foot(page).join(" "), /164,200/, "the roster total is not both clients");
+
+    // "ok" is Bravo and Carol; narrowing to it changes nothing but the label.
+    // "watch" would be empty here, so filter to a single stated client
+    // instead by searching, which the next test does. Here: attention only,
+    // which is Alpha — and Alpha states nothing.
+    await clickFilter(page, "attention");
+    const attention = foot(page);
+    assert.equal(attention[1], "—", "a withheld client was totalled as a figure");
+    assert.equal(attention[3], "—", "a withheld client was totalled as a figure");
+  });
+
+  test.it("re-totals to exactly the visible client when a search narrows to one", async function () {
+    const page = await openRoster();
+    const search = page.root.querySelector("[data-reports-client-search]");
+    search.value = "bravo";
+    search.dispatchEvent({ type: "input" });
+    await settle();
+    assert.deepEqual(visibleNames(page), ["Bravo Logistics"]);
+
+    // Bravo alone: 128,400 over 46 = 2,791. NOT the roster's 164,200 / 68.
+    const row = foot(page);
+    assert.match(row.join(" "), /128,400/, "the total still counts hidden rows");
+    assert.ok(!row.join(" ").includes("164,200"), "the total still counts hidden rows");
+    assert.match(row.join(" "), /2,791/);
+    assert.match(row.join(" "), /\b46\b/);
+  });
+
+  test.it("says the total is over the visible rows, and only while it is", async function () {
+    const page = await openRoster();
+    const t = (k, p) => page.sandbox.MUREO.t(k, p);
+
+    // Unfiltered: the plain roster label, counting every client.
+    assert.equal(foot(page)[0], t("dashboard.reports_roster_total", { n: 3 }));
+
+    const search = page.root.querySelector("[data-reports-client-search]");
+    search.value = "bravo";
+    search.dispatchEvent({ type: "input" });
+    await settle();
+    assert.equal(foot(page)[0], t("dashboard.reports_roster_total_shown", { n: 1 }));
+    assert.notEqual(
+      t("dashboard.reports_roster_total_shown", { n: 1 }),
+      t("dashboard.reports_roster_total", { n: 1 }),
+      "the two labels are the same string, so this test proves nothing"
+    );
+
+    // Cleared: back to the whole roster, and back to the plain label.
+    search.value = "";
+    search.dispatchEvent({ type: "input" });
+    await settle();
+    assert.equal(foot(page)[0], t("dashboard.reports_roster_total", { n: 3 }));
+    assert.match(foot(page).join(" "), /164,200/);
+  });
+
+  test.it("survives a re-sort with the filter still on", async function () {
+    // The rows are rebuilt on every sort, so the totals row is too — and the
+    // filter is re-applied over the new nodes. If the re-total ran against
+    // the old <tbody> this would silently go back to the full roster.
+    const page = await openRoster();
+    const search = page.root.querySelector("[data-reports-client-search]");
+    search.value = "bravo";
+    search.dispatchEvent({ type: "input" });
+    await settle();
+
+    sortHeader(page, "spend").click();
+    await settle();
+
+    assert.deepEqual(visibleNames(page), ["Bravo Logistics"]);
+    assert.match(foot(page).join(" "), /128,400/, "the re-sort lost the filtered total");
+    assert.ok(!foot(page).join(" ").includes("164,200"));
+  });
+});
+
+// ---------------------------------------------------------------------
+// A metric's name fits the space it is given
+// ---------------------------------------------------------------------
+
+test.describe("card KPI labels do not break mid-word", function () {
+  test.it("uses the short conversions label inside a client card", async function () {
+    // A card cell is a third of a card wide. Japanese has no spaces, so the
+    // browser wrapped the long name wherever it liked — "コンバージョ / ン",
+    // which reads as a typo rather than as a wrap.
+    const page = await openRoster();
+    viewButton(page, "cards").click();
+    await settle();
+    const labels = page.root
+      .querySelector("[data-reports-clients]")
+      .querySelectorAll(".reports-client-kpi-label")
+      .map((el) => el.textContent);
+    const t = (k) => page.sandbox.MUREO.t(k);
+    assert.ok(
+      labels.includes(t("dashboard.reports_kpi_conversions_short")),
+      "no card used the short label: " + labels.join(" | ")
+    );
+    assert.ok(
+      !labels.includes(t("dashboard.reports_kpi_conversions")),
+      "a card still uses the long label: " + labels.join(" | ")
+    );
+  });
+
+  test.it("keeps the full name on the table's column header", async function () {
+    // The column has a whole column's width. Shortening it there would be
+    // abbreviating for no reason.
+    const page = await openRoster();
+    const header = sortHeader(page, "conversions");
+    assert.match(
+      header.textContent,
+      new RegExp(page.sandbox.MUREO.t("dashboard.reports_kpi_conversions"))
+    );
+  });
+
+  test.it("forbids the label wrapping at all, whatever it says", async function () {
+    // The short label is what makes it fit today; this is what stops a
+    // future string quietly doing the same thing again.
+    const page = await openRoster();
+    viewButton(page, "cards").click();
+    await settle();
+    const label = page.root
+      .querySelector("[data-reports-clients]")
+      .querySelector(".reports-client-kpi-label");
+    const ws = cascade(label, "white-space");
+    assert.ok(ws, "nothing declares white-space on a card KPI label");
+    assert.equal(ws.value, "nowrap", "won by: " + ws.selector);
+  });
+});
