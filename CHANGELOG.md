@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-26
+
 ### Added
 
 - **STATE.json remembers yesterday's yesterday** (#690). `platforms[<platform>]`
