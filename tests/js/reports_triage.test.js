@@ -1371,3 +1371,167 @@ test.describe("a report's own findings reach the roster", function () {
     });
   });
 });
+
+// ---------------------------------------------------------------------
+// Which flags are trusted enough to file work from (#700 review)
+// ---------------------------------------------------------------------
+
+test.describe("only a graded flag files work", function () {
+  const format = require(path.join(WEB, "reports_format.js"));
+
+  function summaryWithFlags(flags) {
+    const s = healthySummary();
+    s.reports = { daily: { generated_at: ago(0), flags: flags } };
+    return s;
+  }
+
+  const healthOfFlags = (flags) =>
+    triage.triageClientHealth(
+      triage.buildReportsTriage([client("acme")], [summaryWithFlags(flags)]),
+      0
+    );
+
+  test.it("ignores a severity guessed from words in the flag's name", function () {
+    // `reportFlagKind` falls back to a SUBSTRING test over the flag's text
+    // when nothing curated matches. That is survivable for a chip's colour
+    // and not for the roster, which is why the two now ask different
+    // questions. "critical_mass_reached" is the case that makes it obvious:
+    // good news, containing "critical", painted like an alarm.
+    ["budget_danger_zone", "creative_error_rate", "critical_mass_reached"].forEach(
+      function (raw) {
+        assert.equal(
+          format.reportFlagKind(raw),
+          "is-danger",
+          raw + " no longer reaches the fallback, so this case is stale"
+        );
+        assert.equal(format.curatedFlagKind(raw), "", raw + " is curated after all");
+        assert.equal(
+          healthOfFlags([raw]),
+          "ok",
+          raw + " was promoted to work on a guess"
+        );
+      }
+    );
+  });
+
+  test.it("ignores an object flag whose severity is outside the vocabulary", function () {
+    // The same fallback, reached by the other door: `severity: "danger"` is
+    // not one of report_flags.py's grades, so it is inferred rather than
+    // read.
+    const flag = { code: "zero_conversions", severity: "danger" };
+    assert.equal(format.reportFlagKind(flag), "is-danger");
+    assert.equal(format.curatedFlagKind(flag), "");
+    assert.equal(healthOfFlags([flag]), "ok");
+  });
+
+  test.it("still lifts every curated shape", function () {
+    // The guard must not cost the feature. Both curated doors: a bare
+    // string matching a base entry, and an object carrying a real grade.
+    assert.equal(healthOfFlags(["zero_conversions"]), "attention");
+    assert.equal(healthOfFlags(["cpa_over_target"]), "watch");
+    assert.equal(
+      healthOfFlags([{ code: "zero_conversions", severity: "action" }]),
+      "attention"
+    );
+    assert.equal(
+      healthOfFlags([{ code: "cpa_over_target", severity: "watch" }]),
+      "watch"
+    );
+    // `custom` is outside the vocabulary by design but carries its own
+    // explicit grade, so it is graded, not guessed.
+    assert.equal(
+      healthOfFlags([{ code: "custom", severity: "action", label: "Anything" }]),
+      "attention"
+    );
+  });
+
+  test.it("leaves the chip's own colour alone", function () {
+    // The card is unchanged by all of this: a guessed colour still paints.
+    // Only what mureo FILES from it changed.
+    assert.equal(format.reportFlagKind("budget_danger_zone"), "is-danger");
+    assert.equal(format.reportFlagKind("watch_this_space"), "is-warn");
+    assert.equal(format.reportFlagKind("everything_is_fine"), "");
+  });
+
+  test.it("keeps two different custom findings apart", function () {
+    // THE COLLISION. `custom` is the escape hatch for findings outside the
+    // vocabulary, so every custom flag shares that one code — keying the
+    // dismissal on the code alone made two unrelated findings one item, and
+    // waving away "creative fatigue" silently took "landing page 404s".
+    const flags = [
+      { code: "custom", severity: "action", label: "Creative fatigue on set A" },
+      { code: "custom", severity: "action", label: "Landing page 404s" },
+    ];
+    const items = triage
+      .buildReportsTriage([client("acme")], [summaryWithFlags(flags)])
+      .items.filter((i) => i.kind === "report_flag");
+    assert.equal(items.length, 2, "the two findings were merged");
+    const prints = items.map(triage.triageItemFingerprint);
+    assert.notEqual(prints[0], prints[1], "two findings share one fingerprint");
+  });
+
+  test.it("identifies a custom finding by what it said, not by how it rendered", function () {
+    // A dismissal has to survive the operator switching locale, so the RAW
+    // label is what is folded in — not the string that reached the screen.
+    const print = (label) =>
+      triage.triageItemFingerprint(
+        triage
+          .buildReportsTriage(
+            [client("acme")],
+            [summaryWithFlags([{ code: "custom", severity: "action", label: label }])]
+          )
+          .items.find((i) => i.kind === "report_flag")
+      );
+    const bilingual = { en: "Landing page 404s", ja: "ランディングページが404" };
+    assert.equal(
+      print(bilingual),
+      print({ ja: "ランディングページが404", en: "Landing page 404s" }),
+      "property order changed the identity"
+    );
+    assert.notEqual(print(bilingual), print({ en: "Something else", ja: "別の話" }));
+  });
+
+  test.it("builds items without touching the DOM", function () {
+    // This layer is decisions, and is require-able in Node precisely because
+    // it has no DOM. Resolving a custom flag's per-locale label reads
+    // <html lang>, so doing it at BUILD time quietly gave the whole module a
+    // document dependency — caught here as a throw, and the reason the
+    // wording is chosen in triageItemText instead.
+    assert.equal(typeof globalThis.document, "undefined", "this test needs no DOM");
+    assert.doesNotThrow(function () {
+      triage.buildReportsTriage(
+        [client("acme")],
+        [
+          summaryWithFlags([
+            {
+              code: "custom",
+              severity: "action",
+              label: { en: "Landing page 404s", ja: "404" },
+            },
+          ]),
+        ]
+      );
+    });
+  });
+
+  test.it("still keys a canonical flag on its code alone", function () {
+    // Only `custom` needed the extra identity. A canonical flag's code IS
+    // the finding, the way totals_double_counted is identified by its keys —
+    // folding in the params would re-raise a dismissed item every time a
+    // figure inside it moved.
+    const print = (params) =>
+      triage.triageItemFingerprint(
+        triage
+          .buildReportsTriage(
+            [client("acme")],
+            [
+              summaryWithFlags([
+                { code: "zero_conversions", severity: "action", params: params },
+              ]),
+            ]
+          )
+          .items.find((i) => i.kind === "report_flag")
+      );
+    assert.equal(print({ spend: 1000 }), print({ spend: 2000 }));
+  });
+});

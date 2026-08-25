@@ -78,12 +78,21 @@
   // A report flag's chip colour → the health it gives the client (#699).
   //
   // The severity vocabulary itself lives in mureo/analysis/report_flags.py
-  // and is not restated here: this maps the CSS class `reportFlagKind`
-  // already returns, so a flag's chip and its client's health cannot come
-  // apart. `is-info` and `is-success` are deliberately absent — an
-  // informational or positive flag ("baseline not yet established", "goals
-  // met") raises nothing, and the whole point of keeping that axis separate
-  // is that good news must never be filed as work.
+  // and is not restated here: this maps the CSS class the flag EARNED from
+  // that vocabulary, via `curatedFlagKind`. Keying on the same class the
+  // chip is painted with is what keeps a flag's colour and its client's
+  // health one decision rather than two that agree today.
+  //
+  // "Earned" is the load-bearing word, and the one qualification on that
+  // sentence. `reportFlagKind` guesses a colour from words in the name when
+  // nothing curated matches; `curatedFlagKind` returns "" instead. So a
+  // guessed chip colour reaches the card and stops there. See the call site
+  // in triageItemsForClient for why that asymmetry is the right one.
+  //
+  // `is-info` and `is-success` are deliberately absent — an informational or
+  // positive flag ("baseline not yet established", "goals met") raises
+  // nothing, and the whole point of keeping that axis separate is that good
+  // news must never be filed as work.
   const REPORTS_FLAG_HEALTH = {
     "is-danger": "attention",
     "is-warn": "watch",
@@ -218,15 +227,46 @@
     return api;
   }
 
-  // A flag's stable identity, for the dismissal fingerprint. Structured
-  // flags carry a `code`; the legacy shape is a bare string that IS the
-  // code. Anything else has no identity worth keeping, and "" is honest
-  // about that — such a flag simply cannot be dismissed durably.
-  function flagCode(flag) {
+  /**
+   * A flag's stable identity, for the dismissal fingerprint.
+   *
+   * Structured flags carry a `code`; the legacy shape is a bare string that
+   * IS the code. `custom` is the exception and the reason this is not just
+   * `flag.code`: it is the escape hatch for findings OUTSIDE the vocabulary,
+   * so every custom flag in the product shares that one code. Keying on it
+   * alone made two unrelated findings one item, and dismissing "creative
+   * fatigue on set A" silently took "landing page 404s" with it.
+   *
+   * So a custom flag is identified by its label — which is the same rule the
+   * rest of this file follows (`not_collected` by platform + reason,
+   * `totals_double_counted` by keys): different failures are different
+   * findings. The RAW label, not the rendered one, because a dismissal must
+   * survive the operator switching locale; and the label rather than the
+   * params, because a dismissal is keyed to what the message SAID and the
+   * params are the drill-down under it.
+   */
+  function flagIdentity(flag) {
     if (flag && typeof flag === "object") {
-      return typeof flag.code === "string" ? flag.code : "";
+      const code = typeof flag.code === "string" ? flag.code : "";
+      if (code !== "custom") return code;
+      return code + "\u0002" + stableLabel(flag.label);
     }
     return typeof flag === "string" ? flag : "";
+  }
+
+  // A custom flag's label as a stable string. It may be a bare string or a
+  // per-locale object ({en, ja}); the keys are sorted so two equal labels
+  // cannot differ by property order alone.
+  function stableLabel(label) {
+    if (label && typeof label === "object") {
+      return Object.keys(label)
+        .sort()
+        .map(function (k) {
+          return k + "=" + String(label[k]);
+        })
+        .join("\u001f");
+    }
+    return String(label == null ? "" : label);
   }
 
   function triageRank(kind) {
@@ -353,13 +393,33 @@
     if (!kpis.doubleCounted && !kpis.stale) {
       const F = format();
       F.clientReportFlags(summary).forEach(function (flag) {
-        const severity = REPORTS_FLAG_HEALTH[F.reportFlagKind(flag)];
+        // curatedFlagKind, NOT reportFlagKind. The latter falls back to
+        // guessing a severity from words in the flag's name when nothing
+        // curated matches, and that guess must not reach this list: it is
+        // a substring test, so "critical_mass_reached" — good news —
+        // resolved to the alert colour and would have filed the client
+        // under "needs attention". Tinting a chip on a guess is survivable;
+        // telling an operator which client to open on one is not.
+        //
+        // The cost is deliberate and worth naming: such a flag still shows
+        // its chip on the card and now contributes nothing to the roster,
+        // so those two disagree. That is the lesser of the two, because the
+        // disagreement is in the safe direction and is bounded to flags
+        // outside the vocabulary — whereas the alternative promotes an
+        // accident to the one severity mureo reserves for act-now.
+        const severity = REPORTS_FLAG_HEALTH[F.curatedFlagKind(flag)];
         if (!severity) return;
+        // The RAW flag, not a rendered label. Humanizing it here would pull
+        // a render-time concern into the decision layer — a `custom` label
+        // may be a {locale: text} map, and resolving one reads
+        // <html lang>. This module is decisions only, and stays require-able
+        // without a DOM; `triageItemText` is where the wording is chosen and
+        // is where MUREO.t is already called from.
         items.push(
           item("report_flag", client, index, {
             severity: severity,
-            code: flagCode(flag),
-            label: F.humanizeReportFlag(flag),
+            code: flagIdentity(flag),
+            flag: flag,
           })
         );
       });
@@ -475,9 +535,12 @@
       case "report_flag":
         // The flag's own label, through the same humanizer that writes the
         // chip on the client's card — so the alert list and the card call
-        // the finding by one name.
+        // the finding by one name. Resolved HERE rather than when the item
+        // was built: a custom flag's label can be a per-locale map, and
+        // which one to show is a question about the screen, not about the
+        // finding.
         return MUREO.t("dashboard.reports_triage_report_flag", {
-          flag: row.label || "",
+          flag: format().humanizeReportFlag(row.flag),
         });
       case "unrecognized_key":
         return MUREO.t("dashboard.reports_triage_unknown_key", { keys: row.keys });
