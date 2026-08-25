@@ -198,17 +198,40 @@
     positive: "is-success",
   };
 
-  // Severity class for a flag's coloured chip. An object flag carries an
-  // explicit canonical severity; a bare string uses its base entry's curated
-  // severity, falling back to keyword inference (flagChipKind) for unmapped
-  // flags.
-  function reportFlagKind(flag) {
+  /**
+   * The severity class a flag EARNED from the vocabulary, or "".
+   *
+   * "Earned" means one of the two paths that involve a decision somebody
+   * actually made: an object flag whose `severity` is a canonical grade, or
+   * a bare string that matches a curated base entry. Anything else returns
+   * "" — this function never guesses.
+   *
+   * Split out because a guess is fine for a chip's colour and not fine for
+   * everything (#699/#700). Callers that only tint something can use
+   * `reportFlagKind` below; callers that FILE WORK from the answer ask here,
+   * so an accidental keyword match cannot promote a flag into the roster's
+   * "needs attention". `reportFlagKind` is defined in terms of this one, so
+   * the two cannot drift about what "curated" means.
+   */
+  function curatedFlagKind(flag) {
     if (flag && typeof flag === "object") {
       const sev = flag.severity || flag.level || flag.kind;
-      return SEVERITY_CHIP[sev] || flagChipKind(sev);
+      return SEVERITY_CHIP[sev] || "";
     }
     const best = matchReportFlagBase(String(flag == null ? "" : flag));
-    return (best && best[2]) || flagChipKind(flag);
+    return (best && best[2]) || "";
+  }
+
+  // Severity class for a flag's coloured chip. The curated answer where there
+  // is one, else keyword inference (flagChipKind) over the free text — a
+  // legacy shape that predates the vocabulary and still has to render.
+  function reportFlagKind(flag) {
+    const curated = curatedFlagKind(flag);
+    if (curated) return curated;
+    if (flag && typeof flag === "object") {
+      return flagChipKind(flag.severity || flag.level || flag.kind);
+    }
+    return flagChipKind(flag);
   }
 
   // Build the drill-down detail string for a structured flag from its
@@ -590,6 +613,7 @@
     pickLocalizedLabel: pickLocalizedLabel,
     flagChipKind: flagChipKind,
     reportFlagKind: reportFlagKind,
+    curatedFlagKind: curatedFlagKind,
     flagSeverityRank: flagSeverityRank,
     // The write side's vocabulary, mirrored (#671). Exported so the JS suite
     // can drive every kind through latestReport rather than restating the
