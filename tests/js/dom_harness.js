@@ -476,13 +476,31 @@ function matchesCompound(el, compound) {
   return true;
 }
 
-/** Does `selector` (descendant combinators only) match `el`? */
+/**
+ * Does `selector` match `el`? Descendant and child combinators.
+ *
+ * Sibling combinators are still skipped, and that skip is a KNOWN
+ * UNSOUNDNESS rather than caution: a rule this function refuses to match is
+ * dropped from the cascade entirely, so `cascade()` can hand back a rule that
+ * the browser would have overruled. Child combinators were in that hole until
+ * #697 — `.reports-client-card-item.is-triaged > .reports-client-card` is the
+ * rule that colours a client's card, and no cascade assertion could see it.
+ */
 function selectorMatches(el, selector) {
-  if (/[>+~]/.test(selector)) return false; // not modelled; skip rather than guess
-  const compounds = selector.replace(/::[a-z-]+/g, "").trim().split(/\s+/);
+  if (/[+~]/.test(selector)) return false; // not modelled; skip rather than guess
+  const compounds = selector
+    .replace(/::[a-z-]+/g, "")
+    .trim()
+    .split(/\s*(>)\s*|\s+/)
+    .filter(Boolean);
   if (!matchesCompound(el, compounds[compounds.length - 1])) return false;
   let node = el.parentNode;
   for (let i = compounds.length - 2; i >= 0; i--) {
+    // A ">" is not a compound of its own: it tightens the step that follows
+    // it (reading right to left, the one already consumed) to the immediate
+    // parent, so the ancestor walk below may not skip past a non-match.
+    if (compounds[i] === ">") continue;
+    const strict = compounds[i + 1] === ">";
     let found = false;
     while (node && node.nodeType === 1) {
       if (matchesCompound(node, compounds[i])) {
@@ -490,6 +508,7 @@ function selectorMatches(el, selector) {
         node = node.parentNode;
         break;
       }
+      if (strict) return false;
       node = node.parentNode;
     }
     if (!found) return false;

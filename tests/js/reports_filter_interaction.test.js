@@ -23,7 +23,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 
-const { loadDashboardPage, settle, isVisible } = require("./dom_harness.js");
+const { loadDashboardPage, settle, isVisible, cascade } = require("./dom_harness.js");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ago = (days) => new Date(Date.now() - days * DAY_MS).toISOString();
@@ -233,5 +233,86 @@ test.describe("the stylesheet agrees that a hidden card is hidden", function () 
       [],
       "these declare a display that overrides [hidden], so hiding them does nothing"
     );
+  });
+});
+
+test.describe("a marked card names its own severity (#697)", function () {
+  // The grid marks every client the triage layer put on its list, and the
+  // list holds attention AND watch clients. The marker said "needs
+  // attention" for all of them, so a watch card carried an urgent word above
+  // it and the badge inside it said "watch" — the same card, disagreeing
+  // with itself, in the alert colour.
+  //
+  // This reads the rendered card rather than the call to MUREO.t, because
+  // what was wrong was never which function ran: it was which string it was
+  // handed.
+
+  const markOf = (page, health) => {
+    const card = cards(page).find((c) => c.getAttribute("data-health") === health);
+    assert.ok(card, "no card at health " + health);
+    return card.querySelector(".reports-client-card-mark");
+  };
+
+  test.it("marks the attention client and the watch client differently", async function () {
+    const page = await openReportsIndex();
+    const t = (k) => page.sandbox.MUREO.t(k);
+
+    assert.equal(markOf(page, "attention").textContent, t("dashboard.reports_health_attention"));
+    assert.equal(markOf(page, "watch").textContent, t("dashboard.reports_health_watch"));
+    assert.notEqual(
+      t("dashboard.reports_health_attention"),
+      t("dashboard.reports_health_watch"),
+      "the two severities share a string, so this test proves nothing"
+    );
+  });
+
+  test.it("never says 'needs attention' anywhere on a watch card", async function () {
+    // THE REGRESSION, stated the way it was seen: the words on the card.
+    const page = await openReportsIndex();
+    const attention = page.sandbox.MUREO.t("dashboard.reports_health_attention");
+    const card = cards(page).find((c) => c.getAttribute("data-health") === "watch");
+    assert.ok(
+      !card.textContent.includes(attention),
+      "a watch card still reads '" + attention + "': " + card.textContent
+    );
+  });
+
+  test.it("leaves the untriaged clients unmarked", async function () {
+    const page = await openReportsIndex();
+    cards(page)
+      .filter((c) => c.getAttribute("data-health") === "ok")
+      .forEach((c) => {
+        assert.equal(
+          c.querySelectorAll(".reports-client-card-mark").length,
+          0,
+          "a client the layer raised nothing about was marked"
+        );
+      });
+  });
+
+  test.it("colours the two markers apart, and the watch one is not the alert red", async function () {
+    // Colour is the half of the mark an operator reads first, and red is
+    // reserved for act-now. `cascade` resolves this against the real
+    // app.css, so a rule that quietly outranks these would show up here.
+    const page = await openReportsIndex();
+    const alert = cascade(markOf(page, "attention"), "color");
+    const watch = cascade(markOf(page, "watch"), "color");
+    assert.equal(alert.value, "var(--status-alert)", "won by: " + alert.selector);
+    assert.equal(watch.value, "var(--status-watch)", "won by: " + watch.selector);
+  });
+
+  test.it("outlines a watch card in the watch colour, not the alert colour", async function () {
+    // The border rule is written with a child combinator, which the harness
+    // ignored entirely until this change — meaning `cascade` used to answer
+    // this question with the wrong rule rather than the winning one.
+    const page = await openReportsIndex();
+    const cardOf = (health) =>
+      cards(page)
+        .find((c) => c.getAttribute("data-health") === health)
+        .querySelector(".reports-client-card");
+    const alert = cascade(cardOf("attention"), "border-color");
+    const watch = cascade(cardOf("watch"), "border-color");
+    assert.match(alert.value, /--status-alert/, "won by: " + alert.selector);
+    assert.match(watch.value, /--status-watch/, "won by: " + watch.selector);
   });
 });
