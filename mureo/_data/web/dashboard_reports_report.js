@@ -154,6 +154,117 @@
     return parts.join(STALE_FIGURE_SEPARATOR);
   }
 
+  // ------------------------------------------------------------------
+  // Day-over-day movement (#691 phase 4)
+  // ------------------------------------------------------------------
+
+  /**
+   * Which direction of a metric is worth colouring, and how.
+   *
+   * Spend, clicks and impressions are absent on purpose: they are volume,
+   * and volume going up is neither good nor bad without a target nobody has
+   * put on the wire. Colouring them was the #694 capture's finding — every
+   * delta arrived red, including a spend rise, which trains an operator to
+   * ignore the colour entirely. CTR rising is "is-flat" for the narrower
+   * version of the same reason: a small rise is not an achievement worth
+   * announcing, while a fall is worth a look.
+   *
+   * Lives here rather than in dashboard_reports.js because BOTH tiers draw
+   * deltas now — the change cards in (2) and the platform cards in (3) — and
+   * a second copy is how two rows describing the same movement start
+   * disagreeing about whether it was good news.
+   */
+  const REPORTS_CHANGE_TONE = {
+    cpa: { up: "is-bad", down: "is-good" },
+    conversions: { up: "is-good", down: "is-bad" },
+    ctr: { up: "is-flat", down: "is-bad" },
+  };
+
+  function changeTone(key, diff) {
+    const axis = REPORTS_CHANGE_TONE[key];
+    if (!axis) return "is-flat";
+    return diff > 0 ? axis.up : axis.down;
+  }
+
+  /** CPA is carried to the yen; the rest keep whatever precision they have. */
+  function roundedFor(key, value) {
+    return key === "cpa" ? Math.round(value) : value;
+  }
+
+  /**
+   * "↑ 1,200  from 4,200" for one metric, or `null`.
+   *
+   * `null` whenever #690 declined to state the movement — fewer than two
+   * days, a calendar gap between the last two, or a metric only one of them
+   * carries. All three mean the comparison cannot honestly be made, and a
+   * caller that appends whatever it gets then shows nothing rather than a
+   * fabricated zero.
+   *
+   * Absolute difference only. A percentage needs a rule for a zero baseline
+   * and #690 does not carry one, so inventing it here would be this layer
+   * making up the very thing the server refused to.
+   */
+  function buildDeltaElement(delta, key, current) {
+    const metrics = delta && typeof delta === "object" ? delta.metrics : null;
+    const diff = metrics && typeof metrics === "object" ? metrics[key] : undefined;
+    if (typeof diff !== "number" || !isFinite(diff)) return null;
+
+    const el = document.createElement("span");
+    el.className = "report-delta " + changeTone(key, diff);
+    const arrow = document.createElement("b");
+    // The direction is a character before it is a colour, so the row still
+    // reads for anyone the colour does not reach.
+    arrow.className = "report-delta-move";
+    arrow.textContent =
+      (diff > 0 ? "↑ " : diff < 0 ? "↓ " : "± ") +
+      formatKpi(key, roundedFor(key, Math.abs(diff)));
+    el.appendChild(arrow);
+    if (typeof current === "number" && isFinite(current)) {
+      const prev = document.createElement("span");
+      prev.className = "report-delta-prev";
+      prev.textContent = MUREO.t("dashboard.reports_delta_prev", {
+        value: formatKpi(key, roundedFor(key, current - diff)),
+      });
+      el.appendChild(prev);
+    }
+    return el;
+  }
+
+  /**
+   * The sparkline for one metric of one platform, or `null`.
+   *
+   * Resolved at call time: reports_sparkline.js publishes its global the same
+   * way every module in this family does, and a missing one is a load-order
+   * bug rather than something to paper over.
+   */
+  function buildMetricSparkline(platform, key) {
+    const api = typeof window !== "undefined" ? window.MUREO_REPORTS_SPARKLINE : null;
+    if (!api) {
+      throw new Error(
+        "MUREO_REPORTS_SPARKLINE (reports_sparkline.js) is missing — its " +
+          "<script> tag must come BEFORE dashboard_reports_report.js."
+      );
+    }
+    return api.buildSparkline(platform && platform.daily, key);
+  }
+
+  /**
+   * Append the delta and the sparkline for `key` to a KPI cell, if any.
+   *
+   * Both are optional and independent: an install with two days has a delta
+   * and a two-point line, one with a gap before yesterday has a line and no
+   * delta, and a fresh install has neither and gets neither — no empty
+   * frame, no dash, no reserved space. That is the DEFAULT state of this
+   * feature until daily-check has run for a while, so it is the one the
+   * layout has to look right in.
+   */
+  function appendTrend(cell, platform, key, current) {
+    const delta = buildDeltaElement(platform && platform.daily_delta, key, current);
+    if (delta) cell.appendChild(delta);
+    const spark = buildMetricSparkline(platform, key);
+    if (spark) cell.appendChild(spark);
+  }
+
   // Build one KPI card for a single platform entry. `summary` is optional and
   // supplies the conflict context (the platform row itself carries none).
   function buildReportCard(platform, summary) {
@@ -264,6 +375,10 @@
     // carrying both spend and CPA read in two directions at once.
     headline.appendChild(headlineLabel);
     headline.appendChild(headlineValue);
+    // The two slots phase 1 reserved in the card anatomy (label → value →
+    // delta → sparkline), filled. Below the withholding branch it would be
+    // unreachable for a stale row, which is right: see the note there.
+    if (!rowStale) appendTrend(headline, platform, "spend", totals.spend);
     card.appendChild(headline);
 
     if (rowStale) {
@@ -297,6 +412,7 @@
       label.textContent = MUREO.t(REPORTS_KPI_LABELS.cpa);
       second.appendChild(label);
       second.appendChild(value);
+      appendTrend(second, platform, "cpa", totals.cpa);
       card.appendChild(second);
     }
 
@@ -682,6 +798,13 @@
 
 
   const api = {
+    // Shared with dashboard_reports.js so tier (2)'s change cards and tier
+    // (3)'s platform cards colour one movement one way (#691 phase 4).
+    REPORTS_CHANGE_TONE: REPORTS_CHANGE_TONE,
+    changeTone: changeTone,
+    buildDeltaElement: buildDeltaElement,
+    buildMetricSparkline: buildMetricSparkline,
+    appendTrend: appendTrend,
     buildStaleFiguresElement: buildStaleFiguresElement,
     staleAggregateFiguresText: staleAggregateFiguresText,
     clientKpiCell: clientKpiCell,
