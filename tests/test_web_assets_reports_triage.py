@@ -202,11 +202,16 @@ def test_the_heading_count_and_the_card_marks_come_from_one_list() -> None:
 @pytest.mark.unit
 def test_a_marked_card_is_announced_and_not_only_coloured() -> None:
     """Colour alone is not a mark. The grid is a list of interactive cards,
-    so the marker carries text an assistive technology can read."""
+    so the marker carries text an assistive technology can read.
+
+    The text is the severity's own name (#697): it used to be one fixed
+    "needs attention" string, which announced the wrong severity on every
+    watch client. The JS suite pins which name a given card gets; this only
+    pins that a name is spoken at all."""
     item = _function_body(
         _read("dashboard_reports_cards.js"), "function buildClientCardItem("
     )
-    assert "dashboard.reports_triage_card_marker" in item
+    assert "dashboard.reports_health_" in item
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +268,10 @@ def test_the_strings_are_localized_in_both_locales() -> None:
     data = json.loads(_read("i18n.json"))
     for key in (
         "dashboard.reports_triage_title",
-        "dashboard.reports_triage_card_marker",
+        # reports_triage_card_marker retired in #697: the marker now speaks
+        # the client's own severity, so it reuses reports_health_*.
+        "dashboard.reports_health_attention",
+        "dashboard.reports_health_watch",
         "dashboard.reports_triage_double_counted",
         "dashboard.reports_triage_stale",
         "dashboard.reports_triage_stale_undated",

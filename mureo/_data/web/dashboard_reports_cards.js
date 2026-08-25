@@ -280,8 +280,13 @@
     const slug = client && client.slug ? client.slug : "";
     const name = (client && (client.name || client.slug)) || "";
     const item = document.createElement("div");
+    // `is-triaged` says the card is marked; `is-<health>` says how loudly.
+    // The same pairing the roster row carries, and for the same reason: the
+    // attribute below is what the filter selects on, the class is what the
+    // stylesheet colours on.
     item.className =
-      "reports-client-card-item" + (triaged ? " is-triaged" : "");
+      "reports-client-card-item" +
+      (triaged ? " is-triaged is-" + (health || "ok") : "");
     item.setAttribute("role", "listitem");
     item.setAttribute("data-client", slug);
     // The health the filter chips above the grid select on. It comes from
@@ -293,10 +298,18 @@
     // Both read the same list, so they cannot drift. A class alone would be
     // colour-only, and the grid is a list of buttons an operator may reach
     // by keyboard, so the mark carries text too.
+    //
+    // WHICH severity it names is the client's own (#697). `triaged` only
+    // answers "is this client on the list at all", which is true at watch as
+    // well as at attention, so a fixed "needs attention" string put an urgent
+    // word — and the alert colour — on clients the layer had merely asked to
+    // watch, while the badge two lines below said "watch" on the same card.
+    // Reusing the badge's own strings is what keeps the two agreeing.
     if (triaged) {
       const mark = document.createElement("span");
-      mark.className = "reports-client-card-mark";
-      mark.textContent = MUREO.t("dashboard.reports_triage_card_marker");
+      const severity = health || "ok";
+      mark.className = "reports-client-card-mark is-" + severity;
+      mark.textContent = MUREO.t("dashboard.reports_health_" + severity);
       item.appendChild(mark);
     }
     item.appendChild(buildClientCard(client, summary, health, badges));

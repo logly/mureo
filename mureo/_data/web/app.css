@@ -2290,9 +2290,15 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 /* The other half of the layer: exactly the clients it counts are marked in
-   the grid below. */
-.reports-client-card-item.is-triaged > .reports-client-card {
+   the grid below — each in ITS OWN severity, not all in the loudest one.
+   Red is reserved for act-now, and a watch client painted alert-red spends
+   that reservation on a client nobody has to act on today. */
+.reports-client-card-item.is-attention > .reports-client-card {
   border-color: color-mix(in srgb, var(--status-alert) 45%, transparent);
+}
+
+.reports-client-card-item.is-watch > .reports-client-card {
+  border-color: color-mix(in srgb, var(--status-watch) 45%, transparent);
 }
 
 .reports-client-card-mark {
@@ -2301,7 +2307,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.reports-client-card-mark.is-attention {
   color: var(--status-alert);
+}
+
+.reports-client-card-mark.is-watch {
+  color: var(--status-watch);
 }
 
 /* ------------------------------------------------------------------
