@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-26
+
 ### Changed
 
 - **The `pages_manage_posts` scope is gone; an Instant Form cover is now
