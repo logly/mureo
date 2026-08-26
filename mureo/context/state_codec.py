@@ -40,12 +40,22 @@ import logging
 from dataclasses import fields as dataclass_fields
 from typing import Any
 
+from mureo.context.display_codec import (
+    display_contract_to_dict,
+    parse_display_contract,
+)
 from mureo.context.models import (
     NOT_COLLECTED_REASON_MAX_CHARS,
     ActionLogEntry,
     AdState,
     BatchRecord,
     CampaignSnapshot,
+    DisplayBreakdown,
+    DisplayBreakdownRow,
+    DisplayContract,
+    DisplayHighlight,
+    DisplayProposal,
+    DisplayStatedValue,
     PlatformState,
     StateDocument,
 )
@@ -89,6 +99,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "reports",
                 "workspace_not_collected",
                 "batches",
+                "display",
             }
         ),
         "parse_state / render_state",
@@ -131,6 +142,8 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "origin",
                 "external_id",
                 "occurred_at",
+                "display_title",
+                "display_summary",
             }
         ),
         "_parse_action_log_entry / _action_log_entry_to_dict",
@@ -164,6 +177,48 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
         BatchRecord,
         frozenset({"batch_id", "label", "started_at", "ended_at"}),
         "_parse_batches / _batch_record_to_dict",
+    ),
+    # The display contract (#706). Its two halves live in
+    # ``mureo.context.display_codec`` — this file is at the repo's size limit
+    # — but the coverage check stays here, so the omission is still loud from
+    # a bare ``import mureo``.
+    (
+        DisplayContract,
+        frozenset(
+            {
+                "nav_message",
+                "highlights",
+                "proposals",
+                "breakdown",
+                "stated_values",
+            }
+        ),
+        "display_codec.parse_display_contract / .display_contract_to_dict",
+    ),
+    (
+        DisplayHighlight,
+        frozenset({"tone", "text"}),
+        "display_codec._parse_highlights / ._highlight_to_dict",
+    ),
+    (
+        DisplayProposal,
+        frozenset({"title", "body", "status", "date"}),
+        "display_codec._parse_proposals / ._proposal_to_dict",
+    ),
+    (
+        DisplayBreakdown,
+        frozenset({"campaigns", "adgroups"}),
+        "display_codec._parse_breakdown / ._breakdown_to_dict",
+    ),
+    (
+        DisplayBreakdownRow,
+        frozenset({"name", "spend", "mcpa", "target_cpa", "state", "note"}),
+        "display_codec._parse_breakdown_rows / ._breakdown_row_to_dict",
+    ),
+    (
+        DisplayStatedValue,
+        frozenset({"label", "value"}),
+        "display_codec._parse_stated_values / ._stated_value_to_dict",
     ),
 )
 
@@ -472,6 +527,11 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
             data.get("workspace_not_collected")
         ),
         batches=_parse_batches(data.get("batches")),
+        # #706 — the dashboard's own surface. Tolerant in BOTH modes, like
+        # the batch records: every bound and vocabulary on it is a WRITE
+        # rule, so a value already on disk is content an operator has, and
+        # refusing to read it would only delete that.
+        display=parse_display_contract(data.get("display")),
     )
 
 
@@ -498,6 +558,11 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         origin=e.get("origin"),
         external_id=e.get("external_id"),
         occurred_at=e.get("occurred_at"),
+        # #706 — the operator-facing line. Absent on every entry written
+        # before it existed, which is what "this entry has no display line"
+        # looks like.
+        display_title=e.get("display_title"),
+        display_summary=e.get("display_summary"),
     )
 
 
@@ -564,6 +629,13 @@ def render_state(doc: StateDocument) -> str:
     # round-trip. ``ended_at`` is omitted while a batch is open.
     if doc.batches:
         data["batches"] = [_batch_record_to_dict(b) for b in doc.batches]
+
+    # The display contract (#706): emitted only when it states something, so a
+    # document that has never had one stays byte-stable on round-trip and a
+    # cleared contract leaves no key behind for the dashboard to render as a
+    # live one.
+    if doc.display:
+        data["display"] = display_contract_to_dict(doc.display)
 
     return json.dumps(data, ensure_ascii=False, indent=2)
 
@@ -639,6 +711,12 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["external_id"] = e.external_id
     if e.occurred_at is not None:
         result["occurred_at"] = e.occurred_at
+    # #706: emitted only when set, so an entry written before the dashboard
+    # had a line of its own round-trips byte-identically and gains no key.
+    if e.display_title is not None:
+        result["display_title"] = e.display_title
+    if e.display_summary is not None:
+        result["display_summary"] = e.display_summary
     return result
 
 

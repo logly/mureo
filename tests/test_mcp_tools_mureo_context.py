@@ -58,9 +58,9 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_twelve_tools() -> None:
+def test_tools_module_exports_thirteen_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 12
+    assert len(mod.TOOLS) == 13
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
@@ -68,6 +68,9 @@ def test_tools_module_exports_twelve_tools() -> None:
         "mureo_state_action_log_append",
         "mureo_state_upsert_campaign",
         "mureo_state_report_set",
+        # #706 — the dashboard's own write-guarded surface, separate from the
+        # report summary an agent writes for whoever reads that report.
+        "mureo_state_display_set",
         "mureo_state_platform_metrics_set",
         "mureo_state_platform_daily_set",
         "mureo_state_platform_not_collected_set",
@@ -1852,3 +1855,336 @@ def test_state_get_description_documents_index_field() -> None:
     mod = _import_tools()
     tool = next(t for t in mod.TOOLS if t.name == "mureo_state_get")
     assert "index" in tool.description
+
+
+# ---------------------------------------------------------------------------
+# mureo_state_display_set (#706)
+# ---------------------------------------------------------------------------
+
+
+async def test_display_set_persists_the_contract(cwd_to_tmp) -> None:
+    """The five sections are written into STATE.json ``display`` and
+    round-trip via a subsequent read."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_display_set",
+        {
+            "nav_message": "CPA is over target — pause the two worst ad groups",
+            "highlights": [{"tone": "bad", "text": "CPA 12% over target"}],
+            "proposals": [{"title": "Pause two ad groups", "status": "proposed"}],
+            "breakdown": {
+                "campaigns": [
+                    {"name": "Brand Search", "spend": 42000, "state": "worsening"}
+                ]
+            },
+            "stated_values": [{"label": "CVR", "value": 0.021}],
+        },
+    )
+    payload = json.loads(result[0].text)
+    assert payload["display"]["highlights"] == [
+        {"tone": "bad", "text": "CPA 12% over target"}
+    ]
+
+    result2 = await mod.handle_tool("mureo_state_get", {})
+    payload2 = json.loads(result2[0].text)
+    assert payload2["display"]["stated_values"] == [{"label": "CVR", "value": 0.021}]
+
+
+async def test_display_set_refuses_prose_in_a_stated_value(cwd_to_tmp) -> None:
+    """The handler surfaces the guard's refusal as a tool error — the
+    dispatcher's schema pass cannot express "a number or a SHORT string"."""
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="numeric column"):
+        await mod.handle_tool(
+            "mureo_state_display_set",
+            {
+                "stated_values": [
+                    {"label": "CPA", "value": "CPA is 12% over target this month"}
+                ]
+            },
+        )
+
+
+async def test_display_set_with_no_section_clears_the_contract(cwd_to_tmp) -> None:
+    """Nothing is required, and that is how a stale screen is taken down."""
+    mod = _import_tools()
+    await mod.handle_tool("mureo_state_display_set", {"nav_message": "stale"})
+    result = await mod.handle_tool("mureo_state_display_set", {})
+    assert "display" not in json.loads(result[0].text)
+
+
+def test_display_set_schema_states_every_bound() -> None:
+    """The schema layer rejects an over-long value BEFORE the handler runs,
+    so the numbers have to be in the schema — and the REASON has to be in the
+    description the model read before calling (#659 / #660)."""
+    from mureo.core.display_contract import (
+        DISPLAY_CONTRACT_RULE,
+        HIGHLIGHT_TEXT_MAX_CHARS,
+        HIGHLIGHT_TONES,
+        HIGHLIGHTS_MAX_ITEMS,
+        NAV_MESSAGE_MAX_CHARS,
+        PROPOSAL_TITLE_MAX_CHARS,
+        STATED_VALUE_LABEL_MAX_CHARS,
+    )
+
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_display_set")
+    props = tool.inputSchema["properties"]
+    assert props["nav_message"]["maxLength"] == NAV_MESSAGE_MAX_CHARS
+    assert props["highlights"]["maxItems"] == HIGHLIGHTS_MAX_ITEMS
+    highlight = props["highlights"]["items"]["properties"]
+    assert highlight["tone"]["enum"] == list(HIGHLIGHT_TONES)
+    assert highlight["text"]["maxLength"] == HIGHLIGHT_TEXT_MAX_CHARS
+    proposal = props["proposals"]["items"]["properties"]
+    assert proposal["title"]["maxLength"] == PROPOSAL_TITLE_MAX_CHARS
+    stated = props["stated_values"]["items"]["properties"]
+    assert stated["label"]["maxLength"] == STATED_VALUE_LABEL_MAX_CHARS
+    # Nothing required: a call that states no section clears the contract.
+    assert tool.inputSchema["required"] == []
+    # …and the REASON rides on the tool description a model reads before it
+    # composes anything, not only in the refusal it gets afterwards.
+    assert DISPLAY_CONTRACT_RULE in tool.description
+
+
+def test_display_set_schema_declares_both_breakdown_tables() -> None:
+    """Both levels, with the same row shape — a second copy is how the two
+    would start disagreeing about what a row is."""
+    from mureo.core.display_contract import BREAKDOWN_STATES
+
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_display_set")
+    breakdown = tool.inputSchema["properties"]["breakdown"]
+    assert set(breakdown["properties"]) == {"campaigns", "adgroups"}
+    for level in ("campaigns", "adgroups"):
+        row = breakdown["properties"][level]["items"]
+        assert row["required"] == ["name"]
+        assert row["properties"]["state"]["enum"] == list(BREAKDOWN_STATES)
+        assert row["properties"]["spend"]["type"] == "number"
+
+
+async def test_action_log_append_stores_the_display_line(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {
+            "entry": {
+                "action": "google_ads_budget_update",
+                "platform": "google_ads",
+                "summary": "x" * 400,
+                "display_title": "Raised the Brand budget",
+                "display_summary": "Capped every afternoon; +20% daily.",
+            }
+        },
+    )
+    entry = json.loads(result[0].text)["action_log"][0]
+    assert entry["display_title"] == "Raised the Brand budget"
+    # It ADDS a rendering and replaces nothing.
+    assert entry["summary"] == "x" * 400
+
+
+async def test_action_log_append_refuses_an_overlong_display_line(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="display_title"):
+        await mod.handle_tool(
+            "mureo_state_action_log_append",
+            {
+                "entry": {
+                    "action": "x",
+                    "platform": "google_ads",
+                    "display_title": "y" * 200,
+                }
+            },
+        )
+
+
+def test_action_log_schema_bounds_the_display_line() -> None:
+    """The bound fires at the dispatcher, so it has to be in the schema."""
+    from mureo.core.display_contract import (
+        ACTION_LOG_DISPLAY_RULE,
+        ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS,
+        ACTION_LOG_DISPLAY_TITLE_MAX_CHARS,
+    )
+
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_action_log_append")
+    entry = tool.inputSchema["properties"]["entry"]["properties"]
+    assert entry["display_title"]["maxLength"] == ACTION_LOG_DISPLAY_TITLE_MAX_CHARS
+    assert entry["display_summary"]["maxLength"] == ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS
+    for field in ("display_title", "display_summary"):
+        assert ACTION_LOG_DISPLAY_RULE in entry[field]["description"]
+
+
+# ---------------------------------------------------------------------------
+# ...and the path a real MCP client takes (#706)
+# ---------------------------------------------------------------------------
+#
+# Every test above calls ``tools_mureo_context.handle_tool`` directly, which
+# SKIPS the dispatcher's ``Draft202012Validator`` pass. So they can pin that
+# the bounds are written in the schema, and cannot pin that the schema
+# refuses anything — the #660-shaped gap: a constraint an agent is told about
+# and that nothing enforces reads exactly like one that works.
+#
+# These go through ``server.handle_call_tool``, the path a real client takes,
+# one case per class of constraint the schema layer owns.
+
+_DISPATCH_REFUSALS = [
+    # (case id, arguments, JSON-pointer-ish location, the constraint's wording)
+    (
+        "nav_message_over_the_bound",
+        {"nav_message": "x" * 81},
+        "nav_message",
+        "too long",
+    ),
+    (
+        "a_fourth_highlight",
+        {"highlights": [{"tone": "good", "text": f"h{i}"} for i in range(4)]},
+        "highlights",
+        "too long",
+    ),
+    (
+        "an_off_vocabulary_tone",
+        {"highlights": [{"tone": "critical", "text": "ok"}]},
+        "highlights/0/tone",
+        "is not one of",
+    ),
+    (
+        "a_third_breakdown_table",
+        {"breakdown": {"keywords": []}},
+        "breakdown",
+        "Additional properties are not allowed",
+    ),
+    (
+        "a_section_the_dashboard_does_not_read",
+        {"funnel": {"spend": 1}},
+        "(root)",
+        "Additional properties are not allowed",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("arguments", "location", "wording"),
+    [case[1:] for case in _DISPATCH_REFUSALS],
+    ids=[case[0] for case in _DISPATCH_REFUSALS],
+)
+async def test_the_real_dispatch_path_refuses_the_display_contract(
+    cwd_to_tmp, arguments: dict, location: str, wording: str
+) -> None:
+    """What an MCP CLIENT actually observes — the schema fires, not the guard.
+
+    ``handle_call_tool`` schema-validates before any handler runs, so for
+    everything the JSON-Schema layer CAN express (a length, an item count, an
+    enum, a closed property set) mureo's own message is never reached. That
+    is the whole reason the bounds are duplicated into the schema, and it is
+    only true if something exercises this path.
+
+    Which layer refused is asserted, not assumed: the dispatcher's message has
+    its own shape (``Invalid arguments for <tool>: at '<where>'``), and every
+    refusal ``validate_display_contract`` raises ends with
+    ``DISPLAY_CONTRACT_RULE``. A test that only matched the field name would
+    stay green if the schema constraint were deleted and the handler caught it
+    one layer later — which is exactly the regression worth catching, because
+    by then the write has reached the handler.
+    """
+    from mureo.core.display_contract import DISPLAY_CONTRACT_RULE
+    from mureo.mcp import server as server_mod
+
+    with pytest.raises(ValueError) as exc:
+        await server_mod.handle_call_tool("mureo_state_display_set", arguments)
+
+    message = str(exc.value)
+    assert message.startswith(
+        f"Invalid arguments for mureo_state_display_set: at '{location}':"
+    ), f"not a schema-layer refusal: {message}"
+    assert wording in message
+    assert DISPLAY_CONTRACT_RULE not in message, (
+        "the handler ran — the schema constraint is missing, and the write "
+        "reached mureo's own guard instead of being stopped before it"
+    )
+    assert not (cwd_to_tmp / "STATE.json").exists()
+
+
+async def test_the_real_dispatch_path_writes_a_valid_contract(cwd_to_tmp) -> None:
+    """The control the refusals above need.
+
+    Without it they would all pass on a tool the dispatcher cannot route at
+    all — ``Unknown tool`` is a ``ValueError`` too, and a tool registered in
+    its family's ``TOOLS`` but unreachable from ``server`` would fail exactly
+    nowhere else in this suite.
+    """
+    from mureo.mcp import server as server_mod
+
+    await server_mod.handle_call_tool(
+        "mureo_state_display_set",
+        {
+            "nav_message": "Spend is on pace",
+            "highlights": [{"tone": "good", "text": "CPA under target"}],
+            "breakdown": {"campaigns": [{"name": "Brand", "spend": 42000}]},
+        },
+    )
+
+    stored = json.loads((cwd_to_tmp / "STATE.json").read_text(encoding="utf-8"))
+    assert stored["display"]["nav_message"] == "Spend is on pace"
+
+
+async def test_prose_in_a_stated_value_is_the_handler_guard_not_the_schema(
+    cwd_to_tmp,
+) -> None:
+    """The one bound JSON Schema cannot express, stated as such.
+
+    ``value`` is "a raw number, or a string of at most 12 characters" — two
+    types with a length rule on one of them, which no single keyword covers.
+    So this bound alone is owned by ``validate_display_contract``, and it
+    still fires on the real dispatch path. Asserted as the mirror image of
+    the cases above so the division of labour is pinned rather than implied.
+    """
+    from mureo.core.display_contract import DISPLAY_CONTRACT_RULE
+    from mureo.mcp import server as server_mod
+
+    with pytest.raises(ValueError) as exc:
+        await server_mod.handle_call_tool(
+            "mureo_state_display_set",
+            {
+                "stated_values": [
+                    {"label": "CPA", "value": "CPA is 12% over target this month"}
+                ]
+            },
+        )
+
+    message = str(exc.value)
+    assert not message.startswith("Invalid arguments for")
+    assert "numeric column" in message
+    assert DISPLAY_CONTRACT_RULE in message
+    assert not (cwd_to_tmp / "STATE.json").exists()
+
+
+async def test_the_real_dispatch_path_refuses_an_overlong_action_log_line(
+    cwd_to_tmp,
+) -> None:
+    """The action-log display line is a nested property, so its ``maxLength``
+    has to survive into the entry sub-schema to fire at all."""
+    from mureo.core.display_contract import ACTION_LOG_DISPLAY_RULE
+    from mureo.mcp import server as server_mod
+
+    with pytest.raises(ValueError) as exc:
+        await server_mod.handle_call_tool(
+            "mureo_state_action_log_append",
+            {
+                "entry": {
+                    "action": "google_ads_budget_update",
+                    "platform": "google_ads",
+                    "display_title": "y" * 200,
+                }
+            },
+        )
+
+    message = str(exc.value)
+    assert message.startswith(
+        "Invalid arguments for mureo_state_action_log_append: "
+        "at 'entry/display_title':"
+    ), f"not a schema-layer refusal: {message}"
+    assert "too long" in message
+    assert ACTION_LOG_DISPLAY_RULE not in message
+    assert not (cwd_to_tmp / "STATE.json").exists()

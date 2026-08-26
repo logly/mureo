@@ -59,6 +59,7 @@ from mureo.context.state import (
     read_state_file,
     render_state,
     set_conversion_action_types,
+    set_display,
     set_platform_daily,
     set_platform_metrics,
     set_platform_not_collected,
@@ -312,6 +313,12 @@ async def handle_state_action_log_append(
         origin=raw.get("origin"),
         external_id=raw.get("external_id"),
         occurred_at=raw.get("occurred_at"),
+        # #706: the one line the dashboard shows for this entry. Bounded by
+        # ``append_action_log``, which refuses an over-long value rather than
+        # truncating it — so the caller is told while it still holds the
+        # sentence it can shorten.
+        display_title=raw.get("display_title"),
+        display_summary=raw.get("display_summary"),
     )
     try:
         doc = append_action_log(path, entry)
@@ -416,6 +423,37 @@ async def handle_state_report_set(
         summary = {**summary, "flags": normalize_flags(summary.get("flags"))}
     path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     doc = set_report(path, report, summary)
+    return _json_result(_state_to_dict(doc))
+
+
+async def handle_state_display_set(
+    arguments: dict[str, Any],
+) -> list[TextContent]:
+    """Write the client's display contract — the dashboard's own surface (#706).
+
+    Every bound and vocabulary is checked by
+    :func:`~mureo.core.display_contract.validate_display_contract`, called
+    from :func:`~mureo.context.state.set_display` before the file is opened,
+    so the rule lives in one place rather than being half-checked here. This
+    handler only relays the five sections, which the schema has already
+    type-checked.
+
+    A call that states no section CLEARS the contract, exactly as an omitted
+    ``reason`` clears a ``not_collected`` note: the section is the whole
+    screen, and there has to be a way to take it down.
+    """
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
+    try:
+        doc = set_display(
+            path,
+            nav_message=arguments.get("nav_message"),
+            highlights=arguments.get("highlights"),
+            proposals=arguments.get("proposals"),
+            breakdown=arguments.get("breakdown"),
+            stated_values=arguments.get("stated_values"),
+        )
+    except ContextFileError as exc:
+        raise ValueError(str(exc)) from exc
     return _json_result(_state_to_dict(doc))
 
 

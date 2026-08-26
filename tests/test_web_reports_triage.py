@@ -66,6 +66,9 @@ _LEGACY_SUMMARY_KEYS = [
     "platform_conflicts",
     "recent_actions",
     "reports",
+    # #706 — the write-guarded display contract. A BASE key, not a seam one:
+    # a single-workspace install has the same one screen to draw.
+    "display",
 ]
 
 

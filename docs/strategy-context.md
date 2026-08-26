@@ -1143,6 +1143,95 @@ that carries no `generated_at` still ranks (below the dated ones), and a key
 outside the vocabulary is preserved and read back verbatim; it simply does
 not compete for that block.
 
+#### The display contract (#706)
+
+The report summary above is written for whoever reads *that report*. The
+`display` section is written for the **screen**, and it is a different
+thing on purpose.
+
+STATE.json is the agent's working memory — prose-heavy by design, because
+the next AI decision needs the reasoning. The dashboard had been rendering
+that memory directly, and what an operator got (measured on two live
+clients, 2026-08-26) was walls of jargon, thirty-row value dumps with whole
+sentences sitting in numeric columns, and work-journal action logs showing
+raw `**` markdown on screen. A dashboard is numbers and charts first; any
+text on it has to be short, partial and instantly readable.
+
+So the two audiences are separated. The agent's prose keeps every home it
+already has, and **the dashboard reads only this contract** — one small,
+strictly structured, write-guarded surface per client.
+
+| Field | Shape | Bound |
+|-------|-------|-------|
+| `nav_message` | One operator-facing line (運用ナビ) | ≤80 characters |
+| `highlights` | `[{tone, text}]`, tone `good` / `watch` / `bad` | ≤3 items, text ≤60 |
+| `proposals` | `[{title, body, status, date}]`, status `proposed` / `done` | title ≤30, body ≤80, date ≤12 |
+| `breakdown.campaigns` / `.adgroups` | `[{name, spend, mcpa, target_cpa, state, note}]`, `state` from a closed set (`target_met` / `improving` / `watch` / `worsening` / `no_data`) | note ≤40 |
+| `stated_values` | `[{label, value}]` | label ≤24, **value a raw number or a string ≤12** |
+
+Every bound **refuses** the write; nothing is truncated. That is #662's
+rule applied to a second surface, and for the same reason: a sentence cut
+in half reads like a bug in mureo, and the operator cannot tell what was
+removed. The writer is holding the content at the moment of refusal and can
+shorten it — nobody downstream ever can. The three closed vocabularies are
+refused for #659's reason: each is rendered as a chip or a colour, so a
+value no view knows is a value no view draws.
+
+`stated_values` is where the reported defect lives in miniature. It is a
+chip row — a caption and a figure — and whole sentences were arriving in
+it. A value is therefore a real number, or a string short enough to still
+*be* a value (`"3 of 7"`, `"¥12,400"`, `"未設定"`). A short string is
+allowed rather than refused because a report legitimately states things a
+number cannot carry, and refusing those would push exactly that content
+back into the prose this contract exists to empty. A sentence is refused.
+
+**What is deliberately NOT in the contract.** The KPI funnel (spend →
+impressions → clicks → conversions, with CPM / CPC / CPA) and the daily
+chart. Both are computed from the canonical totals and `PlatformState.daily`
+(#690), per selected platform — so no agent writes them, and no agent can
+state them wrongly.
+
+**One write, one moment.** `mureo_state_display_set` replaces the whole
+section with exactly what the call states; an omitted section is written as
+absent, never inherited. Unlike `reports`, whose unit is a report *kind*
+written by one skill about one question, these five sections describe one
+client at one moment off one set of figures. Merging them per section would
+put last week's highlights beside today's nav line with nothing on screen
+able to say they came from different runs. A call that states nothing
+clears the contract, and the key leaves the document entirely rather than
+lingering as an empty one a reader could render.
+
+**One writer per run, and it owns the whole screen.** The contract is
+written by exactly one skill per run — the one producing that run's report —
+and that skill states every section it wants shown. Two skills writing
+different sections in the same run is outside the design: the second call
+replaces the first rather than merging into it, so what survives is whatever
+ran last. There is no partial-update entry point on purpose, because any
+merge policy re-creates the mixed-moment screen the whole-section
+replacement exists to prevent. Two writers compose their sections *before*
+calling, never by calling twice.
+
+**Strict on write, tolerant on read.** Every bound and vocabulary here is a
+*write* rule. A value already on disk — hand-edited, or written by an
+outside tool — is read back exactly as it is, because refusing it would
+only delete content an operator has. The same asymmetry the metrics-window
+vocabulary draws above. Only an entry with no shape at all is dropped on
+read: a highlight with no text, a breakdown row with no name, a stated
+value with no label.
+
+**The action log gets a line of its own.** An `action_log` entry may carry
+`display_title` (≤40) and `display_summary` (≤120) — the one line the
+dashboard shows for it, bounded by `mureo_state_action_log_append` under the
+same refuse-never-truncate rule. They *add* a rendering and replace nothing:
+`summary` is still written as fully as the next agent needs, and is still
+what the drill-down shows. An entry without them is every entry written
+before they existed.
+
+The bounds are stated once (`mureo/core/display_contract.py`), pasted into
+the tool descriptions an agent reads before it composes anything, and
+repeated in every refusal — the shape #659 settled on, now with the `enum`s
+and `maxLength`s that this surface, unlike prose, can actually have.
+
 #### What mureo did today
 
 Beside the grid, the index lists the actions mureo logged **today** across
@@ -1232,6 +1321,7 @@ so it opens its one client's report either way.
 | `action_log` | `array` | Log of actions with outcome tracking |
 | `workspace_not_collected` | `object \| null` | Why the whole workspace could not be collected (see above). Absent until such a failure is recorded |
 | `batches` | `array` | Declared bulk change sets (see below). Absent until the first `mureo_batch_begin` |
+| `display` | `object \| null` | The write-guarded surface the dashboard renders (see [The display contract](#the-display-contract-706)). Absent until one is written, and absent again once it is cleared |
 | `customer_id` | `string \| null` | Legacy v1 field (kept for backward compatibility) |
 | `campaigns` | `array` | Legacy v1 field (kept for backward compatibility) |
 
@@ -1281,11 +1371,29 @@ Each entry in `action_log` records an action taken by a workflow command, with o
 | `batch_id` | `string` | No — server-stamped | The bulk change set this action belongs to. Stamped automatically while a batch is open (see below). You may supply it as an explicit assertion, but it is **validated**: it must name a declared batch that is still open, so membership can neither be invented nor added to a batch already closed. Absent means the action was standalone |
 | `origin` | `string` | No | `"external"` when mureo only **observed** this change (imported from a platform's change feed, #545). **Absent means mureo made it** — which is every entry written before this field existed. mureo refuses to plan a rollback for an external entry: it never dispatched the change, so it never captured the prior value |
 | `external_id` | `string` | No | The change feed's identity for an external change, namespaced by platform (`"google_ads\|customers/…/changeEvents/…"`). What makes re-importing the same change a no-op. Requires `origin: "external"` — setting it without one raises, because an external id on a mureo-originated entry would make the next import skip mureo's own action |
+| `display_title` | `string` | No | What this action was, in a few words an operator reads on a dashboard row (≤40 characters). Over the bound the append is **refused**, never truncated |
+| `display_summary` | `string` | No | One plain-text sentence under the title (≤120 characters) — no markdown, since `**bold**` is shown to a person as asterisks. It *adds* a rendering: `summary` is still written as fully as the next agent needs, and is what the drill-down shows |
 | `occurred_at` | `string` | No | When the **platform** says an external change happened, which is routinely well before mureo saw it. The one date the server does not stamp — it cannot know it — but history, never a claim about "now". `observation_due` is measured from it, so a change that has been live for three weeks is already past due rather than due in a fortnight |
 
 An imported (`origin: "external"`) entry deliberately carries **no** `metrics_at_action`: mureo was not present when the change was made, so there is no baseline, and synthesising one from today's numbers would invent a "before" that never existed. Those entries are reviewed qualitatively. Which platforms mureo can import from — and what each feed omits — is in [`docs/change-import.md`](change-import.md).
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. When an action's observation window has passed, the agent compares current metrics against `metrics_at_action` to assess the action's impact. See `skills/_mureo-learning/SKILL.md` for the evidence-based decision framework.
+
+#### Display Contract
+
+The `display` object is what the dashboard renders for this client (#706) —
+see [The display contract](#the-display-contract-706) for why it is separate
+from `reports` and what is deliberately kept out of it. Every field is
+optional, every section is emitted only when it states something, and every
+bound below **refuses** an over-long write rather than truncating it.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `nav_message` | `string` | The one operator-facing line at the top of the report (運用ナビ), ≤80 characters |
+| `highlights` | `array` | ≤3 chips of `{tone, text}` — `tone` is `good` / `watch` / `bad`, `text` ≤60 characters |
+| `proposals` | `array` | `{title ≤30, body ≤80, status, date ≤12}`; `status` is `proposed` or `done`, and only `title` is required. `date` should **prefer** `YYYY-MM-DD` — free text like `"last week"` is allowed, but keep one spelling within a client, since two in one list read as two different kinds of fact. mureo enforces the length and no format: it displays the value and never parses it |
+| `breakdown` | `object` | Two tables, `campaigns` and `adgroups`, each an array of `{name, spend, mcpa, target_cpa, state, note ≤40}`. The three figures are raw numbers and a figure a row does not have is **omitted**, never written as `0` — a row with no conversions has no `mcpa`, and `0` would state a perfect CPA rather than the absence of one. `state` is one of `target_met` / `improving` / `watch` / `worsening` / `no_data` |
+| `stated_values` | `array` | `{label ≤24, value}` chips. The value is a raw number or a string of ≤12 characters; prose is refused, because it lands in a numeric column |
 
 #### Batch Record
 

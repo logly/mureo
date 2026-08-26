@@ -45,6 +45,7 @@ from mureo.context.batch import (
     stamp_batch,
 )
 from mureo.context.conversion_overrides import load_conversion_action_types
+from mureo.context.display_codec import parse_display_contract
 from mureo.context.errors import ContextFileError
 from mureo.context.models import (
     DAILY_DATE_KEY_PATTERN,
@@ -439,7 +440,24 @@ def append_action_log(
     Raises:
         BatchError: ``entry.batch_id`` names no declared batch, or names one
             that has already been closed.
+        ValueError: ``entry.display_title`` / ``entry.display_summary`` is over
+            its bound (#706). Refused, never truncated, and refused BEFORE the
+            file is opened — so a rejected append leaves the log exactly as it
+            was and the caller still holds the sentence it can shorten.
     """
+    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
+    # ``state_store`` -> this module, so a module-level import would be a cycle
+    # (the same reason ``metrics_windows`` and ``report_summary`` are imported
+    # inside their callers below).
+    from mureo.core.display_contract import validate_action_log_display
+
+    # Outside the lock: the dashboard's one-line rendering is a WRITE rule, so
+    # this is the moment to refuse it. An entry already on disk is history and
+    # is read back exactly as it is.
+    validate_action_log_display(
+        display_title=entry.display_title,
+        display_summary=entry.display_summary,
+    )
 
     def _build(doc: StateDocument) -> StateDocument:
         if entry.batch_id is not None:
@@ -582,6 +600,109 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
         reports = dict(doc.reports) if doc.reports else {}
         reports[report] = summary
         return replace(doc, last_synced_at=_now_iso(), reports=reports)
+
+    return _locked_state_mutation(path, _build)
+
+
+def set_display(
+    path: Path,
+    *,
+    nav_message: str | None = None,
+    highlights: list[dict[str, Any]] | None = None,
+    proposals: list[dict[str, Any]] | None = None,
+    breakdown: dict[str, Any] | None = None,
+    stated_values: list[dict[str, Any]] | None = None,
+) -> StateDocument:
+    """Write the client's ``display`` contract — what the DASHBOARD reads (#706).
+
+    STATE.json is the agent's working memory and is prose-heavy by design.
+    This section is the other audience: the operator's screen. Every value
+    here is bounded and every vocabulary closed, and an over-long or
+    off-vocabulary write is **refused, never truncated** — see
+    :func:`~mureo.core.display_contract.validate_display_contract` for the
+    rule and for what is deliberately not checked.
+
+    **The whole section is replaced by exactly what this call states.** An
+    omitted section is written as absent, not inherited.
+
+    That is the same granularity :func:`set_report` keeps, read one level up.
+    ``set_report``'s unit is a report KIND — what one skill writes in one pass
+    — and it preserves the other kinds because they are other reports, written
+    by other passes, about other questions. The display contract's unit is the
+    whole contract, because that is what one pass produces: the nav line, the
+    highlights, the proposals, the tables and the chips all describe ONE
+    client at ONE moment, off one set of figures. Merging them per section
+    would put last week's highlights beside today's nav line with nothing on
+    screen able to say they came from different runs — and a screen that
+    silently mixes two moments is worse than one that shows a section fewer.
+
+    So a call that states nothing CLEARS the contract, and the document loses
+    the key entirely rather than keeping an empty one a reader could render.
+
+    **One writer per run, and it owns the whole screen.** The contract is
+    written by exactly ONE skill per run — the one producing that run's
+    report — and that skill states every section it wants shown. Two skills
+    writing different sections in the same run is outside the design: the
+    second call does not merge into the first, it replaces it, so what
+    survives is whatever ran last. There is deliberately no partial-update
+    entry point and no per-section lock beyond the document lock every
+    mutator here shares; concurrent partial writers would need a merge policy,
+    and any merge policy re-creates the mixed-moment screen this whole-section
+    replacement exists to prevent. If a future run needs two writers, they
+    compose their sections BEFORE calling, not by calling twice.
+
+    Everything else in the document — platforms, campaigns, ``action_log``,
+    ``reports``, ``batches`` — is untouched by construction (``replace``).
+    ``last_synced_at`` IS re-stamped, as :func:`set_report` re-stamps it: this
+    write happens in the same pass as the report it summarises, so treating
+    the two differently would make the card's age depend on which of them ran
+    last.
+
+    Validation happens BEFORE the lock is taken, so a refused write leaves
+    STATE.json byte-for-byte untouched, and it is a WRITE rule only: a
+    contract already on disk is read back exactly as it is (see
+    :func:`mureo.context.display_codec.parse_display_contract`).
+
+    Args:
+        path: STATE.json location.
+        nav_message: The one operator-facing line (運用ナビ).
+        highlights: Up to three ``{tone, text}`` chips.
+        proposals: ``{title, body, status, date}`` rows.
+        breakdown: ``{campaigns: [...], adgroups: [...]}`` — rows of
+            ``{name, spend, mcpa, target_cpa, state, note}``.
+        stated_values: ``{label, value}`` chips, the value a raw number or a
+            short string.
+
+    Returns:
+        The updated :class:`StateDocument`.
+
+    Raises:
+        ValueError: a value is over its bound, names a value outside a closed
+            vocabulary, or states prose where a figure belongs.
+    """
+    # Imported lazily — the ``mureo.core`` -> ``mureo.context.state`` cycle
+    # again (see ``set_platform_metrics``).
+    from mureo.core.display_contract import validate_display_contract
+
+    supplied: dict[str, Any] = {
+        key: value
+        for key, value in (
+            ("nav_message", nav_message),
+            ("highlights", highlights),
+            ("proposals", proposals),
+            ("breakdown", breakdown),
+            ("stated_values", stated_values),
+        )
+        if value is not None
+    }
+    # Outside the lock and before the file is opened: a rejected write must
+    # leave the document exactly as it was, including its ``last_synced_at``.
+    validate_display_contract(supplied)
+    contract = parse_display_contract(supplied)
+
+    def _build(doc: StateDocument) -> StateDocument:
+        # One field, by ``replace``: every other section is carried over.
+        return replace(doc, last_synced_at=_now_iso(), display=contract)
 
     return _locked_state_mutation(path, _build)
 
@@ -1149,6 +1270,7 @@ __all__ = [
     "get_campaign",
     "read_state_file",
     "set_conversion_action_types",
+    "set_display",
     "set_platform_metrics",
     "set_platform_not_collected",
     "set_report",

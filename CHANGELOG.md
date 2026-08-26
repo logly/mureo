@@ -1,5 +1,59 @@
 ## [Unreleased]
 
+### Added
+
+- **The dashboard now reads a display contract, not the agent's prose**
+  (#706, step 1 of 3). STATE.json is the agent's working memory — prose-heavy
+  by design, written for the next AI decision. The dashboard had been
+  rendering that prose directly, and what an operator got (measured on two
+  live clients, 2026-08-26) was walls of jargon, thirty-row value dumps with
+  whole sentences in numeric columns, and work-journal action logs showing
+  raw `**` markdown on screen.
+
+  So the two audiences are separated. A new **`display` section** on each
+  client's STATE.json is the small, strictly structured surface the dashboard
+  will read: `nav_message` (one operator line, ≤80 chars), `highlights` (≤3
+  `{tone, text}` chips, tone `good`/`watch`/`bad`, text ≤60), `proposals`
+  (`{title ≤30, body ≤80, status proposed`/`done, date}`),
+  `breakdown.campaigns` / `.adgroups` (rows of `{name, spend, mcpa,
+  target_cpa, state, note ≤40}` with `state` from a closed set), and
+  `stated_values` (`{label ≤24, value}` where the value is a raw number or a
+  string ≤12 characters). An `action_log` entry gains `display_title` (≤40)
+  and `display_summary` (≤120) — the one line a dashboard row shows for it.
+
+  **Every bound refuses the write; nothing is truncated.** That is #662's
+  rule applied to a second surface, for the same reason: a sentence cut in
+  half reads like a bug in mureo and nobody can tell what was removed. The
+  three vocabularies are closed for #659's reason: each value is rendered as
+  a chip or a colour, so one no view knows is one no view draws. And prose in
+  `stated_values` is refused outright — that row is a caption and a figure,
+  and sentences arriving in it is the defect the contract exists to remove. A
+  refusal happens before the state lock is taken, so STATE.json is left
+  byte-for-byte as it was.
+
+  The KPI funnel (spend → impressions → clicks → conversions, with
+  CPM / CPC / CPA) and the daily chart are deliberately **outside** the
+  contract: both are computed from the canonical totals and
+  `PlatformState.daily` (#690), so no agent writes them and no agent can
+  state them wrongly.
+
+  New MCP tool **`mureo_state_display_set`** (tool count 225 → 226), which
+  replaces the whole section with exactly what the call states — these five
+  sections describe one client at one moment, and merging them per section
+  would put last week's highlights beside today's nav line with nothing on
+  screen able to say so. A call that states nothing clears the contract.
+  `mureo_state_action_log_append` gains the two display fields.
+  `build_report_summary` carries `display` (and each action row's display
+  line) on the reports payload.
+
+  Strict on write, tolerant on read: a value already on disk is read back
+  exactly as it is, because refusing it would only delete content an operator
+  has. A STATE.json written before this existed parses unchanged and gains no
+  new key.
+
+  The skills that write the contract (step 2) and the dashboard that renders
+  it (step 3) are separate issues; nothing in the browser changed here.
+
 ### Changed
 
 - **A roster row opens its client from anywhere on the row** (#707). The
