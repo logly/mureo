@@ -1520,14 +1520,22 @@ def test_generate_meta_auth_url() -> None:
 
 
 @pytest.mark.unit
-def test_meta_oauth_scopes_include_pages_manage_posts() -> None:
-    """pages_manage_posts is required to upload a Page photo for an Instant
-    Form cover (context_card.cover_photo_id) — see meta_ads_pages_upload_photo
-    (#151)."""
+def test_meta_oauth_scopes_do_not_request_pages_manage_posts() -> None:
+    """pages_manage_posts is NOT requested (#703).
+
+    It existed for one call — uploading a Page photo to mint an Instant Form
+    cover id — and Meta's App Review rejected it twice as unnecessary for core
+    functionality. The cover is now chosen from photos the Page already has
+    (meta_ads_pages_list_photos), which reads with pages_read_engagement +
+    pages_show_list. Asking for a write scope the product no longer uses is
+    what the review objected to, so the pin runs the other way now."""
     from mureo.auth_setup import _META_OAUTH_SCOPES
 
     scopes = set(_META_OAUTH_SCOPES.split(","))
-    assert "pages_manage_posts" in scopes
+    assert "pages_manage_posts" not in scopes
+    # The reading scopes the replacement flow depends on must stay.
+    assert "pages_read_engagement" in scopes
+    assert "pages_show_list" in scopes
     assert "leads_retrieval" in scopes
 
 

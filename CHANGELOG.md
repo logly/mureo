@@ -1,5 +1,44 @@
 ## [Unreleased]
 
+### Changed
+
+- **The `pages_manage_posts` scope is gone; an Instant Form cover is now
+  chosen, not uploaded** (#703). mureo asked for `pages_manage_posts` for
+  exactly one call — `POST /{page_id}/photos`, staging an unpublished Page
+  photo whose id became `context_card.cover_photo_id`. Meta's App Review
+  rejected the scope twice as unnecessary for core functionality, and against
+  Meta's own documentation the reviewers were right: the official Lead Ads
+  permission set (`ads_management`, `pages_manage_ads`,
+  `pages_read_engagement`, `pages_show_list`, `leads_retrieval`) never
+  includes it, and the `leadgen_forms` reference requires it only when a file
+  is attached through the `cover_photo` parameter. The upload also carried a
+  latent defect: an unpublished photo officially lives "about 24 hours" on
+  Meta's servers, and whether a form's reference preserves it is undocumented.
+
+  `meta_ads_pages_upload_photo` is replaced by **`meta_ads_pages_list_photos`**
+  (`GET /{page_id}/photos?type=uploaded`), which returns one row per photo the
+  Page already owns — `id` plus `name`, `created_time` and the largest
+  rendition's `width` / `height` / `url` — so the operator picks one and its
+  `id` goes into `context_card.cover_photo_id` unchanged. Reading needs only
+  `pages_read_engagement` + `pages_show_list` and a Page Access Token, all of
+  which mureo already holds. `type=uploaded` is what keeps photos the Page was
+  merely tagged in out of the list, and the preview is chosen by measuring the
+  renditions rather than trusting Meta's undocumented ordering. Tool count is
+  unchanged at 225 (one removed, one added).
+
+  **No re-authentication is needed.** This shrinks the requested scope set
+  rather than growing it, and a token issued earlier keeps the granted
+  `pages_manage_posts` permission harmlessly — nothing in mureo calls it any
+  more. Only a *new* scope requires re-issuing a token.
+
+  `lead-form-create` now offers the cover as a three-step ladder: pick an
+  existing Page photo, or skip the cover (it is optional), or set it by hand
+  in Ads Manager's form builder. The skill states plainly that
+  `cover_photo_id` accepting an arbitrary pre-existing Page photo is
+  **undocumented** behaviour — if Meta rejects the id, the agent falls back to
+  skipping or the manual path instead of retrying, which is the path that
+  already existed before this change.
+
 ## [0.14.0] - 2026-08-26
 
 ### Added

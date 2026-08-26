@@ -1,16 +1,19 @@
-"""Tests for Meta Ads ``upload_page_photo`` (Instant Form cover photo, #151).
+"""Tests for Meta Ads ``list_page_photos`` (Instant Form cover photo, #703).
 
-A form intro screen's ``context_card.cover_photo_id`` needs a PAGE photo id
-(from ``POST /{page_id}/photos`` with the Page Access Token), NOT the
-ad-account ``image_hash`` returned by ``upload_ad_image*``. These tests pin
-that distinction and the upload contract.
+A form intro screen's ``context_card.cover_photo_id`` needs a PAGE photo id,
+NOT the ad-account ``image_hash`` returned by ``upload_ad_image*`` (#151).
+mureo used to mint that id by uploading a new Page photo, which cost the
+``pages_manage_posts`` scope Meta's App Review rejected twice. The operator now
+picks an EXISTING Page photo instead: a plain read that needs only
+``pages_read_engagement`` + ``pages_show_list`` and a Page Access Token, both
+of which mureo already holds. These tests pin that read contract and the
+absence of the upload path.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -20,121 +23,185 @@ def meta_client() -> Any:
     from mureo.meta_ads.client import MetaAdsApiClient
 
     client = MetaAdsApiClient(access_token="test-token", ad_account_id="act_123456")
-    # Page token resolution is exercised elsewhere; stub it here so these
-    # tests focus on the photo upload itself.
-    client.get_page_access_token = AsyncMock(return_value="page-token")  # type: ignore[method-assign]
+    # Page token resolution is exercised elsewhere; stub the Page-token GET so
+    # these tests focus on the request shape and the returned selection rows.
+    client._get_as_page = AsyncMock(return_value={"data": []})  # type: ignore[method-assign]
     return client
 
 
-@pytest.fixture()
-def sample_image(tmp_path: Path) -> Path:
-    img = tmp_path / "cover.png"
-    img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
-    return img
-
-
-def _mock_http(status_code: int, payload: dict[str, Any]) -> Any:
-    resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = payload
-    http = AsyncMock()
-    http.post.return_value = resp
-    http.__aenter__ = AsyncMock(return_value=http)
-    http.__aexit__ = AsyncMock(return_value=False)
-    return http
+def _photo(**overrides: Any) -> dict[str, Any]:
+    photo: dict[str, Any] = {
+        "id": "999_888",
+        "name": "Spring campaign key visual",
+        "created_time": "2026-08-01T09:00:00+0000",
+        "images": [
+            {"width": 1200, "height": 628, "source": "https://scontent/large.jpg"},
+            {"width": 320, "height": 168, "source": "https://scontent/small.jpg"},
+        ],
+    }
+    photo.update(overrides)
+    return photo
 
 
 @pytest.mark.unit
-class TestUploadPagePhoto:
+class TestListPagePhotos:
     @pytest.mark.asyncio()
-    async def test_upload_via_image_url_returns_photo_id(
+    async def test_returns_id_and_the_minimum_needed_to_choose(
         self, meta_client: Any
     ) -> None:
-        http = _mock_http(200, {"id": "999_888"})
-        with patch("mureo.meta_ads._page_posts.httpx.AsyncClient", return_value=http):
-            result = await meta_client.upload_page_photo(
-                "111", image_url="https://example.com/banner.png"
-            )
-        assert result == {"photo_id": "999_888"}
-        # Posted to the page photos endpoint, unpublished, with the page token.
-        _, kwargs = http.post.call_args
-        assert kwargs["data"]["published"] == "false"
-        assert kwargs["data"]["access_token"] == "page-token"
+        """The operator picks by looking: id plus a preview URL and its size.
+
+        The raw ``images`` array carries every rendition Meta stores, which is
+        noise for a picker — the largest (first) entry is the one worth showing.
+        """
+        meta_client._get_as_page.return_value = {"data": [_photo()]}
+
+        result = await meta_client.list_page_photos("111")
+
+        assert result == [
+            {
+                "id": "999_888",
+                "name": "Spring campaign key visual",
+                "created_time": "2026-08-01T09:00:00+0000",
+                "width": 1200,
+                "height": 628,
+                "url": "https://scontent/large.jpg",
+            }
+        ]
 
     @pytest.mark.asyncio()
-    async def test_upload_via_file_path_returns_photo_id(
-        self, meta_client: Any, sample_image: Path
-    ) -> None:
-        http = _mock_http(200, {"id": "777"})
-        with patch("mureo.meta_ads._page_posts.httpx.AsyncClient", return_value=http):
-            result = await meta_client.upload_page_photo(
-                "111", file_path=str(sample_image)
-            )
-        assert result == {"photo_id": "777"}
-        # The whole point of #151: this must hit the PAGE /photos endpoint as
-        # a multipart Page photo (not the ad-account adimages hash path).
-        args, kwargs = http.post.call_args
-        assert args[0].endswith("/111/photos")
-        assert "source" in kwargs["files"]
-        assert kwargs["data"]["published"] == "false"
-        assert kwargs["data"]["access_token"] == "page-token"
-
-    @pytest.mark.asyncio()
-    async def test_bad_extension_file_rejected(
-        self, meta_client: Any, tmp_path: Path
-    ) -> None:
-        bad = tmp_path / "cover.txt"
-        bad.write_text("not an image", encoding="utf-8")
-        with pytest.raises(ValueError):
-            await meta_client.upload_page_photo("111", file_path=str(bad))
-
-    @pytest.mark.asyncio()
-    async def test_both_inputs_raises(self, meta_client: Any) -> None:
-        with pytest.raises(ValueError, match="exactly one"):
-            await meta_client.upload_page_photo(
-                "111", image_url="https://x/y.png", file_path="/tmp/z.png"
-            )
-
-    @pytest.mark.asyncio()
-    async def test_neither_input_raises(self, meta_client: Any) -> None:
-        with pytest.raises(ValueError, match="exactly one"):
-            await meta_client.upload_page_photo("111")
-
-    @pytest.mark.asyncio()
-    async def test_api_error_returns_error_dict(self, meta_client: Any) -> None:
-        http = _mock_http(403, {"error": {"message": "requires pages_manage_posts"}})
-        with patch("mureo.meta_ads._page_posts.httpx.AsyncClient", return_value=http):
-            result = await meta_client.upload_page_photo(
-                "111", image_url="https://example.com/banner.png"
-            )
-        assert "error" in result
-        assert "pages_manage_posts" in result["error"]
-
-    @pytest.mark.asyncio()
-    async def test_error_text_fallback_redacts_page_token(
+    async def test_reads_uploaded_page_photos_with_the_page_token(
         self, meta_client: Any
     ) -> None:
-        """A non-JSON error body must never leak the page token (defense-in-depth)."""
-        resp = MagicMock()
-        resp.status_code = 500
-        resp.json.side_effect = ValueError("not json")
-        resp.text = "upstream error for token page-token boom"
-        http = AsyncMock()
-        http.post.return_value = resp
-        http.__aenter__ = AsyncMock(return_value=http)
-        http.__aexit__ = AsyncMock(return_value=False)
-        with patch("mureo.meta_ads._page_posts.httpx.AsyncClient", return_value=http):
-            result = await meta_client.upload_page_photo(
-                "111", image_url="https://example.com/banner.png"
-            )
-        assert "error" in result
-        assert "page-token" not in result["error"]
+        """``type=uploaded`` is what limits the read to photos the Page owns —
+        without it Meta also returns photos the Page was merely tagged in,
+        which cannot be used as a form cover."""
+        await meta_client.list_page_photos("111")
+
+        args, kwargs = meta_client._get_as_page.call_args
+        page_id, path, params = args
+        assert page_id == "111"
+        assert path == "/111/photos"
+        assert params["type"] == "uploaded"
+        assert params["fields"] == "id,name,created_time,images"
 
     @pytest.mark.asyncio()
-    async def test_missing_id_returns_error(self, meta_client: Any) -> None:
-        http = _mock_http(200, {})
-        with patch("mureo.meta_ads._page_posts.httpx.AsyncClient", return_value=http):
-            result = await meta_client.upload_page_photo(
-                "111", image_url="https://example.com/banner.png"
-            )
-        assert "error" in result
+    async def test_limit_defaults_to_25_and_is_forwarded(
+        self, meta_client: Any
+    ) -> None:
+        await meta_client.list_page_photos("111")
+        assert meta_client._get_as_page.call_args[0][2]["limit"] == 25
+
+        await meta_client.list_page_photos("111", limit=5)
+        assert meta_client._get_as_page.call_args[0][2]["limit"] == 5
+
+    @pytest.mark.asyncio()
+    async def test_largest_rendition_wins_regardless_of_order(
+        self, meta_client: Any
+    ) -> None:
+        """Meta usually returns renditions largest-first but does not document
+        that order, so the size is measured rather than assumed — a thumbnail
+        shown as the preview would make every photo look the same."""
+        meta_client._get_as_page.return_value = {
+            "data": [
+                _photo(
+                    images=[
+                        {"width": 320, "height": 168, "source": "https://s/small.jpg"},
+                        {"width": 1200, "height": 628, "source": "https://s/large.jpg"},
+                    ]
+                )
+            ]
+        }
+
+        result = await meta_client.list_page_photos("111")
+
+        assert result[0]["url"] == "https://s/large.jpg"
+        assert result[0]["width"] == 1200
+
+    @pytest.mark.asyncio()
+    async def test_photo_without_renditions_still_offers_its_id(
+        self, meta_client: Any
+    ) -> None:
+        """A photo Meta returns no ``images`` for is still selectable — the id
+        is the only field ``cover_photo_id`` actually needs."""
+        meta_client._get_as_page.return_value = {
+            "data": [_photo(images=[]), _photo(id="777", images=None)]
+        }
+
+        result = await meta_client.list_page_photos("111")
+
+        assert [row["id"] for row in result] == ["999_888", "777"]
+        for row in result:
+            assert "url" not in row
+            assert "width" not in row
+
+    @pytest.mark.asyncio()
+    async def test_photo_without_an_id_is_dropped(self, meta_client: Any) -> None:
+        """An id-less row cannot be passed as ``cover_photo_id``, so offering
+        it to the operator could only waste a pick."""
+        meta_client._get_as_page.return_value = {"data": [_photo(id=""), _photo()]}
+
+        result = await meta_client.list_page_photos("111")
+
+        assert [row["id"] for row in result] == ["999_888"]
+
+    @pytest.mark.asyncio()
+    async def test_optional_fields_are_omitted_rather_than_nulled(
+        self, meta_client: Any
+    ) -> None:
+        meta_client._get_as_page.return_value = {"data": [{"id": "555"}]}
+
+        result = await meta_client.list_page_photos("111")
+
+        assert result == [{"id": "555"}]
+
+    @pytest.mark.asyncio()
+    async def test_no_photos_returns_empty_list(self, meta_client: Any) -> None:
+        meta_client._get_as_page.return_value = {}
+        assert await meta_client.list_page_photos("111") == []
+
+    def test_upload_path_is_gone(self, meta_client: Any) -> None:
+        """#703 removed the upload entirely — a leftover method would keep the
+        ``pages_manage_posts`` dependency alive in the client."""
+        assert not hasattr(meta_client, "upload_page_photo")
+
+
+@pytest.mark.unit
+class TestPagesListPhotosToolDefinition:
+    """Schema pins taken from the shipped tool registry, not a local literal."""
+
+    def _tool(self) -> Any:
+        from mureo.mcp import tools_meta_ads
+
+        return next(
+            t for t in tools_meta_ads.TOOLS if t.name == "meta_ads_pages_list_photos"
+        )
+
+    def test_registered_and_dispatchable(self) -> None:
+        from mureo.mcp import tools_meta_ads
+
+        assert "meta_ads_pages_list_photos" in tools_meta_ads._HANDLERS
+
+    def test_upload_tool_is_deregistered(self) -> None:
+        from mureo.mcp import tools_meta_ads
+
+        names = {t.name for t in tools_meta_ads.TOOLS}
+        assert "meta_ads_pages_upload_photo" not in names
+        assert "meta_ads_pages_upload_photo" not in tools_meta_ads._HANDLERS
+
+    def test_declares_itself_read_only(self) -> None:
+        """The tool replaced a mutating one; an agent that still reads it as a
+        write would gate it behind a confirmation it no longer needs."""
+        assert "Read-only." in self._tool().description
+
+    def test_schema_requires_page_id_and_is_strict(self) -> None:
+        schema = self._tool().inputSchema
+        assert schema["required"] == ["page_id"]
+        assert schema["additionalProperties"] is False
+        assert set(schema["properties"]) == {"account_id", "page_id", "limit"}
+
+    def test_limit_is_bounded(self) -> None:
+        limit = self._tool().inputSchema["properties"]["limit"]
+        assert limit["type"] == "integer"
+        assert limit["minimum"] == 1
+        assert limit["maximum"] == 100
