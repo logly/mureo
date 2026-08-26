@@ -76,7 +76,11 @@ def _number(value: Any) -> float | int | None:
     """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return value
+    # Annotated local: the parameter is ``Any`` (this sits at a boundary, so
+    # the value's type is not guaranteed), and ``isinstance`` does not narrow
+    # ``Any`` for mypy's return check.
+    number: float | int = value
+    return number
 
 
 def _parse_highlights(raw: Any) -> tuple[DisplayHighlight, ...]:
