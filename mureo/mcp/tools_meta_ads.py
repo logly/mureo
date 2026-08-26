@@ -240,7 +240,7 @@ _HANDLERS: dict[str, Any] = {
     # Image upload
     "meta_ads_images_upload_file": handle_images_upload_file,
     # Page photos (Instant Form cover selection)
-    "meta_ads_pages_list_photos": handle_pages_list_photos,
+    "meta_ads_pages_photos_list": handle_pages_list_photos,
     # Videos
     "meta_ads_videos_upload": handle_videos_upload,
     "meta_ads_videos_upload_file": handle_videos_upload_file,

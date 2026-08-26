@@ -167,20 +167,31 @@ class TestListPagePhotos:
 
 
 @pytest.mark.unit
-class TestPagesListPhotosToolDefinition:
+class TestPagesPhotosListToolDefinition:
     """Schema pins taken from the shipped tool registry, not a local literal."""
 
     def _tool(self) -> Any:
         from mureo.mcp import tools_meta_ads
 
         return next(
-            t for t in tools_meta_ads.TOOLS if t.name == "meta_ads_pages_list_photos"
+            t for t in tools_meta_ads.TOOLS if t.name == "meta_ads_pages_photos_list"
         )
 
     def test_registered_and_dispatchable(self) -> None:
         from mureo.mcp import tools_meta_ads
 
-        assert "meta_ads_pages_list_photos" in tools_meta_ads._HANDLERS
+        assert "meta_ads_pages_photos_list" in tools_meta_ads._HANDLERS
+
+    def test_name_puts_the_read_verb_last_like_its_siblings(self) -> None:
+        """mureo names its own reads verb-LAST (meta_ads_page_posts_list,
+        meta_ads_lead_forms_list), and ``reads_as_a_report_only_action`` — the
+        rollback planner's "is there anything to undo?" test — only recognises
+        a read verb at the start or the end of a name. A mid-word verb
+        (``..._list_photos``) would read as a mutation there and land this
+        tool among the entries an operator "cannot revert"."""
+        from mureo.core.tool_names import reads_as_a_report_only_action
+
+        assert reads_as_a_report_only_action("meta_ads_pages_photos_list")
 
     def test_upload_tool_is_deregistered(self) -> None:
         from mureo.mcp import tools_meta_ads

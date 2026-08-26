@@ -15,7 +15,7 @@
   latent defect: an unpublished photo officially lives "about 24 hours" on
   Meta's servers, and whether a form's reference preserves it is undocumented.
 
-  `meta_ads_pages_upload_photo` is replaced by **`meta_ads_pages_list_photos`**
+  `meta_ads_pages_upload_photo` is replaced by **`meta_ads_pages_photos_list`**
   (`GET /{page_id}/photos?type=uploaded`), which returns one row per photo the
   Page already owns — `id` plus `name`, `created_time` and the largest
   rendition's `width` / `height` / `url` — so the operator picks one and its

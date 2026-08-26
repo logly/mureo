@@ -202,7 +202,7 @@ TOOLS: list[Tool] = [
                         "supplied. Expected keys: title, content, style "
                         "(PARAGRAPH_STYLE or LIST_STYLE), cover_photo_id. "
                         "cover_photo_id is a PAGE photo id picked from "
-                        "meta_ads_pages_list_photos and is write-only: "
+                        "meta_ads_pages_photos_list and is write-only: "
                         "Meta reads it back as context_card.cover_photo.id "
                         "({id, created_time}), and asking for "
                         "context_card{cover_photo_id} is rejected."
@@ -460,7 +460,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads_pages_list_photos",
+        name="meta_ads_pages_photos_list",
         description=(
             "Lists photos a Facebook Page has already uploaded, so an "
             "Instant Form intro screen can reuse one as its cover. Returns "

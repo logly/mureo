@@ -505,7 +505,9 @@ TOOLS: list[Tool] = [
             "Pages (/me/businesses -> owned_pages). Returns id, name, and "
             "category (when present) per Page. Read-only. Use this to find "
             "a page_id before creating lead forms, boosting posts, or "
-            "attaching a Page to an ad set's promoted_object."
+            "attaching a Page to an ad set's promoted_object. This lists "
+            "Pages, not their contents — for one Page's photos use "
+            "meta_ads_pages_photos_list."
         ),
         inputSchema={
             "type": "object",

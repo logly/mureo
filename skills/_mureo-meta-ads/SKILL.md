@@ -99,7 +99,7 @@ metadata:
 | 79 | `meta_ads_instagram_media` | Instagram | Read | List Instagram posts |
 | 80 | `meta_ads_instagram_boost` | Instagram | Write | Boost an Instagram post |
 | 81 | `meta_ads_pages_list` | Page | Read | List manageable Facebook Pages (personal + business-owned) |
-| 82 | `meta_ads_pages_list_photos` | Page | Read | List a Page's existing photos (pick a Page photo id) |
+| 82 | `meta_ads_pages_photos_list` | Page | Read | List a Page's existing photos (pick a Page photo id) |
 | 83 | `meta_ads_creatives_create_lead` | Lead / Creative | Write | Create a Lead Ad AdCreative attached to an Instant Form |
 | 84 | `meta_ads_lead_forms_update` | Lead | Write | Change a lead form status (ACTIVE / ARCHIVED) |
 | 85 | `meta_ads_lead_forms_duplicate` | Lead | Write | Duplicate a lead form under a Page with a new name |
@@ -573,7 +573,7 @@ different one.
   When to use `context_card`: lifts conversion rate measurably. Always
   worth a `{title, content, style=PARAGRAPH_STYLE}` minimum for any
   campaign that survives past a 1-week test. `cover_photo_id` (a PAGE
-  photo id picked from `meta_ads_pages_list_photos`) is write-only — Meta
+  photo id picked from `meta_ads_pages_photos_list`) is write-only — Meta
   reads it back as `context_card.cover_photo.id`, so asking for
   `context_card{cover_photo_id}` returns a 400. Reusing an existing Page
   photo as a cover is undocumented by Meta: if the create call rejects

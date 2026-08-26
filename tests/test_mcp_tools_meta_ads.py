@@ -566,8 +566,8 @@ class TestMetaAdsAdSetHandlers:
                 {"account_id": "act_123", "ad_set_id": "20", "end_time": bad_end_time},
             )
 
-    async def test_pages_list_photos(self) -> None:
-        """meta_ads_pages_list_photos surfaces PAGE photo ids to pick a cover
+    async def test_pages_photos_list(self) -> None:
+        """meta_ads_pages_photos_list surfaces PAGE photo ids to pick a cover
         from (context_card.cover_photo_id, #703)."""
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()
@@ -581,7 +581,7 @@ class TestMetaAdsAdSetHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads_pages_list_photos",
+                "meta_ads_pages_photos_list",
                 {"account_id": "act_123", "page_id": "111", "limit": 10},
             )
 

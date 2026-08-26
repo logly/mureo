@@ -1526,7 +1526,7 @@ def test_meta_oauth_scopes_do_not_request_pages_manage_posts() -> None:
     It existed for one call — uploading a Page photo to mint an Instant Form
     cover id — and Meta's App Review rejected it twice as unnecessary for core
     functionality. The cover is now chosen from photos the Page already has
-    (meta_ads_pages_list_photos), which reads with pages_read_engagement +
+    (meta_ads_pages_photos_list), which reads with pages_read_engagement +
     pages_show_list. Asking for a write scope the product no longer uses is
     what the review objected to, so the pin runs the other way now."""
     from mureo.auth_setup import _META_OAUTH_SCOPES
