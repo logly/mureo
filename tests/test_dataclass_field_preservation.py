@@ -79,6 +79,12 @@ from mureo.context.models import (
     AdState,
     BatchRecord,
     CampaignSnapshot,
+    DisplayBreakdown,
+    DisplayBreakdownRow,
+    DisplayContract,
+    DisplayHighlight,
+    DisplayProposal,
+    DisplayStatedValue,
     PlatformState,
     StateDocument,
 )
@@ -88,6 +94,7 @@ from mureo.context.state import (
     read_state_file,
     render_state,
     set_conversion_action_types,
+    set_display,
     set_platform_daily,
     set_platform_metrics,
     set_platform_not_collected,
@@ -140,6 +147,54 @@ _ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
     "origin": EXTERNAL_ORIGIN,
     "external_id": "google_ads|customers/1/changeEvents/abc",
     "occurred_at": "2026-08-05T09:14:00+09:00",
+    "display_title": "Raised the Brand budget",
+    "display_summary": "Brand Search was capped every afternoon; +20% daily.",
+}
+
+#: One distinctive value per display model (#706). The nested maps exist for
+#: the same reason as ``AdState``'s: a model the codec touches and this test
+#: leaves at its defaults is a model whose loss compares equal to itself.
+_DISPLAY_HIGHLIGHT_FIELD_VALUES: dict[str, Any] = {
+    "tone": "watch",
+    "text": "CPA 12% over target",
+}
+
+_DISPLAY_PROPOSAL_FIELD_VALUES: dict[str, Any] = {
+    "title": "Pause two ad groups",
+    "body": "Both are 3x target CPA with no conversions in 14 days.",
+    "status": "proposed",
+    "date": "2026-08-08",
+}
+
+_DISPLAY_BREAKDOWN_ROW_FIELD_VALUES: dict[str, Any] = {
+    "name": "Brand Search",
+    "spend": 42000.0,
+    "mcpa": 5200.0,
+    "target_cpa": 4500.0,
+    "state": "worsening",
+    "note": "capped every afternoon",
+}
+
+_DISPLAY_BREAKDOWN_FIELD_VALUES: dict[str, Any] = {
+    "campaigns": (DisplayBreakdownRow(**_DISPLAY_BREAKDOWN_ROW_FIELD_VALUES),),
+    "adgroups": (
+        DisplayBreakdownRow(
+            **{**_DISPLAY_BREAKDOWN_ROW_FIELD_VALUES, "name": "Brand — exact"}
+        ),
+    ),
+}
+
+_DISPLAY_STATED_VALUE_FIELD_VALUES: dict[str, Any] = {
+    "label": "CVR",
+    "value": 0.0021,
+}
+
+_DISPLAY_FIELD_VALUES: dict[str, Any] = {
+    "nav_message": "CPA is over target — pause the two worst ad groups",
+    "highlights": (DisplayHighlight(**_DISPLAY_HIGHLIGHT_FIELD_VALUES),),
+    "proposals": (DisplayProposal(**_DISPLAY_PROPOSAL_FIELD_VALUES),),
+    "breakdown": DisplayBreakdown(**_DISPLAY_BREAKDOWN_FIELD_VALUES),
+    "stated_values": (DisplayStatedValue(**_DISPLAY_STATED_VALUE_FIELD_VALUES),),
 }
 
 #: One distinctive value per :class:`BatchRecord` field (#549).
@@ -201,6 +256,7 @@ _DOCUMENT_FIELD_VALUES: dict[str, Any] = {
         "reason": "the credentials file could not be read",
     },
     "batches": (BatchRecord(**_BATCH_FIELD_VALUES),),
+    "display": DisplayContract(**_DISPLAY_FIELD_VALUES),
 }
 
 #: Every model the STATE.json codec maps, with the map that must cover it.
@@ -213,6 +269,12 @@ _CODEC_MODELS: tuple[tuple[type, dict[str, Any]], ...] = (
     (CampaignSnapshot, _CAMPAIGN_FIELD_VALUES),
     (AdState, _AD_STATE_FIELD_VALUES),
     (BatchRecord, _BATCH_FIELD_VALUES),
+    (DisplayContract, _DISPLAY_FIELD_VALUES),
+    (DisplayHighlight, _DISPLAY_HIGHLIGHT_FIELD_VALUES),
+    (DisplayProposal, _DISPLAY_PROPOSAL_FIELD_VALUES),
+    (DisplayBreakdown, _DISPLAY_BREAKDOWN_FIELD_VALUES),
+    (DisplayBreakdownRow, _DISPLAY_BREAKDOWN_ROW_FIELD_VALUES),
+    (DisplayStatedValue, _DISPLAY_STATED_VALUE_FIELD_VALUES),
 )
 
 
@@ -316,6 +378,22 @@ class TestDocumentLevelPreservation:
         # Sibling report kinds survive too.
         assert after.reports is not None
         assert after.reports["daily"] == {"narrative": "healthy"}
+
+    def test_set_display(self, seeded: tuple[Path, StateDocument]) -> None:
+        """The display contract is replaced; nothing else in the document is.
+
+        Notably ``reports`` — the two sections answer different questions for
+        different readers, and a write of one must never disturb the other.
+        """
+        path, before = seeded
+        after = set_display(path, nav_message="Spend is on pace")
+        _assert_document_preserved(before, after, changed={"last_synced_at", "display"})
+        assert after.display is not None
+        assert after.display.nav_message == "Spend is on pace"
+        # The whole section is what this call states — the sections it did
+        # NOT name are absent, not inherited from the seeded contract.
+        assert after.display.highlights == ()
+        assert after.display.stated_values == ()
 
     def test_set_platform_metrics(self, seeded: tuple[Path, StateDocument]) -> None:
         path, before = seeded
@@ -756,6 +834,26 @@ class TestCodecRoundTrip:
             ), (
                 f"ads[] field {field.name!r} did not survive the round trip — "
                 "check BOTH _parse_ad and _ad_state_to_dict."
+            )
+
+    def test_every_display_field_survives_render_and_parse(self) -> None:
+        """The contract is five sections deep and gets the same guard (#706).
+
+        Driven off ``dataclasses.fields`` at every level, so a field added to
+        any of the six display models is checked here without this test being
+        edited — the halves it needs are in ``mureo.context.display_codec``,
+        which ``state_codec._CODEC_COVERAGE`` still names.
+        """
+        _assert_every_codec_model_covered()
+        doc = StateDocument(**_DOCUMENT_FIELD_VALUES)
+        restored = parse_state(render_state(doc))
+        assert restored.display is not None and doc.display is not None
+        for field in fields(DisplayContract):
+            assert getattr(restored.display, field.name) == getattr(
+                doc.display, field.name
+            ), (
+                f"display field {field.name!r} did not survive the round trip "
+                "— check BOTH halves in mureo.context.display_codec."
             )
 
     def test_every_campaign_field_survives_render_and_parse(self) -> None:

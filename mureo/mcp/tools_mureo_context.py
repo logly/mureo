@@ -1,6 +1,6 @@
 """mureo's STRATEGY.md / STATE.json MCP tool surface.
 
-Twelve tools that expose mureo's context layer over MCP, so any MCP host
+Thirteen tools that expose mureo's context layer over MCP, so any MCP host
 (Claude Desktop chat, claude.ai web, Codex/Cursor, …) can read and
 update STRATEGY.md / STATE.json without direct filesystem access.
 
@@ -18,6 +18,24 @@ from mcp.types import Tool
 
 from mureo.context.models import DAILY_DATE_KEY_PATTERN
 from mureo.context.state import DAILY_RETENTION_DAYS
+from mureo.core.display_contract import (
+    ACTION_LOG_DISPLAY_RULE,
+    ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS,
+    ACTION_LOG_DISPLAY_TITLE_MAX_CHARS,
+    BREAKDOWN_NOTE_MAX_CHARS,
+    BREAKDOWN_STATES,
+    DISPLAY_CONTRACT_RULE,
+    HIGHLIGHT_TEXT_MAX_CHARS,
+    HIGHLIGHT_TONES,
+    HIGHLIGHTS_MAX_ITEMS,
+    NAV_MESSAGE_MAX_CHARS,
+    PROPOSAL_BODY_MAX_CHARS,
+    PROPOSAL_DATE_MAX_CHARS,
+    PROPOSAL_STATUSES,
+    PROPOSAL_TITLE_MAX_CHARS,
+    STATED_VALUE_LABEL_MAX_CHARS,
+    STATED_VALUE_MAX_CHARS,
+)
 from mureo.core.metrics_windows import (
     CANONICAL_METRICS_WINDOWS,
     METRICS_WINDOW_RULE,
@@ -27,6 +45,7 @@ from mureo.core.report_summary import REPORT_SUMMARY_RULE
 from mureo.mcp._handlers_mureo_context import (
     handle_outcome_evaluate,
     handle_state_action_log_append,
+    handle_state_display_set,
     handle_state_get,
     handle_state_platform_daily_set,
     handle_state_platform_metrics_set,
@@ -99,9 +118,10 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "stamped by the server — do not compute it. Optional: campaign_id, "
         "ad_id, entity_type, entity_id, summary, command, metrics_at_action, "
         "observation_due, reversible_params, rollback_of, evaluation_of, "
-        "batch_id (normally stamped by the server — see the field), and the "
+        "batch_id (normally stamped by the server — see the field), the "
         "provenance trio origin / external_id / occurred_at for a change "
-        "mureo did NOT make (see those fields)."
+        "mureo did NOT make (see those fields), and display_title / "
+        "display_summary — the one line the dashboard shows for this entry."
     ),
     "properties": {
         "timestamp": {
@@ -221,6 +241,27 @@ _ACTION_LOG_ENTRY_PROPERTY = {
                 "date is not something the server can know. The observation "
                 "window anchors on it, so a change made two weeks ago is "
                 "already due for review rather than due in a fortnight."
+            ),
+        },
+        "display_title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": ACTION_LOG_DISPLAY_TITLE_MAX_CHARS,
+            "description": (
+                "What this action WAS, in a few words an operator reads on a "
+                "dashboard row — 'Paused two losing ad groups'. "
+                + ACTION_LOG_DISPLAY_RULE
+            ),
+        },
+        "display_summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS,
+            "description": (
+                "One sentence under the title, still for the operator. Plain "
+                "text — no markdown: ``**bold**`` is shown to a person as "
+                "asterisks. Keep the full reasoning in ``summary``, which "
+                "nothing here shortens. " + ACTION_LOG_DISPLAY_RULE
             ),
         },
     },
@@ -384,6 +425,55 @@ _CAMPAIGN_PROPERTY = {
         "platform",
         "account_id",
     ],
+}
+
+
+# One breakdown table's rows (#706). Declared once and used for both
+# ``campaigns`` and ``adgroups``: the two are the same shape at two levels,
+# and a second copy is how they would start disagreeing about what a row is.
+_BREAKDOWN_ROW_ITEMS = {
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The campaign / ad group as the platform names it.",
+        },
+        "spend": {"type": "number", "description": "Spend, as a raw number."},
+        "mcpa": {
+            "type": "number",
+            "description": (
+                "Measured cost per acquisition, as a raw number. OMIT it "
+                "where there were no conversions — 0 states a perfect CPA "
+                "rather than the absence of one."
+            ),
+        },
+        "target_cpa": {
+            "type": "number",
+            "description": "The CPA this row is judged against, as a raw number.",
+        },
+        "state": {
+            "type": "string",
+            "enum": list(BREAKDOWN_STATES),
+            "description": (
+                "How this row is doing, from a closed set: target_met / "
+                "improving need no action, watch / worsening do, and no_data "
+                "is too little delivery to judge. Omit rather than inventing "
+                "a word — each value is rendered as a colour."
+            ),
+        },
+        "note": {
+            "type": "string",
+            "maxLength": BREAKDOWN_NOTE_MAX_CHARS,
+            "description": (
+                "One table cell of context, at most "
+                f"{BREAKDOWN_NOTE_MAX_CHARS} characters. Text in a table "
+                "steals the width the figures need."
+            ),
+        },
+    },
+    "required": ["name"],
+    "additionalProperties": False,
 }
 
 
@@ -578,6 +668,199 @@ TOOLS: list[Tool] = [
                 "path": _PATH_PROPERTY,
             },
             "required": ["report", "summary"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="mureo_state_display_set",
+        description=(
+            "Write what the DASHBOARD shows for this client — a small, "
+            "strictly bounded surface, separate from everything else you "
+            "store. STATE.json is your working memory and is prose-heavy by "
+            "design; the dashboard reads THIS section and nothing else, so "
+            "your reasoning keeps going exactly where it already goes and "
+            "stops reaching the screen. Call it in the same pass as "
+            "mureo_state_report_set, from the same figures. **The whole "
+            "section is replaced by what this call states** — an omitted "
+            "section is written as absent, not kept from the last run, "
+            "because these five describe one client at one moment and mixing "
+            "two runs on one screen is worse than showing a section fewer. A "
+            "call that states nothing CLEARS the contract. **Do NOT write "
+            "the KPI funnel (spend / impressions / clicks / conversions, "
+            "CPM / CPC / CPA) or the daily chart**: mureo computes both from "
+            "the stored totals and the day-grain history, so there is "
+            "nothing for you to get wrong there. Every bound below REFUSES "
+            "the write rather than truncating it — a sentence cut in half "
+            "reads like a bug and nobody can tell what was removed. Returns "
+            "the updated state document. "
+            # The rule is pasted rather than restated (#659 / #662): the
+            # bounds fire at the schema layer, before this tool's handler
+            # runs, so a caller who only ever sees the JSON-Schema refusal
+            # learns the number and none of the reasoning unless the reason
+            # was already in the description it read before calling.
+            + DISPLAY_CONTRACT_RULE
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "nav_message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": NAV_MESSAGE_MAX_CHARS,
+                    "description": (
+                        "The single operator-facing line at the top of the "
+                        "report (運用ナビ): what to do next, in at most "
+                        f"{NAV_MESSAGE_MAX_CHARS} characters. One line — a "
+                        "second sentence here is a paragraph by tomorrow."
+                    ),
+                },
+                "highlights": {
+                    "type": "array",
+                    "maxItems": HIGHLIGHTS_MAX_ITEMS,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "tone": {
+                                "type": "string",
+                                "enum": list(HIGHLIGHT_TONES),
+                                "description": (
+                                    "How the chip is coloured: good / watch / bad."
+                                ),
+                            },
+                            "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": HIGHLIGHT_TEXT_MAX_CHARS,
+                                "description": (
+                                    "The chip's words, at most "
+                                    f"{HIGHLIGHT_TEXT_MAX_CHARS} characters."
+                                ),
+                            },
+                        },
+                        "required": ["tone", "text"],
+                        "additionalProperties": False,
+                    },
+                    "description": (
+                        f"At most {HIGHLIGHTS_MAX_ITEMS} chips — what this "
+                        "client's card says at a glance. A fourth is not "
+                        "extra information on screen; it is the point at "
+                        "which none of them is read, so choose."
+                    ),
+                },
+                "proposals": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": PROPOSAL_TITLE_MAX_CHARS,
+                                "description": (
+                                    "The row an operator scans, at most "
+                                    f"{PROPOSAL_TITLE_MAX_CHARS} characters."
+                                ),
+                            },
+                            "body": {
+                                "type": "string",
+                                "maxLength": PROPOSAL_BODY_MAX_CHARS,
+                                "description": (
+                                    "One line under the title, at most "
+                                    f"{PROPOSAL_BODY_MAX_CHARS} characters. "
+                                    "The reasoning behind the proposal is "
+                                    "long and belongs in your own prose."
+                                ),
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": list(PROPOSAL_STATUSES),
+                                "description": (
+                                    "proposed (awaiting a decision) or done "
+                                    "(carried out)."
+                                ),
+                            },
+                            "date": {
+                                "type": "string",
+                                "maxLength": PROPOSAL_DATE_MAX_CHARS,
+                                "description": (
+                                    "When it was proposed or done, normally "
+                                    "YYYY-MM-DD. Displayed as written; mureo "
+                                    "imposes no format, only the length."
+                                ),
+                            },
+                        },
+                        "required": ["title"],
+                        "additionalProperties": False,
+                    },
+                    "description": (
+                        "What you propose doing, or have done — one entry "
+                        "each, never one paragraph listing several."
+                    ),
+                },
+                "breakdown": {
+                    "type": "object",
+                    "properties": {
+                        "campaigns": {
+                            "type": "array",
+                            "items": dict(_BREAKDOWN_ROW_ITEMS),
+                            "description": "One row per campaign.",
+                        },
+                        "adgroups": {
+                            "type": "array",
+                            "items": dict(_BREAKDOWN_ROW_ITEMS),
+                            "description": "One row per ad group / ad set.",
+                        },
+                    },
+                    "additionalProperties": False,
+                    "description": (
+                        "The two per-entity tables: ``campaigns`` and "
+                        "``adgroups``, each an array of {name, spend, mcpa, "
+                        "target_cpa, state, note}. Figures are raw numbers, "
+                        "``state`` comes from a closed set, and a figure you "
+                        "do not have is OMITTED rather than written as 0."
+                    ),
+                },
+                "stated_values": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": STATED_VALUE_LABEL_MAX_CHARS,
+                                "description": (
+                                    "The chip's caption, at most "
+                                    f"{STATED_VALUE_LABEL_MAX_CHARS} "
+                                    "characters."
+                                ),
+                            },
+                            "value": {
+                                "description": (
+                                    "A raw number, or a string of at most "
+                                    f"{STATED_VALUE_MAX_CHARS} characters "
+                                    "where a number cannot carry it "
+                                    "('3 of 7', '未設定'). A SENTENCE IS "
+                                    "REFUSED: this is a numeric column, and "
+                                    "prose in it is the defect this contract "
+                                    "exists to remove."
+                                ),
+                            },
+                        },
+                        "required": ["label", "value"],
+                        "additionalProperties": False,
+                    },
+                    "description": (
+                        "Labelled figures this report states that are not "
+                        "one of mureo's headline metrics — a CVR, a target, "
+                        "a count. Chips, not a table of prose."
+                    ),
+                },
+                "path": _PATH_PROPERTY,
+            },
+            # Nothing is required: a call that states no section clears the
+            # contract, which is the only way to take a stale screen down.
+            "required": [],
             "additionalProperties": False,
         },
     ),
@@ -992,6 +1275,7 @@ _HANDLERS = {
     "mureo_state_action_log_append": handle_state_action_log_append,
     "mureo_state_upsert_campaign": handle_state_upsert_campaign,
     "mureo_state_report_set": handle_state_report_set,
+    "mureo_state_display_set": handle_state_display_set,
     "mureo_state_platform_metrics_set": handle_state_platform_metrics_set,
     "mureo_state_platform_daily_set": handle_state_platform_daily_set,
     "mureo_state_platform_not_collected_set": handle_state_platform_not_collected_set,

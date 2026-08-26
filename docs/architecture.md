@@ -150,6 +150,8 @@ mureo/
 │   │                        #   separate fields the type refuses to cross
 │   ├── state.py             # STATE.json read / mutate / atomic write + state lock (re-exports the two below)
 │   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
+│   ├── display_codec.py     # The `display` section's two codec halves (#706) — tolerant on
+│   │                        #   read, because every bound on that surface is a WRITE rule
 │   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)
 │   ├── platform_accounts.py # One ad account, one platform key — the shared account-id join
 │   ├── platform_guards.py   # Write-time guards over that join (refuse / warn on duplicates)
@@ -480,7 +482,7 @@ The Amazon bridge is the reason mureo sits in the request path rather than letti
 
 ## Command-Based Workflow System
 
-In addition to the 225 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 226 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 

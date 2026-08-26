@@ -116,6 +116,7 @@ from mureo.web.report_document import (  # noqa: F401
     _build_platform_conflicts,
     _daily_delta,
     _daily_series,
+    _display_contract,
     _non_canonical_periods,
     _period_totals,
     _platform_freshness,
@@ -203,10 +204,16 @@ def build_report_summary(
     - ``last_synced_at``: the document's sync timestamp (or ``None``).
     - ``recent_actions``: the last :data:`_RECENT_ACTIONS_LIMIT` action-log
       entries, each ``{timestamp, action, platform, campaign_id, summary,
-      observation_due}`` — NO ``command`` / ``metrics_at_action`` /
-      ``reversible_params`` (those can carry secrets or noise).
+      observation_due, display_title, display_summary}`` — NO ``command`` /
+      ``metrics_at_action`` / ``reversible_params`` (those can carry secrets
+      or noise). The last two are the bounded operator-facing line (#706),
+      ``None`` on an entry that has none.
     - ``reports``: the stored report summaries verbatim, keyed by kind (or
       ``None``).
+    - ``display``: the write-guarded display contract (#706) — the small
+      structured surface the dashboard renders, as opposed to ``reports``
+      above, which is the agent's own prose. ``None`` where the client has
+      no contract; see :func:`_display_contract`.
     - ``client`` / ``period``: echoed back so the caller knows what was read.
     - ``observations_due``: **only where the Agency client seam is
       declared** (#651) — ``{count, oldest_due}`` for the logged changes
@@ -257,6 +264,13 @@ def build_report_summary(
         # content, not arbitrary input — do not start echoing untrusted data
         # here without a whitelist.
         "reports": doc.reports if doc is not None else None,
+        # The display contract (#706) — the small, write-guarded surface the
+        # dashboard is meant to READ, as opposed to ``reports`` above, which
+        # is the agent's own analysis relayed verbatim. It rides on every
+        # summary (``None`` where a client has none) rather than under the
+        # Agency seam: a single-workspace install has the same one screen to
+        # draw. See :func:`_display_contract`.
+        "display": _display_contract(doc),
     }
     # Appended LAST and only where the Agency client seam is declared
     # (#651), so a single-workspace summary keeps the exact keys, in the
@@ -391,7 +405,15 @@ def _action_row(entry: ActionLogEntry) -> dict[str, Any]:
     Deliberately omits ``command`` (may carry tokens/flags),
     ``metrics_at_action`` and ``reversible_params`` (noise / internal). Only
     timestamp / action / platform / campaign_id / summary / observation_due
-    reach the dashboard.
+    and the #706 display line reach the dashboard.
+
+    ``display_title`` / ``display_summary`` ride alongside ``summary`` rather
+    than replacing it. They are the operator-facing line — bounded on write,
+    so they fit a row — while ``summary`` is the work-journal note written
+    for the next agent, and the drill-down still shows it in full. Both are
+    always present (``None`` where the entry has no display line), so the
+    frontend reads one shape for every row and falls back for the entries
+    written before these existed.
     """
     return {
         "timestamp": entry.timestamp,
@@ -400,4 +422,6 @@ def _action_row(entry: ActionLogEntry) -> dict[str, Any]:
         "campaign_id": entry.campaign_id,
         "summary": entry.summary,
         "observation_due": entry.observation_due,
+        "display_title": entry.display_title,
+        "display_summary": entry.display_summary,
     }

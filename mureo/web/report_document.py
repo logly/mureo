@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Any
 # The stored shapes' own bounds, so the read side and the write helpers agree
 # on them: the length a collection failure's reason is truncated to (#638),
 # and what a day-grain history key looks like (#690).
+from mureo.context.display_codec import display_contract_to_dict
 from mureo.context.models import (
     DAILY_DATE_KEY_PATTERN,
     NOT_COLLECTED_REASON_MAX_CHARS,
@@ -665,6 +666,28 @@ def _workspace_not_collected(doc: StateDocument | None) -> dict[str, Any] | None
     if collected is not None and collected > attempted:
         return None
     return note
+
+
+def _display_contract(doc: StateDocument | None) -> dict[str, Any] | None:
+    """What the dashboard is allowed to render for this client (#706).
+
+    ``None`` when the document states no contract — and ``None`` is put on
+    the wire explicitly, so the frontend reads one shape for every client
+    rather than testing whether a key exists.
+
+    No whitelist is applied here, and none is needed: unlike ``totals`` or a
+    ``not_collected`` note — free-form objects relayed from whatever wrote
+    them — the contract has already been through
+    :func:`~mureo.context.display_codec.parse_display_contract` into frozen
+    dataclasses with fixed fields. A stray or secret-shaped key a buggy or
+    hostile writer slipped into the section did not survive the parse, so
+    there is nothing left here to filter. Emitting it is the same function
+    the codec writes STATE.json with, so what the dashboard reads and what
+    is on disk cannot drift into two shapes.
+    """
+    if doc is None or not doc.display:
+        return None
+    return display_contract_to_dict(doc.display)
 
 
 def _newest_document_collection(doc: StateDocument) -> datetime | None:

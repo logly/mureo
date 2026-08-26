@@ -58,9 +58,9 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_twelve_tools() -> None:
+def test_tools_module_exports_thirteen_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 12
+    assert len(mod.TOOLS) == 13
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
@@ -68,6 +68,9 @@ def test_tools_module_exports_twelve_tools() -> None:
         "mureo_state_action_log_append",
         "mureo_state_upsert_campaign",
         "mureo_state_report_set",
+        # #706 — the dashboard's own write-guarded surface, separate from the
+        # report summary an agent writes for whoever reads that report.
+        "mureo_state_display_set",
         "mureo_state_platform_metrics_set",
         "mureo_state_platform_daily_set",
         "mureo_state_platform_not_collected_set",
@@ -1852,3 +1855,162 @@ def test_state_get_description_documents_index_field() -> None:
     mod = _import_tools()
     tool = next(t for t in mod.TOOLS if t.name == "mureo_state_get")
     assert "index" in tool.description
+
+
+# ---------------------------------------------------------------------------
+# mureo_state_display_set (#706)
+# ---------------------------------------------------------------------------
+
+
+async def test_display_set_persists_the_contract(cwd_to_tmp) -> None:
+    """The five sections are written into STATE.json ``display`` and
+    round-trip via a subsequent read."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_display_set",
+        {
+            "nav_message": "CPA is over target — pause the two worst ad groups",
+            "highlights": [{"tone": "bad", "text": "CPA 12% over target"}],
+            "proposals": [{"title": "Pause two ad groups", "status": "proposed"}],
+            "breakdown": {
+                "campaigns": [
+                    {"name": "Brand Search", "spend": 42000, "state": "worsening"}
+                ]
+            },
+            "stated_values": [{"label": "CVR", "value": 0.021}],
+        },
+    )
+    payload = json.loads(result[0].text)
+    assert payload["display"]["highlights"] == [
+        {"tone": "bad", "text": "CPA 12% over target"}
+    ]
+
+    result2 = await mod.handle_tool("mureo_state_get", {})
+    payload2 = json.loads(result2[0].text)
+    assert payload2["display"]["stated_values"] == [{"label": "CVR", "value": 0.021}]
+
+
+async def test_display_set_refuses_prose_in_a_stated_value(cwd_to_tmp) -> None:
+    """The handler surfaces the guard's refusal as a tool error — the
+    dispatcher's schema pass cannot express "a number or a SHORT string"."""
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="numeric column"):
+        await mod.handle_tool(
+            "mureo_state_display_set",
+            {
+                "stated_values": [
+                    {"label": "CPA", "value": "CPA is 12% over target this month"}
+                ]
+            },
+        )
+
+
+async def test_display_set_with_no_section_clears_the_contract(cwd_to_tmp) -> None:
+    """Nothing is required, and that is how a stale screen is taken down."""
+    mod = _import_tools()
+    await mod.handle_tool("mureo_state_display_set", {"nav_message": "stale"})
+    result = await mod.handle_tool("mureo_state_display_set", {})
+    assert "display" not in json.loads(result[0].text)
+
+
+def test_display_set_schema_states_every_bound() -> None:
+    """The schema layer rejects an over-long value BEFORE the handler runs,
+    so the numbers have to be in the schema — and the REASON has to be in the
+    description the model read before calling (#659 / #660)."""
+    from mureo.core.display_contract import (
+        DISPLAY_CONTRACT_RULE,
+        HIGHLIGHT_TEXT_MAX_CHARS,
+        HIGHLIGHT_TONES,
+        HIGHLIGHTS_MAX_ITEMS,
+        NAV_MESSAGE_MAX_CHARS,
+        PROPOSAL_TITLE_MAX_CHARS,
+        STATED_VALUE_LABEL_MAX_CHARS,
+    )
+
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_display_set")
+    props = tool.inputSchema["properties"]
+    assert props["nav_message"]["maxLength"] == NAV_MESSAGE_MAX_CHARS
+    assert props["highlights"]["maxItems"] == HIGHLIGHTS_MAX_ITEMS
+    highlight = props["highlights"]["items"]["properties"]
+    assert highlight["tone"]["enum"] == list(HIGHLIGHT_TONES)
+    assert highlight["text"]["maxLength"] == HIGHLIGHT_TEXT_MAX_CHARS
+    proposal = props["proposals"]["items"]["properties"]
+    assert proposal["title"]["maxLength"] == PROPOSAL_TITLE_MAX_CHARS
+    stated = props["stated_values"]["items"]["properties"]
+    assert stated["label"]["maxLength"] == STATED_VALUE_LABEL_MAX_CHARS
+    # Nothing required: a call that states no section clears the contract.
+    assert tool.inputSchema["required"] == []
+    # …and the REASON rides on the tool description a model reads before it
+    # composes anything, not only in the refusal it gets afterwards.
+    assert DISPLAY_CONTRACT_RULE in tool.description
+
+
+def test_display_set_schema_declares_both_breakdown_tables() -> None:
+    """Both levels, with the same row shape — a second copy is how the two
+    would start disagreeing about what a row is."""
+    from mureo.core.display_contract import BREAKDOWN_STATES
+
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_display_set")
+    breakdown = tool.inputSchema["properties"]["breakdown"]
+    assert set(breakdown["properties"]) == {"campaigns", "adgroups"}
+    for level in ("campaigns", "adgroups"):
+        row = breakdown["properties"][level]["items"]
+        assert row["required"] == ["name"]
+        assert row["properties"]["state"]["enum"] == list(BREAKDOWN_STATES)
+        assert row["properties"]["spend"]["type"] == "number"
+
+
+async def test_action_log_append_stores_the_display_line(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {
+            "entry": {
+                "action": "google_ads_budget_update",
+                "platform": "google_ads",
+                "summary": "x" * 400,
+                "display_title": "Raised the Brand budget",
+                "display_summary": "Capped every afternoon; +20% daily.",
+            }
+        },
+    )
+    entry = json.loads(result[0].text)["action_log"][0]
+    assert entry["display_title"] == "Raised the Brand budget"
+    # It ADDS a rendering and replaces nothing.
+    assert entry["summary"] == "x" * 400
+
+
+async def test_action_log_append_refuses_an_overlong_display_line(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="display_title"):
+        await mod.handle_tool(
+            "mureo_state_action_log_append",
+            {
+                "entry": {
+                    "action": "x",
+                    "platform": "google_ads",
+                    "display_title": "y" * 200,
+                }
+            },
+        )
+
+
+def test_action_log_schema_bounds_the_display_line() -> None:
+    """The bound fires at the dispatcher, so it has to be in the schema."""
+    from mureo.core.display_contract import (
+        ACTION_LOG_DISPLAY_RULE,
+        ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS,
+        ACTION_LOG_DISPLAY_TITLE_MAX_CHARS,
+    )
+
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_action_log_append")
+    entry = tool.inputSchema["properties"]["entry"]["properties"]
+    assert entry["display_title"]["maxLength"] == ACTION_LOG_DISPLAY_TITLE_MAX_CHARS
+    assert entry["display_summary"]["maxLength"] == ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS
+    for field in ("display_title", "display_summary"):
+        assert ACTION_LOG_DISPLAY_RULE in entry[field]["description"]

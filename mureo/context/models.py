@@ -238,6 +238,28 @@ class ActionLogEntry:
         date. The observation window anchors on it, because a change that has
         been live for a week is already due for review, not due in a fortnight.
         ``None`` for a mureo-originated entry, where the two coincide.
+    display_title / display_summary: The ONE LINE the dashboard shows for this
+        entry (#706). ``summary`` is a work-journal note written for the next
+        agent — it runs to several hundred characters, and rendering it on a
+        card is what turned the action log into a wall of prose. These two are
+        the operator-facing version, bounded by
+        :data:`~mureo.core.display_contract.ACTION_LOG_DISPLAY_TITLE_MAX_CHARS`
+        / :data:`~mureo.core.display_contract.
+        ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS` at the write boundary
+        (:func:`mureo.context.state.append_action_log`), which REFUSES an
+        over-long value rather than truncating it.
+
+        They ADD a rendering; they replace nothing. ``summary`` keeps being
+        written as fully as the next agent needs, and stays readable in the
+        drill-down. ``None`` — the default, and what every entry written
+        before these fields existed carries — means this entry has no display
+        line, so an old STATE.json parses unchanged and gains no new key on
+        the next write.
+
+        The bound lives on the WRITE path rather than in this model, for the
+        same reason ``set_report``'s does: an entry already on disk is real
+        history, and a document that arrived from elsewhere must stay
+        readable rather than being refused wholesale.
     """
 
     timestamp: str
@@ -262,6 +284,9 @@ class ActionLogEntry:
     origin: str | None = None
     external_id: str | None = None
     occurred_at: str | None = None
+    # Appended after every pre-#706 field, same positional-compatibility rule.
+    display_title: str | None = None
+    display_summary: str | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
@@ -328,6 +353,147 @@ class ActionLogEntry:
         plugin ABI — unchanged by its addition.
         """
         return self.origin == EXTERNAL_ORIGIN
+
+
+@dataclass(frozen=True)
+class DisplayHighlight:
+    """One chip on a client's card (#706).
+
+    ``tone`` is a closed vocabulary
+    (:data:`~mureo.core.display_contract.HIGHLIGHT_TONES`) because it is
+    rendered as a colour, and a tone no view knows is a chip no view draws.
+    """
+
+    tone: str
+    text: str
+
+
+@dataclass(frozen=True)
+class DisplayProposal:
+    """One thing mureo proposes doing, or has done (#706).
+
+    Only ``title`` is required — a proposal with nothing but a title is a
+    real proposal, while a body, a status or a date can each legitimately be
+    absent. ``status`` is closed
+    (:data:`~mureo.core.display_contract.PROPOSAL_STATUSES`); ``date`` is
+    displayed and never parsed, so no format is imposed on it.
+    """
+
+    title: str
+    body: str | None = None
+    status: str | None = None
+    date: str | None = None
+
+
+@dataclass(frozen=True)
+class DisplayBreakdownRow:
+    """One row of a campaign / ad-group breakdown table (#706).
+
+    ``name`` is required and everything else is optional, because a row for
+    an entity with no conversions honestly has no ``mcpa`` and a platform
+    with no target has no ``target_cpa`` — and a missing figure must stay
+    distinguishable from a zero. The three figures are numbers, never
+    formatted strings: the table renders them, so a string is rendered as
+    nothing.
+    """
+
+    name: str
+    spend: float | None = None
+    mcpa: float | None = None
+    target_cpa: float | None = None
+    state: str | None = None
+    note: str | None = None
+
+
+@dataclass(frozen=True)
+class DisplayBreakdown:
+    """The two breakdown tables a report may state (#706).
+
+    A pair rather than one list keyed by level: the two are shown as two
+    tables, an ad group's name means nothing without knowing it is an ad
+    group, and a caller cannot forget to say which it wrote.
+    """
+
+    campaigns: tuple[DisplayBreakdownRow, ...] = ()
+    adgroups: tuple[DisplayBreakdownRow, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Ensure both tables are tuples (defensive copies)."""
+        if not isinstance(self.campaigns, tuple):
+            object.__setattr__(self, "campaigns", tuple(self.campaigns))
+        if not isinstance(self.adgroups, tuple):
+            object.__setattr__(self, "adgroups", tuple(self.adgroups))
+
+    def __bool__(self) -> bool:
+        """Empty when neither table has a row.
+
+        Used by the codec to decide whether ``breakdown`` is emitted at all,
+        so a contract that states no table gains no key.
+        """
+        return bool(self.campaigns or self.adgroups)
+
+
+@dataclass(frozen=True)
+class DisplayStatedValue:
+    """One labelled figure in the chip row (#706).
+
+    ``value`` is a number or a SHORT string — see
+    :func:`~mureo.core.display_contract.validate_display_contract`, which
+    refuses prose here. Both types are kept as written: mureo does not know
+    the unit, so re-deriving the figure would print a different number from
+    the one the report stated.
+    """
+
+    label: str
+    value: float | int | str
+
+
+@dataclass(frozen=True)
+class DisplayContract:
+    """What the dashboard reads for one client (#706).
+
+    STATE.json is the agent's working memory and is prose-heavy by design.
+    This section is the other audience: a small, strictly structured surface
+    written under the bounds in :mod:`mureo.core.display_contract`, which
+    refuse an over-long or off-vocabulary write rather than truncating it.
+
+    Every field is optional, and the whole section is optional on the
+    document — so a STATE.json written before this existed parses unchanged
+    and gains no key on the next write.
+
+    Deliberately NOT here: the KPI funnel (spend → impressions → clicks →
+    conversions, with CPM / CPC / CPA) and the daily chart. Both are
+    computed from the canonical totals and ``PlatformState.daily`` (#690),
+    so no agent writes them and no agent can state them wrongly.
+    """
+
+    nav_message: str | None = None
+    highlights: tuple[DisplayHighlight, ...] = ()
+    proposals: tuple[DisplayProposal, ...] = ()
+    breakdown: DisplayBreakdown = field(default_factory=DisplayBreakdown)
+    stated_values: tuple[DisplayStatedValue, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Ensure every collection is a tuple (defensive copies)."""
+        for name in ("highlights", "proposals", "stated_values"):
+            value = getattr(self, name)
+            if not isinstance(value, tuple):
+                object.__setattr__(self, name, tuple(value))
+
+    def __bool__(self) -> bool:
+        """Empty when the contract states nothing.
+
+        The codec emits ``display`` only for a non-empty contract, so a
+        document that has never had one stays byte-stable on round-trip and
+        a cleared contract leaves no key behind to be read as a live one.
+        """
+        return bool(
+            self.nav_message
+            or self.highlights
+            or self.proposals
+            or self.breakdown
+            or self.stated_values
+        )
 
 
 @dataclass(frozen=True)
@@ -494,6 +660,20 @@ class StateDocument:
     # emitted only when non-empty, so a STATE.json written before this field
     # existed parses unchanged and gains no new key.
     batches: tuple[BatchRecord, ...] = field(default_factory=tuple)
+    # What the DASHBOARD reads for this client (#706) — see
+    # :class:`DisplayContract`. ``None`` (the default) is what every document
+    # written before this section existed carries, so a legacy STATE.json
+    # parses unchanged and emits no new key.
+    #
+    # A section of its own, beside ``reports`` rather than inside one, because
+    # it answers a different question. ``reports`` holds one stage-c analysis
+    # summary PER KIND, written for whoever reads that report; this is the
+    # whole client's screen as of one moment, and it is written under bounds
+    # that refuse prose. Folding it into a report kind would make the
+    # dashboard pick a kind to render, which is the "latest report wins"
+    # problem one level up — and would put a guarded surface inside an
+    # unguarded one.
+    display: DisplayContract | None = None
 
     def __post_init__(self) -> None:
         """Defensive copies for mutable fields."""

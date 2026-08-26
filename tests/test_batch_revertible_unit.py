@@ -278,6 +278,10 @@ _ENTRY_FIELD_VALUES: dict[str, Any] = {
     "origin": EXTERNAL_ORIGIN,
     "external_id": "google_ads|customers/1/changeEvents/abc",
     "occurred_at": "2026-08-05T09:14:00+09:00",
+    # #706 — the operator-facing line. Bounded on write, so the values here
+    # are inside the bounds a real append would be held to.
+    "display_title": "Excluded 12 placements",
+    "display_summary": "All 12 spent with no conversions in the last 30 days.",
     # The one field the round-trip is ALLOWED to change: it arrives unset and
     # comes back carrying the open batch.
     "batch_id": None,
