@@ -783,9 +783,15 @@ TOOLS: list[Tool] = [
                                 "type": "string",
                                 "maxLength": PROPOSAL_DATE_MAX_CHARS,
                                 "description": (
-                                    "When it was proposed or done, normally "
-                                    "YYYY-MM-DD. Displayed as written; mureo "
-                                    "imposes no format, only the length."
+                                    "When it was proposed or done. PREFER "
+                                    "YYYY-MM-DD; free text like 'last week' "
+                                    "is allowed, but keep it consistent "
+                                    "within a client — two spellings in one "
+                                    "list read as two different kinds of "
+                                    "fact. Displayed exactly as written: "
+                                    "mureo enforces the length and no format, "
+                                    "so nothing here is re-derived or "
+                                    "reformatted."
                                 ),
                             },
                         },

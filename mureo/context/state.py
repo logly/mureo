@@ -639,6 +639,18 @@ def set_display(
     So a call that states nothing CLEARS the contract, and the document loses
     the key entirely rather than keeping an empty one a reader could render.
 
+    **One writer per run, and it owns the whole screen.** The contract is
+    written by exactly ONE skill per run — the one producing that run's
+    report — and that skill states every section it wants shown. Two skills
+    writing different sections in the same run is outside the design: the
+    second call does not merge into the first, it replaces it, so what
+    survives is whatever ran last. There is deliberately no partial-update
+    entry point and no per-section lock beyond the document lock every
+    mutator here shares; concurrent partial writers would need a merge policy,
+    and any merge policy re-creates the mixed-moment screen this whole-section
+    replacement exists to prevent. If a future run needs two writers, they
+    compose their sections BEFORE calling, not by calling twice.
+
     Everything else in the document — platforms, campaigns, ``action_log``,
     ``reports``, ``batches`` — is untouched by construction (``replace``).
     ``last_synced_at`` IS re-stamped, as :func:`set_report` re-stamps it: this

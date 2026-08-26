@@ -1201,6 +1201,16 @@ able to say they came from different runs. A call that states nothing
 clears the contract, and the key leaves the document entirely rather than
 lingering as an empty one a reader could render.
 
+**One writer per run, and it owns the whole screen.** The contract is
+written by exactly one skill per run — the one producing that run's report —
+and that skill states every section it wants shown. Two skills writing
+different sections in the same run is outside the design: the second call
+replaces the first rather than merging into it, so what survives is whatever
+ran last. There is no partial-update entry point on purpose, because any
+merge policy re-creates the mixed-moment screen the whole-section
+replacement exists to prevent. Two writers compose their sections *before*
+calling, never by calling twice.
+
 **Strict on write, tolerant on read.** Every bound and vocabulary here is a
 *write* rule. A value already on disk — hand-edited, or written by an
 outside tool — is read back exactly as it is, because refusing it would
@@ -1381,7 +1391,7 @@ bound below **refuses** an over-long write rather than truncating it.
 |-------|------|-------------|
 | `nav_message` | `string` | The one operator-facing line at the top of the report (運用ナビ), ≤80 characters |
 | `highlights` | `array` | ≤3 chips of `{tone, text}` — `tone` is `good` / `watch` / `bad`, `text` ≤60 characters |
-| `proposals` | `array` | `{title ≤30, body ≤80, status, date ≤12}`; `status` is `proposed` or `done`, and only `title` is required. No format is imposed on `date` — mureo displays it and never parses it |
+| `proposals` | `array` | `{title ≤30, body ≤80, status, date ≤12}`; `status` is `proposed` or `done`, and only `title` is required. `date` should **prefer** `YYYY-MM-DD` — free text like `"last week"` is allowed, but keep one spelling within a client, since two in one list read as two different kinds of fact. mureo enforces the length and no format: it displays the value and never parses it |
 | `breakdown` | `object` | Two tables, `campaigns` and `adgroups`, each an array of `{name, spend, mcpa, target_cpa, state, note ≤40}`. The three figures are raw numbers and a figure a row does not have is **omitted**, never written as `0` — a row with no conversions has no `mcpa`, and `0` would state a perfect CPA rather than the absence of one. `state` is one of `target_met` / `improving` / `watch` / `worsening` / `no_data` |
 | `stated_values` | `array` | `{label ≤24, value}` chips. The value is a raw number or a string of ≤12 characters; prose is refused, because it lands in a numeric column |
 
