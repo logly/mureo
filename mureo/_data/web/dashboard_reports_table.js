@@ -71,6 +71,60 @@
     return api.showReportsClientDetail(slug);
   }
 
+  /**
+   * Open one client, the same two steps a card click takes.
+   *
+   * Both the row and its "Detail →" button go through here, so a client
+   * opened by aiming at the row and one opened by aiming at the button land
+   * in the same place with the same selection recorded.
+   */
+  function openRosterClient(slug) {
+    REPORTS_VIEW_STATE.reportsActiveClient = slug;
+    showReportsClientDetail(slug);
+  }
+
+  // Tags that own their own click. A click landing on one of these is that
+  // control's and never also the row's — otherwise the "Detail →" button
+  // would open the client twice, and a link added to a cell later could
+  // never lead anywhere but the client.
+  const ROW_CONTROL_TAGS = new Set(["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA"]);
+
+  /** True when `node`, or anything between it and `row`, owns the click. */
+  function inRowControl(node, row) {
+    let el = node;
+    while (el && el !== row) {
+      if (ROW_CONTROL_TAGS.has(el.tagName ? String(el.tagName).toUpperCase() : "")) {
+        return true;
+      }
+      // `contenteditable="false"` is the one value that says the opposite,
+      // so it is not a control — a cell explicitly opted OUT of editing.
+      const editable = el.getAttribute ? el.getAttribute("contenteditable") : null;
+      if (editable !== null && editable !== "false") return true;
+      el = el.parentNode;
+    }
+    return false;
+  }
+
+  /**
+   * True when the operator is selecting text rather than aiming at the row.
+   *
+   * Dragging across two cells to copy a figure ends in a click, and a row
+   * that navigated on it would take the screen away at the moment the
+   * operator finished reading it — with the copied figure lost. A table of
+   * numbers that cannot be selected is a table with one use taken off it.
+   */
+  function hasTextSelection() {
+    try {
+      const get = typeof window !== "undefined" ? window.getSelection : null;
+      if (typeof get !== "function") return false;
+      const selection = get.call(window);
+      return !!(selection && !selection.isCollapsed && String(selection).length);
+    } catch (_e) {
+      // No Selection API, or one that refuses to answer. Nothing to protect.
+      return false;
+    }
+  }
+
   // Below this many visible clients the grid is the better view, so the
   // toggle is not offered and the table is not built. Two, because the
   // comparison a table exists for needs two things to compare.
@@ -263,6 +317,42 @@
     return td;
   }
 
+  /**
+   * Make the whole row the target for the client it stands for (#707).
+   *
+   * A 44px row carrying the name, the health dot and every figure reads as
+   * ONE object, so that is what an operator aims at. Before this, the only
+   * part of it that opened anything was the button in the last column.
+   *
+   * Three things it deliberately does not take:
+   *
+   *   • a click that landed on a real control — see inRowControl. The
+   *     "Detail →" button is one, so it still opens the client exactly once.
+   *   • a click that ended a text selection — see hasTextSelection.
+   *   • the row's table semantics. `tabindex` makes the row reachable by
+   *     keyboard, and Enter opens it; NO `role` is set, because a <tr> that
+   *     claimed to be a button would stop being a row, and the cells under
+   *     it would stop being cells. The announced control for the client is
+   *     still the button in the last column, which is why it stays.
+   */
+  function wireRowTarget(tr, slug) {
+    tr.setAttribute("tabindex", "0");
+    tr.addEventListener("click", function (evt) {
+      if (inRowControl(evt && evt.target, tr)) return;
+      if (hasTextSelection()) return;
+      openRosterClient(slug);
+    });
+    tr.addEventListener("keydown", function (evt) {
+      if (!evt || evt.key !== "Enter") return;
+      // Enter inside a control is that control's activation — and a button's
+      // is about to arrive here again as a click, which the guard above
+      // drops. Taking it here too would open the client twice.
+      if (inRowControl(evt.target, tr)) return;
+      if (typeof evt.preventDefault === "function") evt.preventDefault();
+      openRosterClient(slug);
+    });
+  }
+
   function buildRow(row, withRatio) {
     const tr = document.createElement("tr");
     tr.className = "roster-row is-" + row.health;
@@ -271,6 +361,7 @@
     // `hidden`, and nothing may give it a display that outranks it).
     tr.setAttribute("data-health", row.health);
     tr.setAttribute("data-client-name", row.name);
+    wireRowTarget(tr, row.slug);
 
     const nameCell = cell("td", "roster-client");
     nameCell.appendChild(cell("span", "roster-dot is-" + row.health));
@@ -322,10 +413,11 @@
     link.setAttribute("data-reports-open-client", row.slug);
     link.textContent = MUREO.t("dashboard.reports_detail_link");
     // The same two steps a card click takes, so a client opened from the
-    // table and one opened from the grid land in the same place.
+    // table and one opened from the grid land in the same place. It is kept
+    // now that the whole row is a target (#707): this is the affordance a
+    // screen reader announces and the one an operator can point at.
     link.addEventListener("click", function () {
-      REPORTS_VIEW_STATE.reportsActiveClient = row.slug;
-      showReportsClientDetail(row.slug);
+      openRosterClient(row.slug);
     });
     go.appendChild(link);
     tr.appendChild(go);

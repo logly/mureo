@@ -1,5 +1,38 @@
 ## [Unreleased]
 
+### Changed
+
+- **A roster row opens its client from anywhere on the row** (#707). The
+  agency table's rows are 44px tall and carry the client's name, its health
+  dot and every figure — the row reads as one object — but the only part of
+  it that opened anything was the button in the last column. A click anywhere
+  on the row now opens that client, and the row is focusable so Enter does
+  the same.
+
+  It takes only the clicks nobody else wanted. A click that lands on a real
+  control (`a` / `button` / `input` / `select` / `textarea`, or anything
+  `contenteditable`) is that control's, so the "Detail →" button still opens
+  the client exactly once and a link added to a cell later still leads where
+  it leads. A click that ends a text selection is a selection: dragging
+  across two cells to copy a figure ends in a click, and a row that navigated
+  on it would take the screen away at the moment the operator finished
+  reading, losing the copied figure with it.
+
+  No `role` is set on the row. A `<tr>` that claimed to be a button would
+  stop being a row and the figures under it would stop being announced with
+  their columns, so the row is merely focusable and the announced control for
+  a client is still the "Detail →" button — which is why it stays.
+
+### Fixed
+
+- **The remembered table/cards choice now has a reload test behind it**
+  (#707). The roster view is stored per browser under
+  `mureo.reports.roster_view`, and the tests covering it seeded that key into
+  a page rather than letting one page write it and the next read it. A key
+  the two halves disagreed about, or a restore that ran after the default was
+  drawn, would have passed every one of them. The round trip is now asserted
+  in both directions, plus across a client detail and back.
+
 ## [0.15.0] - 2026-08-26
 
 ### Changed

@@ -104,6 +104,11 @@ async function openRoster(options) {
   });
   // Seed the remembered view BEFORE the render, which is when it is read.
   if (opts.stored) page.localStore.set(ROSTER_VIEW_KEY, opts.stored);
+  // A RELOAD, rather than a seeded key: the store an earlier page wrote,
+  // carried into this one exactly as a browser carries it across F5. What
+  // `stored` cannot show is that the value the toggle WROTE is the value the
+  // next load READS — the two halves have to meet on their own.
+  if (opts.carry) opts.carry.forEach((value, key) => page.localStore.set(key, value));
   page.document.dispatchEvent({ type: "mureo:ready" });
   await settle();
   page.root.querySelector('[data-dashboard-nav="reports"]').click();
@@ -127,6 +132,32 @@ function sortHeader(page, key) {
   return page.root
     .querySelectorAll("[data-reports-sort]")
     .find((b) => b.getAttribute("data-reports-sort") === key);
+}
+
+const rowFor = (page, name) =>
+  rows(page).find((r) => r.getAttribute("data-client-name") === name);
+
+/**
+ * Every client the table asked to open, in order.
+ *
+ * Counting matters as much as identity here: the row and the "Detail →"
+ * button are two handlers over one click, and "it opened the right client"
+ * is true of a table that opened it twice.
+ */
+function recordOpens(page) {
+  const calls = [];
+  page.sandbox.MUREO_DASHBOARD_REPORTS.showReportsClientDetail = function (slug) {
+    calls.push(slug);
+  };
+  return calls;
+}
+
+/** A selection that is not collapsed, as a browser mid-drag reports one. */
+function selectText(page, text) {
+  page.sandbox.getSelection = () => ({
+    isCollapsed: false,
+    toString: () => text,
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -274,6 +305,63 @@ test.describe("the operator's choice of view survives", function () {
       "a remembered 'cards' did not survive the reload"
     );
     assert.equal(rows(page).length, 0);
+  });
+
+  // The round trip, which neither test above is: one page WRITES the choice,
+  // a second page READS it out of the same storage. A key that only one side
+  // agreed with, or a restore that ran after the default was drawn, passes
+  // both of those and fails this.
+  test.it("still draws the cards after a reload", async function () {
+    const first = await openRoster();
+    viewButton(first, "cards").click();
+    await settle();
+
+    const second = await openRoster({ carry: first.localStore });
+    assert.ok(
+      isVisible(second.root.querySelector("[data-reports-clients]")),
+      "the reload did not open on the cards"
+    );
+    assert.equal(
+      isVisible(second.root.querySelector("[data-reports-roster-table]")),
+      false,
+      "the table came back over a chosen card grid"
+    );
+    assert.equal(rows(second).length, 0, "the table was built anyway");
+  });
+
+  test.it("still draws the table after a reload", async function () {
+    // The other direction, because "table" is also the default: a test that
+    // only ever asserted the table would pass with the storage unread.
+    const first = await openRoster({ stored: "cards" });
+    viewButton(first, "table").click();
+    await settle();
+    assert.equal(first.localStore.get(ROSTER_VIEW_KEY), "table");
+
+    const second = await openRoster({ carry: first.localStore });
+    assert.ok(
+      isVisible(second.root.querySelector("[data-reports-roster-table]")),
+      "the reload did not open on the table"
+    );
+    assert.deepEqual(visibleNames(second).length, 3);
+  });
+
+  test.it("keeps the choice across a client detail and back", async function () {
+    // The other "next time" an operator means: open a client, come back.
+    const page = await openRoster();
+    viewButton(page, "cards").click();
+    await settle();
+    page.root
+      .querySelector("[data-reports-clients]")
+      .querySelector(".reports-client-card")
+      .click();
+    await settle();
+    page.root.querySelector("[data-reports-back]").click();
+    await settle();
+    assert.ok(isVisible(page.root.querySelector("[data-reports-clients]")));
+    assert.equal(
+      isVisible(page.root.querySelector("[data-reports-roster-table]")),
+      false
+    );
   });
 
   test.it("does not resurrect a table for a roster that shrank to one", async function () {
@@ -801,5 +889,153 @@ test.describe("card KPI labels do not break mid-word", function () {
     const ws = cascade(label, "white-space");
     assert.ok(ws, "nothing declares white-space on a card KPI label");
     assert.equal(ws.value, "nowrap", "won by: " + ws.selector);
+  });
+});
+
+// ---------------------------------------------------------------------
+// The whole row is the target (#707)
+// ---------------------------------------------------------------------
+
+test.describe("a click anywhere on a row opens that client", function () {
+  const viewState = (page) =>
+    page.sandbox.MUREO_DASHBOARD_REPORTS_STATE.REPORTS_VIEW_STATE;
+
+  test.it("opens from the client's name", async function () {
+    const page = await openRoster();
+    rowFor(page, "Bravo Logistics").querySelector(".roster-name").click();
+    await settle();
+    assert.equal(viewState(page).reportsActiveClient, "bravo");
+    assert.equal(viewState(page).reportsView, "detail");
+  });
+
+  test.it("opens from a figure cell just as well", async function () {
+    // The point of the change: an operator aims at the client, and the
+    // client is the whole row — not the last column of it.
+    const page = await openRoster();
+    const calls = recordOpens(page);
+    rowFor(page, "Carol Foods").querySelector(".roster-num").click();
+    await settle();
+    assert.deepEqual(calls, ["carol"]);
+  });
+
+  test.it("opens the client ONCE when the Detail button is the target", async function () {
+    // Two handlers now sit over one click. The button's own is the click's;
+    // the row must not take it as well.
+    const page = await openRoster();
+    const calls = recordOpens(page);
+    rowFor(page, "Bravo Logistics").querySelector(".roster-go-link").click();
+    await settle();
+    assert.deepEqual(calls, ["bravo"], "the row and the button both fired");
+  });
+
+  test.it("keeps the Detail button on every row", async function () {
+    // It is the affordance a screen reader announces and the one an operator
+    // can point at. A whole-row target is an addition to it, not a swap.
+    const page = await openRoster();
+    assert.equal(page.root.querySelectorAll(".roster-go-link").length, 3);
+  });
+
+  test.it("leaves a link inside a cell to lead where it leads", async function () {
+    // Nothing in a cell links out today. This is what stops the row taking
+    // the click when something does — a policy link on a flag, a platform
+    // deep link — rather than the guard being rediscovered then.
+    const page = await openRoster();
+    const calls = recordOpens(page);
+    const link = page.document.createElement("a");
+    link.setAttribute("href", "https://example.test/");
+    rowFor(page, "Bravo Logistics").querySelector(".roster-client").appendChild(link);
+    link.click();
+    await settle();
+    assert.deepEqual(calls, [], "the row hijacked a link inside it");
+  });
+
+  test.it("does not navigate on the click that ends a text selection", async function () {
+    // Dragging across two cells to copy a figure ends in a click. A row that
+    // navigated on it would take the screen away at the moment the operator
+    // finished reading, and lose the selection with it.
+    const page = await openRoster();
+    const calls = recordOpens(page);
+    selectText(page, "128,400");
+    rowFor(page, "Bravo Logistics").querySelector(".roster-num").click();
+    await settle();
+    assert.deepEqual(calls, []);
+  });
+
+  test.it("navigates again once the selection is collapsed", async function () {
+    const page = await openRoster();
+    const calls = recordOpens(page);
+    page.sandbox.getSelection = () => ({ isCollapsed: true, toString: () => "" });
+    rowFor(page, "Bravo Logistics").querySelector(".roster-num").click();
+    await settle();
+    assert.deepEqual(calls, ["bravo"]);
+  });
+
+  test.it("is reachable by keyboard", async function () {
+    const page = await openRoster();
+    rows(page).forEach((r) =>
+      assert.equal(r.getAttribute("tabindex"), "0", r.getAttribute("data-client-name"))
+    );
+  });
+
+  test.it("opens on Enter", async function () {
+    const page = await openRoster();
+    const calls = recordOpens(page);
+    rowFor(page, "Carol Foods").dispatchEvent({ type: "keydown", key: "Enter" });
+    await settle();
+    assert.deepEqual(calls, ["carol"]);
+  });
+
+  test.it("ignores every other key", async function () {
+    // Typing is not navigating — including Space, which scrolls a table an
+    // operator is reading rather than opening whatever row has focus.
+    const page = await openRoster();
+    const calls = recordOpens(page);
+    ["a", " ", "Tab", "ArrowDown", "Escape"].forEach((key) =>
+      rowFor(page, "Carol Foods").dispatchEvent({ type: "keydown", key: key })
+    );
+    await settle();
+    assert.deepEqual(calls, []);
+  });
+
+  test.it("does not double-open when Enter lands on the Detail button", async function () {
+    // A button's Enter is its own activation AND arrives as a click. Both
+    // reach the row, and neither may be taken again.
+    const page = await openRoster();
+    const calls = recordOpens(page);
+    const link = rowFor(page, "Bravo Logistics").querySelector(".roster-go-link");
+    link.dispatchEvent({ type: "keydown", key: "Enter" });
+    link.click();
+    await settle();
+    assert.deepEqual(calls, ["bravo"]);
+  });
+
+  test.it("stays a row, and its cells stay cells", async function () {
+    // A <tr> that claimed role="button" would stop being a row, and every
+    // figure under it would stop being announced with its column. The row is
+    // focusable; it does not pretend to be a control.
+    const page = await openRoster();
+    const row = rowFor(page, "Bravo Logistics");
+    assert.equal(row.getAttribute("role"), null);
+    assert.equal(row.tagName, "TR");
+    assert.ok(row.querySelectorAll("td").length >= 6);
+  });
+
+  test.it("looks like a target", async function () {
+    const page = await openRoster();
+    const cursor = cascade(rowFor(page, "Bravo Logistics"), "cursor");
+    assert.ok(cursor, "nothing declares a cursor on a roster row");
+    assert.equal(cursor.value, "pointer", "won by: " + cursor.selector);
+  });
+
+  test.it("leaves the totals row inert", async function () {
+    // It stands for no client, so there is nothing for it to open.
+    const page = await openRoster();
+    const total = page.root.querySelector(".roster-total");
+    assert.ok(total, "no totals row");
+    assert.equal(total.getAttribute("tabindex"), null);
+    const calls = recordOpens(page);
+    total.click();
+    await settle();
+    assert.deepEqual(calls, []);
   });
 });
