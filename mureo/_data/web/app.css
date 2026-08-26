@@ -4060,6 +4060,27 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   background: var(--status-ok);
 }
 
+/* The whole row opens its client (#707), so it has to look like it does.
+   A tint rather than the card's border-color change: these rows share
+   collapsed borders with their neighbours, so a border that lit up would
+   move the row below it. NO `display` here — `.roster tbody tr[hidden]`
+   above is what takes a filtered row off screen, and nothing may outrank
+   it. */
+.roster-row {
+  cursor: pointer;
+}
+
+.roster-row:hover {
+  background: var(--surface-2);
+}
+
+/* Inset, because an outline drawn outside a collapsed-border row is clipped
+   by its neighbours on the two long edges. */
+.roster-row:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: -2px;
+}
+
 /* A row that needs acting on carries the same left rule its card does, so
    the two views mark the same clients the same way. */
 .roster-row.is-attention td:first-child {
