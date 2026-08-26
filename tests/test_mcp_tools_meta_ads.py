@@ -566,27 +566,26 @@ class TestMetaAdsAdSetHandlers:
                 {"account_id": "act_123", "ad_set_id": "20", "end_time": bad_end_time},
             )
 
-    async def test_pages_upload_photo(self) -> None:
-        """meta_ads_pages_upload_photo returns the PAGE photo_id (cover_photo_id)."""
+    async def test_pages_photos_list(self) -> None:
+        """meta_ads_pages_photos_list surfaces PAGE photo ids to pick a cover
+        from (context_card.cover_photo_id, #703)."""
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
-        client.upload_page_photo.return_value = {"photo_id": "123_456"}
+        client.list_page_photos.return_value = [
+            {"id": "123_456", "url": "https://scontent/large.jpg"}
+        ]
 
         with (
             patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads_pages_upload_photo",
-                {
-                    "account_id": "act_123",
-                    "page_id": "111",
-                    "image_url": "https://example.com/banner.png",
-                },
+                "meta_ads_pages_photos_list",
+                {"account_id": "act_123", "page_id": "111", "limit": 10},
             )
 
-        client.upload_page_photo.assert_awaited_once()
+        client.list_page_photos.assert_awaited_once_with("111", limit=10)
         assert "123_456" in result[0].text
 
     async def test_ad_sets_create_rejects_zero_bid_amount(self) -> None:

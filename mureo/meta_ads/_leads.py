@@ -185,8 +185,8 @@ class LeadsMixin:
                 "style": "PARAGRAPH_STYLE" | "LIST_STYLE",
                 "cover_photo_id": "..."}``. Meta lifts conversion
                 rates measurably when an intro is supplied.
-                ``cover_photo_id`` is a PAGE photo id (see
-                :meth:`upload_page_photo`) and is write-only: Meta
+                ``cover_photo_id`` is a PAGE photo id (pick one from
+                :meth:`list_page_photos`) and is write-only: Meta
                 reads the card back as ``cover_photo: {"id": ...,
                 "created_time": ...}``, and requesting
                 ``context_card{cover_photo_id}`` is a 400.

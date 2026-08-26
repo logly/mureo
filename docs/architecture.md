@@ -114,7 +114,7 @@ mureo/
 │   ├── _catalog.py          # CatalogMixin (product catalogs, feeds, products)
 │   ├── _split_test.py       # SplitTestMixin (A/B tests)
 │   ├── _ad_rules.py         # AdRulesMixin (automated rules)
-│   ├── _page_posts.py       # PagePostsMixin (page posts, boost)
+│   ├── _page_posts.py       # PagePostsMixin (page posts, boost, page photos)
 │   ├── _instagram.py        # InstagramMixin (accounts, media, boost)
 │   └── _hash_utils.py       # SHA-256 hashing utilities for CAPI user data
 ├── amazon_ads/              # Amazon Ads official-MCP bridge (mureo-mediated, #113/#121)

@@ -74,7 +74,7 @@ mureo/
 │   ├── _conversions.py  # ConversionsMixin (Conversions API / CAPI)
 │   ├── _hash_utils.py   # SHA-256 PII hashing for CAPI
 │   ├── _leads.py        # LeadsMixin (lead forms/leads)
-│   ├── _page_posts.py   # PagePostsMixin (page posts/boost)
+│   ├── _page_posts.py   # PagePostsMixin (page posts/boost, page photos for an Instant Form cover)
 │   ├── _instagram.py    # InstagramMixin (accounts/media/boost)
 │   ├── _split_test.py   # SplitTestMixin (A/B split tests)
 │   ├── _ad_rules.py     # AdRulesMixin (automated rules)

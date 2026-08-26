@@ -184,15 +184,15 @@ Alternatively, use the [Google OAuth Playground](https://developers.google.com/o
 | `business_management` | Resolve ad accounts reached through a Business Portfolio (a permission warning may appear during sign-in — it is required and safe to accept) |
 | `pages_show_list` | List the Facebook Pages you can link |
 | `pages_manage_ads` | Manage ads tied to a Page |
-| `pages_read_engagement` | Read a Page's posts (e.g. to list posts for the Boost Post flow, `meta_ads_page_posts_list`) |
+| `pages_read_engagement` | Read a Page's posts and photos (list posts for the Boost Post flow, `meta_ads_page_posts_list`; list existing Page photos to pick an Instant Form cover from, `meta_ads_pages_photos_list`) |
 | `leads_retrieval` | Retrieve leads from Lead Ads / Instant Forms |
-| `pages_manage_posts` | Upload a Page photo for an Instant Form cover image (`meta_ads_pages_upload_photo`) |
 
 Notes:
 
 - `public_profile` is granted by default on every Facebook Login and does not need to be requested explicitly, so it is not in the list above.
 - "Page Public Metadata Access" / "Page Public Content Access" are **not** required — mureo only ever operates on Pages you administer (it resolves a Page Access Token via `/me/accounts` and Business-owned Pages), never arbitrary public Pages.
-- After upgrading mureo to a version that adds new scopes, re-run `mureo auth setup` (or re-authenticate in `mureo configure`) so the token is re-issued with the new permissions — an existing token does not gain scopes retroactively.
+- `pages_manage_posts` was requested through v0.14.0 and is not requested any more. It existed to upload a Page photo for an Instant Form cover; the cover is now picked from photos the Page already has (`meta_ads_pages_photos_list`), which reads with `pages_read_engagement` + `pages_show_list`. A token issued earlier still carries the granted permission — nothing in mureo calls it, and dropping it needs no action from you.
+- After upgrading mureo to a version that adds new scopes, re-run `mureo auth setup` (or re-authenticate in `mureo configure`) so the token is re-issued with the new permissions — an existing token does not gain scopes retroactively. Removing a scope needs no re-auth.
 
 ### Access Token
 

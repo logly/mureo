@@ -201,8 +201,8 @@ TOOLS: list[Tool] = [
                         "the form. Lifts conversion rate measurably when "
                         "supplied. Expected keys: title, content, style "
                         "(PARAGRAPH_STYLE or LIST_STYLE), cover_photo_id. "
-                        "cover_photo_id is a PAGE photo id from "
-                        "meta_ads_pages_upload_photo and is write-only: "
+                        "cover_photo_id is a PAGE photo id picked from "
+                        "meta_ads_pages_photos_list and is write-only: "
                         "Meta reads it back as context_card.cover_photo.id "
                         "({id, created_time}), and asking for "
                         "context_card{cover_photo_id} is rejected."
@@ -460,26 +460,20 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads_pages_upload_photo",
+        name="meta_ads_pages_photos_list",
         description=(
-            "Uploads a photo to a Facebook Page and returns its PAGE photo "
-            "id (`photo_id`). This is the id an Instant Form intro screen "
-            "needs for `context_card.cover_photo_id` — which is DIFFERENT "
-            "from the ad-account `image_hash` returned by "
-            "meta_ads_images_upload_file (that hash does NOT work as a form "
-            "cover photo; Meta requires a Page photo id). Typical flow: "
-            "upload here → take `photo_id` → pass it as "
-            "`context_card.cover_photo_id` to meta_ads_lead_forms_create. "
-            "The write field is one-way: meta_ads_lead_forms_get reads the "
-            "same id back under `context_card.cover_photo.id`, so verify "
-            "there rather than asking for `context_card{cover_photo_id}` "
-            "(which Meta rejects). "
-            "Provide exactly one of `file_path` (local image) or "
-            "`image_url`. The photo is uploaded UNPUBLISHED (not shown on "
-            "the page timeline). Requires the `pages_manage_posts` "
-            "permission and a Page Access Token — if you just granted it, "
-            "re-run Meta auth so the token carries the scope. Mutating "
-            "(creates a Page photo); not automatically reversible."
+            "Lists photos a Facebook Page has already uploaded, so an "
+            "Instant Form intro screen can reuse one as its cover. Returns "
+            "`id` plus `name`, `created_time` and the largest rendition's "
+            "`width` / `height` / `url` per photo. Read-only. Pass the "
+            "chosen `id` as `context_card.cover_photo_id` to "
+            "meta_ads_lead_forms_create — that field needs a PAGE photo id, "
+            "NOT the ad-account `image_hash` from "
+            "meta_ads_images_upload_file (Meta rejects the hash there). "
+            "Reusing an existing Page photo as a cover is undocumented by "
+            "Meta: if the create call rejects the id, omit the cover or set "
+            "it in Ads Manager rather than retrying. Default 25 photos, max "
+            "100. Use meta_ads_pages_list first when the page_id is unknown."
         ),
         inputSchema={
             "type": "object",
@@ -488,30 +482,21 @@ TOOLS: list[Tool] = [
                 "page_id": {
                     "type": "string",
                     "description": (
-                        "Facebook Page id that will own the photo (the same "
+                        "Facebook Page id that owns the photos (the same "
                         "page the lead form belongs to)."
                     ),
                 },
-                "file_path": {
-                    "type": "string",
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
                     "description": (
-                        "Local image file path. Mutually exclusive with "
-                        "image_url. Max 30MB; jpg/jpeg/png/gif/bmp/tiff."
-                    ),
-                },
-                "image_url": {
-                    "type": "string",
-                    "description": (
-                        "Public image URL Meta fetches directly. Mutually "
-                        "exclusive with file_path."
+                        "Max photos per call. Default 25, max 100 — a cover "
+                        "is picked by eye, so a long page is rarely useful."
                     ),
                 },
             },
             "required": ["page_id"],
-            "anyOf": [
-                {"required": ["file_path"]},
-                {"required": ["image_url"]},
-            ],
             "additionalProperties": False,
         },
     ),

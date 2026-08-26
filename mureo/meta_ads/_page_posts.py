@@ -1,6 +1,7 @@
 """Page post operations mixin.
 
-Provides Facebook page post listing and boosting (Boost Post).
+Provides Facebook page post listing and boosting (Boost Post), plus the
+Page-photo read an Instant Form cover is picked from.
 """
 
 from __future__ import annotations
@@ -9,19 +10,48 @@ import json
 import logging
 from typing import Any
 
-import httpx
-
-from mureo._image_validation import validate_image_file
-
 logger = logging.getLogger(__name__)
 
-# Page-photo upload limits (same envelope as ad-image upload). Superset of
-# both existing ad-image lists so a cover image that works for an ad creative
-# (e.g. webp) is not rejected here.
-_PAGE_PHOTO_MAX_BYTES = 30 * 1024 * 1024  # 30MB
-_PAGE_PHOTO_ALLOWED_EXTENSIONS = frozenset(
-    {"jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"}
-)
+#: Fields requested per Page photo. ``images`` is the array of renditions Meta
+#: stores of the same picture; only the largest is surfaced (see
+#: :func:`_summarize_page_photo`).
+_PAGE_PHOTO_FIELDS = "id,name,created_time,images"
+
+
+def _largest_rendition(images: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pick the biggest of the renditions Meta stores of one photo.
+
+    Meta commonly returns them largest-first but does not document that order,
+    so the size is measured rather than assumed; a rendition with no
+    dimensions sorts last and only wins when it is the only one.
+    """
+    return max(
+        images, key=lambda img: (img.get("width") or 0) * (img.get("height") or 0)
+    )
+
+
+def _summarize_page_photo(photo: dict[str, Any]) -> dict[str, Any] | None:
+    """Reduce a Graph photo row to what choosing a cover needs.
+
+    ``images`` holds every rendition Meta stores of the same picture, which is
+    noise in a picker; only the largest is worth showing. Returns ``None`` for
+    a row with no id — that row cannot be passed as ``cover_photo_id``, so
+    offering it could only waste a pick.
+    """
+    photo_id = photo.get("id")
+    if not photo_id:
+        return None
+    summary: dict[str, Any] = {"id": photo_id}
+    for key in ("name", "created_time"):
+        if photo.get(key):
+            summary[key] = photo[key]
+    images = photo.get("images") or []
+    if images:
+        largest = _largest_rendition(images)
+        for src, dest in (("width", "width"), ("height", "height"), ("source", "url")):
+            if largest.get(src):
+                summary[dest] = largest[src]
+    return summary
 
 
 class PagePostsMixin:
@@ -31,7 +61,6 @@ class PagePostsMixin:
     """
 
     _ad_account_id: str
-    BASE_URL: str
 
     async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
@@ -44,10 +73,6 @@ class PagePostsMixin:
     async def _get_as_page(  # type: ignore[empty-body]
         self, page_id: str, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
-
-    async def get_page_access_token(  # type: ignore[empty-body]
-        self, page_id: str
-    ) -> str: ...
 
     _PAGE_POST_FIELDS = (
         "id,message,created_time,permalink_url,"
@@ -106,86 +131,41 @@ class PagePostsMixin:
         }
         return await self._post(f"/{self._ad_account_id}/ads", data)
 
-    async def upload_page_photo(
-        self,
-        page_id: str,
-        *,
-        image_url: str | None = None,
-        file_path: str | None = None,
-        published: bool = False,
-    ) -> dict[str, Any]:
-        """Upload a photo to a Facebook Page and return its PAGE photo id.
+    async def list_page_photos(
+        self, page_id: str, *, limit: int = 25
+    ) -> list[dict[str, Any]]:
+        """List photos the Page has already uploaded, to pick a cover from.
 
         The Instant Form intro screen (``context_card.cover_photo_id``)
         requires a **Page photo id** — which is DIFFERENT from the ad-account
         ``image_hash`` returned by ``upload_ad_image*``/
         ``meta_ads_images_upload_file`` (that hash is rejected as a cover
-        photo). This uploads via ``POST /{page_id}/photos`` using the **Page
-        Access Token**, so it needs the ``pages_manage_posts`` permission.
-        ``published=False`` stages an unpublished photo (not shown on the page
-        timeline) that is still referenceable as a lead-form cover.
+        photo). mureo used to mint one by uploading a new Page photo, which
+        needed ``pages_manage_posts``; selecting an existing photo reads with
+        ``pages_read_engagement`` + ``pages_show_list`` and a Page Access
+        Token (resolved by :meth:`_get_as_page`) instead.
 
-        Provide exactly one of ``image_url`` or ``file_path``.
+        ``type=uploaded`` is what limits the read to photos the Page owns —
+        the default also returns photos the Page was merely tagged in, which
+        are not usable as a cover.
 
-        Returns ``{"photo_id": "<id>"}`` (pass it as
-        ``context_card.cover_photo_id``) or ``{"error": "..."}`` on failure.
+        Args:
+            page_id: Facebook page ID
+            limit: Maximum number of results (default: 25)
+
+        Returns:
+            One row per photo: ``id`` always, plus ``name`` / ``created_time``
+            and the largest rendition's ``width`` / ``height`` / ``url`` when
+            Meta supplies them. Absent fields are omitted rather than nulled.
         """
-        if bool(image_url) == bool(file_path):
-            raise ValueError(
-                "upload_page_photo: provide exactly one of image_url or file_path"
-            )
-
-        page_token = await self.get_page_access_token(page_id)
-        url = f"{self.BASE_URL}/{page_id}/photos"
-        published_str = "true" if published else "false"
-
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            if image_url is not None:
-                response = await client.post(
-                    url,
-                    data={
-                        "url": image_url,
-                        "published": published_str,
-                        "access_token": page_token,
-                    },
-                )
-            else:
-                assert file_path is not None  # noqa: S101 - xor-guarded above
-                path = validate_image_file(
-                    file_path,
-                    max_size_bytes=_PAGE_PHOTO_MAX_BYTES,
-                    max_size_label="30MB",
-                    allowed_extensions=_PAGE_PHOTO_ALLOWED_EXTENSIONS,
-                )
-                with open(path, "rb") as fh:
-                    response = await client.post(
-                        url,
-                        files={"source": (path.name, fh, "application/octet-stream")},
-                        data={
-                            "published": published_str,
-                            "access_token": page_token,
-                        },
-                    )
-
-        if response.status_code != 200:
-            detail = ""
-            try:
-                detail = response.json().get("error", {}).get("message", "")
-            except Exception:
-                detail = response.text[:500]
-            # Defense-in-depth: the page token is sent in the request body, so
-            # Meta does not echo it — but never let the raw-text fallback leak
-            # it into a surfaced/logged error string.
-            detail = detail.replace(page_token, "***")
-            return {
-                "error": (
-                    f"Page photo upload failed "
-                    f"(status={response.status_code}): {detail}"
-                )
-            }
-
-        photo_id = response.json().get("id", "")
-        if not photo_id:
-            return {"error": "Page photo upload returned no id"}
-        logger.info("Page photo uploaded: page_id=%s photo_id=%s", page_id, photo_id)
-        return {"photo_id": photo_id}
+        params: dict[str, Any] = {
+            "type": "uploaded",
+            "fields": _PAGE_PHOTO_FIELDS,
+            "limit": limit,
+        }
+        result = await self._get_as_page(page_id, f"/{page_id}/photos", params)
+        return [
+            summary
+            for photo in result.get("data", [])
+            if (summary := _summarize_page_photo(photo)) is not None
+        ]
