@@ -1313,8 +1313,19 @@ strings out of one clock, and no timezone arithmetic anywhere. If the date
 is absent or malformed the feed is empty rather than dated by the browser —
 a feed headed "today" that lists yesterday is worse than no feed.
 
-A day with nothing logged renders no panel at all, the same default silence
-the alert layer keeps.
+**Each row is the entry's own display line** (#706 step 3-b). A row with a
+`display_title` shows that and stops — it was written for a row exactly like
+this one, under bounds that make it fit — and a row that predates the
+contract shows its work-journal `summary` with the markdown emphasis removed
+and cut at 120 characters, which is the same helper the detail view uses
+rather than a second copy of the rule. The whole line is on the row's
+`title`, and nothing stored is altered by either.
+
+On a **roster** (two clients or more) a day with nothing logged keeps the
+panel and says so in one line; below that there is no panel at all, the same
+default silence the alert layer keeps. The asymmetry is deliberate: on a
+roster the rail is where an operator looks to see mureo working, and an
+absent panel and a quiet day are indistinguishable from each other.
 
 A row is **clamped to two lines**, with the whole sentence on its `title`. A
 real action-log `summary` runs to several hundred characters, and one of them
@@ -1388,6 +1399,61 @@ journal and stays in the drill-down. A row without one shows its `summary`
 with the markdown emphasis removed (`**bold**` reaching a person as asterisks
 was the reported defect) and cut at 120 characters, with *Read more* offering
 the rest. Nothing stored is altered by either.
+
+#### The list screen a roster gets (#706 step 3-b)
+
+Above the portfolio strip, a roster of **two clients or more** now opens with
+a dark band that answers one question before anything is clicked: how many of
+these are fine, and how many are not. Everything on it is a **count of
+clients** — the day, the fraction of the roster that raised nothing, and four
+blocks — because the money is already on the strip below it, where every
+figure states how many clients it was summed over.
+
+**The band grades nothing.** The health of a client has exactly one answer in
+this product, `reports_triage.js`'s, and the band is handed that layer's own
+counts (`triageHealthCounts`) and its own per-client verdict
+(`triageClientHealth`) — the same two the cards, the roster rows and the
+filter chips are painted from. A band that counted for itself would be a
+fourth opinion: green on the band, red on the card, and an operator with no
+way to tell which is true.
+
+**The fourth block is not a health verdict.** The triage vocabulary has three
+states — needs attention, watch, nothing raised — and the fourth block is the
+client mureo is **not running yet**: no figure at all in its summary
+(`aggregateClientKpis(...).hasFigures`, the same answer the cards use to
+decide whether to print a number). It is carved out of the "nothing raised"
+bucket and out of nothing else, so a client the triage layer marked keeps its
+mark whatever its figures look like, and the four blocks always add up to the
+roster. It is grey, because "no verdict" is exactly what mureo has for it. A
+client whose totals are *withheld* — stale, double-counted — is not idle: it
+has figures and mureo is refusing to state them, which is already an alert.
+
+**A single client keeps the index it had.** With one card, "which of these do
+I open first?" is not a question, so no band is drawn — the same rule the
+filter chips and the roster table already follow.
+
+The band is painted from `--report-blue` and `--report-on-blue` — the same
+two tokens the detail screen's 運用ナビ banner is painted from, referenced
+rather than restated. A mureo band is one colour in this product, so a
+recolour moves both screens or neither, in both themes. Nothing on the band
+is dimmed — white on this blue is 4.9:1, which clears AA with nothing above
+it, so an opacity-softened caption would fail — and the hierarchy is carried
+by the type scale instead.
+
+Each block is a **white card**, not a coloured one. Filling a block with its
+meaning colour put it within 1.2:1 of the blue, which is how a green and a
+red end up equally invisible; the card surface is the thing that stands out
+on this band. The meaning is the COUNT and a bar down the leading edge, in
+the same vocabulary the cards use (`--report-band-*`), at 5.9–8.1:1 as text
+— and `idle` is neutral grey because "no verdict" is not one of the three.
+Every block carries its word as well as its colour, and none of them is
+faded at zero: a partition an operator cannot see all of is not one.
+
+The report screens themselves sit on a **ground** — `--report-surface`, with
+`--report-line` / `--report-line-strong` for the panel edges — applied to the
+container that holds the list AND the detail, so the two screens cannot drift
+apart. White panels stand off it with one step of edge and the shallowest
+shadow in the system; table header rows take the ground colour.
 
 #### The shape of the page
 

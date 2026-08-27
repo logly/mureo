@@ -220,6 +220,7 @@
     ["MUREO_REPORTS_ORDER", "reports_order.js"],
     ["MUREO_REPORTS_TRIAGE", "reports_triage.js"],
     ["MUREO_REPORTS_OVERVIEW", "reports_overview.js"],
+    ["MUREO_REPORTS_HERO", "reports_hero.js"],
   ].filter(function (mod) {
     return !window[mod[0]];
   });

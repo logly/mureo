@@ -248,6 +248,15 @@ const MODULES = [
       "actionText",
     ],
   },
+  {
+    file: "reports_hero.js",
+    global: "MUREO_REPORTS_HERO",
+    // One entry point: the band's whole model. `hasFigures` is the private
+    // helper that decides the fourth block, listed under `moved` so a copy
+    // of it cannot reappear in dashboard.js.
+    bound: ["buildReportsHero"],
+    moved: ["buildReportsHero", "hasFigures"],
+  },
 ];
 
 /** Every extracted module actually shipped, found rather than declared. */

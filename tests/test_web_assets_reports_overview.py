@@ -460,23 +460,33 @@ def test_the_browser_never_decides_what_today_is() -> None:
 
 
 @pytest.mark.unit
-def test_a_quiet_day_renders_no_panel_at_all() -> None:
-    """No "0 actions today". The same default silence the alert layer keeps,
-    and on a 340px rail an empty frame would push the platform split down the
-    page to say nothing."""
+def test_a_quiet_day_says_so_on_a_roster_and_is_absent_below_one() -> None:
+    """On a ROSTER the rail stays and says the day is quiet in one line
+    (#706 step 3-b); below two clients the panel is absent as before.
+
+    The asymmetry is the point. On a roster the rail is where an operator
+    looks to see mureo working, and an absent panel and a quiet day are
+    indistinguishable — "did nothing happen, or is this broken?" is the
+    question the line answers, and one line costs the platform split under it
+    nothing. A single-client index is not a roster, and there the default is
+    the same silence the alert layer keeps.
+    """
     feed = _function_body(
         _read("dashboard_reports_overview.js"), "function renderReportsActionFeed("
     )
-    assert "panel.hidden = !feed.items.length" in feed
-    assert "if (!feed.items.length) return;" in feed
+    assert "panel.hidden = !feed.items.length && !rostered" in feed
+    assert "if (empty) empty.hidden = !!feed.items.length;" in feed
     # Cleared before the early return, so yesterday's rows cannot survive a
     # render that found nothing.
-    assert feed.index('list.textContent = ""') < feed.index(
-        "panel.hidden = !feed.items.length"
-    )
+    assert feed.index('list.textContent = ""') < feed.index("panel.hidden =")
     html = _read("app.html")
     block = html.split("data-reports-feed", 1)[1].split(">", 1)[0]
     assert "hidden" in block
+    # The empty line is a node of its own, hidden by default, with its own
+    # `[hidden]` rule — anything hidden that way needs one (#712).
+    assert "data-reports-feed-empty" in html
+    assert "dashboard.reports_feed_empty" in html
+    assert ".reports-feed-empty[hidden]" in _read("app.css")
 
 
 @pytest.mark.unit
@@ -557,7 +567,10 @@ def test_a_feed_row_is_clamped_to_two_lines_and_keeps_its_full_text() -> None:
     row = _function_body(
         _read("dashboard_reports_overview.js"), "function buildReportsFeedRow("
     )
-    assert "body.title = item.text" in row
+    # `item.text` is the line that fits the rail; `item.full` is the line as
+    # it was written, which is what the hover has to carry (#706 step 3-b —
+    # a legacy summary is cut at 120 characters for the row itself).
+    assert "body.title = item.full || item.text" in row
 
 
 @pytest.mark.unit

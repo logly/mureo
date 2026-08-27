@@ -52,6 +52,49 @@
   --report-chart-grid: rgba(20, 22, 26, 0.07);
   --report-on-blue: #ffffff;      /* text on --report-blue                 */
 
+  /* ---- report-brand band (#706 step 3-b) -------------------------------
+     The list screen leads with a solid band, and it is painted in THE SAME
+     BLUE as the detail screen's 運用ナビ banner — `--report-blue` and
+     `--report-on-blue` above, referenced rather than restated. Two mureo
+     bands on two screens are one thing an operator recognises, and a second
+     blue of its own would be the same question with two answers: recolour
+     the banner and this moves with it, in both themes, or not at all.
+
+     What is NOT borrowed is the four health fills. They are the same
+     vocabulary as --status-* — green "nothing to do", amber "watch", red
+     "act now" — at the shades that clear AA for white text on a chip, so a
+     colour that means one thing on the cards does not mean another 60px
+     above them. They are chips ON the band rather than the band itself,
+     which is why the band's own hue changing does not move them.
+
+     `idle` is the one that is not a health verdict — it is the client mureo
+     is not running yet — so it is deliberately NEUTRAL: grey says "no
+     verdict", which is exactly what mureo has for a client with no figures.
+     It is a step greyer than it was on the old navy band, because neutral
+     has to read as neutral against a saturated blue rather than as a
+     quieter shade of it. */
+  --report-band-ok: #157347;
+  --report-band-watch: #8a5a06;
+  --report-band-attention: #a3271f;
+  --report-band-idle: #48505e;
+
+  /* ---- the ground the report screens sit on (#706 step 3-c) -----------
+     The review that asked for this said it plainly: white cards on a white
+     page behind 1px hairlines is not a surface, it is a suggestion of one.
+     So the report screens — the list AND the detail, one container, so the
+     two cannot drift apart — get a GROUND a shade cooler than the page, the
+     panels stay white ON it, and their edge goes one step darker with the
+     shallowest shadow the system has under it.
+
+     Three tokens rather than a look: `--report-line` / `--report-line-strong`
+     are the same pair --hairline / --hairline-strong is, one step along and
+     cooler, so a panel edge on this ground is still one decision in one
+     place. Nothing here carries meaning — every semantic colour on these
+     screens is still --status-* / --report-band-*. */
+  --report-surface: #eceff5;      /* the ground both report screens sit on */
+  --report-line: #d3d9e4;         /* a white panel's edge on that ground   */
+  --report-line-strong: #b9c2d2;  /* the same edge, hovered                */
+
   /* ---- status (#691) --------------------------------------------------
      Three states, and only three. `alert` is reserved for ACT NOW — a
      finding that withholds a figure or costs money while it stands. `watch`
@@ -181,6 +224,25 @@
     --report-chart-fill: rgba(90, 169, 239, 0.18);
     --report-chart-grid: rgba(236, 237, 240, 0.09);
     --report-on-blue: #f5f8ff;
+
+    /* The band's fill and its text are --report-blue / --report-on-blue,
+       which this block has already lifted for a dark page, so the band
+       follows the banner into dark theme with nothing restated here. What
+       is left is the four meaning colours, and in dark they INVERT: a chip
+       is a card, a card is dark, and #157347 on #16181d is 3.2:1. So they
+       become the lifted hues --status-* already uses on a dark card — same
+       three meanings, read as text rather than as a fill. */
+    --report-band-ok: #34d399;
+    --report-band-watch: #fbbf24;
+    --report-band-attention: #f87171;
+    --report-band-idle: #9aa1ad;
+
+    /* The ground goes the other way in dark: the page is the darkest thing,
+       the ground a step off it, the panels lighter still. A ground LIGHTER
+       than its panels would be the light theme upside down. */
+    --report-surface: #0b0d11;
+    --report-line: #333a46;
+    --report-line-strong: #454d5c;
 
     /* Same three states, lifted for a dark surface. Each foreground clears
        4.5:1 on --surface; the backgrounds are tints of the foreground rather
@@ -1586,6 +1648,24 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
  * ====================================================================== */
 
 /* Header row: title left, client selector + freshness right. */
+/* ---- the ground under both report screens (#706 step 3-c) --------------
+   ONE container, deliberately: `[data-dashboard-reports]` wraps the list and
+   the detail alike, so the ground cannot end up under one of them and not
+   the other. That is the whole reason it is applied here rather than on the
+   index grid — the two screens are one product.
+
+   The section rule above gives every dashboard section a top hairline and
+   26px of air. A section that has a surface of its own does not need a line
+   drawn over it: the ground IS the separation, and the line plus the ground
+   reads as two attempts at the same job. */
+.dashboard-reports {
+  background: var(--report-surface);
+  border: 1px solid var(--report-line);
+  border-radius: var(--r-lg);
+  padding: 16px;
+  margin-top: 18px;
+}
+
 .dashboard-reports-head {
   display: flex;
   flex-wrap: wrap;
@@ -1727,12 +1807,13 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   gap: 6px;
   padding: 10px 12px;
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--report-line);
   border-radius: 12px;
+  box-shadow: var(--shadow-sm);
 }
 
 .reports-client-card:hover {
-  border-color: var(--hairline-strong);
+  border-color: var(--report-line-strong);
 }
 
 .reports-client-card.is-selected {
@@ -1959,6 +2040,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border-radius: 14px;
   background: var(--surface);
   min-width: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .reports-triage[hidden] {
@@ -1968,7 +2050,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-triage-title {
   margin: 0;
   font-size: var(--type-card-title-size);
-  font-weight: var(--type-card-title-weight);
+  font-weight: var(--type-title-weight);
   color: var(--status-alert);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -2383,9 +2465,10 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-panel {
   padding: 14px 16px;
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--report-line);
   border-radius: 14px;
   min-width: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .reports-panel-head {
@@ -2456,9 +2539,10 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   gap: 4px;
   padding: 10px 12px;
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--report-line);
   border-radius: 14px;
   min-width: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .reports-kpi-label {
@@ -3983,9 +4067,10 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .roster thead th {
   height: 34px;
-  border-bottom: 1px solid var(--hairline-strong);
-  font-weight: var(--type-body-weight);
-  color: var(--muted);
+  border-bottom: 1px solid var(--report-line-strong);
+  background: var(--report-surface);
+  font-weight: 600;
+  color: var(--ink-soft);
   white-space: nowrap;
 }
 
@@ -4399,7 +4484,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   gap: 3px;
   padding: 14px 16px;
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--report-line);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-sm);
 }
@@ -4475,7 +4560,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-chart {
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--report-line);
   border-radius: var(--r-lg);
   padding: 16px 18px;
   box-shadow: var(--shadow-sm);
@@ -4643,7 +4728,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-proposal-title {
   margin: 0;
   font-size: var(--type-card-title-size);
-  font-weight: var(--type-card-title-weight);
+  font-weight: var(--type-title-weight);
   color: var(--ink);
   min-width: 0;
 }
@@ -4706,7 +4791,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   width: 100%;
   border-collapse: collapse;
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--report-line);
   border-radius: var(--r-md);
   overflow: hidden;
   font-size: var(--type-body-size);
@@ -4721,9 +4806,9 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-breakdown-table thead th {
   font-size: var(--type-caption-size);
-  font-weight: var(--type-heading-weight);
-  color: var(--muted);
-  background: var(--surface-2);
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--report-surface);
 }
 
 .reports-breakdown-table tbody tr:last-child th,
@@ -4885,10 +4970,11 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* ---- the report text, behind a disclosure -------------------------- */
 .reports-prose {
   margin-bottom: 20px;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--report-line);
   border-radius: var(--r-md);
   background: var(--surface);
   padding: 10px 14px;
+  box-shadow: var(--shadow-sm);
 }
 
 .reports-prose > summary {
@@ -4935,5 +5021,216 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-proposal-list[hidden],
 .reports-stated-row[hidden],
 .reports-highlights[hidden] {
+  display: none;
+}
+
+/* ==========================================================================
+   #706 step 3-b — the list screen's band.
+
+   Step 3-a styled the screen about ONE client. This is the band across the
+   top of the screen about all of them: a solid strip carrying the day, the
+   fraction of the roster that raised nothing, and four blocks counting the
+   roster by health.
+
+   SAME BLUE AS THE 運用ナビ BANNER, from the same tokens: `--report-blue`
+   and `--report-on-blue`, the ones .reports-nav-band is painted from. The
+   two bands are the same object on two screens, so they are not allowed to
+   drift apart — one token, one answer, both themes.
+
+   Every colour here is a token, and the four meaning colours are the SAME
+   vocabulary the cards below use — green "nothing to do", amber "watch", red
+   "act now" — at the shades that clear AA as TEXT on a white chip (5.9–8.1:1
+   light, 6.4–10.6:1 dark). A colour must not mean one thing on a card and
+   another 60px above it.
+
+   NOTHING ON THIS BAND IS SOFTENED. On --report-blue white is 4.93:1, which
+   clears AA and leaves no room above it: an opacity-dimmed white lands at
+   3.5–4.3:1 and fails. So the day and the labels are full-strength
+   --report-on-blue and the hierarchy is carried by the #691 type scale
+   instead — size and weight, never a contrast the caption cannot afford.
+   ========================================================================== */
+
+.reports-hero {
+  display: grid;
+  /* The identity, the fraction, then the blocks — the blocks last because
+     they are the widest thing and the one an operator scans, so they sit
+     against the band's right edge at every width above the breakpoint. */
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 18px;
+  margin: 0 0 12px;
+  border-radius: var(--r-lg);
+  background: var(--report-blue);
+  color: var(--report-on-blue);
+}
+
+/* An author `display` on the band would beat the UA's `[hidden]`, which is
+   the #712 defect exactly: a band left on screen for a roster of one. */
+.reports-hero[hidden] {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .reports-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.reports-hero-ident {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reports-hero-title {
+  margin: 0;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
+  line-height: 1.25;
+  color: var(--report-on-blue);
+}
+
+/* The day the HOST stated, as it stated it — tabular, and never reformatted
+   here, which would render it in the reader's timezone. */
+.reports-hero-date {
+  font-size: var(--type-caption-size);
+  color: var(--report-on-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-hero-date[hidden] {
+  display: none;
+}
+
+/* The fraction, at the KPI step of the #691 type scale: it is the one figure
+   on the band an operator is meant to READ rather than scan. */
+.reports-hero-ratio {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.reports-hero-ratio-value {
+  font-size: var(--type-kpi-size);
+  font-weight: var(--type-kpi-weight);
+  line-height: var(--type-kpi-line);
+  letter-spacing: var(--type-kpi-tracking);
+  font-variant-numeric: tabular-nums;
+  color: var(--report-on-blue);
+}
+
+.reports-hero-ratio-label {
+  font-size: var(--type-caption-size);
+  color: var(--report-on-blue);
+}
+
+.reports-hero-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* One block per health, each carrying its count AND its word.
+   A WHITE CHIP, NOT A COLOURED ONE. The first cut filled each block with its
+   meaning colour, and on a blue band that was the wrong way round: a mid
+   green and a mid red sit within 1.2:1 of --report-blue in luminance, so the
+   blocks went flat and the numbers in them went soft. The card surface is
+   what stands out on this band (4.9:1 light, 3.6:1 dark), so the chip is a
+   card and the MEANING moves to the two places it reads hardest — the count
+   itself, and a bar down the chip's leading edge.
+
+   The label stays --ink. Colour never carries the meaning alone here, and
+   the word is what a screen reader gets. */
+.reports-hero-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 76px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--report-line);
+  /* The meaning, as a bar. Overridden per block below; the default is the
+     neutral one, so a block whose key is unknown says nothing rather than
+     borrowing a verdict. */
+  border-left: 4px solid var(--report-band-idle);
+}
+
+/* The count carries the meaning colour. It is the figure an operator reads,
+   and every one of these clears AA on the chip — see the block above the
+   tokens for the measurements. */
+.reports-hero-block-count {
+  font-size: var(--type-figure-size);
+  font-weight: var(--type-figure-weight);
+  letter-spacing: var(--type-figure-tracking);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--report-band-idle);
+}
+
+.reports-hero-block-label {
+  font-size: var(--type-caption-size);
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+/* NOTHING IS DIMMED AT ZERO. A block counting no clients keeps its colour,
+   its number and its frame: the four blocks are a PARTITION of the roster,
+   and a partition an operator cannot see all of is not one. A faded chip
+   would also be the one thing on this band that fails AA. */
+.reports-hero-block.is-ok {
+  border-left-color: var(--report-band-ok);
+}
+
+.reports-hero-block.is-ok .reports-hero-block-count {
+  color: var(--report-band-ok);
+}
+
+.reports-hero-block.is-watch {
+  border-left-color: var(--report-band-watch);
+}
+
+.reports-hero-block.is-watch .reports-hero-block-count {
+  color: var(--report-band-watch);
+}
+
+.reports-hero-block.is-attention {
+  border-left-color: var(--report-band-attention);
+}
+
+.reports-hero-block.is-attention .reports-hero-block-count {
+  color: var(--report-band-attention);
+}
+
+/* Grey, and stated: "not running" is not a health verdict, and painting it
+   as one of the three would file an account nobody has started as a finding
+   about an account somebody has. */
+.reports-hero-block.is-idle {
+  border-left-color: var(--report-band-idle);
+}
+
+.reports-hero-block.is-idle .reports-hero-block-count {
+  color: var(--report-band-idle);
+}
+
+/* A quiet day in the rail's feed, in one line. Only ever on screen for a
+   roster — see dashboard_reports_overview.js for why that asymmetry is the
+   right one. */
+.reports-feed-empty {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.reports-feed-empty[hidden] {
   display: none;
 }

@@ -132,6 +132,23 @@
     return api;
   }
 
+  // reports_display.js's read model — the same call-time read again. The
+  // feed asks it for the ONE line an action-log entry shows (#706 step 3-b):
+  // the display line the writer bounded for exactly this row, or, for an
+  // entry written before that existed, its work-journal summary with the
+  // markdown emphasis stripped and cut. Asking it rather than repeating it
+  // is what keeps a row the same shape here and on the detail view.
+  function display() {
+    const api = typeof window !== "undefined" ? window.MUREO_REPORTS_DISPLAY : null;
+    if (!api) {
+      throw new Error(
+        "reports_overview.js needs MUREO_REPORTS_DISPLAY — load " +
+          "reports_display.js BEFORE reports_overview.js"
+      );
+    }
+    return api;
+  }
+
   function isNumber(value) {
     return typeof value === "number" && isFinite(value);
   }
@@ -321,15 +338,25 @@
     return m ? { date: m[1], time: m[2] } : null;
   }
 
-  // What an action-log row SAYS, in one sentence.
+  // What an action-log row SAYS, in one line: `{text, full}`.
   //
-  // The writer's own summary when there is one; failing that the action's
-  // name, humanized. An entry with neither is dropped rather than rendered
-  // as a blank line with a timestamp beside it.
+  // The line is reports_display.js's, and which shape an entry gets is
+  // decided by the ENTRY: a `display_title` was written for a row exactly
+  // like this one and is shown as it stands, while an entry that predates the
+  // contract shows its work-journal summary — emphasis stripped, because
+  // `**bold**` reaching a person as asterisks was the reported defect, and
+  // cut at the same 120 characters the detail view cuts it at.
+  //
+  // `full` is the same line UNCUT, for the row's `title`: nothing stored is
+  // altered and nothing on screen is a wall. An entry with no text at all
+  // falls back to the action's name, humanized, and one with not even that is
+  // dropped rather than rendered as a blank line with a timestamp beside it.
   function actionText(row) {
-    const summary = row && typeof row.summary === "string" ? row.summary.trim() : "";
-    if (summary) return summary;
-    return format().humanizeFlagWords(row && row.action);
+    const line = display().actionLine(row);
+    if (line.title) return { text: line.title, full: line.title };
+    if (line.summary) return { text: line.summary, full: line.full || line.summary };
+    const named = format().humanizeFlagWords(row && row.action);
+    return { text: named, full: named };
   }
 
   /**
@@ -362,15 +389,16 @@
         if (!row || typeof row !== "object") return;
         const stamp = stampParts(row.timestamp);
         if (!stamp || stamp.date !== today) return;
-        const text = actionText(row);
-        if (!text) return;
+        const line = actionText(row);
+        if (!line.text) return;
         items.push({
           index: index,
           slug: (client && client.slug) || "",
           name: (client && (client.name || client.slug)) || "",
           time: stamp.time,
           timestamp: row.timestamp,
-          text: text,
+          text: line.text,
+          full: line.full,
         });
       });
     });
@@ -399,6 +427,10 @@
     platformColorSlot: platformColorSlot,
     REPORTS_ACTION_FEED_CAP: REPORTS_ACTION_FEED_CAP,
     buildReportsActionFeed: buildReportsActionFeed,
+    // Exported for reports_hero.js (#706 step 3-b), which dates the band with
+    // it. "What day is it on the host" has exactly one answer in the product,
+    // and it is this one.
+    statedServerDate: statedServerDate,
   };
 
   // Browser: the global the `<script>` tag exists to publish.
