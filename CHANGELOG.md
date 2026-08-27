@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-27
+
 ### Changed
 
 - **The client list leads with health at a glance** (#706, step 3-b of 3).
