@@ -732,6 +732,70 @@ test.describe("the controls the capture found missing", function () {
     assert.ok(isVisible(page.root.querySelector("[data-reports-freshness]")));
   });
 
+  test.it("states the window even when there is only one", async function () {
+    // The capture's real defect, measured: the node had been moved into the
+    // detail toolbar correctly and was sitting there with `hidden` still
+    // set, because the toggle hides itself below two windows. That rule was
+    // written for the INDEX head ("nothing to switch"); on the detail view
+    // the lone window is what the funnel, the chart and the breakdown
+    // tables are all describing, so hiding it left every figure unlabelled.
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      period: "LAST_30_DAYS",
+      periods: ["LAST_30_DAYS"],
+    });
+    const tabs = page.root.querySelector("[data-reports-period]");
+    assert.equal(tabs.hidden, false, "the node itself must not stay hidden");
+    assert.ok(isVisible(tabs), "…and app.css must not hide it either");
+    const solo = tabs.querySelectorAll(".reports-period-solo");
+    assert.equal(solo.length, 1, "one window renders as one chip");
+    // A statement, not a control: a toggle of one announces a choice that
+    // does not exist.
+    assert.equal(solo[0].tagName, "SPAN");
+    assert.equal(solo[0].getAttribute("aria-pressed"), null);
+    assert.equal(tabs.querySelectorAll(".reports-period-btn").length, 0);
+  });
+
+  test.it("draws nothing when no window carries data at all", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      period: null,
+      periods: [],
+    });
+    // No window is not "one window": there is nothing to name.
+    assert.equal(
+      isVisible(page.root.querySelector("[data-reports-period]")),
+      false
+    );
+  });
+
+  test.it("leaves the index's one-window rule alone", async function () {
+    // Two clients route to the index, where a lone window really is nothing
+    // to switch and the cards below are not claiming to be about a window
+    // the operator chose.
+    const page = loadDashboardPage({
+      "/api/reports/clients": {
+        clients: [
+          { slug: "alpha", name: "Alpha", active: true },
+          { slug: "beta", name: "Beta", active: true },
+        ],
+        can_archive: false,
+      },
+      "/api/reports/summary": () =>
+        summaryWith({ period: "LAST_30_DAYS", periods: ["LAST_30_DAYS"] }),
+    });
+    page.document.dispatchEvent({ type: "mureo:ready" });
+    await settle();
+    page.root.querySelector('[data-dashboard-nav="reports"]').click();
+    await settle();
+    assert.equal(
+      isVisible(page.root.querySelector("[data-reports-period]")),
+      false
+    );
+  });
+
   test.it("moves that node rather than copying it", async function () {
     // Two nodes carrying `data-reports-period` would make querySelector
     // return whichever came first in the document — #691's defect, where a

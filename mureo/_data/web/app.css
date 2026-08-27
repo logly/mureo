@@ -4521,6 +4521,25 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   min-width: 0;
 }
 
+/* The window a single-window client's figures cover. A statement rather
+   than a control — flat, no hover, no pressed state — because there is
+   nothing to switch to. It exists so the funnel, the chart and the tables
+   are never unlabelled, which is what hiding it left behind. */
+.reports-period-solo {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.reports-period-solo.is-adhoc {
+  border-style: dashed;
+}
+
 /* ---- chart axes ----------------------------------------------------
    Endpoints only — the y scale's top and its zero, the first and last
    period on the x. A grid of ticks under a 220px plot competes with the

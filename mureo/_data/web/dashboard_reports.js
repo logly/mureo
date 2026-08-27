@@ -385,10 +385,17 @@
     slot.appendChild(meta);
   }
 
-  // Render the period toggle from the summary's `periods` union. Shown only
-  // when there is a real choice (>= 2 windows); a single-window account has
-  // nothing to switch, so the toggle stays hidden. Buttons are recreated on
-  // every render, so their click handlers never accumulate.
+  // Render the period toggle from the summary's `periods` union. Buttons are
+  // recreated on every render, so their click handlers never accumulate.
+  //
+  // ONE window is not the same answer on both views, and conflating them was
+  // #706's capture defect — the node was in the detail toolbar with `hidden`
+  // still set, so the symptom pointed at the move rather than at this rule.
+  // On the INDEX a lone window is nothing to switch, so the control stays
+  // hidden (unchanged). On the DETAIL view it is the window the funnel, the
+  // chart and the breakdown tables are all describing, and hiding it left
+  // every figure unlabelled — so it renders as one INERT chip: a statement
+  // of the window, not an offer to change it.
   //
   // A window mureo does not define still gets a button — those are figures
   // an agent really collected, under a name no view expects (#659) — but it
@@ -403,11 +410,31 @@
         })
       : [];
     wrap.textContent = "";
-    if (list.length < 2) {
+    if (list.length === 0) {
+      wrap.hidden = true;
+      return;
+    }
+    const detail = REPORTS_VIEW_STATE.reportsView === "detail";
+    if (list.length < 2 && !detail) {
       wrap.hidden = true;
       return;
     }
     wrap.hidden = false;
+    if (list.length < 2) {
+      // A statement, not a control: `<span>`, no handler, and no
+      // `aria-pressed` — a toggle of one would announce a choice that does
+      // not exist.
+      const solo = document.createElement("span");
+      solo.className = "reports-period-solo";
+      solo.setAttribute("data-period", list[0]);
+      solo.textContent = reportsPeriodLabel(list[0]);
+      if (!isCanonicalReportsPeriod(list[0])) {
+        solo.classList.add("is-adhoc");
+        solo.title = MUREO.t("dashboard.reports_period_adhoc");
+      }
+      wrap.appendChild(solo);
+      return;
+    }
     list.forEach(function (token) {
       const active = token === REPORTS_VIEW_STATE.reportsPeriod;
       const adhoc = !isCanonicalReportsPeriod(token);
