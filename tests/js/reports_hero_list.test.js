@@ -228,6 +228,37 @@ test.describe("the band counts clients and grades none of them", function () {
     assert.equal(model.idle, 0);
   });
 
+  test.it("does not call a client idle when its summary never arrived", function () {
+    // `fetchClientCardSummary` yields `null` when the request failed. Null is
+    // not a fact about an ad account — it is mureo not knowing — and while
+    // the daemon restarts EVERY client looks like this. Calling that "not
+    // running yet" would put a falsehood about the whole roster on screen,
+    // and calling it "needs attention" would be the same falsehood in red.
+    // It stays exactly where the filter chips have always counted it: OK.
+    const model = build(
+      { all: 3, attention: 0, watch: 0, ok: 3 },
+      [null, null, null],
+      () => "ok"
+    );
+    assert.equal(model.idle, 0, "an unreachable client is not an idle client");
+    assert.equal(model.ok, 3, "…it is counted exactly as it was before the band");
+    assert.equal(model.ok + model.watch + model.attention + model.idle, model.total);
+  });
+
+  test.it("still calls a client idle when it really did report no platforms", function () {
+    // The other side of the same coin: a summary that ARRIVED and states no
+    // platforms is a client mureo is not running yet, and that is precisely
+    // what the fourth block was added to say. One null beside it must not
+    // blur the two together.
+    const model = build(
+      { all: 2, attention: 0, watch: 0, ok: 2 },
+      [summaryFor("a", "idle"), null],
+      () => "ok"
+    );
+    assert.equal(model.idle, 1, "the received, empty summary");
+    assert.equal(model.ok, 1, "…and the unreachable one is not a second");
+  });
+
   test.it("draws nothing at all below two clients", function () {
     const one = build({ all: 1, attention: 0, watch: 0, ok: 1 }, [summaryFor("a", "ok")], () => "ok");
     assert.equal(one.show, false);
@@ -321,6 +352,29 @@ test.describe("the band is on the list screen", function () {
     assert.equal(blocks.attention, chips.attention);
     assert.equal(blocks.watch, chips.watch);
     assert.equal(blocks.ok + blocks.idle, chips.ok);
+    assert.equal(blocks.ok + blocks.watch + blocks.attention + blocks.idle, chips.all);
+  });
+
+  test.it("says nothing about ads when it could not reach a single summary", async function () {
+    // The daemon is restarting: every summary request comes back unusable,
+    // so every client's summary is `null`. The band must NOT report a roster
+    // of clients that are "not running yet" — that is a loud on-screen
+    // falsehood about four live ad accounts. It degrades quietly instead,
+    // and keeps agreeing with the chips beside it.
+    const page = loadDashboardPage({
+      "/api/reports/clients": { clients: ROSTER, can_archive: false },
+      "/api/reports/summary": () => null,
+    });
+    page.document.dispatchEvent({ type: "mureo:ready" });
+    await settle();
+    page.root.querySelector('[data-dashboard-nav="reports"]').click();
+    await settle();
+    const blocks = heroBlocks(page);
+    assert.equal(blocks.idle, 0, "an outage is not four idle clients");
+    assert.equal(blocks.attention, 0, "…and it is not four red ones either");
+    assert.equal(blocks.ok, 4);
+    const chips = chipCounts(page);
+    assert.equal(blocks.ok + blocks.idle, chips.ok, "the band and the chips agree");
     assert.equal(blocks.ok + blocks.watch + blocks.attention + blocks.idle, chips.all);
   });
 

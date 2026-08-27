@@ -17,11 +17,13 @@
 // THE FOURTH BLOCK. The triage vocabulary has three states — attention,
 // watch, ok — and the staff mockup's band has four: the last one is the
 // client mureo is not running yet. That is not a health verdict and it is not
-// derived from one: it is the client whose summary carries no figure at all
-// (`aggregateClientKpis(...).hasFigures` — reports_logic.js's answer, the same
-// one the cards use to decide whether to print a number). It is carved out of
-// the OK bucket only, so a client the triage layer marked is never shown as
-// idle, and the four blocks always add up to the roster.
+// derived from one: it is the client whose RECEIVED summary carries no figure
+// at all (`aggregateClientKpis(...).hasFigures` — reports_logic.js's answer,
+// the same one the cards use to decide whether to print a number). Received:
+// a summary mureo failed to fetch says nothing about that client's ads and is
+// never counted here (see `isIdle`). It is carved out of the OK bucket only,
+// so a client the triage layer marked is never shown as idle, and the four
+// blocks always add up to the roster.
 //
 // NOTHING HERE IS A NEW FACT ABOUT AN AD ACCOUNT. No delta, no ratio the
 // stored numbers do not already state: the band counts clients, and the
@@ -98,6 +100,29 @@
   }
 
   /**
+   * Is this client one mureo is not running yet?
+   *
+   * TWO CONDITIONS, AND THE FIRST ONE IS THE POINT: a summary was actually
+   * RECEIVED, and it states no figures. `fetchClientCardSummary` yields
+   * `null` when the request failed, and a failed request is not evidence
+   * about an ad account — it is the absence of evidence. Printing "not
+   * running yet" about a client mureo could not reach is a falsehood on
+   * screen, and while the daemon restarts it is a falsehood about the whole
+   * roster at once.
+   *
+   * So a null lands in the OK block, which is where the filter chips have
+   * always counted it: the band and the chips are one answer, and the
+   * alternative — routing unreachable clients to "needs attention" — turns
+   * the screen red during an outage, which is the same lie the other way up.
+   * Quiet degradation is the answer until the screen learns to SAY that a
+   * fetch failed.
+   */
+  function isIdle(summary) {
+    if (!summary || typeof summary !== "object") return false;
+    return !hasFigures(summary);
+  }
+
+  /**
    * The band's model: `{show, total, ok, watch, attention, idle, blocks, date}`.
    *
    * `counts` is `triageHealthCounts(triage, rows.length)` — the SAME object
@@ -123,7 +148,7 @@
       // Carved out of OK and out of nothing else: a marked client's block is
       // the mark, whatever its figures look like.
       if (health && health(i) !== "ok") continue;
-      if (!hasFigures(bodies[i])) idle += 1;
+      if (isIdle(bodies[i])) idle += 1;
     }
     const model = {
       show: total >= REPORTS_HERO_MIN_CLIENTS,

@@ -116,8 +116,24 @@ def test_the_fourth_block_is_carved_out_of_ok_and_nothing_else() -> None:
     hero = _read("reports_hero.js")
     body = _function_body(hero, "function buildReportsHero(")
     assert 'if (health && health(i) !== "ok") continue;' in body
-    assert "if (!hasFigures(bodies[i])) idle += 1;" in body
+    assert "if (isIdle(bodies[i])) idle += 1;" in body
     assert "ok: Math.max(0, count(c.ok) - idle)," in body
+
+
+@pytest.mark.unit
+def test_a_summary_that_never_arrived_is_not_a_client_that_is_not_running() -> None:
+    """`fetchClientCardSummary` yields `null` when the request failed, and
+    that null must reach the band intact: collapsing it into `{}` made an
+    unreachable client indistinguishable from one that reported no
+    platforms, so a restarting daemon painted the whole roster "not running
+    yet". The fetch keeps the null; the band requires a RECEIVED summary
+    before it calls anything idle."""
+    cards = _read("dashboard_reports_cards.js")
+    fetch = _function_body(cards, "async function fetchClientCardSummary(")
+    assert "|| {}" not in fetch, "a failed fetch is collapsed into an empty object"
+    hero = _read("reports_hero.js")
+    idle = _function_body(hero, "function isIdle(")
+    assert 'if (!summary || typeof summary !== "object") return false;' in idle
 
 
 @pytest.mark.unit

@@ -682,7 +682,7 @@ test.describe("conflict kinds", function () {
   });
 
   test.it("builds labels from a summary that is missing or malformed", function () {
-    // fetchClientCardSummary yields `{}` on any fetch failure, and these run
+    // fetchClientCardSummary yields `null` on any fetch failure, and these run
     // during a render — a throw here blanks the whole Reports view.
     for (const bad of [null, undefined, {}, { platforms: null }, { platforms: "x" }]) {
       assert.deepEqual(logic.reportsPlatformLabels(bad), {});

@@ -121,14 +121,20 @@
         "/api/reports/summary" + (params.length ? "?" + params.join("&") : "")
       );
     }
-    let summary =
-      (await fetchReportsJson(summaryUrl(REPORTS_VIEW_STATE.reportsPeriod))) || {};
+    // A FAILED FETCH STAYS `null`, and is not collapsed into `{}`. An empty
+    // object is indistinguishable from a client that really did report no
+    // platforms, and the band above the grid reads exactly that difference:
+    // collapsing them told the operator "not running yet" about every client
+    // on the screen whenever the daemon was restarting. Every consumer of a
+    // summary already guards `summary &&`, so null travels safely.
+    let summary = await fetchReportsJson(summaryUrl(REPORTS_VIEW_STATE.reportsPeriod));
     const kpis = aggregateClientKpis(summary);
-    const periods = Array.isArray(summary.periods)
-      ? summary.periods.filter(function (p) {
-          return typeof p === "string" && p;
-        })
-      : [];
+    const periods =
+      summary && Array.isArray(summary.periods)
+        ? summary.periods.filter(function (p) {
+            return typeof p === "string" && p;
+          })
+        : [];
     // `hasFigures`, not the rendered values: a conflicted client HAS data,
     // it is just withheld, and re-fetching another window would not fix that
     // (the conflict is a property of the document, not of the window).

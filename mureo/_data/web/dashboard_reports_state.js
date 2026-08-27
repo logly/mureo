@@ -285,7 +285,6 @@
     clientPlatformSplit: clientPlatformSplit,
     platformColorSlot: platformColorSlot,
     buildReportsActionFeed: buildReportsActionFeed,
-    REPORTS_HERO: REPORTS_HERO,
     buildReportsHero: buildReportsHero,
     REPORTS_KPI_LABELS: REPORTS_KPI_LABELS,
     REPORTS_VIEW_STATE: REPORTS_VIEW_STATE,

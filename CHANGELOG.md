@@ -16,12 +16,15 @@
   fourth opinion: green on the band and red on the card, with nothing on
   screen to say which is true.
 
-  **The fourth block is not a health verdict.** It is the client mureo has no
-  figure at all for, carved out of the "nothing raised" bucket and out of
-  nothing else — so a client the alerts marked keeps its mark, and the four
-  blocks always add up to the roster. A client whose totals are *withheld*
-  (stale, double-counted) is never called idle: it has figures and mureo is
-  refusing to state them, which is already an alert.
+  **The fourth block is not a health verdict.** It is the client whose
+  received summary carries no figure at all, carved out of the "nothing
+  raised" bucket and out of nothing else — so a client the alerts marked
+  keeps its mark, and the four blocks always add up to the roster. A client
+  whose totals are *withheld* (stale, double-counted) is never called idle:
+  it has figures and mureo is refusing to state them, which is already an
+  alert. Neither is a client whose summary could not be FETCHED: not
+  reaching the daemon is not evidence about an ad account, so those stay in
+  "nothing raised" exactly as they were counted before this band existed.
 
   **A single client keeps the index it had.** With one card, "which of these
   do I open first?" is not a question being asked.
