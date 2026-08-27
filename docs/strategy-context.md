@@ -1326,6 +1326,69 @@ about a stored VALUE it would be changing; how many lines of an unchanged
 string a 340px rail shows is a display decision, and the alert rows above
 make the same one at one line.
 
+#### The detail screen a contract draws (#706)
+
+A client that has a display contract gets a different detail view, and the
+order down the page is the argument — a dashboard is numbers and charts
+first, and any text on it has to be short, partial and instantly readable:
+
+1. the **運用ナビ band** — `display.nav_message`, the one line to act on
+   today, with the skill that wrote the screen and how long ago beside it.
+   The contract is replaced whole by whoever writes it last, so that
+   attribution is the one question the content cannot answer about itself;
+2. the **KPI funnel** — spend → impressions → clicks → conversions, each
+   carrying the rate it implies (CPM, CPC, CPA);
+3. the **daily chart**, with a metric switch and a 日/週/月 granularity
+   switch, beside the **proposals** panel (`display.proposals`: the open ones
+   as cards, plus how many have been carried out this month and in total);
+4. the **campaign** and **ad group** breakdown tables from
+   `display.breakdown`, each row carrying the four-state badge;
+5. `display.stated_values` as a **chip row**, and `display.highlights` as
+   tone-coloured chips;
+6. the **action log**, one short line per entry;
+7. the agent's narrative, behind an *Open the report text* disclosure.
+
+**The funnel and the chart are derived, not written.** That is exactly why
+they are not in the contract: they come from the canonical totals and
+`platforms[<p>].daily` (#690), so no agent writes them and no agent can state
+them wrongly. A step the totals do not carry renders as an em dash — never as
+a zero, which would be a measurement nobody made. Both follow the platform
+selector, and it selects ONE platform rather than summing: two platforms'
+impressions do not add up to anything an operator asked for, and their CPAs
+cannot be added at all.
+
+**A week or a month is a sum of stored days, and says when it is partial.**
+#690 refused to zero-fill a day nobody collected; summing days into a week
+would smuggle that zero back one level up, so every bucket carries how many
+of its days it actually holds, an incomplete one is drawn hollow, and a note
+under the chart says how many. A gap between collected days is a break in the
+line, never a segment across it.
+
+**Every section hides itself when it has nothing** — frame and all. On this
+screen that is the common case rather than the edge one: a client whose last
+run wrote only a nav line shows exactly that band and nothing else.
+
+**A client with no contract is unchanged.** It still gets the three-tier
+screen described above, and that is a supported path rather than a fallback:
+it is every client on every install until a skill writes a contract.
+
+**The colours are tokens, and the semantic vocabulary is unchanged.** The
+screen is built on a `--report-blue` family added *beside* `--accent` rather
+than over it (that indigo is what every control on every other screen uses),
+defined for both themes. The blue is ACCENT and INFORMATION and does not join
+the status vocabulary: red still means "act now" and nothing else, which is
+why a `worsening` breakdown row is amber rather than red, and why a spend
+movement is blue — a rise in spend is neither good nor bad without a target
+nobody has put on the wire.
+
+The **action log** is shortened on both screens, because the shape is a
+property of the ENTRY rather than of the client. A row with a `display_title`
+/ `display_summary` shows those and stops — the stored `summary` is the work
+journal and stays in the drill-down. A row without one shows its `summary`
+with the markdown emphasis removed (`**bold**` reaching a person as asterisks
+was the reported defect) and cut at 120 characters, with *Read more* offering
+the rest. Nothing stored is altered by either.
+
 #### The shape of the page
 
 The dashboard's frame is one width for every left-nav item, and it is the

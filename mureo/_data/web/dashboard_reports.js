@@ -89,8 +89,19 @@
     );
   }
   const buildReportCard = R_REPORT.buildReportCard;
-  const renderReportsActions = R_REPORT.renderReportsActions;
   const renderReportsLatest = R_REPORT.renderReportsLatest;
+
+  // The contract-driven detail screen (#706 step 3-a).
+  const R_DETAIL = window.MUREO_DASHBOARD_REPORTS_DETAIL;
+  if (!R_DETAIL) {
+    throw new Error(
+      "dashboard_reports.js needs MUREO_DASHBOARD_REPORTS_DETAIL — load " +
+        "dashboard_reports_detail.js BEFORE dashboard_reports.js"
+    );
+  }
+  // Drawn by the detail module for BOTH screens: shortening a row is a
+  // property of the ENTRY (no display line), not of the client.
+  const renderReportsActions = R_DETAIL.renderActions;
   const buildReportFlagRow = R_REPORT.buildReportFlagRow;
   // The tone table and the trend builders live in the report module now,
   // bound by their original names so every call site below reads unchanged
@@ -341,6 +352,11 @@
         return r && r.slug === slug;
       });
       nameEl.textContent = c ? c.name || c.slug || "" : "";
+    }
+    // A platform key belongs to the client it was chosen on: carried across,
+    // the SELECT would disagree with what pickPlatform fell back to.
+    if (REPORTS_VIEW_STATE.reportsActiveClient !== (slug || null)) {
+      REPORTS_VIEW_STATE.reportsPlatformKey = null;
     }
     // Bump the generation so any in-flight render is dropped, then load.
     REPORTS_VIEW_STATE.reportsRenderSeq++;
@@ -618,6 +634,9 @@
       renderReportsLatest(null);
       renderReportsChanges([], null);
       renderReportsPlatformTier([]);
+      // Clears every contract section too: a failed client switch must not
+      // leave the PREVIOUS client's screen up.
+      R_DETAIL.renderReportsDetail(null, {});
       renderReportsActions(null);
       if (empty) empty.hidden = false;
       return;
@@ -671,11 +690,24 @@
       });
     }
 
-    // The three tiers, in the order an operator reads them (#691): what the
-    // report concluded, what moved since yesterday, then everything.
-    renderReportsLatest(summary.reports);
-    renderReportsChanges(platforms, latestReport(summary.reports));
-    renderReportsPlatformTier(platforms);
+    // #706 step 3-a: a contract gets the screen it was built for, no
+    // contract gets the three tiers that shipped before it. Both are
+    // complete screens, and renderReportsDetail is the one place that
+    // decides which.
+    const drewContract = R_DETAIL.renderReportsDetail(summary, {
+      platformKey: REPORTS_VIEW_STATE.reportsPlatformKey,
+      onPlatform: function (key) {
+        REPORTS_VIEW_STATE.reportsPlatformKey = key;
+        renderReportsSummary(client);
+      },
+    });
+    if (!drewContract) {
+      // The three tiers, in the order an operator reads them (#691): what the
+      // report concluded, what moved since yesterday, then everything.
+      renderReportsLatest(summary.reports);
+      renderReportsChanges(platforms, latestReport(summary.reports));
+      renderReportsPlatformTier(platforms);
+    }
     renderReportsActions(summary.recent_actions);
   }
 

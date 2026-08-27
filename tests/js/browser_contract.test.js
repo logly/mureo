@@ -148,6 +148,41 @@ const MODULES = [
     moved: ["buildSparkline", "dayNumber", "points", "runs"],
   },
   {
+    file: "reports_display.js",
+    global: "MUREO_REPORTS_DISPLAY",
+    // `bound` names what the renderer reaches for; `moved` adds the pure
+    // helpers the JS suite drives directly (the markdown strip and the
+    // legacy-summary cut), which is cheaper and more precise than inferring
+    // them from a rendered row.
+    bound: [
+      "hasDisplay",
+      "navMessage",
+      "highlights",
+      "breakdownRows",
+      "statedValues",
+      "proposalGroups",
+      "attribution",
+      "actionLine",
+    ],
+    moved: [
+      "hasDisplay",
+      "navMessage",
+      "highlights",
+      "breakdownRows",
+      "statedValues",
+      "proposalGroups",
+      "attribution",
+      "actionLine",
+      "stripEmphasis",
+    ],
+  },
+  {
+    file: "reports_chart.js",
+    global: "MUREO_REPORTS_CHART",
+    bound: ["days", "buckets", "incomplete", "buildChart"],
+    moved: ["days", "buckets", "runs", "incomplete", "buildChart", "dayNumber"],
+  },
+  {
     file: "reports_triage.js",
     global: "MUREO_REPORTS_TRIAGE",
     bound: [

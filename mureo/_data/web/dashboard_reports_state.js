@@ -173,6 +173,15 @@
     // the SAME client.
     reportsActiveClient: null,
 
+    // Which platform the detail view's funnel and daily chart describe
+    // (#706 step 3-a). ONE platform, never a sum: two platforms'
+    // impressions do not add up to anything an operator asked for, and
+    // their CPAs cannot be added at all. `null` means "not chosen yet",
+    // which resolves to the client's first platform — and it is reset when
+    // the client changes, because a key one client has and the next does
+    // not would render an empty screen with no way out.
+    reportsPlatformKey: null,
+
     // Reports navigation: "index" (the client overview grid) or "detail" (one
     // client's full report). A single-client (OSS) install has no index and
     // stays on "detail". The last-fetched client list is cached so a back /

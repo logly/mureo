@@ -1,5 +1,71 @@
 ## [Unreleased]
 
+### Changed
+
+- **The client detail view is numbers and charts first** (#706, step 3-a of
+  3). Steps 1 and 2 built the display contract and taught the skills to fill
+  it; this is the screen that reads it. A client that has one now gets, top
+  to bottom: the 運用ナビ band (the one line to act on today, with the skill
+  that wrote the screen and when), a **KPI funnel** — spend → impressions →
+  clicks → conversions, each carrying the rate it implies — a **daily chart**
+  with metric and day/week/month switches, the **proposals** panel, the
+  **campaign** and **ad group** breakdown tables with the four-state badge,
+  the values the report stated as **chips**, and the highlight chips. The
+  agent's narrative is no longer the first thing on the page: it is kept,
+  behind a *Open the report text* disclosure.
+
+  **The funnel and the chart are derived, not written.** That is why #706
+  deliberately kept them out of the contract: they come from the canonical
+  totals and the day-grain history (#690), so no agent writes them and no
+  agent can state them wrongly. A step the totals do not carry renders as an
+  em dash rather than as a zero.
+
+  **A week or month is a SUM of stored days, and says when it is partial.**
+  #690 refused to zero-fill a day nobody collected; summing days into a week
+  would smuggle that zero back one level up, so every bucket carries how many
+  of its days it actually holds, an incomplete one is drawn hollow, and the
+  note under the chart says how many. A gap between collected days is drawn
+  as a break in the line, never as a segment across it — reports_sparkline's
+  rule at full size.
+
+  **Every section hides itself when it has nothing.** No empty frames, no
+  zero rows, no chart box waiting for history — which on this screen is the
+  common case, not the edge one: a client whose last run wrote only a nav
+  line shows exactly that band.
+
+  **A client with no contract is unchanged.** It still gets the three-tier
+  screen, and that is a supported path rather than a fallback — it is every
+  client on every install until a skill writes a contract.
+
+  The **action log** is shorter on both screens, because that is a property
+  of the entry rather than of the client: a row with a `display_title` /
+  `display_summary` shows those and stops, and a row without one shows its
+  summary with the markdown emphasis stripped (`**bold**` reached a person as
+  asterisks — the reported defect) and cut at 120 characters with *Read more*
+  offering the rest. Nothing stored is altered.
+
+  **The screen is styled to the staff mockup**, on tokens rather than on
+  literals: a `--report-blue` family added *beside* `--accent` (the indigo
+  every control on every other screen uses — repainting it would redesign six
+  screens to style one), defined for both themes. The navigation line is a
+  solid blue banner, the chart is a blue line over a same-hue fill with the
+  selected metric/granularity segment filled rather than merely lifted, open
+  proposals are amber cards, the four-state badges are filled upper-cased
+  pills, and the funnel's figures take the KPI step of the #691 type scale
+  with the spend movement under them in blue.
+
+  **The semantic vocabulary is unchanged and the blue does not join it.** Red
+  still means "act now" and nothing else — which is why a `worsening`
+  breakdown row is amber and has its own class rather than sharing the alert
+  one, and why a spend movement is blue: a rise in spend is neither good nor
+  bad without a target nobody has put on the wire, and #694's capture found
+  that colouring it trains an operator to ignore the colour entirely.
+
+  Four new browser modules: `reports_display.js` (the contract's read model),
+  `reports_chart.js` (the chart's arithmetic), `dashboard_reports_chart.js`
+  (the chart section) and `dashboard_reports_detail.js` (the screen). The
+  list view is step 3-b.
+
 ### Added
 
 - **The nine report-writing skills now fill the display contract** (#706,
