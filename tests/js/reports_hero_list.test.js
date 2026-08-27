@@ -550,14 +550,17 @@ test.describe("the band's colours are tokens", function () {
     return CSS.slice(at).split("}", 1)[0];
   }
 
-  //: The chips ON the band, which are the band's own: the fill and the text
-  //: are the banner's tokens (see below) and are not restated here.
+  //: The four meaning colours, and the ground the report screens sit on.
+  //: The band's own fill and text are the banner's tokens (see below) and
+  //: are not restated anywhere.
   const NEW_TOKENS = [
-    "--report-band-line",
     "--report-band-ok",
     "--report-band-watch",
     "--report-band-attention",
     "--report-band-idle",
+    "--report-surface",
+    "--report-line",
+    "--report-line-strong",
   ];
 
   test.it("defines every new token in both themes", function () {
@@ -592,27 +595,105 @@ test.describe("the band's colours are tokens", function () {
     });
   });
 
-  test.it("paints the band and every block from the family", async function () {
+  /** The chip for `key`, as rendered. */
+  function blockNode(page, key) {
+    const node = page.root.querySelectorAll(".reports-hero-block").find(function (n) {
+      return n.getAttribute("data-reports-hero-block") === key;
+    });
+    assert.ok(node, key + " has no chip");
+    return node;
+  }
+
+  test.it("paints the band from the banner, and every chip as a card", async function () {
+    // The staff review, second pass: a chip FILLED with its meaning colour
+    // sat within 1.2:1 of the blue band and went flat. The chip is now the
+    // card surface — the thing that does stand out on this band — and the
+    // meaning moved to the number and the leading edge.
     const page = await openIndex();
     assert.equal(styleOf(page, ".reports-hero", "background"), "var(--report-blue)");
     assert.equal(styleOf(page, ".reports-hero", "color"), "var(--report-on-blue)");
-    const fills = {
-      ok: "var(--report-band-ok)",
-      watch: "var(--report-band-watch)",
-      attention: "var(--report-band-attention)",
-      idle: "var(--report-band-idle)",
-    };
-    Object.keys(fills).forEach(function (key) {
-      const node = page.root
-        .querySelectorAll(".reports-hero-block")
-        .find(function (n) {
-          return n.getAttribute("data-reports-hero-block") === key;
-        });
+    ["ok", "watch", "attention", "idle"].forEach(function (key) {
+      const node = blockNode(page, key);
+      const label = ".reports-hero-block.is-" + key;
+      assert.equal(styleOfNode(node, label, "background"), "var(--surface)");
       assert.equal(
-        styleOfNode(node, ".reports-hero-block.is-" + key, "background"),
-        fills[key],
-        key + " is not painted from its token"
+        styleOfNode(node, label, "border-left-color"),
+        "var(--report-band-" + key + ")",
+        key + "'s bar is not its own colour"
       );
+      const count = node.querySelectorAll(".reports-hero-block-count")[0];
+      assert.equal(
+        styleOfNode(count, label + " count", "color"),
+        "var(--report-band-" + key + ")",
+        key + "'s count is not its own colour"
+      );
+      const word = node.querySelectorAll(".reports-hero-block-label")[0];
+      assert.equal(styleOfNode(word, label + " label", "color"), "var(--ink)");
     });
+  });
+
+  test.it("dims nothing at zero — the partition has to be visible", async function () {
+    // Two healthy clients: three of the four blocks count nobody. They keep
+    // their number, their colour and their frame, because four blocks an
+    // operator can see all of is what makes them a partition of the roster
+    // — and because a faded chip is how a screen fails AA quietly.
+    const page = await openIndex({
+      clients: ROSTER.slice(0, 2),
+      summaries: { alpha: summaryFor("alpha", "ok"), bravo: summaryFor("bravo", "ok") },
+    });
+    assert.deepEqual(heroBlocks(page), { ok: 2, watch: 0, attention: 0, idle: 0 });
+    ["watch", "attention", "idle"].forEach(function (key) {
+      const node = blockNode(page, key);
+      const label = ".reports-hero-block.is-" + key;
+      assert.equal(isVisible(node), true, key + " left the band at zero");
+      assert.equal(
+        styleOfNode(node.querySelectorAll(".reports-hero-block-count")[0], label, "color"),
+        "var(--report-band-" + key + ")"
+      );
+      assert.equal(styleOfNode(node, label, "opacity"), undefined, key + " is faded");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------
+// The ground both report screens sit on
+// ---------------------------------------------------------------------
+
+test.describe("the report screens sit on a ground, not on the page", function () {
+  const fs = require("node:fs");
+  const CSS = fs.readFileSync(path.join(WEB, "app.css"), "utf-8");
+
+  test.it("puts the ground on the container BOTH screens are inside", async function () {
+    // One container, deliberately: [data-dashboard-reports] wraps the list
+    // and the detail alike, so the ground cannot end up under one of them
+    // and not the other. Grounding the index grid instead is exactly how
+    // the two screens would drift apart.
+    const page = await openIndex();
+    const shell = page.root.querySelector("[data-dashboard-reports]");
+    assert.ok(shell, "the shared container is gone");
+    assert.equal(styleOfNode(shell, ".dashboard-reports", "background"), "var(--report-surface)");
+    // …and it is the ancestor of both screens, not a sibling of either.
+    assert.ok(shell.querySelector("[data-reports-index-grid]"), "the list is not inside it");
+    assert.ok(shell.querySelector("[data-reports-detail]"), "the detail is not inside it");
+  });
+
+  test.it("stands the white panels off that ground", async function () {
+    // A card is white ON the ground, with an edge one step darker than the
+    // page's hairline and the shallowest shadow the system has. The three
+    // together are what makes a surface; a 1px hairline on its own is what
+    // the review called "too white to read".
+    const page = await openIndex();
+    const card = page.root.querySelector(".reports-client-card");
+    assert.equal(styleOfNode(card, ".reports-client-card", "background"), "var(--surface)");
+    assert.equal(styleOfNode(card, ".reports-client-card", "border"), "1px solid var(--report-line)");
+    assert.equal(styleOfNode(card, ".reports-client-card", "box-shadow"), "var(--shadow-sm)");
+  });
+
+  test.it("tints the table header rows on both screens", function () {
+    assert.match(CSS, /\.roster thead th \{[^}]*background: var\(--report-surface\);/);
+    assert.match(
+      CSS,
+      /\.reports-breakdown-table thead th \{[^}]*background: var\(--report-surface\);/
+    );
   });
 });

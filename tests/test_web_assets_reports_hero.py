@@ -155,6 +155,49 @@ def test_the_band_says_a_word_beside_every_colour() -> None:
 
 
 @pytest.mark.unit
+def test_a_chip_is_a_card_and_the_colour_is_the_number() -> None:
+    """The staff review's second pass: a chip FILLED with its meaning colour
+    sat within 1.2:1 of the blue band and went flat, so the chip is the card
+    surface — the one thing that does stand out on this band — and the
+    meaning moved to the count and to a bar down the leading edge.
+
+    Pinned as text because the *executed* half is in
+    ``tests/js/reports_hero_list.test.js``: what a substring is good for here
+    is catching the fill coming back."""
+    css = _read("app.css")
+    at = css.index("#706 step 3-b — the list screen's band.")
+    band = css[at:]
+    chip = band[band.index(".reports-hero-block {") :].split("}", 1)[0]
+    assert "background: var(--surface);" in chip, "the chip is not a card again"
+    assert "border-left: 4px solid" in chip, "the meaning has no bar"
+    for key in ("ok", "watch", "attention", "idle"):
+        rule = band[band.index(f".reports-hero-block.is-{key} {{") :].split("}", 1)[0]
+        assert f"border-left-color: var(--report-band-{key});" in rule
+        assert "background:" not in rule, f"{key} is filled with its colour again"
+    # Nothing is faded at zero: the four blocks are a partition, and a
+    # partition an operator cannot see all of is not one.
+    assert "opacity" not in band.split(".reports-hero-block {")[1].split("\n}")[0]
+
+
+@pytest.mark.unit
+def test_both_report_screens_sit_on_the_same_ground() -> None:
+    """The ground goes on ``[data-dashboard-reports]``, which wraps the list
+    AND the detail. Anywhere further in and the two screens drift apart —
+    which is the one failure this rule exists to prevent."""
+    css = _read("app.css")
+    shell = css[css.index("\n.dashboard-reports {") :].split("}", 1)[0]
+    assert "background: var(--report-surface);" in shell
+    assert "border: 1px solid var(--report-line);" in shell
+    html = _read("app.html")
+    container = html[html.index("data-dashboard-reports") :]
+    assert "data-reports-index-grid" in container
+    assert "data-reports-detail" in container
+    # Both themes, or the ground is a light-mode-only decision.
+    for token in ("--report-surface", "--report-line", "--report-line-strong"):
+        assert css.count(token + ":") >= 2, f"{token} is not defined in both themes"
+
+
+@pytest.mark.unit
 def test_the_band_and_the_feed_speak_both_locales() -> None:
     """A key present in one locale only reaches an operator as the key."""
     data = json.loads(_read("i18n.json"))

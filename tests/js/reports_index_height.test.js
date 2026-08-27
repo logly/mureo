@@ -152,6 +152,15 @@ function heroBandHeight() {
   return frame(".reports-hero") + block + marginBottom(".reports-hero");
 }
 
+// The ground the two report screens sit on (#706 step 3-c) is a padded,
+// bordered container around everything below, so its frame is part of the
+// page's height whether or not anything inside it grew. Counted here for the
+// same reason the band above is: a box left out of this model is a box that
+// can grow for free.
+function shellFrame() {
+  return frame(".dashboard-reports");
+}
+
 function portfolioStripHeight() {
   const cell =
     frame(".reports-kpi") +
@@ -320,6 +329,7 @@ const TRIAGE_FEED_ROWS = require(path.join(WEB, "reports_overview.js"))
 test.describe("the Reports index fits a screen an operator can read", function () {
   const shown = Math.min(ALERT_KINDS, TRIAGE.REPORTS_TRIAGE_COLLAPSED_ROWS);
   const top =
+    shellFrame() +
     heroBandHeight() +
     portfolioStripHeight() +
     alertPanelHeight(shown, ALERT_KINDS > shown);

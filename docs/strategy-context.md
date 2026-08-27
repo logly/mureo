@@ -1435,14 +1435,25 @@ filter chips and the roster table already follow.
 The band is painted from `--report-blue` and `--report-on-blue` — the same
 two tokens the detail screen's 運用ナビ banner is painted from, referenced
 rather than restated. A mureo band is one colour in this product, so a
-recolour moves both screens or neither, in both themes. Only the chips ON it
-are its own (`--report-band-*`): the four block fills are the same semantic
-vocabulary the cards use, at the shades that clear AA for white text on a
-chip, and `idle` is neutral grey because "no verdict" is not one of the
-three. Nothing on the band is dimmed — white on this blue is 4.9:1, which
-clears AA with nothing above it, so an opacity-softened caption would fail —
-and the hierarchy is carried by the type scale instead. Every block carries
-its word as well as its colour.
+recolour moves both screens or neither, in both themes. Nothing on the band
+is dimmed — white on this blue is 4.9:1, which clears AA with nothing above
+it, so an opacity-softened caption would fail — and the hierarchy is carried
+by the type scale instead.
+
+Each block is a **white card**, not a coloured one. Filling a block with its
+meaning colour put it within 1.2:1 of the blue, which is how a green and a
+red end up equally invisible; the card surface is the thing that stands out
+on this band. The meaning is the COUNT and a bar down the leading edge, in
+the same vocabulary the cards use (`--report-band-*`), at 5.9–8.1:1 as text
+— and `idle` is neutral grey because "no verdict" is not one of the three.
+Every block carries its word as well as its colour, and none of them is
+faded at zero: a partition an operator cannot see all of is not one.
+
+The report screens themselves sit on a **ground** — `--report-surface`, with
+`--report-line` / `--report-line-strong` for the panel edges — applied to the
+container that holds the list AND the detail, so the two screens cannot drift
+apart. White panels stand off it with one step of edge and the shallowest
+shadow in the system; table header rows take the ground colour.
 
 #### The shape of the page
 

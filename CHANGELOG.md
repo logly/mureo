@@ -41,12 +41,28 @@
   The band is painted in the **same blue as the detail screen's 運用ナビ
   banner**, from the same `--report-blue` / `--report-on-blue` tokens rather
   than a second blue of its own: the two bands are the same object on two
-  screens, so recolouring one moves the other, in both themes. Its four
-  block fills are the same semantic vocabulary the cards use, at the shades
-  that clear AA for white text on a chip, and every block carries its word
-  as well as its colour. Nothing on the band is dimmed — white on this blue
-  is 4.9:1, which clears AA with nothing to spare — so the hierarchy is
-  carried by the type scale instead.
+  screens, so recolouring one moves the other, in both themes. Nothing on
+  the band is dimmed — white on this blue is 4.9:1, which clears AA with
+  nothing to spare — so the hierarchy is carried by the type scale instead.
+
+  **Each block is a white card, not a coloured one.** A block filled with
+  its meaning colour sits within 1.2:1 of the blue in luminance, which is
+  how a green and a red end up equally invisible on it. The card surface is
+  what stands out on this band, so the block is one, and the meaning is
+  carried by the count itself and by a bar down the block's leading edge —
+  the same green / amber / red / grey vocabulary the cards use, at 5.9–8.1:1
+  as text. A block counting nobody keeps its number, its colour and its
+  frame: four blocks an operator can see all of is what makes them a
+  partition of the roster.
+
+- **The report screens have a ground** (#706). Both of them — the list and
+  the detail are one container, so they cannot drift apart. White panels on
+  a white page behind a 1px hairline never quite became surfaces; they now
+  sit on a shade cooler than the page, with an edge one step darker and the
+  shallowest shadow the system has. Table header rows carry the ground
+  colour and their text is read as a heading rather than as a caption. Three
+  tokens, defined in both themes: `--report-surface`, `--report-line`,
+  `--report-line-strong`.
 
 - **The client detail view is numbers and charts first** (#706, step 3-a of
   3). Steps 1 and 2 built the display contract and taught the skills to fill
