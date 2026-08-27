@@ -193,6 +193,12 @@ def parse_display_contract(raw: Any) -> DisplayContract | None:
         proposals=_parse_proposals(raw.get("proposals")),
         breakdown=_parse_breakdown(raw.get("breakdown")),
         stated_values=_parse_stated_values(raw.get("stated_values")),
+        # Attribution. Read tolerantly like everything else here — a contract
+        # written before these existed carries neither, and ``None`` is what
+        # "nobody said" looks like. The WRITE side is where ``source`` is
+        # required.
+        source=_text(raw.get("source")),
+        generated_at=_text(raw.get("generated_at")),
     )
     return contract or None
 
@@ -259,6 +265,13 @@ def display_contract_to_dict(contract: DisplayContract) -> dict[str, Any]:
     as a live one.
     """
     result: dict[str, Any] = {}
+    # Attribution first — it is what a reader checks before believing any of
+    # the rest, and it is emitted only when set so a contract written before
+    # these fields existed round-trips byte-identically.
+    if contract.source is not None:
+        result["source"] = contract.source
+    if contract.generated_at is not None:
+        result["generated_at"] = contract.generated_at
     if contract.nav_message is not None:
         result["nav_message"] = contract.nav_message
     if contract.highlights:

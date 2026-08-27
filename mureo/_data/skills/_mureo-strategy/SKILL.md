@@ -701,6 +701,71 @@ switching", once you have switched it). Otherwise the dashboard's "Latest
 report" reads as older than, and contradicts, the very `action_log` entry the
 same run appended.
 
+### Display contract section
+
+`display` (top-level, optional) is what the **dashboard** shows for this
+client. It is a different audience from `reports` above, and the split is the
+point: STATE.json is your working memory, written for the next agent and
+prose-heavy by design, while this section is written for an operator's screen
+— short, structured, and the only thing the dashboard reads.
+
+`display = {nav_message, highlights, proposals, breakdown: {campaigns,
+adgroups}, stated_values}`. Written via the `mureo_state_display_set` tool,
+in the same pass as your report and from the same figures. **It renders
+verdicts you already reached; it never reaches a new one.**
+
+| Field | Shape | Bound |
+|-------|-------|-------|
+| `nav_message` | the one operator-facing line (運用ナビ) | ≤80 characters |
+| `highlights` | `[{tone: good\|watch\|bad, text}]` | ≤3 items, text ≤60 |
+| `proposals` | `[{title, body, status: proposed\|done, date}]` | title ≤30, body ≤80, date ≤12 |
+| `breakdown.campaigns` / `.adgroups` | `[{name, spend, mcpa, target_cpa, state, note}]`, `state` one of `target_met` / `improving` / `watch` / `worsening` / `no_data` | note ≤40 |
+| `stated_values` | `[{label, value}]` | label ≤24, **value a raw number or a string ≤12** |
+
+Plus two attribution fields, and they are not decoration: the contract is
+replaced **whole** by whoever writes it last, so a reader cannot otherwise
+tell whose answer survived. `source` is your own skill name (≤24 chars) and
+is **required** alongside any section you state; `generated_at` is stamped by
+the server — do not compute it. A call that states no section clears the
+screen and needs neither.
+
+**Chip tone comes from the severity you already gave the finding**, so the
+same finding is never amber on one client's card and red on another's:
+`action → bad` / `watch → watch` / `positive → good`, and **`info` does not
+become a highlight** — there are at most 3 chips, a neutral note would spend
+one an action or a win needed, and the note is still in the report for
+whoever wants it.
+
+**Every bound refuses the write; nothing is truncated** — the same rule the
+`narrative` bound above follows, for the same reason. Over a bound,
+**shorten and rewrite**: lead with the point, drop the connectives, a noun
+phrase is fine. Re-sending the same sentence trimmed by a character spends
+your context on a bound one rewrite would have met. A value already on disk
+is read back exactly as written — the bounds are a write rule only.
+
+**Prose is refused in `stated_values`.** That row is a caption and a figure;
+a sentence there lands in a numeric column, which is the defect this section
+exists to remove. Anything needing a sentence stays in your report's
+`narrative`.
+
+**Do not write the KPI funnel or the daily chart.** Spend → impressions →
+clicks → conversions with CPM / CPC / CPA, and the day-over-day trend, are
+computed by mureo from the stored totals and `platforms[<p>].daily`. There is
+nothing there for you to state, and therefore nothing to get wrong.
+
+**One writer per run — and last writer wins across the day.**
+`mureo_state_display_set` REPLACES the whole section rather than merging into
+it, so within a run the skill that writes it states every section it wants on
+screen: compose before calling, never call twice. Across runs the same rule
+means the evening's daily-check overwrites the morning's weekly review. That
+is deliberate — a screen is one moment, and a merge shows a moment that never
+happened — but it is not free, which is why a second writer has one duty:
+**read the current `display` first (`mureo_state_get`), and carry over the
+other skill's `proposals` that are still live** (not yet done, not
+contradicted by what you just found). Carry over nothing else — another
+skill's `nav_message`, `highlights`, `breakdown` or `stated_values` would put
+its judgement on screen under your name, and you cannot vouch for it.
+
 ### Action Log Entry Fields
 
 | Field | Type | Required | Description |
@@ -713,6 +778,8 @@ same run appended.
 | `summary` | string | No | Human-readable summary |
 | `metrics_at_action` | object | No | Key metrics at the time of action, for outcome evaluation — use the same canonical vocabulary as `metrics` above (e.g. `cpa`, `conversions`, `clicks`) |
 | `observation_due` | string | No | ISO 8601 date when the outcome should be evaluated |
+| `display_title` | string | No | What this action was, for the dashboard row — ≤40 characters, plain text. Over the bound the append is **refused**, never truncated |
+| `display_summary` | string | No | One sentence under the title, ≤120 characters, plain text (no markdown — `**bold**` reaches a person as asterisks). The row shows these two and stops there; the full `summary` is drill-down only, so keep writing it as fully as the next agent needs |
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/_mureo-learning/SKILL.md` for the decision framework.
 

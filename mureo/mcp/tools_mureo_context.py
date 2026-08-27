@@ -25,6 +25,9 @@ from mureo.core.display_contract import (
     BREAKDOWN_NOTE_MAX_CHARS,
     BREAKDOWN_STATES,
     DISPLAY_CONTRACT_RULE,
+    DISPLAY_OVERWRITE_RULE,
+    DISPLAY_SECTIONS,
+    DISPLAY_SOURCE_MAX_CHARS,
     HIGHLIGHT_TEXT_MAX_CHARS,
     HIGHLIGHT_TONES,
     HIGHLIGHTS_MAX_ITEMS,
@@ -698,11 +701,30 @@ TOOLS: list[Tool] = [
             # runs, so a caller who only ever sees the JSON-Schema refusal
             # learns the number and none of the reasoning unless the reason
             # was already in the description it read before calling.
-            + DISPLAY_CONTRACT_RULE
+            + DISPLAY_CONTRACT_RULE + " "
+            # The overwrite rule is the half no schema can enforce: whether
+            # another skill's proposal is still live is a judgement about
+            # today's findings, which only the caller holds. So it has to be
+            # in the description or it is nowhere.
+            + DISPLAY_OVERWRITE_RULE
         ),
         inputSchema={
             "type": "object",
             "properties": {
+                "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": DISPLAY_SOURCE_MAX_CHARS,
+                    "description": (
+                        "The skill writing this screen — 'daily-check', "
+                        "'weekly-report', your own name. REQUIRED whenever "
+                        "you state any section: the contract is replaced "
+                        "wholesale by whoever writes it last, so without this "
+                        "the card cannot say whose answer it is showing. "
+                        "``generated_at`` is stamped by the server — do not "
+                        "compute it."
+                    ),
+                },
                 "nav_message": {
                     "type": "string",
                     "minLength": 1,
@@ -864,9 +886,16 @@ TOOLS: list[Tool] = [
                 },
                 "path": _PATH_PROPERTY,
             },
-            # Nothing is required: a call that states no section clears the
-            # contract, which is the only way to take a stale screen down.
+            # Nothing is required outright: a call that states no section
+            # clears the contract, which is the only way to take a stale
+            # screen down, and it has nothing left to attribute.
             "required": [],
+            # …but stating ANY section requires naming yourself. Expressed as
+            # dependentRequired so the dispatcher refuses an unattributed
+            # screen before the handler runs — the same layer that catches
+            # every other bound here. The guard repeats it for callers that
+            # bypass the schema.
+            "dependentRequired": {section: ["source"] for section in DISPLAY_SECTIONS},
             "additionalProperties": False,
         },
     ),

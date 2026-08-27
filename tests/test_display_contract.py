@@ -56,8 +56,12 @@ from mureo.core.display_contract import (
     BREAKDOWN_NOTE_MAX_CHARS,
     BREAKDOWN_STATES,
     DISPLAY_CONTRACT_RULE,
+    DISPLAY_OVERWRITE_RULE,
     DISPLAY_SECTIONS,
+    DISPLAY_SOURCE_MAX_CHARS,
     HIGHLIGHT_TEXT_MAX_CHARS,
+    HIGHLIGHT_TONE_BY_SEVERITY,
+    HIGHLIGHT_TONE_RULE,
     HIGHLIGHT_TONES,
     HIGHLIGHTS_MAX_ITEMS,
     NAV_MESSAGE_MAX_CHARS,
@@ -72,6 +76,18 @@ from mureo.core.display_contract import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def _validate_contract(display: dict[str, Any]) -> None:
+    """Validate a payload, supplying the attribution every write needs (#706).
+
+    ``source`` is required alongside any section, and it is orthogonal to
+    every bound below — so it is added here rather than repeated in thirty
+    literals, and the attribution rule gets a class of its own
+    (:class:`TestTheScreenSaysWhoDrewIt`). A test that needs the payload
+    exactly as written calls ``validate_display_contract`` directly.
+    """
+    validate_display_contract({"source": "daily-check", **display})
 
 
 def _state(tmp_path: Path) -> Path:
@@ -94,18 +110,18 @@ class TestEveryBoundRefuses:
 
     def test_nav_message_over_the_bound(self) -> None:
         with pytest.raises(ValueError) as exc:
-            validate_display_contract({"nav_message": "あ" * 81})
+            _validate_contract({"nav_message": "あ" * 81})
         assert str(NAV_MESSAGE_MAX_CHARS) in str(exc.value)
         assert "truncated" in str(exc.value)
 
     def test_nav_message_at_the_bound_is_accepted(self) -> None:
         """The bound is inclusive — a limit a normal write brushes against
         becomes noise an agent works around."""
-        validate_display_contract({"nav_message": "x" * NAV_MESSAGE_MAX_CHARS})
+        _validate_contract({"nav_message": "x" * NAV_MESSAGE_MAX_CHARS})
 
     def test_a_fourth_highlight(self) -> None:
         with pytest.raises(ValueError) as exc:
-            validate_display_contract(
+            _validate_contract(
                 {
                     "highlights": [
                         {"tone": "good", "text": f"h{i}"}
@@ -118,17 +134,15 @@ class TestEveryBoundRefuses:
 
     def test_highlight_text_over_the_bound(self) -> None:
         with pytest.raises(ValueError, match="highlights\\[0\\].text"):
-            validate_display_contract(
-                {"highlights": [{"tone": "good", "text": "x" * 61}]}
-            )
+            _validate_contract({"highlights": [{"tone": "good", "text": "x" * 61}]})
 
     def test_proposal_title_and_body_bounds(self) -> None:
         with pytest.raises(ValueError, match="proposals\\[0\\].title"):
-            validate_display_contract(
+            _validate_contract(
                 {"proposals": [{"title": "x" * (PROPOSAL_TITLE_MAX_CHARS + 1)}]}
             )
         with pytest.raises(ValueError, match="proposals\\[0\\].body"):
-            validate_display_contract(
+            _validate_contract(
                 {
                     "proposals": [
                         {"title": "ok", "body": "x" * (PROPOSAL_BODY_MAX_CHARS + 1)}
@@ -139,12 +153,10 @@ class TestEveryBoundRefuses:
     def test_proposal_date_is_bounded_but_not_formatted(self) -> None:
         """A date field is not a place for prose — but mureo imposes no
         format on a value it only displays."""
-        validate_display_contract(
-            {"proposals": [{"title": "ok", "date": "2026-08-08"}]}
-        )
-        validate_display_contract({"proposals": [{"title": "ok", "date": "last week"}]})
+        _validate_contract({"proposals": [{"title": "ok", "date": "2026-08-08"}]})
+        _validate_contract({"proposals": [{"title": "ok", "date": "last week"}]})
         with pytest.raises(ValueError, match="proposals\\[0\\].date"):
-            validate_display_contract(
+            _validate_contract(
                 {
                     "proposals": [
                         {"title": "ok", "date": "x" * (PROPOSAL_DATE_MAX_CHARS + 1)}
@@ -154,7 +166,7 @@ class TestEveryBoundRefuses:
 
     def test_breakdown_note_over_the_bound(self) -> None:
         with pytest.raises(ValueError, match="breakdown.campaigns\\[0\\].note"):
-            validate_display_contract(
+            _validate_contract(
                 {
                     "breakdown": {
                         "campaigns": [
@@ -170,7 +182,7 @@ class TestEveryBoundRefuses:
     def test_the_ad_group_table_is_guarded_too(self) -> None:
         """Both levels, not just the first one a reader thinks of."""
         with pytest.raises(ValueError, match="breakdown.adgroups\\[1\\].note"):
-            validate_display_contract(
+            _validate_contract(
                 {
                     "breakdown": {
                         "adgroups": [
@@ -183,7 +195,7 @@ class TestEveryBoundRefuses:
 
     def test_stated_value_label_over_the_bound(self) -> None:
         with pytest.raises(ValueError, match="stated_values\\[0\\].label"):
-            validate_display_contract(
+            _validate_contract(
                 {
                     "stated_values": [
                         {
@@ -218,13 +230,11 @@ class TestClosedVocabularies:
 
     @pytest.mark.parametrize("tone", HIGHLIGHT_TONES)
     def test_every_declared_tone_is_accepted(self, tone: str) -> None:
-        validate_display_contract({"highlights": [{"tone": tone, "text": "ok"}]})
+        _validate_contract({"highlights": [{"tone": tone, "text": "ok"}]})
 
     def test_an_invented_tone_is_refused(self) -> None:
         with pytest.raises(ValueError) as exc:
-            validate_display_contract(
-                {"highlights": [{"tone": "critical", "text": "ok"}]}
-            )
+            _validate_contract({"highlights": [{"tone": "critical", "text": "ok"}]})
         # The message states the whole allow-list: an agent that reached for
         # "critical" needs to know what the alternatives ARE.
         for tone in HIGHLIGHT_TONES:
@@ -232,23 +242,23 @@ class TestClosedVocabularies:
 
     @pytest.mark.parametrize("status", PROPOSAL_STATUSES)
     def test_every_declared_status_is_accepted(self, status: str) -> None:
-        validate_display_contract({"proposals": [{"title": "ok", "status": status}]})
+        _validate_contract({"proposals": [{"title": "ok", "status": status}]})
 
     def test_an_invented_status_is_refused(self) -> None:
         with pytest.raises(ValueError, match="proposals\\[0\\].status"):
-            validate_display_contract(
+            _validate_contract(
                 {"proposals": [{"title": "ok", "status": "in_progress"}]}
             )
 
     @pytest.mark.parametrize("state", BREAKDOWN_STATES)
     def test_every_declared_row_state_is_accepted(self, state: str) -> None:
-        validate_display_contract(
+        _validate_contract(
             {"breakdown": {"campaigns": [{"name": "Brand", "state": state}]}}
         )
 
     def test_an_invented_row_state_is_refused(self) -> None:
         with pytest.raises(ValueError, match="breakdown.campaigns\\[0\\].state"):
-            validate_display_contract(
+            _validate_contract(
                 {"breakdown": {"campaigns": [{"name": "Brand", "state": "bad"}]}}
             )
 
@@ -257,14 +267,14 @@ class TestClosedVocabularies:
         report's own content and is stored — this surface has one view with a
         fixed layout, so a section it does not draw is a silent write."""
         with pytest.raises(ValueError) as exc:
-            validate_display_contract({"funnel": {"spend": 1}})
+            _validate_contract({"funnel": {"spend": 1}})
         assert "funnel" in str(exc.value)
         for section in DISPLAY_SECTIONS:
             assert section in str(exc.value)
 
     def test_a_third_breakdown_table_is_refused(self) -> None:
         with pytest.raises(ValueError, match="breakdown"):
-            validate_display_contract({"breakdown": {"keywords": []}})
+            _validate_contract({"breakdown": {"keywords": []}})
 
 
 # ---------------------------------------------------------------------------
@@ -276,18 +286,18 @@ class TestStatedValuesRefuseProse:
     """The reported defect in miniature: whole sentences in a numeric column."""
 
     def test_a_number_is_accepted(self) -> None:
-        validate_display_contract({"stated_values": [{"label": "CVR", "value": 0.021}]})
+        _validate_contract({"stated_values": [{"label": "CVR", "value": 0.021}]})
 
     def test_a_short_string_is_accepted(self) -> None:
         """A report legitimately states what a number cannot carry — and
         refusing those would push that content back into the prose."""
-        validate_display_contract(
+        _validate_contract(
             {"stated_values": [{"label": "goals met", "value": "3 of 7"}]}
         )
 
     def test_a_sentence_is_refused(self) -> None:
         with pytest.raises(ValueError) as exc:
-            validate_display_contract(
+            _validate_contract(
                 {
                     "stated_values": [
                         {
@@ -304,13 +314,13 @@ class TestStatedValuesRefuseProse:
         assert "truncated" in str(exc.value)
 
     def test_a_string_at_the_bound_is_accepted(self) -> None:
-        validate_display_contract(
+        _validate_contract(
             {"stated_values": [{"label": "x", "value": "y" * STATED_VALUE_MAX_CHARS}]}
         )
 
     def test_a_structure_is_refused(self) -> None:
         with pytest.raises(ValueError, match="never a structure"):
-            validate_display_contract(
+            _validate_contract(
                 {"stated_values": [{"label": "x", "value": {"spend": 1}}]}
             )
 
@@ -319,15 +329,13 @@ class TestStatedValuesRefuseProse:
         """``True`` in a numeric column is not a figure, and rendering it as
         ``1`` would invent one."""
         with pytest.raises(ValueError, match="stated_values\\[0\\].value"):
-            validate_display_contract(
-                {"stated_values": [{"label": "x", "value": value}]}
-            )
+            _validate_contract({"stated_values": [{"label": "x", "value": value}]})
 
     def test_a_formatted_figure_is_refused_in_the_breakdown(self) -> None:
         """The same refusal ``validate_report_summary`` makes: a string sits
         where the table reads a figure and renders as nothing."""
         with pytest.raises(ValueError, match="breakdown.campaigns\\[0\\].spend"):
-            validate_display_contract(
+            _validate_contract(
                 {"breakdown": {"campaigns": [{"name": "Brand", "spend": "¥773,957"}]}}
             )
 
@@ -348,7 +356,7 @@ class TestARefusalLeavesTheFileAlone:
         before = path.read_bytes()
 
         with pytest.raises(ValueError):
-            set_display(path, nav_message="x" * 200)
+            set_display(path, source="daily-check", nav_message="x" * 200)
 
         assert path.read_bytes() == before
 
@@ -358,7 +366,11 @@ class TestARefusalLeavesTheFileAlone:
         path = _state(tmp_path)
 
         with pytest.raises(ValueError):
-            set_display(path, stated_values=[{"label": "x", "value": {"a": 1}}])
+            set_display(
+                path,
+                source="daily-check",
+                stated_values=[{"label": "x", "value": {"a": 1}}],
+            )
 
         assert read_state_file(path).last_synced_at == "2026-08-08T09:00:00+09:00"
 
@@ -389,6 +401,7 @@ class TestSetDisplay:
         path = _state(tmp_path)
         doc = set_display(
             path,
+            source="daily-check",
             nav_message="CPA is over target — pause the two worst ad groups",
             highlights=[{"tone": "bad", "text": "CPA 12% over target"}],
             proposals=[{"title": "Pause two ad groups", "status": "proposed"}],
@@ -424,11 +437,12 @@ class TestSetDisplay:
         path = _state(tmp_path)
         set_display(
             path,
+            source="weekly-report",
             nav_message="old line",
             highlights=[{"tone": "watch", "text": "old chip"}],
         )
 
-        doc = set_display(path, nav_message="new line")
+        doc = set_display(path, source="daily-check", nav_message="new line")
 
         assert doc.display is not None
         assert doc.display.nav_message == "new line"
@@ -438,7 +452,7 @@ class TestSetDisplay:
         self, tmp_path: Path
     ) -> None:
         path = _state(tmp_path)
-        set_display(path, nav_message="stale line")
+        set_display(path, source="daily-check", nav_message="stale line")
 
         doc = set_display(path)
 
@@ -452,7 +466,7 @@ class TestSetDisplay:
         path = _state(tmp_path)
         set_report(path, "daily", {"narrative": "healthy"})
 
-        doc = set_display(path, nav_message="on pace")
+        doc = set_display(path, source="daily-check", nav_message="on pace")
 
         assert doc.reports == {"daily": {"narrative": "healthy"}}
 
@@ -616,7 +630,7 @@ class TestTheRuleIsStatedOnce:
 
     def test_the_refusal_repeats_the_rule(self) -> None:
         with pytest.raises(ValueError) as exc:
-            validate_display_contract({"nav_message": "x" * 200})
+            _validate_contract({"nav_message": "x" * 200})
         assert DISPLAY_CONTRACT_RULE in str(exc.value)
 
     def test_the_action_log_refusal_repeats_its_rule(self) -> None:
@@ -686,6 +700,7 @@ class TestTheWire:
         path = _state(tmp_path)
         set_display(
             path,
+            source="daily-check",
             nav_message="on pace",
             highlights=[{"tone": "good", "text": "CPA under target"}],
         )
@@ -693,6 +708,11 @@ class TestTheWire:
         summary = _summary(monkeypatch, tmp_path)
 
         assert summary["display"] == {
+            # Attribution rides on the wire too (#706): step 3 shows which
+            # skill drew the screen and when, so a card whose section a later
+            # run replaced is still attributable rather than merely gone.
+            "source": "daily-check",
+            "generated_at": read_state_file(path).last_synced_at,
             "nav_message": "on pace",
             "highlights": [{"tone": "good", "text": "CPA under target"}],
         }
@@ -705,6 +725,7 @@ class TestTheWire:
         path = _state(tmp_path)
         set_display(
             path,
+            source="daily-check",
             breakdown={"campaigns": [{"name": "Brand", "spend": 1.0}]},
             stated_values=[{"label": "CVR", "value": "3 of 7"}],
         )
@@ -773,7 +794,12 @@ class TestTheWire:
         """One emitter for both, so what the dashboard reads and what is on
         disk cannot drift into two shapes."""
         path = _state(tmp_path)
-        set_display(path, nav_message="on pace", proposals=[{"title": "Pause two"}])
+        set_display(
+            path,
+            source="daily-check",
+            nav_message="on pace",
+            proposals=[{"title": "Pause two"}],
+        )
 
         summary = _summary(monkeypatch, tmp_path)
 
@@ -781,3 +807,220 @@ class TestTheWire:
             summary["display"]
             == json.loads(path.read_text(encoding="utf-8"))["display"]
         )
+
+
+# ---------------------------------------------------------------------------
+# The screen says who drew it, and when
+# ---------------------------------------------------------------------------
+
+
+class TestTheScreenSaysWhoDrewIt:
+    """Last-writer-wins is the design, and this is what it costs paid off.
+
+    The contract is replaced wholesale, so a weekly review's proposals can be
+    gone by the evening. That is deliberate — a screen is one moment, and
+    merging two runs shows a moment that never happened — but a reader who
+    cannot tell WHOSE answer survived has no way to make sense of what is in
+    front of them. ``source`` and ``generated_at`` answer that.
+    """
+
+    def test_a_section_without_a_source_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="source is required"):
+            validate_display_contract({"nav_message": "on pace"})
+
+    @pytest.mark.parametrize("section", DISPLAY_SECTIONS)
+    def test_every_section_requires_attribution(self, section: str) -> None:
+        """All five, or an unattributed screen has a way in."""
+        payload: dict[str, Any] = {
+            "nav_message": "x",
+            "highlights": [{"tone": "good", "text": "x"}],
+            "proposals": [{"title": "x"}],
+            "breakdown": {"campaigns": [{"name": "x"}]},
+            "stated_values": [{"label": "x", "value": 1}],
+        }
+        with pytest.raises(ValueError, match="source is required"):
+            validate_display_contract({section: payload[section]})
+
+    def test_the_clear_needs_no_source(self) -> None:
+        """It takes the screen down and leaves nothing to attribute — the one
+        write for which "who" has nowhere to be stored."""
+        validate_display_contract({})
+
+    def test_an_overlong_source_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="source"):
+            validate_display_contract(
+                {
+                    "source": "x" * (DISPLAY_SOURCE_MAX_CHARS + 1),
+                    "nav_message": "on pace",
+                }
+            )
+
+    def test_a_blank_source_is_not_a_source(self) -> None:
+        with pytest.raises(ValueError, match="source is required"):
+            validate_display_contract({"source": "   ", "nav_message": "on pace"})
+
+    def test_generated_at_is_stamped_by_the_server(self, tmp_path: Path) -> None:
+        """The #460 rule, on the one field a reader has to be able to trust.
+
+        A model-supplied "now" is how a drifted clock gets persisted and read
+        back as fact, and the age of the screen is exactly what tells an
+        operator whether to believe it.
+        """
+        path = _state(tmp_path)
+        doc = set_display(path, source="daily-check", nav_message="on pace")
+
+        assert doc.display is not None
+        assert doc.display.generated_at == doc.last_synced_at
+        # …and it is not a parameter a caller could pass at all.
+        with pytest.raises(TypeError):
+            set_display(  # type: ignore[call-arg]
+                path,
+                source="daily-check",
+                nav_message="on pace",
+                generated_at="1999-01-01T00:00:00+00:00",
+            )
+
+    def test_clearing_drops_the_attribution_with_the_screen(
+        self, tmp_path: Path
+    ) -> None:
+        """No attributed blank: there is no screen, so there is no author."""
+        path = _state(tmp_path)
+        set_display(path, source="daily-check", nav_message="on pace")
+
+        doc = set_display(path)
+
+        assert doc.display is None
+        assert "display" not in json.loads(path.read_text(encoding="utf-8"))
+
+    def test_a_contract_written_before_attribution_existed_still_reads(self) -> None:
+        """The bounds are a WRITE rule, and so is this one: a screen already
+        on disk from before #706's review round has no author, and dropping
+        it to tidy that up would delete content an operator has."""
+        contract = parse_display_contract({"nav_message": "on pace"})
+
+        assert contract is not None
+        assert contract.nav_message == "on pace"
+        assert contract.source is None
+        assert contract.generated_at is None
+
+    def test_attribution_alone_is_not_a_screen(self) -> None:
+        """A payload with an author and nothing to show renders nothing, so
+        it round-trips to ``None`` rather than to an attributed blank."""
+        assert (
+            parse_display_contract(
+                {"source": "daily-check", "generated_at": "2026-08-08T09:00:00+09:00"}
+            )
+            is None
+        )
+
+    def test_attribution_leads_the_stored_object(self, tmp_path: Path) -> None:
+        """It is what a reader checks before believing any of the rest."""
+        path = _state(tmp_path)
+        set_display(path, source="weekly-report", nav_message="on pace")
+
+        stored = json.loads(path.read_text(encoding="utf-8"))["display"]
+
+        assert list(stored)[:2] == ["source", "generated_at"]
+
+
+# ---------------------------------------------------------------------------
+# Severity → tone
+# ---------------------------------------------------------------------------
+
+
+class TestTheToneMap:
+    """A chip is a severity in fewer characters, so the two vocabularies need
+    one table — mapped by feel, the same finding ends up amber on one
+    client's card and red on another's."""
+
+    def test_every_tone_it_maps_to_is_a_real_tone(self) -> None:
+        assert set(HIGHLIGHT_TONE_BY_SEVERITY.values()) <= set(HIGHLIGHT_TONES)
+
+    def test_every_severity_is_decided(self) -> None:
+        """A fifth severity must not be able to appear without someone
+        deciding whether it is a chip at all — which is the decision ``info``
+        already has an answer to."""
+        from mureo.analysis.report_flags import SEVERITIES
+
+        undecided = set(SEVERITIES) - set(HIGHLIGHT_TONE_BY_SEVERITY) - {"info"}
+        assert not undecided, (
+            f"report_flags gained severity {sorted(undecided)}. Decide whether "
+            "it becomes a highlight chip (add it to HIGHLIGHT_TONE_BY_SEVERITY) "
+            "or stays in the report like `info` does."
+        )
+
+    def test_info_is_deliberately_not_a_chip(self) -> None:
+        """The load-bearing half. There are at most three chips, so a neutral
+        note takes one an action or a win needed — and the note is not lost,
+        it is still in the report."""
+        assert "info" not in HIGHLIGHT_TONE_BY_SEVERITY
+        assert "info does NOT become a highlight" in HIGHLIGHT_TONE_RULE
+
+    def test_the_rule_states_every_mapping_it_makes(self) -> None:
+        for severity, tone in HIGHLIGHT_TONE_BY_SEVERITY.items():
+            assert f"{severity} → {tone}" in HIGHLIGHT_TONE_RULE
+
+
+# ---------------------------------------------------------------------------
+# The overwrite rule
+# ---------------------------------------------------------------------------
+
+
+class TestTheOverwriteRule:
+    """What a SECOND writer in the same day has to do, stated once (#659's
+    shape) because no schema can enforce it: whether another skill's proposal
+    is still live is a judgement about today's findings, which only the
+    caller holds."""
+
+    def test_the_tool_description_carries_it(self) -> None:
+        from mureo.mcp.tools_mureo_context import TOOLS
+
+        tool = next(t for t in TOOLS if t.name == "mureo_state_display_set")
+        assert DISPLAY_OVERWRITE_RULE in tool.description
+
+    def test_the_attribution_refusal_carries_it(self) -> None:
+        """The refusal an unattributed write meets is the moment a caller is
+        most likely to be a second writer that did not look first."""
+        with pytest.raises(ValueError) as exc:
+            validate_display_contract({"nav_message": "on pace"})
+        assert DISPLAY_OVERWRITE_RULE in str(exc.value)
+
+    def test_it_names_the_read_the_carry_over_and_the_limit(self) -> None:
+        """Three instructions, and the third is what keeps the carry-over
+        honest: only ``proposals`` travels, because only a recommendation is
+        a standing commitment rather than a reading of one moment."""
+        assert "mureo_state_get" in DISPLAY_OVERWRITE_RULE
+        assert "proposals" in DISPLAY_OVERWRITE_RULE
+        assert "NOTHING ELSE" in DISPLAY_OVERWRITE_RULE
+        for section in ("nav_message", "highlights", "breakdown", "stated_values"):
+            assert section in DISPLAY_OVERWRITE_RULE
+
+
+async def test_the_real_dispatch_path_refuses_an_unattributed_screen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The attribution requirement fires at the SCHEMA layer, like the bounds.
+
+    Expressed as ``dependentRequired`` so the dispatcher refuses before the
+    handler runs; the guard repeats it for callers that bypass the schema
+    (an out-of-tree writer calling ``set_display`` directly).
+    """
+    from mureo.core.runtime_context import reset_runtime_context
+    from mureo.mcp import server as server_mod
+
+    monkeypatch.chdir(tmp_path)
+    reset_runtime_context()
+    try:
+        with pytest.raises(ValueError) as exc:
+            await server_mod.handle_call_tool(
+                "mureo_state_display_set", {"nav_message": "on pace"}
+            )
+    finally:
+        reset_runtime_context()
+
+    message = str(exc.value)
+    assert message.startswith("Invalid arguments for mureo_state_display_set: at ")
+    assert "'source' is a dependency of 'nav_message'" in message
+    # The handler never ran: its refusal always carries the rule text.
+    assert DISPLAY_CONTRACT_RULE not in message
+    assert not (tmp_path / "STATE.json").exists()

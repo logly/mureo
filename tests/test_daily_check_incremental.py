@@ -40,11 +40,22 @@ def test_copies_are_byte_identical() -> None:
 def test_stays_readable_under_the_size_budget() -> None:
     """The rewrite must stay ~150 lines — the skill is a prompt, not a manual.
 
-    Raised by exactly the two lines #690's persistence step costs (a step and
-    the blank line before it); the budget is a ceiling on prose, not a reason
-    to leave a step out.
+    Raised twice, each time by exactly what a persistence step costs and no
+    more; the budget is a ceiling on prose, not a reason to leave a step out.
+
+    - #690: two lines (a step and the blank line before it).
+    - #706: fifteen — the display-contract step. Six of those are the section
+      bullets and one is ``DISPLAY_CONTRACT_RULE`` pasted verbatim, which is
+      the point of it: the bounds an agent is held to are stated where it
+      composes, in the same words the refusal will use, rather than
+      paraphrased into a shorter line that could drift from the code.
+    - #706 review round: three more — the ``source`` bullet, and
+      ``DISPLAY_OVERWRITE_RULE`` (also verbatim) with its blank line. That
+      rule is the whole answer to "a later run replaced my proposals", and it
+      cannot live anywhere but here: no schema can decide whether another
+      skill's proposal is still live.
     """
-    assert len(_body().splitlines()) <= 157
+    assert len(_body().splitlines()) <= 175
 
 
 def test_two_modes_documented() -> None:

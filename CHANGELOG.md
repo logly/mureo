@@ -2,6 +2,84 @@
 
 ### Added
 
+- **The nine report-writing skills now fill the display contract** (#706,
+  step 2 of 3). Step 1 gave the dashboard a small, write-guarded surface and
+  refused everything that does not fit it. That is only half a fix: a guard
+  an agent meets mid-run is the expensive way to learn a rule, and a contract
+  nobody writes leaves the screen empty.
+
+  So `daily-check`, `weekly-report`, `monthly-report`, `goal-review`,
+  `audience-review`, `experiment`, `ad-fatigue-check`, `budget-pacing` and
+  `tracking-health` each gain a **Persist the display contract** step,
+  immediately after the report step they already had. The screen is rendered
+  from the same figures in the same pass, and every skill states in as many
+  words that it **reaches no new verdict there** — a skill that re-decided a
+  campaign's state while writing the screen would put two answers in one
+  document, and the dashboard would show whichever was written second.
+
+  Each step says what its own run puts in each section: the one operator line
+  for `nav_message`, the verdict chips for `highlights` with the `tone`
+  matching the verdict already given, the entities it judged in
+  `breakdown.campaigns` / `.adgroups` with the figures it already holds, the
+  recommendations it did *not* carry out in `proposals`, and label+figure
+  chips in `stated_values` — **no prose notes there**, because a sentence in
+  that row lands in a numeric column and the tool refuses it; anything
+  needing a sentence stays in the report's `narrative`, exactly where it goes
+  today.
+
+  `DISPLAY_CONTRACT_RULE` is pasted into each skill **verbatim** rather than
+  paraphrased (#659's shape), so the sentence an agent reads while composing
+  and the sentence it gets back on a refusal cannot drift apart. And because
+  a refusal is what an agent actually meets, the skills name the recovery:
+  **shorten and rewrite** — lead with the point, drop the connectives — never
+  re-send the same sentence trimmed by a character, which spends a run's
+  context on a bound one rewrite would have met.
+
+  Every recording step now also instructs `display_title` (≤40) and
+  `display_summary` (≤120) on the `action_log` entry it writes. Those *add* a
+  rendering and replace nothing: `summary` keeps being written as fully as
+  the next agent needs, and the skills say why — the dashboard row shows the
+  display line and stops there, with the full note behind drill-down.
+
+  `skills/_mureo-strategy/SKILL.md` carries the section's schema once for all
+  nine, beside the `reports` schema it already described, including the
+  **one writer per run** rule: `mureo_state_display_set` replaces the whole
+  section rather than merging into it, so two skills writing different
+  sections in one run do not compose — the second wins outright.
+
+  **The screen now says who drew it.** `display` gains `source` (the writing
+  skill, ≤24 chars, **required** alongside any section — enforced at the
+  schema layer via `dependentRequired`, so an unattributed screen is refused
+  before the handler runs) and `generated_at`, stamped **server-side** on the
+  #460 rule every other timestamp in this document follows. Last-writer-wins
+  is deliberate — a screen is one moment, and a merge shows a moment that
+  never happened — but it cost a reader the ability to tell whose answer
+  survived, and these two pay that back: a card whose weekly proposals were
+  replaced by the evening's daily-check still says who last spoke and when.
+  A call that states no section clears the screen and needs neither.
+
+  **And the second writer has a duty.** A day has a morning weekly-report and
+  an evening daily-check, so `DISPLAY_OVERWRITE_RULE` — pasted verbatim into
+  all nine skills and into the tool description — says: read the current
+  `display` first, carry over the other skill's `proposals` that are still
+  live, and carry **nothing else**. A `nav_message` or a `breakdown` row is a
+  reading of the figures in front of whoever wrote it, and copying one
+  forward would put that judgement on screen under an author who never made
+  it; a proposal is a standing commitment and stays true until it is done or
+  withdrawn. No schema can enforce that — whether a proposal is still live is
+  a judgement about today's findings — so the rule reaches the caller as
+  words or nowhere.
+
+  **One tone table.** `action → bad`, `watch → watch`, `positive → good`, and
+  `info` deliberately does **not** become a highlight: there are at most
+  three chips, a neutral note would spend one an action or a win needed, and
+  the note is still in the report. Pasted onto the `highlights` bullet of all
+  nine skills, and pinned against `report_flags.SEVERITIES` so a fifth
+  severity cannot appear without someone deciding whether it is a chip.
+
+  The dashboard that renders all of this is step 3, a separate issue; nothing
+  in the browser changed here.
+
 - **The dashboard now reads a display contract, not the agent's prose**
   (#706, step 1 of 3). STATE.json is the agent's working memory — prose-heavy
   by design, written for the next AI decision. The dashboard had been

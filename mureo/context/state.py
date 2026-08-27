@@ -607,6 +607,7 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
 def set_display(
     path: Path,
     *,
+    source: str | None = None,
     nav_message: str | None = None,
     highlights: list[dict[str, Any]] | None = None,
     proposals: list[dict[str, Any]] | None = None,
@@ -651,6 +652,33 @@ def set_display(
     replacement exists to prevent. If a future run needs two writers, they
     compose their sections BEFORE calling, not by calling twice.
 
+    **The screen says who drew it.** ``source`` is REQUIRED alongside any
+    section that renders — the skill's own name — and ``generated_at`` is
+    stamped here from the server's clock. Last-writer-wins is the design,
+    but it costs a reader the ability to tell whose answer survived, and
+    these two fields are that cost paid off: a card whose weekly proposals
+    were replaced by the evening's daily-check still says who last spoke and
+    when. A call that states no section needs neither: the clear takes the
+    screen down, and there is no document left to attribute.
+
+    ``generated_at`` is deliberately NOT accepted from the caller. It is the
+    #460 rule every other timestamp in this document follows
+    (``action_log.timestamp``, ``not_collected.attempted_at``,
+    ``AdState.as_of``): a model-supplied "now" is how a drifted clock gets
+    persisted and read back later as fact, and the age of a screen is exactly
+    the thing a reader has to be able to trust. It is stamped from the SAME
+    clock read as ``last_synced_at``, so the two cannot disagree by a hair
+    and read as two events.
+
+    **The second writer's rule lives in
+    :data:`~mureo.core.display_contract.DISPLAY_OVERWRITE_RULE`** and is not
+    enforced here, because it cannot be: whether another skill's proposal is
+    still live is a judgement about today's findings, which only the caller
+    holds. mureo states the rule where the caller reads it — the tool
+    description and every skill that writes a contract — and this function
+    guarantees only the part a machine can: the write is whole, and it is
+    attributed.
+
     Everything else in the document — platforms, campaigns, ``action_log``,
     ``reports``, ``batches`` — is untouched by construction (``replace``).
     ``last_synced_at`` IS re-stamped, as :func:`set_report` re-stamps it: this
@@ -665,6 +693,8 @@ def set_display(
 
     Args:
         path: STATE.json location.
+        source: The skill writing this screen (``"daily-check"``). Required
+            whenever any section is stated; omitted only for the clear.
         nav_message: The one operator-facing line (運用ナビ).
         highlights: Up to three ``{tone, text}`` chips.
         proposals: ``{title, body, status, date}`` rows.
@@ -678,15 +708,23 @@ def set_display(
 
     Raises:
         ValueError: a value is over its bound, names a value outside a closed
-            vocabulary, or states prose where a figure belongs.
+            vocabulary, states prose where a figure belongs, or states a
+            section without a ``source``.
     """
     # Imported lazily — the ``mureo.core`` -> ``mureo.context.state`` cycle
     # again (see ``set_platform_metrics``).
     from mureo.core.display_contract import validate_display_contract
 
+    written_at = _now_iso()
     supplied: dict[str, Any] = {
         key: value
         for key, value in (
+            ("source", source),
+            # ``generated_at`` is stamped here, not accepted (the #460 rule —
+            # see the docstring). Placed in the same dict so the validator and
+            # the codec see one shape, and so a clear (no section supplied)
+            # drops it with everything else.
+            ("generated_at", written_at if source is not None else None),
             ("nav_message", nav_message),
             ("highlights", highlights),
             ("proposals", proposals),
@@ -701,8 +739,10 @@ def set_display(
     contract = parse_display_contract(supplied)
 
     def _build(doc: StateDocument) -> StateDocument:
-        # One field, by ``replace``: every other section is carried over.
-        return replace(doc, last_synced_at=_now_iso(), display=contract)
+        # One field, by ``replace``: every other section is carried over. One
+        # clock read for the whole write, so the screen's age and the
+        # document's cannot disagree by a hair and read as two events.
+        return replace(doc, last_synced_at=written_at, display=contract)
 
     return _locked_state_mutation(path, _build)
 

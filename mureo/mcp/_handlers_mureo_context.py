@@ -441,11 +441,20 @@ async def handle_state_display_set(
     A call that states no section CLEARS the contract, exactly as an omitted
     ``reason`` clears a ``not_collected`` note: the section is the whole
     screen, and there has to be a way to take it down.
+
+    ``generated_at`` is deliberately not a parameter — ``set_display``
+    stamps it server-side (#460), the same rule
+    ``mureo_state_action_log_append`` applies to ``timestamp`` and
+    ``mureo_state_platform_not_collected_set`` to ``attempted_at``.
     """
     path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     try:
         doc = set_display(
             path,
+            source=arguments.get("source"),
+            # ``generated_at`` is NOT relayed: ``set_display`` stamps it from
+            # the server's clock (#460), so a drifted client date can never
+            # be persisted and read back as when the screen was written.
             nav_message=arguments.get("nav_message"),
             highlights=arguments.get("highlights"),
             proposals=arguments.get("proposals"),
