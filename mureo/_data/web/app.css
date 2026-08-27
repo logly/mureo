@@ -4241,22 +4241,90 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    look acceptable.
    ====================================================================== */
 
+/* ---- the detail toolbar -------------------------------------------- */
+/* Who the screen is about on the left, the controls that scope it on the
+   right. The period tabs and the sync time are MOVED into this row rather
+   than duplicated — see moveReportsMeta and the markup's note. */
+.reports-detail-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.reports-detail-ident {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reports-detail-ident > .dashboard-reports-detail-client {
+  margin: 0;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
+}
+
+.reports-detail-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* The same three-level vocabulary the client grid uses, in the same
+   colours — one client must not be "watch" on the grid and something else
+   on its own page. */
+.reports-detail-health {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: var(--type-kpi-weight);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.reports-detail-health.is-attention {
+  background: var(--status-alert-bg);
+  border: 1px solid var(--status-alert-line);
+  color: var(--status-alert);
+}
+
+.reports-detail-health.is-watch {
+  background: var(--status-watch-bg);
+  border: 1px solid var(--status-watch-line);
+  color: var(--status-watch);
+}
+
+.reports-detail-health.is-ok {
+  background: var(--status-ok-bg);
+  border: 1px solid var(--status-ok-line);
+  color: var(--status-ok);
+}
+
 /* ---- platform picker ---------------------------------------------- */
 .reports-detail-platform {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
 }
 
+/* A compact pill, not a full-width native control: it sits on a toolbar
+   beside the period tabs, and a stretched <select> there reads as a form. */
 .reports-platform-select {
   font: inherit;
-  font-size: var(--type-body-size);
+  font-size: var(--type-caption-size);
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--r-sm);
-  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  padding: 4px 12px;
+  width: auto;
+  max-width: 220px;
 }
 
 /* ---- 運用ナビ band -------------------------------------------------- */
@@ -4449,6 +4517,40 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .reports-chart-body {
   margin-top: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ---- chart axes ----------------------------------------------------
+   Endpoints only — the y scale's top and its zero, the first and last
+   period on the x. A grid of ticks under a 220px plot competes with the
+   funnel above it for the same attention, and the chart is read for shape
+   and magnitude rather than for individual values. */
+.reports-chart-plot {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.reports-chart-yaxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 0 0;
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.reports-chart-xaxis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.reports-chart-tick {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .reports-chart-svg {
@@ -4509,11 +4611,22 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   padding: 8px 10px;
 }
 
+/* Title left, date top-right. The date wrapped onto two lines against the
+   card's right edge in the capture, which made the card read as a date with
+   a note attached. */
+.reports-proposal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .reports-proposal-title {
   margin: 0;
   font-size: var(--type-card-title-size);
   font-weight: var(--type-card-title-weight);
   color: var(--ink);
+  min-width: 0;
 }
 
 .reports-proposal-body {
@@ -4523,11 +4636,11 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-proposal-date {
-  display: block;
-  margin-top: 4px;
+  flex: 0 0 auto;
   font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .reports-proposal-more {
@@ -4788,6 +4901,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
    Listed together rather than beside each block so the set is checkable at a
    glance: every `data-reports-*` section this screen hides must be here. */
+.reports-detail-toolbar[hidden],
+.reports-detail-ident[hidden],
+.reports-detail-controls[hidden],
+.reports-detail-health[hidden],
+.reports-chart-plot[hidden],
+.reports-chart-xaxis[hidden],
+.reports-chart-yaxis[hidden],
+.reports-proposal-head[hidden],
 .reports-detail-platform[hidden],
 .reports-nav-band[hidden],
 .reports-funnel-row[hidden],

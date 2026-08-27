@@ -83,6 +83,14 @@
     if (!block || !body) return false;
     body.textContent = "";
     if (note) note.textContent = "";
+    // Cleared up front: a metric with no history must not keep the previous
+    // metric's ticks sitting beside an empty plot.
+    ["[data-reports-chart-yaxis]", "[data-reports-chart-xaxis]"].forEach(function (
+      sel
+    ) {
+      const axis = document.querySelector(sel);
+      if (axis) axis.textContent = "";
+    });
 
     const dayList = CHART.days(platform && platform.daily, CHART_STATE.metric);
     const buckets = CHART.buckets(dayList, CHART_STATE.grain);
@@ -161,6 +169,7 @@
     }
     const svg = CHART.buildChart(buckets);
     if (svg) body.appendChild(svg);
+    renderAxes(buckets);
     if (note) {
       const partial = CHART.incomplete(buckets);
       note.textContent = partial.length
@@ -170,8 +179,69 @@
     return true;
   }
 
+  /**
+   * The two axes, as text beside and under the plot.
+   *
+   * Deliberately the ENDPOINTS only — the y scale's top and its zero, and
+   * the first and last period on the x — rather than a full set of ticks.
+   * The chart is read for shape and magnitude, and a grid of numbers under a
+   * 220px plot competes with the funnel above it for the same attention.
+   *
+   * The y axis is labelled 0 to the series maximum because that is the scale
+   * `buildChart` actually draws: it starts at zero rather than at the series
+   * minimum, so a 3% dip is a 3% dip and the area fill has a floor that
+   * means something.
+   */
+  function renderAxes(buckets) {
+    const yAxis = document.querySelector("[data-reports-chart-yaxis]");
+    const xAxis = document.querySelector("[data-reports-chart-xaxis]");
+    if (yAxis) {
+      yAxis.textContent = "";
+      let high = 0;
+      buckets.forEach(function (b) {
+        if (b.value > high) high = b.value;
+      });
+      yAxis.appendChild(el("span", "reports-chart-tick", formatTick(high)));
+      yAxis.appendChild(el("span", "reports-chart-tick", "0"));
+    }
+    if (xAxis) {
+      xAxis.textContent = "";
+      if (buckets.length) {
+        xAxis.appendChild(
+          el("span", "reports-chart-tick", axisLabel(buckets[0].label))
+        );
+        xAxis.appendChild(
+          el(
+            "span",
+            "reports-chart-tick",
+            axisLabel(buckets[buckets.length - 1].label)
+          )
+        );
+      }
+    }
+  }
+
+  /** A bucket's label as an axis tick: `2026-08-01` → `8/01`, `2026-08` → `8月`. */
+  function axisLabel(label) {
+    const day = /^\d{4}-(\d{2})-(\d{2})$/.exec(label);
+    if (day) return String(Number(day[1])) + "/" + day[2];
+    const month = /^\d{4}-(\d{2})$/.exec(label);
+    if (month) return MUREO.t("dashboard.reports_chart_month", { n: Number(month[1]) });
+    return label;
+  }
+
+  /** A y tick. Integers stay integers; a fraction keeps one decimal. */
+  function formatTick(value) {
+    if (typeof value !== "number" || !isFinite(value)) return "";
+    return Number.isInteger(value)
+      ? value.toLocaleString()
+      : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  }
+
   const api = {
     CHART_STATE: CHART_STATE,
+    renderAxes: renderAxes,
+    axisLabel: axisLabel,
     renderChartTabs: renderChartTabs,
     renderChart: renderChart,
   };

@@ -149,6 +149,55 @@
   }
 
   // --------------------------------------------------------------------
+  // (0) Who this screen is about
+  // --------------------------------------------------------------------
+
+  //: Highlight tone → the health the badge states. The three-level
+  //: vocabulary the client index already uses, and its labels
+  //: (`dashboard.reports_health_*`), so one client is not "watch" on the
+  //: grid and something else on its own page.
+  const HEALTH_BY_TONE = { bad: "attention", watch: "watch", good: "ok" };
+  const HEALTH_RANK = ["attention", "watch", "ok"];
+
+  /**
+   * The client's health, from the contract's own highlights, or `null`.
+   *
+   * Read off the highlights rather than recomputed, because the skill that
+   * wrote them already graded every finding — deriving a second verdict here
+   * would let the badge disagree with the chips directly under it. The worst
+   * tone present wins, which is how the index ranks a client too.
+   *
+   * `null` without a contract: there is nothing to grade, and a badge
+   * asserting "nothing raised" over a screen mureo has no verdict for would
+   * be worse than no badge.
+   */
+  function clientHealth(summary) {
+    const chips = DISPLAY.highlights(summary);
+    if (!DISPLAY.hasDisplay(summary) || chips.length === 0) return null;
+    let worst = HEALTH_RANK.length - 1;
+    chips.forEach(function (chip) {
+      const rank = HEALTH_RANK.indexOf(HEALTH_BY_TONE[chip.tone]);
+      if (rank !== -1 && rank < worst) worst = rank;
+    });
+    return HEALTH_RANK[worst];
+  }
+
+  /** Draw the health badge beside the client's name, or hide it. */
+  function renderHealthBadge(summary) {
+    const badge = document.querySelector("[data-reports-detail-health]");
+    if (!badge) return;
+    const health = clientHealth(summary);
+    if (!health) {
+      badge.hidden = true;
+      badge.textContent = "";
+      return;
+    }
+    badge.hidden = false;
+    badge.className = "reports-detail-health is-" + health;
+    badge.textContent = MUREO.t("dashboard.reports_health_" + health);
+  }
+
+  // --------------------------------------------------------------------
   // (1) The navigation banner
   // --------------------------------------------------------------------
 
@@ -327,6 +376,19 @@
   // (4) Proposals
   // --------------------------------------------------------------------
 
+  /**
+   * `2026-08-26` → `08/26`, and anything else through unchanged.
+   *
+   * Only a full ISO date is shortened. The contract imposes no format on
+   * this field (mureo displays it and never parses it), so a writer's
+   * `last week` stays exactly as written rather than being mangled by a
+   * rule that was not meant for it.
+   */
+  function shortDate(value) {
+    const match = /^\d{4}-(\d{2})-(\d{2})$/.exec(value);
+    return match ? match[1] + "/" + match[2] : value;
+  }
+
   /** The proposals panel, or `false` when the contract states none. */
   function renderProposals(summary) {
     const block = document.querySelector("[data-reports-proposals]");
@@ -367,9 +429,21 @@
     }
     groups.open.slice(0, PROPOSAL_CAP).forEach(function (entry) {
       const li = el("li", "reports-proposal");
-      li.appendChild(el("p", "reports-proposal-title", entry.title));
+      const head = el("div", "reports-proposal-head");
+      head.appendChild(el("p", "reports-proposal-title", entry.title));
+      if (entry.date) {
+        // Short in the corner, whole on the attribute. `2026-08-26` wrapped
+        // onto two lines against the card's right edge in the capture, and a
+        // card whose date is taller than its title reads as a date with a
+        // note attached. Nothing is altered: the stored value is what the
+        // title carries, and the shortening is a display decision about an
+        // unchanged string.
+        const date = el("span", "reports-proposal-date", shortDate(entry.date));
+        date.title = entry.date;
+        head.appendChild(date);
+      }
+      li.appendChild(head);
       if (entry.body) li.appendChild(el("p", "reports-proposal-body", entry.body));
-      if (entry.date) li.appendChild(el("span", "reports-proposal-date", entry.date));
       list.appendChild(li);
     });
     if (groups.open.length > PROPOSAL_CAP) {
@@ -657,6 +731,7 @@
     const ctx = context || {};
     if (!DISPLAY.hasDisplay(summary)) {
       hideAll(CONTRACT_SECTIONS);
+      renderHealthBadge(summary);
       const picker = document.querySelector("[data-reports-detail-platform]");
       if (picker) {
         picker.hidden = true;
@@ -669,6 +744,7 @@
     const platforms = Array.isArray(summary.platforms) ? summary.platforms : [];
     const platform = pickPlatform(platforms, ctx.platformKey);
     renderPlatformPicker(platforms, platform, ctx.onPlatform || function () {});
+    renderHealthBadge(summary);
     renderNavBanner(summary);
     renderFunnel(platform);
     // The chart owns its own redraw loop: a metric or granularity tab is a
@@ -707,8 +783,11 @@
     PROPOSAL_CAP: PROPOSAL_CAP,
     CONTRACT_SECTIONS: CONTRACT_SECTIONS,
     LEGACY_SECTIONS: LEGACY_SECTIONS,
+    clientHealth: clientHealth,
+    renderHealthBadge: renderHealthBadge,
     pickPlatform: pickPlatform,
     spendDelta: spendDelta,
+    shortDate: shortDate,
     secondaryValue: secondaryValue,
     attributionText: attributionText,
     renderNavBanner: renderNavBanner,

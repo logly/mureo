@@ -346,6 +346,7 @@
   // recent activity, period toggle). Sets the back bar + client name.
   function showReportsClientDetail(slug) {
     setReportsView("detail");
+    moveReportsMeta("detail");
     const nameEl = document.querySelector("[data-reports-detail-client]");
     if (nameEl) {
       const c = REPORTS_VIEW_STATE.reportsClients.find(function (r) {
@@ -361,6 +362,27 @@
     // Bump the generation so any in-flight render is dropped, then load.
     REPORTS_VIEW_STATE.reportsRenderSeq++;
     renderReportsSummary(slug || null);
+  }
+
+  /**
+   * Put the period tabs + sync time where the current view wants them.
+   *
+   * ONE node, moved — never a second copy. The index wants them in the
+   * shared head beside "Reports"; the detail view wants them on its own
+   * toolbar, at the right of the platform picker, which is where the staff
+   * mockup puts them and where the capture found them missing. Two nodes
+   * carrying `data-reports-period` would make querySelector return whichever
+   * came first in the document, which is #691's defect exactly — a hook
+   * silently serving two masters.
+   */
+  function moveReportsMeta(view) {
+    const meta = document.querySelector("[data-reports-meta]");
+    const slot =
+      view === "detail"
+        ? document.querySelector("[data-reports-detail-meta-slot]")
+        : document.querySelector("[data-reports-head-meta-slot]");
+    if (!meta || !slot || meta.parentNode === slot) return;
+    slot.appendChild(meta);
   }
 
   // Render the period toggle from the summary's `periods` union. Shown only
@@ -694,6 +716,9 @@
     // contract gets the three tiers that shipped before it. Both are
     // complete screens, and renderReportsDetail is the one place that
     // decides which.
+    // The log FIRST: a row's shape is decided by the entry, not by the
+    // contract, so it must not sit downstream of the screen that is.
+    renderReportsActions(summary.recent_actions);
     const drewContract = R_DETAIL.renderReportsDetail(summary, {
       platformKey: REPORTS_VIEW_STATE.reportsPlatformKey,
       onPlatform: function (key) {
@@ -708,7 +733,6 @@
       renderReportsChanges(platforms, latestReport(summary.reports));
       renderReportsPlatformTier(platforms);
     }
-    renderReportsActions(summary.recent_actions);
   }
 
   // Tier (3)'s frame: shown whenever there is at least one platform card in
@@ -757,6 +781,8 @@
     if (seq !== REPORTS_VIEW_STATE.reportsRenderSeq) return;
     REPORTS_VIEW_STATE.reportsClients =
       body && Array.isArray(body.clients) ? body.clients : [];
+    // The head owns them again the moment the index is what is on screen.
+    moveReportsMeta(REPORTS_VIEW_STATE.reportsView);
     REPORTS_VIEW_STATE.reportsCanArchive = !!(body && body.can_archive);
 
     // An archived client is not a live selection: archiving the one on screen

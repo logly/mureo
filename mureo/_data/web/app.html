@@ -184,13 +184,21 @@
                     <span data-i18n="dashboard.reports_back">← Clients</span>
                   </button>
                 </div>
-                <div class="dashboard-reports-meta">
+                <!-- The period tabs + sync time. ONE node, moved between
+                     the two slots by `moveReportsMeta`: the index wants them
+                     up here beside "Reports", the detail view wants them on
+                     its own toolbar. A second copy would give two nodes the
+                     same `data-reports-period` hook, and querySelector would
+                     pick whichever came first — #691's defect exactly. -->
+                <div class="dashboard-reports-head-meta-slot" data-reports-head-meta-slot>
+                <div class="dashboard-reports-meta" data-reports-meta>
                   <!-- Period toggle (前日｜30日). Populated by renderReports()
                        from summary.periods; hidden unless >= 2 windows. -->
                   <div class="dashboard-reports-period" data-reports-period
                        role="group" aria-label="Report period" hidden></div>
                   <!-- Freshness: "synced N ago" from last_synced_at. -->
                   <span class="dashboard-reports-freshness" data-reports-freshness></span>
+                </div>
                 </div>
               </div>
 
@@ -323,16 +331,31 @@
 
               <!-- DETAIL view: one client's full report. -->
               <div class="dashboard-reports-detail" data-reports-detail hidden>
-                <!-- Which platform's figures the funnel and the chart
-                     describe. ONE platform, never a sum: adding two
-                     platforms' impressions is arithmetic nobody asked for
-                     and their CPAs cannot be added at all. Hidden when the
-                     client has fewer than two platforms — there is no
-                     choice to offer. -->
-                <div class="reports-detail-platform" data-reports-detail-platform hidden></div>
-
-                <!-- Selected client name (multi-client / Agency only). -->
-                <h3 class="dashboard-reports-detail-client" data-reports-detail-client hidden></h3>
+                <!-- The detail view's own toolbar. The period tabs and the
+                     sync time are NOT duplicated here — the shared head owns
+                     those nodes, and `setReportsView` moves the one node into
+                     this row on the detail view and back to the head on the
+                     index. Two nodes carrying `data-reports-period` would
+                     make querySelector pick whichever came first in the
+                     document, which is the #691 defect exactly. -->
+                <div class="reports-detail-toolbar">
+                  <div class="reports-detail-ident">
+                    <!-- The client's name. Shown on a single-client install
+                         too: a screen about one client should say which. -->
+                    <h3 class="dashboard-reports-detail-client" data-reports-detail-client hidden></h3>
+                    <span class="reports-detail-health" data-reports-detail-health hidden></span>
+                  </div>
+                  <div class="reports-detail-controls">
+                    <!-- Which platform's figures the funnel and the chart
+                         describe. ONE platform, never a sum: adding two
+                         platforms' impressions is arithmetic nobody asked
+                         for and their CPAs cannot be added at all. Hidden
+                         when the client has fewer than two platforms. -->
+                    <div class="reports-detail-platform" data-reports-detail-platform hidden></div>
+                    <!-- Where the head's period tabs + sync time land. -->
+                    <div class="reports-detail-meta-slot" data-reports-detail-meta-slot></div>
+                  </div>
+                </div>
 
                 <!-- ============================================================
                      #706 step 3-a: the contract-driven screen. Every section
@@ -382,7 +405,15 @@
                              role="group" aria-label="Chart granularity"></div>
                       </div>
                     </div>
-                    <div class="reports-chart-body" data-reports-chart-body></div>
+                    <!-- Axis labels live in the DOM, not in the <svg>:
+                         the chart uses preserveAspectRatio="none" so it can
+                         take whatever width CSS gives it, which stretches
+                         any <text> inside it out of shape. -->
+                    <div class="reports-chart-plot">
+                      <div class="reports-chart-yaxis" data-reports-chart-yaxis></div>
+                      <div class="reports-chart-body" data-reports-chart-body></div>
+                    </div>
+                    <div class="reports-chart-xaxis" data-reports-chart-xaxis></div>
                     <!-- A week or month missing days is not that period's
                          total. #690 refused to zero-fill a day nobody
                          collected; summing would smuggle the zero back one
@@ -465,6 +496,17 @@
                      finding already carried. -->
                 <div class="reports-highlights" data-reports-highlights hidden></div>
 
+                <!-- Recent autonomous actions from the action log. One
+                     short line each — a display line where the entry has
+                     one, and otherwise the summary with its markdown
+                     emphasis stripped and its tail behind a disclosure.
+                     Both screens render it: the shape is a property of the
+                     ENTRY, not of the client. -->
+                <div class="dashboard-reports-block" data-reports-actions hidden>
+                  <h3 data-i18n="dashboard.reports_actions_title">Recent actions</h3>
+                  <ul class="dashboard-reports-actions-list" data-reports-actions-list></ul>
+                </div>
+
                 <!-- The agent's own prose, kept but no longer rendered at
                      everyone by default: opened deliberately. -->
                 <details class="reports-prose" data-reports-prose hidden>
@@ -516,12 +558,6 @@
                   </div>
                   <div class="dashboard-reports-cards" data-reports-cards></div>
                 </section>
-
-                <!-- Recent autonomous actions from the action log. -->
-                <div class="dashboard-reports-block" data-reports-actions hidden>
-                  <h3 data-i18n="dashboard.reports_actions_title">Recent actions</h3>
-                  <ul class="dashboard-reports-actions-list" data-reports-actions-list></ul>
-                </div>
 
                 <!-- Empty state: no platforms / no synced data yet. -->
                 <div class="dashboard-reports-empty" data-reports-empty hidden>

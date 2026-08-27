@@ -704,3 +704,205 @@ test.describe("the detail screen's colours are tokens", function () {
     assert.deepEqual(literals, [], "hard-coded colours: " + literals.join(" | "));
   });
 });
+
+// ---------------------------------------------------------------------
+// What the capture review found missing (#706 step 3-a, NG 1-4)
+// ---------------------------------------------------------------------
+//
+// Four things the screen either lost or mangled, each pinned as "would an
+// operator see it". They are grouped because they share a cause worth
+// naming: a new layout can drop a control that the OLD layout rendered from
+// a node it happened to sit near, and nothing structural notices.
+
+test.describe("the controls the capture found missing", function () {
+  test.it("keeps the period tabs and the sync time on the detail view", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      periods: ["YESTERDAY", "LAST_30_DAYS"],
+    });
+    const tabs = page.root.querySelector("[data-reports-period]");
+    assert.ok(tabs, "the toggle node exists");
+    assert.ok(isVisible(tabs), "…and it is on screen");
+    assert.equal(
+      tabs.querySelectorAll(".reports-period-btn").length,
+      2,
+      "one button per window that has data"
+    );
+    assert.ok(isVisible(page.root.querySelector("[data-reports-freshness]")));
+  });
+
+  test.it("moves that node rather than copying it", async function () {
+    // Two nodes carrying `data-reports-period` would make querySelector
+    // return whichever came first in the document — #691's defect, where a
+    // hook silently served two masters and the tier it belonged to never
+    // un-hid.
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      periods: ["YESTERDAY", "LAST_30_DAYS"],
+    });
+    assert.equal(page.root.querySelectorAll("[data-reports-period]").length, 1);
+    assert.equal(page.root.querySelectorAll("[data-reports-meta]").length, 1);
+    // …and it landed in the detail toolbar, not in the shared head.
+    const meta = page.root.querySelector("[data-reports-meta]");
+    assert.ok(
+      meta.parentNode.getAttribute("data-reports-detail-meta-slot") !== null,
+      "the detail view holds the meta block"
+    );
+  });
+
+  test.it("shows the action log on the contract screen", async function () {
+    // The capture had three entries and the section was gone. Both entry
+    // shapes are exercised: the screen renders the log whatever a row
+    // carries.
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      recent_actions: [
+        {
+          timestamp: new Date().toISOString(),
+          action: "google_ads_budget_update",
+          platform: "google_ads",
+          summary: "**Brand** raised",
+          observation_due: null,
+        },
+        {
+          timestamp: new Date().toISOString(),
+          action: "google_ads_keywords_add",
+          platform: "google_ads",
+          summary: "added 12 negatives",
+          display_title: "Added 12 negatives",
+          display_summary: "All from the search-term report.",
+          observation_due: null,
+        },
+      ],
+    });
+    const block = page.root.querySelector("[data-reports-actions]");
+    assert.ok(isVisible(block), "the section is on screen");
+    assert.equal(page.root.querySelectorAll(".report-action").length, 2);
+  });
+
+  test.it("puts the action log above the drill-down, as the mockup does", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      recent_actions: [
+        {
+          timestamp: new Date().toISOString(),
+          action: "x",
+          platform: "google_ads",
+          summary: "y",
+          observation_due: null,
+        },
+      ],
+      reports: { daily: { generated_at: new Date().toISOString(), narrative: "z." } },
+    });
+    const detail = page.root.querySelector("[data-reports-detail]");
+    const order = detail.querySelectorAll("div").concat(detail.querySelectorAll("details"));
+    const actionsAt = page.root
+      .querySelector("[data-reports-actions]")
+      .parentNode.childNodes.indexOf(page.root.querySelector("[data-reports-actions]"));
+    const proseAt = page.root
+      .querySelector("[data-reports-prose]")
+      .parentNode.childNodes.indexOf(page.root.querySelector("[data-reports-prose]"));
+    assert.ok(actionsAt < proseAt, "the log reads before the report text");
+    assert.ok(order.length > 0);
+  });
+
+  test.it("labels both axes of the chart", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+    });
+    const y = page.root
+      .querySelector("[data-reports-chart-yaxis]")
+      .querySelectorAll(".reports-chart-tick")
+      .map(function (n) {
+        return n.textContent;
+      });
+    // The top of the scale and its zero — buildChart starts the y axis at
+    // zero, so a 3% dip is a 3% dip and the area fill has a real floor.
+    assert.equal(y.length, 2);
+    assert.equal(y[1], "0");
+    const x = page.root
+      .querySelector("[data-reports-chart-xaxis]")
+      .querySelectorAll(".reports-chart-tick")
+      .map(function (n) {
+        return n.textContent;
+      });
+    assert.equal(x.length, 2, "the first and last period");
+    assert.match(x[0], /^\d{1,2}\/\d{2}$/);
+  });
+
+  test.it("clears the axes when the picked metric has no history", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      // conversions has a week; clicks has nothing.
+      platforms: FULL_PLATFORMS,
+    });
+    const grains = page.root.querySelector("[data-reports-chart-metrics]");
+    const clicks = grains.querySelectorAll(".reports-chart-tab").find(function (b) {
+      return b.getAttribute("data-chart-option") === "clicks";
+    });
+    clicks.click();
+    // A metric with no history must not keep the previous metric's ticks
+    // sitting beside an empty plot.
+    assert.equal(
+      page.root.querySelector("[data-reports-chart-yaxis]").childNodes.length,
+      0
+    );
+  });
+
+  test.it("names the client and grades it, on a single-client install", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+    });
+    // FULL_DISPLAY carries a `bad` highlight, so the worst tone wins.
+    const badge = page.root.querySelector("[data-reports-detail-health]");
+    assert.ok(isVisible(badge));
+    assert.match(badge.getAttribute("class"), /is-attention/);
+  });
+
+  test.it("grades nothing when there is no contract to grade", async function () {
+    const page = await openDetail({
+      platforms: FULL_PLATFORMS,
+      reports: { daily: { generated_at: new Date().toISOString(), narrative: "x." } },
+    });
+    // A badge asserting "nothing raised" over a screen mureo has no verdict
+    // for would be worse than no badge.
+    assert.equal(
+      isVisible(page.root.querySelector("[data-reports-detail-health]")),
+      false
+    );
+  });
+
+  test.it("keeps a proposal's date short on screen and whole on the attribute", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+    });
+    const date = page.root.querySelector(".reports-proposal-date");
+    assert.equal(date.textContent, TODAY.slice(5).replace("-", "/"));
+    // Nothing stored is altered — the whole value is one hover away.
+    assert.equal(date.getAttribute("title"), TODAY);
+  });
+
+  test.it("leaves a date it was not built for alone", async function () {
+    const detail = require("node:path");
+    void detail;
+    const page = await openDetail({
+      display: Object.assign({}, FULL_DISPLAY, {
+        proposals: [{ title: "Pause two", date: "last week" }],
+      }),
+      platforms: FULL_PLATFORMS,
+    });
+    // The contract imposes no format on this field (mureo displays it and
+    // never parses it), so a writer's own words survive.
+    assert.equal(
+      page.root.querySelector(".reports-proposal-date").textContent,
+      "last week"
+    );
+  });
+});

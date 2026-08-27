@@ -561,7 +561,8 @@
     "dashboard.reports_stated_title": "Values this report stated",
     "dashboard.reports_prose_open": "Open the report text",
     "dashboard.reports_action_read_more": "Read more",
-    "dashboard.reports_proposals_all": "All"
+    "dashboard.reports_proposals_all": "All",
+    "dashboard.reports_chart_month": "M{n}"
   },
   "ja": {
     "nav.dashboard": "ダッシュボード",
@@ -1125,6 +1126,7 @@
     "dashboard.reports_stated_title": "このレポートが記載した値",
     "dashboard.reports_prose_open": "レポート本文を開く",
     "dashboard.reports_action_read_more": "続きを開く",
-    "dashboard.reports_proposals_all": "一覧"
+    "dashboard.reports_proposals_all": "一覧",
+    "dashboard.reports_chart_month": "{n}月"
   }
 }
