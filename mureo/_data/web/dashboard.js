@@ -215,6 +215,8 @@
     ["MUREO_REPORTS_LOGIC", "reports_logic.js"],
     ["MUREO_REPORTS_FORMAT", "reports_format.js"],
     ["MUREO_REPORTS_SPARKLINE", "reports_sparkline.js"],
+    ["MUREO_REPORTS_DISPLAY", "reports_display.js"],
+    ["MUREO_REPORTS_CHART", "reports_chart.js"],
     ["MUREO_REPORTS_ORDER", "reports_order.js"],
     ["MUREO_REPORTS_TRIAGE", "reports_triage.js"],
     ["MUREO_REPORTS_OVERVIEW", "reports_overview.js"],

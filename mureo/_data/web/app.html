@@ -184,13 +184,21 @@
                     <span data-i18n="dashboard.reports_back">← Clients</span>
                   </button>
                 </div>
-                <div class="dashboard-reports-meta">
+                <!-- The period tabs + sync time. ONE node, moved between
+                     the two slots by `moveReportsMeta`: the index wants them
+                     up here beside "Reports", the detail view wants them on
+                     its own toolbar. A second copy would give two nodes the
+                     same `data-reports-period` hook, and querySelector would
+                     pick whichever came first — #691's defect exactly. -->
+                <div class="dashboard-reports-head-meta-slot" data-reports-head-meta-slot>
+                <div class="dashboard-reports-meta" data-reports-meta>
                   <!-- Period toggle (前日｜30日). Populated by renderReports()
                        from summary.periods; hidden unless >= 2 windows. -->
                   <div class="dashboard-reports-period" data-reports-period
                        role="group" aria-label="Report period" hidden></div>
                   <!-- Freshness: "synced N ago" from last_synced_at. -->
                   <span class="dashboard-reports-freshness" data-reports-freshness></span>
+                </div>
                 </div>
               </div>
 
@@ -323,8 +331,188 @@
 
               <!-- DETAIL view: one client's full report. -->
               <div class="dashboard-reports-detail" data-reports-detail hidden>
-                <!-- Selected client name (multi-client / Agency only). -->
-                <h3 class="dashboard-reports-detail-client" data-reports-detail-client hidden></h3>
+                <!-- The detail view's own toolbar. The period tabs and the
+                     sync time are NOT duplicated here — the shared head owns
+                     those nodes, and `setReportsView` moves the one node into
+                     this row on the detail view and back to the head on the
+                     index. Two nodes carrying `data-reports-period` would
+                     make querySelector pick whichever came first in the
+                     document, which is the #691 defect exactly. -->
+                <div class="reports-detail-toolbar">
+                  <div class="reports-detail-ident">
+                    <!-- The client's name. Shown on a single-client install
+                         too: a screen about one client should say which. -->
+                    <h3 class="dashboard-reports-detail-client" data-reports-detail-client hidden></h3>
+                    <span class="reports-detail-health" data-reports-detail-health hidden></span>
+                  </div>
+                  <div class="reports-detail-controls">
+                    <!-- Which platform's figures the funnel and the chart
+                         describe. ONE platform, never a sum: adding two
+                         platforms' impressions is arithmetic nobody asked
+                         for and their CPAs cannot be added at all. Hidden
+                         when the client has fewer than two platforms. -->
+                    <div class="reports-detail-platform" data-reports-detail-platform hidden></div>
+                    <!-- Where the head's period tabs + sync time land. -->
+                    <div class="reports-detail-meta-slot" data-reports-detail-meta-slot></div>
+                  </div>
+                </div>
+
+                <!-- ============================================================
+                     #706 step 3-a: the contract-driven screen. Every section
+                     below is hidden unless `summary.display` states it, and a
+                     client with NO contract hides all of them and shows the
+                     three legacy tiers further down instead. Both are
+                     complete screens; the switch is made once, in
+                     dashboard_reports_detail.js.
+                     ============================================================ -->
+
+                <!-- 運用ナビ: the one line to act on today, plus who wrote
+                     this screen and when (the contract is replaced whole by
+                     whoever writes it last, so the content cannot answer
+                     that about itself). -->
+                <div class="reports-nav-band" data-reports-nav hidden>
+                  <span class="reports-nav-mark" aria-hidden="true">&#10022;</span>
+                  <p class="reports-nav-text" data-reports-nav-text></p>
+                  <span class="reports-nav-by" data-reports-nav-by></span>
+                  <button type="button" class="reports-nav-toggle" aria-hidden="true" tabindex="-1">&#8964;</button>
+                </div>
+
+                <!-- KPI funnel: spend → impressions → clicks → conversions,
+                     each with the rate it implies. DERIVED from the canonical
+                     totals — deliberately not in the contract, so no agent
+                     writes it and no agent can state it wrongly. -->
+                <section class="reports-funnel" data-reports-funnel hidden
+                         aria-labelledby="reports-funnel-title">
+                  <h3 class="sr-only" id="reports-funnel-title"
+                      data-i18n="dashboard.reports_funnel_title">Performance funnel</h3>
+                  <div class="reports-funnel-row" data-reports-funnel-body></div>
+                </section>
+
+                <div class="reports-detail-grid">
+                  <!-- The daily chart, from the stored day-grain history with
+                       its gaps intact. Hidden entirely below two buckets: one
+                       point is not a trend, and a reserved box is a promise
+                       the data has not kept. -->
+                  <section class="reports-chart" data-reports-chart hidden
+                           aria-labelledby="reports-chart-title">
+                    <div class="reports-panel-head">
+                      <h3 id="reports-chart-title"
+                          data-i18n="dashboard.reports_chart_title">Daily trend</h3>
+                      <div class="reports-chart-switches">
+                        <div class="reports-chart-tabs" data-reports-chart-metrics
+                             role="group" aria-label="Chart metric"></div>
+                        <div class="reports-chart-tabs" data-reports-chart-grains
+                             role="group" aria-label="Chart granularity"></div>
+                      </div>
+                    </div>
+                    <!-- Axis labels live in the DOM, not in the <svg>:
+                         the chart uses preserveAspectRatio="none" so it can
+                         take whatever width CSS gives it, which stretches
+                         any <text> inside it out of shape. -->
+                    <div class="reports-chart-plot">
+                      <div class="reports-chart-yaxis" data-reports-chart-yaxis></div>
+                      <div class="reports-chart-body" data-reports-chart-body></div>
+                    </div>
+                    <div class="reports-chart-xaxis" data-reports-chart-xaxis></div>
+                    <!-- A week or month missing days is not that period's
+                         total. #690 refused to zero-fill a day nobody
+                         collected; summing would smuggle the zero back one
+                         level up, so a partial bucket says so. -->
+                    <p class="reports-panel-note" data-reports-chart-note></p>
+                  </section>
+
+                  <!-- What mureo proposes, and how much has been carried
+                       out. Open proposals lead; the counts are the record. -->
+                  <aside class="reports-panel reports-proposals" data-reports-proposals hidden
+                         aria-labelledby="reports-proposals-title">
+                    <div class="reports-panel-head">
+                      <h3 id="reports-proposals-title"
+                          data-i18n="dashboard.reports_proposals_title">Proposals from mureo</h3>
+                      <span class="reports-proposals-count" data-reports-proposals-count></span>
+                      <!-- The mockup's "all" chip. Static until the list it
+                           would open exists (step 3-b): a control that does
+                           nothing when pressed is worse than a label. -->
+                      <span class="reports-proposals-pill"
+                            data-i18n="dashboard.reports_proposals_all">All</span>
+                    </div>
+                    <ul class="reports-proposal-list" data-reports-proposals-list></ul>
+                  </aside>
+                </div>
+
+                <!-- Per-entity breakdown, campaigns then ad groups. Each
+                     table is hidden when the contract holds no rows for that
+                     level — an empty table with a header row is a table
+                     nobody filled. -->
+                <section class="reports-breakdown" data-reports-breakdown-campaigns hidden
+                         aria-labelledby="reports-breakdown-campaigns-title">
+                  <h3 id="reports-breakdown-campaigns-title"
+                      data-i18n="dashboard.reports_breakdown_campaigns">By campaign</h3>
+                  <table class="reports-breakdown-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_name">Name</th>
+                        <th scope="col" data-i18n="dashboard.reports_kpi_spend">Spend</th>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_mcpa">mCPA</th>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_target">Target CPA</th>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_state">State</th>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_note">Note</th>
+                      </tr>
+                    </thead>
+                    <tbody data-reports-breakdown-campaigns-body></tbody>
+                  </table>
+                </section>
+
+                <section class="reports-breakdown" data-reports-breakdown-adgroups hidden
+                         aria-labelledby="reports-breakdown-adgroups-title">
+                  <h3 id="reports-breakdown-adgroups-title"
+                      data-i18n="dashboard.reports_breakdown_adgroups">By ad group</h3>
+                  <table class="reports-breakdown-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_name">Name</th>
+                        <th scope="col" data-i18n="dashboard.reports_kpi_spend">Spend</th>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_mcpa">mCPA</th>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_target">Target CPA</th>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_state">State</th>
+                        <th scope="col" data-i18n="dashboard.reports_breakdown_note">Note</th>
+                      </tr>
+                    </thead>
+                    <tbody data-reports-breakdown-adgroups-body></tbody>
+                  </table>
+                </section>
+
+                <!-- What this report stated, as chips. The legacy label/value
+                     table (reportSecondaryStats) is NOT drawn for a client
+                     with a contract: these arrived bounded, so they fit the
+                     shape a free-form report's values could not. -->
+                <section class="reports-stated" data-reports-stated hidden
+                         aria-labelledby="reports-stated-title">
+                  <h3 id="reports-stated-title"
+                      data-i18n="dashboard.reports_stated_title">Values this report stated</h3>
+                  <div class="reports-stated-row" data-reports-stated-body></div>
+                </section>
+
+                <!-- The verdict chips, tone-coloured from the severity the
+                     finding already carried. -->
+                <div class="reports-highlights" data-reports-highlights hidden></div>
+
+                <!-- Recent autonomous actions from the action log. One
+                     short line each — a display line where the entry has
+                     one, and otherwise the summary with its markdown
+                     emphasis stripped and its tail behind a disclosure.
+                     Both screens render it: the shape is a property of the
+                     ENTRY, not of the client. -->
+                <div class="dashboard-reports-block" data-reports-actions hidden>
+                  <h3 data-i18n="dashboard.reports_actions_title">Recent actions</h3>
+                  <ul class="dashboard-reports-actions-list" data-reports-actions-list></ul>
+                </div>
+
+                <!-- The agent's own prose, kept but no longer rendered at
+                     everyone by default: opened deliberately. -->
+                <details class="reports-prose" data-reports-prose hidden>
+                  <summary data-i18n="dashboard.reports_prose_open">Open the report text</summary>
+                  <div data-reports-prose-body></div>
+                </details>
 
                 <!-- The detail view is three numbered tiers (#691): what the
                      report CONCLUDED, what CHANGED since yesterday, then
@@ -370,12 +558,6 @@
                   </div>
                   <div class="dashboard-reports-cards" data-reports-cards></div>
                 </section>
-
-                <!-- Recent autonomous actions from the action log. -->
-                <div class="dashboard-reports-block" data-reports-actions hidden>
-                  <h3 data-i18n="dashboard.reports_actions_title">Recent actions</h3>
-                  <ul class="dashboard-reports-actions-list" data-reports-actions-list></ul>
-                </div>
 
                 <!-- Empty state: no platforms / no synced data yet. -->
                 <div class="dashboard-reports-empty" data-reports-empty hidden>
@@ -613,6 +795,8 @@
   <script src="/static/reports_logic.js"></script>
   <script src="/static/reports_format.js"></script>
   <script src="/static/reports_sparkline.js"></script>
+  <script src="/static/reports_display.js"></script>
+  <script src="/static/reports_chart.js"></script>
   <script src="/static/reports_order.js"></script>
   <script src="/static/reports_triage.js"></script>
   <script src="/static/reports_overview.js"></script>
@@ -622,6 +806,8 @@
   <script src="/static/dashboard_advisors.js"></script>
   <script src="/static/dashboard_reports_state.js"></script>
   <script src="/static/dashboard_reports_report.js"></script>
+  <script src="/static/dashboard_reports_chart.js"></script>
+  <script src="/static/dashboard_reports_detail.js"></script>
   <script src="/static/dashboard_reports_overview.js"></script>
   <script src="/static/dashboard_reports_cards.js"></script>
   <script src="/static/dashboard_reports_triage.js"></script>

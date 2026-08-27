@@ -33,6 +33,25 @@
   --warn-tint: #fdf3da;
   --warn-line: #e6c463;
 
+  /* ---- report-brand blues (#706 step 3-a) ------------------------------
+     The staff mockup's detail screen is built on a BLUE that is not
+     --accent. Added beside it rather than over it: --accent is the indigo
+     every control on every other screen already uses, and repainting it
+     would redesign six screens to style one.
+
+     The semantic discipline is unchanged, and these do not join it. Red is
+     still "act now" and nothing else, amber is still "watch / not yet done",
+     green is still "achieved" — this blue is ACCENT and INFORMATION, which
+     is why a spend movement is painted with it (a rise in spend is neither
+     good nor bad) while a CPA movement keeps the status colours. */
+  --report-blue: #1b6ce0;         /* the navigation banner's solid fill    */
+  --report-blue-press: #1558bb;
+  --report-blue-ink: #0f4ea8;     /* blue text on a light surface (AA)     */
+  --report-chart: #2b8de0;        /* the chart's line, a step lighter      */
+  --report-chart-fill: rgba(43, 141, 224, 0.14);
+  --report-chart-grid: rgba(20, 22, 26, 0.07);
+  --report-on-blue: #ffffff;      /* text on --report-blue                 */
+
   /* ---- status (#691) --------------------------------------------------
      Three states, and only three. `alert` is reserved for ACT NOW — a
      finding that withholds a figure or costs money while it stands. `watch`
@@ -151,6 +170,17 @@
     --danger-tint: #2a1816;
     --warn-tint: #2a2410;
     --warn-line: #6b5a25;
+
+    /* The same blues on a dark surface. Lifted rather than reused: #1b6ce0
+       as a banner fill on #0e0f12 is a hole in the page, and #0f4ea8 as
+       text on it fails contrast outright. */
+    --report-blue: #2f6fd0;
+    --report-blue-press: #4a86e0;
+    --report-blue-ink: #8ab6f5;
+    --report-chart: #5aa9ef;
+    --report-chart-fill: rgba(90, 169, 239, 0.18);
+    --report-chart-grid: rgba(236, 237, 240, 0.09);
+    --report-on-blue: #f5f8ff;
 
     /* Same three states, lifted for a dark surface. Each foreground clears
        4.5:1 on --surface; the backgrounds are tints of the foreground rather
@@ -4194,4 +4224,716 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .roster-total-label {
   color: var(--muted);
   font-weight: var(--type-body-weight);
+}
+
+/* ======================================================================
+   #706 step 3-a — the contract-driven detail screen.
+
+   Every colour, radius, shadow and type step below is an existing token.
+   The mockup's palette IS this palette: --status-ok / --status-watch /
+   --status-alert for the four-state vocabulary, --accent-tint for the
+   navigation band, and the #691 type scale for everything with a figure
+   in it. Nothing here invents a second colour system, which is the one
+   way a redesign of one screen makes the other screens look wrong.
+
+   Every block is drawn only when it has data — the hiding is in JS, and
+   there is deliberately no `:empty` styling here to make an empty frame
+   look acceptable.
+   ====================================================================== */
+
+/* ---- the detail toolbar -------------------------------------------- */
+/* Who the screen is about on the left, the controls that scope it on the
+   right. The period tabs and the sync time are MOVED into this row rather
+   than duplicated — see moveReportsMeta and the markup's note. */
+.reports-detail-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.reports-detail-ident {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reports-detail-ident > .dashboard-reports-detail-client {
+  margin: 0;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
+}
+
+.reports-detail-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* The same three-level vocabulary the client grid uses, in the same
+   colours — one client must not be "watch" on the grid and something else
+   on its own page. */
+.reports-detail-health {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: var(--type-kpi-weight);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.reports-detail-health.is-attention {
+  background: var(--status-alert-bg);
+  border: 1px solid var(--status-alert-line);
+  color: var(--status-alert);
+}
+
+.reports-detail-health.is-watch {
+  background: var(--status-watch-bg);
+  border: 1px solid var(--status-watch-line);
+  color: var(--status-watch);
+}
+
+.reports-detail-health.is-ok {
+  background: var(--status-ok-bg);
+  border: 1px solid var(--status-ok-line);
+  color: var(--status-ok);
+}
+
+/* ---- platform picker ---------------------------------------------- */
+.reports-detail-platform {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* A compact pill, not a full-width native control: it sits on a toolbar
+   beside the period tabs, and a stretched <select> there reads as a form. */
+.reports-platform-select {
+  font: inherit;
+  font-size: var(--type-caption-size);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-pill);
+  padding: 4px 12px;
+  width: auto;
+  max-width: 220px;
+}
+
+/* ---- 運用ナビ band -------------------------------------------------- */
+/* A solid blue banner rather than a tinted panel. It carries the one line
+   an operator is meant to act on today, and the mockup makes it the loudest
+   thing on the screen for that reason — a tint reads as "context", which is
+   the opposite of what this says. Blue and not red: it is a direction, not
+   an alarm, and red on this screen means "act now" and nothing else. */
+.reports-nav-band {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  background: var(--report-blue);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.reports-nav-mark {
+  flex: 0 0 auto;
+  font-size: var(--type-heading-size);
+  line-height: 1;
+  color: var(--report-on-blue);
+  opacity: 0.9;
+}
+
+.reports-nav-text {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: var(--type-heading-size);
+  font-weight: var(--type-heading-weight);
+  color: var(--report-on-blue);
+}
+
+/* Who wrote this screen and when. Quiet on purpose: it is provenance, not
+   the message — but it is on the band rather than in a footer because the
+   contract is replaced whole by whoever writes it last, so the line above
+   is one skill's answer and should be read as one. */
+.reports-nav-by {
+  flex: 0 0 auto;
+  font-size: var(--type-caption-size);
+  color: var(--report-on-blue);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.reports-nav-toggle {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  color: var(--report-on-blue);
+  opacity: 0.7;
+  cursor: default;
+  padding: 0 2px;
+}
+
+/* ---- KPI funnel ----------------------------------------------------- */
+.reports-funnel-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.reports-funnel-card {
+  flex: 1 1 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* A chevron, not an arrowhead: the four cards are one chain read left to
+   right, and the separator should be quiet enough that the figures carry
+   the row. */
+.reports-funnel-arrow {
+  align-self: center;
+  color: var(--hairline-strong);
+  font-size: var(--type-heading-size);
+  flex: 0 0 auto;
+}
+
+/* Label above figure — the anatomy every other cell on these screens uses
+   (#691), so a reader scanning a row does not have to work out which
+   caption belongs to which number. */
+.reports-funnel-label {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+}
+
+/* The funnel IS the screen's headline row, so its figures take the KPI
+   step of the #691 type scale rather than the smaller card step. */
+.reports-funnel-value {
+  font-size: var(--type-kpi-size);
+  font-weight: var(--type-kpi-weight);
+  line-height: var(--type-kpi-line);
+  letter-spacing: var(--type-kpi-tracking);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* The day-over-day movement under the spend figure. Blue, and deliberately
+   NOT the status colours: a rise in spend is neither good nor bad without a
+   target nobody has put on the wire, and painting it red was the #694
+   capture's finding — every delta arrived red, which trains an operator to
+   ignore the colour entirely. */
+.reports-funnel-delta {
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-heading-weight);
+  font-variant-numeric: tabular-nums;
+  color: var(--report-blue-ink);
+}
+
+.reports-funnel-sub {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+}
+
+.reports-funnel-sub-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+/* ---- chart + proposals, side by side ------------------------------- */
+.reports-detail-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 960px) {
+  .reports-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.reports-chart {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.reports-chart-switches {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.reports-chart-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  padding: 2px;
+}
+
+.reports-chart-tab {
+  border: 0;
+  background: none;
+  border-radius: var(--r-pill);
+  padding: 3px 10px;
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* A segmented control: the selected segment is filled, not merely
+   lifted. On a strip of three, a shadow alone is not a selection anybody
+   can see at a glance. */
+.reports-chart-tab.is-active {
+  background: var(--report-blue);
+  color: var(--report-on-blue);
+  font-weight: var(--type-heading-weight);
+}
+
+.reports-chart-body {
+  margin-top: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The window a single-window client's figures cover. A statement rather
+   than a control — flat, no hover, no pressed state — because there is
+   nothing to switch to. It exists so the funnel, the chart and the tables
+   are never unlabelled, which is what hiding it left behind. */
+.reports-period-solo {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.reports-period-solo.is-adhoc {
+  border-style: dashed;
+}
+
+/* ---- chart axes ----------------------------------------------------
+   Endpoints only — the y scale's top and its zero, the first and last
+   period on the x. A grid of ticks under a 220px plot competes with the
+   funnel above it for the same attention, and the chart is read for shape
+   and magnitude rather than for individual values. */
+.reports-chart-plot {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.reports-chart-yaxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 0 0;
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.reports-chart-xaxis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.reports-chart-tick {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-chart-svg {
+  width: 100%;
+  height: 220px;
+  display: block;
+}
+
+.reports-chart-base {
+  stroke: var(--report-chart-grid);
+  stroke-width: 1;
+}
+
+.reports-chart-area {
+  fill: var(--report-chart-fill);
+}
+
+.reports-chart-line {
+  fill: none;
+  stroke: var(--report-chart);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.reports-chart-dot,
+.reports-chart-point {
+  fill: var(--report-chart);
+}
+
+/* A bucket missing collected days is drawn hollow — the same fact the note
+   under the chart states, at the point it is about. #690 refused to
+   zero-fill a day nobody collected; a filled dot on a partial week would
+   put that zero back one level up. */
+.reports-chart-dot.is-partial {
+  fill: var(--surface);
+  stroke: var(--report-chart);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 1.5;
+}
+
+/* ---- proposals ------------------------------------------------------ */
+.reports-proposal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Open proposals are the point of the panel, so they carry the warn tint —
+   they are owed, not wrong. */
+.reports-proposal {
+  background: var(--warn-tint);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+}
+
+/* Title left, date top-right. The date wrapped onto two lines against the
+   card's right edge in the capture, which made the card read as a date with
+   a note attached. */
+.reports-proposal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reports-proposal-title {
+  margin: 0;
+  font-size: var(--type-card-title-size);
+  font-weight: var(--type-card-title-weight);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.reports-proposal-body {
+  margin: 2px 0 0;
+  font-size: var(--type-caption-size);
+  color: var(--ink-soft);
+}
+
+.reports-proposal-date {
+  flex: 0 0 auto;
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.reports-proposal-more {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+}
+
+/* "2 done this month" — the figure in blue, the caption quiet. Blue
+   because it is information about work already done, not a verdict. */
+.reports-proposals-count {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-proposals-count b {
+  color: var(--report-blue-ink);
+  font-weight: var(--type-heading-weight);
+}
+
+/* The "all" pill the mockup puts at the right of the panel head. Inert
+   until the list view it opens exists (step 3-b), so it is a static chip
+   rather than a control that does nothing when pressed. */
+.reports-proposals-pill {
+  font-size: var(--type-caption-size);
+  color: var(--report-blue-ink);
+  background: var(--accent-tint);
+  border-radius: var(--r-pill);
+  padding: 2px 10px;
+}
+
+/* ---- breakdown tables ---------------------------------------------- */
+.reports-breakdown {
+  margin-bottom: 20px;
+}
+
+.reports-breakdown > h3 {
+  font-size: var(--type-heading-size);
+  font-weight: var(--type-heading-weight);
+  margin: 0 0 8px;
+}
+
+.reports-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  font-size: var(--type-body-size);
+}
+
+.reports-breakdown-table th,
+.reports-breakdown-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: left;
+}
+
+.reports-breakdown-table thead th {
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-heading-weight);
+  color: var(--muted);
+  background: var(--surface-2);
+}
+
+.reports-breakdown-table tbody tr:last-child th,
+.reports-breakdown-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.reports-breakdown-name {
+  font-weight: var(--type-card-title-weight);
+}
+
+.reports-breakdown-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-breakdown-note {
+  color: var(--muted);
+  font-size: var(--type-caption-size);
+}
+
+/* The four-state vocabulary, in the semantic colours the rest of the
+   dashboard already uses for the same meanings. `no_data` is grey rather
+   than absent: too little delivery to judge is a state, and it must not
+   look like a cell nobody filled. */
+/* Filled pills, upper-cased. The mockup makes these the loudest thing in
+   the table because they are the verdict the row exists to deliver, and a
+   dot beside a word is not legible at a glance across six rows. */
+.reports-state-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: var(--type-kpi-weight);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.reports-state-badge.is-good {
+  background: var(--status-ok-bg);
+  border: 1px solid var(--status-ok-line);
+  color: var(--status-ok);
+}
+
+/* Improving is good news in progress, so it is green — but outlined
+   rather than filled, so "on the way" and "there" are not the same badge. */
+.reports-state-badge.is-improving {
+  background: var(--surface);
+  border: 1px solid var(--status-ok-line);
+  color: var(--status-ok);
+}
+
+.reports-state-badge.is-watch {
+  background: var(--status-watch-bg);
+  border: 1px solid var(--status-watch-line);
+  color: var(--status-watch);
+}
+
+/* Amber-orange, NOT red. Red on these screens means "act now" and nothing
+   else (#691's semantic-colour rule); a row trending the wrong way is a
+   warning, and painting it red alongside a genuine alert is how both stop
+   being read. */
+.reports-state-badge.is-worsening {
+  background: var(--status-watch-bg);
+  border: 1px solid var(--status-watch-line);
+  color: var(--status-watch);
+  font-weight: var(--type-kpi-weight);
+}
+
+.reports-state-badge.is-none {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+}
+
+/* ---- stated values, as chips --------------------------------------- */
+.reports-stated {
+  margin-bottom: 16px;
+}
+
+.reports-stated > h3 {
+  font-size: var(--type-heading-size);
+  font-weight: var(--type-heading-weight);
+  margin: 0 0 8px;
+}
+
+.reports-stated-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reports-stated-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.reports-stated-label {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+}
+
+/* Printed EXACTLY as the report wrote it — mureo does not know the unit,
+   so it adds no separator and no symbol. tabular-nums only aligns the
+   digits it was given. */
+.reports-stated-value {
+  font-size: var(--type-figure-size);
+  font-weight: var(--type-figure-weight);
+  letter-spacing: var(--type-figure-tracking);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* ---- highlight chips ------------------------------------------------ */
+.reports-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.reports-highlight {
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-heading-weight);
+}
+
+.reports-highlight.is-good {
+  background: var(--status-ok-bg);
+  border: 1px solid var(--status-ok-line);
+  color: var(--status-ok);
+}
+
+.reports-highlight.is-watch {
+  background: var(--status-watch-bg);
+  border: 1px solid var(--status-watch-line);
+  color: var(--status-watch);
+}
+
+.reports-highlight.is-bad {
+  background: var(--status-alert-bg);
+  border: 1px solid var(--status-alert-line);
+  color: var(--status-alert);
+}
+
+.reports-highlight.is-none {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-soft);
+}
+
+/* ---- the report text, behind a disclosure -------------------------- */
+.reports-prose {
+  margin-bottom: 20px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: 10px 14px;
+}
+
+.reports-prose > summary {
+  cursor: pointer;
+  font-size: var(--type-body-size);
+  color: var(--accent);
+}
+
+/* ---- the action log's read-more ------------------------------------ */
+.report-action-more > summary {
+  cursor: pointer;
+  font-size: var(--type-caption-size);
+  color: var(--accent);
+}
+
+.report-action-full {
+  margin: 4px 0 0;
+  font-size: var(--type-caption-size);
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+}
+
+/* Every block above that declares its own `display` needs this, and the
+   reason is the whole point of tests/js/dom_harness.js: an author `display`
+   rule beats the user-agent's `[hidden] { display: none }`, so a section the
+   JS correctly hid stays on screen and every structural pin still passes.
+   The same gotcha `.dashboard-group[hidden]` and `.dashboard-reports-period
+   [hidden]` already exist for.
+
+   Listed together rather than beside each block so the set is checkable at a
+   glance: every `data-reports-*` section this screen hides must be here. */
+.reports-detail-toolbar[hidden],
+.reports-detail-ident[hidden],
+.reports-detail-controls[hidden],
+.reports-detail-health[hidden],
+.reports-chart-plot[hidden],
+.reports-chart-xaxis[hidden],
+.reports-chart-yaxis[hidden],
+.reports-proposal-head[hidden],
+.reports-detail-platform[hidden],
+.reports-nav-band[hidden],
+.reports-funnel-row[hidden],
+.reports-chart-tabs[hidden],
+.reports-proposal-list[hidden],
+.reports-stated-row[hidden],
+.reports-highlights[hidden] {
+  display: none;
 }

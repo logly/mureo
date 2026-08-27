@@ -89,8 +89,19 @@
     );
   }
   const buildReportCard = R_REPORT.buildReportCard;
-  const renderReportsActions = R_REPORT.renderReportsActions;
   const renderReportsLatest = R_REPORT.renderReportsLatest;
+
+  // The contract-driven detail screen (#706 step 3-a).
+  const R_DETAIL = window.MUREO_DASHBOARD_REPORTS_DETAIL;
+  if (!R_DETAIL) {
+    throw new Error(
+      "dashboard_reports.js needs MUREO_DASHBOARD_REPORTS_DETAIL — load " +
+        "dashboard_reports_detail.js BEFORE dashboard_reports.js"
+    );
+  }
+  // Drawn by the detail module for BOTH screens: shortening a row is a
+  // property of the ENTRY (no display line), not of the client.
+  const renderReportsActions = R_DETAIL.renderActions;
   const buildReportFlagRow = R_REPORT.buildReportFlagRow;
   // The tone table and the trend builders live in the report module now,
   // bound by their original names so every call site below reads unchanged
@@ -335,6 +346,7 @@
   // recent activity, period toggle). Sets the back bar + client name.
   function showReportsClientDetail(slug) {
     setReportsView("detail");
+    moveReportsMeta("detail");
     const nameEl = document.querySelector("[data-reports-detail-client]");
     if (nameEl) {
       const c = REPORTS_VIEW_STATE.reportsClients.find(function (r) {
@@ -342,15 +354,48 @@
       });
       nameEl.textContent = c ? c.name || c.slug || "" : "";
     }
+    // A platform key belongs to the client it was chosen on: carried across,
+    // the SELECT would disagree with what pickPlatform fell back to.
+    if (REPORTS_VIEW_STATE.reportsActiveClient !== (slug || null)) {
+      REPORTS_VIEW_STATE.reportsPlatformKey = null;
+    }
     // Bump the generation so any in-flight render is dropped, then load.
     REPORTS_VIEW_STATE.reportsRenderSeq++;
     renderReportsSummary(slug || null);
   }
 
-  // Render the period toggle from the summary's `periods` union. Shown only
-  // when there is a real choice (>= 2 windows); a single-window account has
-  // nothing to switch, so the toggle stays hidden. Buttons are recreated on
-  // every render, so their click handlers never accumulate.
+  /**
+   * Put the period tabs + sync time where the current view wants them.
+   *
+   * ONE node, moved — never a second copy. The index wants them in the
+   * shared head beside "Reports"; the detail view wants them on its own
+   * toolbar, at the right of the platform picker, which is where the staff
+   * mockup puts them and where the capture found them missing. Two nodes
+   * carrying `data-reports-period` would make querySelector return whichever
+   * came first in the document, which is #691's defect exactly — a hook
+   * silently serving two masters.
+   */
+  function moveReportsMeta(view) {
+    const meta = document.querySelector("[data-reports-meta]");
+    const slot =
+      view === "detail"
+        ? document.querySelector("[data-reports-detail-meta-slot]")
+        : document.querySelector("[data-reports-head-meta-slot]");
+    if (!meta || !slot || meta.parentNode === slot) return;
+    slot.appendChild(meta);
+  }
+
+  // Render the period toggle from the summary's `periods` union. Buttons are
+  // recreated on every render, so their click handlers never accumulate.
+  //
+  // ONE window is not the same answer on both views, and conflating them was
+  // #706's capture defect — the node was in the detail toolbar with `hidden`
+  // still set, so the symptom pointed at the move rather than at this rule.
+  // On the INDEX a lone window is nothing to switch, so the control stays
+  // hidden (unchanged). On the DETAIL view it is the window the funnel, the
+  // chart and the breakdown tables are all describing, and hiding it left
+  // every figure unlabelled — so it renders as one INERT chip: a statement
+  // of the window, not an offer to change it.
   //
   // A window mureo does not define still gets a button — those are figures
   // an agent really collected, under a name no view expects (#659) — but it
@@ -365,11 +410,31 @@
         })
       : [];
     wrap.textContent = "";
-    if (list.length < 2) {
+    if (list.length === 0) {
+      wrap.hidden = true;
+      return;
+    }
+    const detail = REPORTS_VIEW_STATE.reportsView === "detail";
+    if (list.length < 2 && !detail) {
       wrap.hidden = true;
       return;
     }
     wrap.hidden = false;
+    if (list.length < 2) {
+      // A statement, not a control: `<span>`, no handler, and no
+      // `aria-pressed` — a toggle of one would announce a choice that does
+      // not exist.
+      const solo = document.createElement("span");
+      solo.className = "reports-period-solo";
+      solo.setAttribute("data-period", list[0]);
+      solo.textContent = reportsPeriodLabel(list[0]);
+      if (!isCanonicalReportsPeriod(list[0])) {
+        solo.classList.add("is-adhoc");
+        solo.title = MUREO.t("dashboard.reports_period_adhoc");
+      }
+      wrap.appendChild(solo);
+      return;
+    }
     list.forEach(function (token) {
       const active = token === REPORTS_VIEW_STATE.reportsPeriod;
       const adhoc = !isCanonicalReportsPeriod(token);
@@ -618,6 +683,9 @@
       renderReportsLatest(null);
       renderReportsChanges([], null);
       renderReportsPlatformTier([]);
+      // Clears every contract section too: a failed client switch must not
+      // leave the PREVIOUS client's screen up.
+      R_DETAIL.renderReportsDetail(null, {});
       renderReportsActions(null);
       if (empty) empty.hidden = false;
       return;
@@ -671,12 +739,27 @@
       });
     }
 
-    // The three tiers, in the order an operator reads them (#691): what the
-    // report concluded, what moved since yesterday, then everything.
-    renderReportsLatest(summary.reports);
-    renderReportsChanges(platforms, latestReport(summary.reports));
-    renderReportsPlatformTier(platforms);
+    // #706 step 3-a: a contract gets the screen it was built for, no
+    // contract gets the three tiers that shipped before it. Both are
+    // complete screens, and renderReportsDetail is the one place that
+    // decides which.
+    // The log FIRST: a row's shape is decided by the entry, not by the
+    // contract, so it must not sit downstream of the screen that is.
     renderReportsActions(summary.recent_actions);
+    const drewContract = R_DETAIL.renderReportsDetail(summary, {
+      platformKey: REPORTS_VIEW_STATE.reportsPlatformKey,
+      onPlatform: function (key) {
+        REPORTS_VIEW_STATE.reportsPlatformKey = key;
+        renderReportsSummary(client);
+      },
+    });
+    if (!drewContract) {
+      // The three tiers, in the order an operator reads them (#691): what the
+      // report concluded, what moved since yesterday, then everything.
+      renderReportsLatest(summary.reports);
+      renderReportsChanges(platforms, latestReport(summary.reports));
+      renderReportsPlatformTier(platforms);
+    }
   }
 
   // Tier (3)'s frame: shown whenever there is at least one platform card in
@@ -725,6 +808,8 @@
     if (seq !== REPORTS_VIEW_STATE.reportsRenderSeq) return;
     REPORTS_VIEW_STATE.reportsClients =
       body && Array.isArray(body.clients) ? body.clients : [];
+    // The head owns them again the moment the index is what is on screen.
+    moveReportsMeta(REPORTS_VIEW_STATE.reportsView);
     REPORTS_VIEW_STATE.reportsCanArchive = !!(body && body.can_archive);
 
     // An archived client is not a live selection: archiving the one on screen
