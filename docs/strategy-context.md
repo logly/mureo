@@ -1232,6 +1232,26 @@ the tool descriptions an agent reads before it composes anything, and
 repeated in every refusal — the shape #659 settled on, now with the `enum`s
 and `maxLength`s that this surface, unlike prose, can actually have.
 
+**Who writes it.** The same nine skills that write a report: `daily-check`,
+`weekly-report`, `monthly-report`, `goal-review`, `audience-review`,
+`experiment`, `ad-fatigue-check`, `budget-pacing` and `tracking-health`.
+Each has a *Persist the display contract* step immediately after its report
+step, so the screen is rendered from the same figures in the same pass —
+and each states, in as many words, that it **reaches no new verdict there**.
+A skill that re-decided a campaign's state while writing the screen would
+put two answers in one document, and the dashboard would show whichever one
+was written second.
+
+The same paragraph is what the skills carry: `DISPLAY_CONTRACT_RULE` is
+pasted into each of them verbatim rather than paraphrased, so the sentence
+an agent reads while composing and the sentence it gets back on a refusal
+cannot drift apart. And because a refusal is what an agent meets, the
+skills name the recovery too: **shorten and rewrite** — lead with the point,
+drop the connectives — rather than re-sending the same sentence trimmed by a
+character, which spends a run's context on a bound one rewrite would have
+met. `skills/_mureo-strategy/SKILL.md` → *Display contract section* carries
+the schema itself, once, for all nine.
+
 #### What mureo did today
 
 Beside the grid, the index lists the actions mureo logged **today** across

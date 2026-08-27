@@ -701,6 +701,50 @@ switching", once you have switched it). Otherwise the dashboard's "Latest
 report" reads as older than, and contradicts, the very `action_log` entry the
 same run appended.
 
+### Display contract section
+
+`display` (top-level, optional) is what the **dashboard** shows for this
+client. It is a different audience from `reports` above, and the split is the
+point: STATE.json is your working memory, written for the next agent and
+prose-heavy by design, while this section is written for an operator's screen
+— short, structured, and the only thing the dashboard reads.
+
+`display = {nav_message, highlights, proposals, breakdown: {campaigns,
+adgroups}, stated_values}`. Written via the `mureo_state_display_set` tool,
+in the same pass as your report and from the same figures. **It renders
+verdicts you already reached; it never reaches a new one.**
+
+| Field | Shape | Bound |
+|-------|-------|-------|
+| `nav_message` | the one operator-facing line (運用ナビ) | ≤80 characters |
+| `highlights` | `[{tone: good\|watch\|bad, text}]` | ≤3 items, text ≤60 |
+| `proposals` | `[{title, body, status: proposed\|done, date}]` | title ≤30, body ≤80, date ≤12 |
+| `breakdown.campaigns` / `.adgroups` | `[{name, spend, mcpa, target_cpa, state, note}]`, `state` one of `target_met` / `improving` / `watch` / `worsening` / `no_data` | note ≤40 |
+| `stated_values` | `[{label, value}]` | label ≤24, **value a raw number or a string ≤12** |
+
+**Every bound refuses the write; nothing is truncated** — the same rule the
+`narrative` bound above follows, for the same reason. Over a bound,
+**shorten and rewrite**: lead with the point, drop the connectives, a noun
+phrase is fine. Re-sending the same sentence trimmed by a character spends
+your context on a bound one rewrite would have met. A value already on disk
+is read back exactly as written — the bounds are a write rule only.
+
+**Prose is refused in `stated_values`.** That row is a caption and a figure;
+a sentence there lands in a numeric column, which is the defect this section
+exists to remove. Anything needing a sentence stays in your report's
+`narrative`.
+
+**Do not write the KPI funnel or the daily chart.** Spend → impressions →
+clicks → conversions with CPM / CPC / CPA, and the day-over-day trend, are
+computed by mureo from the stored totals and `platforms[<p>].daily`. There is
+nothing there for you to state, and therefore nothing to get wrong.
+
+**One writer per run.** `mureo_state_display_set` REPLACES the whole section
+rather than merging into it, so the skill that writes it states every section
+it wants on screen. A second skill writing a different section in the same
+run does not add to the first — it replaces it, and what survives is whatever
+ran last. Compose before calling; never call twice.
+
 ### Action Log Entry Fields
 
 | Field | Type | Required | Description |
@@ -713,6 +757,8 @@ same run appended.
 | `summary` | string | No | Human-readable summary |
 | `metrics_at_action` | object | No | Key metrics at the time of action, for outcome evaluation — use the same canonical vocabulary as `metrics` above (e.g. `cpa`, `conversions`, `clicks`) |
 | `observation_due` | string | No | ISO 8601 date when the outcome should be evaluated |
+| `display_title` | string | No | What this action was, for the dashboard row — ≤40 characters, plain text. Over the bound the append is **refused**, never truncated |
+| `display_summary` | string | No | One sentence under the title, ≤120 characters, plain text (no markdown — `**bold**` reaches a person as asterisks). The row shows these two and stops there; the full `summary` is drill-down only, so keep writing it as fully as the next agent needs |
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/_mureo-learning/SKILL.md` for the decision framework.
 

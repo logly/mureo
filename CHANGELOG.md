@@ -2,6 +2,54 @@
 
 ### Added
 
+- **The nine report-writing skills now fill the display contract** (#706,
+  step 2 of 3). Step 1 gave the dashboard a small, write-guarded surface and
+  refused everything that does not fit it. That is only half a fix: a guard
+  an agent meets mid-run is the expensive way to learn a rule, and a contract
+  nobody writes leaves the screen empty.
+
+  So `daily-check`, `weekly-report`, `monthly-report`, `goal-review`,
+  `audience-review`, `experiment`, `ad-fatigue-check`, `budget-pacing` and
+  `tracking-health` each gain a **Persist the display contract** step,
+  immediately after the report step they already had. The screen is rendered
+  from the same figures in the same pass, and every skill states in as many
+  words that it **reaches no new verdict there** — a skill that re-decided a
+  campaign's state while writing the screen would put two answers in one
+  document, and the dashboard would show whichever was written second.
+
+  Each step says what its own run puts in each section: the one operator line
+  for `nav_message`, the verdict chips for `highlights` with the `tone`
+  matching the verdict already given, the entities it judged in
+  `breakdown.campaigns` / `.adgroups` with the figures it already holds, the
+  recommendations it did *not* carry out in `proposals`, and label+figure
+  chips in `stated_values` — **no prose notes there**, because a sentence in
+  that row lands in a numeric column and the tool refuses it; anything
+  needing a sentence stays in the report's `narrative`, exactly where it goes
+  today.
+
+  `DISPLAY_CONTRACT_RULE` is pasted into each skill **verbatim** rather than
+  paraphrased (#659's shape), so the sentence an agent reads while composing
+  and the sentence it gets back on a refusal cannot drift apart. And because
+  a refusal is what an agent actually meets, the skills name the recovery:
+  **shorten and rewrite** — lead with the point, drop the connectives — never
+  re-send the same sentence trimmed by a character, which spends a run's
+  context on a bound one rewrite would have met.
+
+  Every recording step now also instructs `display_title` (≤40) and
+  `display_summary` (≤120) on the `action_log` entry it writes. Those *add* a
+  rendering and replace nothing: `summary` keeps being written as fully as
+  the next agent needs, and the skills say why — the dashboard row shows the
+  display line and stops there, with the full note behind drill-down.
+
+  `skills/_mureo-strategy/SKILL.md` carries the section's schema once for all
+  nine, beside the `reports` schema it already described, including the
+  **one writer per run** rule: `mureo_state_display_set` replaces the whole
+  section rather than merging into it, so two skills writing different
+  sections in one run do not compose — the second wins outright.
+
+  The dashboard that renders all of this is step 3, a separate issue; nothing
+  in the browser changed here.
+
 - **The dashboard now reads a display contract, not the agent's prose**
   (#706, step 1 of 3). STATE.json is the agent's working memory — prose-heavy
   by design, written for the next AI decision. The dashboard had been
