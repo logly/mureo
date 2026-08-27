@@ -109,7 +109,7 @@ def test_the_band_is_drawn_for_a_roster_and_hidden_below_two_clients() -> None:
 
 @pytest.mark.unit
 def test_the_fourth_block_is_carved_out_of_ok_and_nothing_else() -> None:
-    """"Not running" is not a health verdict. A client the triage layer
+    """ "Not running" is not a health verdict. A client the triage layer
     marked keeps its mark whatever its figures look like, so the carve-out
     runs only over the clients it did not mark — which is also what keeps the
     four blocks a partition of the roster."""
@@ -150,7 +150,9 @@ def test_the_band_and_the_feed_speak_both_locales() -> None:
     ):
         for locale in ("en", "ja"):
             value = data[locale].get(key)
-            assert isinstance(value, str) and value.strip(), f"{key} missing in {locale}"
+            assert (
+                isinstance(value, str) and value.strip()
+            ), f"{key} missing in {locale}"
             assert value != key
 
 
