@@ -1168,6 +1168,8 @@ strictly structured, write-guarded surface per client.
 | `proposals` | `[{title, body, status, date}]`, status `proposed` / `done` | title ≤30, body ≤80, date ≤12 |
 | `breakdown.campaigns` / `.adgroups` | `[{name, spend, mcpa, target_cpa, state, note}]`, `state` from a closed set (`target_met` / `improving` / `watch` / `worsening` / `no_data`) | note ≤40 |
 | `stated_values` | `[{label, value}]` | label ≤24, **value a raw number or a string ≤12** |
+| `source` | the skill that wrote this screen | ≤24, **required** alongside any section |
+| `generated_at` | when it was written | server-stamped (#460) |
 
 Every bound **refuses** the write; nothing is truncated. That is #662's
 rule applied to a second surface, and for the same reason: a sentence cut
@@ -1210,6 +1212,39 @@ ran last. There is no partial-update entry point on purpose, because any
 merge policy re-creates the mixed-moment screen the whole-section
 replacement exists to prevent. Two writers compose their sections *before*
 calling, never by calling twice.
+
+**Across runs, though, there is always a second writer.** A day has a
+morning weekly-report and an evening daily-check, and the evening one
+overwrites the morning's screen. Keeping that (rather than merging) is the
+same decision for the same reason — but it is not free, so the second writer
+carries one duty, stated in `DISPLAY_OVERWRITE_RULE` and pasted into every
+skill that writes a contract: **read the current `display` first, and carry
+over the other skill's `proposals` that are still live** — not yet done, and
+not contradicted by what this run just found. Nothing else travels. A
+`nav_message`, a `highlights` chip, a `breakdown` row or a `stated_values`
+chip is a reading of the figures in front of whoever wrote it, and copying
+one forward would put that judgement on screen under an author who never
+made it — the same reason #545 refuses to plan a rollback for a change mureo
+only observed. `proposals` is the exception because a recommendation is a
+standing commitment rather than a reading of one moment: it stays true until
+it is done or withdrawn.
+
+**The screen says who drew it.** `source` (the skill's own name, ≤24 chars)
+is **required** alongside any section, and `generated_at` is stamped
+server-side — the #460 rule every other timestamp in this document follows,
+because the age of a screen is exactly what tells an operator whether to
+believe it. Together they are what last-writer-wins costs, paid back: a card
+whose weekly proposals were replaced by the evening's run still says who
+last spoke and when. A call that states no section clears the screen and
+needs neither — there is no document left to attribute, and an attributed
+blank would be worse than none.
+
+**Chip tone comes from the severity the finding already has**, so one
+finding is not amber on one client's card and red on another's: `action →
+bad`, `watch → watch`, `positive → good`. `info` deliberately does **not**
+become a highlight — there are at most three chips, a neutral note would
+spend one an action or a win needed, and the note is still in the report for
+whoever wants it.
 
 **Strict on write, tolerant on read.** Every bound and vocabulary here is a
 *write* rule. A value already on disk — hand-edited, or written by an
@@ -1414,6 +1449,8 @@ bound below **refuses** an over-long write rather than truncating it.
 | `proposals` | `array` | `{title ≤30, body ≤80, status, date ≤12}`; `status` is `proposed` or `done`, and only `title` is required. `date` should **prefer** `YYYY-MM-DD` — free text like `"last week"` is allowed, but keep one spelling within a client, since two in one list read as two different kinds of fact. mureo enforces the length and no format: it displays the value and never parses it |
 | `breakdown` | `object` | Two tables, `campaigns` and `adgroups`, each an array of `{name, spend, mcpa, target_cpa, state, note ≤40}`. The three figures are raw numbers and a figure a row does not have is **omitted**, never written as `0` — a row with no conversions has no `mcpa`, and `0` would state a perfect CPA rather than the absence of one. `state` is one of `target_met` / `improving` / `watch` / `worsening` / `no_data` |
 | `stated_values` | `array` | `{label ≤24, value}` chips. The value is a raw number or a string of ≤12 characters; prose is refused, because it lands in a numeric column |
+| `source` | `string` | Which skill wrote this screen (≤24 characters). **Required** alongside any section: the contract is replaced whole by whoever writes it last, so without it a card cannot say whose answer it is showing |
+| `generated_at` | `string` | When it was written, stamped **server-side** (#460) — never taken from the caller, because the age of a screen is what tells an operator whether to believe it |
 
 #### Batch Record
 

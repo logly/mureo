@@ -190,6 +190,11 @@ _DISPLAY_STATED_VALUE_FIELD_VALUES: dict[str, Any] = {
 }
 
 _DISPLAY_FIELD_VALUES: dict[str, Any] = {
+    # Attribution (#706): who drew this screen and when. ``generated_at`` is
+    # server-stamped on the write path, but the codec must still carry
+    # whatever is on disk, so the fixture states one.
+    "source": "daily-check",
+    "generated_at": "2026-08-08T09:30:00+09:00",
     "nav_message": "CPA is over target — pause the two worst ad groups",
     "highlights": (DisplayHighlight(**_DISPLAY_HIGHLIGHT_FIELD_VALUES),),
     "proposals": (DisplayProposal(**_DISPLAY_PROPOSAL_FIELD_VALUES),),
@@ -386,7 +391,7 @@ class TestDocumentLevelPreservation:
         different readers, and a write of one must never disturb the other.
         """
         path, before = seeded
-        after = set_display(path, nav_message="Spend is on pace")
+        after = set_display(path, source="daily-check", nav_message="Spend is on pace")
         _assert_document_preserved(before, after, changed={"last_synced_at", "display"})
         assert after.display is not None
         assert after.display.nav_message == "Spend is on pace"
@@ -394,6 +399,9 @@ class TestDocumentLevelPreservation:
         # NOT name are absent, not inherited from the seeded contract.
         assert after.display.highlights == ()
         assert after.display.stated_values == ()
+        # …and the screen says who drew it, with a server-stamped age.
+        assert after.display.source == "daily-check"
+        assert after.display.generated_at == after.last_synced_at
 
     def test_set_platform_metrics(self, seeded: tuple[Path, StateDocument]) -> None:
         path, before = seeded

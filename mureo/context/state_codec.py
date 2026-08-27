@@ -191,6 +191,8 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "proposals",
                 "breakdown",
                 "stated_values",
+                "source",
+                "generated_at",
             }
         ),
         "display_codec.parse_display_contract / .display_contract_to_dict",

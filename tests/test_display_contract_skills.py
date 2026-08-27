@@ -38,6 +38,20 @@ unchanged — the two add a rendering, they replace nothing.
 **One writer per run**, stated in ``daily-check`` — the skill that writes
 this most often, and the one whose steps another skill is most likely to run
 beside.
+
+**And the second writer's duty**, stated in all nine. ``display`` is
+replaced whole and the last writer wins, so a weekly review's proposals can
+be gone by the evening. That is the design — a screen is one moment — but it
+is not free, so :data:`~mureo.core.display_contract.DISPLAY_OVERWRITE_RULE`
+is pasted verbatim too: read the current contract first, carry over the
+other skill's still-live ``proposals``, and carry nothing else. Alongside it,
+every skill names itself in ``source``, so a card whose section a later run
+replaced still says who last spoke.
+
+**One tone table.** A chip is a severity in fewer characters, and mapped by
+feel the same finding ends up amber on one client's card and red on
+another's. :data:`~mureo.core.display_contract.HIGHLIGHT_TONE_RULE` is
+pasted onto the ``highlights`` bullet of all nine.
 """
 
 from __future__ import annotations
@@ -51,6 +65,9 @@ from mureo.core.display_contract import (
     ACTION_LOG_DISPLAY_TITLE_MAX_CHARS,
     BREAKDOWN_STATES,
     DISPLAY_CONTRACT_RULE,
+    DISPLAY_OVERWRITE_RULE,
+    DISPLAY_SOURCE_MAX_CHARS,
+    HIGHLIGHT_TONE_RULE,
 )
 
 pytestmark = pytest.mark.unit
@@ -128,6 +145,45 @@ def test_the_bounds_are_pasted_verbatim_from_the_code(skill: str) -> None:
     a different number from the one the tool enforces the day either changes.
     """
     assert DISPLAY_CONTRACT_RULE in _body(skill)
+
+
+@pytest.mark.parametrize("skill", _SKILLS)
+def test_the_overwrite_rule_is_pasted_verbatim(skill: str) -> None:
+    """The half no schema can enforce, in every skill that could hit it.
+
+    `display` is replaced whole and the last writer wins, so a weekly
+    review's proposals can be gone by the evening. Whether another skill's
+    proposal is still live is a judgement about today's findings — only the
+    caller holds it — so the instruction has to reach the caller, verbatim,
+    or the loss is silent.
+    """
+    assert DISPLAY_OVERWRITE_RULE in _body(skill)
+
+
+@pytest.mark.parametrize("skill", _SKILLS)
+def test_the_skill_is_told_to_name_itself(skill: str) -> None:
+    """Last-writer-wins costs a reader the ability to tell WHOSE answer
+    survived; ``source`` is what pays that back, so every writer states it."""
+    body = _body(skill)
+    assert "- `source`: your own skill name" in body
+    assert f"at most {DISPLAY_SOURCE_MAX_CHARS} characters" in body
+    # …and the server owns the clock, as it does for every other timestamp
+    # in this document (#460).
+    assert "`generated_at` is stamped by the server — do not compute it" in body
+
+
+@pytest.mark.parametrize("skill", _SKILLS)
+def test_the_tone_map_is_pasted_verbatim(skill: str) -> None:
+    """A chip is a severity in fewer characters. Mapped by feel, the same
+    finding ends up amber on one client's card and red on another's."""
+    assert HIGHLIGHT_TONE_RULE in _body(skill)
+
+
+@pytest.mark.parametrize("skill", _SKILLS)
+def test_the_tone_map_sits_on_the_highlights_bullet(skill: str) -> None:
+    """Where the chips are composed, not stranded elsewhere in the step."""
+    line = next(ln for ln in _body(skill).splitlines() if HIGHLIGHT_TONE_RULE in ln)
+    assert "`highlights`" in line, f"{skill}: the tone map is not on the chips"
 
 
 @pytest.mark.parametrize("skill", _SKILLS)
@@ -214,9 +270,10 @@ def test_the_shared_schema_describes_the_section_once() -> None:
     body = packaged.read_text(encoding="utf-8")
     assert "### Display contract section" in body
     assert "`mureo_state_display_set`" in body
-    # The two facts a writer cannot work out from the field list alone.
+    # The facts a writer cannot work out from the field list alone.
     assert "Every bound refuses the write; nothing is truncated" in body
-    assert "**One writer per run.**" in body
+    assert "**One writer per run — and last writer wins across the day.**" in body
+    assert "carry over the\nother skill's `proposals` that are still live" in body
     # …and what is deliberately NOT writable, or an agent will try.
     assert "Do not write the KPI funnel or the daily chart" in body
 
@@ -263,6 +320,6 @@ def test_daily_check_states_the_one_writer_rule() -> None:
     outright. Stated where the contract is written most often.
     """
     body = _body("daily-check")
-    assert "**One writer per run.**" in body
+    assert "**One writer per run — and you may not be the first today.**" in body
     assert "REPLACES" in body
     assert "never call twice" in body

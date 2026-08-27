@@ -65,10 +65,15 @@ __all__ = [
     "BREAKDOWN_NOTE_MAX_CHARS",
     "BREAKDOWN_STATES",
     "DISPLAY_CONTRACT_RULE",
+    "DISPLAY_OVERWRITE_RULE",
+    "DISPLAY_PROVENANCE_FIELDS",
     "DISPLAY_SECTIONS",
+    "DISPLAY_SOURCE_MAX_CHARS",
     "HIGHLIGHTS_MAX_ITEMS",
     "HIGHLIGHT_TEXT_MAX_CHARS",
     "HIGHLIGHT_TONES",
+    "HIGHLIGHT_TONE_BY_SEVERITY",
+    "HIGHLIGHT_TONE_RULE",
     "NAV_MESSAGE_MAX_CHARS",
     "PROPOSAL_BODY_MAX_CHARS",
     "PROPOSAL_DATE_MAX_CHARS",
@@ -147,6 +152,18 @@ content back into the prose this contract exists to empty. Twelve
 characters is what a chip holds; past it, it is a sentence.
 """
 
+DISPLAY_SOURCE_MAX_CHARS: int = 24
+"""How long a contract's ``source`` may be, in characters.
+
+It holds a skill name (``daily-check``, ``tracking-health``), which is what
+makes the screen attributable: the contract is replaced wholesale by
+whoever writes it last, so "who put this here, and when" is the one
+question a reader cannot answer from the content. Long enough for every
+skill mureo ships and a plugin's own, short enough that it cannot become a
+second ``nav_message``.
+"""
+
+
 ACTION_LOG_DISPLAY_TITLE_MAX_CHARS: int = 40
 """An action-log entry's display title, in characters."""
 
@@ -187,6 +204,46 @@ rather than an omission for the reason ``not_collected`` exists one level up
 same blank cell.
 """
 
+HIGHLIGHT_TONE_BY_SEVERITY: dict[str, str] = {
+    "action": "bad",
+    "watch": "watch",
+    "positive": "good",
+}
+"""Report-flag severity → the highlight tone that says the same thing.
+
+A skill has already graded its findings on the report's severity axis
+(``mureo.analysis.report_flags.SEVERITIES``), and a chip is the same
+judgement in fewer characters. Without one table the two vocabularies get
+mapped by feel, and the same finding ends up amber on one client's card and
+red on another's.
+
+``info`` is deliberately ABSENT, and that is the load-bearing half: a
+neutral note is not a highlight. There are at most
+:data:`HIGHLIGHTS_MAX_ITEMS` chips on a card, so an informational flag
+taking one of them costs a slot that an action or a win needed, and the
+information is not lost — it stays in the report, where a reader who wants
+it will look. ``tests/test_display_contract.py`` pins this map against the
+severity axis, so a fifth severity cannot appear without a decision being
+made here about whether it is a chip at all.
+"""
+
+
+HIGHLIGHT_TONE_RULE = (
+    "Map a finding's severity to a chip tone: "
+    + " / ".join(
+        f"{severity} → {tone}" for severity, tone in HIGHLIGHT_TONE_BY_SEVERITY.items()
+    )
+    + ". info does NOT become a highlight — a neutral note would spend one of "
+    f"the {HIGHLIGHTS_MAX_ITEMS} chips an action or a win needed, and it is "
+    "still in the report for whoever wants it."
+)
+"""The severity → tone mapping as one sentence, stated ONCE (#706).
+
+Shown to the writer wherever it composes chips — the skills — rather than
+only to the reader.
+"""
+
+
 #: The sections a display contract is made of, in the order the report is
 #: read down the page. Named once so the write API, the codec and the tool
 #: schema cannot disagree about what the contract contains.
@@ -197,6 +254,50 @@ DISPLAY_SECTIONS: tuple[str, ...] = (
     "breakdown",
     "stated_values",
 )
+
+#: Who wrote this screen, and when. Not sections — nothing is rendered FROM
+#: them — but part of the contract, and required alongside any section that
+#: is (see :func:`validate_display_contract`).
+#:
+#: The contract is replaced wholesale by whoever writes it last, which is the
+#: design: a screen is one moment, and merging two runs produces a moment
+#: that never happened. The cost is that a reader cannot tell whose answer
+#: survived. These two fields are that cost paid off — the screen names its
+#: author and its age, so a card that lost a section to a later run still
+#: says who last spoke.
+DISPLAY_PROVENANCE_FIELDS: tuple[str, ...] = ("source", "generated_at")
+
+
+DISPLAY_OVERWRITE_RULE = (
+    "``display`` is REPLACED WHOLE and the last writer wins — there is no "
+    "merge. Before you write it, read the current one (``mureo_state_get``). "
+    "Of what another skill wrote TODAY, carry exactly one thing into your "
+    "own write: its ``proposals`` that are still live — not yet done, and "
+    "not contradicted by what you just found. Everything else you write from "
+    "your own run alone, because a screen assembled from two runs shows a "
+    "moment that never happened. And carry over NOTHING ELSE: never copy "
+    "another skill's ``nav_message``, ``highlights``, ``breakdown`` or "
+    "``stated_values``, which would put its judgement under your name when "
+    "you cannot vouch for it. Name yourself in ``source`` so the screen says "
+    "whose answer it is."
+)
+"""The rule a second writer needs, stated ONCE and shown on every path (#706).
+
+The whole-section replacement is deliberate — see
+:func:`mureo.context.state.set_display` — but "deliberate" is not the same
+as "harmless": a weekly review's proposals disappearing when the evening's
+daily-check writes its own screen is a real loss, and the daily-check has no
+way to know it happened unless it looks first.
+
+So the fix is a READ before the write, and one narrow carry-over.
+``proposals`` is the only section that carries, because it is the only one
+that is a standing commitment rather than a reading of this moment: a
+recommendation stays true until it is done or withdrawn, while a
+``nav_message`` or a ``breakdown`` row is a statement about the figures in
+front of the skill that wrote it. Copying one of those forward would put a
+judgement on screen under an author who never made it — the same reason
+#545 refuses to let mureo plan a rollback for a change it only observed.
+"""
 
 
 DISPLAY_CONTRACT_RULE = (
@@ -254,7 +355,10 @@ def validate_display_contract(display: dict[str, Any]) -> None:
     """
     if not isinstance(display, dict):
         raise ValueError(f"display must be an object. {DISPLAY_CONTRACT_RULE}")
-    unknown = sorted(set(display) - set(DISPLAY_SECTIONS))
+    _require_source(display)
+    unknown = sorted(
+        set(display) - set(DISPLAY_SECTIONS) - set(DISPLAY_PROVENANCE_FIELDS)
+    )
     if unknown:
         # Unlike a report summary's ``totals`` — where a key mureo has no
         # label for is still the report's own content and is stored (#662) —
@@ -292,6 +396,37 @@ def validate_action_log_display(
         field="display_summary",
         limit=ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS,
         rule=ACTION_LOG_DISPLAY_RULE,
+    )
+
+
+def _require_source(display: dict[str, Any]) -> None:
+    """A contract that shows anything must say who wrote it.
+
+    Required only alongside CONTENT. A call that states no section is the
+    clear — it takes the screen down, leaves no document to attribute, and
+    is the one write for which "who" has nowhere to be stored.
+
+    ``generated_at`` is deliberately NOT required of the caller: the server
+    stamps it (:func:`mureo.context.state.set_display`), the #460 rule every
+    other timestamp in this document follows. A model-supplied "now" is how
+    a drifted clock gets persisted and read back later as fact, and the age
+    of the screen is precisely the thing a reader must be able to trust.
+    """
+    if not any(section in display for section in DISPLAY_SECTIONS):
+        return
+    source = display.get("source")
+    if not isinstance(source, str) or not source.strip():
+        raise ValueError(
+            "source is required: name the skill writing this screen (e.g. "
+            "'daily-check'). The contract is replaced wholesale by whoever "
+            "writes it last, so an unattributed screen cannot say whose "
+            f"answer survived. {DISPLAY_OVERWRITE_RULE}"
+        )
+    _reject_overlong(
+        source,
+        field="source",
+        limit=DISPLAY_SOURCE_MAX_CHARS,
+        rule=DISPLAY_CONTRACT_RULE,
     )
 
 

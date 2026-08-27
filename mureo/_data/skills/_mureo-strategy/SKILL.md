@@ -722,6 +722,20 @@ verdicts you already reached; it never reaches a new one.**
 | `breakdown.campaigns` / `.adgroups` | `[{name, spend, mcpa, target_cpa, state, note}]`, `state` one of `target_met` / `improving` / `watch` / `worsening` / `no_data` | note ≤40 |
 | `stated_values` | `[{label, value}]` | label ≤24, **value a raw number or a string ≤12** |
 
+Plus two attribution fields, and they are not decoration: the contract is
+replaced **whole** by whoever writes it last, so a reader cannot otherwise
+tell whose answer survived. `source` is your own skill name (≤24 chars) and
+is **required** alongside any section you state; `generated_at` is stamped by
+the server — do not compute it. A call that states no section clears the
+screen and needs neither.
+
+**Chip tone comes from the severity you already gave the finding**, so the
+same finding is never amber on one client's card and red on another's:
+`action → bad` / `watch → watch` / `positive → good`, and **`info` does not
+become a highlight** — there are at most 3 chips, a neutral note would spend
+one an action or a win needed, and the note is still in the report for
+whoever wants it.
+
 **Every bound refuses the write; nothing is truncated** — the same rule the
 `narrative` bound above follows, for the same reason. Over a bound,
 **shorten and rewrite**: lead with the point, drop the connectives, a noun
@@ -739,11 +753,18 @@ clicks → conversions with CPM / CPC / CPA, and the day-over-day trend, are
 computed by mureo from the stored totals and `platforms[<p>].daily`. There is
 nothing there for you to state, and therefore nothing to get wrong.
 
-**One writer per run.** `mureo_state_display_set` REPLACES the whole section
-rather than merging into it, so the skill that writes it states every section
-it wants on screen. A second skill writing a different section in the same
-run does not add to the first — it replaces it, and what survives is whatever
-ran last. Compose before calling; never call twice.
+**One writer per run — and last writer wins across the day.**
+`mureo_state_display_set` REPLACES the whole section rather than merging into
+it, so within a run the skill that writes it states every section it wants on
+screen: compose before calling, never call twice. Across runs the same rule
+means the evening's daily-check overwrites the morning's weekly review. That
+is deliberate — a screen is one moment, and a merge shows a moment that never
+happened — but it is not free, which is why a second writer has one duty:
+**read the current `display` first (`mureo_state_get`), and carry over the
+other skill's `proposals` that are still live** (not yet done, not
+contradicted by what you just found). Carry over nothing else — another
+skill's `nav_message`, `highlights`, `breakdown` or `stated_values` would put
+its judgement on screen under your name, and you cannot vouch for it.
 
 ### Action Log Entry Fields
 

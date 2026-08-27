@@ -67,7 +67,7 @@ def test_stays_readable_under_the_size_budget() -> None:
     ``test_daily_check_incremental``; the two are deliberately kept equal, so
     a budget raised in one file and forgotten in the other fails here.
     """
-    assert len(_body().splitlines()) <= 172
+    assert len(_body().splitlines()) <= 175
 
 
 def test_names_the_absent_tool_surface_condition() -> None:

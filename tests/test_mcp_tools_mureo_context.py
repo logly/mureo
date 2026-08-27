@@ -1871,6 +1871,7 @@ async def test_display_set_persists_the_contract(cwd_to_tmp) -> None:
     result = await mod.handle_tool(
         "mureo_state_display_set",
         {
+            "source": "daily-check",
             "nav_message": "CPA is over target — pause the two worst ad groups",
             "highlights": [{"tone": "bad", "text": "CPA 12% over target"}],
             "proposals": [{"title": "Pause two ad groups", "status": "proposed"}],
@@ -1900,9 +1901,10 @@ async def test_display_set_refuses_prose_in_a_stated_value(cwd_to_tmp) -> None:
         await mod.handle_tool(
             "mureo_state_display_set",
             {
+                "source": "daily-check",
                 "stated_values": [
                     {"label": "CPA", "value": "CPA is 12% over target this month"}
-                ]
+                ],
             },
         )
 
@@ -1910,7 +1912,9 @@ async def test_display_set_refuses_prose_in_a_stated_value(cwd_to_tmp) -> None:
 async def test_display_set_with_no_section_clears_the_contract(cwd_to_tmp) -> None:
     """Nothing is required, and that is how a stale screen is taken down."""
     mod = _import_tools()
-    await mod.handle_tool("mureo_state_display_set", {"nav_message": "stale"})
+    await mod.handle_tool(
+        "mureo_state_display_set", {"source": "daily-check", "nav_message": "stale"}
+    )
     result = await mod.handle_tool("mureo_state_display_set", {})
     assert "display" not in json.loads(result[0].text)
 
@@ -2092,7 +2096,13 @@ async def test_the_real_dispatch_path_refuses_the_display_contract(
     from mureo.mcp import server as server_mod
 
     with pytest.raises(ValueError) as exc:
-        await server_mod.handle_call_tool("mureo_state_display_set", arguments)
+        # ``source`` is supplied here rather than in the table: it is required
+        # alongside any section (#706) and orthogonal to the bound under test,
+        # so a case added later cannot forget it and accidentally assert the
+        # attribution refusal instead of its own.
+        await server_mod.handle_call_tool(
+            "mureo_state_display_set", {"source": "daily-check", **arguments}
+        )
 
     message = str(exc.value)
     assert message.startswith(
@@ -2119,6 +2129,7 @@ async def test_the_real_dispatch_path_writes_a_valid_contract(cwd_to_tmp) -> Non
     await server_mod.handle_call_tool(
         "mureo_state_display_set",
         {
+            "source": "daily-check",
             "nav_message": "Spend is on pace",
             "highlights": [{"tone": "good", "text": "CPA under target"}],
             "breakdown": {"campaigns": [{"name": "Brand", "spend": 42000}]},
@@ -2147,9 +2158,10 @@ async def test_prose_in_a_stated_value_is_the_handler_guard_not_the_schema(
         await server_mod.handle_call_tool(
             "mureo_state_display_set",
             {
+                "source": "daily-check",
                 "stated_values": [
                     {"label": "CPA", "value": "CPA is 12% over target this month"}
-                ]
+                ],
             },
         )
 

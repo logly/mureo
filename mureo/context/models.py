@@ -472,6 +472,24 @@ class DisplayContract:
     proposals: tuple[DisplayProposal, ...] = ()
     breakdown: DisplayBreakdown = field(default_factory=DisplayBreakdown)
     stated_values: tuple[DisplayStatedValue, ...] = ()
+    # Who wrote this screen, and when. Appended after every pre-attribution
+    # field, the positional-compatibility rule ``ActionLogEntry`` follows.
+    #
+    # The contract is replaced wholesale by whoever writes it last — a screen
+    # is one moment, and merging two runs produces a moment that never
+    # happened. The cost of that is that a reader cannot tell whose answer
+    # survived, and these two fields are that cost paid off: the card names
+    # its author and its age, so a section a later run replaced is still
+    # attributable rather than merely gone.
+    #
+    # ``source`` is required alongside any section that renders (see
+    # :func:`~mureo.core.display_contract.validate_display_contract`);
+    # ``generated_at`` is stamped SERVER-side (the #460 rule), so a drifted
+    # client clock can never be persisted and read back as when the screen
+    # was written. Both are ``None`` on a contract written before they
+    # existed, which is why neither is enforced on READ.
+    source: str | None = None
+    generated_at: str | None = None
 
     def __post_init__(self) -> None:
         """Ensure every collection is a tuple (defensive copies)."""
@@ -486,6 +504,10 @@ class DisplayContract:
         The codec emits ``display`` only for a non-empty contract, so a
         document that has never had one stays byte-stable on round-trip and
         a cleared contract leaves no key behind to be read as a live one.
+
+        ``source`` / ``generated_at`` deliberately do NOT count: they say who
+        drew a screen, and there is no screen without a section. Counting
+        them would let a cleared contract survive as an attributed blank.
         """
         return bool(
             self.nav_message

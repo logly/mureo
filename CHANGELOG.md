@@ -47,6 +47,36 @@
   section rather than merging into it, so two skills writing different
   sections in one run do not compose — the second wins outright.
 
+  **The screen now says who drew it.** `display` gains `source` (the writing
+  skill, ≤24 chars, **required** alongside any section — enforced at the
+  schema layer via `dependentRequired`, so an unattributed screen is refused
+  before the handler runs) and `generated_at`, stamped **server-side** on the
+  #460 rule every other timestamp in this document follows. Last-writer-wins
+  is deliberate — a screen is one moment, and a merge shows a moment that
+  never happened — but it cost a reader the ability to tell whose answer
+  survived, and these two pay that back: a card whose weekly proposals were
+  replaced by the evening's daily-check still says who last spoke and when.
+  A call that states no section clears the screen and needs neither.
+
+  **And the second writer has a duty.** A day has a morning weekly-report and
+  an evening daily-check, so `DISPLAY_OVERWRITE_RULE` — pasted verbatim into
+  all nine skills and into the tool description — says: read the current
+  `display` first, carry over the other skill's `proposals` that are still
+  live, and carry **nothing else**. A `nav_message` or a `breakdown` row is a
+  reading of the figures in front of whoever wrote it, and copying one
+  forward would put that judgement on screen under an author who never made
+  it; a proposal is a standing commitment and stays true until it is done or
+  withdrawn. No schema can enforce that — whether a proposal is still live is
+  a judgement about today's findings — so the rule reaches the caller as
+  words or nowhere.
+
+  **One tone table.** `action → bad`, `watch → watch`, `positive → good`, and
+  `info` deliberately does **not** become a highlight: there are at most
+  three chips, a neutral note would spend one an action or a win needed, and
+  the note is still in the report. Pasted onto the `highlights` bullet of all
+  nine skills, and pinned against `report_flags.SEVERITIES` so a fifth
+  severity cannot appear without someone deciding whether it is a chip.
+
   The dashboard that renders all of this is step 3, a separate issue; nothing
   in the browser changed here.
 

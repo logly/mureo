@@ -49,8 +49,13 @@ def test_stays_readable_under_the_size_budget() -> None:
       the point of it: the bounds an agent is held to are stated where it
       composes, in the same words the refusal will use, rather than
       paraphrased into a shorter line that could drift from the code.
+    - #706 review round: three more — the ``source`` bullet, and
+      ``DISPLAY_OVERWRITE_RULE`` (also verbatim) with its blank line. That
+      rule is the whole answer to "a later run replaced my proposals", and it
+      cannot live anywhere but here: no schema can decide whether another
+      skill's proposal is still live.
     """
-    assert len(_body().splitlines()) <= 172
+    assert len(_body().splitlines()) <= 175
 
 
 def test_two_modes_documented() -> None:
