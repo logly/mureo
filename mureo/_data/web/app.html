@@ -202,6 +202,38 @@
                 </div>
               </div>
 
+              <!-- The band across the top of the list screen (#706 step 3-b):
+                   the roster's health at a glance, before anything is
+                   clicked. Everything in it is a COUNT OF CLIENTS — the day
+                   the HOST says it is, how many of the roster raised nothing,
+                   and the four health blocks. Not one verdict is decided
+                   here: the counts come from the triage layer the cards below
+                   are marked from, so the band cannot call a client healthy
+                   that the alerts call urgent.
+
+                   Drawn only for a roster (two clients or more). A single
+                   client keeps exactly the index it had before — with one
+                   card, "which do I open first?" is not a question. -->
+              <section class="reports-hero" data-reports-hero hidden
+                       aria-labelledby="reports-hero-title">
+                <div class="reports-hero-ident">
+                  <h3 class="reports-hero-title" id="reports-hero-title"
+                      data-i18n="dashboard.reports_hero_title">Today across your clients</h3>
+                  <!-- The server's own date, never the browser's. Absent
+                       rather than guessed when the daemon did not state one. -->
+                  <span class="reports-hero-date" data-reports-hero-date hidden></span>
+                </div>
+                <div class="reports-hero-ratio">
+                  <span class="reports-hero-ratio-value" data-reports-hero-ratio></span>
+                  <span class="reports-hero-ratio-label"
+                        data-i18n="dashboard.reports_hero_ratio_label">clients with nothing raised</span>
+                </div>
+                <!-- Four blocks, each carrying its count AND its word: colour
+                     never carries the meaning alone. -->
+                <div class="reports-hero-blocks" data-reports-hero-blocks
+                     role="list" aria-label="Client health"></div>
+              </section>
+
               <!-- Portfolio strip: what the whole roster spent, converted and
                    paid per conversion, and how many clients need attention.
                    Every cell carries the number of clients it was stated over
@@ -313,6 +345,13 @@
                     <span class="reports-count-badge" data-reports-feed-count></span>
                   </div>
                   <ul class="reports-feed" data-reports-feed-list></ul>
+                  <!-- A quiet day, in one line. On a ROSTER the panel stays
+                       and says so: an absent panel and a day with nothing on
+                       it look identical, and "is this broken?" is not a
+                       question the rail should leave open. Below two clients
+                       the panel is absent as before. -->
+                  <p class="reports-feed-empty" data-reports-feed-empty hidden
+                     data-i18n="dashboard.reports_feed_empty">Nothing logged today yet.</p>
                   <p class="reports-panel-note" data-reports-feed-more></p>
                 </aside>
 
@@ -800,6 +839,9 @@
   <script src="/static/reports_order.js"></script>
   <script src="/static/reports_triage.js"></script>
   <script src="/static/reports_overview.js"></script>
+  <!-- The list screen's band (#706 step 3-b). AFTER reports_logic.js and
+       reports_overview.js, both of which it reads at call time. -->
+  <script src="/static/reports_hero.js"></script>
   <script src="/static/dashboard_setup.js"></script>
   <script src="/static/dashboard_workspace.js"></script>
   <script src="/static/dashboard_about.js"></script>
@@ -809,6 +851,7 @@
   <script src="/static/dashboard_reports_chart.js"></script>
   <script src="/static/dashboard_reports_detail.js"></script>
   <script src="/static/dashboard_reports_overview.js"></script>
+  <script src="/static/dashboard_reports_hero.js"></script>
   <script src="/static/dashboard_reports_cards.js"></script>
   <script src="/static/dashboard_reports_triage.js"></script>
   <script src="/static/dashboard_reports_table.js"></script>

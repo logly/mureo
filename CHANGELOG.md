@@ -2,6 +2,45 @@
 
 ### Changed
 
+- **The client list leads with health at a glance** (#706, step 3-b of 3).
+  Step 3-a rebuilt the screen about one client; this is the screen about all
+  of them. A roster of **two clients or more** now opens with a dark band
+  above the portfolio strip carrying the day, the fraction of the roster that
+  raised nothing, and four counted blocks: nothing raised, watch, needs
+  attention, and **not running**.
+
+  **The band grades nothing.** A client's health has exactly one answer in
+  this product, and the band is handed the triage layer's own counts and its
+  own per-client verdict — the same two the cards, the roster rows and the
+  filter chips are painted from. A band that counted for itself would be a
+  fourth opinion: green on the band and red on the card, with nothing on
+  screen to say which is true.
+
+  **The fourth block is not a health verdict.** It is the client mureo has no
+  figure at all for, carved out of the "nothing raised" bucket and out of
+  nothing else — so a client the alerts marked keeps its mark, and the four
+  blocks always add up to the roster. A client whose totals are *withheld*
+  (stale, double-counted) is never called idle: it has figures and mureo is
+  refusing to state them, which is already an alert.
+
+  **A single client keeps the index it had.** With one card, "which of these
+  do I open first?" is not a question being asked.
+
+  **The rail says what mureo did today, one line per entry.** A row with a
+  `display_title` shows that and stops; a row that predates the contract
+  shows its work-journal summary with the markdown emphasis stripped and cut
+  at 120 characters — the same helper the detail view uses, not a second copy
+  of the rule. On a roster a quiet day now says so in one line instead of
+  removing the panel: an absent panel and a day with nothing on it look
+  identical, and "did nothing happen, or is this broken?" is not a question
+  the rail should leave open.
+
+  The band is styled on a `--report-navy` family added beside
+  `--report-blue`, defined for both themes — it is the one surface on these
+  screens that is dark in *both* — and its four fills are the same semantic
+  vocabulary the cards use, at the shades that clear AA for white text on it.
+  Every block carries its word as well as its colour.
+
 - **The client detail view is numbers and charts first** (#706, step 3-a of
   3). Steps 1 and 2 built the display contract and taught the skills to fill
   it; this is the screen that reads it. A client that has one now gets, top

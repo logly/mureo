@@ -146,6 +146,11 @@ require(path.join(WEB, "reports_logic.js"));
 // …and reports_format.js, for the same reason: the action feed asks it to
 // humanize an action name, off the page global, at call time.
 require(path.join(WEB, "reports_format.js"));
+// …and reports_display.js, which is where the ONE line an action-log entry
+// shows is decided (#706 step 3-b): the display line the writer wrote for a
+// row like this one, or the work-journal summary with its markdown emphasis
+// stripped and cut. Same call-time read, same reason.
+require(path.join(WEB, "reports_display.js"));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

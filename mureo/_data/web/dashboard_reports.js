@@ -64,6 +64,7 @@
   const reportsViewToShow = REPORTS_SHARED.reportsViewToShow;
   const buildReportsPortfolio = REPORTS_SHARED.buildReportsPortfolio;
   const buildReportsActionFeed = REPORTS_SHARED.buildReportsActionFeed;
+  const buildReportsHero = REPORTS_SHARED.buildReportsHero;
   const latestReport = REPORTS_SHARED.latestReport;
   const formatKpi = REPORTS_SHARED.formatKpi;
   const REPORTS_KPI_LABELS = REPORTS_SHARED.REPORTS_KPI_LABELS;
@@ -120,6 +121,16 @@
         "dashboard_reports_overview.js BEFORE dashboard_reports.js"
     );
   }
+  // The band across the top of the list screen (#706 step 3-b).
+  const R_HERO = window.MUREO_DASHBOARD_REPORTS_HERO;
+  if (!R_HERO) {
+    throw new Error(
+      "dashboard_reports.js needs MUREO_DASHBOARD_REPORTS_HERO — load " +
+        "dashboard_reports_hero.js BEFORE dashboard_reports.js"
+    );
+  }
+  const renderReportsHero = R_HERO.renderReportsHero;
+
   const renderReportsActionFeed = R_OVERVIEW.renderReportsActionFeed;
   const renderReportsFilters = R_OVERVIEW.renderReportsFilters;
   const renderReportsPlatforms = R_OVERVIEW.renderReportsPlatforms;
@@ -187,6 +198,11 @@
     if (triageBox && view !== "index") triageBox.hidden = true;
     const kpiStrip = document.querySelector("[data-reports-kpis]");
     if (kpiStrip && view !== "index") kpiStrip.hidden = true;
+    // …and the band above it (#706 step 3-b), for exactly that reason: it
+    // counts the ROSTER, and "18/21 raised nothing" sitting over one client's
+    // report is a sentence about a screen the operator has left.
+    const heroBand = document.querySelector("[data-reports-hero]");
+    if (heroBand && view !== "index") heroBand.hidden = true;
     // …and the rail's "what mureo did today", which is the roster's day and
     // not the day of whichever client a detail view is showing.
     const feed = document.querySelector("[data-reports-feed]");
@@ -232,6 +248,19 @@
     // place the Agency seam produces — a single workspace opens the detail
     // view directly and never reaches this function.
     const triage = buildReportsTriage(rows, summaries);
+    // How the grid splits by health — ONE object, built once and handed to
+    // the band above the screen and to the filter chips over the cards. Two
+    // calls would be two answers to the same question the moment either
+    // caller learned to pass something different (#706 step 3-b).
+    const healthCounts = triageHealthCounts(triage, rows.length);
+    // The band across the top: the roster's health at a glance, and nothing
+    // it grades itself — the counts and the per-client verdict both come from
+    // the triage layer the cards below are marked from. It draws nothing at
+    // all below two clients.
+    const hero = buildReportsHero(healthCounts, summaries, function (i) {
+      return triageClientHealth(triage, i);
+    });
+    renderReportsHero(hero);
     // The roster's own figures, above the alerts — built from the same
     // summaries the cards below are built from, and stating over how many
     // clients each of them holds.
@@ -240,7 +269,7 @@
     renderReportsTriage(triage);
     // The rail: what mureo did today, then where the money went. Both are
     // built from the summaries already in hand — no extra request.
-    renderReportsActionFeed(buildReportsActionFeed(rows, summaries));
+    renderReportsActionFeed(buildReportsActionFeed(rows, summaries), hero.show);
     renderReportsPlatforms(portfolio);
     wrap.textContent = "";
     // A filter left over from a previous render would hide cards with no
@@ -272,7 +301,7 @@
         n: rows.length,
       });
     }
-    renderReportsFilters(triageHealthCounts(triage, rows.length));
+    renderReportsFilters(healthCounts);
     if (!rows.length) {
       // Every client archived: say so, and leave the disclosure below as the
       // way back — an empty grid with no explanation reads as a broken view.

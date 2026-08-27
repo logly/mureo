@@ -63,6 +63,7 @@
     ["MUREO_REPORTS_ORDER", "reports_order.js"],
     ["MUREO_REPORTS_TRIAGE", "reports_triage.js"],
     ["MUREO_REPORTS_OVERVIEW", "reports_overview.js"],
+    ["MUREO_REPORTS_HERO", "reports_hero.js"],
   ].filter(function (mod) {
     return !window[mod[0]];
   });
@@ -138,6 +139,12 @@
   const clientPlatformSplit = REPORTS_OVERVIEW.clientPlatformSplit;
   const platformColorSlot = REPORTS_OVERVIEW.platformColorSlot;
   const buildReportsActionFeed = REPORTS_OVERVIEW.buildReportsActionFeed;
+
+  // The list screen's band (#706 step 3-b): how many of the roster are fine,
+  // and how many are not. It is handed the triage layer's own counts rather
+  // than grading anything itself.
+  const REPORTS_HERO = window.MUREO_REPORTS_HERO;
+  const buildReportsHero = REPORTS_HERO.buildReportsHero;
 
   // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
   // is rendered separately. Order here is the on-card display order.
@@ -278,6 +285,8 @@
     clientPlatformSplit: clientPlatformSplit,
     platformColorSlot: platformColorSlot,
     buildReportsActionFeed: buildReportsActionFeed,
+    REPORTS_HERO: REPORTS_HERO,
+    buildReportsHero: buildReportsHero,
     REPORTS_KPI_LABELS: REPORTS_KPI_LABELS,
     REPORTS_VIEW_STATE: REPORTS_VIEW_STATE,
   };

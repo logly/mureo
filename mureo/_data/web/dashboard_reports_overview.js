@@ -331,22 +331,38 @@
 
   // What mureo did today, across the roster — the rail's top panel.
   //
-  // A day with nothing logged renders NO panel: the same default silence the
-  // alert layer keeps, and for the same reason. "0 actions today" is a frame
-  // competing for attention with the sections that do have something in it,
-  // and on a rail it would push the platform split below the fold to say so.
+  // ON A ROSTER (`rostered`, two clients or more) the panel is always there,
+  // and a day with nothing logged says so in one line. That is the one place
+  // the list screen keeps a frame over no data, and it is deliberate: on a
+  // roster the rail is where an operator looks to see mureo working, and an
+  // absent panel and a quiet day are indistinguishable from each other —
+  // "did nothing happen, or is this broken?" is the question the line
+  // answers. It is one line, so it costs the platform split nothing.
+  //
+  // BELOW THAT the behaviour is unchanged: no panel at all. A single-client
+  // index (every client but one archived) is not a roster, and the same
+  // default silence the alert layer keeps applies.
   //
   // Nothing here decides what "today" is — reports_overview.js does, from the
   // date the SERVER stated, which a static pin could never check.
-  function renderReportsActionFeed(feed) {
+  function renderReportsActionFeed(feed, rostered) {
     const panel = document.querySelector("[data-reports-feed]");
     const list = document.querySelector("[data-reports-feed-list]");
     const count = document.querySelector("[data-reports-feed-count]");
     const more = document.querySelector("[data-reports-feed-more]");
+    const empty = document.querySelector("[data-reports-feed-empty]");
     if (!panel || !list) return;
     list.textContent = "";
-    panel.hidden = !feed.items.length;
-    if (!feed.items.length) return;
+    panel.hidden = !feed.items.length && !rostered;
+    if (empty) empty.hidden = !!feed.items.length;
+    if (!feed.items.length) {
+      if (count) count.textContent = "";
+      if (more) {
+        more.textContent = "";
+        more.hidden = true;
+      }
+      return;
+    }
     if (count) {
       count.textContent = MUREO.t("dashboard.reports_feed_count", { n: feed.total });
     }
@@ -397,6 +413,10 @@
     const what = document.createElement("span");
     what.className = "reports-feed-text";
     // Writer-supplied text out of STATE.json's action log — text, not markup.
+    // ONE line, and which one is the ENTRY's decision (#706 step 3-b): the
+    // display line where the writer wrote one for a row exactly like this,
+    // and the work-journal summary with its markdown emphasis stripped where
+    // it predates the contract.
     what.textContent = item.text;
     body.appendChild(what);
     // …and clamped to two lines by the stylesheet, with the whole sentence
@@ -408,7 +428,9 @@
     // rule is about a stored VALUE it would be changing; how many lines of
     // an unchanged string a 340px rail shows is a display decision, and the
     // alert rows above make the same one at one line.
-    body.title = item.text;
+    // …and the WHOLE line on the attribute, uncut: `item.text` is what fits
+    // the rail, `item.full` is what was written.
+    body.title = item.full || item.text;
     row.appendChild(body);
     return row;
   }

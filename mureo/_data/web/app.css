@@ -52,6 +52,31 @@
   --report-chart-grid: rgba(20, 22, 26, 0.07);
   --report-on-blue: #ffffff;      /* text on --report-blue                 */
 
+  /* ---- report-brand navy (#706 step 3-b) -------------------------------
+     The staff mockup's LIST screen leads with a dark band, and the band is
+     the one surface on these screens that is dark in both themes. So it gets
+     its own tokens rather than borrowing the page's: `--ink` on `--surface`
+     inverts with the theme, and a band that inverted with it would be the
+     mockup in one theme and something else in the other.
+
+     The four health fills are the SAME vocabulary as --status-* — green is
+     still "nothing to do", amber still "watch", red still "act now" — at the
+     shades that clear AA for white text on this band. That is the same thing
+     the dark theme already does for --status-*, one surface further: a
+     colour that means one thing on the cards must not mean another 60px
+     above them, so these are shades, never a second palette. `idle` is the
+     one that is not a health verdict — it is the client mureo is not running
+     yet — and it is deliberately grey: neutral says "no verdict", which is
+     exactly what mureo has for a client with no figures. */
+  --report-navy: #16233d;         /* the list band's fill                  */
+  --report-navy-line: #2b3a56;    /* a hairline inside the band            */
+  --report-on-navy: #ffffff;      /* text on --report-navy                 */
+  --report-on-navy-soft: #aebdd4; /* the band's secondary text (AA)        */
+  --report-navy-ok: #157347;
+  --report-navy-watch: #8a5a06;
+  --report-navy-attention: #a3271f;
+  --report-navy-idle: #3a4761;
+
   /* ---- status (#691) --------------------------------------------------
      Three states, and only three. `alert` is reserved for ACT NOW — a
      finding that withholds a figure or costs money while it stands. `watch`
@@ -181,6 +206,19 @@
     --report-chart-fill: rgba(90, 169, 239, 0.18);
     --report-chart-grid: rgba(236, 237, 240, 0.09);
     --report-on-blue: #f5f8ff;
+
+    /* The band is dark in both themes, so these move least of anything in
+       this block — only far enough that it sits ON the dark page instead of
+       floating a lighter rectangle over it, and the four fills lift the way
+       --status-* does so they do not go muddy against #0e0f12. */
+    --report-navy: #131d30;
+    --report-navy-line: #26344b;
+    --report-on-navy: #f5f8ff;
+    --report-on-navy-soft: #9fb0c9;
+    --report-navy-ok: #18784c;
+    --report-navy-watch: #90600b;
+    --report-navy-attention: #a83029;
+    --report-navy-idle: #3d4a63;
 
     /* Same three states, lifted for a dark surface. Each foreground clears
        4.5:1 on --surface; the backgrounds are tints of the foreground rather
@@ -4935,5 +4973,172 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .reports-proposal-list[hidden],
 .reports-stated-row[hidden],
 .reports-highlights[hidden] {
+  display: none;
+}
+
+/* ==========================================================================
+   #706 step 3-b — the list screen's band.
+
+   Step 3-a styled the screen about ONE client. This is the band across the
+   top of the screen about all of them: a dark navy strip carrying the day,
+   the fraction of the roster that raised nothing, and four blocks counting
+   the roster by health.
+
+   Every colour here is a token, and the four block fills are the SAME
+   vocabulary the cards below use — green "nothing to do", amber "watch", red
+   "act now" — at the shades that clear AA for white text on this band. A
+   colour must not mean one thing on a card and another 60px above it.
+
+   The band is DARK IN BOTH THEMES, which is why it has its own tokens rather
+   than --surface / --ink: those invert with the theme, and a band that
+   inverted with them would be the mockup in one theme and something else in
+   the other.
+   ========================================================================== */
+
+.reports-hero {
+  display: grid;
+  /* The identity, the fraction, then the blocks — the blocks last because
+     they are the widest thing and the one an operator scans, so they sit
+     against the band's right edge at every width above the breakpoint. */
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 18px;
+  margin: 0 0 12px;
+  border-radius: var(--r-lg);
+  background: var(--report-navy);
+  color: var(--report-on-navy);
+}
+
+/* An author `display` on the band would beat the UA's `[hidden]`, which is
+   the #712 defect exactly: a band left on screen for a roster of one. */
+.reports-hero[hidden] {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .reports-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.reports-hero-ident {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reports-hero-title {
+  margin: 0;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
+  line-height: 1.25;
+  color: var(--report-on-navy);
+}
+
+/* The day the HOST stated, as it stated it — tabular, and never reformatted
+   here, which would render it in the reader's timezone. */
+.reports-hero-date {
+  font-size: var(--type-caption-size);
+  color: var(--report-on-navy-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-hero-date[hidden] {
+  display: none;
+}
+
+/* The fraction, at the KPI step of the #691 type scale: it is the one figure
+   on the band an operator is meant to READ rather than scan. */
+.reports-hero-ratio {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.reports-hero-ratio-value {
+  font-size: var(--type-kpi-size);
+  font-weight: var(--type-kpi-weight);
+  line-height: var(--type-kpi-line);
+  letter-spacing: var(--type-kpi-tracking);
+  font-variant-numeric: tabular-nums;
+  color: var(--report-on-navy);
+}
+
+.reports-hero-ratio-label {
+  font-size: var(--type-caption-size);
+  color: var(--report-on-navy-soft);
+}
+
+.reports-hero-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* One block per health, each carrying its count AND its word. The word is
+   not decoration: colour never carries the meaning alone on these screens,
+   and it is what a screen reader gets. */
+.reports-hero-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 76px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--report-navy-idle);
+  color: var(--report-on-navy);
+  border: 1px solid var(--report-navy-line);
+}
+
+.reports-hero-block-count {
+  font-size: var(--type-figure-size);
+  font-weight: var(--type-figure-weight);
+  letter-spacing: var(--type-figure-tracking);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-hero-block-label {
+  font-size: var(--type-caption-size);
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.reports-hero-block.is-ok {
+  background: var(--report-navy-ok);
+}
+
+.reports-hero-block.is-watch {
+  background: var(--report-navy-watch);
+}
+
+.reports-hero-block.is-attention {
+  background: var(--report-navy-attention);
+}
+
+/* Grey, and stated: "not running" is not a health verdict, and painting it
+   as one of the three would file an account nobody has started as a finding
+   about an account somebody has. */
+.reports-hero-block.is-idle {
+  background: var(--report-navy-idle);
+}
+
+/* A quiet day in the rail's feed, in one line. Only ever on screen for a
+   roster — see dashboard_reports_overview.js for why that asymmetry is the
+   right one. */
+.reports-feed-empty {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.reports-feed-empty[hidden] {
   display: none;
 }
