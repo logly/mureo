@@ -543,18 +543,21 @@ test.describe("the band's colours are tokens", function () {
   const fs = require("node:fs");
   const CSS = fs.readFileSync(path.join(WEB, "app.css"), "utf-8");
 
-  //: The band is the one surface on these screens that is dark in BOTH
-  //: themes, so it has its own family rather than borrowing --surface /
-  //: --ink, which invert with the theme.
+  /** The declarations of the first rule for `selector`. */
+  function ruleOf(selector) {
+    const at = CSS.indexOf("\n" + selector + " {");
+    assert.notEqual(at, -1, selector + " has no rule in app.css");
+    return CSS.slice(at).split("}", 1)[0];
+  }
+
+  //: The chips ON the band, which are the band's own: the fill and the text
+  //: are the banner's tokens (see below) and are not restated here.
   const NEW_TOKENS = [
-    "--report-navy",
-    "--report-navy-line",
-    "--report-on-navy",
-    "--report-on-navy-soft",
-    "--report-navy-ok",
-    "--report-navy-watch",
-    "--report-navy-attention",
-    "--report-navy-idle",
+    "--report-band-line",
+    "--report-band-ok",
+    "--report-band-watch",
+    "--report-band-attention",
+    "--report-band-idle",
   ];
 
   test.it("defines every new token in both themes", function () {
@@ -564,15 +567,40 @@ test.describe("the band's colours are tokens", function () {
     });
   });
 
+  test.it("is painted from the 運用ナビ banner's own tokens", function () {
+    // The staff review's answer to "the list's blue is not the detail's":
+    // the two bands are the same object on two screens, so they are painted
+    // from the SAME two tokens rather than from two blues that agree today.
+    // Both themes at once, because --report-blue is what moves between them.
+    const banner = ruleOf(".reports-nav-band");
+    const band = ruleOf(".reports-hero");
+    assert.match(banner, /background: var\(--report-blue\);/);
+    assert.match(band, /background: var\(--report-blue\);/);
+    assert.match(band, /color: var\(--report-on-blue\);/);
+    // …and the family it replaced is gone rather than left to rot.
+    assert.equal(CSS.includes("--report-navy"), false, "a dead token family");
+  });
+
+  test.it("softens no text on the band, because this blue cannot afford it", function () {
+    // White on --report-blue is 4.93:1 — it clears AA and leaves nothing
+    // above it, so an opacity-dimmed white (3.5–4.3:1) would fail. The day
+    // and the labels are full-strength; the hierarchy is the type scale.
+    ["-date", "-ratio-label", "-title", "-ratio-value"].forEach(function (part) {
+      const rule = ruleOf(".reports-hero" + part);
+      assert.match(rule, /color: var\(--report-on-blue\);/, part + " is off-token");
+      assert.equal(/opacity:/.test(rule), false, part + " dims text on the band");
+    });
+  });
+
   test.it("paints the band and every block from the family", async function () {
     const page = await openIndex();
-    assert.equal(styleOf(page, ".reports-hero", "background"), "var(--report-navy)");
-    assert.equal(styleOf(page, ".reports-hero", "color"), "var(--report-on-navy)");
+    assert.equal(styleOf(page, ".reports-hero", "background"), "var(--report-blue)");
+    assert.equal(styleOf(page, ".reports-hero", "color"), "var(--report-on-blue)");
     const fills = {
-      ok: "var(--report-navy-ok)",
-      watch: "var(--report-navy-watch)",
-      attention: "var(--report-navy-attention)",
-      idle: "var(--report-navy-idle)",
+      ok: "var(--report-band-ok)",
+      watch: "var(--report-band-watch)",
+      attention: "var(--report-band-attention)",
+      idle: "var(--report-band-idle)",
     };
     Object.keys(fills).forEach(function (key) {
       const node = page.root

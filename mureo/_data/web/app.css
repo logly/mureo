@@ -52,30 +52,32 @@
   --report-chart-grid: rgba(20, 22, 26, 0.07);
   --report-on-blue: #ffffff;      /* text on --report-blue                 */
 
-  /* ---- report-brand navy (#706 step 3-b) -------------------------------
-     The staff mockup's LIST screen leads with a dark band, and the band is
-     the one surface on these screens that is dark in both themes. So it gets
-     its own tokens rather than borrowing the page's: `--ink` on `--surface`
-     inverts with the theme, and a band that inverted with it would be the
-     mockup in one theme and something else in the other.
+  /* ---- report-brand band (#706 step 3-b) -------------------------------
+     The list screen leads with a solid band, and it is painted in THE SAME
+     BLUE as the detail screen's 運用ナビ banner — `--report-blue` and
+     `--report-on-blue` above, referenced rather than restated. Two mureo
+     bands on two screens are one thing an operator recognises, and a second
+     blue of its own would be the same question with two answers: recolour
+     the banner and this moves with it, in both themes, or not at all.
 
-     The four health fills are the SAME vocabulary as --status-* — green is
-     still "nothing to do", amber still "watch", red still "act now" — at the
-     shades that clear AA for white text on this band. That is the same thing
-     the dark theme already does for --status-*, one surface further: a
-     colour that means one thing on the cards must not mean another 60px
-     above them, so these are shades, never a second palette. `idle` is the
-     one that is not a health verdict — it is the client mureo is not running
-     yet — and it is deliberately grey: neutral says "no verdict", which is
-     exactly what mureo has for a client with no figures. */
-  --report-navy: #16233d;         /* the list band's fill                  */
-  --report-navy-line: #2b3a56;    /* a hairline inside the band            */
-  --report-on-navy: #ffffff;      /* text on --report-navy                 */
-  --report-on-navy-soft: #aebdd4; /* the band's secondary text (AA)        */
-  --report-navy-ok: #157347;
-  --report-navy-watch: #8a5a06;
-  --report-navy-attention: #a3271f;
-  --report-navy-idle: #3a4761;
+     What is NOT borrowed is the four health fills. They are the same
+     vocabulary as --status-* — green "nothing to do", amber "watch", red
+     "act now" — at the shades that clear AA for white text on a chip, so a
+     colour that means one thing on the cards does not mean another 60px
+     above them. They are chips ON the band rather than the band itself,
+     which is why the band's own hue changing does not move them.
+
+     `idle` is the one that is not a health verdict — it is the client mureo
+     is not running yet — so it is deliberately NEUTRAL: grey says "no
+     verdict", which is exactly what mureo has for a client with no figures.
+     It is a step greyer than it was on the old navy band, because neutral
+     has to read as neutral against a saturated blue rather than as a
+     quieter shade of it. */
+  --report-band-line: rgba(255, 255, 255, 0.3); /* a chip's edge on the band */
+  --report-band-ok: #157347;
+  --report-band-watch: #8a5a06;
+  --report-band-attention: #a3271f;
+  --report-band-idle: #48505e;
 
   /* ---- status (#691) --------------------------------------------------
      Three states, and only three. `alert` is reserved for ACT NOW — a
@@ -207,18 +209,17 @@
     --report-chart-grid: rgba(236, 237, 240, 0.09);
     --report-on-blue: #f5f8ff;
 
-    /* The band is dark in both themes, so these move least of anything in
-       this block — only far enough that it sits ON the dark page instead of
-       floating a lighter rectangle over it, and the four fills lift the way
-       --status-* does so they do not go muddy against #0e0f12. */
-    --report-navy: #131d30;
-    --report-navy-line: #26344b;
-    --report-on-navy: #f5f8ff;
-    --report-on-navy-soft: #9fb0c9;
-    --report-navy-ok: #18784c;
-    --report-navy-watch: #90600b;
-    --report-navy-attention: #a83029;
-    --report-navy-idle: #3d4a63;
+    /* The band's fill and its text are --report-blue / --report-on-blue,
+       which this block has already lifted for a dark page, so the band
+       follows the banner into dark theme with nothing restated here. What
+       is left is the chips ON it: the four fills lift the way --status-*
+       does so they do not go muddy, and the edge is a touch quieter because
+       the band it sits on is a touch lighter. */
+    --report-band-line: rgba(255, 255, 255, 0.26);
+    --report-band-ok: #18784c;
+    --report-band-watch: #90600b;
+    --report-band-attention: #a83029;
+    --report-band-idle: #4b5462;
 
     /* Same three states, lifted for a dark surface. Each foreground clears
        4.5:1 on --surface; the backgrounds are tints of the foreground rather
@@ -4980,19 +4981,25 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    #706 step 3-b — the list screen's band.
 
    Step 3-a styled the screen about ONE client. This is the band across the
-   top of the screen about all of them: a dark navy strip carrying the day,
-   the fraction of the roster that raised nothing, and four blocks counting
-   the roster by health.
+   top of the screen about all of them: a solid strip carrying the day, the
+   fraction of the roster that raised nothing, and four blocks counting the
+   roster by health.
+
+   SAME BLUE AS THE 運用ナビ BANNER, from the same tokens: `--report-blue`
+   and `--report-on-blue`, the ones .reports-nav-band is painted from. The
+   two bands are the same object on two screens, so they are not allowed to
+   drift apart — one token, one answer, both themes.
 
    Every colour here is a token, and the four block fills are the SAME
    vocabulary the cards below use — green "nothing to do", amber "watch", red
-   "act now" — at the shades that clear AA for white text on this band. A
-   colour must not mean one thing on a card and another 60px above it.
+   "act now" — at the shades that clear AA for white text on a chip. A colour
+   must not mean one thing on a card and another 60px above it.
 
-   The band is DARK IN BOTH THEMES, which is why it has its own tokens rather
-   than --surface / --ink: those invert with the theme, and a band that
-   inverted with them would be the mockup in one theme and something else in
-   the other.
+   NOTHING ON THIS BAND IS SOFTENED. On --report-blue white is 4.93:1, which
+   clears AA and leaves no room above it: an opacity-dimmed white lands at
+   3.5–4.3:1 and fails. So the day and the labels are full-strength
+   --report-on-blue and the hierarchy is carried by the #691 type scale
+   instead — size and weight, never a contrast the caption cannot afford.
    ========================================================================== */
 
 .reports-hero {
@@ -5006,8 +5013,8 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   padding: 16px 18px;
   margin: 0 0 12px;
   border-radius: var(--r-lg);
-  background: var(--report-navy);
-  color: var(--report-on-navy);
+  background: var(--report-blue);
+  color: var(--report-on-blue);
 }
 
 /* An author `display` on the band would beat the UA's `[hidden]`, which is
@@ -5034,14 +5041,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-size: var(--type-title-size);
   font-weight: var(--type-title-weight);
   line-height: 1.25;
-  color: var(--report-on-navy);
+  color: var(--report-on-blue);
 }
 
 /* The day the HOST stated, as it stated it — tabular, and never reformatted
    here, which would render it in the reader's timezone. */
 .reports-hero-date {
   font-size: var(--type-caption-size);
-  color: var(--report-on-navy-soft);
+  color: var(--report-on-blue);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5064,12 +5071,12 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   line-height: var(--type-kpi-line);
   letter-spacing: var(--type-kpi-tracking);
   font-variant-numeric: tabular-nums;
-  color: var(--report-on-navy);
+  color: var(--report-on-blue);
 }
 
 .reports-hero-ratio-label {
   font-size: var(--type-caption-size);
-  color: var(--report-on-navy-soft);
+  color: var(--report-on-blue);
 }
 
 .reports-hero-blocks {
@@ -5090,9 +5097,9 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   min-width: 76px;
   padding: 8px 12px;
   border-radius: var(--r-md);
-  background: var(--report-navy-idle);
-  color: var(--report-on-navy);
-  border: 1px solid var(--report-navy-line);
+  background: var(--report-band-idle);
+  color: var(--report-on-blue);
+  border: 1px solid var(--report-band-line);
 }
 
 .reports-hero-block-count {
@@ -5111,22 +5118,22 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 .reports-hero-block.is-ok {
-  background: var(--report-navy-ok);
+  background: var(--report-band-ok);
 }
 
 .reports-hero-block.is-watch {
-  background: var(--report-navy-watch);
+  background: var(--report-band-watch);
 }
 
 .reports-hero-block.is-attention {
-  background: var(--report-navy-attention);
+  background: var(--report-band-attention);
 }
 
 /* Grey, and stated: "not running" is not a health verdict, and painting it
    as one of the three would file an account nobody has started as a finding
    about an account somebody has. */
 .reports-hero-block.is-idle {
-  background: var(--report-navy-idle);
+  background: var(--report-band-idle);
 }
 
 /* A quiet day in the rail's feed, in one line. Only ever on screen for a

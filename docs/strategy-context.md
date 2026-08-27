@@ -1432,12 +1432,17 @@ has figures and mureo is refusing to state them, which is already an alert.
 I open first?" is not a question, so no band is drawn — the same rule the
 filter chips and the roster table already follow.
 
-The band is styled on a `--report-navy` family added beside `--report-blue`,
-defined for both themes. It is the one surface on these screens that is dark
-in *both*, which is why it has its own tokens rather than `--surface` /
-`--ink`, and the four block fills are the same semantic vocabulary the cards
-use at the shades that clear AA for white text on it. Every block carries its
-word as well as its colour.
+The band is painted from `--report-blue` and `--report-on-blue` — the same
+two tokens the detail screen's 運用ナビ banner is painted from, referenced
+rather than restated. A mureo band is one colour in this product, so a
+recolour moves both screens or neither, in both themes. Only the chips ON it
+are its own (`--report-band-*`): the four block fills are the same semantic
+vocabulary the cards use, at the shades that clear AA for white text on a
+chip, and `idle` is neutral grey because "no verdict" is not one of the
+three. Nothing on the band is dimmed — white on this blue is 4.9:1, which
+clears AA with nothing above it, so an opacity-softened caption would fail —
+and the hierarchy is carried by the type scale instead. Every block carries
+its word as well as its colour.
 
 #### The shape of the page
 

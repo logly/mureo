@@ -38,11 +38,15 @@
   identical, and "did nothing happen, or is this broken?" is not a question
   the rail should leave open.
 
-  The band is styled on a `--report-navy` family added beside
-  `--report-blue`, defined for both themes — it is the one surface on these
-  screens that is dark in *both* — and its four fills are the same semantic
-  vocabulary the cards use, at the shades that clear AA for white text on it.
-  Every block carries its word as well as its colour.
+  The band is painted in the **same blue as the detail screen's 運用ナビ
+  banner**, from the same `--report-blue` / `--report-on-blue` tokens rather
+  than a second blue of its own: the two bands are the same object on two
+  screens, so recolouring one moves the other, in both themes. Its four
+  block fills are the same semantic vocabulary the cards use, at the shades
+  that clear AA for white text on a chip, and every block carries its word
+  as well as its colour. Nothing on the band is dimmed — white on this blue
+  is 4.9:1, which clears AA with nothing to spare — so the hierarchy is
+  carried by the type scale instead.
 
 - **The client detail view is numbers and charts first** (#706, step 3-a of
   3). Steps 1 and 2 built the display contract and taught the skills to fill
