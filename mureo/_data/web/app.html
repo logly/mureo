@@ -842,12 +842,19 @@
   <!-- The list screen's band (#706 step 3-b). AFTER reports_logic.js and
        reports_overview.js, both of which it reads at call time. -->
   <script src="/static/reports_hero.js"></script>
+  <!-- The list screen's whole model (#715). It composes the three above it
+       and reads all of them at call time, so it comes last of the pure
+       modules. -->
+  <script src="/static/reports_index.js"></script>
   <script src="/static/dashboard_setup.js"></script>
   <script src="/static/dashboard_workspace.js"></script>
   <script src="/static/dashboard_about.js"></script>
   <script src="/static/dashboard_advisors.js"></script>
   <script src="/static/dashboard_reports_state.js"></script>
   <script src="/static/dashboard_reports_report.js"></script>
+  <!-- The detail view's tier (2) (#715). Binds dashboard_reports_state.js
+       and dashboard_reports_report.js at load, so it follows both. -->
+  <script src="/static/dashboard_reports_changes.js"></script>
   <script src="/static/dashboard_reports_chart.js"></script>
   <script src="/static/dashboard_reports_detail.js"></script>
   <script src="/static/dashboard_reports_overview.js"></script>

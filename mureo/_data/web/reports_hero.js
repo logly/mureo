@@ -8,11 +8,12 @@
 //
 // ONE ANSWER TO THAT QUESTION, NOT A SECOND ONE. The health of a client is
 // decided by reports_triage.js and by nothing else: `triageClientHealth` per
-// client, `triageHealthCounts` over the grid. The band is handed those counts
-// rather than recomputing them, because the cards below it, the roster table
-// beside it and the filter chips above it are all painted from the same
-// answer, and a band that graded the roster itself would be a fourth opinion
-// that agrees today and drifts next release.
+// client, `triageHealthCounts` over the grid, both run once per render by
+// reports_index.js. The band is handed those counts rather than recomputing
+// them, because the cards below it, the roster table beside it and the filter
+// chips above it are all painted from the same answer, and a band that graded
+// the roster itself would be a fourth opinion that agrees today and drifts
+// next release.
 //
 // THE FOURTH BLOCK. The triage vocabulary has three states — attention,
 // watch, ok — and the staff mockup's band has four: the last one is the
@@ -125,11 +126,12 @@
   /**
    * The band's model: `{show, total, ok, watch, attention, idle, blocks, date}`.
    *
-   * `counts` is `triageHealthCounts(triage, rows.length)` — the SAME object
-   * the filter chips are built from — and `healthOf(i)` is
-   * `triageClientHealth(triage, i)`, the same function the card and the roster
-   * row are painted with. Both are passed in rather than derived here so the
-   * band cannot disagree with the grid under it.
+   * `counts` is the render's health split — `model.healthCounts`, the SAME
+   * object the filter chips and the portfolio strip are built from — and
+   * `healthOf(i)` reads `model.healthByIndex`, the same verdict the card and
+   * the roster row are painted with. Both are passed in rather than derived
+   * here so the band cannot disagree with the grid under it, and both are
+   * reports_index.js's, built once per render (#715).
    *
    * `summaries` is positional with the grid, exactly as renderReportsIndex
    * holds it, and is read for two things only: which OK clients have no
