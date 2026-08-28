@@ -683,12 +683,32 @@ round-trip byte-for-byte.
 **Only complete past days are written.** `set_platform_daily` (and the tool
 over it) refuses a key that is not `YYYY-MM-DD`, one that is not a date that
 exists (`2026-02-30` matches the shape perfectly), and any date at or after
-the host's today — for the reason the collapse detector drops the current day
+today — for the reason the collapse detector drops the current day
 before comparing anything: budget pacing spreads a day's delivery unevenly,
 so a part-spent day filed as a whole one is a false low, and nothing revisits
 a day already in the map. The refusal happens before the file is opened, so a
 rejected call leaves the document exactly as it was and the caller still
 holds every figure.
+
+**Whose today, though, is the caller's to state.** An ad account closes its
+day in the ACCOUNT's timezone, and the host running the collector need not
+share it: on a UTC host at 02:00 Asia/Tokyo — exactly when a nightly cron
+runs — yesterday-in-Tokyo is still today in UTC, and a genuinely complete day
+was being refused. Pass `as_of_date` (today, resolved in the account's
+timezone) to the tool or to `set_platform_daily` and the check is measured
+against that instead. Omit it and it is measured against the server's own
+today, which is what every caller had before the parameter existed. The rule
+itself does not move: a day at or after the anchor is still refused.
+
+**The merge is available without the file.** A writer that must land `daily`
+together with other fields in ONE atomic document write cannot go through a
+path-based mutator. `mureo.context.daily.with_platform_daily(doc, platform,
+account_id, days, as_of_date=None)` is the whole write minus the filesystem —
+the same guards, the same per-date-key merge, the same `fetched_at` stamping
+and the same retention trim — returning a new `StateDocument`;
+`capped_platform_daily(daily)` is the retention rule on its own, for a writer
+that has already merged its own map. `set_platform_daily` is a thin wrapper
+around the first, so neither route can drift from the other.
 
 **A missing day stays missing.** Nothing zero-fills a day that was not
 collected — "not collected" and "collected, and the answer was zero" are

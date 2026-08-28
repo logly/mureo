@@ -42,6 +42,7 @@ longer be persisted and read back later as fact.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.report_flags import normalize_flags
@@ -506,6 +507,28 @@ async def handle_state_platform_metrics_set(
     return _json_result(_state_to_dict(doc))
 
 
+def _optional_as_of_date(arguments: dict[str, Any]) -> date | None:
+    """The caller's ``as_of_date``, parsed — or ``None`` when omitted (#710).
+
+    The account's own today, which the completeness check is measured against
+    instead of the host's. The schema already pins the shape, but the
+    dispatcher's pattern cannot tell ``2026-02-30`` from a real date, and an
+    anchor mureo cannot place on a timeline must not silently fall back to the
+    server clock: that is the very confusion the parameter exists to remove.
+    """
+    raw = arguments.get("as_of_date")
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("as_of_date must be a date string (YYYY-MM-DD)")
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        raise ValueError(
+            f"as_of_date {raw!r} is not a date that exists (YYYY-MM-DD)"
+        ) from None
+
+
 async def handle_state_platform_daily_set(
     arguments: dict[str, Any],
 ) -> list[TextContent]:
@@ -527,9 +550,12 @@ async def handle_state_platform_daily_set(
     for day, bucket in days.items():
         if not isinstance(bucket, dict):
             raise ValueError(f"days[{day!r}] must be an object")
+    as_of_date = _optional_as_of_date(arguments)
     path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     try:
-        doc = set_platform_daily(path, platform, account_id, days=days)
+        doc = set_platform_daily(
+            path, platform, account_id, days=days, as_of_date=as_of_date
+        )
     except ContextFileError as exc:
         # Surface as ValueError so the MCP dispatcher returns a clean tool
         # error rather than a 500-style server error (matches upsert_campaign).
