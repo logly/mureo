@@ -315,12 +315,16 @@ tell an operator that swapping P-MAX copy is unsupported by the API; it is not.
 - `audit` -- Audit keyword performance and quality scores across a campaign.
   ```
   Required: customer_id, campaign_id (string)
+  Optional: period (string, default: "LAST_30_DAYS"), target_cpa (number)
   ```
+  `period` takes any date range constant or an explicit `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'` range.
 
 - `cross_adgroup_duplicates` -- Find duplicate keywords across ad groups in a campaign.
   ```
   Required: customer_id, campaign_id (string)
+  Optional: period (string, default: "LAST_30_DAYS")
   ```
+  `period` takes any date range constant or an explicit `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'` range.
 
 ### negative_keywords
 
@@ -349,7 +353,9 @@ tell an operator that swapping P-MAX copy is unsupported by the API; it is not.
 - `suggest` -- Suggest negative keywords based on search term analysis.
   ```
   Required: customer_id, campaign_id (string)
+  Optional: period (string, default: "LAST_30_DAYS"), target_cpa (number), ad_group_id (string)
   ```
+  Period-over-period tool: fixed-length windows only (`LAST_7_DAYS`, `LAST_14_DAYS`, `LAST_30_DAYS`, `LAST_90_DAYS`, or an explicit `BETWEEN` range).
 
 ### negative_placements
 
@@ -591,7 +597,7 @@ kills delivery can be tied to a date and undone, instead of being reconstructed 
   Required: customer_id (string)
   Optional: campaign_id (string), period (string, default: "LAST_30_DAYS")
   ```
-  Period options: `TODAY`, `YESTERDAY`, `LAST_7_DAYS`, `LAST_14_DAYS`, `LAST_30_DAYS`, `THIS_MONTH`, `LAST_MONTH`
+  Period options: `TODAY`, `YESTERDAY`, `THIS_WEEK_SUN_TODAY`, `THIS_WEEK_MON_TODAY`, `LAST_BUSINESS_WEEK`, `LAST_WEEK_SUN_SAT`, `LAST_WEEK_MON_SUN`, `LAST_7_DAYS`, `LAST_14_DAYS`, `LAST_30_DAYS`, `LAST_90_DAYS`, `THIS_MONTH`, `LAST_MONTH` — or an explicit range: `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`
 
 - `performance.analyze` -- Analyze performance trends, detect anomalies, and surface insights.
   ```
@@ -979,7 +985,9 @@ Step 6: Check optimization recommendations
 ## Important Notes
 
 - **Micros**: Some values (e.g., `cpc_bid_micros`) are in micros where 1,000,000 = 1 currency unit. For example, 500,000 micros = 0.50 in the account currency.
-- **Period values**: Use Google Ads date range constants like `LAST_7_DAYS`, `LAST_30_DAYS`, `THIS_MONTH`.
+- **Period values**: Use Google Ads date range constants like `LAST_7_DAYS`, `LAST_30_DAYS`, `LAST_90_DAYS`, `THIS_MONTH`. For a window no constant reaches — a single past calendar month, say — pass an explicit range in GAQL spelling instead: `period: "BETWEEN '2026-05-01' AND '2026-05-31'"` (both endpoints inclusive, account time zone). The Meta Ads `'YYYY-MM-DD..YYYY-MM-DD'` form is Meta-only and is rejected here.
+- **`LAST_90_DAYS` uses the server date**: every other constant is resolved by Google Ads in the account's reporting time zone, but `LAST_90_DAYS` has no API constant — mureo expands it into the 90 days ending yesterday on the server's date. When the server and the account sit in different time zones the window edges can differ by a day. Pass an explicit `BETWEEN` range when the exact boundary matters.
+- **Period-over-period tools** (`search_terms.review`, `performance.analyze`, `negative_keywords.suggest`) also read the equal-length window immediately before the one you ask for, so they take only fixed-length windows: `LAST_7_DAYS`, `LAST_14_DAYS`, `LAST_30_DAYS`, `LAST_90_DAYS`, or an explicit `BETWEEN` range. Calendar constants such as `THIS_MONTH` are refused rather than quietly replaced with a different window.
 - **customer_id**: Always a 10-digit string without dashes (e.g., `"1234567890"`, not `"123-456-7890"`).
 - **RSA limits**: Headlines 3-15, descriptions 2-4. Maximum 3 enabled RSA ads per ad group.
 - **Write operations**: All tools that create, update, or remove resources require user confirmation before execution.

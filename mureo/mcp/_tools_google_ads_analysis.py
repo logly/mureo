@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from mcp.types import Tool
 
+from mureo.mcp._period_param import comparison_period_param, period_param
+
 # Reusable parameter fragments — keep descriptions consistent across tools.
 _CUSTOMER_ID_PARAM = {
     "type": "string",
@@ -20,24 +22,11 @@ _CUSTOMER_ID_PARAM = {
     ),
 }
 
-_PERIOD_PARAM = {
-    "type": "string",
-    "enum": [
-        "TODAY",
-        "YESTERDAY",
-        "LAST_7_DAYS",
-        "LAST_14_DAYS",
-        "LAST_30_DAYS",
-        "LAST_90_DAYS",
-        "THIS_MONTH",
-        "LAST_MONTH",
-    ],
-    "description": (
-        "Reporting window for the metrics. Default 'LAST_30_DAYS'. Use a "
-        "shorter window (LAST_7_DAYS / LAST_14_DAYS) when diagnosing recent "
-        "changes; use LAST_90_DAYS for trend baselines."
-    ),
-}
+_PERIOD_PARAM = period_param(
+    "Reporting window for the metrics. Default 'LAST_30_DAYS'. Use a "
+    "shorter window (LAST_7_DAYS / LAST_14_DAYS) when diagnosing recent "
+    "changes; use LAST_90_DAYS for trend baselines."
+)
 
 _CAMPAIGN_ID_PARAM = {
     "type": "string",
@@ -65,24 +54,11 @@ _AD_GROUP_ID_FILTER_PARAM = {
     ),
 }
 
-_SHORT_PERIOD_PARAM = {
-    "type": "string",
-    "enum": [
-        "TODAY",
-        "YESTERDAY",
-        "LAST_7_DAYS",
-        "LAST_14_DAYS",
-        "LAST_30_DAYS",
-        "LAST_90_DAYS",
-        "THIS_MONTH",
-        "LAST_MONTH",
-    ],
-    "description": (
-        "Reporting window for the metrics. Default 'LAST_7_DAYS' — this tool "
-        "is tuned for short-horizon comparison. Use LAST_14_DAYS or "
-        "LAST_30_DAYS for longer baselines."
-    ),
-}
+_SHORT_PERIOD_PARAM = comparison_period_param(
+    "Reporting window for the metrics. Default 'LAST_7_DAYS' — this tool "
+    "is tuned for short-horizon comparison. Use LAST_14_DAYS or "
+    "LAST_30_DAYS for longer baselines."
+)
 
 
 TOOLS: list[Tool] = [

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from mcp.types import Tool
 
+from mureo.mcp._period_param import comparison_period_param, period_param
+
 # Reusable parameter fragments.
 _CUSTOMER_ID_PARAM = {
     "type": "string",
@@ -421,15 +423,10 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": ("Campaign whose search terms are analysed."),
                 },
-                "period": {
-                    "type": "string",
-                    "description": (
-                        "Analysis window. Accepts Google Ads predefined "
-                        "ranges ('LAST_7_DAYS', 'LAST_14_DAYS', "
-                        "'LAST_30_DAYS' — default 'LAST_30_DAYS') or "
-                        "explicit 'YYYY-MM-DD..YYYY-MM-DD'."
-                    ),
-                },
+                "period": comparison_period_param(
+                    "Analysis window for the search-term sample. Default "
+                    "'LAST_30_DAYS'."
+                ),
                 "target_cpa": {
                     "type": "number",
                     "minimum": 0,
@@ -474,14 +471,10 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Campaign to audit.",
                 },
-                "period": {
-                    "type": "string",
-                    "description": (
-                        "Analysis window. Accepts 'LAST_7_DAYS', "
-                        "'LAST_14_DAYS', 'LAST_30_DAYS' (default), or "
-                        "'YYYY-MM-DD..YYYY-MM-DD'."
-                    ),
-                },
+                "period": period_param(
+                    "Analysis window for the keyword metrics. Default "
+                    "'LAST_30_DAYS'."
+                ),
                 "target_cpa": {
                     "type": "number",
                     "minimum": 0,
@@ -516,15 +509,10 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Campaign to scan for duplicates.",
                 },
-                "period": {
-                    "type": "string",
-                    "description": (
-                        "Analysis window used to compute per-copy spend "
-                        "and conversions. Accepts 'LAST_7_DAYS', "
-                        "'LAST_14_DAYS', 'LAST_30_DAYS' (default), or "
-                        "'YYYY-MM-DD..YYYY-MM-DD'."
-                    ),
-                },
+                "period": period_param(
+                    "Analysis window used to compute per-copy spend and "
+                    "conversions. Default 'LAST_30_DAYS'."
+                ),
             },
             "required": ["campaign_id"],
             "additionalProperties": False,

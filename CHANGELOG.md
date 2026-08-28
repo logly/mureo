@@ -37,6 +37,46 @@
   this side of the century a "complete past day". A past anchor is left alone
   — it can only make the check stricter.
 
+### Fixed
+
+- **A Google Ads report can finally be asked for a specific past month**
+  (#716, #717, #718). Eighteen reporting and analysis tools pinned `period`
+  to a closed list of trailing presets, so the furthest back any of them
+  reached was `LAST_MONTH` — the month before last was unreachable at
+  campaign grain, and the fallback was reading figures off a screenshot. The
+  client underneath has parsed `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'` all
+  along; only the schema forbade it. `period` now accepts that form on every
+  one of those tools, and mureo's own `monthly-report` skill uses it for a
+  true Google Ads month-over-month instead of declaring one unavailable. The
+  range is bounded like every other window mureo asks for — a span beyond the
+  730-day limit is refused with the day count and the limit named, rather than
+  becoming the unbounded scan `ALL_TIME` is deliberately kept out for.
+
+- **`LAST_90_DAYS` was offered by every one of those tools, recommended in
+  their own descriptions, and failed every time it was used** (#717). Google
+  Ads has no 90-day date-range constant, so the call died in the GAQL
+  validator with `Unknown date range constant`. It is now resolved into the
+  explicit 90-day window it stands for, ending yesterday — the same boundary
+  the API's own `LAST_N_DAYS` constants use, so a 90-day baseline lines up
+  with a 30-day one. Five constants that worked downstream but were missing
+  from the schemas (`LAST_BUSINESS_WEEK`, `LAST_WEEK_SUN_SAT`,
+  `LAST_WEEK_MON_SUN`, `THIS_WEEK_SUN_TODAY`, `THIS_WEEK_MON_TODAY`) are now
+  reachable. The three byte-identical copies of the enum collapsed into one
+  definition derived from the validator's whitelist, and a test asserts every
+  offered value resolves to a date clause — the two lists cannot drift apart
+  again.
+
+- **A period-over-period tool no longer answers about a window you did not
+  ask for** (#716, #718). `google_ads_performance_analyze`,
+  `google_ads_search_terms_review` and `google_ads_negative_keywords_suggest`
+  derive a *previous* window of the same length, and anything they could not
+  measure — `THIS_MONTH`, a week constant, a misspelling — silently became
+  "the last 7 days": no error, right-looking numbers, wrong dates. They now
+  take an explicit `BETWEEN` range and reject a shape they cannot honour
+  instead of substituting one. Three keyword tools also documented
+  `'YYYY-MM-DD..YYYY-MM-DD'`, which is Meta-only syntax that Google Ads has
+  never parsed; their descriptions now name the form that works.
+
 ## [0.16.0] - 2026-08-27
 
 ### Changed
