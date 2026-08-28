@@ -1,5 +1,50 @@
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-29
+
+### Changed (BREAKING)
+
+- **`period` on the three period-over-period Google Ads tools is a closed
+  enum now, and a window they cannot measure is refused instead of silently
+  replaced** (#716, #718). `google_ads_performance_analyze`,
+  `google_ads_search_terms_review` and `google_ads_negative_keywords_suggest`
+  do not report on the window you ask for alone — they derive the
+  equal-length window immediately before it — so a window with no fixed
+  length has no comparison to be made against.
+
+  **`TODAY`, `YESTERDAY`, `THIS_MONTH` and `LAST_MONTH` are no longer
+  accepted on those three tools**, nor are the five week constants. What
+  remains is `LAST_7_DAYS`, `LAST_14_DAYS`, `LAST_30_DAYS`, `LAST_90_DAYS`,
+  and an explicit `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'` range of up to 730
+  days. Every other Google Ads reporting tool keeps the full constant list;
+  only these three, which need a *length*, are narrowed.
+
+  **A call that passed one of those values was not answering the question it
+  looked like it was answering.** The comparison resolver read the length out
+  of a lookup table and fell back to seven days for anything absent, so
+  `THIS_MONTH` returned the last 7 days measured against the 7 before them,
+  under a heading that said the month: no error, right-looking numbers,
+  wrong dates. The narrowing turns that wrong answer into a schema error at
+  the dispatcher, naming the value it will not honour.
+
+  *Migration.* `LAST_MONTH` → the month written out, e.g. `BETWEEN
+  '2026-07-01' AND '2026-07-31'`. `THIS_MONTH` → `LAST_7_DAYS`,
+  `LAST_14_DAYS` or `LAST_30_DAYS`, or the month-to-date range written out.
+  `TODAY` / `YESTERDAY` → an explicit one- or two-day range, keeping in mind
+  that the comparison window is the same length again.
+
+- **`google_ads_keywords_audit` and
+  `google_ads_keywords_cross_adgroup_duplicates` validate their `period`**
+  (#718). Both declared it as an unconstrained string, so a lowercase
+  constant, a misspelling, or the `'YYYY-MM-DD..YYYY-MM-DD'` form their own
+  descriptions advertised — Meta-only syntax that no Google Ads code path has
+  ever parsed — travelled all the way to the API before failing, or was
+  quietly upper-cased on the way. They are on the same shared schema as the
+  other sixteen tools now: the same constant list, the same exact `BETWEEN`
+  spelling, and the same refusal at the dispatcher for anything else. Both
+  have supported arbitrary ranges all along; only the spelling of them was
+  documented wrong.
+
 ### Added
 
 - **The day-grain history write is usable without a path, and knows whose day
@@ -36,6 +81,50 @@
   days, and without the bound an anchor of `2099-01-01` would make every date
   this side of the century a "complete past day". A past anchor is left alone
   — it can only make the check stricter.
+
+- **The client list says when a summary could not be fetched** (#714). The
+  health band 0.16.0 put at the top of a roster of two or more clients — the
+  day, the fraction that raised nothing, and four counted blocks (nothing
+  raised, watch, needs attention, not running) — now carries one line beneath
+  it stating how many clients mureo could not reach just now, and that a
+  reload will retry.
+
+  A failed summary request yields `null`, and those clients are counted as
+  "nothing raised" **deliberately**: routing a restarting daemon or a dropped
+  network into "needs attention" paints the screen red about live ad accounts
+  that may be perfectly fine. The other half of that decision is that the
+  screen has to say the check did not happen, or a green roster nobody
+  verified reads as a verified one. The note is a fact about the *request*,
+  not about an account: the triage vocabulary, the four blocks and their
+  partition of the roster are untouched, and a client mureo could not reach
+  keeps the bucket it had. Neutral colour, not a fourth alarm; hidden
+  entirely at zero failures, and on the detail view.
+
+### Changed
+
+- **`LAST_90_DAYS` is expanded against the *server's* date, and says so**
+  (#717). Google Ads has no 90-day range constant, so every other constant is
+  resolved by Google in the **account's** reporting time zone while this one
+  is resolved by mureo from its own clock. When the two zones differ the
+  window's edges can sit **up to a day apart** from where an account-local
+  reader would put them. The tool descriptions and
+  `skills/_mureo-google-ads/SKILL.md` now state the asymmetry rather than
+  folding it into a blanket "account time zone" claim, and point a caller who
+  needs an exact boundary at an explicit `BETWEEN` range.
+
+- **The list screen's model is one module, and each client is graded once per
+  render** (#715). `dashboard_reports.js` (909 lines) gave up
+  `reports_index.js` — `buildReportsIndexModel(rows, summaries)`, the whole
+  model behind the list screen — and `dashboard_reports_changes.js`, the
+  detail view's day-over-day tier moved whole. `triageClientHealth` used to
+  run four times per client per render, and the portfolio strip counted the
+  alert layer a fifth time; the verdict is computed once, in grid order, and
+  handed to the band, the cards, the rows, the chips and the strip. It is not
+  a second opinion — the verdict is still `reports_triage.js`'s, and
+  `buildReportsIndexModel` is now the only caller of `triageHealthCounts` in
+  the shipped assets, which a test asserts as an absence everywhere else.
+  Behaviour-preserving: the same nodes in the same order, the same payloads,
+  no i18n key added or dropped.
 
 ### Fixed
 
