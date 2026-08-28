@@ -280,7 +280,7 @@
     // The roster's own figures, above the alerts — from the same summaries
     // the cards below are built from, and stating over how many clients each
     // of them holds.
-    renderReportsPortfolio(model.portfolio, model.triage);
+    renderReportsPortfolio(model.portfolio, model.triage, model.healthCounts);
     // Triage before the cards (#651): which clients need attention today,
     // ranked, with what to run about each. The same array the grid's marks
     // come from, so the count above and the marks below are one list.
@@ -294,7 +294,7 @@
   // The grid itself: one card per client, the roster table built from the
   // same rows, and the chrome that counts them. `model.healthByIndex` is the
   // verdict this render already reached for each client — asking for it again
-  // per card and again per roster row was four scans of one answer (#715).
+  // per card and again per roster row was two more scans of one answer (#715).
   function renderReportsIndexGrid(wrap, rows, summaries, model) {
     wrap.textContent = "";
     // A filter left over from a previous render would hide cards with no

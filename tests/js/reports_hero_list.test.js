@@ -355,6 +355,34 @@ test.describe("the band is on the list screen", function () {
     assert.equal(blocks.ok + blocks.watch + blocks.attention + blocks.idle, chips.all);
   });
 
+  test.it("agrees with the portfolio strip, for the same reason", async function () {
+    // The third view of that one object (#715). The strip's note used to
+    // count the layer itself, which was a second answer that happened to
+    // agree; it is handed `model.healthCounts` now, like the other two. This
+    // is what catches the hand-off being dropped — a strip left saying
+    // "0 need attention" over a grid with a red card on it.
+    const page = await openIndex();
+    const blocks = heroBlocks(page);
+    const strip = page.root.querySelector("[data-reports-kpis]");
+    const notes = [];
+    strip.querySelectorAll(".reports-kpi-note").forEach(function (n) {
+      notes.push(n.textContent);
+    });
+    const note = notes.find(function (text) {
+      return text.startsWith("dashboard.reports_portfolio_health_note");
+    });
+    assert.ok(note, "the strip states no health note");
+    // MUREO.t is stubbed to echo its key and params, so this asserts WHICH
+    // numbers were interpolated, never English wording.
+    assert.equal(
+      note,
+      "dashboard.reports_portfolio_health_note|attention=" +
+        blocks.attention +
+        ",watch=" +
+        blocks.watch
+    );
+  });
+
   test.it("says nothing about ads when it could not reach a single summary", async function () {
     // The daemon is restarting: every summary request comes back unusable,
     // so every client's summary is `null`. The band must NOT report a roster

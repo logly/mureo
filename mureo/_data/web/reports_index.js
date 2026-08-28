@@ -9,12 +9,14 @@
 // putting the result on screen.
 //
 // ONE HEALTH VERDICT PER CLIENT, COMPUTED ONCE. `triageClientHealth` is an
-// O(items) scan of the alert layer, and the index used to run it four times
+// O(items) scan of the alert layer, and the index used to run it five times
 // per client per render — inside the health counts, inside the band's
-// `healthOf` closure, on each card, and again on each roster row. Four scans
-// that can only ever agree, because the function is pure; the multiplier was
-// the whole cost. `healthByIndex` is that answer, in grid order, and every
-// consumer below is handed the array rather than the function.
+// `healthOf` closure, on each card, again on each roster row, and once more
+// inside the portfolio strip's own `triageHealthCounts`. Five scans that can
+// only ever agree, because the function is pure; the multiplier was the whole
+// cost. `healthByIndex` is that answer, in grid order, and every consumer is
+// handed the array — or, for the strip and the chips, the counts built from
+// it. Nothing downstream of this file scans the layer for a health again.
 //
 // It is NOT a second opinion. The verdict is still reports_triage.js's and
 // nothing here grades a client: `triageClientHealth` decides each entry and
@@ -82,8 +84,9 @@
    * card summary per client, `null` where the request failed.
    *
    * Built ONCE per render and handed whole to the renderers, so the band
-   * above the grid, the alert list, the filter chips, the cards and the
-   * roster table are five views of one answer rather than five answers.
+   * above the grid, the portfolio strip, the alert list, the filter chips,
+   * the cards and the roster table are six views of one answer rather than
+   * six answers.
    *
    * Defensive about both arguments: this runs mid-render over payloads that
    * may come from an older daemon, and a throw here blanks the Reports view.

@@ -74,10 +74,11 @@ def test_both_new_modules_are_served_and_loaded_before_their_consumers() -> None
 def test_the_band_is_handed_the_triage_layers_counts_and_grades_nothing() -> None:
     """One answer to "is this client healthy?", not a second one.
 
-    ``triageHealthCounts`` is called ONCE per render and the same object goes
-    to the band and to the filter chips; the per-client verdict the band is
-    handed is ``triageClientHealth``, which is what the cards and the roster
-    rows are painted with.
+    ``triageHealthCounts`` is called ONCE per render — once in the whole
+    product — and the same object goes to the band, to the filter chips and
+    to the portfolio strip; the per-client verdict the band is handed is
+    ``triageClientHealth``, which is what the cards and the roster rows are
+    painted with.
     """
     model = _read("reports_index.js")
     body = _function_body(model, "function buildReportsIndexModel(")
@@ -89,11 +90,31 @@ def test_the_band_is_handed_the_triage_layers_counts_and_grades_nothing() -> Non
     # Exactly one call: two would be two answers the moment either caller
     # learned to pass something different.
     assert body.count("triageHealthCounts(") == 1
-    # …and the same object reaches the chips over the cards.
+    # …and that same object reaches the chips over the cards, and the
+    # portfolio strip beside them.
     grid = _function_body(
         _read("dashboard_reports.js"), "function renderReportsIndexGrid("
     )
     assert "renderReportsFilters(model.healthCounts);" in grid
+    bands = _function_body(
+        _read("dashboard_reports.js"), "function renderReportsIndexBands("
+    )
+    assert (
+        "renderReportsPortfolio(model.portfolio, model.triage, model.healthCounts)"
+        in bands
+    )
+    # ONE call in the whole product, and it is that one. Every renderer is
+    # handed the object; none of them counts for itself. Asserted as an
+    # absence across every shipped asset rather than in the one file the
+    # second call happened to be in, because the next one would land in a
+    # different file (#715).
+    for name in sorted(p.name for p in _WEB.glob("*.js")):
+        if name == "reports_index.js":
+            continue
+        js = _read(name)
+        calls = js.count("triageHealthCounts(")
+        expected = 1 if name == "reports_triage.js" else 0
+        assert calls == expected, f"{name} counts the grid's health itself"
     # …and no copy of the decision in the renderer.
     hero = _read("dashboard_reports_hero.js")
     assert "triageClientHealth" not in hero

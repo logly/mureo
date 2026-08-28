@@ -37,7 +37,6 @@
     );
   }
   const formatNumber = REPORTS_SHARED.formatNumber;
-  const triageHealthCounts = REPORTS_SHARED.triageHealthCounts;
   const platformColorSlot = REPORTS_SHARED.platformColorSlot;
   const REPORTS_VIEW_STATE = REPORTS_SHARED.REPORTS_VIEW_STATE;
 
@@ -122,7 +121,13 @@
   // Rendered only for the index — a roster total sitting above one client's
   // report reads as that client's — and only when there is a roster: an
   // empty grid gets no strip rather than four dashes.
-  function renderReportsPortfolio(portfolio, triage) {
+  //
+  // `counts` is the render's health split, handed in rather than rebuilt
+  // here (#715). This strip used to call `triageHealthCounts` itself, which
+  // re-scanned the whole alert layer once per client for an object the index
+  // already held — and, worse, made "the band, the chips and the strip are
+  // one answer" a claim about two objects that merely agreed.
+  function renderReportsPortfolio(portfolio, triage, counts) {
     const strip = document.querySelector("[data-reports-kpis]");
     if (!strip) return;
     strip.textContent = "";
@@ -158,14 +163,17 @@
     // itself, not figures it collected. It reads the same array as the alert
     // list's heading and the grid's marks.
     const marked = triage && Array.isArray(triage.clients) ? triage.clients : [];
-    const counts = triageHealthCounts(triage, portfolio.total);
+    // Defensive about the argument, not a fallback that recomputes it: a
+    // second count here is exactly what this change removed, so a missing
+    // one prints zeros rather than quietly reintroducing a second answer.
+    const split = counts && typeof counts === "object" ? counts : {};
     strip.appendChild(
       buildPortfolioCell(
         "dashboard.reports_portfolio_attention",
         formatNumber(marked.length),
         MUREO.t("dashboard.reports_portfolio_health_note", {
-          attention: counts.attention,
-          watch: counts.watch,
+          attention: split.attention || 0,
+          watch: split.watch || 0,
         })
       )
     );
