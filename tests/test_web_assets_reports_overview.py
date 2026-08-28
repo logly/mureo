@@ -91,11 +91,19 @@ def test_the_renderer_binds_the_module_rather_than_re_deciding() -> None:
 def test_the_portfolio_is_built_once_from_the_cards_own_summaries() -> None:
     """The strip and the grid must be two views of ONE fetch. Built twice —
     or from a second request — they could state different windows."""
+    model = _read("reports_index.js")
+    assert (
+        model.count("buildReportsPortfolio(") == 1
+    ), "the portfolio is built in >1 place"
+    assert "buildReportsPortfolio(clients, bodies)" in model
+    assert "buildReportsTriage(clients, bodies)" in model
+    # …and the renderer builds neither: the model is composed once, from the
+    # rows and the summaries the grid is drawn from, before a node exists.
     js = _read("dashboard_reports.js")
-    assert js.count("buildReportsPortfolio(") == 1, "the portfolio is built in >1 place"
+    assert "buildReportsPortfolio(" not in js
+    assert "buildReportsTriage(" not in js
     index = _function_body(js, "async function renderReportsIndex(")
-    assert "buildReportsPortfolio(rows, summaries)" in index
-    assert "buildReportsTriage(rows, summaries)" in index
+    assert "buildReportsIndexModel(rows, summaries)" in index
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +165,16 @@ def test_only_the_multi_client_index_renders_the_overview() -> None:
     """The Agency seam is what supplies a second client. A single workspace
     opens the detail directly and must never see a roster figure."""
     js = _read_layer()
-    index = _function_body(js, "async function renderReportsIndex(")
+    # The index render, in the three functions #715 split it into: the entry
+    # point, the bands above and beside the grid, and the grid itself.
+    drawn = "\n".join(
+        _function_body(js, signature)
+        for signature in (
+            "async function renderReportsIndex(",
+            "function renderReportsIndexBands(",
+            "function renderReportsIndexGrid(",
+        )
+    )
     for call in (
         "renderReportsPortfolio(",
         "renderReportsPlatforms(",
@@ -165,7 +182,7 @@ def test_only_the_multi_client_index_renders_the_overview() -> None:
         "renderReportsActionFeed(",
     ):
         assert js.count(call) == 2, f"{call} is called from more than the index"
-        assert call in index, f"{call} is not the index's"
+        assert call in drawn, f"{call} is not the index's"
     detail = _function_body(js, "async function renderReportsSummary(")
     assert "Portfolio" not in detail, "the single-client view renders the strip"
     assert "Platforms" not in detail
@@ -214,9 +231,13 @@ def test_the_grid_filters_on_the_triage_layers_health() -> None:
     """A second opinion about the same payload is how a card the alert list
     calls urgent ends up filtered away as a healthy one."""
     js = _read_layer()
-    index = _function_body(js, "async function renderReportsIndex(")
-    assert "triageClientHealth(triage, i)" in index
-    assert "triageHealthCounts(triage, rows.length)" in index
+    # The verdict is reached once per client per render (#715) and every card
+    # is painted from that array — never from a second reading of the payload.
+    model = _read("reports_index.js")
+    assert "triageClientHealth(built, i)" in model
+    assert "triageHealthCounts(built, clients.length, healthByIndex)" in model
+    grid = _function_body(js, "function renderReportsIndexGrid(")
+    assert "model.healthByIndex[i]" in grid
     item = _function_body(js, "function buildClientCardItem(")
     assert 'item.setAttribute("data-health"' in item
 
@@ -236,10 +257,10 @@ def test_filtering_hides_cards_rather_than_rebuilding_the_grid() -> None:
 @pytest.mark.unit
 def test_a_filter_never_survives_a_re_render() -> None:
     """Cards missing with no visible reason is worse than no filter at all."""
-    index = _function_body(
-        _read("dashboard_reports.js"), "async function renderReportsIndex("
+    grid = _function_body(
+        _read("dashboard_reports.js"), "function renderReportsIndexGrid("
     )
-    assert 'reportsHealthFilter = "all"' in index
+    assert 'reportsHealthFilter = "all"' in grid
 
 
 @pytest.mark.unit
@@ -426,8 +447,8 @@ def test_the_feed_costs_no_request_and_is_built_once() -> None:
     a twenty-seven-client operator opens."""
     js = _read_layer()
     assert js.count("buildReportsActionFeed(") == 1
-    index = _function_body(js, "async function renderReportsIndex(")
-    assert "buildReportsActionFeed(rows, summaries)" in index
+    bands = _function_body(js, "function renderReportsIndexBands(")
+    assert "buildReportsActionFeed(rows, summaries)" in bands
     feed = _function_body(js, "function renderReportsActionFeed(")
     assert "fetch(" not in feed
 

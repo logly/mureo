@@ -600,11 +600,19 @@
   // Over the WHOLE grid, not over the findings: these counts sit on the
   // filter chips above the cards, and a client that raised nothing is still
   // a card the "ok" chip has to show.
-  function triageHealthCounts(built, total) {
+  //
+  // `healths` is the OPTIONAL result of running `triageClientHealth` over the
+  // grid already (reports_index.js computes it once per render), passed in so
+  // the same O(items) scan is not run again here. Not a second opinion: an
+  // entry counts only when it is one of the verdicts that function produces,
+  // and anything else falls back to asking it. Omit it and nothing changes.
+  function triageHealthCounts(built, total, healths) {
     const count = typeof total === "number" && total > 0 ? Math.floor(total) : 0;
+    const known = Array.isArray(healths) ? healths : null;
     const counts = { all: count, attention: 0, watch: 0, ok: 0 };
     for (let i = 0; i < count; i++) {
-      counts[triageClientHealth(built, i)] += 1;
+      const stated = known && REPORTS_HEALTH_RANKS.indexOf(known[i]) !== -1;
+      counts[stated ? known[i] : triageClientHealth(built, i)] += 1;
     }
     return counts;
   }

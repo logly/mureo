@@ -127,11 +127,15 @@ def test_only_the_multi_client_index_builds_the_layer() -> None:
     """The Agency seam is what supplies a second client, and
     ``renderReportsIndex`` is the only view that seam produces. A single
     workspace opens the detail directly and must be untouched."""
+    model = _read("reports_index.js")
+    assert model.count("buildReportsTriage(") == 1, "the layer is built in >1 place"
+    assert "buildReportsTriage(clients, bodies)" in model
     js = _read("dashboard_reports.js")
-    assert js.count("buildReportsTriage(") == 1, "the layer is built in >1 place"
+    assert "buildReportsTriage(" not in js, "the renderer builds a second layer"
     index = _function_body(js, "async function renderReportsIndex(")
-    assert "buildReportsTriage(rows, summaries)" in index
-    assert "renderReportsTriage(" in index
+    assert "buildReportsIndexModel(rows, summaries)" in index
+    bands = _function_body(js, "function renderReportsIndexBands(")
+    assert "renderReportsTriage(" in bands
     detail = _function_body(js, "async function renderReportsSummary(")
     assert "Triage" not in detail, "the single-client view renders the layer"
 
@@ -192,8 +196,10 @@ def test_the_heading_count_and_the_card_marks_come_from_one_list() -> None:
     render = _function_body(js, "function renderReportsTriage(")
     assert "built.clients" in render, "the heading counts something else"
     assert "n: marked.length" in render, "the heading counts something else"
-    index = _function_body(js, "async function renderReportsIndex(")
-    assert "triageMarksClient(triage, i)" in index, "cards are marked from elsewhere"
+    grid = _function_body(js, "function renderReportsIndexGrid(")
+    assert (
+        "triageMarksClient(model.triage, i)" in grid
+    ), "cards are marked from elsewhere"
     # The mark reaches the card item, which is the element the grid lays out.
     item = _function_body(js, "function buildClientCardItem(")
     assert "is-triaged" in item
@@ -368,9 +374,11 @@ def test_neither_grouping_nor_collapsing_nor_hiding_moves_the_count() -> None:
     # The count is taken BEFORE anything is grouped, collapsed or filtered.
     assert render.index("built.clients") < render.index("groupReportsTriage(built)")
     assert "n: marked.length" in render
-    index = _function_body(js, "async function renderReportsIndex(")
-    assert "triageMarksClient(triage, i)" in index
-    assert "triageHealthCounts(triage, rows.length)" in index
+    grid = _function_body(js, "function renderReportsIndexGrid(")
+    assert "triageMarksClient(model.triage, i)" in grid
+    # Both readings are of the layer this render built, once (#715).
+    model = _read("reports_index.js")
+    assert "triageHealthCounts(built, clients.length, healthByIndex)" in model
 
 
 @pytest.mark.unit
@@ -404,8 +412,8 @@ def test_the_rest_of_the_list_is_one_click_away_and_never_zero() -> None:
     assert "if (!shown.collapsed) return;" in more
     assert "dashboard.reports_triage_show_all" in more
     # It opens short again on every arrival — the state is not remembered.
-    index = _function_body(js, "async function renderReportsIndex(")
-    assert "reportsTriageShowAll = false" in index
+    grid = _function_body(js, "function renderReportsIndexGrid(")
+    assert "reportsTriageShowAll = false" in grid
 
 
 @pytest.mark.unit

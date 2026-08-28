@@ -257,6 +257,13 @@ const MODULES = [
     bound: ["buildReportsHero"],
     moved: ["buildReportsHero", "hasFigures"],
   },
+  {
+    file: "reports_index.js",
+    global: "MUREO_REPORTS_INDEX",
+    // One entry point: the list screen's whole model (#715).
+    bound: ["buildReportsIndexModel"],
+    moved: ["buildReportsIndexModel"],
+  },
 ];
 
 /** Every extracted module actually shipped, found rather than declared. */
