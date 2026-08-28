@@ -220,6 +220,7 @@ test.describe("the stylesheet agrees that a hidden card is hidden", function () 
       "reports-feed-panel",
       "reports-platforms",
       "reports-panel-note",
+      "reports-unreachable",
       "dashboard-reports-clients",
       "dashboard-reports-period",
     ];

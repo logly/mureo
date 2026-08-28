@@ -5221,6 +5221,41 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--report-band-idle);
 }
 
+/* "mureo could not check n of these clients just now" (#714).
+
+   NEUTRAL, AND THAT IS THE DECISION. The status trio above is reserved for
+   what a client's ADS are doing; this line is about mureo's own request not
+   coming back, which is not a finding about any account. So it takes the
+   informational treatment the tokens block already prescribes — a white panel
+   on the report ground, the same hairline every other panel here carries, and
+   no status colour at all. Red would turn the whole screen into an emergency
+   every time the daemon restarts, which is the failure the note exists to
+   describe calmly.
+
+   One line, at body size rather than caption: it is a sentence to be read
+   once, not a label under a figure. No reserved height — when every summary
+   arrived the element is `hidden` and empty, and an empty frame on a screen
+   that is fine would be a permanent hint that something might not be. */
+.reports-unreachable {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--report-line);
+  border-radius: var(--r-md);
+  color: var(--ink-soft);
+  font-size: var(--type-body-size);
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* No author `display` is declared above, so the UA's rule already hides it —
+   this is here so that adding one later cannot silently leave the line on
+   screen, which is #712 exactly. */
+.reports-unreachable[hidden] {
+  display: none;
+}
+
 /* A quiet day in the rail's feed, in one line. Only ever on screen for a
    roster — see dashboard_reports_overview.js for why that asymmetry is the
    right one. */

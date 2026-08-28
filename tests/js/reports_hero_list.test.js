@@ -404,6 +404,12 @@ test.describe("the band is on the list screen", function () {
     const chips = chipCounts(page);
     assert.equal(blocks.ok + blocks.idle, chips.ok, "the band and the chips agree");
     assert.equal(blocks.ok + blocks.watch + blocks.attention + blocks.idle, chips.all);
+    // Quiet, but no longer silent (#714): the line under the band is what
+    // tells the operator those four "ok" clients were never checked.
+    assert.equal(
+      page.root.querySelector("[data-reports-unreachable]").textContent,
+      "dashboard.reports_unreachable|n=4"
+    );
   });
 
   test.it("is not drawn for a single client", async function () {
@@ -445,6 +451,93 @@ test.describe("the band is on the list screen", function () {
       const label = node.querySelectorAll(".reports-hero-block-label")[0];
       assert.ok(label && label.textContent.trim(), "a block with no word");
     });
+  });
+});
+
+// ---------------------------------------------------------------------
+// The note: the clients mureo could not check (#714)
+// ---------------------------------------------------------------------
+
+/** The index, with the named clients' summary requests failing outright. */
+async function openIndexFailing(failing, clients) {
+  const roster = clients || ROSTER;
+  const page = loadDashboardPage({
+    "/api/reports/clients": { clients: roster, can_archive: false },
+    "/api/reports/summary": (url) => {
+      const m = /client=([^&]+)/.exec(url);
+      const slug = m ? decodeURIComponent(m[1]) : roster[0].slug;
+      return failing.indexOf(slug) === -1
+        ? summaryFor(slug, KINDS[slug] || "ok")
+        : null;
+    },
+  });
+  page.document.dispatchEvent({ type: "mureo:ready" });
+  await settle();
+  page.root.querySelector('[data-dashboard-nav="reports"]').click();
+  await settle();
+  return page;
+}
+
+test.describe("the list says when mureo could not check a client", function () {
+  test.it("states how many, in one line under the band", async function () {
+    const page = await openIndexFailing(["alpha", "delta"]);
+    const note = page.root.querySelector("[data-reports-unreachable]");
+    assert.ok(note, "the note is in app.html");
+    assert.ok(isVisible(note), "…and an operator can see it");
+    // MUREO.t is stubbed to echo its key and params, so this asserts WHICH
+    // number was interpolated, never the wording.
+    assert.equal(note.textContent, "dashboard.reports_unreachable|n=2");
+    // It is above the strip and the grid because it qualifies both: those
+    // two clients contribute no figure to either.
+    const kids = note.parentNode.children;
+    const at = kids.indexOf(note);
+    assert.ok(at > kids.indexOf(page.root.querySelector("[data-reports-hero]")));
+    assert.ok(at < kids.indexOf(page.root.querySelector("[data-reports-kpis]")));
+  });
+
+  test.it("draws nothing at all when every summary arrived", async function () {
+    const page = await openIndex();
+    const note = page.root.querySelector("[data-reports-unreachable]");
+    assert.equal(note.hidden, true, "the node itself must be hidden");
+    assert.equal(isVisible(note), false, "app.css must hide it too");
+    assert.equal(note.textContent, "", "an empty frame is still a frame");
+  });
+
+  test.it("stays quiet on a single-client install", async function () {
+    // One client keeps the index it had — there is no roster for the line
+    // to sit above, and that install has never had one.
+    const page = await openIndexFailing(["alpha"], [
+      { slug: "alpha", name: "Alpha Trading", active: true },
+      { slug: "gone", name: "Gone Ltd", active: true, archived: true },
+    ]);
+    assert.equal(
+      isVisible(page.root.querySelector("[data-reports-unreachable]")),
+      false
+    );
+  });
+
+  test.it("is neutral, because no client is in trouble here", async function () {
+    // app.css's own rule at the --status tokens: what is merely
+    // informational stays neutral. A failed fetch is mureo's problem, not
+    // an account's, and red here would outrank the real alerts below it.
+    const page = await openIndexFailing(["alpha"]);
+    ["color", "background", "border"].forEach(function (property) {
+      const value = styleOf(page, ".reports-unreachable", property) || "";
+      assert.equal(
+        value.indexOf("--status") === -1,
+        true,
+        property + " borrows an alert colour: " + value
+      );
+    });
+  });
+
+  test.it("leaves the screen with the list it qualifies", async function () {
+    const page = await openIndexFailing(["alpha"]);
+    const note = page.root.querySelector("[data-reports-unreachable]");
+    assert.ok(isVisible(note));
+    page.root.querySelector('[data-client="bravo"]').querySelectorAll("button")[0].click();
+    await settle();
+    assert.equal(isVisible(note), false, "the note followed the operator");
   });
 });
 

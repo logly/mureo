@@ -150,6 +150,7 @@
   const renderReportsFilters = R_OVERVIEW.renderReportsFilters;
   const renderReportsPlatforms = R_OVERVIEW.renderReportsPlatforms;
   const renderReportsPortfolio = R_OVERVIEW.renderReportsPortfolio;
+  const renderReportsUnreachable = R_OVERVIEW.renderReportsUnreachable;
 
   // dashboard_reports_cards.js's exports, bound by their original names so every call
   // site below reads exactly as it did when this was one file.
@@ -218,6 +219,11 @@
     // report is a sentence about a screen the operator has left.
     const heroBand = document.querySelector("[data-reports-hero]");
     if (heroBand && view !== "index") heroBand.hidden = true;
+    // …and the line under the band (#714), which counts the same roster:
+    // "3 clients could not be fetched" over one client's report reads as a
+    // statement about THAT client, which is the one thing it does not know.
+    const unreachable = document.querySelector("[data-reports-unreachable]");
+    if (unreachable && view !== "index") unreachable.hidden = true;
     // …and the rail's "what mureo did today", which is the roster's day and
     // not the day of whichever client a detail view is showing.
     const feed = document.querySelector("[data-reports-feed]");
@@ -277,6 +283,11 @@
   function renderReportsIndexBands(rows, summaries, model) {
     // The band across the top: the roster's health at a glance.
     renderReportsHero(model.hero);
+    // …and directly under it, what the band could not know: how many of these
+    // clients mureo failed to reach just now (#714). It sits ABOVE the strip
+    // and the grid because it qualifies both — those clients contribute no
+    // figure to the totals and no finding to the alerts.
+    renderReportsUnreachable(model.unreachable);
     // The roster's own figures, above the alerts — from the same summaries
     // the cards below are built from, and stating over how many clients each
     // of them holds.

@@ -1463,6 +1463,19 @@ has figures and mureo is refusing to state them, which is already an alert.
 I open first?" is not a question, so no band is drawn — the same rule the
 filter chips and the roster table already follow.
 
+**And when mureo could not check at all, it says so.** A summary request that
+fails — a restarting daemon, a network that dropped — is not evidence about
+an ad account, so those clients stay in "nothing raised": routing them to
+*needs attention* would turn the screen red during an outage, which is a
+falsehood about live accounts. But leaving it there silently means a green
+roster that nobody verified, so a one-line note under the band states how
+many mureo could not fetch just now and that a reload will retry. It is
+neutral — a white panel with the same hairline as every other panel here,
+and no status colour — because this is mureo's own request failing, not a
+finding about anyone's ads; a fourth alarm colour would make the first three
+mean less. It is absent entirely when every summary arrived, and, like the
+band, it is drawn only for a roster.
+
 The band is painted from `--report-blue` and `--report-on-blue` — the same
 two tokens the detail screen's 運用ナビ banner is painted from, referenced
 rather than restated. A mureo band is one colour in this product, so a

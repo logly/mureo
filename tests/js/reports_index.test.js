@@ -286,3 +286,138 @@ test.describe("triageHealthCounts is handed the array, never trusted blindly", f
     });
   });
 });
+
+// ---------------------------------------------------------------------
+// "mureo could not check n of these" (#714)
+// ---------------------------------------------------------------------
+//
+// A failed summary request is a fact about MUREO, not about an ad account,
+// and every verdict this screen has would be false about it. So the model
+// counts those clients separately and changes nothing else — which is the
+// half that needs pinning, because "changes nothing else" is what a later
+// edit breaks by accident.
+
+/** The roster's summaries with the clients at `indexes` never received. */
+function withUnreachable(indexes) {
+  return SUMMARIES.map(function (summary, i) {
+    return indexes.indexOf(i) === -1 ? summary : null;
+  });
+}
+
+test.describe("the roster mureo could not reach", function () {
+  test.it("counts every summary that never arrived", function () {
+    [[], [0], [1, 3], [0, 1, 2, 3]].forEach(function (missing) {
+      const model = index.buildReportsIndexModel(ROSTER, withUnreachable(missing));
+      assert.equal(
+        model.unreachable.count,
+        missing.length,
+        missing.length + " unreachable clients were not counted"
+      );
+    });
+  });
+
+  test.it("says so only when there is something to say", function () {
+    // No line at zero. The screen has no "0 could not be fetched" state, for
+    // the same reason it has no "0 alerts" banner.
+    assert.equal(index.buildReportsIndexModel(ROSTER, SUMMARIES).unreachable.show, false);
+    assert.equal(index.buildReportsIndexModel(ROSTER, withUnreachable([2])).unreachable.show, true);
+  });
+
+  test.it("stays quiet on a single-client install", function () {
+    // Below two clients there is no roster for the line to qualify, and that
+    // install has never had one. The threshold is the BAND's, not a second.
+    const solo = [ROSTER[0]];
+    const model = index.buildReportsIndexModel(solo, [null]);
+    assert.equal(model.hero.show, false);
+    assert.equal(model.unreachable.count, 1, "the failure is still counted");
+    assert.equal(model.unreachable.show, false, "…it is just not stated");
+    // Two clients is a roster, and the same failure is stated there.
+    const pair = index.buildReportsIndexModel(ROSTER.slice(0, 2), [null, SUMMARIES[2]]);
+    assert.equal(pair.hero.show, true);
+    assert.equal(pair.unreachable.show, true);
+  });
+
+  test.it("counts the fetch, never the figures", function () {
+    // The distinction #713 preserved: a RECEIVED summary that states no
+    // platforms is a client mureo is not running yet (the band's fourth
+    // block), and a summary that never arrived is neither that nor any
+    // health. The idle fixture is a received summary, so it must not be
+    // counted here — collapsing the two is the exact bug this note is not.
+    const model = index.buildReportsIndexModel(ROSTER, SUMMARIES);
+    assert.equal(model.hero.idle, 1, "the fixture has one idle client");
+    assert.equal(model.unreachable.count, 0, "an idle client is not an unreachable one");
+  });
+
+  test.it("leaves the four blocks a partition of the roster, whatever is missing", function () {
+    // The acceptance criterion of #714: the note is added BESIDE the band,
+    // and the band still adds up. A client mureo could not reach keeps the
+    // bucket it had — nothing is moved into a fifth state.
+    [[], [0], [1, 3], [0, 1, 2, 3]].forEach(function (missing) {
+      const model = index.buildReportsIndexModel(ROSTER, withUnreachable(missing));
+      const band = model.hero;
+      assert.equal(band.total, ROSTER.length);
+      assert.equal(
+        band.ok + band.watch + band.attention + band.idle,
+        ROSTER.length,
+        "the blocks stopped partitioning the roster with " + missing.length + " missing"
+      );
+      // …and the chips are still the same object the band was built from.
+      assert.equal(
+        model.healthCounts.attention + model.healthCounts.watch + model.healthCounts.ok,
+        ROSTER.length
+      );
+      assert.equal(band.attention, model.healthCounts.attention);
+      assert.equal(band.watch, model.healthCounts.watch);
+      assert.equal(band.ok + band.idle, model.healthCounts.ok);
+    });
+  });
+
+  test.it("puts an unreachable client in ok, and raises nothing about it", function () {
+    // The pre-#713 behaviour, kept deliberately: quiet ok is the least-false
+    // option for a client nobody could check, and the note is what stops it
+    // being silent. An unreachable client must not appear in the alert layer
+    // — during an outage that would be a red screen about live accounts.
+    const model = index.buildReportsIndexModel(ROSTER, withUnreachable([0, 1, 2, 3]));
+    assert.deepEqual(model.healthByIndex, ["ok", "ok", "ok", "ok"]);
+    assert.deepEqual(model.triage.items, []);
+    assert.deepEqual(model.triage.clients, []);
+    assert.equal(model.hero.idle, 0, "an outage is not four idle clients");
+    assert.equal(model.hero.ok, 4);
+    assert.equal(model.unreachable.count, 4);
+  });
+
+  test.it("treats anything that is not a received object as not received", function () {
+    // `fetchClientCardSummary` yields null, and `fetchReportsJson` already
+    // coerces a non-object body to null — but the model is the last place
+    // this can be got wrong, and a string or a number here would otherwise
+    // be read as a summary that stated nothing.
+    [null, undefined, "", 0, false, "yesterday", 7].forEach(function (junk) {
+      const bodies = [junk, SUMMARIES[1], SUMMARIES[2], SUMMARIES[3]];
+      assert.equal(
+        index.buildReportsIndexModel(ROSTER, bodies).unreachable.count,
+        1,
+        JSON.stringify(junk) + " was read as a received summary"
+      );
+    });
+    // …and an object IS received, even an empty one: that is a client with
+    // no platforms, which the band's fourth block already states.
+    const received = [{}, SUMMARIES[1], SUMMARIES[2], SUMMARIES[3]];
+    assert.equal(index.buildReportsIndexModel(ROSTER, received).unreachable.count, 0);
+  });
+
+  test.it("counts a roster longer than its summaries as unreached", function () {
+    // A short array is the same absence one step further along: there is no
+    // summary for those clients, so mureo did not check them.
+    const model = index.buildReportsIndexModel(ROSTER, [SUMMARIES[0]]);
+    assert.equal(model.unreachable.count, 3);
+    assert.equal(model.hero.total, ROSTER.length);
+  });
+
+  test.it("says nothing about an empty roster", function () {
+    [null, undefined, []].forEach(function (rows) {
+      const model = index.buildReportsIndexModel(rows, SUMMARIES);
+      assert.equal(model.unreachable.count, 0);
+      assert.equal(model.unreachable.show, false);
+    });
+  });
+});

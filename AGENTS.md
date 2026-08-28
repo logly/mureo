@@ -447,7 +447,11 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     `buildReportsIndexModel` the one place `triageHealthCounts` is called:
     the cards and the roster rows are handed that array, and the band, the
     chips and the portfolio strip are handed the counts built from it. No
-    `dashboard_reports*.js` scans the alert layer for a health (#715).
+    `dashboard_reports*.js` scans the alert layer for a health (#715). It
+    also counts how many of the roster mureo could not fetch at all
+    (`unreachable`, #714) — a fact about the REQUEST, stated in one line
+    under the band; those clients keep the bucket they had, so nothing
+    below this module grades a client on a failed fetch.
 
   Each carries an inert `module.exports` tail so `node --test
   tests/js/*.test.js` executes the exact bytes the browser is served, and
