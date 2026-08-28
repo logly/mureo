@@ -180,6 +180,7 @@ def test_only_the_multi_client_index_renders_the_overview() -> None:
         "renderReportsPlatforms(",
         "renderReportsFilters(",
         "renderReportsActionFeed(",
+        "renderReportsUnreachable(",
     ):
         assert js.count(call) == 2, f"{call} is called from more than the index"
         assert call in drawn, f"{call} is not the index's"
@@ -194,7 +195,14 @@ def test_leaving_the_index_hides_the_overview() -> None:
     """The strip states figures ABOUT the grid. Left behind over a detail
     view, a roster total reads as that one client's."""
     view = _function_body(_read("dashboard_reports.js"), "function setReportsView(")
-    for target in ("data-reports-kpis", "data-reports-index-grid", "data-reports-feed"):
+    for target in (
+        "data-reports-kpis",
+        "data-reports-index-grid",
+        "data-reports-feed",
+        # The same rule for the fetch note (#714): it counts the ROSTER, so
+        # left behind over one client's report it reads as that client's.
+        "data-reports-unreachable",
+    ):
         assert target in view, f"{target} survives a view change"
     assert 'view !== "index"' in view
     # Hidden in the markup too, so a page that never reaches the index shows

@@ -113,10 +113,14 @@
    *
    * So a null lands in the OK block, which is where the filter chips have
    * always counted it: the band and the chips are one answer, and the
-   * alternative — routing unreachable clients to "needs attention" — turns
-   * the screen red during an outage, which is the same lie the other way up.
-   * Quiet degradation is the answer until the screen learns to SAY that a
-   * fetch failed.
+   * alternative — routing those clients to "needs attention" — turns the
+   * screen red during an outage, which is the same lie the other way up.
+   *
+   * Quiet, and since #714 no longer silent: the bucket is unchanged, and the
+   * line under this band states how many of the roster mureo could not
+   * check. That count is `reports_index.js`'s, deliberately — it is a fact
+   * about the FETCH, and nothing in this file is allowed to grade a client
+   * on it.
    */
   function isIdle(summary) {
     if (!summary || typeof summary !== "object") return false;

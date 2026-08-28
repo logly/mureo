@@ -234,6 +234,16 @@
                      role="list" aria-label="Client health"></div>
               </section>
 
+              <!-- "mureo could not check n of these just now" (#714). Under
+                   the band and above everything the band's numbers are about,
+                   because it qualifies all of it: a client whose summary never
+                   arrived contributes no figure to the strip and no finding to
+                   the alerts. NOT a health state and NOT a fifth block — those
+                   clients keep the bucket they had, so the four blocks stay a
+                   partition of the roster. Absent entirely, text and all, when
+                   every summary arrived. -->
+              <p class="reports-unreachable" data-reports-unreachable hidden></p>
+
               <!-- Portfolio strip: what the whole roster spent, converted and
                    paid per conversion, and how many clients need attention.
                    Every cell carries the number of clients it was stated over

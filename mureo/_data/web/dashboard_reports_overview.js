@@ -179,6 +179,43 @@
     );
   }
 
+  /**
+   * The line under the band: mureo could not check n of these clients (#714).
+   *
+   * WHAT IT IS NOT. Not a health state, not a fifth block, and not red. The
+   * three status colours are reserved for what a client's ADS are doing —
+   * "anything that is merely informational stays neutral", which app.css
+   * states as a rule at the tokens themselves, and a fourth colour would make
+   * the first three mean less. This line says nothing about an ad account: it
+   * says mureo's own request did not come back, which is a fact about mureo.
+   *
+   * Painting it as any verdict lies in one direction or another — "not
+   * running" about an account nobody checked, "needs attention" turning the
+   * whole roster red the moment the daemon restarts, "nothing raised"
+   * claiming a check that did not happen. So the clients keep the bucket they
+   * had and this sentence is added beside them.
+   *
+   * NO EMPTY FRAME. When every summary arrived there is no line, no border
+   * and no reserved height — an empty box on a screen that is fine would be a
+   * permanent hint that something might not be. The text is cleared as well
+   * as hidden, so a line drawn while the daemon was down cannot survive into
+   * the render where it came back.
+   */
+  function renderReportsUnreachable(unreachable) {
+    const note = document.querySelector("[data-reports-unreachable]");
+    if (!note) return;
+    const state =
+      unreachable && typeof unreachable === "object" ? unreachable : {};
+    const count =
+      typeof state.count === "number" && state.count > 0
+        ? Math.floor(state.count)
+        : 0;
+    note.textContent = "";
+    note.hidden = !(state.show && count);
+    if (note.hidden) return;
+    note.textContent = MUREO.t("dashboard.reports_unreachable", { n: count });
+  }
+
   // Show only the cards at the selected health. The cards are hidden, never
   // removed: the grid is also the operator's own card order (#556), and
   // rebuilding it from a filtered list would reorder it.
@@ -447,6 +484,7 @@
   const api = {
     buildPlatformSlice: buildPlatformSlice,
     renderReportsPortfolio: renderReportsPortfolio,
+    renderReportsUnreachable: renderReportsUnreachable,
     renderReportsFilters: renderReportsFilters,
     applyReportsHealthFilter: applyReportsHealthFilter,
     renderReportsPlatforms: renderReportsPlatforms,

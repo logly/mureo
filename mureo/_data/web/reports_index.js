@@ -1,12 +1,13 @@
 // reports_index.js — everything the list screen IS, before a node is drawn
 // (#715).
 //
-// The index view is four claims about a roster — the alert layer, the health
-// split, the band across the top and the portfolio strip — and every one of
-// them is a reading of the SAME two arrays: the clients the grid is about,
-// and the summaries already fetched for them. This file composes them
-// together, once, so `renderReportsIndex` is left with what it is for:
-// putting the result on screen.
+// The index view is five claims about a roster — the alert layer, the health
+// split, the band across the top, how many of these mureo could not check at
+// all (#714), and the portfolio strip — and every one of them is a reading of
+// the SAME two arrays: the clients the grid is about, and the summaries
+// already fetched for them. This file composes them together, once, so
+// `renderReportsIndex` is left with what it is for: putting the result on
+// screen.
 //
 // ONE HEALTH VERDICT PER CLIENT, COMPUTED ONCE. `triageClientHealth` is an
 // O(items) scan of the alert layer, and the index used to run it five times
@@ -74,9 +75,47 @@
     return api;
   }
 
+  //: A summary mureo RECEIVED is an object. `null` is what
+  //: `fetchClientCardSummary` yields for a request that FAILED — a non-2xx, a
+  //: network error, a body that was not JSON, the daemon mid-restart — and
+  //: #713 stopped that null being collapsed into `{}` precisely so the two
+  //: stay distinguishable this far up. A received summary that states no
+  //: figures is a different fact, and the band's fourth block is where it is
+  //: already said.
+  function wasReceived(summary) {
+    return !!summary && typeof summary === "object";
+  }
+
+  /**
+   * How many of the roster mureo could not check just now, and whether to
+   * say so (#714).
+   *
+   * A NOTE, NOT A HEALTH STATE, and deliberately not a fifth block. Every
+   * verdict this screen has would be false about a client whose summary never
+   * arrived: "not running" states something about its ads that nobody
+   * checked, "needs attention" turns the whole roster red the moment the
+   * daemon restarts, and "nothing raised" claims a check that did not happen.
+   * So those clients stay exactly where they were before this line existed —
+   * in the OK bucket — the four blocks remain a partition of the roster
+   * (ok + watch + attention + idle == total), and the triage layer is not
+   * consulted at all. What changes is only that the failure stops being
+   * invisible.
+   *
+   * `show` is the BAND's own answer to "is this a roster?", not a second
+   * threshold: below two clients there is no list for the line to sit above,
+   * and that install has never had one.
+   */
+  function unreachableSummaries(clients, bodies, band) {
+    let count = 0;
+    clients.forEach(function (_client, i) {
+      if (!wasReceived(bodies[i])) count += 1;
+    });
+    return { count: count, show: count > 0 && !!(band && band.show) };
+  }
+
   /**
    * The index screen's model:
-   * `{triage, healthByIndex, healthCounts, hero, portfolio}`.
+   * `{triage, healthByIndex, healthCounts, hero, unreachable, portfolio}`.
    *
    * `rows` is the client list in GRID ORDER (archived clients already
    * dropped, the operator's own order already applied), and `summaries` is
@@ -109,17 +148,23 @@
     // two answers the moment either caller learned to pass something
     // different (#706 step 3-b).
     const healthCounts = layer.triageHealthCounts(built, clients.length, healthByIndex);
+    // The band across the top: the roster's health at a glance, and nothing
+    // it grades itself — the counts and the per-client verdict both come from
+    // the triage layer the cards below are marked from. It draws nothing at
+    // all below two clients, which is also the answer the line under it asks
+    // for rather than deciding again.
+    const band = hero().buildReportsHero(healthCounts, bodies, function (i) {
+      return healthByIndex[i];
+    });
     return {
       triage: built,
       healthByIndex: healthByIndex,
       healthCounts: healthCounts,
-      // The band across the top: the roster's health at a glance, and nothing
-      // it grades itself — the counts and the per-client verdict both come
-      // from the triage layer the cards below are marked from. It draws
-      // nothing at all below two clients.
-      hero: hero().buildReportsHero(healthCounts, bodies, function (i) {
-        return healthByIndex[i];
-      }),
+      hero: band,
+      // The line under the band: how many of these mureo could not check just
+      // now (#714). Counted off the summaries, never off the health — see
+      // unreachableSummaries for why it is not one of the band's blocks.
+      unreachable: unreachableSummaries(clients, bodies, band),
       // The roster's own figures, above the alerts — built from the same
       // summaries the cards below are built from, and stating over how many
       // clients each of them holds.

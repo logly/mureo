@@ -165,6 +165,71 @@ def test_a_summary_that_never_arrived_is_not_a_client_that_is_not_running() -> N
 
 
 @pytest.mark.unit
+def test_the_list_says_how_many_clients_it_could_not_check() -> None:
+    """#713 kept the null; #714 says so out loud. An unreachable client is
+    counted as ok because that is the least-false bucket for a client nobody
+    checked — which is only honest if the screen states, once, that the check
+    did not happen. The count is the model's, over the same array the band
+    counts, so it cannot drift from the roster it is about."""
+    index = _read("reports_index.js")
+    received = _function_body(index, "function wasReceived(")
+    assert 'return !!summary && typeof summary === "object";' in received
+    body = _function_body(index, "function unreachableSummaries(")
+    assert "if (!wasReceived(bodies[i])) count += 1;" in body
+    # The line appears only where there is a roster to appear over, and it is
+    # the BAND's own threshold — not a second one that could drift from it.
+    assert "count > 0 && !!(band && band.show)" in body
+    assert "unreachable: unreachableSummaries(clients, bodies, band)," in index
+    dom = _function_body(
+        _read("dashboard_reports_overview.js"), "function renderReportsUnreachable("
+    )
+    assert "note.hidden = !(state.show && count);" in dom
+    assert "if (note.hidden) return;" in dom, "an empty frame is still a frame"
+    assert 'MUREO.t("dashboard.reports_unreachable", { n: count })' in dom
+
+
+@pytest.mark.unit
+def test_the_note_moves_no_client_out_of_its_bucket() -> None:
+    """The four blocks are a partition of the roster, and #714 is a note
+    BESIDE that partition, not a fifth block. The decision layers must
+    therefore know nothing about it: a client mureo could not reach keeps the
+    verdict it had, and the alert list still raises nothing about it."""
+    for name in ("reports_triage.js", "reports_hero.js", "reports_overview.js"):
+        js = _read(name)
+        for symbol in ("unreachableSummaries", "wasReceived", ".unreachable"):
+            assert symbol not in js, f"{name} grades a client on a failed fetch"
+    # …and the note itself states no health, in the markup or the renderer.
+    html = _read("app.html")
+    block = html.split("data-reports-unreachable", 1)[0].rsplit("<", 1)[1]
+    assert "hidden" not in block  # the attribute belongs after the hook
+    hook = html.split("data-reports-unreachable", 1)[1].split(">", 1)[0]
+    assert "hidden" in hook, "the note is not hidden by default"
+    assert "reports-unreachable" in block and "status" not in block
+
+
+@pytest.mark.unit
+def test_the_note_is_informational_and_borrows_no_alert_colour() -> None:
+    """app.css's own rule at the ``--status-*`` tokens: what is merely
+    informational stays neutral, because a fourth colour would make the first
+    three mean less. A failed fetch is mureo's problem, not an ad account's —
+    painting it red would outrank the real findings under it."""
+    css = _read("app.css")
+    rule = css.split(".reports-unreachable {", 1)[1].split("}", 1)[0]
+    assert "--status" not in rule, "the note borrows an alert colour"
+    assert "var(--report-line)" in rule and "var(--ink-soft)" in rule
+    # `.reports-unreachable` is a block-level `<p>`, so the UA's
+    # `[hidden] { display: none }` is what hides it — pinned because #712 was
+    # exactly this rule losing to an author `display`.
+    assert ".reports-unreachable[hidden]" in css
+    assert "display:" not in rule, "a display here would need its own override"
+    # Both locales interpolate the count; a key that dropped {n} would say
+    # "some clients" while claiming to be a number.
+    data = json.loads(_read("i18n.json"))
+    for locale in ("en", "ja"):
+        assert "{n}" in data[locale]["dashboard.reports_unreachable"]
+
+
+@pytest.mark.unit
 def test_the_band_says_a_word_beside_every_colour() -> None:
     """Colour never carries the meaning alone on these screens, and the three
     words the band shares with the filter chips are the SAME keys — a client
@@ -234,6 +299,7 @@ def test_the_band_and_the_feed_speak_both_locales() -> None:
         "dashboard.reports_hero_title",
         "dashboard.reports_hero_ratio_label",
         "dashboard.reports_feed_empty",
+        "dashboard.reports_unreachable",
     ):
         for locale in ("en", "ja"):
             value = data[locale].get(key)
