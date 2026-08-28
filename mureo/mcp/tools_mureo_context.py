@@ -1026,7 +1026,11 @@ TOOLS: list[Tool] = [
             "gap as a gap. **Only complete PAST days are accepted** — today "
             "is still being spent into, and half a day filed as a day is a "
             "false low forever, because nothing revisits a day already in the "
-            "map. Each bucket you pass without a usable ``fetched_at`` is "
+            "map. **Whose today that is, is yours to state**: pass "
+            "``as_of_date`` (today in the AD ACCOUNT's timezone) when the "
+            "server and the account may not share a day — without it the "
+            "check uses the server's own today. Each bucket you pass without "
+            "a usable ``fetched_at`` is "
             "stamped with the write time; a day this call merely preserves is "
             "never re-stamped. mureo keeps the most recent "
             f"{DAILY_RETENTION_DAYS} days and drops older ones on write. "
@@ -1081,6 +1085,32 @@ TOOLS: list[Tool] = [
                         "actually collected — omit a day you have no figures "
                         "for rather than sending zeros for it. Merged per "
                         "date key into the stored history."
+                    ),
+                },
+                "as_of_date": {
+                    "type": "string",
+                    # Same shape as a ``days`` key, and enforced the same way:
+                    # the dispatcher refuses a malformed anchor before the
+                    # handler runs, so an unparseable date can never widen the
+                    # completeness check by accident.
+                    "pattern": DAILY_DATE_KEY_PATTERN,
+                    "description": (
+                        "Optional. TODAY in the AD ACCOUNT's timezone, as "
+                        "**YYYY-MM-DD** — the day the completeness check is "
+                        "measured against. Omit it and the check uses the "
+                        "server's own today, which is correct whenever the "
+                        "host and the account share a day. Pass it when they "
+                        "may not: an account closes its day in its own "
+                        "timezone, so on a UTC host at 02:00 Asia/Tokyo, "
+                        "yesterday-in-Tokyo is still today in UTC and a "
+                        "genuinely complete day would be refused. The rule "
+                        "does not move — a day at or after this date is still "
+                        "refused — you are only stating whose today it is, "
+                        "and mureo checks that claim: an ``as_of_date`` more "
+                        "than 2 days ahead of the server's own date is "
+                        "refused outright (no timezone is further ahead than "
+                        "that), so a mis-inferred year cannot turn dates "
+                        "nobody has reached into complete history."
                     ),
                 },
                 "path": _PATH_PROPERTY,

@@ -1,5 +1,42 @@
 ## [Unreleased]
 
+### Added
+
+- **The day-grain history write is usable without a path, and knows whose day
+  it is** (#710). Both halves are additive — every existing call keeps working
+  unchanged.
+
+  **The merge, minus the file.** `mureo.context.daily.with_platform_daily(doc,
+  platform, account_id, days, as_of_date=None)` performs the whole daily write
+  on a `StateDocument`: the platform-key guard, the per-date-key merge, the
+  `fetched_at` stamping and the 35-day retention trim, returning a new
+  document and touching no filesystem. `capped_platform_daily(daily)` is the
+  retention rule on its own. `set_platform_daily` is now a thin wrapper around
+  the first, so the path-based route and the document-level route cannot drift
+  apart. A writer that must land `daily` together with other fields in ONE
+  atomic write had no public way to apply the retention rule and was importing
+  a private name to do it; that name still resolves, but nothing needs it now.
+
+  **Completeness is judged against the account's day, when the caller says
+  so.** Only complete past days are stored, and "today" was the HOST's. An ad
+  account closes its day in the account's timezone: on a UTC host at 02:00
+  Asia/Tokyo — exactly when a nightly digest runs — yesterday-in-Tokyo is
+  still today in UTC, so a genuinely complete day was refused every night. The
+  optional `as_of_date` (today, resolved in the account's timezone) is what
+  the check now measures against; omitted, it is the server clock exactly as
+  before. `mureo_state_platform_daily_set` takes it too, shape-pinned to
+  `YYYY-MM-DD` by the tool schema. The rule itself is unchanged — a day at or
+  after the anchor is still refused, because an anchor states whose today it
+  is, it does not buy a partial day.
+
+  **And the anchor is not taken on trust.** It is a self-report, stated on the
+  MCP route by an LLM that inferred the date, so an `as_of_date` more than 2
+  days ahead of the server's own date is refused outright: civil offsets span
+  UTC-12 to UTC+14, so two places can disagree about the date by at most two
+  days, and without the bound an anchor of `2099-01-01` would make every date
+  this side of the century a "complete past day". A past anchor is left alone
+  — it can only make the check stricter.
+
 ## [0.16.0] - 2026-08-27
 
 ### Changed
