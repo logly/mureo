@@ -44,7 +44,7 @@ loosening any of that:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -607,8 +607,14 @@ class TestTheDocumentLevelWriter:
 #: 01:30 on the 21st in Tokyo is still 16:30 on the 20th in UTC.
 _JST = timezone(timedelta(hours=9))
 _UTC_HOST_NOW = datetime(2026, 8, 20, 16, 30, tzinfo=timezone.utc)
+_SERVER_TODAY = _UTC_HOST_NOW.date()
 _ACCOUNT_TODAY = _UTC_HOST_NOW.astimezone(_JST).date()
 _COMPLETE_DAY_JST = _ACCOUNT_TODAY - timedelta(days=1)
+
+
+def _anchor(days_ahead: int) -> date:
+    """An anchor ``days_ahead`` days past the server's own date."""
+    return _SERVER_TODAY + timedelta(days=days_ahead)
 
 
 class TestTheCompletenessAnchor:
@@ -749,6 +755,126 @@ class TestTheCompletenessAnchor:
             path, _PLATFORM, _ACCOUNT, days={older: {"spend": 1.0}}
         )
         assert older in doc.platforms[_PLATFORM].daily
+
+
+class TestTheAnchorIsBounded:
+    """The anchor is the CALLER's self-report, and on the MCP route the caller
+    is an LLM that inferred the date. Unbounded, ``as_of_date="2099-01-01"``
+    makes every date this side of the century a "complete past day" — the rule
+    this module exists to enforce, switched off by an argument."""
+
+    @pytest.fixture(autouse=True)
+    def _utc_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mureo.core import clock
+
+        monkeypatch.setattr(clock, "server_now", lambda: _UTC_HOST_NOW)
+
+    def test_the_bound_is_two_days(self) -> None:
+        """Pinned as a value, not just used as one: civil offsets run UTC-12
+        to UTC+14 — 26 hours — so an instant that is date D in one place is at
+        most D+2 in another (22:00 on D at UTC-12 is 00:00 on D+2 at UTC+14).
+        Widening this is a decision, not a refactor."""
+        from mureo.context.daily import _MAX_ANCHOR_DAYS_AHEAD
+
+        assert _MAX_ANCHOR_DAYS_AHEAD == 2
+
+    def test_the_widest_real_timezone_gap_is_accepted(self, tmp_path: Path) -> None:
+        """The boundary's inside edge: +2 is a date two places on Earth can
+        genuinely disagree by, so it must go through."""
+        path = tmp_path / "STATE.json"
+        complete = (_SERVER_TODAY - timedelta(days=1)).isoformat()
+        doc = set_platform_daily(
+            path,
+            _PLATFORM,
+            _ACCOUNT,
+            days={complete: {"spend": 1.0}},
+            as_of_date=_anchor(2),
+        )
+        assert complete in doc.platforms[_PLATFORM].daily
+
+    def test_one_day_past_the_widest_gap_is_refused(self, tmp_path: Path) -> None:
+        """The outside edge, on the very same call: +3 is not a timezone."""
+        path = tmp_path / "STATE.json"
+        complete = (_SERVER_TODAY - timedelta(days=1)).isoformat()
+        with pytest.raises(ValueError, match="as_of_date"):
+            set_platform_daily(
+                path,
+                _PLATFORM,
+                _ACCOUNT,
+                days={complete: {"spend": 1.0}},
+                as_of_date=_anchor(3),
+            )
+        assert not path.exists()
+
+    def test_a_far_future_anchor_cannot_file_days_nobody_has_lived(
+        self, tmp_path: Path
+    ) -> None:
+        """The reproduction, negated: an anchor 60 days out and rows dated 30
+        days out — every one of them a day that has not happened."""
+        path = tmp_path / "STATE.json"
+        unlived = (_SERVER_TODAY + timedelta(days=30)).isoformat()
+        with pytest.raises(ValueError, match="as_of_date"):
+            set_platform_daily(
+                path,
+                _PLATFORM,
+                _ACCOUNT,
+                days={unlived: {"spend": 1.0}},
+                as_of_date=_anchor(60),
+            )
+        assert not path.exists()
+
+    def test_the_document_level_writer_is_bounded_too(self) -> None:
+        """Both entry points, or the guard is a suggestion: a downstream
+        writer calls this one directly."""
+        unlived = (_SERVER_TODAY + timedelta(days=30)).isoformat()
+        with pytest.raises(ValueError, match="as_of_date"):
+            with_platform_daily(
+                StateDocument(version="2"),
+                _PLATFORM,
+                _ACCOUNT,
+                {unlived: {"spend": 1.0}},
+                as_of_date=_anchor(60),
+            )
+
+    def test_the_refusal_names_both_dates(self, tmp_path: Path) -> None:
+        """The caller stated one date and mureo compared it against another;
+        a message carrying only one of them cannot be acted on."""
+        path = tmp_path / "STATE.json"
+        with pytest.raises(ValueError) as excinfo:
+            set_platform_daily(
+                path,
+                _PLATFORM,
+                _ACCOUNT,
+                days={(_SERVER_TODAY - timedelta(days=1)).isoformat(): {"spend": 1.0}},
+                as_of_date=_anchor(60),
+            )
+        message = str(excinfo.value)
+        assert _anchor(60).isoformat() in message
+        assert _SERVER_TODAY.isoformat() in message
+
+    def test_an_anchor_in_the_past_is_left_alone(self, tmp_path: Path) -> None:
+        """No bound in the other direction, on purpose: a past anchor only
+        makes the check STRICTER — it can refuse a day, never admit one — so
+        it is self-limiting, and a caller whose clock is behind learns it from
+        an explicit refusal rather than from figures quietly dropped."""
+        path = tmp_path / "STATE.json"
+        long_ago = _SERVER_TODAY - timedelta(days=400)
+        doc = set_platform_daily(
+            path,
+            _PLATFORM,
+            _ACCOUNT,
+            days={(long_ago - timedelta(days=1)).isoformat(): {"spend": 1.0}},
+            as_of_date=long_ago,
+        )
+        assert doc.platforms[_PLATFORM].daily
+        with pytest.raises(ValueError, match="complete"):
+            set_platform_daily(
+                path,
+                _PLATFORM,
+                _ACCOUNT,
+                days={(_SERVER_TODAY - timedelta(days=1)).isoformat(): {"spend": 1.0}},
+                as_of_date=long_ago,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1108,6 +1234,39 @@ class TestTheMcpTool:
                     "days": {_COMPLETE_DAY_JST.isoformat(): {"spend": 1200.0}},
                 }
             )
+
+    async def test_a_far_future_anchor_is_refused_through_the_real_dispatcher(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The route that matters most: the caller stating the date here is a
+        model, and a mis-inferred year (or an injected one) must not be able
+        to file dates nobody has reached as complete history. Schema
+        validation and gates included — the anchor passes the ``YYYY-MM-DD``
+        pattern, so nothing upstream of the write stops it."""
+        from mureo.core import clock
+        from mureo.mcp.server import handle_call_tool
+
+        monkeypatch.setattr(clock, "server_now", lambda: _UTC_HOST_NOW)
+        unlived = (_SERVER_TODAY + timedelta(days=30)).isoformat()
+        with pytest.raises(ValueError, match="as_of_date"):
+            await handle_call_tool(
+                "mureo_state_platform_daily_set",
+                {
+                    "platform": _PLATFORM,
+                    "account_id": _ACCOUNT,
+                    "days": {unlived: {"spend": 1200.0}},
+                    "as_of_date": _anchor(60).isoformat(),
+                },
+            )
+        assert not (tmp_path / "STATE.json").exists()
+
+    async def test_the_tool_states_that_the_anchor_is_checked(self) -> None:
+        from mureo.mcp.tools_mureo_context import TOOLS
+
+        (tool,) = [t for t in TOOLS if t.name == "mureo_state_platform_daily_set"]
+        anchor = tool.inputSchema["properties"]["as_of_date"]["description"]
+        assert "2 days ahead" in anchor
+        assert "refused" in anchor
 
 
 # ---------------------------------------------------------------------------

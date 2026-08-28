@@ -1105,7 +1105,12 @@ TOOLS: list[Tool] = [
                         "yesterday-in-Tokyo is still today in UTC and a "
                         "genuinely complete day would be refused. The rule "
                         "does not move — a day at or after this date is still "
-                        "refused — you are only stating whose today it is."
+                        "refused — you are only stating whose today it is, "
+                        "and mureo checks that claim: an ``as_of_date`` more "
+                        "than 2 days ahead of the server's own date is "
+                        "refused outright (no timezone is further ahead than "
+                        "that), so a mis-inferred year cannot turn dates "
+                        "nobody has reached into complete history."
                     ),
                 },
                 "path": _PATH_PROPERTY,

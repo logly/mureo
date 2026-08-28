@@ -938,7 +938,10 @@ def set_platform_daily(
         as_of_date: The account's own today, resolved in the ACCOUNT's
             timezone, for the "is this day over?" check (#710). Omit to judge
             against the host's clock, which is what every caller did before it
-            existed.
+            existed. It is a self-report and is bounded as one: an anchor more
+            than :data:`~mureo.context.daily._MAX_ANCHOR_DAYS_AHEAD` days
+            ahead of the server's date is refused, so stating a far-future
+            today cannot switch the completeness rule off.
 
     Returns:
         The updated :class:`StateDocument`.

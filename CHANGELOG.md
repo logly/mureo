@@ -29,6 +29,14 @@
   after the anchor is still refused, because an anchor states whose today it
   is, it does not buy a partial day.
 
+  **And the anchor is not taken on trust.** It is a self-report, stated on the
+  MCP route by an LLM that inferred the date, so an `as_of_date` more than 2
+  days ahead of the server's own date is refused outright: civil offsets span
+  UTC-12 to UTC+14, so two places can disagree about the date by at most two
+  days, and without the bound an anchor of `2099-01-01` would make every date
+  this side of the century a "complete past day". A past anchor is left alone
+  — it can only make the check stricter.
+
 ## [0.16.0] - 2026-08-27
 
 ### Changed

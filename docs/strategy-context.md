@@ -700,6 +700,17 @@ against that instead. Omit it and it is measured against the server's own
 today, which is what every caller had before the parameter existed. The rule
 itself does not move: a day at or after the anchor is still refused.
 
+**The anchor is a self-report, and it is bounded as one.** An `as_of_date`
+more than **2 days** ahead of the server's own date is refused outright:
+civil offsets span UTC-12 to UTC+14, 26 hours, so two places on Earth can
+disagree about the date by at most two days — anything beyond that is not a
+timezone, and without the bound an anchor of `2099-01-01` would make every
+date this side of the century a "complete past day" and switch the rule off
+with an argument. That matters most on the MCP route, where the caller
+stating the date is an LLM. There is no bound in the other direction: a past
+anchor can only make the check stricter, and a caller whose clock is behind
+is told so by an explicit refusal naming both dates.
+
 **The merge is available without the file.** A writer that must land `daily`
 together with other fields in ONE atomic document write cannot go through a
 path-based mutator. `mureo.context.daily.with_platform_daily(doc, platform,

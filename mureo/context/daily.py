@@ -20,7 +20,15 @@ document level and off the filesystem:
   writer that has already merged its own map.
 
 The completeness rule is unchanged and non-negotiable — only complete PAST
-days are stored — but WHOSE day it is became a parameter. See
+days are stored — but WHOSE day it is became a parameter: ``as_of_date``, the
+caller's own today, resolved in the ad account's timezone.
+
+That anchor is a SELF-REPORT, and on the MCP route the caller reporting it is
+an LLM. So it is not taken on trust: an ``as_of_date`` more than
+:data:`_MAX_ANCHOR_DAYS_AHEAD` days ahead of the server's own date is refused,
+because otherwise stating a far-future today would make every date this side
+of it a "complete past day" and switch the rule off with an argument. A past
+anchor is left alone — it can only make the check stricter. See
 :func:`_completeness_anchor`.
 """
 
@@ -28,7 +36,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from mureo.context.models import DAILY_DATE_KEY_PATTERN, StateDocument
@@ -55,6 +63,23 @@ DAILY_RETENTION_DAYS = 35
 
 _DAILY_DATE_KEY_RE = re.compile(DAILY_DATE_KEY_PATTERN)
 
+#: How far AHEAD of the server's own date an ``as_of_date`` may sit.
+#:
+#: The anchor is the caller's self-report, and on the MCP route the caller is
+#: an LLM that inferred the date — a slip or a prompt injection must not be
+#: able to declare 2099 "today" and turn days nobody has lived through into
+#: complete history. So it is bounded against the one clock mureo does trust.
+#:
+#: Two days, because that is the largest gap real timezones can open. Civil
+#: offsets run from UTC-12 to UTC+14, a 26-hour spread, so an instant that is
+#: date D somewhere on Earth can be D+2 somewhere else: at 22:00–24:00 on D in
+#: UTC-12 it is already 00:00–02:00 on D+2 in UTC+14. The server sits
+#: somewhere in that range, so does the account, and +2 is the widest honest
+#: disagreement between them. The JST-account / UTC-host case this parameter
+#: was added for only ever needs +1; the bound is stated for every timezone
+#: rather than for the one in front of us.
+_MAX_ANCHOR_DAYS_AHEAD = 2
+
 
 def _completeness_anchor(as_of_date: date | None) -> tuple[date, str]:
     """The day "is this day over?" is judged against, and what to call it.
@@ -73,25 +98,47 @@ def _completeness_anchor(as_of_date: date | None) -> tuple[date, str]:
     rule itself does not move — a day at or after the anchor is still refused
     — only the question of which today it is measured against.
 
+    **The anchor is self-reported, so it is bounded.** An anchor more than
+    :data:`_MAX_ANCHOR_DAYS_AHEAD` days ahead of the server's date is refused:
+    without that bound, ``as_of_date="2099-01-01"`` makes every date this side
+    of the century a "complete past day", which is the exact rule this module
+    exists to enforce, switched off by an argument.
+
+    **There is no bound in the other direction.** A past anchor only makes the
+    check STRICTER — it can refuse a day, never admit one — so it is
+    self-limiting, and a caller whose clock is behind is told so by an
+    explicit refusal naming both dates rather than having its figures dropped.
+
     A :class:`~datetime.datetime` is accepted and narrowed, because resolving
     "now" in a timezone is what produces one; anything else is refused here
     rather than blowing up in a comparison two frames down.
     """
-    if as_of_date is None:
-        # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context``
-        # -> ``state_store`` -> ``mureo.context.state`` -> this module, so a
-        # module-level import would be a cycle.
-        from mureo.core import clock
+    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context``
+    # -> ``state_store`` -> ``mureo.context.state`` -> this module, so a
+    # module-level import would be a cycle.
+    from mureo.core import clock
 
-        return clock.server_now().date(), "server today"
+    server_today = clock.server_now().date()
+    if as_of_date is None:
+        return server_today, "server today"
     if isinstance(as_of_date, datetime):
-        return as_of_date.date(), "as_of_date"
-    if not isinstance(as_of_date, date):
+        anchor = as_of_date.date()
+    elif isinstance(as_of_date, date):
+        anchor = as_of_date
+    else:
         raise ValueError(
             "as_of_date must be a datetime.date (the account's today, resolved "
             f"in the account's timezone), not {type(as_of_date).__name__}"
         )
-    return as_of_date, "as_of_date"
+    if anchor > server_today + timedelta(days=_MAX_ANCHOR_DAYS_AHEAD):
+        raise ValueError(
+            f"as_of_date {anchor.isoformat()} is more than "
+            f"{_MAX_ANCHOR_DAYS_AHEAD} days ahead of the server's date "
+            f"({server_today.isoformat()}): no timezone is that far ahead, so "
+            "this anchor would file days nobody has lived through as complete "
+            "history"
+        )
+    return anchor, "as_of_date"
 
 
 def _reject_unusable_daily_keys(
@@ -211,15 +258,17 @@ def with_platform_daily(
         days: Day-grain rollups keyed ``YYYY-MM-DD``. An empty map writes no
             day and leaves the stored history alone.
         as_of_date: The account's own today, for the completeness check. Omit
-            to judge against the host's clock (see
-            :func:`_completeness_anchor`).
+            to judge against the host's clock. More than
+            :data:`_MAX_ANCHOR_DAYS_AHEAD` days ahead of the server's date is
+            refused (see :func:`_completeness_anchor`).
 
     Returns:
         A new :class:`~mureo.context.models.StateDocument`, ``last_synced_at``
         re-stamped.
 
     Raises:
-        ValueError: a key is not a complete past calendar day, or the write
+        ValueError: the anchor is too far ahead of the server's date, a key is
+            not a complete past calendar day, or the write
             would create a SECOND key for an account another key already holds
             (see :func:`~mureo.context.platform_guards.
             guard_platform_entry_write`).
