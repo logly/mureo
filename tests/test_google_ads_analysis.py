@@ -172,9 +172,14 @@ class TestAnalysisConstants:
 
     @pytest.mark.unit
     def test_get_comparison_date_ranges_unknown_period(self) -> None:
-        """Unknown periods default to 7 days."""
-        current, previous = _get_comparison_date_ranges("UNKNOWN_PERIOD")
-        assert "BETWEEN" in current
+        """Unknown periods are refused, not quietly reported as 7 days (#718).
+
+        The old behaviour returned a 7-day window for any unrecognised
+        period, so a caller asking for one window got numbers for another
+        with no error — the #134 failure mode.
+        """
+        with pytest.raises(ValueError, match="cannot be compared"):
+            _get_comparison_date_ranges("UNKNOWN_PERIOD")
 
     @pytest.mark.unit
     def test_get_comparison_date_ranges_no_overlap(self) -> None:

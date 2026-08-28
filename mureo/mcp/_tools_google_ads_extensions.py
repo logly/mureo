@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from mcp.types import Tool
 
+from mureo.mcp._period_param import period_param
+
 _CUSTOMER_ID_PARAM = {
     "type": "string",
     "description": (
@@ -22,23 +24,10 @@ _CAMPAIGN_ID_PARAM = {
     ),
 }
 
-_PERIOD_PARAM = {
-    "type": "string",
-    "enum": [
-        "TODAY",
-        "YESTERDAY",
-        "LAST_7_DAYS",
-        "LAST_14_DAYS",
-        "LAST_30_DAYS",
-        "LAST_90_DAYS",
-        "THIS_MONTH",
-        "LAST_MONTH",
-    ],
-    "description": (
-        "Reporting window. Default 'LAST_30_DAYS'. Use LAST_7_DAYS / "
-        "LAST_14_DAYS for recent diagnosis; LAST_90_DAYS for baseline."
-    ),
-}
+_PERIOD_PARAM = period_param(
+    "Reporting window. Default 'LAST_30_DAYS'. Use LAST_7_DAYS / "
+    "LAST_14_DAYS for recent diagnosis; LAST_90_DAYS for baseline."
+)
 
 _CONVERSION_ACTION_ID_PARAM = {
     "type": "string",

@@ -14,10 +14,12 @@ alike.
 from __future__ import annotations
 
 import re
+from datetime import date, timedelta
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
 # Google Ads IDs are int64; 20 digits is comfortably above the real max
 # while still capping attacker payloads at a trivial size.
@@ -51,6 +53,68 @@ VALID_DATE_RANGE_CONSTANTS: frozenset[str] = frozenset(
 )
 
 _DEFAULT_MAX_PERIOD_DAYS = 730  # ~2 years; Google Ads reporting hard cap
+
+# Constants mureo offers that Google Ads has no date-range constant for, and
+# the trailing window each one stands for. ``LAST_90_DAYS`` is recommended by
+# the tool descriptions as the trend baseline but is absent from the API's
+# constant list, so every call using it used to die in
+# :func:`validate_date_range_constant` (#717). It is resolved into an explicit
+# ``BETWEEN`` window instead of being dropped.
+#
+# Boundary: the derived window ends **yesterday**, matching the trailing
+# constants it sits beside — Google's ``LAST_N_DAYS`` covers the N days before
+# today and never includes the partial current day, so a 90-day baseline lines
+# up with a 30-day one instead of being one day longer at the near end.
+# Source: https://developers.google.com/google-ads/api/docs/query/date-ranges
+#
+# One asymmetry the callers must document: a real constant is resolved by
+# Google against the ACCOUNT's reporting time zone, while anything resolved
+# here is resolved against whatever date the caller passes in — in practice
+# ``mureo.core.clock.server_now``, the HOST's zone. Where the two zones differ
+# the derived window's edges can sit a day away from a native constant's. This
+# is the same clock ``_get_comparison_date_ranges`` has always used, so the
+# behaviour is not new; the disclosure in the tool descriptions is.
+DERIVED_DATE_RANGE_DAYS: Mapping[str, int] = MappingProxyType({"LAST_90_DAYS": 90})
+
+# Every period value the MCP surface may offer: the API's own constants plus
+# the ones resolved above. ``mureo.mcp._period_param.PERIOD_CONSTANTS`` is
+# built from this set (it only chooses a display order), so "offered by a
+# schema" and "honoured downstream" are the same list by construction (#717).
+SUPPORTED_PERIOD_CONSTANTS: frozenset[str] = VALID_DATE_RANGE_CONSTANTS | frozenset(
+    DERIVED_DATE_RANGE_DAYS
+)
+
+# The explicit-range form, in one place. Published verbatim as the JSON Schema
+# ``pattern`` of the MCP ``period`` parameter (#716). It is deliberately the
+# STRICT spelling — exactly what the tools document — while
+# :data:`BETWEEN_CLAUSE_RE` below is what the parser tolerates. The asymmetry
+# runs one way only: the schema must never admit a string the parser would
+# refuse. The reverse (a lower-cased or double-spaced clause that the parser
+# would have taken) is simply turned away at the edge.
+#
+# Two deliberate deviations from the obvious spelling, both because
+# ``jsonschema`` compiles this with Python's ``re`` and evaluates it with
+# ``re.search``:
+#   * ``[0-9]`` rather than ``\d`` — same reason as :data:`_ID_PATTERN`: Python's
+#     ``\d`` also matches full-width and Arabic-Indic digits.
+#   * ``\A``/``\Z`` rather than ``^``/``$`` — Python's ``$`` also matches just
+#     before a single trailing newline, so ``"...31'\n"`` would pass the schema.
+#     It is harmless downstream (the parser strips), but a schema that accepts
+#     what the parser would not is exactly the drift this module exists to
+#     prevent. Note this makes the pattern Python-flavoured: an ECMA-262
+#     validator reads ``\A`` as a literal ``A``. Enforcement is server-side only
+#     (``mureo.mcp.server._build_tool_validators``), so that costs nothing today.
+PERIOD_BETWEEN_PATTERN = (
+    r"\ABETWEEN '([0-9]{4}-[0-9]{2}-[0-9]{2})' AND '([0-9]{4}-[0-9]{2}-[0-9]{2})'\Z"
+)
+
+# The tolerant form accepted at the parsing boundary (any case, any run of
+# whitespace). Callers re-emit the clause from the validated endpoints, so a
+# tolerant read never widens what is spliced into GAQL.
+BETWEEN_CLAUSE_RE = re.compile(
+    r"BETWEEN\s+'([0-9]{4}-[0-9]{2}-[0-9]{2})'\s+AND\s+'([0-9]{4}-[0-9]{2}-[0-9]{2})'",
+    re.IGNORECASE,
+)
 
 
 class GAQLValidationError(ValueError):
@@ -109,6 +173,89 @@ def validate_date_range_constant(value: str) -> str:
     if upper not in VALID_DATE_RANGE_CONSTANTS:
         raise GAQLValidationError(f"Unknown date range constant: {value!r}")
     return upper
+
+
+def parse_between_clause(
+    value: str, *, max_days: int = _DEFAULT_MAX_PERIOD_DAYS
+) -> tuple[date, date]:
+    """Return the inclusive endpoints of ``BETWEEN 'x' AND 'y'``.
+
+    Both endpoints are re-validated individually, so callers can rebuild the
+    clause from the returned dates rather than echoing attacker-supplied text.
+
+    The span is bounded by ``max_days`` — the same bound
+    :func:`validate_period_days` applies to a day count. ``ALL_TIME`` is left
+    out of :data:`VALID_DATE_RANGE_CONSTANTS` precisely because an unbounded
+    window bypasses that guard; a ``BETWEEN`` clause that may name any two
+    dates is the same unbounded report by another spelling, and
+    ``BETWEEN '1900-01-01' AND '2100-01-01'`` would have been the ``ALL_TIME``
+    the whitelist refuses to offer. Bounding here also keeps callers that do
+    date arithmetic on the result away from ``date.min`` / ``date.max``.
+    """
+    if not isinstance(value, str):
+        raise GAQLValidationError(f"Invalid period: {value!r}")
+    match = BETWEEN_CLAUSE_RE.fullmatch(value.strip())
+    if match is None:
+        raise GAQLValidationError(
+            f"Invalid BETWEEN clause: {value!r} "
+            "(expected: BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD')"
+        )
+    endpoints: list[date] = []
+    for raw, field in (
+        (match.group(1), "period.start"),
+        (match.group(2), "period.end"),
+    ):
+        validate_date(raw, field)
+        try:
+            endpoints.append(date.fromisoformat(raw))
+        except ValueError as exc:  # e.g. 2026-13-01 — shaped right, not a date
+            raise GAQLValidationError(f"Invalid {field}: {raw!r}") from exc
+    start, end = endpoints[0], endpoints[1]
+    if end < start:
+        raise GAQLValidationError(
+            f"Invalid BETWEEN clause: {value!r} (end date precedes start date)"
+        )
+    span = (end - start).days + 1
+    if span > max_days:
+        raise GAQLValidationError(
+            f"Date range too long: {value!r} spans {span} days, "
+            f"maximum {max_days}. Narrow the window."
+        )
+    return start, end
+
+
+def format_between_clause(start: date, end: date) -> str:
+    """Render an inclusive date pair as a GAQL ``BETWEEN`` clause."""
+    if end < start:
+        raise GAQLValidationError(
+            f"Invalid date range: {start.isoformat()} precedes {end.isoformat()}"
+        )
+    return f"BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'"
+
+
+def trailing_window(days: int, today: date) -> tuple[date, date]:
+    """Return the inclusive ``days``-long window ending the day before ``today``.
+
+    ``today`` is passed in rather than read from a clock so this module stays
+    pure; callers supply :func:`mureo.core.clock.server_now`.
+    """
+    validate_period_days(days)
+    end = today - timedelta(days=1)
+    return end - timedelta(days=days - 1), end
+
+
+def resolve_derived_date_range(period: str, today: date) -> str | None:
+    """Return the ``BETWEEN`` clause a derived constant stands for.
+
+    ``None`` when ``period`` is not one of :data:`DERIVED_DATE_RANGE_DAYS`, so
+    callers fall through to their normal constant handling.
+    """
+    if not isinstance(period, str):
+        return None
+    days = DERIVED_DATE_RANGE_DAYS.get(period.strip().upper())
+    if days is None:
+        return None
+    return format_between_clause(*trailing_window(days, today))
 
 
 def escape_string_literal(value: str) -> str:

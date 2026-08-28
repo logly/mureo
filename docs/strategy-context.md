@@ -683,12 +683,43 @@ round-trip byte-for-byte.
 **Only complete past days are written.** `set_platform_daily` (and the tool
 over it) refuses a key that is not `YYYY-MM-DD`, one that is not a date that
 exists (`2026-02-30` matches the shape perfectly), and any date at or after
-the host's today — for the reason the collapse detector drops the current day
+today — for the reason the collapse detector drops the current day
 before comparing anything: budget pacing spreads a day's delivery unevenly,
 so a part-spent day filed as a whole one is a false low, and nothing revisits
 a day already in the map. The refusal happens before the file is opened, so a
 rejected call leaves the document exactly as it was and the caller still
 holds every figure.
+
+**Whose today, though, is the caller's to state.** An ad account closes its
+day in the ACCOUNT's timezone, and the host running the collector need not
+share it: on a UTC host at 02:00 Asia/Tokyo — exactly when a nightly cron
+runs — yesterday-in-Tokyo is still today in UTC, and a genuinely complete day
+was being refused. Pass `as_of_date` (today, resolved in the account's
+timezone) to the tool or to `set_platform_daily` and the check is measured
+against that instead. Omit it and it is measured against the server's own
+today, which is what every caller had before the parameter existed. The rule
+itself does not move: a day at or after the anchor is still refused.
+
+**The anchor is a self-report, and it is bounded as one.** An `as_of_date`
+more than **2 days** ahead of the server's own date is refused outright:
+civil offsets span UTC-12 to UTC+14, 26 hours, so two places on Earth can
+disagree about the date by at most two days — anything beyond that is not a
+timezone, and without the bound an anchor of `2099-01-01` would make every
+date this side of the century a "complete past day" and switch the rule off
+with an argument. That matters most on the MCP route, where the caller
+stating the date is an LLM. There is no bound in the other direction: a past
+anchor can only make the check stricter, and a caller whose clock is behind
+is told so by an explicit refusal naming both dates.
+
+**The merge is available without the file.** A writer that must land `daily`
+together with other fields in ONE atomic document write cannot go through a
+path-based mutator. `mureo.context.daily.with_platform_daily(doc, platform,
+account_id, days, as_of_date=None)` is the whole write minus the filesystem —
+the same guards, the same per-date-key merge, the same `fetched_at` stamping
+and the same retention trim — returning a new `StateDocument`;
+`capped_platform_daily(daily)` is the retention rule on its own, for a writer
+that has already merged its own map. `set_platform_daily` is a thin wrapper
+around the first, so neither route can drift from the other.
 
 **A missing day stays missing.** Nothing zero-fills a day that was not
 collected — "not collected" and "collected, and the answer was zero" are

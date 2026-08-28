@@ -152,6 +152,16 @@ mureo/
 │   ├── state.py         # STATE.json parser/writer
 │   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
+│   ├── daily.py         # The day-grain history write MINUS the file (#690/#710):
+│   │                    #   `with_platform_daily(doc, ...)` (guard + per-date merge +
+│   │                    #   trim) and `capped_platform_daily(daily)` (the 35-day
+│   │                    #   retention rule on its own), for a writer that lands
+│   │                    #   `daily` inside its OWN atomic document write.
+│   │                    #   `set_platform_daily` is the path-based wrapper, so both
+│   │                    #   routes keep one set of semantics. Optional `as_of_date`
+│   │                    #   = today in the ACCOUNT's timezone: an account closes its
+│   │                    #   day locally, so the host clock refused a complete
+│   │                    #   yesterday-JST on a UTC host every night
 │   ├── observations.py  # What closes an action_log observation, and which are
 │   │                    #   past due (#651). ONE rule for `mureo_state_get(
 │   │                    #   action_log="pending")` and the Reports triage count;

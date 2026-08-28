@@ -4,7 +4,6 @@ import asyncio
 import functools
 import logging
 import math
-import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -13,16 +12,28 @@ from google.ads.googleads.errors import GoogleAdsException
 from google.protobuf.field_mask_pb2 import FieldMask as PbFieldMask
 
 if TYPE_CHECKING:
+    import re
+
     from google.oauth2.credentials import Credentials
 
     from mureo.throttle import Throttler
 
+from mureo.core import clock
 from mureo.google_ads._analysis import _AnalysisMixin
 from mureo.google_ads._creative import _CreativeMixin
 from mureo.google_ads._diagnostics import _DiagnosticsMixin
 from mureo.google_ads._enum_names import AD_NETWORK_TYPE_MAP, map_enum_name
 from mureo.google_ads._gaql_validator import (
     escape_string_literal as _gaql_escape_string_literal,
+)
+from mureo.google_ads._gaql_validator import (
+    format_between_clause as _gaql_format_between_clause,
+)
+from mureo.google_ads._gaql_validator import (
+    parse_between_clause as _gaql_parse_between_clause,
+)
+from mureo.google_ads._gaql_validator import (
+    resolve_derived_date_range as _gaql_resolve_derived_date_range,
 )
 from mureo.google_ads._gaql_validator import (
     validate_date as _gaql_validate_date,
@@ -91,11 +102,6 @@ _VALID_RECOMMENDATION_TYPES = frozenset(
         "CALL_ASSET",
     }
 )
-_BETWEEN_PATTERN = re.compile(
-    r"BETWEEN\s+'(\d{4}-\d{2}-\d{2})'\s+AND\s+'(\d{4}-\d{2}-\d{2})'",
-    re.IGNORECASE,
-)
-
 _F = TypeVar("_F", bound=Callable[..., Any])
 
 
@@ -1295,25 +1301,24 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         """Return a GAQL date condition clause.
 
         Predefined period -> ``DURING LAST_7_DAYS`` format
+        Derived period (``LAST_90_DAYS``) -> the explicit window it stands
+        for, because Google Ads has no 90-day constant (#717)
         Custom range -> ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`` format
 
         The return value can be used directly as ``WHERE segments.date {return_value}``.
         Every branch validates its components against the GAQL whitelist so
-        untrusted input (e.g. MCP handler parameters) cannot inject SQL.
+        untrusted input (e.g. MCP handler parameters) cannot inject SQL — the
+        ``BETWEEN`` clause is re-emitted from its parsed endpoints rather than
+        echoed back.
         """
         if not isinstance(period, str):
             raise ValueError(f"Invalid period: {period!r}")
 
-        if period.upper().startswith("BETWEEN"):
-            match = _BETWEEN_PATTERN.fullmatch(period.strip())
-            if match is None:
-                raise ValueError(
-                    f"Invalid BETWEEN clause: {period!r} "
-                    "(expected: BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD')"
-                )
-            start, end = match.group(1), match.group(2)
-            _gaql_validate_date(start, "period.start")
-            _gaql_validate_date(end, "period.end")
-            return f"BETWEEN '{start}' AND '{end}'"
+        if period.strip().upper().startswith("BETWEEN"):
+            return _gaql_format_between_clause(*_gaql_parse_between_clause(period))
+
+        derived = _gaql_resolve_derived_date_range(period, clock.server_now().date())
+        if derived is not None:
+            return derived
 
         return f"DURING {_gaql_validate_date_range_constant(period)}"
