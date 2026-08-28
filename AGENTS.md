@@ -426,6 +426,15 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     the operator where they are), the portfolio figures above the grid, and
     the "what mureo did today" feed (dated by the summary's `server_today` —
     this module never asks the browser what time it is).
+  - `reports_index.js` → `window.MUREO_REPORTS_INDEX` — the list screen's
+    whole model, composed once per render from the rows and the summaries
+    already fetched (`buildReportsIndexModel`): the alert layer, the
+    per-client health in grid order, the health split, the band and the
+    portfolio figures. It decides nothing itself — it composes
+    `reports_triage.js`, `reports_overview.js` and `reports_hero.js`, read
+    off the page at call time, so it loads after all three. `healthByIndex`
+    is the one place `triageClientHealth` is run per client; the cards, the
+    roster rows, the chips and the band are all handed that array (#715).
 
   Each carries an inert `module.exports` tail so `node --test
   tests/js/*.test.js` executes the exact bytes the browser is served, and

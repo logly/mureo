@@ -379,8 +379,8 @@ def test_the_withheld_card_still_says_why_before_its_cells() -> None:
     ), "the state is stated after the cells it explains"
     # The badges are the layer's own verdict, not a second opinion the card
     # forms about the same payload.
-    index = _function_body(js, "async function renderReportsIndex(")
-    assert "triageClientBadges(triage, i)" in index
+    grid = _function_body(js, "function renderReportsIndexGrid(")
+    assert "triageClientBadges(model.triage, i)" in grid
 
 
 @pytest.mark.unit

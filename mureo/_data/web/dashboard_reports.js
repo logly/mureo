@@ -26,10 +26,18 @@
 //     before: two `<script>` IIFEs cannot share a `let`, but they can share
 //     an object.
 //   dashboard_reports_report.js   — one stored report, rendered.
+//   dashboard_reports_changes.js  — the detail view's tier (2): what moved
+//     since yesterday, and what is wrong. About ONE client's two adjacent
+//     days, which is the question this file does not ask (#715).
 //   dashboard_reports_overview.js — the roster row above the grid, and
 //     `buildPlatformSlice`, which the cards module binds from it at load.
 //   dashboard_reports_cards.js    — one client's card in the grid.
 //   dashboard_reports_triage.js   — the alert list.
+//
+// What the index SAYS — the alert layer, the per-client health, the health
+// split, the band and the portfolio figures — is composed by reports_index.js
+// (`buildReportsIndexModel`), once per render and before a node is drawn, so
+// this file is left with putting the answer on screen (#715).
 //
 // Two functions here are called from modules that load FIRST: the cards
 // module calls `renderReports` and `showReportsClientDetail`, and the overview
@@ -55,20 +63,25 @@
   const reportsPeriodLabel = REPORTS_SHARED.reportsPeriodLabel;
   const isCanonicalReportsPeriod = REPORTS_SHARED.isCanonicalReportsPeriod;
   const orderReportsClients = REPORTS_SHARED.orderReportsClients;
-  const buildReportsTriage = REPORTS_SHARED.buildReportsTriage;
   const triageMarksClient = REPORTS_SHARED.triageMarksClient;
-  const triageClientHealth = REPORTS_SHARED.triageClientHealth;
-  const triageHealthCounts = REPORTS_SHARED.triageHealthCounts;
   const triageClientBadges = REPORTS_SHARED.triageClientBadges;
   const REPORTS_OVERVIEW = REPORTS_SHARED.REPORTS_OVERVIEW;
   const reportsViewToShow = REPORTS_SHARED.reportsViewToShow;
-  const buildReportsPortfolio = REPORTS_SHARED.buildReportsPortfolio;
   const buildReportsActionFeed = REPORTS_SHARED.buildReportsActionFeed;
-  const buildReportsHero = REPORTS_SHARED.buildReportsHero;
   const latestReport = REPORTS_SHARED.latestReport;
-  const formatKpi = REPORTS_SHARED.formatKpi;
-  const REPORTS_KPI_LABELS = REPORTS_SHARED.REPORTS_KPI_LABELS;
   const REPORTS_VIEW_STATE = REPORTS_SHARED.REPORTS_VIEW_STATE;
+
+  // reports_index.js — the index screen's whole model, built once per render
+  // (#715). Read here rather than through dashboard_reports_state.js because
+  // it composes the OTHER pure modules and so must load after all of them.
+  const R_INDEX = window.MUREO_REPORTS_INDEX;
+  if (!R_INDEX) {
+    throw new Error(
+      "dashboard_reports.js needs MUREO_REPORTS_INDEX — load " +
+        "reports_index.js BEFORE dashboard_reports.js"
+    );
+  }
+  const buildReportsIndexModel = R_INDEX.buildReportsIndexModel;
 
   // dashboard_reports_table.js — the Agency roster's table view and the
   // toolbar that switches between it and the cards.
@@ -92,6 +105,16 @@
   const buildReportCard = R_REPORT.buildReportCard;
   const renderReportsLatest = R_REPORT.renderReportsLatest;
 
+  // dashboard_reports_changes.js — the detail view's tier (2).
+  const R_CHANGES = window.MUREO_DASHBOARD_REPORTS_CHANGES;
+  if (!R_CHANGES) {
+    throw new Error(
+      "dashboard_reports.js needs MUREO_DASHBOARD_REPORTS_CHANGES — load " +
+        "dashboard_reports_changes.js BEFORE dashboard_reports.js"
+    );
+  }
+  const renderReportsChanges = R_CHANGES.renderReportsChanges;
+
   // The contract-driven detail screen (#706 step 3-a).
   const R_DETAIL = window.MUREO_DASHBOARD_REPORTS_DETAIL;
   if (!R_DETAIL) {
@@ -103,14 +126,6 @@
   // Drawn by the detail module for BOTH screens: shortening a row is a
   // property of the ENTRY (no display line), not of the client.
   const renderReportsActions = R_DETAIL.renderActions;
-  const buildReportFlagRow = R_REPORT.buildReportFlagRow;
-  // The tone table and the trend builders live in the report module now,
-  // bound by their original names so every call site below reads unchanged
-  // (#691 phase 4 — tier (3) draws deltas too, and one movement must not
-  // be good news on one tier and bad on the other).
-  const changeTone = R_REPORT.changeTone;
-  const deltaEndpoints = R_REPORT.deltaEndpoints;
-  const buildMetricSparkline = R_REPORT.buildMetricSparkline;
 
   // dashboard_reports_overview.js's exports, bound by their original names so every call
   // site below reads exactly as it did when this was one file.
@@ -223,6 +238,13 @@
   // INDEX view: a card per client (KPIs + flags for the selected window).
   // Fetches each client's summary in parallel; a period toggle built from the
   // union of windows lets the operator triage by Yesterday / Last 30 days.
+  //
+  // What the screen SAYS is composed first and once — reports_index.js turns
+  // the rows and their summaries into one model, and everything below draws
+  // from it, so the band, the alert list, the chips, the cards and the roster
+  // table are five views of one answer rather than five answers. This is the
+  // multi-client view, which is the only place the Agency seam produces — a
+  // single workspace opens the detail view directly and never reaches here.
   async function renderReportsIndex(seq) {
     const wrap = document.querySelector("[data-reports-clients]");
     if (!wrap) return;
@@ -241,36 +263,39 @@
     setReportsView("index");
     const freshness = document.querySelector("[data-reports-freshness]");
     if (freshness) freshness.textContent = "";
-    // Triage before the cards (#651): which of these clients needs attention
-    // today, ranked, with what to run about each. Built ONCE and handed to
-    // both the layer and the grid, so the count above and the marks below
-    // are the same list. This is the multi-client view, which is the only
-    // place the Agency seam produces — a single workspace opens the detail
-    // view directly and never reaches this function.
-    const triage = buildReportsTriage(rows, summaries);
-    // How the grid splits by health — ONE object, built once and handed to
-    // the band above the screen and to the filter chips over the cards. Two
-    // calls would be two answers to the same question the moment either
-    // caller learned to pass something different (#706 step 3-b).
-    const healthCounts = triageHealthCounts(triage, rows.length);
-    // The band across the top: the roster's health at a glance, and nothing
-    // it grades itself — the counts and the per-client verdict both come from
-    // the triage layer the cards below are marked from. It draws nothing at
-    // all below two clients.
-    const hero = buildReportsHero(healthCounts, summaries, function (i) {
-      return triageClientHealth(triage, i);
-    });
-    renderReportsHero(hero);
-    // The roster's own figures, above the alerts — built from the same
-    // summaries the cards below are built from, and stating over how many
-    // clients each of them holds.
-    const portfolio = buildReportsPortfolio(rows, summaries);
-    renderReportsPortfolio(portfolio, triage);
-    renderReportsTriage(triage);
+    const model = buildReportsIndexModel(rows, summaries);
+    renderReportsIndexBands(rows, summaries, model);
+    renderReportsIndexGrid(wrap, rows, summaries, model);
+    renderReportsArchived();
+    renderReportsPeriodToggle(reportsPeriodUnion(summaries));
+  }
+
+  // Everything above and beside the grid, in the order an operator reads it.
+  // Every one of these is a statement about the WHOLE roster, and every one
+  // is drawn from the model this render built — none of them re-reads a
+  // summary or re-grades a client.
+  function renderReportsIndexBands(rows, summaries, model) {
+    // The band across the top: the roster's health at a glance.
+    renderReportsHero(model.hero);
+    // The roster's own figures, above the alerts — from the same summaries
+    // the cards below are built from, and stating over how many clients each
+    // of them holds.
+    renderReportsPortfolio(model.portfolio, model.triage);
+    // Triage before the cards (#651): which clients need attention today,
+    // ranked, with what to run about each. The same array the grid's marks
+    // come from, so the count above and the marks below are one list.
+    renderReportsTriage(model.triage);
     // The rail: what mureo did today, then where the money went. Both are
     // built from the summaries already in hand — no extra request.
-    renderReportsActionFeed(buildReportsActionFeed(rows, summaries), hero.show);
-    renderReportsPlatforms(portfolio);
+    renderReportsActionFeed(buildReportsActionFeed(rows, summaries), model.hero.show);
+    renderReportsPlatforms(model.portfolio);
+  }
+
+  // The grid itself: one card per client, the roster table built from the
+  // same rows, and the chrome that counts them. `model.healthByIndex` is the
+  // verdict this render already reached for each client — asking for it again
+  // per card and again per roster row was four scans of one answer (#715).
+  function renderReportsIndexGrid(wrap, rows, summaries, model) {
     wrap.textContent = "";
     // A filter left over from a previous render would hide cards with no
     // visible reason, so every index render starts on "all" — and the alert
@@ -284,16 +309,16 @@
           c,
           summaries[i],
           wrap,
-          triageMarksClient(triage, i),
-          triageClientHealth(triage, i),
-          triageClientBadges(triage, i)
+          triageMarksClient(model.triage, i),
+          model.healthByIndex[i],
+          triageClientBadges(model.triage, i)
         )
       );
     });
     // Both views are built from the roster already in hand; which one is
     // SHOWN is the table module's decision, and it remembers the operator's.
     REPORTS_TABLE.renderRoster(rows, summaries, function (i) {
-      return triageClientHealth(triage, i);
+      return model.healthByIndex[i];
     });
     const countBadge = document.querySelector("[data-reports-clients-count]");
     if (countBadge) {
@@ -301,7 +326,7 @@
         n: rows.length,
       });
     }
-    renderReportsFilters(healthCounts);
+    renderReportsFilters(model.healthCounts);
     if (!rows.length) {
       // Every client archived: say so, and leave the disclosure below as the
       // way back — an empty grid with no explanation reads as a broken view.
@@ -313,15 +338,18 @@
       note.textContent = MUREO.t("dashboard.reports_all_archived");
       wrap.appendChild(note);
     }
-    renderReportsArchived();
-    // Period toggle from the union of windows any client advertises.
+  }
+
+  // The windows the period toggle offers: the union of every window any
+  // client on the grid advertises, in the order first seen.
+  function reportsPeriodUnion(summaries) {
     const union = [];
     summaries.forEach(function (s) {
       (s && Array.isArray(s.periods) ? s.periods : []).forEach(function (p) {
         if (typeof p === "string" && p && union.indexOf(p) === -1) union.push(p);
       });
     });
-    renderReportsPeriodToggle(union);
+    return union;
   }
 
   // The archived-clients disclosure under the index. Un-archiving has to be
@@ -496,188 +524,6 @@
   }
 
   // Fetch + render the summary for a given client (or the default one).
-
-  // ------------------------------------------------------------------
-  // (2) Today's changes
-  // ------------------------------------------------------------------
-
-  // Which metrics a change card may be about, most consequential first.
-  //
-  // FIXED ORDER, and not "the largest movement". #690 gives absolute
-  // differences only — `after - before`, per metric — because a percentage
-  // needs a rule for a zero baseline that nobody has agreed. Absolute
-  // differences in different UNITS cannot be ranked against each other: a
-  // spend that moved by 6,500 yen and a CTR that moved by 0.4 points are not
-  // 16,000x apart, they are incomparable, and sorting them would be this
-  // file inventing a comparison and presenting it as a measurement.
-  //
-  // So the ranking is stated instead, and it is an argument about money: CPA
-  // is what an operator is judged on, spend is what is being consumed,
-  // conversions are what it bought. The three delivery metrics below them
-  // explain those three but are not themselves the news.
-  const REPORTS_CHANGE_PRIORITY = [
-    "cpa",
-    "spend",
-    "conversions",
-    "ctr",
-    "clicks",
-    "impressions",
-  ];
-
-  // How many change cards the tier shows. Three, because the tier is the
-  // answer to "what should I look at first" and a list of nine is not one.
-  const REPORTS_CHANGE_CAP = 3;
-
-  /**
-   * The change cards to render, or [] when none can be honestly made.
-   *
-   * A metric qualifies when its platform states a `daily_delta` (#690 —
-   * present only when two CALENDAR-adjacent days are stored, so a gap is
-   * never rendered as a day-over-day move) and its difference is non-zero.
-   * Zero is not a change; a card saying "0" would be noise with the same
-   * weight as the ones that matter.
-   */
-  function changeHighlights(platforms) {
-    const rows = [];
-    (Array.isArray(platforms) ? platforms : []).forEach(function (p) {
-      const delta = p && p.daily_delta;
-      const metrics = delta && delta.metrics;
-      if (!metrics || typeof metrics !== "object") return;
-      REPORTS_CHANGE_PRIORITY.forEach(function (key) {
-        const diff = metrics[key];
-        if (typeof diff !== "number" || !isFinite(diff) || diff === 0) return;
-        const now = p.totals && p.totals[key];
-        const value = typeof now === "number" && isFinite(now) ? now : null;
-        // Both figures on this card have to come from `daily` — the movement
-        // AND the day it moved from. deltaEndpoints reads them out of the
-        // series by date and refuses when the series and the window rollup
-        // disagree about the same day, which is the mixture that put a
-        // "from 1,712" under a card whose stored days said 2,992 → 3,855.
-        // A card that cannot state where it moved from is not drawn.
-        const ends = deltaEndpoints(p, key, value);
-        if (!ends) return;
-        rows.push({
-          platform: p,
-          key: key,
-          diff: diff,
-          value: value,
-          previous: ends.previous,
-          rank: REPORTS_CHANGE_PRIORITY.indexOf(key),
-        });
-      });
-    });
-    // Priority first; platform order (the order the API returned) breaks a
-    // tie, so two platforms moving the same metric read in a stable order.
-    rows.sort(function (a, b) {
-      return a.rank - b.rank;
-    });
-    return rows.slice(0, REPORTS_CHANGE_CAP);
-  }
-
-  // Which way is bad, per metric — and for most of them the answer is
-  // "neither", which is the point of writing it down.
-  //
-  // Colour is a VERDICT, so it is spent only where mureo can actually reach
-  // one from the number alone:
-  //
-  //   cpa         — up is worse, down is better. The one unambiguous axis.
-  //   conversions — down is worse, up is better.
-  //   ctr         — down is worse. Up is NOT called good: a CTR that rose a
-  //                 tenth of a point is noise, and calling it a win teaches
-  //                 an operator to read the colour instead of the number.
-  //   spend       — neutral in BOTH directions. Spending more is not a
-  //   clicks        failure; it is usually the plan. Painting a spend rise
-  //   impressions   red is the single most misleading thing this card could
-  //                 do, and it is what the first cut of it did.
-  //
-  // A metric absent from this table is neutral. Direction still reaches the
-  // reader — the card prints an arrow — so nothing is lost by not colouring.
-  // One change card: label, figure, and what it moved from.
-  function buildChangeCard(row) {
-    const card = document.createElement("div");
-    card.className = "reports-change";
-
-    const label = document.createElement("span");
-    label.className = "reports-change-label";
-    const name = row.platform && row.platform.display_name;
-    const metric =
-      row.key === "spend"
-        ? MUREO.t("dashboard.reports_kpi_spend")
-        : MUREO.t(REPORTS_KPI_LABELS[row.key] || row.key);
-    label.textContent = name ? name + " ・ " + metric : metric;
-    card.appendChild(label);
-
-    const value = document.createElement("span");
-    value.className = "reports-change-value";
-    value.textContent =
-      row.value === null
-        ? MUREO.t("dashboard.reports_no_metrics")
-        : formatKpi(row.key, row.key === "cpa" ? Math.round(row.value) : row.value);
-    card.appendChild(value);
-
-    const delta = document.createElement("span");
-    delta.className = "reports-change-delta " + changeTone(row.key, row.diff);
-    const arrow = document.createElement("b");
-    // The arrow is the direction, and it is a character rather than colour
-    // alone so the card still reads for anyone the colour does not.
-    arrow.textContent =
-      (row.diff > 0 ? "↑ " : "↓ ") +
-      formatKpi(row.key, row.key === "cpa" ? Math.round(row.diff) : Math.abs(row.diff));
-    delta.appendChild(arrow);
-    // The stored figure for the day it moved from, never `value - diff`:
-    // those two come from different places on the wire and subtracting one
-    // from the other printed a number that was in neither.
-    const prev = document.createElement("span");
-    prev.className = "reports-change-prev";
-    prev.textContent = MUREO.t("dashboard.reports_delta_prev", {
-      value: formatKpi(
-        row.key,
-        row.key === "cpa" ? Math.round(row.previous) : row.previous
-      ),
-    });
-    delta.appendChild(prev);
-    card.appendChild(delta);
-    // The week behind the one-day move (#691 phase 4). A row only reaches
-    // this function when `daily_delta` gave it a movement, so there are at
-    // least two adjacent days — but not necessarily two PLOTTABLE ones for
-    // this metric, so the result is still optional and simply absent when
-    // there is no line to draw.
-    const spark = buildMetricSparkline(row.platform, row.key);
-    if (spark) card.appendChild(spark);
-    return card;
-  }
-
-  /**
-   * Render tier (2): what moved, and what is wrong.
-   *
-   * Two independent contents, and the tier appears when EITHER has something
-   * to say. The change cards need #690's `daily_delta`, which is `null` for a
-   * first day, for a gap between the last two stored days, and for a metric
-   * only one side carries — all three mean the comparison cannot honestly be
-   * made, so no card is drawn rather than a fabricated zero. The flag row
-   * comes from the report and needs no history at all, so an install with one
-   * day of data still gets its findings here.
-   *
-   * The heading's note is about the change cards specifically, so it is
-   * hidden when there are none: "the metrics that moved most" over a row of
-   * flags would describe something that is not on screen.
-   */
-  function renderReportsChanges(platforms, report) {
-    const block = document.querySelector("[data-reports-changes]");
-    const body = document.querySelector("[data-reports-changes-body]");
-    const note = document.querySelector("[data-reports-changes-note]");
-    if (!block || !body) return;
-    body.textContent = "";
-    const rows = changeHighlights(platforms);
-    rows.forEach(function (row) {
-      body.appendChild(buildChangeCard(row));
-    });
-    const flagRow = buildReportFlagRow(report);
-    if (flagRow) body.appendChild(flagRow);
-    if (note) note.hidden = rows.length === 0;
-    block.hidden = rows.length === 0 && !flagRow;
-  }
-
   async function renderReportsSummary(client) {
     const seq = REPORTS_VIEW_STATE.reportsRenderSeq;
     // NB: reportsActiveClient is set only after the stale-render guards below,

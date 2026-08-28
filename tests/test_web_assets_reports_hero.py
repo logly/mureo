@@ -79,14 +79,21 @@ def test_the_band_is_handed_the_triage_layers_counts_and_grades_nothing() -> Non
     handed is ``triageClientHealth``, which is what the cards and the roster
     rows are painted with.
     """
-    js = _read("dashboard_reports.js")
-    body = _function_body(js, "async function renderReportsIndex(")
-    assert "const healthCounts = triageHealthCounts(triage, rows.length);" in body
-    assert "buildReportsHero(healthCounts, summaries," in body
-    assert "renderReportsFilters(healthCounts);" in body
+    model = _read("reports_index.js")
+    body = _function_body(model, "function buildReportsIndexModel(")
+    assert (
+        "const healthCounts = layer.triageHealthCounts("
+        "built, clients.length, healthByIndex);" in body
+    )
+    assert "buildReportsHero(healthCounts, bodies," in body
     # Exactly one call: two would be two answers the moment either caller
     # learned to pass something different.
     assert body.count("triageHealthCounts(") == 1
+    # …and the same object reaches the chips over the cards.
+    grid = _function_body(
+        _read("dashboard_reports.js"), "function renderReportsIndexGrid("
+    )
+    assert "renderReportsFilters(model.healthCounts);" in grid
     # …and no copy of the decision in the renderer.
     hero = _read("dashboard_reports_hero.js")
     assert "triageClientHealth" not in hero
