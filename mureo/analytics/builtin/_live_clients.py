@@ -447,7 +447,7 @@ async def fetch_meta_ads_list(
     The resolved id is canonicalized to the ``act_`` form so the caller labels
     its :class:`CreativeAudit` with the canonical value (#435).
     """
-    client, account_id = _open_meta_ads_client(account_id)
+    client, account_id = await _open_meta_ads_client(account_id)
     ads: list[dict[str, object]] = await client.list_ads()  # type: ignore[attr-defined]
     return ads, account_id
 
@@ -460,7 +460,7 @@ async def fetch_meta_ads_per_campaign_metrics(
     """Per-campaign fan-out for Meta — parallel to
     :func:`fetch_google_ads_per_campaign_metrics`.
     """
-    client, account_id = _open_meta_ads_client(account_id)
+    client, account_id = await _open_meta_ads_client(account_id)
     from mureo.meta_ads._period import previous_period
 
     current_period = _META_WINDOW_TO_PERIOD.get(window_days, "last_7d")
@@ -528,8 +528,16 @@ def _aggregate_meta_metrics(
     )
 
 
-def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
+async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     """Parallel to :func:`_open_google_ads_client` for Meta Ads.
+
+    A coroutine (#726) because it awaits ``refresh_meta_token_if_needed``
+    before handing the credentials to the client factory, the way
+    ``mureo.mcp._handlers_meta_ads`` always has. Without it an install whose
+    Meta traffic is analytics-only — ``mureo_analytics_run``, the report
+    skills' anomaly and diagnosis passes — never renewed a refresh-eligible
+    token, so it aged out under a code path perfectly able to extend it. All
+    four callers here are already ``async``.
 
     Returns ``(client, resolved_account_id)`` — the resolved id is
     canonicalized to the ``act_`` form (tenant-scoped or not), so callers use
@@ -543,7 +551,7 @@ def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     future tool that wires a caller-supplied id into the AnalyticsModule
     Protocol cannot silently bypass #411 scoping.
     """
-    from mureo.auth import load_meta_ads_credentials
+    from mureo.auth import load_meta_ads_credentials, refresh_meta_token_if_needed
     from mureo.byod.runtime import byod_has
     from mureo.mcp._client_factory import get_meta_ads_client
     from mureo.mcp._handlers_meta_ads import (
@@ -570,6 +578,10 @@ def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     creds = load_meta_ads_credentials()
     if creds is None:
         raise NoCredentialsError("meta_ads credentials not configured")
+    # No-op unless the token is near its expiry AND the app pair is stored;
+    # a failed exchange logs and returns the original credentials, so this
+    # never turns a working analytics call into an error.
+    creds = await refresh_meta_token_if_needed(creds)
     return get_meta_ads_client(creds, account_id), account_id
 
 
@@ -584,7 +596,7 @@ async def fetch_meta_ads_metrics(
     in live mode. Shares the per-campaign aggregation limitation
     documented on :func:`fetch_google_ads_metrics`.
     """
-    client, account_id = _open_meta_ads_client(account_id)
+    client, account_id = await _open_meta_ads_client(account_id)
     from mureo.meta_ads._period import previous_period
 
     current_period = _META_WINDOW_TO_PERIOD.get(window_days, "last_7d")
@@ -613,7 +625,7 @@ async def fetch_meta_ads_performance_rows(
     its :class:`PerformanceDiagnosis` with the same value the client was opened
     with (#435).
     """
-    client, account_id = _open_meta_ads_client(account_id)
+    client, account_id = await _open_meta_ads_client(account_id)
     rows: list[dict[str, object]] = await client.get_performance_report(  # type: ignore[attr-defined]
         period=period
     )

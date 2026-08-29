@@ -8,15 +8,23 @@ them back to Graph's ``fb_exchange_token`` endpoint at 53 days
 - token stored WITH the app pair → an integer age plus an "expiring"
   flag once it passes the refresh threshold, because a token still that
   old on disk is one the automatic refresh has not renewed;
-- token stored WITHOUT the app pair → a Business Manager system-user
-  token, which never expires (``auth._should_refresh`` short-circuits on
-  exactly this condition). Its age is reported but never warned about —
-  an expiry notice on a token that cannot expire is noise. Note the save
-  path stamps ``token_obtained_at`` on these too, so "has a stamp" alone
-  says nothing about expiry;
+- token stored WITHOUT the app pair → mureo cannot exchange it, so its
+  *age* is never a warning (``auth._should_refresh`` short-circuits on
+  exactly this condition). Note the save path stamps
+  ``token_obtained_at`` on these too, so "has a stamp" alone says
+  nothing about expiry;
 - no stamp at all (a hand-entered token, #578) → unknown age and **no**
   warning. A missing stamp means "off the refresh clock", never
   "infinitely old".
+
+#726 adds the other half. A Business Manager system-user token does NOT
+live forever — it is minted with a 60-day life — so the paste route now
+asks Graph ``debug_token`` when it dies and stores the answer as
+``token_expires_at``. That date, when present, drives a second and
+independent signal: the days remaining, and a warning below
+:data:`META_ACCESS_TOKEN_EXPIRY_WARN_DAYS`. It needs no app pair, because
+"this credential dies on Tuesday" is worth saying whether or not mureo
+can do anything about it.
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ import pytest
 
 from mureo.core import clock
 from mureo.web.status_collector import (
+    META_ACCESS_TOKEN_EXPIRY_WARN_DAYS,
     META_ACCESS_TOKEN_WARN_DAYS,
     _detect_meta_token,
 )
@@ -53,6 +62,20 @@ def _credentials(tmp_path: Path, section: Any) -> Path:
 
 def _stamp(days_ago: float) -> str:
     return (_NOW - timedelta(days=days_ago)).isoformat(timespec="seconds")
+
+
+def _expiry(days_ahead: float) -> str:
+    return (_NOW + timedelta(days=days_ahead)).isoformat(timespec="seconds")
+
+
+#: The row a credentials file with nothing knowable produces.
+_UNKNOWN_ROW = {
+    "access_token_age_days": None,
+    "access_token_expiring": False,
+    "access_token_expires_at": None,
+    "access_token_expires_in_days": None,
+    "access_token_expiry_warning": False,
+}
 
 
 def _app_backed(days_ago: float) -> dict[str, Any]:
@@ -82,10 +105,7 @@ class TestMetaAccessTokenAge:
         self, tmp_path: Path
     ) -> None:
         row = _detect_meta_token(tmp_path / "missing.json")
-        assert row == {
-            "access_token_age_days": None,
-            "access_token_expiring": False,
-        }
+        assert row == _UNKNOWN_ROW
 
     def test_fresh_app_backed_token_reports_its_age_without_warning(
         self, tmp_path: Path
@@ -225,10 +245,87 @@ class TestUnknownAgeIsNeverAWarning:
 
     def test_malformed_section_is_tolerated(self, tmp_path: Path) -> None:
         path = _credentials(tmp_path, "not-a-dict")
-        assert _detect_meta_token(path) == {
-            "access_token_age_days": None,
-            "access_token_expiring": False,
-        }
+        assert _detect_meta_token(path) == _UNKNOWN_ROW
+
+
+@pytest.mark.unit
+class TestStoredExpiry:
+    """#726 — the token's own ``expires_at``, independent of its age."""
+
+    def test_no_stored_expiry_reports_unknown(self, tmp_path: Path) -> None:
+        path = _credentials(tmp_path, _app_backed(10))
+        row = _detect_meta_token(path)
+        assert row["access_token_expires_at"] is None
+        assert row["access_token_expires_in_days"] is None
+        assert row["access_token_expiry_warning"] is False
+
+    def test_distant_expiry_reports_days_without_warning(self, tmp_path: Path) -> None:
+        section = _app_backed(2)
+        section["token_expires_at"] = _expiry(45)
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expires_in_days"] == 45
+        assert row["access_token_expires_at"] == _expiry(45)
+        assert row["access_token_expiry_warning"] is False
+
+    def test_exactly_at_the_threshold_does_not_warn(self, tmp_path: Path) -> None:
+        section = _app_backed(2)
+        section["token_expires_at"] = _expiry(META_ACCESS_TOKEN_EXPIRY_WARN_DAYS)
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expires_in_days"] == META_ACCESS_TOKEN_EXPIRY_WARN_DAYS
+        assert row["access_token_expiry_warning"] is False
+
+    def test_inside_the_threshold_warns(self, tmp_path: Path) -> None:
+        section = _app_backed(2)
+        section["token_expires_at"] = _expiry(META_ACCESS_TOKEN_EXPIRY_WARN_DAYS - 1)
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expiry_warning"] is True
+
+    def test_an_expired_token_reports_negative_days_and_warns(
+        self, tmp_path: Path
+    ) -> None:
+        """Clamping to zero here would render "0 days left" for a credential
+        that died a week ago — the one state that is not a countdown."""
+        section = _app_backed(70)
+        section["token_expires_at"] = _expiry(-7)
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expires_in_days"] == -7
+        assert row["access_token_expiry_warning"] is True
+
+    def test_expiry_warning_needs_no_app_pair(self, tmp_path: Path) -> None:
+        """A pasted token with no app credentials is exactly the case that
+        cannot be auto-extended, so it is the case that most needs the
+        warning."""
+        path = _credentials(
+            tmp_path,
+            {
+                "access_token": "EAA-token",
+                "token_obtained_at": _stamp(50),
+                "token_expires_at": _expiry(3),
+            },
+        )
+        row = _detect_meta_token(path)
+        assert row["access_token_expiry_warning"] is True
+        assert row["access_token_expiring"] is False
+
+    @pytest.mark.parametrize("raw", ["", "last tuesday", 1234567890, None])
+    def test_unparseable_expiry_is_unknown_not_a_warning(
+        self, tmp_path: Path, raw: Any
+    ) -> None:
+        section = _app_backed(2)
+        section["token_expires_at"] = raw
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expires_at"] is None
+        assert row["access_token_expires_in_days"] is None
+        assert row["access_token_expiry_warning"] is False
+
+    def test_zulu_suffix_is_accepted(self, tmp_path: Path) -> None:
+        section = _app_backed(2)
+        section["token_expires_at"] = (_NOW + timedelta(days=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expires_in_days"] == 5
+        assert row["access_token_expiry_warning"] is True
 
 
 @pytest.mark.unit
@@ -246,6 +343,9 @@ class TestSnapshotCarriesTheRow:
         assert snapshot.meta_token == {
             "access_token_age_days": 60,
             "access_token_expiring": True,
+            "access_token_expires_at": None,
+            "access_token_expires_in_days": None,
+            "access_token_expiry_warning": False,
         }
         assert snapshot.as_dict()["meta_token"]["access_token_expiring"] is True
 

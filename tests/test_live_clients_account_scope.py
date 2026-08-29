@@ -81,25 +81,27 @@ def test_google_not_tenant_scoped_passes_through(monkeypatch, stub_factories) ->
     assert calls["google"] == "acct-x"
 
 
-def test_meta_refuses_out_of_allowlist(monkeypatch, stub_factories) -> None:
+async def test_meta_refuses_out_of_allowlist(monkeypatch, stub_factories) -> None:
     _scope_meta(monkeypatch, frozenset({"act_111"}))
     with pytest.raises(_live_clients.AccountNotAvailableError):
-        _live_clients._open_meta_ads_client("act_999")
+        await _live_clients._open_meta_ads_client("act_999")
 
 
-def test_meta_allows_in_allowlist(monkeypatch, stub_factories) -> None:
+async def test_meta_allows_in_allowlist(monkeypatch, stub_factories) -> None:
     _sg, sentinel_m, calls = stub_factories
     _scope_meta(monkeypatch, frozenset({"act_111"}))
-    client, resolved = _live_clients._open_meta_ads_client("act_111")
+    client, resolved = await _live_clients._open_meta_ads_client("act_111")
     assert client is sentinel_m
     assert resolved == "act_111"
     assert calls["meta"] == "act_111"
 
 
-def test_meta_not_tenant_scoped_passes_through(monkeypatch, stub_factories) -> None:
+async def test_meta_not_tenant_scoped_passes_through(
+    monkeypatch, stub_factories
+) -> None:
     _sg, sentinel_m, calls = stub_factories
     _scope_meta(monkeypatch, None)
-    client, resolved = _live_clients._open_meta_ads_client("act_x")
+    client, resolved = await _live_clients._open_meta_ads_client("act_x")
     assert client is sentinel_m
     assert resolved == "act_x"
     assert calls["meta"] == "act_x"
@@ -108,7 +110,7 @@ def test_meta_not_tenant_scoped_passes_through(monkeypatch, stub_factories) -> N
 # --- #435 WARNING 2: resolved id is returned AND used ----------------------
 
 
-def test_meta_returns_and_uses_canonical_resolved_id(
+async def test_meta_returns_and_uses_canonical_resolved_id(
     monkeypatch, stub_factories
 ) -> None:
     """A bare ``111`` matching allow-list ``act_111`` resolves to the canonical
@@ -116,13 +118,13 @@ def test_meta_returns_and_uses_canonical_resolved_id(
     label / look up conversions with the same id (no #435 format skew)."""
     _sg, sentinel_m, calls = stub_factories
     _scope_meta(monkeypatch, frozenset({"act_111"}))
-    client, resolved = _live_clients._open_meta_ads_client("111")
+    client, resolved = await _live_clients._open_meta_ads_client("111")
     assert client is sentinel_m
     assert resolved == "act_111"
     assert calls["meta"] == "act_111"
 
 
-def test_meta_bare_id_canonicalized_even_when_unscoped(
+async def test_meta_bare_id_canonicalized_even_when_unscoped(
     monkeypatch, stub_factories
 ) -> None:
     """A bare numeric id is canonicalized to the ``act_`` form even when NOT
@@ -130,7 +132,7 @@ def test_meta_bare_id_canonicalized_even_when_unscoped(
     prefix) as a raw id that would raise past the adapters' graceful handler."""
     _sg, sentinel_m, calls = stub_factories
     _scope_meta(monkeypatch, None)  # not tenant-scoped
-    client, resolved = _live_clients._open_meta_ads_client("111")
+    client, resolved = await _live_clients._open_meta_ads_client("111")
     assert client is sentinel_m
     assert resolved == "act_111"
     assert calls["meta"] == "act_111"

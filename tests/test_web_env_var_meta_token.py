@@ -27,6 +27,13 @@ if TYPE_CHECKING:
 #: the surviving stamp is unambiguously past the refresh threshold.
 _STALE_STAMP = (datetime.now(tz=timezone.utc) - timedelta(days=90)).isoformat()
 
+#: The expiry #726 stores next to the stamp. It describes the token being
+#: replaced just as the stamp does, and it drives both the status card's
+#: countdown and (since #726) the refresh threshold — so a surviving copy
+#: would nag about a token that is gone AND re-arm the very exchange #578
+#: disarmed, this time on the expiry branch rather than the age branch.
+_STALE_EXPIRY = (datetime.now(tz=timezone.utc) - timedelta(days=30)).isoformat()
+
 
 def _write_stale_meta_section(path: Path) -> None:
     """Seed the on-disk state an operator with an expired token actually has."""
@@ -39,6 +46,7 @@ def _write_stale_meta_section(path: Path) -> None:
                     "app_secret": "stale-app-secret",
                     "account_id": "act_222",
                     "token_obtained_at": _STALE_STAMP,
+                    "token_expires_at": _STALE_EXPIRY,
                 },
                 # A second provider must survive the single-field write.
                 "google_ads": {"developer_token": "dev-token"},
@@ -75,6 +83,35 @@ class TestMetaAccessTokenLeavesRefreshClock:
 
         meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
         assert "token_obtained_at" not in meta
+
+    def test_stale_token_expires_at_is_dropped(self, tmp_path: Path) -> None:
+        """#726: the expiry describes the replaced token too. Left behind it
+        would show a countdown for a credential that no longer exists, and
+        would put the new hand-pasted token straight back on the refresh
+        clock through the expiry branch."""
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCESS_TOKEN", "SYSTEM-USER-TOKEN", credentials_path=path
+        )
+
+        meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+        assert "token_expires_at" not in meta
+        creds = load_meta_ads_credentials(path)
+        assert creds is not None
+        assert _should_refresh(creds) is False
+
+    def test_writing_another_meta_field_keeps_the_expiry(self, tmp_path: Path) -> None:
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCOUNT_ID", "act_999", credentials_path=path
+        )
+
+        meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+        assert meta["token_expires_at"] == _STALE_EXPIRY
 
     def test_app_credentials_and_account_are_preserved(self, tmp_path: Path) -> None:
         """Only the refresh clock is cleared — no other field is destroyed.

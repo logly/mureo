@@ -88,7 +88,9 @@ class TestCanonicalAccountIdPropagation:
         module = MetaAdsAnalyticsModule()
         with patch(
             "mureo.analytics.builtin._live_clients._open_meta_ads_client",
-            return_value=(_meta_client(), "act_999"),
+            # A coroutine since #726 (it awaits the token refresh), so the
+            # double has to be awaitable too.
+            new=AsyncMock(return_value=(_meta_client(), "act_999")),
         ):
             diag = await module.diagnose_performance(
                 "999", scope=PerformanceScope.ACCOUNT
@@ -100,7 +102,9 @@ class TestCanonicalAccountIdPropagation:
         module = MetaAdsAnalyticsModule()
         with patch(
             "mureo.analytics.builtin._live_clients._open_meta_ads_client",
-            return_value=(_meta_client(), "act_999"),
+            # A coroutine since #726 (it awaits the token refresh), so the
+            # double has to be awaitable too.
+            new=AsyncMock(return_value=(_meta_client(), "act_999")),
         ):
             audit = await module.audit_creative("999")
         assert audit.account_id == "act_999"

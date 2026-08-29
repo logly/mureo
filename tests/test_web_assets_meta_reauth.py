@@ -99,9 +99,12 @@ class TestReauthSectionOpensTheCardDirectly:
         assert "open = true" in js[start:end]
 
     def test_hint_is_driven_by_the_meta_token_status_row(self) -> None:
+        # The window is the whole function rather than a byte count: #726
+        # added the expiry countdown ahead of this branch, and a fixed slice
+        # would keep truncating as the hint grows.
         js = _read("auth_wizards_meta.js")
         start = js.index("function buildMetaExpiringHint(")
-        block = js[start : start + 700]
+        block = js[start : js.index("window.MUREO_AUTH_META", start)]
         assert "status.meta_token" in block
         assert "access_token_expiring !== true" in block
         assert "access_token_age_days" in block

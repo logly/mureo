@@ -62,7 +62,7 @@ import sys
 import threading
 import time
 import urllib.parse
-from datetime import timezone
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
 
@@ -1443,21 +1443,42 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         working escape is a Business Manager system-user token entered by
         hand; this route makes that path first-class.
 
-        Body: ``{access_token, account_id?, validate_only?}``.
+        Body: ``{access_token, account_id?, app_id?, app_secret?,
+        validate_only?}``.
 
         * ``validate_only: true`` runs the read-only probe (granted vs
-          required scopes + reachable ad accounts) and returns it WITHOUT
-          saving, so the UI can show the scope report and let the operator
+          required scopes + reachable ad accounts + the Graph
+          ``debug_token`` inspection) and returns it WITHOUT saving, so the
+          UI can show the scope report and the expiry, and let the operator
           pick an account first.
         * Otherwise the token is validated and then saved. A valid token
           that is missing some scopes is saved anyway with the warning
           echoed back (``missing_scopes``) — the operator may fix the BM
           grant later without re-pasting.
 
-        The token is persisted via ``save_credentials`` with NO
-        ``app_id`` / ``app_secret``: a never-expiring system-user token
-        must not enter the 53-day auto-refresh path (``auth._should_refresh``
-        returns False when either is absent).
+        #726 — the token's lifetime. Business Manager mints system-user
+        tokens with a 60-day life, so the "never expires, keep it off the
+        refresh clock" premise this route was built on was wrong and cost
+        every affected install a silent outage every couple of months. The
+        route now:
+
+        * inspects the token (``debug_token``) and persists
+          ``token_obtained_at`` plus, when Graph reports one,
+          ``token_expires_at``. The inspection REFUSES NOTHING: a Graph that
+          declines to describe the token costs the expiry, not the save, and
+          the refusal comes back as a ``warnings`` entry;
+        * accepts the optional ``app_id`` / ``app_secret`` pair. With it
+          stored, ``auth._should_refresh`` can extend the token before it
+          dies (Meta's ``fb_exchange_token`` +
+          ``set_token_expires_in_60_days`` exchange); without it, mureo can
+          only warn, which the response says with
+          ``auto_refresh_unavailable``. Values already on disk are kept when
+          this call does not carry them — re-pasting a token must not
+          disarm a refresh the operator already configured.
+
+        Nothing secret is echoed: the response carries dates, the token
+        ``type`` and machine-readable warning codes, never the token or the
+        app secret (#605).
         """
         access_token = str(payload.get("access_token", "")).strip()
         if not access_token:
@@ -1468,6 +1489,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # the truthy string "None" — which the accessibility cross-check below
         # would then reject as account_not_accessible.
         account_id = str(payload.get("account_id") or "").strip() or None
+        # Same ``or ""`` guard: the card posts the optional app fields as
+        # empty strings when they are left untouched, and a whitespace-only
+        # value is not a credential.
+        app_id = str(payload.get("app_id") or "").strip() or None
+        app_secret = str(payload.get("app_secret") or "").strip() or None
         validate_only = bool(payload.get("validate_only", False))
 
         # The configure handler is synchronous with no running event loop.
@@ -1504,6 +1530,17 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 500, "internal_error")
             return
 
+        token_info = probe.get("token_info") or {}
+        token_expires_at = token_info.get("expires_at")
+        # Machine-readable codes, not prose: the card maps each to an i18n
+        # string, so the wording lives in the locale file and the wire stays
+        # stable for downstream consumers.
+        warnings: list[str] = []
+        if probe.get("token_inspect_error"):
+            warnings.append("token_inspect_failed")
+        elif not token_expires_at:
+            warnings.append("token_expiry_unknown")
+
         if validate_only:
             send_json(
                 self,
@@ -1511,6 +1548,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                     "scopes": probe["scopes"],
                     "missing_scopes": probe["missing_scopes"],
                     "accounts": probe["accounts"],
+                    "token_type": token_info.get("type"),
+                    "token_expires_at": token_expires_at,
+                    "data_access_expires_at": token_info.get("data_access_expires_at"),
+                    "warnings": warnings,
                 },
             )
             return
@@ -1529,21 +1570,50 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-        from mureo.auth import MetaAdsCredentials
+        from mureo.auth import MetaAdsCredentials, load_meta_ads_credentials
         from mureo.auth_setup import save_credentials
 
+        credentials_path = self.wizard.host_paths.credentials_path
+        # Stamped here rather than left to ``_merge_meta_section``'s default
+        # so the response can quote the same instant that lands on disk.
+        token_obtained_at = datetime.now(tz=timezone.utc).isoformat()
         try:
             save_credentials(
-                path=self.wizard.host_paths.credentials_path,
-                # No app_id / app_secret: keep this never-expiring
-                # system-user token out of the refresh clock.
-                meta=MetaAdsCredentials(access_token=access_token),
+                path=credentials_path,
+                # ``app_id`` / ``app_secret`` are ``None`` unless the operator
+                # filled the optional fields; ``_merge_meta_section`` then
+                # carries forward whatever is already stored rather than
+                # deleting it.
+                meta=MetaAdsCredentials(
+                    access_token=access_token,
+                    app_id=app_id,
+                    app_secret=app_secret,
+                    token_obtained_at=token_obtained_at,
+                    token_expires_at=token_expires_at,
+                ),
                 account_id=account_id,
             )
         except Exception:  # noqa: BLE001
             logger.exception("Meta token save failed")
             send_error_json(self, 500, "internal_error")
             return
+
+        # Read back rather than reason about what was posted: the app pair
+        # may have come from a previous save, and "can mureo extend this
+        # token" must describe the file, not this request.
+        try:
+            stored = load_meta_ads_credentials(credentials_path)
+        except Exception:  # noqa: BLE001 — a save that worked is still a save
+            logger.exception("Meta credentials re-read failed")
+            stored = None
+        auto_refresh = bool(
+            stored is not None
+            and stored.app_id
+            and stored.app_secret
+            and stored.token_expires_at
+        )
+        if token_expires_at and not auto_refresh:
+            warnings.append("auto_refresh_unavailable")
 
         send_json(
             self,
@@ -1552,6 +1622,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 "account_id": account_id,
                 "scopes": probe["scopes"],
                 "missing_scopes": probe["missing_scopes"],
+                "token_type": token_info.get("type"),
+                "token_obtained_at": token_obtained_at,
+                "token_expires_at": token_expires_at,
+                "data_access_expires_at": token_info.get("data_access_expires_at"),
+                "auto_refresh": auto_refresh,
+                "warnings": warnings,
             },
         )
 

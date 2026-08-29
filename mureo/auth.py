@@ -71,8 +71,16 @@ class MetaAdsCredentials:
 
     ``access_token`` and ``app_secret`` are excluded from ``repr`` so an
     accidental ``repr()`` / log / traceback never prints them. This class now
-    also carries hand-entered, never-expiring system-user tokens (#458),
-    which raises the stakes on inadvertent disclosure.
+    also carries hand-entered system-user tokens (#458), which raises the
+    stakes on inadvertent disclosure.
+
+    ``token_expires_at`` (#726) is when Meta says THIS token dies, as
+    reported by Graph ``debug_token`` at paste time or by the ``expires_in``
+    of the last exchange. It is distinct from ``token_obtained_at``: the
+    stamp is when mureo got the token and only bounds its age, while a
+    Business Manager system-user token can be minted at any point before it
+    is pasted and is issued with a 60-day life. When it is known,
+    :func:`_should_refresh` uses it instead of the age fallback.
     """
 
     access_token: str = field(repr=False)
@@ -80,6 +88,7 @@ class MetaAdsCredentials:
     app_secret: str | None = field(default=None, repr=False)
     token_obtained_at: str | None = None  # ISO 8601 timestamp
     account_id: str | None = None  # act_XXXX format
+    token_expires_at: str | None = None  # ISO 8601 timestamp, when known
 
 
 # Amazon Ads official-MCP bridge (#113 Phase 1). region picks the
@@ -218,6 +227,7 @@ def load_meta_ads_credentials(
                 app_secret=meta_section.get("app_secret"),
                 token_obtained_at=meta_section.get("token_obtained_at"),
                 account_id=meta_section.get("account_id"),
+                token_expires_at=meta_section.get("token_expires_at"),
             )
 
     # Environment variable fallback
@@ -415,6 +425,16 @@ def create_meta_ads_client(
 # ---------------------------------------------------------------------------
 
 _TOKEN_REFRESH_THRESHOLD_DAYS = 53
+
+#: How long before a KNOWN expiry the exchange fires (#726). The 53-day
+#: constant above is an age proxy for the ~60-day life of a long-lived user
+#: token and only applies when the real expiry is unknown; when
+#: ``token_expires_at`` is stored, the same one week of headroom is measured
+#: from the date Meta actually gave us. A Business Manager system-user token
+#: is minted with a 60-day life and may be pasted at any point in it, so the
+#: age proxy can be off by the whole lifetime.
+_TOKEN_EXPIRY_REFRESH_LEAD_DAYS = 7
+
 _META_GRAPH_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token"
 _refresh_lock = asyncio.Lock()
 
@@ -517,7 +537,9 @@ async def refresh_meta_token_if_needed(
             return credentials
 
         try:
-            new_token, new_obtained_at = await _call_refresh_api(credentials)
+            new_token, new_obtained_at, new_expires_at = await _call_refresh_api(
+                credentials
+            )
         except MetaTokenRefreshError as exc:
             # Composed here from the status code and curated Graph fields, so
             # it is safe verbatim — and it is the ONLY record of a refresh that
@@ -535,11 +557,12 @@ async def refresh_meta_token_if_needed(
             credentials,
             access_token=new_token,
             token_obtained_at=new_obtained_at,
+            token_expires_at=new_expires_at,
         )
 
         resolved = path if path is not None else _resolve_write_path()
         try:
-            _save_meta_token(resolved, new_token, new_obtained_at)
+            _save_meta_token(resolved, new_token, new_obtained_at, new_expires_at)
         except Exception as exc:
             # The refreshed token works for THIS process (returned below) but is
             # not on disk, so every future process re-refreshes from the aging
@@ -564,33 +587,77 @@ async def refresh_meta_token_if_needed(
         return refreshed
 
 
+def _parse_iso_utc(raw: str | None) -> datetime | None:
+    """Parse an ISO 8601 stamp to an aware UTC datetime, or ``None``.
+
+    A naive stamp keeps the pre-existing reading — ``astimezone`` resolves it
+    against the host clock — so extracting this helper out of
+    :func:`_should_refresh` changes no behaviour on the age branch.
+    """
+
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        return datetime.fromisoformat(raw).astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
 def _should_refresh(credentials: MetaAdsCredentials) -> bool:
-    """Return True if the token should be refreshed."""
+    """Return True if the token should be refreshed.
+
+    Two clocks, in priority order:
+
+    1. ``token_expires_at`` — the date Meta itself reported for THIS token.
+       Refresh once it is within :data:`_TOKEN_EXPIRY_REFRESH_LEAD_DAYS`.
+       This is the only correct clock for a Business Manager system-user
+       token: it carries a 60-day life that started when it was minted, not
+       when it was pasted, so ``token_obtained_at`` may understate its age by
+       almost the whole lifetime (#726).
+    2. ``token_obtained_at`` age vs :data:`_TOKEN_REFRESH_THRESHOLD_DAYS` —
+       the pre-existing fallback for a token whose expiry is unknown (the
+       browser-OAuth long-lived user token, which mureo mints itself and
+       therefore knows the age of exactly).
+
+    Either way the app pair gates everything: without ``app_id`` and
+    ``app_secret`` there is no exchange to make, so an expiry that cannot be
+    acted on stays a *warning* (the configure card and the status snapshot),
+    not a doomed API call on every request.
+    """
     if not credentials.app_id or not credentials.app_secret:
         return False
+
+    expires = _parse_iso_utc(credentials.token_expires_at)
+    if expires is not None:
+        remaining = expires - datetime.now(tz=timezone.utc)
+        return remaining <= timedelta(days=_TOKEN_EXPIRY_REFRESH_LEAD_DAYS)
+
     if not credentials.token_obtained_at:
         return False
 
-    try:
-        obtained = datetime.fromisoformat(credentials.token_obtained_at)
-    except (ValueError, TypeError):
+    obtained = _parse_iso_utc(credentials.token_obtained_at)
+    if obtained is None:
         logger.warning(
             "Invalid token_obtained_at format: %s",
             credentials.token_obtained_at,
         )
         return False
 
-    age = datetime.now(tz=timezone.utc) - obtained.astimezone(timezone.utc)
+    age = datetime.now(tz=timezone.utc) - obtained
     return age >= timedelta(days=_TOKEN_REFRESH_THRESHOLD_DAYS)
 
 
 async def _call_refresh_api(
     credentials: MetaAdsCredentials,
-) -> tuple[str, str]:
+) -> tuple[str, str, str | None]:
     """Call the Meta Graph API to refresh the token.
 
     Returns:
-        Tuple of (new_access_token, new_obtained_at_iso).
+        Tuple of (new_access_token, new_obtained_at_iso, new_expires_at_iso).
+        The third element is ``None`` when Graph reported no ``expires_in``:
+        the old token's expiry describes a token that no longer exists, so
+        carrying it forward would both misreport the new one and re-fire
+        this exchange on every call.
 
     Raises:
         httpx.HTTPError: On network errors.
@@ -603,6 +670,17 @@ async def _call_refresh_api(
         "client_secret": credentials.app_secret,
         "fb_exchange_token": credentials.access_token,
     }
+    if credentials.token_expires_at:
+        # Meta documents this parameter for refreshing an *expiring* system
+        # user access token — "set_token_expires_in_60_days: set to true to
+        # refresh an expiring system user access token", returning a token
+        # "valid for 60 days from generated or refreshed date"
+        # (developers.facebook.com/docs/business-management-apis/system-users/
+        # install-apps-and-generate-tokens). Without it the exchange is the
+        # plain long-lived *user* token flow, which Meta documents with no
+        # such parameter — so it is sent only on the branch that knows the
+        # token expires, and the pre-existing user-token path is untouched.
+        params["set_token_expires_in_60_days"] = "true"
 
     # POST (not GET) so the client_secret and the token itself travel in the
     # request body, never the URL. The Meta Graph ``/oauth/access_token``
@@ -632,14 +710,36 @@ async def _call_refresh_api(
     if not new_token:
         raise MetaTokenRefreshError("HTTP 200 from Meta Graph with no access_token")
 
-    new_obtained_at = datetime.now(tz=timezone.utc).isoformat()
-    return new_token, new_obtained_at
+    now = datetime.now(tz=timezone.utc)
+    new_obtained_at = now.isoformat()
+    new_expires_at = _expires_at_from_seconds(now, data.get("expires_in"))
+    return new_token, new_obtained_at, new_expires_at
+
+
+def _expires_at_from_seconds(now: datetime, raw: Any) -> str | None:
+    """Turn Graph's ``expires_in`` (seconds) into an ISO 8601 UTC instant.
+
+    ``None`` for anything that is not a positive number: Graph omits the
+    field for tokens it considers non-expiring, and a zero or negative value
+    would date the fresh token in the past — which would make
+    :func:`_should_refresh` fire on the very next call, forever.
+    """
+
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    if raw <= 0:
+        return None
+    try:
+        return (now + timedelta(seconds=int(raw))).isoformat()
+    except (OverflowError, ValueError):
+        return None
 
 
 def _save_meta_token(
     path: Path,
     new_token: str,
     new_obtained_at: str,
+    new_expires_at: str | None = None,
 ) -> None:
     """Atomically update the meta_ads token in credentials.json.
 
@@ -672,6 +772,15 @@ def _save_meta_token(
 
         meta_section["access_token"] = new_token
         meta_section["token_obtained_at"] = new_obtained_at
+        # Written when known, REMOVED when not: the stored expiry describes
+        # the token in the same section, and the token has just been
+        # replaced. A stale date left behind would report a countdown for a
+        # credential that no longer exists and would keep ``_should_refresh``
+        # firing on every call (#726).
+        if new_expires_at:
+            meta_section["token_expires_at"] = new_expires_at
+        else:
+            meta_section.pop("token_expires_at", None)
         data["meta_ads"] = meta_section
 
         atomic_write_json(data, path)

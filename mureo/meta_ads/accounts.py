@@ -23,6 +23,7 @@ dict shape will remain supported for at least one minor.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
@@ -93,6 +94,18 @@ class MetaAccountFetchError(MetaTokenValidationError):
     """The token is valid but /me/adaccounts could not be listed."""
 
 
+class MetaTokenInspectError(MetaTokenValidationError):
+    """``debug_token`` could not describe the token (#726).
+
+    Never fatal on its own: Meta documents ``debug_token`` as needing the
+    app's own app access token or an app developer's user access token, so a
+    system-user token inspecting itself is not guaranteed to be accepted
+    everywhere. A refusal costs mureo the expiry date, not the credential —
+    :func:`validate_meta_access_token` reports it beside the scopes and the
+    caller saves anyway.
+    """
+
+
 def _required_oauth_scopes() -> list[str]:
     """The OAuth scopes a fully-provisioned Meta token should carry.
 
@@ -130,6 +143,118 @@ def _format_graph_error(payload: Any, fallback: str) -> str:
     return " | ".join(parts) if parts else fallback
 
 
+#: The ``debug_token`` fields mureo keeps. The response also carries
+#: ``scopes``, ``granular_scopes``, ``user_id``, ``app_id`` and
+#: ``application``; none of them are echoed to the UI or written to a log,
+#: so the Graph envelope never travels verbatim out of this module (#605).
+#: ``scopes`` in particular is already reported — from ``/me/permissions``,
+#: the probe that also proves the token works.
+_DEBUG_TOKEN_TIMESTAMP_FIELDS = ("expires_at", "data_access_expires_at", "issued_at")
+
+
+def _unix_to_iso(raw: Any) -> str | None:
+    """Render a Graph unixtime as ISO 8601 UTC, or ``None`` when unusable.
+
+    Graph stamps a non-expiring token's ``expires_at`` with ``0`` and omits
+    the field entirely on some token types; ``issued_at`` is documented as
+    present only for long-lived tokens. Neither zero nor a missing field is
+    a date, and rendering epoch-zero as "expires 1970-01-01" would show a
+    healthy credential as decades dead — so anything that is not a positive
+    integer reads as "unknown".
+    """
+
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    if raw <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(int(raw), tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+async def inspect_meta_access_token(access_token: str) -> dict[str, Any]:
+    """Describe a Meta access token via Graph ``debug_token`` (#726).
+
+    Meta documents the call as::
+
+        GET /debug_token?input_token={input-token}&access_token={access-token}
+
+    where ``input_token`` is the token being described and ``access_token``
+    is "a valid access token", with the constraint that "both tokens must be
+    from the same app"
+    (https://developers.facebook.com/docs/facebook-login/access-tokens/debugging-and-error-handling).
+    The endpoint reference adds that the ``access_token`` must be the app
+    access token of the app the ``input_token`` belongs to, or an app
+    developer's user access token
+    (https://developers.facebook.com/docs/graph-api/reference/debug_token/).
+
+    mureo passes the pasted token on BOTH parameters. It is the only token
+    the paste route has — the card asks for a system-user token, not for the
+    app secret an app access token would require — and it trivially
+    satisfies the same-app constraint. Meta does not document self-inspection
+    as guaranteed, which is precisely why every caller treats a refusal as a
+    missing expiry rather than a bad credential.
+
+    Args:
+        access_token: the Meta access token to describe.
+
+    Returns:
+        ``{"type", "expires_at", "data_access_expires_at", "issued_at"}``.
+        ``type`` is Graph's own string (``"USER"``, ``"SYSTEM_USER"``, …) or
+        ``None``; the three timestamps are ISO 8601 UTC strings, or ``None``
+        when Graph reported no usable value. Nothing else from the response
+        is returned — see :data:`_DEBUG_TOKEN_TIMESTAMP_FIELDS`.
+
+    Raises:
+        MetaTokenInspectError: on an empty token, a non-200 response, or a
+            transport failure. The message carries Meta's ``error.message``
+            plus ``subcode`` / ``fbtrace_id`` when present, with the access
+            token scrubbed out.
+    """
+
+    if not access_token:
+        raise MetaTokenInspectError(
+            "Meta token inspection failed: access_token is required"
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            response = await client.get(
+                f"{_META_GRAPH_API_BASE}/debug_token",
+                params={
+                    "input_token": access_token,
+                    "access_token": access_token,
+                },
+            )
+            try:
+                payload = response.json()
+            except Exception:
+                payload = {}
+            if response.status_code != 200:
+                detail = _redact(
+                    _format_graph_error(payload, response.text[:500]), access_token
+                )
+                raise MetaTokenInspectError(f"Meta token inspection failed: {detail}")
+    except MetaTokenInspectError:
+        raise
+    except Exception as exc:
+        scrubbed = _redact(str(exc), access_token)
+        raise MetaTokenInspectError(
+            f"Meta token inspection failed: {scrubbed}"
+        ) from None
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    data = data if isinstance(data, dict) else {}
+    token_type = data.get("type")
+    info: dict[str, Any] = {
+        "type": str(token_type) if token_type else None,
+    }
+    for field in _DEBUG_TOKEN_TIMESTAMP_FIELDS:
+        info[field] = _unix_to_iso(data.get(field))
+    return info
+
+
 async def validate_meta_access_token(access_token: str) -> dict[str, Any]:
     """Validate a Meta access token and report scopes + reachable accounts.
 
@@ -142,13 +267,21 @@ async def validate_meta_access_token(access_token: str) -> dict[str, Any]:
       creatives).
     * ``GET /me/adaccounts`` — the ad accounts the token can reach, reduced
       to ``{id, name}`` so the UI can render an account picker.
+    * ``GET /debug_token`` — when the token dies (#726). Best-effort: Meta
+      does not guarantee a token may inspect itself (see
+      :func:`inspect_meta_access_token`), so a refusal is *reported*, never
+      raised. The other two probes have already established whether the
+      credential works.
 
     Args:
         access_token: Meta Ads access token (System User or User token).
 
     Returns:
         ``{"scopes": [...granted...], "missing_scopes": [...],
-        "accounts": [{"id", "name"}, ...]}``.
+        "accounts": [{"id", "name"}, ...],
+        "token_info": {...} | None, "token_inspect_error": str | None}``.
+        ``token_info`` is :func:`inspect_meta_access_token`'s curated dict;
+        it and ``token_inspect_error`` are mutually exclusive.
 
     Raises:
         MetaTokenInvalidError: When the token is invalid/expired (the
@@ -213,7 +346,22 @@ async def validate_meta_access_token(access_token: str) -> dict[str, Any]:
         if acct.get("id")
     ]
 
-    return {"scopes": granted, "missing_scopes": missing, "accounts": accounts}
+    # Last, and never fatal: by here the token has already proved it works.
+    token_info: dict[str, Any] | None = None
+    token_inspect_error: str | None = None
+    try:
+        token_info = await inspect_meta_access_token(access_token)
+    except Exception as exc:  # noqa: BLE001 — an unknown expiry is not a failure
+        token_inspect_error = _redact(str(exc), access_token)
+        logger.info("Meta token inspection unavailable: %s", token_inspect_error)
+
+    return {
+        "scopes": granted,
+        "missing_scopes": missing,
+        "accounts": accounts,
+        "token_info": token_info,
+        "token_inspect_error": token_inspect_error,
+    }
 
 
 async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
@@ -287,8 +435,10 @@ async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
 
 __all__ = [
     "MetaAccountFetchError",
+    "MetaTokenInspectError",
     "MetaTokenInvalidError",
     "MetaTokenValidationError",
+    "inspect_meta_access_token",
     "list_meta_ad_accounts",
     "validate_meta_access_token",
 ]

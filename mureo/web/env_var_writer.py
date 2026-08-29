@@ -179,7 +179,7 @@ def _resolve_credentials_path(credentials_path: Path | None) -> Path:
 
 
 def _clear_stale_refresh_clock(name: str, section_payload: dict[str, Any]) -> None:
-    """Drop ``token_obtained_at`` when a Meta token is written by hand (#578).
+    """Drop the Meta token's clock fields when it is written by hand (#578).
 
     This writer merges field-wise, which is right for most fields and wrong
     for a credential that another field describes. ``meta_ads`` keeps
@@ -202,11 +202,22 @@ def _clear_stale_refresh_clock(name: str, section_payload: dict[str, Any]) -> No
     stamp alone is enough to stay off the clock. Any path that legitimately
     mints or refreshes a token re-stamps it.
 
-    Only the token write clears the stamp — writing ``META_ADS_ACCOUNT_ID``,
-    say, leaves the token untouched, so its stamp still describes it.
+    ``token_expires_at`` (#726) goes with it, for the same reason and one
+    more. It describes the token being replaced, so leaving it would show a
+    countdown — or an "expired" badge — for a credential that is gone. And
+    since #726 the expiry is the FIRST clock ``_should_refresh`` consults,
+    a stale one would re-arm on the expiry branch exactly the exchange this
+    function exists to disarm. mureo cannot learn the new expiry here: this
+    writer is a pure filesystem merge with no Graph call, which is the same
+    reason the obtained-at stamp is cleared rather than set to now.
+
+    Only the token write clears the clock — writing ``META_ADS_ACCOUNT_ID``,
+    say, leaves the token untouched, so its stamp and expiry still describe
+    it.
     """
     if name == "META_ADS_ACCESS_TOKEN":
         section_payload.pop("token_obtained_at", None)
+        section_payload.pop("token_expires_at", None)
 
 
 def write_credential_env_var(
