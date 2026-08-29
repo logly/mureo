@@ -44,6 +44,24 @@
   unconditionally, on the belief that a system-user token never expires.
   Values already on disk are kept when a save does not carry them.
 
+### Security
+
+- **The Meta token inspection sends the token in a request body, not a URL**
+  (#726). Meta documents `debug_token` as a GET with the token in the query
+  string, and `httpx` logs the request URL at INFO — so on a host
+  application that configures logging at INFO, the raw access token would
+  have been written to a log file. `MUREO_LOG_LEVEL` bounds mureo's own
+  loggers and would not have stopped it. The call is a POST with the
+  parameters in the body, the same rule the two Graph OAuth calls already
+  followed.
+
+- **Graph error text is bounded before it reaches a log** (#726). The
+  account-discovery module rendered Meta's `error.message` at whatever
+  length Meta sent, newlines included, into a raised message and an
+  operator log line — enough to flood the log, or to forge a second log
+  record. It is now collapsed to one line and capped, the same treatment
+  the token-refresh path already applied.
+
 ## [0.17.0] - 2026-08-29
 
 ### Changed (BREAKING)
