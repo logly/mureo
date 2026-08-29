@@ -1666,6 +1666,27 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-top: 18px;
 }
 
+/* ---- …except on the detail screen (#731) -------------------------------
+   One slab painted across a whole report is what the ground above IS, and
+   on the LIST screen it is right: the cards are one set of things, and the
+   ground is what makes them one set. On the DETAIL screen the same paint
+   turned six unrelated groupings into one continuous tinted page, so the
+   ground moves DOWN there — off the container and onto each section, one
+   block at a time (see "one surface per section" further down).
+
+   Scoped by a class `setReportsView` puts on the container rather than by
+   `:has()`, because the container is shared: a rule that asked which of the
+   two screens was rendered inside it would make the index's ground depend
+   on the detail view's markup, which is the drift this whole seam exists to
+   prevent.
+
+   Transparent rather than dropped: the 1px border and the 16px of padding
+   stay in the box, so taking the paint off moves nothing by a pixel. */
+.dashboard-reports.is-detail {
+  background: transparent;
+  border-color: transparent;
+}
+
 .dashboard-reports-head {
   display: flex;
   flex-wrap: wrap;
@@ -5050,6 +5071,69 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-size: var(--type-caption-size);
   color: var(--ink-soft);
   white-space: pre-wrap;
+}
+
+/* ---- one surface per section (#731) ---------------------------------- */
+/* The detail screen is a column of BLOCKS, not one tinted page. Every
+   top-level grouping carries the same ground — the three tiers, the recent
+   actions, the funnel, the prose disclosure, the chart and the proposals
+   panel — rounded, padded, and separated from the next by whitespace.
+
+   ONE vocabulary, deliberately. Before this, the sections split into two
+   looks by accident of history: the chart and the proposals were white
+   cards, and everything else sat bare on the container's slab. Two of the
+   six reading as "a thing" and four as "the page" is not a hierarchy an
+   operator can use, and neither the split nor the slab said anything about
+   what the sections are.
+
+   Scoped on `.dashboard-reports-detail`, which is the detail view's own
+   node, so the rules cannot reach the list screen at all: `.reports-panel`
+   in particular is the client list, the alert layer and the rail over
+   there, and it must stay white on the slab. Two classes (0,2,0) beat the
+   one-class rules they override, so this does not depend on source order
+   either.
+
+   Both themes come from the token: light is a cool tint UNDER white cards,
+   dark is a step below the page with the panels lighter still. In dark the
+   ground and the page are within a few units of each other by design, so
+   the 1px --report-line edge is what bounds a block — which is exactly the
+   job it did for the slab this replaces. Nothing inside a block is painted
+   from --report-surface, so no inner element goes flat against it: the
+   cards, the funnel cells and the change cells are --surface, the chips and
+   the tabs are --surface-2, and the two table headers that DO use the token
+   (.roster on the list screen, .reports-breakdown-table here) are not
+   inside one of these blocks. */
+.dashboard-reports-detail .reports-tier,
+.dashboard-reports-detail .dashboard-reports-block,
+.dashboard-reports-detail .reports-funnel,
+.dashboard-reports-detail .reports-prose,
+.dashboard-reports-detail .reports-chart,
+.dashboard-reports-detail .reports-panel {
+  background: var(--report-surface);
+  border: 1px solid var(--report-line);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* The funnel had no box of its own, so its ROW carried the gap to the
+   section below it. The block carries it now — left on the row it would
+   open 20px of empty tint inside the block instead of between two of
+   them. */
+.dashboard-reports-detail .reports-funnel {
+  margin-bottom: 20px;
+}
+
+.dashboard-reports-detail .reports-funnel-row {
+  margin-bottom: 0;
+}
+
+/* The recent-actions log carried air ABOVE it and none below, which is the
+   right answer for a block with no edges and the wrong one for a block with
+   them: it and the report text underneath would meet with nothing between
+   them, and two surfaces touching read as one section with a seam. */
+.dashboard-reports-detail .dashboard-reports-block {
+  margin-bottom: 20px;
 }
 
 /* Every block above that declares its own `display` needs this, and the

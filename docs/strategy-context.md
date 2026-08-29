@@ -1503,10 +1503,23 @@ Every block carries its word as well as its colour, and none of them is
 faded at zero: a partition an operator cannot see all of is not one.
 
 The report screens themselves sit on a **ground** — `--report-surface`, with
-`--report-line` / `--report-line-strong` for the panel edges — applied to the
-container that holds the list AND the detail, so the two screens cannot drift
-apart. White panels stand off it with one step of edge and the shallowest
-shadow in the system; table header rows take the ground colour.
+`--report-line` / `--report-line-strong` for the panel edges. On the LIST
+screen it is one slab, painted on the container that holds both screens:
+white panels stand off it with one step of edge and the shallowest shadow in
+the system, and table header rows take the ground colour.
+
+On the DETAIL screen the same ground sits one level lower. A single slab
+across a whole report made six unrelated groupings read as one continuous
+tinted page, so the slab comes off there and **every top-level grouping
+carries the ground itself** — the three tiers, the recent-actions log, the
+funnel, the report text, the chart and the proposals panel, each a rounded,
+padded block with whitespace between it and the next. One section vocabulary
+instead of two: before this, the chart and the proposals were white cards and
+everything else sat bare on the tint. The 運用ナビ band keeps its blue — it
+is a voice, not a section. Which of the two screens is showing is carried by
+a class on the shared container rather than by the markup inside it, so the
+list screen's ground cannot change because the detail view rendered
+something.
 
 #### The shape of the page
 

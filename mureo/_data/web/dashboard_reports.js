@@ -188,10 +188,25 @@
     return ((active || rows[0]) || {}).slug || null;
   }
 
+  //: The modifier the shared container carries while the detail view is up.
+  //: app.css scopes the detail screen's paint on it (#731) — the ground the
+  //: report screens sit on is the CONTAINER's, and the container is one node
+  //: for both screens, so the only way the two can differ is a mark put on
+  //: here, where the switch between them is already made.
+  const REPORTS_DETAIL_CLASS = "is-detail";
+
   // Toggle the index (client grid) vs detail (one client) views, and the
   // detail's back bar (only meaningful when there is an index to return to).
   function setReportsView(view) {
     REPORTS_VIEW_STATE.reportsView = view;
+    // The index keeps its one-slab ground; the detail screen takes it off
+    // and gives every section its own (#731). A class rather than `:has()`
+    // in the stylesheet: one screen's paint must not be decided by what the
+    // other one happens to have rendered inside the same container.
+    const ground = document.querySelector("[data-dashboard-reports]");
+    if (ground) {
+      ground.classList.toggle(REPORTS_DETAIL_CLASS, view === "detail");
+    }
     const index = document.querySelector("[data-reports-clients]");
     const detail = document.querySelector("[data-reports-detail]");
     const back = document.querySelector("[data-reports-back]");
@@ -750,6 +765,7 @@
 
 
   const api = {
+    REPORTS_DETAIL_CLASS: REPORTS_DETAIL_CLASS,
     renderReports: renderReports,
     enterReportsSection: enterReportsSection,
     wireReportsBackButton: wireReportsBackButton,
