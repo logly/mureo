@@ -1512,14 +1512,26 @@ On the DETAIL screen the same ground sits one level lower. A single slab
 across a whole report made six unrelated groupings read as one continuous
 tinted page, so the slab comes off there and **every top-level grouping
 carries the ground itself** — the three tiers, the recent-actions log, the
-funnel, the report text, the chart and the proposals panel, each a rounded,
-padded block with whitespace between it and the next. One section vocabulary
-instead of two: before this, the chart and the proposals were white cards and
-everything else sat bare on the tint. The 運用ナビ band keeps its blue — it
-is a voice, not a section. Which of the two screens is showing is carried by
-a class on the shared container rather than by the markup inside it, so the
-list screen's ground cannot change because the detail view rendered
-something.
+funnel, the report text, the chart, the proposals panel, the breakdown
+tables, the stated values and the verdict chips, each a rounded, padded block
+with whitespace between it and the next. One section vocabulary instead of
+two: before this, the chart and the proposals were white cards and everything
+else sat bare on the tint. The 運用ナビ band keeps its blue — it is a voice,
+not a section. Which of the two screens is showing is carried by a class on
+the shared container rather than by the markup inside it, so the list
+screen's ground cannot change because the detail view rendered something.
+
+Two things follow from moving a ground under content that was drawn against a
+different one. The breakdown tables' header rows were tinted with the ground
+itself, which read as a header while the section around it was the page and
+would read as a gap once the section became that colour — so inside a block
+they step one further along the same family (`--report-line`), which is a
+bigger step from the white table body than they had before. And `--muted` was
+chosen against a white panel, where it is 4.96:1; on this ground it is 4.31:1,
+under AA for small text. Every caption the change puts on the ground takes
+`--ink-soft` instead (9.2:1 light, 11.5:1 dark) — still plainly quieter than
+`--ink`, which is the whole job those lines do. A caption that kept its
+background keeps its colour: this is a repair, not a repaint.
 
 #### The shape of the page
 

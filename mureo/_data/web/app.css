@@ -5099,16 +5099,20 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    the 1px --report-line edge is what bounds a block — which is exactly the
    job it did for the slab this replaces. Nothing inside a block is painted
    from --report-surface, so no inner element goes flat against it: the
-   cards, the funnel cells and the change cells are --surface, the chips and
-   the tabs are --surface-2, and the two table headers that DO use the token
-   (.roster on the list screen, .reports-breakdown-table here) are not
-   inside one of these blocks. */
+   cards, the funnel cells and the change cells are --surface, and the chips
+   and the tabs are --surface-2. The one element that DID use the token
+   inside a block — the breakdown table's header row — is re-stepped just
+   below, and the list screen's .roster header is not in this scope at
+   all. */
 .dashboard-reports-detail .reports-tier,
 .dashboard-reports-detail .dashboard-reports-block,
 .dashboard-reports-detail .reports-funnel,
 .dashboard-reports-detail .reports-prose,
 .dashboard-reports-detail .reports-chart,
-.dashboard-reports-detail .reports-panel {
+.dashboard-reports-detail .reports-panel,
+.dashboard-reports-detail .reports-breakdown,
+.dashboard-reports-detail .reports-stated,
+.dashboard-reports-detail .reports-highlights {
   background: var(--report-surface);
   border: 1px solid var(--report-line);
   border-radius: var(--r-lg);
@@ -5134,6 +5138,60 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    them, and two surfaces touching read as one section with a seam. */
 .dashboard-reports-detail .dashboard-reports-block {
   margin-bottom: 20px;
+}
+
+/* The breakdown table's header row took --report-surface, which worked while
+   the section around it was the page: a tinted strip at the top of a white
+   table. Now that the section IS that colour, the same fill would be the
+   ground showing through the table — the header would stop being a header
+   and become a gap.
+
+   So it steps one further along the SAME family: --report-line is the token
+   that already means "one step off this ground", so the row is a step from
+   the ground it sits on AND a bigger step from the white body than it had
+   before (1.42:1 light / 1.55:1 dark against the body, up from 1.15 / 1.10;
+   1.23 / 1.70 against the section). --ink-soft on it is 7.5:1 light and
+   6.8:1 dark, so the header text gains contrast rather than spending it.
+
+   Detail scope only: the list screen's .roster header keeps --report-surface,
+   because over there the table sits inside a WHITE panel and the tint is what
+   separates the header from it. */
+.dashboard-reports-detail .reports-breakdown-table thead th {
+  background: var(--report-line);
+}
+
+/* ---- text that moved onto the ground (#731) -------------------------- */
+/* --muted was chosen against a WHITE panel, where it is 4.96:1. On the
+   report ground it is 4.31:1 — under AA for small text — and this change
+   moves several captions from the one to the other. Inside the detail's
+   blocks they take --ink-soft instead: 9.2:1 light, 11.5:1 dark, still
+   plainly quieter than --ink, which is the whole job those lines do.
+
+   ONLY the lines that sit on the ground itself. A caption inside a white
+   card, a --surface-2 chip or a tinted proposal keeps --muted, because it
+   kept its background too — recolouring those would be repainting the
+   screen rather than repairing a regression this change caused.
+
+   The one exception is the proposal date, which is on --warn-tint and was
+   measured at 4.49:1 there: under AA on its own terms, in a panel this
+   change is repainting anyway. */
+.dashboard-reports-detail .reports-panel-note,
+.dashboard-reports-detail .reports-proposals-count,
+.dashboard-reports-detail .reports-proposal-more,
+.dashboard-reports-detail .reports-proposal-date,
+.dashboard-reports-detail .reports-chart-tick,
+.dashboard-reports-detail .reports-tier-note,
+.dashboard-reports-detail .reports-client-kpi-label,
+.dashboard-reports-detail .report-latest-generated,
+.dashboard-reports-detail .report-latest-stats caption.report-stats-title,
+.dashboard-reports-detail .report-latest-stats .report-stat-key,
+.dashboard-reports-detail .report-latest-stats .report-stat-more,
+.dashboard-reports-detail .dashboard-reports-block h3,
+.dashboard-reports-detail .report-action-time,
+.dashboard-reports-detail .report-action-meta,
+.dashboard-reports-detail .reports-actions-page-btn,
+.dashboard-reports-detail .reports-actions-page-count {
+  color: var(--ink-soft);
 }
 
 /* Every block above that declares its own `display` needs this, and the

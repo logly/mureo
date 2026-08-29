@@ -82,19 +82,45 @@ const PLATFORMS = [
 
 const ACTIONS = [
   {
-    at: new Date().toISOString(),
-    kind: "budget",
+    timestamp: new Date().toISOString(),
+    action: "budget_raised",
     platform: "google_ads",
     summary: "Raised the Brand budget",
+    observation_due: TODAY,
   },
 ];
 
-//: A contract stating the sections the legacy screen does not draw.
+//: A contract stating the sections the legacy screen does not draw. Five
+//: proposals, because the list caps at four and the "+N more" row is one of
+//: the lines this suite is about.
 const DISPLAY = {
   source: "daily-check",
   generated_at: new Date(Date.now() - 3 * 3600000).toISOString(),
   nav_message: "CPA is over target — pause the two worst ad groups",
-  proposals: [{ title: "Pause two ad groups", body: "Both 3x target CPA", date: TODAY }],
+  highlights: [
+    { tone: "bad", text: "CPA 12% over target" },
+    { tone: "good", text: "CV goal met" },
+  ],
+  proposals: [1, 2, 3, 4, 5].map(function (n) {
+    return { title: "Pause ad group " + n, body: "3x target CPA", date: TODAY };
+  }),
+  breakdown: {
+    campaigns: [
+      {
+        name: "Brand Search",
+        spend: 42000,
+        mcpa: 5200,
+        target_cpa: 4500,
+        state: "worsening",
+        note: "capped every afternoon",
+      },
+    ],
+    adgroups: [{ name: "Brand — exact", spend: 12000, state: "target_met" }],
+  },
+  stated_values: [
+    { label: "CVR", value: 0.021 },
+    { label: "goals met", value: "3 of 7" },
+  ],
 };
 
 function summaryWith(overrides) {
@@ -161,6 +187,19 @@ function styleOfNode(node, label, property) {
 
 function styleOf(page, sel, property) {
   return styleOfNode(page.root.querySelector(sel), sel, property);
+}
+
+const detailView = (page) => page.root.querySelector("[data-reports-detail]");
+
+/**
+ * The same, for the first `sel` INSIDE the detail view.
+ *
+ * Several of these class names are on both screens — `.reports-panel-note`
+ * is the index rail's note too, and it comes first in the document — so a
+ * page-wide querySelector would answer about the wrong screen.
+ */
+function styleIn(page, sel, property) {
+  return styleOfNode(detailView(page).querySelectorAll(sel)[0], sel, property);
 }
 
 // ---------------------------------------------------------------------
@@ -244,6 +283,9 @@ test.describe("the detail screen's ground is its sections', not the page's", fun
     [".reports-funnel", "contract"],
     [".reports-chart", "contract"],
     [".reports-proposals", "contract"],
+    [".reports-breakdown", "contract"],
+    [".reports-stated", "contract"],
+    [".reports-highlights", "contract"],
   ];
 
   test.it("gives every grouping the report surface, rounded and padded", async function () {
@@ -313,6 +355,160 @@ test.describe("the detail screen's ground is its sections', not the page's", fun
   test.it("leaves the 運用ナビ band blue — it is a voice, not a section", async function () {
     const page = await openDetail({ display: DISPLAY });
     assert.equal(styleOf(page, ".reports-nav-band", "background"), "var(--report-blue)");
+  });
+});
+
+// ---------------------------------------------------------------------
+// What the sections do to the things inside them
+// ---------------------------------------------------------------------
+
+test.describe("nothing inside a block goes flat against it", function () {
+  test.it("steps the breakdown header off both the block and the table", async function () {
+    // The header row took --report-surface, which was a tint on a white
+    // table while the section around it was the page. Now that the section
+    // IS that colour the same fill would read as the ground showing through
+    // the table — a header that has stopped being a header.
+    const page = await openDetail({ display: DISPLAY });
+    const table = page.root.querySelector(".reports-breakdown-table");
+    assert.ok(table, "the breakdown table did not render");
+    const th = table.querySelectorAll("th")[0];
+    const section = styleOf(page, ".reports-breakdown", "background");
+    const body = styleOfNode(table, ".reports-breakdown-table", "background");
+    const header = styleOfNode(th, ".reports-breakdown-table thead th", "background");
+    assert.equal(section, "var(--report-surface)");
+    assert.equal(body, "var(--surface)");
+    assert.equal(header, "var(--report-line)");
+    assert.equal(
+      new Set([section, body, header]).size,
+      3,
+      "the block, the table and its header are not three different fills"
+    );
+  });
+
+  test.it("leaves the list screen's roster header on the ground it had", async function () {
+    // The same token, on the other screen, where the table sits inside a
+    // WHITE panel and the tint is exactly what separates the header from it.
+    const page = await openIndex();
+    const th = page.root.querySelector(".roster").querySelectorAll("th")[0];
+    assert.equal(
+      styleOfNode(th, ".roster thead th", "background"),
+      "var(--report-surface)"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------
+// The captions that moved from a white panel onto the ground
+// ---------------------------------------------------------------------
+
+test.describe("small text on the ground keeps AA", function () {
+  //: Every --muted line the new blocks put on the ground itself. --muted is
+  //: 4.96:1 on a white panel and 4.31:1 on this ground, which is under AA
+  //: for small text, so each of these takes --ink-soft (9.2:1 light,
+  //: 11.5:1 dark) inside the detail scope. Restated here so the set is
+  //: checkable at a glance, and asserted against the stylesheet below.
+  //:
+  //: The proposal DATE is the one that is not on the ground — it is on the
+  //: --warn-tint proposal, where it measured 4.49:1 on its own terms.
+  const LIFTED = [
+    ".reports-panel-note",
+    ".reports-proposals-count",
+    ".reports-proposal-more",
+    ".reports-proposal-date",
+    ".reports-chart-tick",
+    ".reports-tier-note",
+    ".reports-client-kpi-label",
+    ".report-latest-generated",
+    ".report-latest-stats caption.report-stats-title",
+    ".report-latest-stats .report-stat-key",
+    ".report-latest-stats .report-stat-more",
+    ".dashboard-reports-block h3",
+    ".report-action-time",
+    ".report-action-meta",
+    ".reports-actions-page-btn",
+    ".reports-actions-page-count",
+  ];
+
+  test.it("scopes every one of them, and scopes them to the detail", function () {
+    const fs = require("node:fs");
+    const css = fs.readFileSync(path.join(WEB, "app.css"), "utf-8");
+    LIFTED.forEach(function (sel) {
+      assert.ok(
+        css.includes(".dashboard-reports-detail " + sel + ",\n") ||
+          css.includes(".dashboard-reports-detail " + sel + " {"),
+        sel + " is not lifted off --muted in the detail scope"
+      );
+    });
+  });
+
+  test.it("resolves to --ink-soft on the nodes an operator sees", async function () {
+    // The stylesheet pin above cannot see a rule that loses its cascade.
+    // These are the same lines, asked of the rendered page — and asked
+    // INSIDE the detail view, because `.reports-panel-note` is also the
+    // index rail's note and it comes first in the document.
+    const page = await openDetail({ display: DISPLAY });
+    [
+      ".reports-panel-note",
+      ".reports-proposals-count",
+      ".reports-proposal-more",
+      ".reports-proposal-date",
+      ".reports-chart-tick",
+      ".reports-tier-note",
+      ".report-action-time",
+      ".report-action-meta",
+      // `.reports-actions-page-btn` is deliberately NOT here: its `:hover`
+      // rule outranks the lift, and the harness treats an unmodelled
+      // pseudo-class as matching, so it would answer for a hover state no
+      // operator is in. The stylesheet pin above covers it.
+      ".reports-actions-page-count",
+    ].forEach(function (sel) {
+      assert.equal(
+        styleIn(page, sel, "color"),
+        "var(--ink-soft)",
+        sel + " is still --muted on the report ground"
+      );
+    });
+    // `.dashboard-reports-block h3` — the log's own caption heading — is
+    // not asked here either: the harness's compound matcher rejects a type
+    // selector carrying a digit, so `h3` matches nothing and the cascade
+    // comes back empty for BOTH rules. The stylesheet pin covers it.
+  });
+
+  test.it("leaves --muted alone where the background did not move", async function () {
+    // A caption inside a white card or a --surface-2 chip kept its
+    // background, so it keeps its colour: this is a repair of a regression,
+    // not a repaint of the screen.
+    const page = await openDetail({ display: DISPLAY });
+    [
+      ".reports-funnel-label",
+      ".report-action-platform",
+      ".reports-stated-label",
+      ".reports-breakdown-note",
+    ].forEach(function (sel) {
+      assert.equal(
+        styleIn(page, sel, "color"),
+        "var(--muted)",
+        sel + " was recoloured, and its background never moved"
+      );
+    });
+    // A chart tab that is not the selected one — the selected segment is
+    // filled and carries its own colour, which is not what this asks.
+    const tab = detailView(page)
+      .querySelectorAll(".reports-chart-tab")
+      .find(function (n) {
+        return !n.classList.contains("is-active");
+      });
+    assert.ok(tab, "the chart drew no idle tab to check");
+    assert.equal(styleOfNode(tab, ".reports-chart-tab", "color"), "var(--muted)");
+  });
+
+  test.it("does not reach the list screen's copies of the same classes", async function () {
+    // `.reports-panel-note` is the rail's note over there, on a white panel.
+    const page = await openIndex();
+    const grid = page.root.querySelector("[data-reports-index-grid]");
+    const note = grid.querySelectorAll(".reports-panel-note")[0];
+    assert.ok(note, "the index rendered no panel note to check");
+    assert.equal(styleOfNode(note, ".reports-panel-note", "color"), "var(--muted)");
   });
 });
 
