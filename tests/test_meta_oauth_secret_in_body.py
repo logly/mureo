@@ -69,7 +69,9 @@ async def test_refresh_api_posts_secret_in_body() -> None:
     client, _ = _mock_client({"access_token": "NEW-TOKEN", "expires_in": 5183944})
 
     with patch("mureo.auth.httpx.AsyncClient", return_value=client):
-        new_token, _ = await _call_refresh_api(creds)
+        # (token, obtained_at, expires_at) since #726 — the exchange now
+        # reports the new expiry as well as the new token.
+        new_token, _, _ = await _call_refresh_api(creds)
 
     assert new_token == "NEW-TOKEN"
     client.post.assert_awaited_once()

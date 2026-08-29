@@ -62,12 +62,13 @@ def test_stays_readable_under_the_size_budget() -> None:
     """The branch has to fit the prompt's budget, not grow a manual.
 
     Raised by exactly what each persistence step costs and no more — #690's
-    two lines, then #706's fifteen for the display-contract step. The reason
-    the number is what it is lives with the same pin in
-    ``test_daily_check_incremental``; the two are deliberately kept equal, so
-    a budget raised in one file and forgotten in the other fails here.
+    two lines, then #706's fifteen for the display-contract step, then #726's
+    one for the Meta token expiry check. The reason the number is what it is
+    lives with the same pin in ``test_daily_check_incremental``; the two are
+    deliberately kept equal, so a budget raised in one file and forgotten in
+    the other fails here.
     """
-    assert len(_body().splitlines()) <= 175
+    assert len(_body().splitlines()) <= 176
 
 
 def test_names_the_absent_tool_surface_condition() -> None:

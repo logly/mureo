@@ -1,5 +1,78 @@
 ## [Unreleased]
 
+### Added
+
+- **The Meta connection now shows when its token expires, and renews it
+  before it does** (#726). Business Manager issues system-user tokens with a
+  60-day life. The configure UI's paste route asked Graph nothing about the
+  token it stored, so nothing on your machine knew that date — the first
+  signal was a failing report, on every workspace sharing the token at once.
+
+  Pasting a token now inspects it (Graph `debug_token`) and records when it
+  dies. The Meta status card counts the days down and warns once fewer than
+  14 remain, and `/daily-check` raises the same countdown as a Watch finding
+  rather than waiting for the outage.
+
+  The paste card also takes an **optional app ID and app secret**. With them
+  stored, mureo extends the token a week before its expiry using Meta's
+  documented exchange for expiring system-user tokens
+  (`grant_type=fb_exchange_token` with `set_token_expires_in_60_days`), and
+  the token never lapses. Without them nothing changes except that you are
+  told, in time, to paste a fresh one.
+
+  Inspection never blocks a save: if Graph declines to describe the token,
+  it is stored exactly as before and the response says the expiry is
+  unknown. Neither the token nor the app secret is ever echoed back.
+
+### Fixed
+
+- **Analytics-only Meta traffic renews the token like every other path**
+  (#726). `mureo_analytics_run` and the report skills' anomaly / diagnosis
+  passes opened a Meta client without going through the token refresh the
+  MCP tools have always used, so an install whose Meta usage is analytics-
+  only never renewed a credential it was perfectly able to renew.
+
+- **The refresh clock follows the token's real expiry when it is known**
+  (#726). The fixed 53-day age rule assumed a token mureo minted itself; a
+  system-user token can be pasted at any point in its 60-day life, so a
+  token with three weeks left would sit untouched for another month and die.
+  With a recorded expiry the exchange fires seven days before that date
+  instead. The 53-day rule stays as the fallback when no expiry is known.
+
+- **Re-pasting a Meta token no longer disarms an auto-refresh you already
+  configured** (#726). The paste route dropped `app_id` / `app_secret`
+  unconditionally, on the belief that a system-user token never expires.
+  Values already on disk are kept when a save does not carry them.
+
+### Security
+
+- **The Meta token inspection sends the token in a request body, not a URL**
+  (#726). Meta documents `debug_token` as a GET with the token in the query
+  string, and `httpx` logs the request URL at INFO — so on a host
+  application that configures logging at INFO, the raw access token would
+  have been written to a log file. `MUREO_LOG_LEVEL` bounds mureo's own
+  loggers and would not have stopped it. The call is a POST with the
+  parameters in the body, the same rule the two Graph OAuth calls already
+  followed.
+
+- **The system-user refresh parameter no longer reaches a user token**
+  (#726). `set_token_expires_in_60_days` was gated on "do we know when this
+  token expires", used as a stand-in for "is this a system-user token". The
+  stand-in decayed on its own: a browser-OAuth credential is stored with no
+  expiry, but the first refresh response carries an `expires_in` that mureo
+  writes back — so from the second refresh onward, a plain user token was
+  exchanged with a parameter Meta documents only for system users. The gate
+  is now Graph's own `debug_token` verdict, recorded as `token_type` where
+  mureo actually asked. Unknown means "not a system user", which is the safe
+  direction: the exchange works without the parameter.
+
+- **Graph error text is bounded before it reaches a log** (#726). The
+  account-discovery module rendered Meta's `error.message` at whatever
+  length Meta sent, newlines included, into a raised message and an
+  operator log line — enough to flood the log, or to forge a second log
+  record. It is now collapsed to one line and capped, the same treatment
+  the token-refresh path already applied.
+
 ## [0.17.0] - 2026-08-29
 
 ### Changed (BREAKING)

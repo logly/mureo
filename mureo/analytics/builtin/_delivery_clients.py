@@ -87,7 +87,7 @@ async def fetch_meta_ads_delivery_series(
     days: int = DEFAULT_HISTORY_DAYS,
 ) -> tuple[tuple[DeliverySeries, ...], str]:
     """Meta twin of :func:`fetch_google_ads_delivery_series`."""
-    client, account_id = _open_meta_ads_client(account_id)
+    client, account_id = await _open_meta_ads_client(account_id)
     return await _fetch_series(client, account_id, days=days, platform="meta_ads")
 
 

@@ -414,8 +414,8 @@
     });
     details.appendChild(guide);
 
-    // Token entry — password-typed and opted out of autofill (a
-    // never-expiring secret must not be remembered by the browser).
+    // Token entry — password-typed and opted out of autofill (a long-lived
+    // secret must not be remembered by the browser).
     const tokenLabel = document.createElement("label");
     tokenLabel.style.display = "block";
     tokenLabel.textContent = MUREO.t("wizard.auth.meta_token_label");
@@ -425,6 +425,38 @@
     tokenInput.autocomplete = "new-password";
     tokenLabel.appendChild(tokenInput);
     details.appendChild(tokenLabel);
+
+    // OPTIONAL app credentials (#726). A Business Manager system-user token
+    // is minted with a 60-day life; with the app pair stored, mureo can
+    // exchange it for a fresh one before it dies. Without them the card
+    // still works exactly as before — the expiry is shown and warned about,
+    // and renewing is a manual re-paste.
+    const appIdLabel = document.createElement("label");
+    appIdLabel.style.display = "block";
+    appIdLabel.textContent = MUREO.t("wizard.auth.meta_token_app_id_label");
+    appIdLabel.setAttribute("data-i18n", "wizard.auth.meta_token_app_id_label");
+    const appIdInput = document.createElement("input");
+    appIdInput.type = "text";
+    appIdInput.autocomplete = "off";
+    appIdLabel.appendChild(appIdInput);
+    details.appendChild(appIdLabel);
+
+    const appSecretLabel = document.createElement("label");
+    appSecretLabel.style.display = "block";
+    appSecretLabel.textContent = MUREO.t("wizard.auth.meta_token_app_secret_label");
+    appSecretLabel.setAttribute(
+      "data-i18n", "wizard.auth.meta_token_app_secret_label");
+    const appSecretInput = document.createElement("input");
+    appSecretInput.type = "password";
+    appSecretInput.autocomplete = "new-password";
+    appSecretLabel.appendChild(appSecretInput);
+    details.appendChild(appSecretLabel);
+
+    const appHint = document.createElement("small");
+    appHint.className = "field-hint";
+    appHint.textContent = MUREO.t("wizard.auth.meta_token_app_hint");
+    appHint.setAttribute("data-i18n", "wizard.auth.meta_token_app_hint");
+    details.appendChild(appHint);
 
     const validateBtn = document.createElement("button");
     validateBtn.type = "button";
@@ -438,6 +470,9 @@
     results.hidden = true;
     const grantedP = document.createElement("p");
     const missingP = document.createElement("p");
+    // When the token dies, straight from Graph's debug_token (#726).
+    const expiryP = document.createElement("p");
+    expiryP.className = "field-hint";
     const accountLabel = document.createElement("label");
     accountLabel.style.display = "block";
     accountLabel.textContent = MUREO.t("wizard.auth.meta_token_account_label");
@@ -453,6 +488,7 @@
     accountHint.setAttribute("data-i18n", "wizard.auth.meta_token_account_hint");
     results.appendChild(grantedP);
     results.appendChild(missingP);
+    results.appendChild(expiryP);
     results.appendChild(accountLabel);
     results.appendChild(accountHint);
     details.appendChild(results);
@@ -493,6 +529,56 @@
       MUREO.toast(msg, "error");
     }
 
+    // Whole days from now to an ISO instant, or null when unparseable. The
+    // server owns the WARNING threshold (the status snapshot decides that);
+    // this is only the countdown shown next to the date it just echoed.
+    function daysUntil(iso) {
+      const at = Date.parse(iso);
+      if (!isFinite(at)) return null;
+      return Math.floor((at - Date.now()) / 86400000);
+    }
+
+    // #726: a system-user token is minted with a 60-day life. Saying so at
+    // paste time is the whole point — an operator who never learns the date
+    // finds out when a report fails.
+    function renderExpiry(body) {
+      const iso = body && body.token_expires_at;
+      const days = iso ? daysUntil(iso) : null;
+      if (days === null) {
+        expiryP.textContent = MUREO.t("wizard.auth.meta_token_expiry_unknown");
+        expiryP.setAttribute("data-i18n", "wizard.auth.meta_token_expiry_unknown");
+        return;
+      }
+      // Re-translating this line would drop the interpolated values, so it
+      // carries no data-i18n key (the locale switcher re-renders the card).
+      expiryP.removeAttribute("data-i18n");
+      expiryP.textContent = MUREO.t("wizard.auth.meta_token_expires_at", {
+        date: iso.slice(0, 10),
+        days: days,
+      });
+    }
+
+    // Machine codes from the save/validate response -> operator sentences.
+    // token_expiry_unknown is deliberately absent: renderExpiry already
+    // states it inline, and saying it twice reads as two problems.
+    const WARNING_KEYS = {
+      token_inspect_failed: "wizard.auth.meta_token_warn_inspect_failed",
+      auto_refresh_unavailable:
+        "wizard.auth.meta_token_warn_auto_refresh_unavailable",
+    };
+
+    function renderWarnings(body) {
+      const codes = (body && body.warnings) || [];
+      const text = codes
+        .map(function (code) {
+          return WARNING_KEYS[code] ? MUREO.t(WARNING_KEYS[code]) : "";
+        })
+        .filter(Boolean)
+        .join(" ");
+      detail.textContent = text;
+      detail.hidden = !text;
+    }
+
     function renderProbe(body) {
       const granted = (body.scopes || []).join(", ");
       const missing = (body.missing_scopes || []).join(", ");
@@ -519,6 +605,8 @@
         opt.textContent = (acct.name || acct.id) + " (" + acct.id + ")";
         accountSelect.appendChild(opt);
       });
+      renderExpiry(body);
+      renderWarnings(body);
       const noAccounts = (body.accounts || []).length === 0;
       accountLabel.hidden = noAccounts;
       accountHint.hidden = noAccounts;
@@ -533,6 +621,8 @@
       clearError();
       const res = await MUREO.postJson("/api/credentials/meta/token", {
         access_token: token,
+        app_id: appIdInput.value.trim(),
+        app_secret: appSecretInput.value.trim(),
         validate_only: true,
       });
       validateBtn.disabled = false;
@@ -551,10 +641,16 @@
       const res = await MUREO.postJson("/api/credentials/meta/token", {
         access_token: token,
         account_id: accountSelect.value || null,
+        app_id: appIdInput.value.trim(),
+        app_secret: appSecretInput.value.trim(),
       });
       if (res.ok && res.body && res.body.status === "ok") {
         const msg = MUREO.t("wizard.auth.meta_token_saved");
         status.textContent = msg;
+        // The expiry and any warning survive the save, so the operator
+        // leaves the card knowing the date rather than just "saved".
+        renderExpiry(res.body);
+        renderWarnings(res.body);
         MUREO.toast(msg, "success");
         onDone();
       } else {
@@ -609,17 +705,39 @@
   }
 
   // Re-authentication nudge, driven by the status snapshot's meta_token
-  // row. Only a token mureo can age is warned about: a Business Manager
-  // system-user token never expires and is stored without the app pair, so
-  // the collector reports it as not expiring however old it is, and a
-  // token with no obtained-at stamp has an unknown age that says nothing.
+  // row. Two independent signals, and the countdown wins when both fire —
+  // "expires in 3 days" is the actionable fact, "the refresh has not run"
+  // is the explanation:
+  //
+  // * #726 ``access_token_expiry_warning`` — Meta's own expiry for this
+  //   token is inside the collector's threshold. Needs no app pair; a
+  //   token already past its date gets the past-tense line, because
+  //   "expires in -3 days" is not a countdown;
+  // * #579 ``access_token_expiring`` — the token is older than the refresh
+  //   threshold and mureo's exchange has not replaced it. Only a token
+  //   stored WITH the app pair can be exchanged, so the collector reports
+  //   False without one however old it is, and a token with no obtained-at
+  //   stamp has an unknown age that says nothing.
   function buildMetaExpiringHint(status) {
     const row = status && status.meta_token ? status.meta_token : null;
-    if (!row || row.access_token_expiring !== true) return null;
+    if (!row) return null;
     const note = document.createElement("small");
     // meta-reauth-hint earns the note a full-width line inside the flex
     // credential row, the way dashboard-provider-hosted-note does.
     note.className = "field-hint mark-no meta-reauth-hint";
+    if (row.access_token_expiry_warning === true) {
+      const days = row.access_token_expires_in_days;
+      const date = (row.access_token_expires_at || "").slice(0, 10);
+      note.textContent =
+        days < 0
+          ? MUREO.t("dashboard.meta_token_expired", { date: date })
+          : MUREO.t("dashboard.meta_token_expires_in", {
+              days: days,
+              date: date,
+            });
+      return note;
+    }
+    if (row.access_token_expiring !== true) return null;
     note.textContent = MUREO.t("dashboard.meta_access_token_expiring", {
       days: row.access_token_age_days,
     });

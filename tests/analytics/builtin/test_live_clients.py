@@ -15,6 +15,22 @@ from mureo.analytics.builtin._live_clients import (
     fetch_meta_ads_metrics,
 )
 
+
+def _meta_creds() -> Any:
+    """Stored Meta credentials with no app pair.
+
+    The live Meta path now runs ``refresh_meta_token_if_needed`` before it
+    builds a client (#726), which reads the credential fields — an opaque
+    ``object()`` sentinel no longer stands in for "credentials exist". No
+    ``app_id`` / ``app_secret`` means no exchange is possible, so these tests
+    still reach the factory directly.
+    """
+
+    from mureo.auth import MetaAdsCredentials
+
+    return MetaAdsCredentials(access_token="stored-token")
+
+
 # ---------------------------------------------------------------------------
 # Aggregation helpers (pure)
 # ---------------------------------------------------------------------------
@@ -535,7 +551,7 @@ async def test_fetch_meta_ads_per_campaign_metrics_keys_by_campaign() -> None:
     )
     with (
         patch("mureo.byod.runtime.byod_has", return_value=False),
-        patch("mureo.auth.load_meta_ads_credentials", return_value=object()),
+        patch("mureo.auth.load_meta_ads_credentials", return_value=_meta_creds()),
         patch(
             "mureo.mcp._client_factory.get_meta_ads_client",
             return_value=fake_client,
@@ -614,7 +630,7 @@ async def test_fetch_meta_ads_metrics_returns_current_and_baseline() -> None:
     )
     with (
         patch("mureo.byod.runtime.byod_has", return_value=False),
-        patch("mureo.auth.load_meta_ads_credentials", return_value=object()),
+        patch("mureo.auth.load_meta_ads_credentials", return_value=_meta_creds()),
         patch(
             "mureo.mcp._client_factory.get_meta_ads_client",
             return_value=fake_client,

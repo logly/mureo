@@ -837,12 +837,23 @@ def _merge_meta_section(
     prior_meta = prior_meta if isinstance(prior_meta, dict) else {}
     access_token = getattr(meta, "access_token", "")
     meta_data: dict[str, Any] = {"access_token": access_token}
+    # ``app_id`` / ``app_secret`` are preserved the same way ``account_id``
+    # is: this call replaces the whole section, so a writer that simply has
+    # nothing to say about the app pair would otherwise DELETE it. That is
+    # what the paste route used to do — it saved a system-user token with no
+    # app pair on the belief such a token never expires, and re-pasting a
+    # token therefore disarmed an auto-refresh the operator had already
+    # configured (#726). An explicit value still wins; "" clears.
     app_id = getattr(meta, "app_id", None)
     if app_id is not None:
         meta_data["app_id"] = app_id
+    elif prior_meta.get("app_id"):
+        meta_data["app_id"] = prior_meta["app_id"]
     app_secret = getattr(meta, "app_secret", None)
     if app_secret is not None:
         meta_data["app_secret"] = app_secret
+    elif prior_meta.get("app_secret"):
+        meta_data["app_secret"] = prior_meta["app_secret"]
     # Preserve a previously-saved account_id when this call couldn't resolve
     # one (e.g. the account listing failed): the whole meta_ads section is
     # replaced below, so without this a transient failure would silently drop
@@ -854,6 +865,13 @@ def _merge_meta_section(
     token_obtained_at = _resolve_token_obtained_at(meta, access_token, prior_meta)
     if token_obtained_at is not None:
         meta_data["token_obtained_at"] = token_obtained_at
+    # Both describe THIS token, so both follow the same rule: explicit wins,
+    # a prior value survives only while the token is unchanged, and a new
+    # token inherits neither (#726).
+    for field_name in ("token_expires_at", "token_type"):
+        value = _resolve_token_bound_field(meta, access_token, prior_meta, field_name)
+        if value is not None:
+            meta_data[field_name] = value
     existing["meta_ads"] = meta_data
 
 
@@ -883,6 +901,38 @@ def _resolve_token_obtained_at(
         if prior_ts:
             return str(prior_ts)
     return datetime.now(tz=timezone.utc).isoformat()
+
+
+def _resolve_token_bound_field(
+    meta: MetaAdsCredentials,
+    access_token: str,
+    prior_meta: dict[str, Any],
+    field_name: str,
+) -> str | None:
+    """Carry forward a fact that describes ONE SPECIFIC Meta token.
+
+    Unlike ``token_obtained_at`` there is no "derive it now" fallback: both
+    fields this backs are facts only Meta can supply (Graph ``debug_token``
+    at paste time, or the ``expires_in`` of an exchange), and inventing one
+    would put a countdown — or a token kind — on record that nothing backs.
+    So:
+
+    * an explicit value on the credentials object wins;
+    * otherwise the prior value survives only while the token is UNCHANGED —
+      a metadata-only re-save must not lose it, but a NEW token must never
+      inherit the old one's;
+    * otherwise no key is written, and every reader falls back to the
+      pre-#726 behaviour exactly as before.
+    """
+
+    value = getattr(meta, field_name, None)
+    if value:
+        return str(value)
+    if access_token and access_token == prior_meta.get("access_token"):
+        prior_value = prior_meta.get(field_name)
+        if prior_value:
+            return str(prior_value)
+    return None
 
 
 def save_credentials(

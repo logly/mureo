@@ -71,6 +71,14 @@ AMAZON_REFRESH_TOKEN_WARN_DAYS = 335
 # module is a pure filesystem read and must not pull in the auth stack.
 META_ACCESS_TOKEN_WARN_DAYS = 53
 
+# Warn once a token with a KNOWN expiry has fewer than this many days left
+# (#726). Two weeks is deliberately more headroom than the 7-day automatic
+# exchange (``auth._TOKEN_EXPIRY_REFRESH_LEAD_DAYS``): the warning also has
+# to serve the install that CANNOT auto-extend — no app_id/app_secret stored
+# — where the fix is a human generating a new system-user token in Business
+# settings, and a week's notice for that is not a week's notice at all.
+META_ACCESS_TOKEN_EXPIRY_WARN_DAYS = 14
+
 
 @dataclass(frozen=True)
 class StatusSnapshot:
@@ -111,12 +119,15 @@ class StatusSnapshot:
     # is never reported as expiring — older tokens have no fixed expiry.
     # Defaults to an empty dict so direct constructions keep working.
     amazon_token: dict[str, Any] = field(default_factory=dict)
-    # #579: the Meta access token's re-authentication clock —
-    # ``{"access_token_age_days": int | None, "access_token_expiring":
-    # bool}``. Only a token stored WITH ``app_id``/``app_secret`` can
-    # expire (see :func:`_detect_meta_token`), so the flag is False for a
-    # never-expiring system-user token however old it is. Defaults to an
-    # empty dict so direct constructions keep working.
+    # #579/#726: the Meta access token's two clocks —
+    # ``{"access_token_age_days", "access_token_expiring",
+    # "access_token_expires_at", "access_token_expires_in_days",
+    # "access_token_expiry_warning"}``. The first pair is the
+    # re-authentication nudge (only a token stored WITH
+    # ``app_id``/``app_secret`` can be exchanged, so the flag is False
+    # without them); the rest is the token's own expiry as Meta reported
+    # it, which needs no app pair. See :func:`_detect_meta_token`.
+    # Defaults to an empty dict so direct constructions keep working.
     meta_token: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
@@ -291,16 +302,31 @@ def _detect_meta_token(credentials_path: Path) -> dict[str, Any]:
       than that on disk means the refresh is not happening — a browser
       OAuth that has not run in months, or an exchange Graph keeps
       rejecting. That is the state worth a nudge;
-    - a **Business Manager system-user token** never expires, and the
-      paste card deliberately stores it WITHOUT the app pair to keep it
-      off the refresh clock. It is still stamped with an obtained-at
-      date, so age alone would grow into a warning about a credential
-      that cannot go stale. The app pair — the same condition
-      ``_should_refresh`` short-circuits on — is what separates the two.
+    - a **Business Manager system-user token** may be stored without the
+      app pair, in which case mureo cannot exchange it at all. It is still
+      stamped with an obtained-at date, so age alone would grow into a
+      warning about a token no exchange is going to renew. The app pair —
+      the same condition ``_should_refresh`` short-circuits on — is what
+      separates the two.
 
     An absent or unparseable stamp reports an unknown age and never
     warns: a hand-entered token clears the stamp on purpose (#578), so
     "no stamp" means "off the clock", not "infinitely old".
+
+    **The second, independent signal (#726): the token's own expiry.** A
+    system-user token does not live forever — Business Manager mints it
+    with a 60-day life — so the paste route asks Graph ``debug_token``
+    when it dies and stores the answer as ``token_expires_at``. When that
+    date is present it yields ``access_token_expires_in_days`` (negative
+    once the token is dead) and, inside
+    :data:`META_ACCESS_TOKEN_EXPIRY_WARN_DAYS`,
+    ``access_token_expiry_warning``.
+
+    That warning deliberately does NOT require the app pair. The age
+    warning above means "an exchange that should have happened did not",
+    which is meaningless without an exchange to make; this one means "this
+    credential dies on Tuesday", which is worth saying loudest to exactly
+    the operator mureo cannot help automatically.
 
     Read-only and never raises, like every other detector here.
     """
@@ -309,11 +335,19 @@ def _detect_meta_token(credentials_path: Path) -> dict[str, Any]:
     section = section if isinstance(section, dict) else {}
     age = _refresh_token_age_days(section.get("token_obtained_at"))
     refreshable = bool(section.get("app_id")) and bool(section.get("app_secret"))
+    raw_expiry = section.get("token_expires_at")
+    days_left = _days_until(raw_expiry)
     return {
         "access_token_age_days": age,
         "access_token_expiring": refreshable
         and age is not None
         and age > META_ACCESS_TOKEN_WARN_DAYS,
+        # Echoed only when it parsed, so the UI never renders a date it
+        # could not interpret.
+        "access_token_expires_at": str(raw_expiry) if days_left is not None else None,
+        "access_token_expires_in_days": days_left,
+        "access_token_expiry_warning": days_left is not None
+        and days_left < META_ACCESS_TOKEN_EXPIRY_WARN_DAYS,
     }
 
 
@@ -340,6 +374,32 @@ def _refresh_token_age_days(raw: Any) -> int | None:
         obtained = obtained.astimezone()
     delta = clock.server_now() - obtained
     return max(0, int(delta.total_seconds() // 86_400))
+
+
+def _days_until(raw: Any) -> int | None:
+    """Whole days from now until ``raw`` (ISO 8601), or ``None``.
+
+    Same parsing tolerance as :func:`_refresh_token_age_days` — and the
+    same helper would do, but for the sign: an age clamps at zero because a
+    stamp in the future is clock skew, while a countdown that has run out is
+    a real and important state. A token that died a week ago reports ``-7``,
+    not ``0``; "expires in 0 days" would read as "today", which is the one
+    thing it is not.
+    """
+
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    text = raw.strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    try:
+        expires = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if expires.tzinfo is None:
+        expires = expires.astimezone()
+    delta = expires - clock.server_now()
+    return int(delta.total_seconds() // 86_400)
 
 
 def _detect_credentials_oauth(credentials_path: Path) -> dict[str, bool]:

@@ -54,8 +54,11 @@ def test_stays_readable_under_the_size_budget() -> None:
       rule is the whole answer to "a later run replaced my proposals", and it
       cannot live anywhere but here: no schema can decide whether another
       skill's proposal is still live.
+    - #726: one — the Meta token-expiry bullet. A credential that dies on a
+      known date is a finding the daily run is the only place to raise, and
+      raising it after the token lapses is not raising it at all.
     """
-    assert len(_body().splitlines()) <= 175
+    assert len(_body().splitlines()) <= 176
 
 
 def test_two_modes_documented() -> None:
