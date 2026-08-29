@@ -116,3 +116,17 @@ async def test_every_meta_fetcher_goes_through_the_helper() -> None:
 
     source = inspect.getsource(_live_clients)
     assert source.count("await _open_meta_ads_client(") == 4
+
+
+def test_the_delivery_fetcher_awaits_the_helper_too() -> None:
+    """``_delivery_clients`` imports the same helper for the delivery-collapse
+    series. It is a second module, so the count above cannot see it — and an
+    un-awaited call there would unpack a coroutine, not a client."""
+
+    import inspect
+
+    from mureo.analytics.builtin import _delivery_clients
+
+    source = inspect.getsource(_delivery_clients)
+    assert "await _open_meta_ads_client(" in source
+    assert source.count("_open_meta_ads_client(account_id)") == 1
