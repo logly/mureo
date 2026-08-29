@@ -612,8 +612,25 @@
   // (8) The action log
   // --------------------------------------------------------------------
 
+  //: How many entries one page of the log holds (#729). The server sends the
+  //: last twenty, and twenty rows drawn at once ran longer than every figure
+  //: above them — the log stopped being a footnote and became the page.
+  const ACTIONS_PAGE_SIZE = 5;
+
+  //: The log the pager is currently walking, and where it stands in it. Held
+  //: on the module rather than in a closure because the two buttons live in
+  //: app.html and are wired once: a handler created with the first client's
+  //: rows would still be paging those rows on the fifth client's screen.
+  let actionRows = [];
+  let actionsPage = 0;
+
+  //: The static buttons whose listener is already attached. renderActions
+  //: runs on every summary load, so binding per render would stack handlers
+  //: and one click would step the log once per render that had happened.
+  const wiredActionButtons = new Set();
+
   /**
-   * The recent actions, one short row each.
+   * One entry, as a row.
    *
    * An entry with a display line shows that and nothing more. An entry
    * without one — every entry written before #706 — shows its summary with
@@ -622,63 +639,146 @@
    * this redesign exists to end. Nothing stored is altered: the full text is
    * one click away, and the entry itself is untouched.
    */
+  function actionRow(action) {
+    const li = el("li", "report-action");
+    const top = el("div", "report-action-top");
+    if (action && action.timestamp) {
+      top.appendChild(el("span", "report-action-time", relativeAge(action.timestamp)));
+    }
+    const line = DISPLAY.actionLine(action);
+    top.appendChild(
+      el(
+        "span",
+        "report-action-name",
+        line.title || REPORTS_SHARED.humanizeFlagWords((action && action.action) || "")
+      )
+    );
+    if (action && action.platform) {
+      top.appendChild(el("span", "report-action-platform", action.platform));
+    }
+    li.appendChild(top);
+    if (line.summary) {
+      li.appendChild(el("p", "report-action-summary", line.summary));
+    }
+    if (line.truncated) {
+      const more = el("details", "report-action-more");
+      more.appendChild(
+        el("summary", null, MUREO.t("dashboard.reports_action_read_more"))
+      );
+      more.appendChild(el("p", "report-action-full", line.full));
+      li.appendChild(more);
+    }
+    if (action && action.observation_due) {
+      const meta = el("div", "report-action-meta");
+      meta.appendChild(
+        el(
+          "span",
+          null,
+          MUREO.t("dashboard.reports_observation_due", {
+            date: String(action.observation_due),
+          })
+        )
+      );
+      li.appendChild(meta);
+    }
+    return li;
+  }
+
+  /** How many pages `actionRows` spans — at least one, even when empty. */
+  function actionsPageCount() {
+    return Math.max(1, Math.ceil(actionRows.length / ACTIONS_PAGE_SIZE));
+  }
+
+  /**
+   * Step the log by `step` pages, or do nothing at an end.
+   *
+   * The ends do NOT wrap: "next" on the last page is not "back to the
+   * newest". A browser will not deliver a click to a disabled button, but
+   * the clamp is here rather than only on the buttons so the invariant
+   * belongs to the renderer.
+   */
+  function stepActionsPage(step) {
+    const at = actionsPage + step;
+    if (at < 0 || at >= actionsPageCount()) return;
+    actionsPage = at;
+    drawActionsPage();
+  }
+
+  function wireActionButton(button, step) {
+    if (!button || wiredActionButtons.has(button)) return;
+    wiredActionButtons.add(button);
+    button.addEventListener("click", function () {
+      stepActionsPage(step);
+    });
+  }
+
+  /** The pager, or nothing at all when there is only one page to show. */
+  function drawActionsPager() {
+    const nav = document.querySelector("[data-reports-actions-pager]");
+    if (!nav) return;
+    const pages = actionsPageCount();
+    // One page is not a choice, and an account with three logged actions
+    // must see the block exactly as it did before #729.
+    if (actionRows.length <= ACTIONS_PAGE_SIZE) {
+      nav.hidden = true;
+      return;
+    }
+    nav.hidden = false;
+    const count = nav.querySelector("[data-reports-actions-page]");
+    if (count) {
+      count.textContent = MUREO.t("dashboard.reports_actions_page", {
+        page: actionsPage + 1,
+        pages: pages,
+      });
+    }
+    const prev = nav.querySelector("[data-reports-actions-prev]");
+    const next = nav.querySelector("[data-reports-actions-next]");
+    if (prev) {
+      prev.disabled = actionsPage === 0;
+      wireActionButton(prev, -1);
+    }
+    if (next) {
+      next.disabled = actionsPage >= pages - 1;
+      wireActionButton(next, 1);
+    }
+  }
+
+  /** Redraw the rows for the current page, and the pager under them. */
+  function drawActionsPage() {
+    const list = document.querySelector("[data-reports-actions-list]");
+    if (!list) return;
+    list.textContent = "";
+    const from = actionsPage * ACTIONS_PAGE_SIZE;
+    actionRows.slice(from, from + ACTIONS_PAGE_SIZE).forEach(function (action) {
+      list.appendChild(actionRow(action));
+    });
+    drawActionsPager();
+  }
+
+  /**
+   * The recent actions, five to a page, newest first.
+   *
+   * The order is the server's and is not touched. `actions` is copied rather
+   * than kept by reference: the pager reads it again on every click, and a
+   * caller that later mutated its own array would silently change what is on
+   * screen.
+   */
   function renderActions(actions) {
     const block = document.querySelector("[data-reports-actions]");
     const list = document.querySelector("[data-reports-actions-list]");
     if (!block || !list) return false;
-    list.textContent = "";
-    const rows = Array.isArray(actions) ? actions : [];
-    if (rows.length === 0) {
+    actionRows = Array.isArray(actions) ? actions.slice() : [];
+    // New data is a new log: page three of the client just left is not page
+    // three of this one, and a shorter log would not even have a page three.
+    actionsPage = 0;
+    if (actionRows.length === 0) {
+      list.textContent = "";
       block.hidden = true;
+      drawActionsPager();
       return false;
     }
     block.hidden = false;
-    rows.forEach(function (action) {
-      const li = el("li", "report-action");
-      const top = el("div", "report-action-top");
-      if (action && action.timestamp) {
-        top.appendChild(
-          el("span", "report-action-time", relativeAge(action.timestamp))
-        );
-      }
-      const line = DISPLAY.actionLine(action);
-      top.appendChild(
-        el(
-          "span",
-          "report-action-name",
-          line.title || REPORTS_SHARED.humanizeFlagWords((action && action.action) || "")
-        )
-      );
-      if (action && action.platform) {
-        top.appendChild(el("span", "report-action-platform", action.platform));
-      }
-      li.appendChild(top);
-      if (line.summary) {
-        li.appendChild(el("p", "report-action-summary", line.summary));
-      }
-      if (line.truncated) {
-        const more = el("details", "report-action-more");
-        more.appendChild(
-          el("summary", null, MUREO.t("dashboard.reports_action_read_more"))
-        );
-        more.appendChild(el("p", "report-action-full", line.full));
-        li.appendChild(more);
-      }
-      if (action && action.observation_due) {
-        const meta = el("div", "report-action-meta");
-        meta.appendChild(
-          el(
-            "span",
-            null,
-            MUREO.t("dashboard.reports_observation_due", {
-              date: String(action.observation_due),
-            })
-          )
-        );
-        li.appendChild(meta);
-      }
-      list.appendChild(li);
-    });
+    drawActionsPage();
     return true;
   }
 

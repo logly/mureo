@@ -3580,6 +3580,61 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-variant-numeric: tabular-nums;
 }
 
+/* Pager for the log (#729) — five rows at a time. Quiet and right-aligned:
+   it sits under a list that is itself the least important block on the
+   screen, so it must not read as a second toolbar. */
+.dashboard-reports-actions-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+/* Same `[hidden]`-override gotcha as .dashboard-reports-period: the explicit
+   `display` above beats the UA `[hidden] { display: none }`, so an account
+   whose whole log fits on one page would keep an inert pager on screen. */
+.dashboard-reports-actions-pager[hidden] {
+  display: none;
+}
+
+.reports-actions-page-btn {
+  appearance: none;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  font: inherit;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
+  padding: 3px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reports-actions-page-btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+
+/* An end of the log, stated rather than hidden: the button stays where the
+   eye left it so the pair does not shift when a page changes. */
+.reports-actions-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.reports-actions-page-btn:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+.reports-actions-page-count {
+  font-size: var(--type-caption-size);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Empty state — no platforms / no synced data: point at sync-state. */
 .dashboard-reports-empty {
   margin-top: 18px;
