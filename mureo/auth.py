@@ -81,6 +81,16 @@ class MetaAdsCredentials:
     Business Manager system-user token can be minted at any point before it
     is pasted and is issued with a 60-day life. When it is known,
     :func:`_should_refresh` uses it instead of the age fallback.
+
+    ``token_type`` (#726) is Graph's own ``debug_token`` verdict —
+    ``"SYSTEM_USER"``, ``"USER"``, … — recorded only where mureo actually
+    asked, which today is the configure UI's paste route. It exists to pick
+    the right *exchange*: Meta documents ``set_token_expires_in_60_days``
+    for refreshing a system-user token and not for the long-lived user
+    token flow. ``None`` means "not established" (a browser-OAuth
+    credential, anything written before this field existed, or a paste whose
+    inspection Graph declined) and is treated as "not a system user", which
+    is the safe direction — the exchange succeeds without the parameter.
     """
 
     access_token: str = field(repr=False)
@@ -89,6 +99,7 @@ class MetaAdsCredentials:
     token_obtained_at: str | None = None  # ISO 8601 timestamp
     account_id: str | None = None  # act_XXXX format
     token_expires_at: str | None = None  # ISO 8601 timestamp, when known
+    token_type: str | None = None  # Graph debug_token "type", when known
 
 
 # Amazon Ads official-MCP bridge (#113 Phase 1). region picks the
@@ -228,6 +239,7 @@ def load_meta_ads_credentials(
                 token_obtained_at=meta_section.get("token_obtained_at"),
                 account_id=meta_section.get("account_id"),
                 token_expires_at=meta_section.get("token_expires_at"),
+                token_type=meta_section.get("token_type"),
             )
 
     # Environment variable fallback
@@ -435,6 +447,11 @@ _TOKEN_REFRESH_THRESHOLD_DAYS = 53
 #: age proxy can be off by the whole lifetime.
 _TOKEN_EXPIRY_REFRESH_LEAD_DAYS = 7
 
+#: Graph's ``debug_token`` ``type`` for a Business Manager system user. The
+#: only value that arms ``set_token_expires_in_60_days`` — see
+#: :func:`_is_system_user_token`.
+_META_SYSTEM_USER_TOKEN_TYPE = "SYSTEM_USER"
+
 _META_GRAPH_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token"
 _refresh_lock = asyncio.Lock()
 
@@ -587,20 +604,54 @@ async def refresh_meta_token_if_needed(
         return refreshed
 
 
-def _parse_iso_utc(raw: str | None) -> datetime | None:
+def _parse_iso_utc(
+    raw: str | None, *, field_name: str = "timestamp"
+) -> datetime | None:
     """Parse an ISO 8601 stamp to an aware UTC datetime, or ``None``.
 
     A naive stamp keeps the pre-existing reading — ``astimezone`` resolves it
     against the host clock — so extracting this helper out of
     :func:`_should_refresh` changes no behaviour on the age branch.
+
+    An unparseable value is reported, not swallowed: the caller silently
+    falls back to a different clock, so a typo in a hand-edited
+    ``credentials.json`` would otherwise change when mureo refreshes with no
+    trace of why. Matches the warning ``_should_refresh`` already emitted for
+    ``token_obtained_at``. Absent is not the same as malformed and stays
+    quiet — most credentials legitimately carry neither field.
     """
 
-    if not raw or not isinstance(raw, str):
+    if raw is None or raw == "":
+        return None
+    if not isinstance(raw, str):
+        logger.warning("Invalid %s (not a string): %r", field_name, raw)
         return None
     try:
         return datetime.fromisoformat(raw).astimezone(timezone.utc)
     except (ValueError, TypeError):
+        logger.warning("Invalid %s format: %s", field_name, raw)
         return None
+
+
+def _is_system_user_token(credentials: MetaAdsCredentials) -> bool:
+    """Return True only when Graph itself called this a system-user token.
+
+    The verdict comes from ``debug_token`` at paste time and is stored as
+    ``token_type``. Unknown is *not* a system user: a browser-OAuth
+    credential, anything stored before this field existed, and a paste whose
+    inspection Graph declined all read as ``None``, and all of them must go
+    through the plain long-lived user token exchange.
+
+    Compared case-insensitively and stripped. Graph's documented spelling is
+    upper-case, but the value round-trips through JSON on disk and through a
+    UI response, and a security-relevant branch should not turn on a stray
+    space.
+    """
+
+    raw = credentials.token_type
+    if not raw or not isinstance(raw, str):
+        return False
+    return raw.strip().upper() == _META_SYSTEM_USER_TOKEN_TYPE
 
 
 def _should_refresh(credentials: MetaAdsCredentials) -> bool:
@@ -627,7 +678,9 @@ def _should_refresh(credentials: MetaAdsCredentials) -> bool:
     if not credentials.app_id or not credentials.app_secret:
         return False
 
-    expires = _parse_iso_utc(credentials.token_expires_at)
+    expires = _parse_iso_utc(
+        credentials.token_expires_at, field_name="token_expires_at"
+    )
     if expires is not None:
         remaining = expires - datetime.now(tz=timezone.utc)
         return remaining <= timedelta(days=_TOKEN_EXPIRY_REFRESH_LEAD_DAYS)
@@ -635,12 +688,10 @@ def _should_refresh(credentials: MetaAdsCredentials) -> bool:
     if not credentials.token_obtained_at:
         return False
 
-    obtained = _parse_iso_utc(credentials.token_obtained_at)
+    obtained = _parse_iso_utc(
+        credentials.token_obtained_at, field_name="token_obtained_at"
+    )
     if obtained is None:
-        logger.warning(
-            "Invalid token_obtained_at format: %s",
-            credentials.token_obtained_at,
-        )
         return False
 
     age = datetime.now(tz=timezone.utc) - obtained
@@ -670,7 +721,7 @@ async def _call_refresh_api(
         "client_secret": credentials.app_secret,
         "fb_exchange_token": credentials.access_token,
     }
-    if credentials.token_expires_at:
+    if _is_system_user_token(credentials):
         # Meta documents this parameter for refreshing an *expiring* system
         # user access token — "set_token_expires_in_60_days: set to true to
         # refresh an expiring system user access token", returning a token
@@ -678,8 +729,13 @@ async def _call_refresh_api(
         # (developers.facebook.com/docs/business-management-apis/system-users/
         # install-apps-and-generate-tokens). Without it the exchange is the
         # plain long-lived *user* token flow, which Meta documents with no
-        # such parameter — so it is sent only on the branch that knows the
-        # token expires, and the pre-existing user-token path is untouched.
+        # such parameter, so the pre-existing OAuth path must stay untouched.
+        #
+        # The gate is the RECORDED TOKEN TYPE, not "do we know an expiry".
+        # The expiry does not distinguish the two: a user token refreshed
+        # once comes back with an ``expires_in``, which is written to disk as
+        # ``token_expires_at`` — so an expiry-based gate says "system user"
+        # about a browser-OAuth credential from its second refresh onward.
         params["set_token_expires_in_60_days"] = "true"
 
     # POST (not GET) so the client_secret and the token itself travel in the

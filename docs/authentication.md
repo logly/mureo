@@ -300,7 +300,7 @@ mureo can automatically refresh Long-Lived Tokens before they expire, so you nev
 2. Each time Meta Ads credentials are loaded, mureo checks whether the token is due.
 3. **If `token_expires_at` is known**, the token is due **7 days before that date**. This is the only correct clock for a pasted system-user token: it may have been minted at any point in its 60-day life, so its age says little about how long it has left.
 4. **If it is not known**, mureo falls back to the token's age: **53+ days old**, a 7-day margin before the ~60-day life of a long-lived user token that mureo minted itself.
-5. Either way mureo exchanges it for a fresh token via the Meta Graph API — adding `set_token_expires_in_60_days=true` when the stored token is a known-expiring one — and writes the new token, timestamp and expiry back to `credentials.json` atomically.
+5. Either way mureo exchanges it for a fresh token via the Meta Graph API. `set_token_expires_in_60_days=true` is added **only when `token_type` says `SYSTEM_USER`** — Meta documents that parameter for refreshing a system-user token and not for the long-lived user token exchange, and the token's own kind is the only thing that distinguishes the two. The new token, timestamp and expiry are written back to `credentials.json` atomically.
 6. This runs on every path that opens a Meta client: the MCP tools and, since #726, the analytics adapters behind `mureo_analytics_run` and the report skills.
 
 ### Requirements
@@ -311,6 +311,7 @@ mureo can automatically refresh Long-Lived Tokens before they expire, so you nev
 | `app_secret` | Yes | Needed for the token exchange API call |
 | `token_obtained_at` | Auto | Written by `mureo auth setup` and the paste card; can be added manually (ISO 8601 format) |
 | `token_expires_at` | Auto | Written by the paste card from Meta's `debug_token`, and by each refresh. When present it replaces the 53-day age rule with "7 days before this date" |
+| `token_type` | Auto | Graph's `debug_token` verdict, written by the paste card only. `SYSTEM_USER` selects the system-user refresh; absent or anything else uses the documented user-token exchange |
 
 If `app_id` or `app_secret` are missing, auto-refresh is silently skipped and the existing token is used as-is.
 
@@ -323,7 +324,8 @@ If `app_id` or `app_secret` are missing, auto-refresh is silently skipped and th
     "app_id": "YOUR_APP_ID",
     "app_secret": "YOUR_APP_SECRET",
     "token_obtained_at": "2025-12-01T00:00:00Z",
-    "token_expires_at": "2026-01-30T00:00:00Z"
+    "token_expires_at": "2026-01-30T00:00:00Z",
+    "token_type": "SYSTEM_USER"
   }
 }
 ```

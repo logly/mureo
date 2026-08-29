@@ -211,13 +211,20 @@ def _clear_stale_refresh_clock(name: str, section_payload: dict[str, Any]) -> No
     writer is a pure filesystem merge with no Graph call, which is the same
     reason the obtained-at stamp is cleared rather than set to now.
 
+    ``token_type`` (#726) goes for the third time for the same reason: it is
+    Graph's verdict on the token being replaced, and it decides which
+    exchange the refresh path uses. Inherited by a hand-pasted token of a
+    different kind, it would send a system-user-only parameter on a user
+    token exchange — the very confusion the field was added to end.
+
     Only the token write clears the clock — writing ``META_ADS_ACCOUNT_ID``,
-    say, leaves the token untouched, so its stamp and expiry still describe
-    it.
+    say, leaves the token untouched, so its stamp, expiry and type still
+    describe it.
     """
     if name == "META_ADS_ACCESS_TOKEN":
         section_payload.pop("token_obtained_at", None)
         section_payload.pop("token_expires_at", None)
+        section_payload.pop("token_type", None)
 
 
 def write_credential_env_var(

@@ -865,9 +865,13 @@ def _merge_meta_section(
     token_obtained_at = _resolve_token_obtained_at(meta, access_token, prior_meta)
     if token_obtained_at is not None:
         meta_data["token_obtained_at"] = token_obtained_at
-    token_expires_at = _resolve_token_expires_at(meta, access_token, prior_meta)
-    if token_expires_at is not None:
-        meta_data["token_expires_at"] = token_expires_at
+    # Both describe THIS token, so both follow the same rule: explicit wins,
+    # a prior value survives only while the token is unchanged, and a new
+    # token inherits neither (#726).
+    for field_name in ("token_expires_at", "token_type"):
+        value = _resolve_token_bound_field(meta, access_token, prior_meta, field_name)
+        if value is not None:
+            meta_data[field_name] = value
     existing["meta_ads"] = meta_data
 
 
@@ -899,33 +903,35 @@ def _resolve_token_obtained_at(
     return datetime.now(tz=timezone.utc).isoformat()
 
 
-def _resolve_token_expires_at(
+def _resolve_token_bound_field(
     meta: MetaAdsCredentials,
     access_token: str,
     prior_meta: dict[str, Any],
+    field_name: str,
 ) -> str | None:
-    """When the Meta token dies, for the #726 expiry clock and the UI.
+    """Carry forward a fact that describes ONE SPECIFIC Meta token.
 
-    Unlike ``token_obtained_at`` there is no "stamp now" fallback: an expiry
-    is a fact only Meta can supply (Graph ``debug_token`` at paste time, or
-    the ``expires_in`` of an exchange), and inventing one would put a
-    countdown on the dashboard that nothing backs. So:
+    Unlike ``token_obtained_at`` there is no "derive it now" fallback: both
+    fields this backs are facts only Meta can supply (Graph ``debug_token``
+    at paste time, or the ``expires_in`` of an exchange), and inventing one
+    would put a countdown — or a token kind — on record that nothing backs.
+    So:
 
     * an explicit value on the credentials object wins;
     * otherwise the prior value survives only while the token is UNCHANGED —
-      a metadata-only re-save must not lose the date, but a NEW token must
-      never inherit the dead one's expiry;
+      a metadata-only re-save must not lose it, but a NEW token must never
+      inherit the old one's;
     * otherwise no key is written, and every reader falls back to the
-      53-day age heuristic exactly as before.
+      pre-#726 behaviour exactly as before.
     """
 
-    expires_at = getattr(meta, "token_expires_at", None)
-    if expires_at:
-        return str(expires_at)
+    value = getattr(meta, field_name, None)
+    if value:
+        return str(value)
     if access_token and access_token == prior_meta.get("access_token"):
-        prior_expiry = prior_meta.get("token_expires_at")
-        if prior_expiry:
-            return str(prior_expiry)
+        prior_value = prior_meta.get(field_name)
+        if prior_value:
+            return str(prior_value)
     return None
 
 

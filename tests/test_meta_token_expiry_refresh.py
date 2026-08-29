@@ -61,6 +61,7 @@ def _creds(
     *,
     token_obtained_at: str | None = None,
     token_expires_at: str | None = None,
+    token_type: str | None = None,
 ) -> MetaAdsCredentials:
     return MetaAdsCredentials(
         access_token="old-token",
@@ -68,6 +69,7 @@ def _creds(
         app_secret="secret-456",
         token_obtained_at=token_obtained_at or _days_ago_iso(5),
         token_expires_at=token_expires_at,
+        token_type=token_type,
     )
 
 
@@ -201,7 +203,15 @@ async def test_expiry_alone_does_not_arm_the_refresh_without_the_app_pair() -> N
 
 
 async def test_expiring_token_exchange_sets_the_60_day_flag() -> None:
-    creds = _creds(token_obtained_at=_days_ago_iso(5), token_expires_at=_in_days(3))
+    """``token_type`` is what arms the parameter, not the expiry. The two
+    travel together for a pasted system-user token, but the expiry alone
+    does not imply the kind — see ``test_meta_token_provenance``."""
+
+    creds = _creds(
+        token_obtained_at=_days_ago_iso(5),
+        token_expires_at=_in_days(3),
+        token_type="SYSTEM_USER",
+    )
 
     patcher, client = _patched_graph(_graph_ok())
     try:
@@ -221,7 +231,9 @@ async def test_unknown_expiry_exchange_omits_the_60_day_flag() -> None:
     parameter, and mureo does not add one to a call Meta documents without
     it."""
 
-    creds = _creds(token_obtained_at=_days_ago_iso(55), token_expires_at=None)
+    creds = _creds(
+        token_obtained_at=_days_ago_iso(55), token_expires_at=None, token_type=None
+    )
 
     patcher, client = _patched_graph(_graph_ok())
     try:

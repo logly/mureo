@@ -152,6 +152,47 @@ def test_save_persists_obtained_at_and_expires_at(wizard: ConfigureWizard) -> No
     assert meta["token_obtained_at"]
 
 
+def test_save_persists_the_token_type_graph_reported(
+    wizard: ConfigureWizard,
+) -> None:
+    """The refresh path picks its exchange from this field, so the paste
+    route is the one place that can establish it (#726)."""
+
+    body = _save(
+        wizard,
+        {"access_token": "sys-tok"},
+        _probe_result(token_info=_TOKEN_INFO),
+    )
+
+    assert body["token_type"] == "SYSTEM_USER"
+    assert _stored(wizard)["token_type"] == "SYSTEM_USER"
+
+
+def test_a_user_token_is_recorded_as_a_user_token(wizard: ConfigureWizard) -> None:
+    """Graph's verdict is stored verbatim, not normalised to what the card
+    asked for. Pasting a plain user token into the system-user field must
+    not arm the system-user exchange."""
+
+    info = dict(_TOKEN_INFO, type="USER")
+    _save(wizard, {"access_token": "user-tok"}, _probe_result(token_info=info))
+
+    assert _stored(wizard)["token_type"] == "USER"
+
+
+def test_a_failed_inspection_records_no_token_type(wizard: ConfigureWizard) -> None:
+    """No verdict is not "probably a system user". The absent key reads as
+    "not established", which keeps the exchange on the documented user-token
+    form."""
+
+    _save(
+        wizard,
+        {"access_token": "sys-tok"},
+        _probe_result(token_inspect_error="Graph said no"),
+    )
+
+    assert "token_type" not in _stored(wizard)
+
+
 def test_save_without_a_known_expiry_records_no_expiry_key(
     wizard: ConfigureWizard,
 ) -> None:

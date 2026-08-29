@@ -47,6 +47,7 @@ def _write_stale_meta_section(path: Path) -> None:
                     "account_id": "act_222",
                     "token_obtained_at": _STALE_STAMP,
                     "token_expires_at": _STALE_EXPIRY,
+                    "token_type": "SYSTEM_USER",
                 },
                 # A second provider must survive the single-field write.
                 "google_ads": {"developer_token": "dev-token"},
@@ -101,6 +102,37 @@ class TestMetaAccessTokenLeavesRefreshClock:
         creds = load_meta_ads_credentials(path)
         assert creds is not None
         assert _should_refresh(creds) is False
+
+    def test_stale_token_type_is_dropped(self, tmp_path: Path) -> None:
+        """#726: Graph's verdict describes the replaced token. Inherited by
+        a hand-pasted token of a different kind, it would put a
+        system-user-only parameter on the user-token exchange — the exact
+        confusion the field exists to end."""
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCESS_TOKEN", "SYSTEM-USER-TOKEN", credentials_path=path
+        )
+
+        meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+        assert "token_type" not in meta
+        creds = load_meta_ads_credentials(path)
+        assert creds is not None
+        assert creds.token_type is None
+
+    def test_writing_another_meta_field_keeps_the_token_type(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCOUNT_ID", "act_999", credentials_path=path
+        )
+
+        meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+        assert meta["token_type"] == "SYSTEM_USER"
 
     def test_writing_another_meta_field_keeps_the_expiry(self, tmp_path: Path) -> None:
         path = tmp_path / "credentials.json"

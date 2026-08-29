@@ -1532,6 +1532,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
 
         token_info = probe.get("token_info") or {}
         token_expires_at = token_info.get("expires_at")
+        # Graph's own verdict on what kind of token this is. Persisted so the
+        # refresh path can pick the right exchange without inferring the kind
+        # from whether an expiry happens to be known — see
+        # ``mureo.auth._is_system_user_token``. ``None`` when the inspection
+        # failed, which reads as "not a system user".
+        token_type = token_info.get("type")
         # Machine-readable codes, not prose: the card maps each to an i18n
         # string, so the wording lives in the locale file and the wire stays
         # stable for downstream consumers.
@@ -1548,7 +1554,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                     "scopes": probe["scopes"],
                     "missing_scopes": probe["missing_scopes"],
                     "accounts": probe["accounts"],
-                    "token_type": token_info.get("type"),
+                    "token_type": token_type,
                     "token_expires_at": token_expires_at,
                     "data_access_expires_at": token_info.get("data_access_expires_at"),
                     "warnings": warnings,
@@ -1590,6 +1596,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                     app_secret=app_secret,
                     token_obtained_at=token_obtained_at,
                     token_expires_at=token_expires_at,
+                    token_type=token_type,
                 ),
                 account_id=account_id,
             )
@@ -1622,7 +1629,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 "account_id": account_id,
                 "scopes": probe["scopes"],
                 "missing_scopes": probe["missing_scopes"],
-                "token_type": token_info.get("type"),
+                "token_type": token_type,
                 "token_obtained_at": token_obtained_at,
                 "token_expires_at": token_expires_at,
                 "data_access_expires_at": token_info.get("data_access_expires_at"),

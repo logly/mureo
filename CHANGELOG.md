@@ -55,6 +55,17 @@
   parameters in the body, the same rule the two Graph OAuth calls already
   followed.
 
+- **The system-user refresh parameter no longer reaches a user token**
+  (#726). `set_token_expires_in_60_days` was gated on "do we know when this
+  token expires", used as a stand-in for "is this a system-user token". The
+  stand-in decayed on its own: a browser-OAuth credential is stored with no
+  expiry, but the first refresh response carries an `expires_in` that mureo
+  writes back — so from the second refresh onward, a plain user token was
+  exchanged with a parameter Meta documents only for system users. The gate
+  is now Graph's own `debug_token` verdict, recorded as `token_type` where
+  mureo actually asked. Unknown means "not a system user", which is the safe
+  direction: the exchange works without the parameter.
+
 - **Graph error text is bounded before it reaches a log** (#726). The
   account-discovery module rendered Meta's `error.message` at whatever
   length Meta sent, newlines included, into a raised message and an
