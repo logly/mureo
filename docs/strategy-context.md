@@ -1387,7 +1387,7 @@ first, and any text on it has to be short, partial and instantly readable:
    `display.breakdown`, each row carrying the four-state badge;
 5. `display.stated_values` as a **chip row**, and `display.highlights` as
    tone-coloured chips;
-6. the **action log**, one short line per entry;
+6. the **action log**, one short line per entry, five to a page;
 7. the agent's narrative, behind an *Open the report text* disclosure.
 
 **The funnel and the chart are derived, not written.** That is exactly why
@@ -1430,6 +1430,15 @@ journal and stays in the drill-down. A row without one shows its `summary`
 with the markdown emphasis removed (`**bold**` reaching a person as asterisks
 was the reported defect) and cut at 120 characters, with *Read more* offering
 the rest. Nothing stored is altered by either.
+
+On the detail screen the log is also **paged, five entries at a time** (#729).
+The server sends the last twenty, and twenty rows drawn at once ran longer
+than every figure above them — the log stopped being a footnote and became
+the page. The pager appears only when there is a second page, so an account
+with three logged actions sees exactly the block it saw before; the ends do
+not wrap, and a new client (or a refresh) always opens on page one, because
+page three of the client just left is not page three of this one. The order
+is the server's, newest first, and nothing about a row's own shape changes.
 
 #### The list screen a roster gets (#706 step 3-b)
 

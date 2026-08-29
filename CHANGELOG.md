@@ -2,6 +2,18 @@
 
 ### Added
 
+- **The recent-actions log on a client's detail screen is read five at a
+  time** (#729). The server sends the last twenty entries and all twenty were
+  drawn at once, so on an actively managed account the log ran longer than
+  every figure above it — the block that was meant to be a footnote became
+  the page, and the funnel, the chart and the tables were pushed off screen.
+  It now shows five rows with a pager under them, in the order the server
+  sent them (newest first). The pager appears only when there is a second
+  page, so an account with three logged actions sees exactly the screen it
+  saw before; the ends do not wrap, and opening another client always starts
+  at page one. Nothing about a row itself changed, and no more entries are
+  fetched than before.
+
 - **The Meta connection now shows when its token expires, and renews it
   before it does** (#726). Business Manager issues system-user tokens with a
   60-day life. The configure UI's paste route asked Graph nothing about the

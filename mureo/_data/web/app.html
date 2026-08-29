@@ -554,6 +554,21 @@
                 <div class="dashboard-reports-block" data-reports-actions hidden>
                   <h3 data-i18n="dashboard.reports_actions_title">Recent actions</h3>
                   <ul class="dashboard-reports-actions-list" data-reports-actions-list></ul>
+                  <!-- Five rows at a time (#729). Static markup rather than
+                       nodes built per render, so the two buttons keep one
+                       listener each however many times the log is redrawn.
+                       Hidden outright when the log fits on one page: a quiet
+                       account must see exactly the block it saw before. -->
+                  <div class="dashboard-reports-actions-pager" data-reports-actions-pager hidden>
+                    <button type="button" class="reports-actions-page-btn"
+                            data-reports-actions-prev
+                            data-i18n="dashboard.reports_actions_prev">Previous</button>
+                    <span class="reports-actions-page-count" aria-live="polite"
+                          data-reports-actions-page></span>
+                    <button type="button" class="reports-actions-page-btn"
+                            data-reports-actions-next
+                            data-i18n="dashboard.reports_actions_next">Next</button>
+                  </div>
                 </div>
 
                 <!-- The agent's own prose, kept but no longer rendered at
