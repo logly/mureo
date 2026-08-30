@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.17.1] - 2026-08-30
+
 ### Added
 
 - **The recent-actions log on a client's detail screen is read five at a
