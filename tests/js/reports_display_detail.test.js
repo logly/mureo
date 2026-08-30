@@ -299,6 +299,47 @@ test.describe("a client with a full display contract", function () {
     assert.equal(shown(page, "data-reports-latest"), false);
   });
 
+  test.it("prints a stated FIGURE the way the rest of the screen does", async function () {
+    // A stated CPA read `3855` while the breakdown table beside it printed
+    // `3,855` for the same kind of figure (#734). One screen, one way of
+    // writing a number — and the way is reports_format.js's, asked for
+    // rather than copied, which is what #606/#609 cost when it was copied.
+    const page = await openDetail({
+      display: Object.assign({}, FULL_DISPLAY, {
+        stated_values: [
+          { label: "CPA", value: 3855 },
+          { label: "ROAS", value: 3.4 },
+          { label: "target", value: "3.4x" },
+          { label: "goals met", value: "3 of 7" },
+        ],
+      }),
+      platforms: FULL_PLATFORMS,
+    });
+    const values = page.root
+      .querySelector("[data-reports-stated-body]")
+      .querySelectorAll(".reports-stated-value")
+      .map(function (n) {
+        return n.textContent;
+      });
+    assert.deepEqual(values, [
+      // Grouped …
+      (3855).toLocaleString(),
+      // … but nothing rounded away: a ROAS is not an integer, and this
+      // layer has no column to fit it into.
+      (3.4).toLocaleString(),
+      // A value written as text is the operator's own, unit and all.
+      "3.4x",
+      "3 of 7",
+    ]);
+    // Expected against `toLocaleString` rather than against the literal
+    // "3,855", because the separator is the runtime's and the suite runs on
+    // three OSes. That it GROUPED at all is the assertion below: whatever
+    // the separator is, the chip is no longer the bare digits.
+    assert.notEqual(values[0], "3855", "the figure was printed ungrouped");
+    assert.equal(values[1].indexOf("3"), 0, "the fraction was not rounded off");
+    assert.notEqual(values[1], "3", "a stated 3.4 must not print as 3");
+  });
+
   test.it("colours the highlight chips from their tone", async function () {
     const page = await openDetail({
       display: FULL_DISPLAY,

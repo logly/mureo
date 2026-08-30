@@ -1218,6 +1218,24 @@ allowed rather than refused because a report legitimately states things a
 number cannot carry, and refusing those would push exactly that content
 back into the prose this contract exists to empty. A sentence is refused.
 
+The two kinds are then printed differently, and deliberately (#734). A value
+stated as a **number** is printed the way every other figure on the screen
+is — `reports_format.js`'s `formatNumber`, i.e. thousands grouping and no
+currency symbol, because the wire carries raw numbers and no platform's
+currency. Nothing is rounded: a stated ROAS of `3.4` prints as `3.4`, since
+this chip has no column to fit. A value stated as a **string** passes through
+untouched, unit and all — `"3.4x"` is the operator's own text, and the
+contract's promise is that what was written is what is shown. The chip row
+is headed *Key figures in this report* (レポートの主要数値); it was *Values
+this report stated* until the owner read it as a caveat rather than a
+heading. The LEGACY detail screen's equivalent — the label/value table a
+client with no contract gets — carries the same heading, from its own key
+(`reports_stats_title`, previously *Stated by this report* / 「このレポート
+が記載した値」). Two keys because the two screens are separate surfaces and
+one can be re-worded without the other; one wording because they name the
+same thing, and a heading the owner rejected must not survive on the path
+most installs are actually on.
+
 **What is deliberately NOT in the contract.** The KPI funnel (spend →
 impressions → clicks → conversions, with CPM / CPC / CPA) and the daily
 chart. Both are computed from the canonical totals and `PlatformState.daily`
@@ -1440,6 +1458,13 @@ not wrap, and a new client (or a refresh) always opens on page one, because
 page three of the client just left is not page three of this one. The order
 is the server's, newest first, and nothing about a row's own shape changes.
 
+That last clause was true of the renderer and false of the server until
+#734: `_build_recent_actions` handed over the tail of `action_log` in log
+order, so page one was the *oldest* of the twenty and yesterday's work sat
+behind the pager. The window is unchanged; it is handed over reversed. The
+list screen's "today" feed is unaffected either way — it sorts the rows on
+their timestamps itself, because it merges several clients' logs.
+
 #### The list screen a roster gets (#706 step 3-b)
 
 Above the portfolio strip, a roster of **two clients or more** now opens with
@@ -1530,6 +1555,15 @@ air between them instead of a divider. The #691 timeline survives that
 intact: the rail is still the list's own left border and each entry still
 carries its dot on it, with the list opening a gutter so a card starts clear
 of the dots rather than covering them.
+
+The proposals panel is the same rule seen from the other side (#734). Its
+cards are warm-tinted rather than white — they are owed work, not a figure —
+and they ran the full width of the panel's padding box, so a card's edge met
+the panel's own edge with nothing between them and read as the panel's
+lining. The list they sit in is inset 10px on each side; the panel's heading,
+its count and its "more" line keep the edge they share with every other
+panel, so the cards read as a group set in from the text that introduces
+them rather than as a panel knocked out of alignment.
 
 Three things follow from moving a ground under content that was drawn against
 a different one. The breakdown tables' header rows were tinted with the ground

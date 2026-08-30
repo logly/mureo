@@ -1,5 +1,40 @@
 ## [Unreleased]
 
+### Changed
+
+- **The detail screen's figures read as figures** (#734). Three things the
+  owner's review of v0.17.1 found on one screen. The chip row of what the
+  report stated is headed **"Key figures in this report"**
+  (レポートの主要数値) rather than "Values this report stated", which read as
+  a caveat about the figures instead of as a name for them. The same heading
+  now names the same thing on the LEGACY detail screen — the label/value
+  table a client with no display contract gets, previously "Stated by this
+  report" — because that is the screen most installs are on. A figure in that
+  row is now printed the way every other figure on the screen is printed — a
+  stated CPA of 3855 read `3855` beside a breakdown table printing `3,855`
+  for the same kind of number — and it is the screen's own formatter that
+  prints it, not a second one: thousands grouping, no currency symbol,
+  nothing rounded away, so a stated ROAS of 3.4 is still `3.4`. A value the
+  report wrote as text (`"3.4x"`, `"3 of 7"`) still passes through exactly as
+  written. And the proposal cards, which ran the full width of their panel
+  and read as pressed against its frame, are inset from its edges; the
+  panel's heading and counts keep the alignment they share with every other
+  panel.
+
+### Fixed
+
+- **The recent-actions log opens on the newest entries, not the oldest**
+  (#734). The server sends the last twenty action-log entries, and it sent
+  them in log order — oldest of the twenty first. Since v0.17.1 draws five
+  at a time (#729), that put a fortnight-old entry at the top of the block
+  and yesterday's work behind the pager, on exactly the accounts the pager
+  was added for. The v0.17.1 entry for #729 said the rows came "in the order
+  the server sent them (newest first)"; the renderer did send them in the
+  server's order, but the claim about the server was wrong. The same twenty
+  entries are handed over newest first now. The list screen's "today" feed
+  is unchanged — it merges several clients' logs and sorts them on their
+  timestamps itself.
+
 ## [0.17.1] - 2026-08-30
 
 ### Added

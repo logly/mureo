@@ -5188,6 +5188,21 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   left: -21px;
 }
 
+/* ---- the proposal cards' inset (#734) -------------------------------- */
+/* The cards ran the full width of the panel's 16px padding box, so a tinted
+   card met the panel's own edge with only that padding between them and the
+   owner read them as pressed against the frame. 10px each side puts air
+   between the two edges, which is what makes the card read as a thing IN the
+   panel rather than as the panel's lining.
+
+   On the LIST, not on the cards: the panel's heading, its count and its
+   "more" line keep the panel's own left edge, so the inset shows the cards
+   as a group set in from the text that introduces them, rather than knocking
+   every line on the panel out of alignment with every other. */
+.dashboard-reports-detail .reports-proposal-list {
+  padding: 0 10px;
+}
+
 /* The breakdown table's header row took --report-surface, which worked while
    the section around it was the page: a tinted strip at the top of a white
    table. Now that the section IS that colour, the same fill would be the

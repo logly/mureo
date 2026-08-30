@@ -371,9 +371,40 @@ def test_recent_actions_limited_to_last_n(
     _write_state(tmp_path, StateDocument(version="2", action_log=entries))
 
     actions = build_report_summary()["recent_actions"]
-    # Capped, and the LAST entries (most recent) are kept.
+    # Capped, and the LAST entries (most recent) are kept — handed over
+    # newest first (#734), so the newest is the row the reader meets.
     assert len(actions) <= 20
-    assert actions[-1]["action"] == "action_30"
+    assert actions[0]["action"] == "action_30"
+    assert actions[-1]["action"] == "action_11"
+
+
+@pytest.mark.unit
+def test_recent_actions_are_newest_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The order the rows arrive in is the order they are read in.
+
+    The detail view's log renders what the server sent, five at a time
+    (#729), so log order — oldest of the window first — put a fortnight-old
+    entry at the top of the block and yesterday's work behind the pager
+    (#734). The window is unchanged; only its direction is.
+    """
+    _use_workspace(monkeypatch, tmp_path)
+    entries = tuple(
+        ActionLogEntry(
+            timestamp=f"2026-06-{i:02d}T00:00:00+00:00",
+            action=f"action_{i}",
+            platform="google_ads",
+        )
+        for i in (1, 2, 3)
+    )
+    doc = StateDocument(version="2", action_log=entries)
+    _write_state(tmp_path, doc)
+
+    actions = build_report_summary()["recent_actions"]
+    assert [a["action"] for a in actions] == ["action_3", "action_2", "action_1"]
+    # A projection, not an edit: the document's own log is untouched.
+    assert [e.action for e in doc.action_log] == ["action_1", "action_2", "action_3"]
 
 
 # ---------------------------------------------------------------------------
