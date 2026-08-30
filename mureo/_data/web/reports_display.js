@@ -28,7 +28,8 @@
 // deprecated, it is what a client without a contract correctly shows.
 //
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
-// `window.MUREO_REPORTS_DISPLAY`. Depends on nothing.
+// `window.MUREO_REPORTS_DISPLAY`. Reads one other module at call time,
+// `MUREO_REPORTS_FORMAT` — see `format()` — and holds no copy of it.
 
 (function () {
   "use strict";
@@ -79,6 +80,27 @@
 
   function isNumber(value) {
     return typeof value === "number" && isFinite(value);
+  }
+
+  // reports_format.js's number vocabulary — read off the page at CALL time,
+  // the way reports_overview.js and reports_triage.js read their
+  // dependencies. Call time and not load time because this file is also
+  // evaluated on its own (browser_contract.test.js proves each asset stands
+  // up alone), and because the page's <script> order is the only thing that
+  // guarantees the other module is there at all.
+  //
+  // Asking it rather than repeating it is the point. "How does this screen
+  // print a number" is ONE question, and #606/#609 are what a second answer
+  // costs: two roundings of the same figure, drifting apart in review.
+  function format() {
+    const api = typeof window !== "undefined" ? window.MUREO_REPORTS_FORMAT : null;
+    if (!api) {
+      throw new Error(
+        "reports_display.js needs MUREO_REPORTS_FORMAT — load " +
+          "reports_format.js BEFORE reports_display.js"
+      );
+    }
+    return api;
   }
 
   /** The contract object, or `null` when this client has none. */
@@ -161,7 +183,24 @@
     return out;
   }
 
-  /** `{label, value}` chips, or `[]`. The value prints exactly as written. */
+  /**
+   * `{label, value}` chips, or `[]`.
+   *
+   * A value the contract stated as a NUMBER is printed the way every other
+   * figure on this screen is printed — `formatNumber`, i.e. thousands
+   * grouping and no currency symbol, because the wire carries raw numbers
+   * and no platform's currency. A stated CPA of 3855 read `3855` next to a
+   * breakdown table printing `3,855` for the same kind of figure (#734).
+   *
+   * Grouping only: `toLocaleString` keeps a fractional part, so a stated
+   * ROAS of 3.4 is still `3.4` and nothing is rounded away here. Rounding
+   * is the breakdown table's own decision about its own columns, and a
+   * stated value has no column to fit.
+   *
+   * A value stated as a STRING passes through untouched. `"3.4x"` is the
+   * operator's own text, unit and all, and the contract's promise is that
+   * what was written is what is shown.
+   */
   function statedValues(summary) {
     const display = displayOf(summary);
     const rows =
@@ -173,7 +212,10 @@
       if (!label) return;
       const value = row.value;
       if (!isNumber(value) && !text(value)) return;
-      out.push({ label: label, value: String(value) });
+      out.push({
+        label: label,
+        value: isNumber(value) ? format().formatNumber(value) : String(value),
+      });
     });
     return out;
   }

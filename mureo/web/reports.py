@@ -203,8 +203,9 @@ def build_report_summary(
       list, empty when the document only carries canonical windows.
     - ``last_synced_at``: the document's sync timestamp (or ``None``).
     - ``recent_actions``: the last :data:`_RECENT_ACTIONS_LIMIT` action-log
-      entries, each ``{timestamp, action, platform, campaign_id, summary,
-      observation_due, display_title, display_summary}`` — NO ``command`` /
+      entries **newest first** (#734), each ``{timestamp, action, platform,
+      campaign_id, summary, observation_due, display_title,
+      display_summary}`` — NO ``command`` /
       ``metrics_at_action`` / ``reversible_params`` (those can carry secrets
       or noise). The last two are the bounded operator-facing line (#706),
       ``None`` on an entry that has none.
@@ -392,11 +393,25 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
 
 
 def _build_recent_actions(doc: StateDocument | None) -> list[dict[str, Any]]:
-    """Last N action-log entries as secret-free rows (most recent last)."""
+    """Last N action-log entries as secret-free rows, **most recent first**.
+
+    The window is the tail of ``action_log`` — the log is append-ordered, so
+    the last :data:`_RECENT_ACTIONS_LIMIT` entries are the newest ones — and
+    it is handed over reversed, because the order this list arrives in is
+    the order it is read in. The detail view's log renders the rows the
+    server sent, five at a time (#729), so log order put a fortnight-old
+    entry at the top of the block and yesterday's work behind the pager
+    (#734).
+
+    The reversal is a new list; ``doc.action_log`` is a tuple on a document
+    other readers still hold, and this function is a projection, not an
+    edit. The index's "today" feed is unaffected either way: it sorts the
+    rows on their timestamps itself (``buildReportsActionFeed``).
+    """
     if doc is None or not doc.action_log:
         return []
     recent = doc.action_log[-_RECENT_ACTIONS_LIMIT:]
-    return [_action_row(entry) for entry in recent]
+    return [_action_row(entry) for entry in reversed(recent)]
 
 
 def _action_row(entry: ActionLogEntry) -> dict[str, Any]:

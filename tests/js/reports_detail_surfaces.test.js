@@ -395,6 +395,33 @@ test.describe("nothing inside a block goes flat against it", function () {
       "var(--report-surface)"
     );
   });
+
+  test.it("insets the proposal cards from the panel's own edges", async function () {
+    // The tinted cards ran the full width of the panel's padding box and
+    // read as pressed against the frame (#734). The inset is on the LIST,
+    // so the cards move in as a group and the panel's heading, count and
+    // "more" line keep the edge they share with every other panel.
+    const page = await openDetail({ display: DISPLAY });
+    assert.equal(styleIn(page, ".reports-proposal-list", "padding"), "0 10px");
+    // Not by moving the text that introduces them.
+    assert.equal(
+      styleIn(page, ".reports-proposals-count", "padding"),
+      undefined,
+      "the panel's count line gained a padding of its own"
+    );
+  });
+
+  test.it("leaves the list screen's proposals list where it was", async function () {
+    // Detail scope only: the index has its own uses of the panel, and the
+    // acceptance condition for the whole #731/#734 pass is that it does not
+    // move.
+    const page = await openIndex();
+    const css = require("node:fs").readFileSync(path.join(WEB, "app.css"), "utf-8");
+    const at = css.indexOf("\n.reports-proposal-list {");
+    assert.notEqual(at, -1, ".reports-proposal-list has no base rule");
+    assert.match(css.slice(at).split("}", 1)[0], /padding: 0;/);
+    assert.ok(page.root.querySelector("[data-reports-index-grid]"), "index drew");
+  });
 });
 
 // ---------------------------------------------------------------------
