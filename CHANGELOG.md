@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.17.2] - 2026-08-31
+
 ### Changed
 
 - **The detail screen's figures read as figures** (#734). Three things the
