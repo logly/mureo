@@ -1666,6 +1666,27 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-top: 18px;
 }
 
+/* ---- …except on the detail screen (#731) -------------------------------
+   One slab painted across a whole report is what the ground above IS, and
+   on the LIST screen it is right: the cards are one set of things, and the
+   ground is what makes them one set. On the DETAIL screen the same paint
+   turned six unrelated groupings into one continuous tinted page, so the
+   ground moves DOWN there — off the container and onto each section, one
+   block at a time (see "one surface per section" further down).
+
+   Scoped by a class `setReportsView` puts on the container rather than by
+   `:has()`, because the container is shared: a rule that asked which of the
+   two screens was rendered inside it would make the index's ground depend
+   on the detail view's markup, which is the drift this whole seam exists to
+   prevent.
+
+   Transparent rather than dropped: the 1px border and the 16px of padding
+   stay in the box, so taking the paint off moves nothing by a pixel. */
+.dashboard-reports.is-detail {
+  background: transparent;
+  border-color: transparent;
+}
+
 .dashboard-reports-head {
   display: flex;
   flex-wrap: wrap;
@@ -5050,6 +5071,176 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-size: var(--type-caption-size);
   color: var(--ink-soft);
   white-space: pre-wrap;
+}
+
+/* ---- one surface per section (#731) ---------------------------------- */
+/* The detail screen is a column of BLOCKS, not one tinted page. Every
+   top-level grouping carries the same ground — the three tiers, the recent
+   actions, the funnel, the prose disclosure, the chart and the proposals
+   panel — rounded, padded, and separated from the next by whitespace.
+
+   ONE vocabulary, deliberately. Before this, the sections split into two
+   looks by accident of history: the chart and the proposals were white
+   cards, and everything else sat bare on the container's slab. Two of the
+   six reading as "a thing" and four as "the page" is not a hierarchy an
+   operator can use, and neither the split nor the slab said anything about
+   what the sections are.
+
+   Scoped on `.dashboard-reports-detail`, which is the detail view's own
+   node, so the rules cannot reach the list screen at all: `.reports-panel`
+   in particular is the client list, the alert layer and the rail over
+   there, and it must stay white on the slab. Two classes (0,2,0) beat the
+   one-class rules they override, so this does not depend on source order
+   either.
+
+   Both themes come from the token: light is a cool tint UNDER white cards,
+   dark is a step below the page with the panels lighter still. In dark the
+   ground and the page are within a few units of each other by design, so
+   the 1px --report-line edge is what bounds a block — which is exactly the
+   job it did for the slab this replaces. Nothing inside a block is painted
+   from --report-surface, so no inner element goes flat against it: the
+   cards, the funnel cells and the change cells are --surface, and the chips
+   and the tabs are --surface-2. The one element that DID use the token
+   inside a block — the breakdown table's header row — is re-stepped just
+   below, and the list screen's .roster header is not in this scope at
+   all. */
+.dashboard-reports-detail .reports-tier,
+.dashboard-reports-detail .dashboard-reports-block,
+.dashboard-reports-detail .reports-funnel,
+.dashboard-reports-detail .reports-prose,
+.dashboard-reports-detail .reports-chart,
+.dashboard-reports-detail .reports-panel,
+.dashboard-reports-detail .reports-breakdown,
+.dashboard-reports-detail .reports-stated,
+.dashboard-reports-detail .reports-highlights {
+  background: var(--report-surface);
+  border: 1px solid var(--report-line);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* The funnel had no box of its own, so its ROW carried the gap to the
+   section below it. The block carries it now — left on the row it would
+   open 20px of empty tint inside the block instead of between two of
+   them. */
+.dashboard-reports-detail .reports-funnel {
+  margin-bottom: 20px;
+}
+
+.dashboard-reports-detail .reports-funnel-row {
+  margin-bottom: 0;
+}
+
+/* The recent-actions log carried air ABOVE it and none below, which is the
+   right answer for a block with no edges and the wrong one for a block with
+   them: it and the report text underneath would meet with nothing between
+   them, and two surfaces touching read as one section with a seam. */
+.dashboard-reports-detail .dashboard-reports-block {
+  margin-bottom: 20px;
+}
+
+/* ---- the log's entries, as cards on the rail (#731) ------------------- */
+/* The block keeps the ground; each ENTRY lifts off it. On the tint, rows
+   divided by hairlines read as one ruled sheet — the owner's word for the
+   capture was that nothing stood out — so an entry is now the same white
+   card the change cells and the platform cards on this screen already are:
+   --surface, a --hairline edge, --r-md. Its own edge separates it from the
+   next one, so the row divider goes and 10px of air replaces it.
+
+   The #691 TIMELINE SURVIVES, and the geometry is the reason this is not
+   simply "add a background". The rail is the ul's own border-left and each
+   entry's dot is an absolutely-positioned ::before straddling it. A card
+   drawn at the old 2px inset would have taken that dot under its own left
+   border. So the list opens a 16px gutter and the dot's offset is re-stated
+   against the card's padding box:
+
+     rail line at R..R+1  |  ul padding-left 16  |  card border 1
+     card padding box     = R + 1 + 16 + 1        = R + 18
+     dot (8px) at left:-21 -> centre R + 18 - 21 + 4 = R + 1
+
+   which is exactly where the dot sits today (2px inset, left:-6px -> R+1).
+   The dot is in the gutter and the card starts 13px clear of it, so the two
+   never overlap.
+
+   The last card is the one contested edge: `.report-action:last-child` is
+   (0,3,0) and takes `border-bottom` away to end the ruled sheet. So the
+   reset is scoped too — (0,4,0) beats it outright, rather than the card's
+   bottom edge depending on which rule came later in the file. */
+.dashboard-reports-detail .dashboard-reports-block .dashboard-reports-actions-list {
+  padding-left: 16px;
+}
+
+.dashboard-reports-detail .dashboard-reports-actions-list .report-action {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.dashboard-reports-detail .dashboard-reports-actions-list .report-action:last-child {
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.dashboard-reports-detail .dashboard-reports-actions-list .report-action::before {
+  left: -21px;
+}
+
+/* The breakdown table's header row took --report-surface, which worked while
+   the section around it was the page: a tinted strip at the top of a white
+   table. Now that the section IS that colour, the same fill would be the
+   ground showing through the table — the header would stop being a header
+   and become a gap.
+
+   So it steps one further along the SAME family: --report-line is the token
+   that already means "one step off this ground", so the row is a step from
+   the ground it sits on AND a bigger step from the white body than it had
+   before (1.42:1 light / 1.55:1 dark against the body, up from 1.15 / 1.10;
+   1.23 / 1.70 against the section). --ink-soft on it is 7.5:1 light and
+   6.8:1 dark, so the header text gains contrast rather than spending it.
+
+   Detail scope only: the list screen's .roster header keeps --report-surface,
+   because over there the table sits inside a WHITE panel and the tint is what
+   separates the header from it. */
+.dashboard-reports-detail .reports-breakdown-table thead th {
+  background: var(--report-line);
+}
+
+/* ---- text that moved onto the ground (#731) -------------------------- */
+/* --muted was chosen against a WHITE panel, where it is 4.96:1. On the
+   report ground it is 4.31:1 — under AA for small text — and this change
+   moves several captions from the one to the other. Inside the detail's
+   blocks they take --ink-soft instead: 9.2:1 light, 11.5:1 dark, still
+   plainly quieter than --ink, which is the whole job those lines do.
+
+   ONLY the lines that sit on the ground itself. A caption inside a white
+   card, a --surface-2 chip or a tinted proposal keeps --muted, because it
+   kept its background too — recolouring those would be repainting the
+   screen rather than repairing a regression this change caused. That is why
+   the log's own time and observation-due lines are NOT here: the entries
+   became white cards above, so those two are back on --surface at 4.96:1,
+   while the block's heading and its pager are still on the ground and are.
+
+   The one exception is the proposal date, which is on --warn-tint and was
+   measured at 4.49:1 there: under AA on its own terms, in a panel this
+   change is repainting anyway. */
+.dashboard-reports-detail .reports-panel-note,
+.dashboard-reports-detail .reports-proposals-count,
+.dashboard-reports-detail .reports-proposal-more,
+.dashboard-reports-detail .reports-proposal-date,
+.dashboard-reports-detail .reports-chart-tick,
+.dashboard-reports-detail .reports-tier-note,
+.dashboard-reports-detail .reports-client-kpi-label,
+.dashboard-reports-detail .report-latest-generated,
+.dashboard-reports-detail .report-latest-stats caption.report-stats-title,
+.dashboard-reports-detail .report-latest-stats .report-stat-key,
+.dashboard-reports-detail .report-latest-stats .report-stat-more,
+.dashboard-reports-detail .dashboard-reports-block h3,
+.dashboard-reports-detail .reports-actions-page-btn,
+.dashboard-reports-detail .reports-actions-page-count {
+  color: var(--ink-soft);
 }
 
 /* Every block above that declares its own `display` needs this, and the

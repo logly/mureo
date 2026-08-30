@@ -36,6 +36,27 @@
   it is stored exactly as before and the response says the expiry is
   unknown. Neither the token nor the app secret is ever echoed back.
 
+### Changed
+
+- **A client's detail screen reads as sections rather than one tinted page**
+  (#731). The report surface was painted once, across the whole report, and
+  the groupings sat on it in two accidental styles: the chart and the
+  proposals were white cards, and the tiers, the recent-actions log, the
+  funnel, the breakdown tables, the stated values, the verdict chips and the
+  report text sat bare on the tint. The surface now belongs to each grouping
+  — every one of them a rounded, padded block with whitespace between it and
+  the next — and the page behind them is the ordinary dashboard ground. The
+  運用ナビ band keeps its blue: it is a voice, not a section. Inside the
+  recent-actions block each logged entry is now a white card of its own
+  rather than a row divided by a hairline, so an entry stands off the block's
+  ground instead of reading as one line of a ruled sheet; the timeline rail
+  and its dots are unchanged, with the list opening a gutter so a card cannot
+  cover them. The breakdown tables' header rows step one further along the
+  same family so a header cannot read as the block showing through the table,
+  and the captions that moved from a white panel onto the ground take the
+  next ink up, which restores AA for them at small sizes. The client list
+  screen is unchanged.
+
 ### Fixed
 
 - **Analytics-only Meta traffic renews the token like every other path**
