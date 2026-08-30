@@ -6,7 +6,10 @@
   owner's review of v0.17.1 found on one screen. The chip row of what the
   report stated is headed **"Key figures in this report"**
   (レポートの主要数値) rather than "Values this report stated", which read as
-  a caveat about the figures instead of as a name for them. A figure in that
+  a caveat about the figures instead of as a name for them. The same heading
+  now names the same thing on the LEGACY detail screen — the label/value
+  table a client with no display contract gets, previously "Stated by this
+  report" — because that is the screen most installs are on. A figure in that
   row is now printed the way every other figure on the screen is printed — a
   stated CPA of 3855 read `3855` beside a breakdown table printing `3,855`
   for the same kind of number — and it is the screen's own formatter that

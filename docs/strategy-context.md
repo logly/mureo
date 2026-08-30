@@ -1228,7 +1228,13 @@ untouched, unit and all — `"3.4x"` is the operator's own text, and the
 contract's promise is that what was written is what is shown. The chip row
 is headed *Key figures in this report* (レポートの主要数値); it was *Values
 this report stated* until the owner read it as a caveat rather than a
-heading.
+heading. The LEGACY detail screen's equivalent — the label/value table a
+client with no contract gets — carries the same heading, from its own key
+(`reports_stats_title`, previously *Stated by this report* / 「このレポート
+が記載した値」). Two keys because the two screens are separate surfaces and
+one can be re-worded without the other; one wording because they name the
+same thing, and a heading the owner rejected must not survive on the path
+most installs are actually on.
 
 **What is deliberately NOT in the contract.** The KPI funnel (spend →
 impressions → clicks → conversions, with CPM / CPC / CPA) and the daily
