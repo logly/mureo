@@ -1521,8 +1521,18 @@ not a section. Which of the two screens is showing is carried by a class on
 the shared container rather than by the markup inside it, so the list
 screen's ground cannot change because the detail view rendered something.
 
-Two things follow from moving a ground under content that was drawn against a
-different one. The breakdown tables' header rows were tinted with the ground
+Inside a block, what an operator counts stays a **white card on that ground**.
+The recent-actions log is the case that made the rule: its entries were rows
+divided by hairlines, which on a tinted block read as one ruled sheet with
+nothing standing out, so each entry is a card now — `--surface`, a hairline
+edge, `--r-md`, the same shape the change cells beside it already have — with
+air between them instead of a divider. The #691 timeline survives that
+intact: the rail is still the list's own left border and each entry still
+carries its dot on it, with the list opening a gutter so a card starts clear
+of the dots rather than covering them.
+
+Three things follow from moving a ground under content that was drawn against
+a different one. The breakdown tables' header rows were tinted with the ground
 itself, which read as a header while the section around it was the page and
 would read as a gap once the section became that colour — so inside a block
 they step one further along the same family (`--report-line`), which is a
@@ -1531,7 +1541,10 @@ chosen against a white panel, where it is 4.96:1; on this ground it is 4.31:1,
 under AA for small text. Every caption the change puts on the ground takes
 `--ink-soft` instead (9.2:1 light, 11.5:1 dark) — still plainly quieter than
 `--ink`, which is the whole job those lines do. A caption that kept its
-background keeps its colour: this is a repair, not a repaint.
+background keeps its colour: this is a repair, not a repaint, and it is why
+the log's own time and observation lines are `--muted` again once its entries
+became cards, while the block's heading and its pager — which are still on
+the ground — are not.
 
 #### The shape of the page
 

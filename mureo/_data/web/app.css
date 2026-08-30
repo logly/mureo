@@ -5140,6 +5140,54 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-bottom: 20px;
 }
 
+/* ---- the log's entries, as cards on the rail (#731) ------------------- */
+/* The block keeps the ground; each ENTRY lifts off it. On the tint, rows
+   divided by hairlines read as one ruled sheet — the owner's word for the
+   capture was that nothing stood out — so an entry is now the same white
+   card the change cells and the platform cards on this screen already are:
+   --surface, a --hairline edge, --r-md. Its own edge separates it from the
+   next one, so the row divider goes and 10px of air replaces it.
+
+   The #691 TIMELINE SURVIVES, and the geometry is the reason this is not
+   simply "add a background". The rail is the ul's own border-left and each
+   entry's dot is an absolutely-positioned ::before straddling it. A card
+   drawn at the old 2px inset would have taken that dot under its own left
+   border. So the list opens a 16px gutter and the dot's offset is re-stated
+   against the card's padding box:
+
+     rail line at R..R+1  |  ul padding-left 16  |  card border 1
+     card padding box     = R + 1 + 16 + 1        = R + 18
+     dot (8px) at left:-21 -> centre R + 18 - 21 + 4 = R + 1
+
+   which is exactly where the dot sits today (2px inset, left:-6px -> R+1).
+   The dot is in the gutter and the card starts 13px clear of it, so the two
+   never overlap.
+
+   The last card is the one contested edge: `.report-action:last-child` is
+   (0,3,0) and takes `border-bottom` away to end the ruled sheet. So the
+   reset is scoped too — (0,4,0) beats it outright, rather than the card's
+   bottom edge depending on which rule came later in the file. */
+.dashboard-reports-detail .dashboard-reports-block .dashboard-reports-actions-list {
+  padding-left: 16px;
+}
+
+.dashboard-reports-detail .dashboard-reports-actions-list .report-action {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.dashboard-reports-detail .dashboard-reports-actions-list .report-action:last-child {
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.dashboard-reports-detail .dashboard-reports-actions-list .report-action::before {
+  left: -21px;
+}
+
 /* The breakdown table's header row took --report-surface, which worked while
    the section around it was the page: a tinted strip at the top of a white
    table. Now that the section IS that colour, the same fill would be the
@@ -5170,7 +5218,10 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
    ONLY the lines that sit on the ground itself. A caption inside a white
    card, a --surface-2 chip or a tinted proposal keeps --muted, because it
    kept its background too — recolouring those would be repainting the
-   screen rather than repairing a regression this change caused.
+   screen rather than repairing a regression this change caused. That is why
+   the log's own time and observation-due lines are NOT here: the entries
+   became white cards above, so those two are back on --surface at 4.96:1,
+   while the block's heading and its pager are still on the ground and are.
 
    The one exception is the proposal date, which is on --warn-tint and was
    measured at 4.49:1 there: under AA on its own terms, in a panel this
@@ -5187,8 +5238,6 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .dashboard-reports-detail .report-latest-stats .report-stat-key,
 .dashboard-reports-detail .report-latest-stats .report-stat-more,
 .dashboard-reports-detail .dashboard-reports-block h3,
-.dashboard-reports-detail .report-action-time,
-.dashboard-reports-detail .report-action-meta,
 .dashboard-reports-detail .reports-actions-page-btn,
 .dashboard-reports-detail .reports-actions-page-count {
   color: var(--ink-soft);

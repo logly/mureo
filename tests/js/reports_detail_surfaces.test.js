@@ -398,6 +398,114 @@ test.describe("nothing inside a block goes flat against it", function () {
 });
 
 // ---------------------------------------------------------------------
+// The action log: cards on the rail
+// ---------------------------------------------------------------------
+
+test.describe("each logged entry lifts off the block's ground", function () {
+  /** The declarations of the first rule whose selector is exactly `sel`. */
+  function ruleOf(css, sel) {
+    const at = css.indexOf("\n" + sel + " {");
+    assert.notEqual(at, -1, sel + " has no rule in app.css");
+    return css.slice(at).split("}", 1)[0];
+  }
+
+  /** The first number in `prop`'s declaration in `body`. */
+  function px(body, prop) {
+    // `[{;]` and not `^`: `ruleOf` hands back the selector as well as the
+    // body, so the first declaration follows the brace rather than starting
+    // the string.
+    const m = new RegExp("[{;]\\s*" + prop + "\\s*:\\s*(-?[\\d.]+)px").exec(body);
+    assert.ok(m, prop + " is not a px length in: " + body.trim());
+    return parseFloat(m[1]);
+  }
+
+  test.it("draws an entry as a white card, not a ruled row", async function () {
+    const page = await openDetail({ display: DISPLAY });
+    const row = detailView(page).querySelectorAll(".report-action")[0];
+    assert.ok(row, "the log drew no entry");
+    assert.equal(styleOfNode(row, ".report-action", "background"), "var(--surface)");
+    assert.equal(
+      styleOfNode(row, ".report-action", "border"),
+      "1px solid var(--hairline)"
+    );
+    assert.equal(styleOfNode(row, ".report-action", "border-radius"), "var(--r-md)");
+    // …on the ground the block still carries, which is what it lifts off.
+    assert.equal(
+      styleOf(page, ".dashboard-reports-block", "background"),
+      "var(--report-surface)"
+    );
+  });
+
+  test.it("gives the last card its bottom edge back", async function () {
+    // `.report-action:last-child` exists to END a ruled sheet by removing
+    // that hairline. On a card it would cut the bottom edge off the last
+    // entry, so the scoped reset has to outrank it rather than merely
+    // follow it in the file.
+    const fs = require("node:fs");
+    const css = fs.readFileSync(path.join(WEB, "app.css"), "utf-8");
+    const scoped = ruleOf(
+      css,
+      ".dashboard-reports-detail .dashboard-reports-actions-list .report-action:last-child"
+    );
+    assert.match(scoped, /border-bottom: 1px solid var\(--hairline\);/);
+    assert.match(scoped, /margin-bottom: 0;/);
+  });
+
+  test.it("keeps the dot straddling the rail the cards moved away from", function () {
+    // The #691 timeline is the ul's `border-left` and a ::before per entry.
+    // A card drawn at the old 2px inset takes that dot under its own left
+    // border, so the list opens a gutter and the dot's offset is re-stated
+    // against the card's padding box. This is that arithmetic, read out of
+    // the stylesheet — the harness models no layout, and a dot that has
+    // drifted off the rail is invisible to every other assertion here.
+    const fs = require("node:fs");
+    const css = fs.readFileSync(path.join(WEB, "app.css"), "utf-8");
+
+    const railWidth = 1; // .dashboard-reports-block .dashboard-reports-actions-list
+    assert.match(
+      ruleOf(css, ".dashboard-reports-block .dashboard-reports-actions-list"),
+      /border-left: 1px solid var\(--hairline\);/,
+      "the rail is gone"
+    );
+    const gutter = px(
+      ruleOf(
+        css,
+        ".dashboard-reports-detail .dashboard-reports-block .dashboard-reports-actions-list"
+      ),
+      "padding-left"
+    );
+    const card = ruleOf(
+      css,
+      ".dashboard-reports-detail .dashboard-reports-actions-list .report-action"
+    );
+    const cardBorder = px(card, "border");
+    const dot = ruleOf(css, ".dashboard-reports-actions-list .report-action::before");
+    const size = px(dot, "width");
+    const offset = px(
+      ruleOf(
+        css,
+        ".dashboard-reports-detail .dashboard-reports-actions-list .report-action::before"
+      ),
+      "left"
+    );
+
+    // x = 0 at the rail's left edge; the line covers 0..railWidth.
+    const cardPaddingBox = railWidth + gutter + cardBorder;
+    const dotLeft = cardPaddingBox + offset;
+    const dotCentre = dotLeft + size / 2;
+    assert.ok(
+      dotCentre >= -1 && dotCentre <= railWidth + 1,
+      "the dot no longer straddles the rail: centre at " + dotCentre
+    );
+    // …and it clears the card, rather than sitting under its left border.
+    assert.ok(
+      dotLeft + size <= railWidth + gutter,
+      "the dot runs under the card's left edge"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------
 // The captions that moved from a white panel onto the ground
 // ---------------------------------------------------------------------
 
@@ -423,11 +531,14 @@ test.describe("small text on the ground keeps AA", function () {
     ".report-latest-stats .report-stat-key",
     ".report-latest-stats .report-stat-more",
     ".dashboard-reports-block h3",
-    ".report-action-time",
-    ".report-action-meta",
     ".reports-actions-page-btn",
     ".reports-actions-page-count",
   ];
+
+  //: The two that came BACK off the lift. The log's entries are white cards
+  //: now, so its time and observation-due lines are on --surface again —
+  //: 4.96:1, the same "kept its background" rule as everything else here.
+  const RESTORED = [".report-action-time", ".report-action-meta"];
 
   test.it("scopes every one of them, and scopes them to the detail", function () {
     const fs = require("node:fs");
@@ -437,6 +548,13 @@ test.describe("small text on the ground keeps AA", function () {
         css.includes(".dashboard-reports-detail " + sel + ",\n") ||
           css.includes(".dashboard-reports-detail " + sel + " {"),
         sel + " is not lifted off --muted in the detail scope"
+      );
+    });
+    RESTORED.forEach(function (sel) {
+      assert.equal(
+        css.includes(".dashboard-reports-detail " + sel + ",\n"),
+        false,
+        sel + " is lifted again, and it is back on a white card"
       );
     });
   });
@@ -454,8 +572,6 @@ test.describe("small text on the ground keeps AA", function () {
       ".reports-proposal-date",
       ".reports-chart-tick",
       ".reports-tier-note",
-      ".report-action-time",
-      ".report-action-meta",
       // `.reports-actions-page-btn` is deliberately NOT here: its `:hover`
       // rule outranks the lift, and the harness treats an unmodelled
       // pseudo-class as matching, so it would answer for a hover state no
@@ -484,7 +600,7 @@ test.describe("small text on the ground keeps AA", function () {
       ".report-action-platform",
       ".reports-stated-label",
       ".reports-breakdown-note",
-    ].forEach(function (sel) {
+    ].concat(RESTORED).forEach(function (sel) {
       assert.equal(
         styleIn(page, sel, "color"),
         "var(--muted)",

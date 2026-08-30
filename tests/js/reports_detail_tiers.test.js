@@ -592,17 +592,28 @@ test.describe("the action row wins its own layout", function () {
     }
   });
 
-  test.it("keeps the padding that makes room for the rail", async function () {
+  test.it("keeps a padding of its own, not the generic row's", async function () {
     // The same collision took the row's padding: `.dashboard-section li` sets
-    // `padding: 11px 0`, so the 20px left inset the timeline dots sit in was
-    // being discarded and the markers landed on top of the text.
+    // `padding: 11px 0`, so the left inset the timeline dots sit in was being
+    // discarded and the markers landed on top of the text.
+    //
+    // WHERE that inset lives moved in #731 — the entries are cards now and
+    // the gutter the dots sit in belongs to the list (asserted below and in
+    // reports_detail_surfaces.test.js, which does the dot arithmetic). What
+    // this asks is unchanged: the entry has a padding of its OWN, on both
+    // axes, and the generic row rule is not the one that wins it.
     const row = await actionRow();
     const padding = cascade(row, "padding");
     assert.ok(padding, "the row computes no padding");
     assert.match(
-      padding.value,
-      /20px$/,
+      padding.selector,
+      /\.report-action$/,
       "padding computes to '" + padding.value + "' via `" + padding.selector + "`"
+    );
+    assert.equal(
+      /(^|\s)0$/.test(padding.value.trim()),
+      false,
+      "the row lost its horizontal padding: '" + padding.value + "'"
     );
   });
 
@@ -614,10 +625,14 @@ test.describe("the action row wins its own layout", function () {
       border && !/^0/.test(border.value),
       "the rail computes to '" + (border && border.value) + "'"
     );
-    const padding = cascade(list, "padding");
-    assert.match(
-      padding.value,
-      /2px$/,
+    // The room beside the rail. It is a `padding-left` of its own since #731
+    // (a 16px gutter, so a card cannot cover the dots) rather than the last
+    // value of the `padding` shorthand, so ask for the LONGHAND first —
+    // reading the shorthand alone would answer 2px and see nothing.
+    const padding = cascade(list, "padding-left") || cascade(list, "padding");
+    const inset = parseFloat(padding.value.trim().split(/\s+/).pop());
+    assert.ok(
+      inset > 0,
       "the list padding computes to '" +
         padding.value +
         "' via `" +
