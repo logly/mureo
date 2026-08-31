@@ -4828,6 +4828,79 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--muted);
 }
 
+/* SCOPED, and for the reason #691 documents at .dashboard-reports-actions-list
+   (#737). Both list items above are `<li>` inside `.dashboard-section`, so the
+   setup screens' generic row rule `.dashboard-section li` (0,1,1) outranks a
+   bare `.reports-proposal` / `.reports-proposal-more` (0,1,0), and every
+   declaration the two rules share was being answered by the generic one. On a
+   live v0.17.2 render the card computed to `padding: 11px 0` and
+   `display: flex; align-items: center` — the horizontal padding gone, which is
+   the owner's report that the text touches the yellow frame, and the body laid
+   out BESIDE the head, which squeezed the title into a narrow wrapped column.
+   Nothing in this file ever said either of those things about a proposal.
+
+   So the card's own layout is restated at (0,2,0), which beats (0,1,1)
+   outright rather than depending on which rule comes later in the file, and
+   every OTHER declaration the generic rule makes is answered here too — all
+   seven of them, listed in the generic rule's own order so the two can be read
+   side by side. Silence is what caused this; an unanswered declaration is one
+   the setup screens are still deciding.
+
+   The tint, the border colour and the radius are NOT restated: those the base
+   rule already wins, because the generic rule says nothing about them. */
+.reports-proposal-list .reports-proposal {
+  /* (1) display — the defect. Block flow: the head keeps its own flex row
+     (`.reports-proposal-head` is a separate element and unaffected), and the
+     body sits below it at full width, which is what a card is. */
+  display: block;
+  /* (2) justify-content and (3) align-items — inert on a block box, and
+     stated for that reason: `center` on the flex box the generic rule made is
+     what put the body beside the title. `normal` is the initial value, so
+     this restores the box rather than picking a new alignment. */
+  justify-content: normal;
+  align-items: normal;
+  /* (4) gap — likewise inert here; the generic 12px was a flex gap. */
+  gap: 0;
+  /* (5) padding — the other half of the defect. The base rule's own value,
+     restated where it can win. */
+  padding: 8px 10px;
+  /* (6) border-bottom — the base rule sets the `border` SHORTHAND, and a
+     longhand at higher specificity beats one side of it, so the card's bottom
+     edge was a --hairline in the middle of a --warn-line box. */
+  border-bottom: 1px solid var(--warn-line);
+  /* (7) font-size — nothing inside the card inherits it (the title, the date
+     and the body each state their own), so this is inert today. Stated anyway
+     so the enumeration is complete and a text child added later cannot
+     silently pick up the setup screens' body size. */
+  font-size: inherit;
+}
+
+/* `.dashboard-section li:last-child` is (0,2,1) and takes the bottom edge off
+   the last row of a setup list. On a card that is the edge of the box, so the
+   reset needs (0,3,0) to outrank it — the same arrangement
+   `.dashboard-reports-actions-list .report-action:last-child` uses. */
+.reports-proposal-list .reports-proposal:last-child {
+  border-bottom: 1px solid var(--warn-line);
+}
+
+/* The "+N more" row is the same `<li>` in the same list and was losing the
+   same way — visibly, on the one declaration it makes: `.dashboard-section li`
+   supplies `font-size: var(--type-body-size)` at (0,1,1), so the line rendered
+   at body size rather than at the caption size stated above, under a hairline
+   it never asked for. It is a plain line of text, not a card, so the box
+   declarations are answered with the initial values rather than with a
+   design. Its colour is untouched — the generic rule says nothing about it,
+   and the detail screen's own --ink-soft lift still applies. */
+.reports-proposal-list .reports-proposal-more {
+  display: block;
+  justify-content: normal;
+  align-items: normal;
+  gap: 0;
+  padding: 0;
+  border-bottom: 0;
+  font-size: var(--type-caption-size);
+}
+
 /* "2 done this month" — the figure in blue, the caption quiet. Blue
    because it is information about work already done, not a verdict. */
 .reports-proposals-count {

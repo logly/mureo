@@ -425,6 +425,160 @@ test.describe("nothing inside a block goes flat against it", function () {
 });
 
 // ---------------------------------------------------------------------
+// The proposal card against the setup screens' generic row rule
+// ---------------------------------------------------------------------
+
+test.describe("a proposal card keeps its own box, not a setup row's", function () {
+  //: What `.dashboard-section li` (0,1,1) declares. Read out of the
+  //: stylesheet rather than copied, so a declaration ADDED to the generic
+  //: rule later fails here instead of silently reaching the card again —
+  //: which is exactly how #737 happened to a component that had already
+  //: been fixed once, at the action log (#691).
+  function genericRowProperties() {
+    const css = require("node:fs").readFileSync(path.join(WEB, "app.css"), "utf-8");
+    const at = css.indexOf("\n.dashboard-section li {");
+    assert.notEqual(at, -1, ".dashboard-section li has no rule in app.css");
+    return css
+      .slice(at)
+      .split("}", 1)[0]
+      .split("{")[1]
+      .split(";")
+      .map(function (d) {
+        return d.split(":")[0].trim();
+      })
+      .filter(Boolean);
+  }
+
+  test.it("answers every declaration the generic row rule makes", async function () {
+    // The bug is not any one property — it is that a rule the component
+    // never mentions was answering for it. So the assertion is over the
+    // generic rule's whole declaration list: for each one, the winner on
+    // the rendered card must be a proposal selector.
+    const page = await openDetail({ display: DISPLAY });
+    const card = detailView(page).querySelectorAll(".reports-proposal")[0];
+    assert.ok(card, "the proposals panel drew no card");
+    const answered = genericRowProperties().map(function (prop) {
+      const won = cascade(card, prop);
+      return [prop, won && won.selector];
+    });
+    for (const [prop, selector] of answered) {
+      assert.ok(
+        selector && /\breports-proposal\b/.test(selector),
+        prop + " on the card is decided by " + selector
+      );
+    }
+    // …and the list is not empty, or the loop above proves nothing.
+    assert.ok(answered.length >= 6, "the generic row rule declares almost nothing");
+  });
+
+  test.it("lays the card out as a block, not as a flex row", async function () {
+    // `display: flex` + `align-items: center` from the generic rule put the
+    // body BESIDE the head and squeezed the title into a narrow wrapped
+    // column. Block flow is what a card is.
+    const page = await openDetail({ display: DISPLAY });
+    const card = detailView(page).querySelectorAll(".reports-proposal")[0];
+    assert.equal(styleOfNode(card, ".reports-proposal", "display"), "block");
+    assert.equal(styleOfNode(card, ".reports-proposal", "align-items"), "normal");
+    assert.equal(styleOfNode(card, ".reports-proposal", "justify-content"), "normal");
+  });
+
+  test.it("keeps the horizontal padding the owner found missing", async function () {
+    // `padding: 11px 0` — horizontal zero — is the reported symptom: the
+    // text runs up against the warn-tint frame.
+    const page = await openDetail({ display: DISPLAY });
+    const card = detailView(page).querySelectorAll(".reports-proposal")[0];
+    const padding = styleOfNode(card, ".reports-proposal", "padding");
+    assert.equal(padding, "8px 10px");
+    assert.ok(
+      !/\b0(px)?\s*$/.test(padding),
+      "the card's horizontal padding is zero again: " + padding
+    );
+  });
+
+  test.it("keeps the box a --warn-line box on all four sides", async function () {
+    // The base rule sets the `border` SHORTHAND; the generic rule sets the
+    // `border-bottom` LONGHAND at higher specificity, so the card's bottom
+    // edge was a --hairline in the middle of a --warn-line box — and none
+    // at all on the last card, where `li:last-child` (0,2,1) takes it away.
+    const page = await openDetail({ display: DISPLAY });
+    const cards = detailView(page).querySelectorAll(".reports-proposal");
+    assert.ok(cards.length >= 2, "one card cannot show a :last-child problem");
+    for (const card of cards) {
+      assert.equal(
+        styleOfNode(card, ".reports-proposal", "border-bottom"),
+        "1px solid var(--warn-line)"
+      );
+    }
+  });
+
+  test.it("puts the body below the head rather than beside it", async function () {
+    // The harness models no layout, so this is pinned at its MECHANISM: the
+    // card is a block box (its children are stacked block boxes, not flex
+    // items in a row), the head keeps its own flex row, and the body is a
+    // later child of the card than the head.
+    const page = await openDetail({ display: DISPLAY });
+    const card = detailView(page).querySelectorAll(".reports-proposal")[0];
+    assert.equal(styleOfNode(card, ".reports-proposal", "display"), "block");
+    const head = card.querySelectorAll(".reports-proposal-head")[0];
+    const body = card.querySelectorAll(".reports-proposal-body")[0];
+    assert.ok(head && body, "the card drew no head or no body");
+    assert.equal(
+      styleOfNode(head, ".reports-proposal-head", "display"),
+      "flex",
+      "the head lost the row it is supposed to keep"
+    );
+    const order = card.children.map(function (n) {
+      return n.getAttribute("class");
+    });
+    assert.deepEqual(order, ["reports-proposal-head", "reports-proposal-body"]);
+  });
+
+  test.it("gives the +N more row back the caption size it declares", async function () {
+    // The same `<li>` in the same list, losing the same way on the one
+    // declaration it makes: the generic rule's `font-size` (0,1,1) beat
+    // `.reports-proposal-more` (0,1,0), so the line rendered at body size
+    // under a hairline it never asked for. The fixture states five
+    // proposals and the list caps at four, so the row is drawn.
+    const page = await openDetail({ display: DISPLAY });
+    const more = detailView(page).querySelectorAll(".reports-proposal-more")[0];
+    assert.ok(more, "the +N more row did not render");
+    assert.equal(
+      styleOfNode(more, ".reports-proposal-more", "font-size"),
+      "var(--type-caption-size)"
+    );
+    assert.equal(styleOfNode(more, ".reports-proposal-more", "display"), "block");
+    assert.equal(styleOfNode(more, ".reports-proposal-more", "padding"), "0");
+    assert.equal(styleOfNode(more, ".reports-proposal-more", "border-bottom"), "0");
+  });
+
+  test.it("wins by specificity, not by source order", async function () {
+    // (0,2,0) beats the generic (0,1,1) outright, and the :last-child reset
+    // is (0,3,0) against its (0,2,1). Pinned in the stylesheet because a
+    // later refactor that moves these rules ABOVE the generic ones would
+    // otherwise reintroduce the bug with every assertion above still green.
+    const css = require("node:fs").readFileSync(path.join(WEB, "app.css"), "utf-8");
+    for (const sel of [
+      ".reports-proposal-list .reports-proposal",
+      ".reports-proposal-list .reports-proposal:last-child",
+      ".reports-proposal-list .reports-proposal-more",
+    ]) {
+      assert.notEqual(
+        css.indexOf("\n" + sel + " {"),
+        -1,
+        sel + " has no rule in app.css"
+      );
+    }
+    // The design itself stays on the base rule: this pass restates layout,
+    // it does not repaint the card.
+    const at = css.indexOf("\n.reports-proposal {");
+    const base = css.slice(at).split("}", 1)[0];
+    assert.match(base, /background: var\(--warn-tint\);/);
+    assert.match(base, /border: 1px solid var\(--warn-line\);/);
+    assert.match(base, /border-radius: var\(--r-sm\);/);
+  });
+});
+
+// ---------------------------------------------------------------------
 // The action log: cards on the rail
 // ---------------------------------------------------------------------
 
