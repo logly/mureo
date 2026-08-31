@@ -1,5 +1,31 @@
 ## [Unreleased]
 
+### Fixed
+
+- **A proposal card has room inside its frame again, and its note sits under
+  its title** (#737). On the detail screen the warn-tinted cards in the
+  proposals panel rendered with no horizontal padding — the text ran up
+  against the yellow border — and the note flowed *beside* the title instead
+  of under it, squeezing the title into a narrow wrapped column.
+
+  Neither was ever written down. A proposal card is an `<li>` inside a
+  `.dashboard-section`, so the setup screens' generic row rule
+  `.dashboard-section li` outranks the card's own single-class rule and was
+  answering for it: `padding: 11px 0` instead of `8px 10px`, and
+  `display: flex; align-items: center` instead of block flow. The card's own
+  layout is restated where it wins, and every other declaration that generic
+  rule makes is answered there too rather than left to it — including the
+  bottom border, which was a grey hairline in the middle of a yellow box and
+  missing altogether on the last card.
+
+  The "+N more" line under the cards was losing the same way, on the one
+  thing it declares: it rendered at body size rather than at the caption size
+  it asks for, under a hairline it never asked for. Both are fixed together.
+
+  This is the same trap the action-log rows were taken out of when they
+  became a timeline (#691); the proposal card was left on the losing side.
+  The card's colours are untouched.
+
 ## [0.17.2] - 2026-08-31
 
 ### Changed

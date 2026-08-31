@@ -1565,6 +1565,29 @@ its count and its "more" line keep the edge they share with every other
 panel, so the cards read as a group set in from the text that introduces
 them rather than as a panel knocked out of alignment.
 
+That inset was only half the reason the cards looked wrong, and #737 is the
+other half — the same specificity trap #691 hit at the action log, on a
+component that had never been taken off the losing side. Every one of these
+list items is an `<li>` inside `.dashboard-section`, so the setup screens'
+generic row rule `.dashboard-section li` (0,1,1) outranks a bare
+`.reports-proposal` (0,1,0) and answered for it: the card computed to
+`padding: 11px 0` — horizontal padding gone, which is the owner's report that
+the text touches the yellow frame — and to `display: flex; align-items:
+center`, which laid the body out beside the title and squeezed the title into
+a narrow wrapped column. Nothing in the stylesheet ever said either of those
+things about a proposal.
+
+The rule this repo now keeps for anything it renders as an `li`: **restate
+the component's own layout at two classes, and answer EVERY declaration the
+generic row rule makes**, not only the ones whose damage is currently
+visible. Silence is what caused this — an unanswered declaration is one the
+setup screens are still deciding, and it becomes a defect the day either side
+changes. The `:last-child` reset needs three, because the generic one is
+`.dashboard-section li:last-child` (0,2,1) and it takes the bottom edge off
+the last row of a setup list, which on a card is one side of the box. What is
+NOT restated is the design: the warn tint, the border colour and the radius
+stay on the base rule, because the generic rule says nothing about them.
+
 Three things follow from moving a ground under content that was drawn against
 a different one. The breakdown tables' header rows were tinted with the ground
 itself, which read as a header while the section around it was the page and
