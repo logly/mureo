@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.17.3] - 2026-09-02
+
 ### Fixed
 
 - **mureo can finally read a pasted Meta token's expiry — and it will never
