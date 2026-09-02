@@ -163,7 +163,13 @@ async def test_a_path_less_refresh_writes_inside_the_temp_home() -> None:
 
     written = Path.home() / ".mureo" / "credentials.json"
     assert written.exists()
-    assert not str(written).startswith(str(_REAL_HOME) + os.sep)
+    # Inside the fixture's temp home, and not the contributor's own file. Not
+    # "outside the real home": on Windows the runner's temp directory lives
+    # under %USERPROFILE%\AppData\Local\Temp, so every temp home is inside
+    # the real one and that stricter check fails for the wrong reason.
+    temp_home = Path(os.environ["HOME"]).resolve()
+    assert written.resolve().is_relative_to(temp_home)
+    assert written.resolve() != (_REAL_HOME / ".mureo" / "credentials.json").resolve()
 
     section = json.loads(written.read_text(encoding="utf-8"))["meta_ads"]
     assert section["access_token"] == "refreshed-in-temp-home"
