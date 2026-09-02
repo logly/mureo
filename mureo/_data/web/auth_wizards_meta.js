@@ -551,9 +551,21 @@
         expiryP.setAttribute("data-i18n", "wizard.auth.meta_token_never_expires");
         return;
       }
+      // No app pair anywhere, so mureo never asked. "Meta did not report an
+      // expiry" would contradict the warning under the button, which says
+      // the opposite — and only one of the two can be true (#740).
+      const codes = (body && body.warnings) || [];
+      if (Array.isArray(codes) && codes.includes("token_expiry_untracked")) {
+        expiryP.textContent = MUREO.t("wizard.auth.meta_token_expiry_untracked");
+        expiryP.setAttribute(
+          "data-i18n", "wizard.auth.meta_token_expiry_untracked");
+        return;
+      }
       const iso = body && body.token_expires_at;
       const days = iso ? daysUntil(iso) : null;
       if (days === null) {
+        // Meta answered and its answer carried no date — the inspection
+        // either failed or came back empty. The wording says exactly that.
         expiryP.textContent = MUREO.t("wizard.auth.meta_token_expiry_unknown");
         expiryP.setAttribute("data-i18n", "wizard.auth.meta_token_expiry_unknown");
         return;

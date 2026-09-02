@@ -48,6 +48,7 @@ _NEW_KEYS = (
     "dashboard.meta_token_expired",
     # #740
     "wizard.auth.meta_token_never_expires",
+    "wizard.auth.meta_token_expiry_untracked",
     "wizard.auth.meta_token_warn_expiry_untracked",
     "dashboard.meta_token_never_expires",
 )
@@ -98,6 +99,44 @@ class TestExpiryIsShownOnSave:
         sentence sent operators off to re-paste a working token."""
         js = _js()
         assert "token_expiry_untracked" in js
+
+
+class TestUntrackedExpiryLine:
+    """#740: with no app pair, the expiry line and the warning under the
+    button used to contradict each other — one said Meta returned nothing,
+    the other said mureo never asked. Only the second is true."""
+
+    def test_the_expiry_line_branches_on_the_warning_code(self) -> None:
+        js = _js()
+        start = js.index("function renderExpiry")
+        window = js[start : start + 1200]
+        assert 'includes("token_expiry_untracked")' in window
+        assert "wizard.auth.meta_token_expiry_untracked" in window
+
+    def test_the_untracked_branch_comes_before_the_unknown_one(self) -> None:
+        """Order is the whole fix: an untracked expiry has no date either, so
+        the "Meta reported no expiry" branch would otherwise answer for it."""
+        js = _js()
+        start = js.index("function renderExpiry")
+        window = js[start : start + 1200]
+        assert window.index("wizard.auth.meta_token_expiry_untracked") < window.index(
+            "wizard.auth.meta_token_expiry_unknown"
+        )
+
+    def test_the_unknown_line_is_still_rendered(self) -> None:
+        """Kept for the inspect-failed and genuinely-empty cases, where
+        "Meta did not report an expiry" is the accurate sentence."""
+        js = _js()
+        assert "wizard.auth.meta_token_expiry_unknown" in js
+
+    @pytest.mark.parametrize("locale", ["en", "ja"])
+    def test_the_two_lines_do_not_say_the_same_thing(self, locale: str) -> None:
+        data = json.loads(_read("i18n.json"))[locale]
+        untracked = data["wizard.auth.meta_token_expiry_untracked"]
+        unknown = data["wizard.auth.meta_token_expiry_unknown"]
+        assert untracked.strip() and untracked != unknown
+        # The untracked line points at the note; it must not blame Meta.
+        assert "Meta" not in untracked
 
 
 class TestPermanentTokenSurfaces:
