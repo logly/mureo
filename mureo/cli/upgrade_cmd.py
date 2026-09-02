@@ -261,6 +261,51 @@ def _refresh_native_skills() -> None:
             )
 
 
+def _report_skill_freshness() -> None:
+    """Say which mureo the deployed workflow skills are actually from (#728).
+
+    The refresh above only rewrites ``~/.claude/skills``, and only when it
+    already exists — a Codex install, or an upgrade done with plain
+    ``pip install -U mureo`` instead of this command, leaves the deployed
+    copies exactly where they were. Nothing then said so: the copies keep
+    working, wrongly, against tools that moved on, and the dashboard's basic
+    setup row read ✓ for a 0.10.39 skill on a 0.17 install.
+
+    So every host skills directory that exists gets one line naming its state.
+    The fix is the ordinary install, minus the OAuth it does not need:
+    ``mureo setup <host> --skip-auth``. Best-effort like its neighbours —
+    a report can never fail an upgrade that already landed.
+    """
+    from mureo.web.status_collector import (
+        SKILLS_CURRENT,
+        SKILLS_STALE,
+        _detect_workflow_skills,
+    )
+
+    hosts: tuple[tuple[str, Path], ...] = (
+        ("claude-code", Path.home() / ".claude" / "skills"),
+        ("codex", Path.home() / ".codex" / "skills"),
+    )
+    for host, dest in hosts:
+        if not dest.exists():
+            continue
+        try:
+            status = _detect_workflow_skills(dest)
+        except Exception:  # noqa: BLE001 — a report never fails the upgrade
+            continue
+        fix = f"run: mureo setup {host} --skip-auth"
+        if status.state == SKILLS_CURRENT:
+            typer.echo(f"Workflow skills: up to date ({status.expected_version}).")
+        elif status.state == SKILLS_STALE:
+            installed = status.installed_version or "an unknown version"
+            typer.echo(
+                f"Workflow skills: stale ({installed} installed, "
+                f"{status.expected_version} shipped) — {fix}"
+            )
+        else:
+            typer.echo(f"Workflow skills: incomplete — {fix}")
+
+
 def _restart_managed_service() -> None:
     """Restart the always-on configure daemon so it loads the new code.
 
@@ -370,12 +415,15 @@ def _post_upgrade_refresh() -> None:
     credential-guard hooks, and any always-on daemon otherwise keep the
     pre-upgrade version: skills are not re-copied, stale hooks stay in the host
     configs, and the daemon holds old code in memory. Refresh all of them so
-    ``mureo upgrade`` is a single, reliable step.
+    ``mureo upgrade`` is a single, reliable step, then report on the one the
+    refresh cannot always finish — the deployed skills of a host it does not
+    write to (#728).
     """
     _refresh_deployed_skills()
     _refresh_native_skills()
     _refresh_credential_guard()
     _restart_managed_service()
+    _report_skill_freshness()
 
 
 @upgrade_app.callback(invoke_without_command=True)

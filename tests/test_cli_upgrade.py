@@ -750,7 +750,7 @@ def test_refresh_credential_guard_swallows_errors(
 def test_post_upgrade_refresh_includes_credential_guard(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The wiring: _post_upgrade_refresh runs skills, guard, and service.
+    """The wiring: _post_upgrade_refresh runs skills, guard, service, report.
 
     Uses ``_REAL_POST_UPGRADE_REFRESH`` (captured at module import) because
     the autouse ``_no_real_post_upgrade`` fixture replaces the module
@@ -759,15 +759,133 @@ def test_post_upgrade_refresh_includes_credential_guard(
     skills = MagicMock()
     guard = MagicMock()
     service = MagicMock()
+    report = MagicMock()
     monkeypatch.setattr("mureo.cli.upgrade_cmd._refresh_deployed_skills", skills)
     monkeypatch.setattr("mureo.cli.upgrade_cmd._refresh_credential_guard", guard)
     monkeypatch.setattr("mureo.cli.upgrade_cmd._restart_managed_service", service)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd._report_skill_freshness", report)
 
     _REAL_POST_UPGRADE_REFRESH()
 
     skills.assert_called_once()
     guard.assert_called_once()
     service.assert_called_once()
+    report.assert_called_once()
+
+
+def _deploy_skills(dest: Path, version: str) -> None:
+    """Write every shipped skill into ``dest`` at ``version`` (#728)."""
+    from mureo.web.status_collector import _shipped_skill_versions
+
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in _shipped_skill_versions():
+        (dest / name).mkdir(parents=True, exist_ok=True)
+        (dest / name / "SKILL.md").write_text(
+            f"---\nname: x\nmetadata:\n  version: {version}\n---\n",
+            encoding="utf-8",
+        )
+
+
+def test_report_skill_freshness_silent_without_a_skills_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No skills dir → nothing was deployed, so there is nothing to date."""
+    from mureo.cli import upgrade_cmd
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    upgrade_cmd._report_skill_freshness()
+    assert capsys.readouterr().out == ""
+
+
+def test_report_skill_freshness_names_the_stale_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """#728 — the deployed copies are only rewritten by an install, so an
+    upgrade must say when they were left behind, and how to fix it."""
+    from mureo.cli import upgrade_cmd
+
+    _deploy_skills(tmp_path / ".claude" / "skills", "0.10.39")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._report_skill_freshness()
+
+    out = capsys.readouterr().out
+    assert "Workflow skills: stale (0.10.39 installed," in out
+    assert "run: mureo setup claude-code --skip-auth" in out
+
+
+def test_report_skill_freshness_reports_the_codex_dir_too(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``_refresh_deployed_skills`` only rewrites ``~/.claude/skills``, so a
+    Codex install is the one most likely to be carrying old copies."""
+    from mureo.cli import upgrade_cmd
+
+    _deploy_skills(tmp_path / ".codex" / "skills", "0.10.39")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._report_skill_freshness()
+
+    assert "run: mureo setup codex --skip-auth" in capsys.readouterr().out
+
+
+def test_report_skill_freshness_confirms_a_current_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from mureo.cli import upgrade_cmd
+    from mureo.web.status_collector import _shipped_skill_versions
+
+    dest = tmp_path / ".claude" / "skills"
+    dest.mkdir(parents=True)
+    for name, version in _shipped_skill_versions().items():
+        (dest / name).mkdir(parents=True)
+        (dest / name / "SKILL.md").write_text(
+            f"---\nname: x\nmetadata:\n  version: {version}\n---\n",
+            encoding="utf-8",
+        )
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._report_skill_freshness()
+
+    assert "Workflow skills: up to date" in capsys.readouterr().out
+
+
+def test_report_skill_freshness_flags_an_incomplete_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A half-deployed set is the same remedy, said with the same line."""
+    import shutil
+
+    from mureo.cli import upgrade_cmd
+    from mureo.web.status_collector import _shipped_skill_versions
+
+    dest = tmp_path / ".claude" / "skills"
+    _deploy_skills(dest, "0.10.39")
+    shutil.rmtree(dest / sorted(_shipped_skill_versions())[0])
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._report_skill_freshness()
+
+    out = capsys.readouterr().out
+    assert "Workflow skills: incomplete" in out
+    assert "run: mureo setup claude-code --skip-auth" in out
+
+
+def test_report_skill_freshness_never_fails_the_upgrade(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Best-effort, like every other post-upgrade step."""
+    from mureo.cli import upgrade_cmd
+
+    _deploy_skills(tmp_path / ".claude" / "skills", "0.10.39")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    def _boom(_dir: Path) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("mureo.web.status_collector._detect_workflow_skills", _boom)
+
+    upgrade_cmd._report_skill_freshness()  # must not raise
 
 
 def test_restart_managed_service_noop_when_not_installed(

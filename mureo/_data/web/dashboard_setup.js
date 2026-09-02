@@ -167,6 +167,55 @@
     },
   ];
 
+  // The command that re-copies the deployed workflow skills, per host (#728).
+  // Claude Desktop has no `mureo setup claude-desktop` subcommand and needs
+  // none: it reads the same ~/.claude/skills Claude Code does, so the
+  // claude-code install is its install too.
+  const SKILLS_SETUP_COMMAND = {
+    "claude-code": "mureo setup claude-code --skip-auth",
+    "claude-desktop": "mureo setup claude-code --skip-auth",
+    codex: "mureo setup codex --skip-auth",
+  };
+
+  // Skills left behind by an older mureo keep running — wrongly — against
+  // tools that moved on, and presence alone drew them ✓ for months (#728).
+  // Returns the sub-note for that state: which version is on disk, which one
+  // this package ships, and the one command that fixes it. Null in every
+  // other state — `missing` keeps its plain ✗, having no version to name and
+  // no "update them" to ask for.
+  //
+  // Deliberately NOT a `data-i18n` node: the text carries interpolated
+  // versions and a `<code>` child, both of which a locale re-translation
+  // (which rewrites textContent) would destroy. renderAll() rebuilds this
+  // section on every locale change, which is what keeps it translated.
+  function buildStaleSkillsNote(status) {
+    const parts = (status && status.setup_parts) || {};
+    if (parts.skills_state !== "stale") return null;
+    const installed = parts.skills_installed_version;
+    const expected = parts.skills_expected_version || "";
+    const note = document.createElement("div");
+    note.className =
+      "dashboard-provider-hosted-note dashboard-skills-stale-note";
+    note.appendChild(
+      document.createTextNode(
+        (installed
+          ? MUREO.t("dashboard.skills_stale_note", {
+              installed: installed,
+              expected: expected,
+            })
+          : MUREO.t("dashboard.skills_stale_note_unknown", {
+              expected: expected,
+            })) + " "
+      )
+    );
+    const command = document.createElement("code");
+    command.textContent =
+      SKILLS_SETUP_COMMAND[(status && status.host) || "claude-code"] ||
+      SKILLS_SETUP_COMMAND["claude-code"];
+    note.appendChild(command);
+    return note;
+  }
+
   function renderHostSection(status) {
     const node = document.querySelector("[data-dashboard-host-value]");
     if (!node || !status) return;
@@ -302,6 +351,12 @@
       if (suppressMcp && row.key === "mureo_mcp") return;
       const li = document.createElement("li");
       const installed = parts[row.key] === true;
+      // #728: a stale skill set is not installed for the ✓/✗ purposes above
+      // — it does not do what the row claims — but its files ARE on disk, so
+      // the row keeps both controls it had, and the install button keeps
+      // saying "Reinstall" for the overwrite that is the remedy here.
+      const stale = row.key === "skills" && parts.skills_state === "stale";
+      const onDisk = installed || stale;
       const labelSpan = document.createElement("span");
       let labelText = MUREO.t(row.labelKey);
       // The credential-guard hook has no surface on Claude Desktop, so
@@ -316,15 +371,17 @@
       labelSpan.appendChild(statusMark(installed));
       labelSpan.appendChild(document.createTextNode(" " + labelText));
       li.appendChild(labelSpan);
-      if (installed) {
+      if (onDisk) {
         li.appendChild(buildBasicRemoveButton(row));
       }
       // Per-row (re)install button, shown in both states so a removed part
       // can be restored without re-running the wizard. Suppressed for the
       // auth hook on Claude Desktop, where install is a no-op.
       if (row.installUrl && !hookUnsupported) {
-        li.appendChild(buildBasicInstallButton(row, installed));
+        li.appendChild(buildBasicInstallButton(row, onDisk));
       }
+      const staleNote = stale ? buildStaleSkillsNote(status) : null;
+      if (staleNote) li.appendChild(staleNote);
       list.appendChild(li);
     });
   }

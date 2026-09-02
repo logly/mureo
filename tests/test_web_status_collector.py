@@ -17,9 +17,16 @@ import pytest
 from mureo.web.host_paths import HostPaths
 from mureo.web.status_collector import (
     MUREO_NATIVE_ID,
+    SKILLS_CURRENT,
+    SKILLS_MISSING,
+    SKILLS_STALE,
+    SkillsStatus,
     StatusSnapshot,
+    _detect_workflow_skills,
     _mask_value,
+    _read_skill_version,
     _shipped_skill_names,
+    _shipped_skill_versions,
     collect_status,
 )
 
@@ -458,13 +465,30 @@ class TestMultiAccountAuthFlag:
         assert snap.as_dict()["multi_account_auth"] is True
 
 
-def _install_all_skills(skills_dir: Path) -> None:
-    """Put every skill mureo ships into ``skills_dir``, as an install would."""
+def _skill_md(version: str | None) -> str:
+    """A minimal SKILL.md, shaped like the ones mureo ships (#728).
+
+    ``version=None`` writes the pre-#728 shape — frontmatter with no
+    ``metadata.version`` — which is what an ancient deployed copy looks like.
+    """
+    if version is None:
+        return "---\nname: x\n---\n"
+    return f"---\nname: x\nmetadata:\n  version: {version}\n---\n"
+
+
+def _install_all_skills(skills_dir: Path, version: str | None = None) -> None:
+    """Put every skill mureo ships into ``skills_dir``, as an install would.
+
+    Each copy records the version its shipped counterpart records, so the
+    result reads as a CURRENT install. Pass ``version`` to simulate the copies
+    a different mureo left behind (#728).
+    """
     skills_dir.mkdir(parents=True, exist_ok=True)
-    for name in _shipped_skill_names():
+    for name, shipped_version in _shipped_skill_versions().items():
         (skills_dir / name).mkdir(parents=True, exist_ok=True)
         (skills_dir / name / "SKILL.md").write_text(
-            "---\nname: x\n---\n", encoding="utf-8"
+            _skill_md(version if version is not None else shipped_version),
+            encoding="utf-8",
         )
 
 
@@ -682,3 +706,195 @@ class TestDetectorsAgreeWithTheRealInstallers:
             collect_status("claude-code", home=home, paths=paths).setup_parts.skills
             is False
         )
+
+
+@pytest.mark.unit
+class TestReadSkillVersion:
+    """The version a deployed SKILL.md records about itself (#728)."""
+
+    def test_reads_the_metadata_version(self, tmp_path: Path) -> None:
+        path = tmp_path / "SKILL.md"
+        path.write_text(_skill_md("0.10.39"), encoding="utf-8")
+        assert _read_skill_version(path) == "0.10.39"
+
+    def test_quoted_version_is_unquoted(self, tmp_path: Path) -> None:
+        path = tmp_path / "SKILL.md"
+        path.write_text(
+            '---\nname: x\nmetadata:\n  version: "0.10.39"\n---\n', encoding="utf-8"
+        )
+        assert _read_skill_version(path) == "0.10.39"
+
+    def test_missing_file_is_unknown(self, tmp_path: Path) -> None:
+        assert _read_skill_version(tmp_path / "nope" / "SKILL.md") is None
+
+    def test_frontmatter_without_a_version_is_unknown(self, tmp_path: Path) -> None:
+        path = tmp_path / "SKILL.md"
+        path.write_text(_skill_md(None), encoding="utf-8")
+        assert _read_skill_version(path) is None
+
+    def test_body_text_is_not_frontmatter(self, tmp_path: Path) -> None:
+        """A ``version:`` line AFTER the closing delimiter is prose, not
+        metadata — reading it would let any skill's body claim a version."""
+        path = tmp_path / "SKILL.md"
+        path.write_text(
+            "---\nname: x\n---\n\n# Body\n\n  version: 9.9.9\n", encoding="utf-8"
+        )
+        assert _read_skill_version(path) is None
+
+    def test_no_leading_delimiter_is_unknown(self, tmp_path: Path) -> None:
+        path = tmp_path / "SKILL.md"
+        path.write_text("# Not a skill\n\nversion: 9.9.9\n", encoding="utf-8")
+        assert _read_skill_version(path) is None
+
+    def test_every_shipped_skill_records_a_version(self) -> None:
+        """The whole check rests on this: CI pins ``metadata.version`` in all
+        57 shipped SKILL.md files, so an unset one would make the comparison
+        vacuous rather than loud."""
+        shipped = _shipped_skill_versions()
+        assert shipped
+        assert all(v is not None for v in shipped.values())
+
+
+@pytest.mark.unit
+class TestWorkflowSkillFreshness:
+    """Presence alone said ✓ for months-old copies (#728).
+
+    Every shipped SKILL.md pins ``metadata.version`` to the mureo that shipped
+    it, but ``pip install -U mureo`` never rewrites the deployed copies under
+    ``~/.claude/skills``. So the row read ✓ on an install whose daily-check
+    skill was five minor versions behind the tools it calls.
+    """
+
+    def test_matching_versions_read_current(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills"
+        _install_all_skills(skills_dir)
+
+        status = _detect_workflow_skills(skills_dir)
+
+        assert isinstance(status, SkillsStatus)
+        assert status.state == SKILLS_CURRENT
+        assert status.installed_version == status.expected_version
+
+    def test_older_versions_read_stale(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills"
+        _install_all_skills(skills_dir, version="0.10.39")
+
+        status = _detect_workflow_skills(skills_dir)
+
+        assert status.state == SKILLS_STALE
+        assert status.installed_version == "0.10.39"
+        assert status.expected_version != "0.10.39"
+
+    def test_one_stale_skill_is_enough(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills"
+        _install_all_skills(skills_dir)
+        victim = sorted(_shipped_skill_versions())[0]
+        (skills_dir / victim / "SKILL.md").write_text(
+            _skill_md("0.10.39"), encoding="utf-8"
+        )
+
+        status = _detect_workflow_skills(skills_dir)
+
+        assert status.state == SKILLS_STALE
+        assert status.installed_versions[victim] == "0.10.39"
+
+    def test_unparseable_version_reads_stale(self, tmp_path: Path) -> None:
+        """A copy that cannot say where it came from predates the pin — which
+        makes it older than every version that can, not "probably fine"."""
+        skills_dir = tmp_path / "skills"
+        _install_all_skills(skills_dir)
+        victim = sorted(_shipped_skill_versions())[0]
+        (skills_dir / victim / "SKILL.md").write_text(_skill_md(None), encoding="utf-8")
+
+        status = _detect_workflow_skills(skills_dir)
+
+        assert status.state == SKILLS_STALE
+        assert status.installed_versions[victim] is None
+
+    def test_absent_skill_reads_missing_not_stale(self, tmp_path: Path) -> None:
+        """Missing beats stale: the remedy is the same re-install either way,
+        and "half of them are also gone" is the more urgent half of the fact."""
+        import shutil
+
+        skills_dir = tmp_path / "skills"
+        _install_all_skills(skills_dir, version="0.10.39")
+        victim = sorted(_shipped_skill_versions())[0]
+        shutil.rmtree(skills_dir / victim)
+
+        assert _detect_workflow_skills(skills_dir).state == SKILLS_MISSING
+
+    def test_empty_dir_reads_missing(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        assert _detect_workflow_skills(skills_dir).state == SKILLS_MISSING
+
+    def test_unreadable_package_data_never_claims_installed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing shipped means nothing can be verified — say missing rather
+        than ✓ off an empty comparison."""
+        monkeypatch.setattr(
+            "mureo.web.status_collector._shipped_skill_versions", lambda: {}
+        )
+        skills_dir = tmp_path / "skills"
+        _install_all_skills(skills_dir)
+
+        assert _detect_workflow_skills(skills_dir).state == SKILLS_MISSING
+
+    def test_installed_version_reports_the_common_one(self, tmp_path: Path) -> None:
+        """One odd copy does not rename the whole set: the line names the
+        version most of the deployed skills came from."""
+        skills_dir = tmp_path / "skills"
+        _install_all_skills(skills_dir, version="0.10.39")
+        victim = sorted(_shipped_skill_versions())[0]
+        (skills_dir / victim / "SKILL.md").write_text(
+            _skill_md("0.9.0"), encoding="utf-8"
+        )
+
+        assert _detect_workflow_skills(skills_dir).installed_version == "0.10.39"
+
+
+@pytest.mark.unit
+class TestStaleSkillsOnTheSnapshot:
+    """The three-state result reaches the browser (#728)."""
+
+    def test_current_install_is_ok_and_says_so(self, tmp_path: Path) -> None:
+        paths = _paths(tmp_path)
+        _install_all_skills(paths.skills_dir)
+
+        snap = collect_status("claude-code", home=_build_home(tmp_path), paths=paths)
+        parts = snap.as_dict()["setup_parts"]
+
+        assert snap.setup_parts.skills is True
+        assert parts["skills"] is True
+        assert parts["skills_state"] == SKILLS_CURRENT
+        assert parts["skills_installed_version"] == parts["skills_expected_version"]
+
+    def test_stale_install_is_not_ok_and_names_both_versions(
+        self, tmp_path: Path
+    ) -> None:
+        """``skills`` stays the boolean the dashboard, the wizard and the
+        landing page already read — a stale set is NOT a working set."""
+        paths = _paths(tmp_path)
+        _install_all_skills(paths.skills_dir, version="0.10.39")
+
+        snap = collect_status("claude-code", home=_build_home(tmp_path), paths=paths)
+        parts = snap.as_dict()["setup_parts"]
+
+        assert snap.setup_parts.skills is False
+        assert parts["skills_state"] == SKILLS_STALE
+        assert parts["skills_installed_version"] == "0.10.39"
+        assert parts["skills_expected_version"] != "0.10.39"
+
+    def test_absent_install_reports_missing(self, tmp_path: Path) -> None:
+        paths = _paths(tmp_path)
+
+        snap = collect_status("claude-code", home=_build_home(tmp_path), paths=paths)
+        parts = snap.as_dict()["setup_parts"]
+
+        assert parts["skills"] is False
+        assert parts["skills_state"] == SKILLS_MISSING
+        assert parts["skills_installed_version"] is None
+
+    def test_shipped_skill_names_still_answers_the_names(self) -> None:
+        assert _shipped_skill_names() == frozenset(_shipped_skill_versions())

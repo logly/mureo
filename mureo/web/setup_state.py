@@ -19,12 +19,21 @@ older mureo is simply ignored.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 PART_MCP = "mureo_mcp"
 PART_HOOK = "auth_hook"
 PART_SKILLS = "skills"
 
 KNOWN_PARTS: tuple[str, ...] = (PART_MCP, PART_HOOK, PART_SKILLS)
+
+# #728 — the skills row carries three extra facts beyond its boolean: which
+# of the three states it is in, which mureo this package ships skills for,
+# and which mureo the deployed copies actually came from. Not parts: nothing
+# installs or removes them, and ``KNOWN_PARTS`` stays the installable three.
+FIELD_SKILLS_STATE = "skills_state"
+FIELD_SKILLS_EXPECTED_VERSION = "skills_expected_version"
+FIELD_SKILLS_INSTALLED_VERSION = "skills_installed_version"
 
 
 @dataclass(frozen=True)
@@ -34,12 +43,24 @@ class SetupParts:
     mureo_mcp: bool = False
     auth_hook: bool = False
     skills: bool = False
+    # #728: ``skills`` is True only for a CURRENT set — a set left behind by
+    # an older mureo is not a working set, and every existing consumer (the
+    # dashboard row, the wizard's completion gate, the landing page) already
+    # reads that boolean as "is this usable". The three fields below say WHY
+    # it is False so a surface can tell "never installed" from "installed
+    # months ago", which is the whole point of the issue.
+    skills_state: str = "missing"
+    skills_expected_version: str = ""
+    skills_installed_version: str | None = None
 
-    def as_dict(self) -> dict[str, bool]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             PART_MCP: self.mureo_mcp,
             PART_HOOK: self.auth_hook,
             PART_SKILLS: self.skills,
+            FIELD_SKILLS_STATE: self.skills_state,
+            FIELD_SKILLS_EXPECTED_VERSION: self.skills_expected_version,
+            FIELD_SKILLS_INSTALLED_VERSION: self.skills_installed_version,
         }
 
     def all_installed(self) -> bool:

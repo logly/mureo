@@ -655,8 +655,14 @@ run**: switching vocabulary between runs, or writing `status` one day and
 | `mureo configure` | Launch the local configuration / Reports UI |
 | `mureo service {install,status,restart,uninstall}` | Manage the always-on daemon |
 | `mureo upgrade [--all]` | Upgrade mureo (also refreshes deployed skills + restarts the service) |
+| `mureo setup {claude-code,codex} --skip-auth` | Re-install the deployed workflow skills after an upgrade (no OAuth) |
 | `mureo providers {list,add,remove}` | Manage official-MCP / plugin providers |
 | `mureo rollback {list,show}` | Inspect reversible actions in the `action_log` (apply a reversal via the `rollback_apply` MCP tool) |
+
+Upgrading the package does **not** rewrite these skill files — they are copies
+that only an install writes. After `pip install -U mureo` (or an upgrade that
+did not reach this host), re-run `mureo setup <host> --skip-auth`; the
+configure UI's Setup tab flags a skill set left behind by an older mureo.
 
 To **list Google Ads campaigns**, call the MCP tool `google_ads_campaigns_list`
 (it resolves `customer_id` from the stored credentials). If you hit
