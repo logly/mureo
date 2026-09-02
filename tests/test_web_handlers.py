@@ -164,6 +164,17 @@ class TestServeStatus:
         ):
             assert key in body
 
+    def test_status_carries_the_skill_freshness_fields(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """#728 — the dashboard needs more than ✓/✗ to tell a stale skill set
+        from an absent one, so the three-state result ships with the payload."""
+        resp = _get(wizard, "/api/status")
+        parts = json.loads(resp.read().decode("utf-8"))["setup_parts"]
+        assert parts["skills_state"] in ("missing", "stale", "current")
+        assert isinstance(parts["skills_expected_version"], str)
+        assert "skills_installed_version" in parts
+
 
 @pytest.mark.unit
 class TestServeAbout:
