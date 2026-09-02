@@ -71,6 +71,7 @@ def _expiry(days_ahead: float) -> str:
 #: The row a credentials file with nothing knowable produces.
 _UNKNOWN_ROW = {
     "access_token_age_days": None,
+    "access_token_never_expires": False,
     "access_token_expiring": False,
     "access_token_expires_at": None,
     "access_token_expires_in_days": None,
@@ -329,6 +330,48 @@ class TestStoredExpiry:
 
 
 @pytest.mark.unit
+class TestPermanentTokenSilencesBothWarnings:
+    """#740: Graph reports a permanent token as ``expires_at: 0`` and the
+    paste route records that as ``token_never_expires``. A token with no end
+    date cannot be expiring — and mureo will not exchange it either, so the
+    age clock is measuring a life that does not run out."""
+
+    def test_the_row_reports_the_verdict(self, tmp_path: Path) -> None:
+        section = _app_backed(2)
+        section["token_never_expires"] = True
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_never_expires"] is True
+
+    def test_absent_verdict_reads_as_false(self, tmp_path: Path) -> None:
+        row = _detect_meta_token(_credentials(tmp_path, _app_backed(2)))
+        assert row["access_token_never_expires"] is False
+
+    def test_age_past_the_threshold_is_not_expiring(self, tmp_path: Path) -> None:
+        """The app pair is stored and the token is far past the refresh
+        threshold, which is exactly the state that used to nag — and, worse,
+        used to fire the exchange."""
+
+        section = _app_backed(META_ACCESS_TOKEN_WARN_DAYS + 30)
+        section["token_never_expires"] = True
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expiring"] is False
+        assert row["access_token_never_expires"] is True
+
+    def test_a_stale_stored_expiry_does_not_warn(self, tmp_path: Path) -> None:
+        """Contradictory records: the flag is Graph's own verdict, so it
+        wins over a date left behind by an earlier token."""
+
+        section = _app_backed(2)
+        section["token_never_expires"] = True
+        section["token_expires_at"] = _expiry(1)
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expiry_warning"] is False
+        # The date is still echoed — the row states facts; it just does not
+        # raise them as a warning.
+        assert row["access_token_expires_in_days"] == 1
+
+
+@pytest.mark.unit
 class TestSnapshotCarriesTheRow:
     def test_collect_status_exposes_meta_token(self, tmp_path: Path) -> None:
         from mureo.web.status_collector import collect_status
@@ -342,6 +385,7 @@ class TestSnapshotCarriesTheRow:
         snapshot = collect_status("claude-code", home=home)
         assert snapshot.meta_token == {
             "access_token_age_days": 60,
+            "access_token_never_expires": False,
             "access_token_expiring": True,
             "access_token_expires_at": None,
             "access_token_expires_in_days": None,

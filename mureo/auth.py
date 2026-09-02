@@ -91,6 +91,13 @@ class MetaAdsCredentials:
     credential, anything written before this field existed, or a paste whose
     inspection Graph declined) and is treated as "not a system user", which
     is the safe direction — the exchange succeeds without the parameter.
+
+    ``token_never_expires`` (#740) is Graph's other verdict: ``debug_token``
+    reports a permanent token as ``expires_at: 0``, which the Access Token
+    Debugger renders as "Expires: Never". It is stored as its own field
+    because zero and "no expiry reported" are otherwise the same absence,
+    and only one of them may go on a refresh clock. ``False`` means "not
+    established", never "expires".
     """
 
     access_token: str = field(repr=False)
@@ -100,6 +107,7 @@ class MetaAdsCredentials:
     account_id: str | None = None  # act_XXXX format
     token_expires_at: str | None = None  # ISO 8601 timestamp, when known
     token_type: str | None = None  # Graph debug_token "type", when known
+    token_never_expires: bool = False  # Graph reported expires_at: 0
 
 
 # Amazon Ads official-MCP bridge (#113 Phase 1). region picks the
@@ -240,6 +248,11 @@ def load_meta_ads_credentials(
                 account_id=meta_section.get("account_id"),
                 token_expires_at=meta_section.get("token_expires_at"),
                 token_type=meta_section.get("token_type"),
+                # ``bool(...)`` and nothing more: the file is hand-editable,
+                # so this arrives as whatever JSON the operator typed. A
+                # truthy value is the promise; the stored type never travels
+                # further than this line.
+                token_never_expires=bool(meta_section.get("token_never_expires")),
             )
 
     # Environment variable fallback
@@ -670,11 +683,22 @@ def _should_refresh(credentials: MetaAdsCredentials) -> bool:
        browser-OAuth long-lived user token, which mureo mints itself and
        therefore knows the age of exactly).
 
-    Either way the app pair gates everything: without ``app_id`` and
+    Before either clock: a token Graph itself called permanent is never
+    exchanged, whatever else is stored. Meta reports one as ``expires_at:
+    0``, which mureo records as ``token_never_expires``; exchanging it would
+    trade a credential with no end date for a 60-day one and put the install
+    on the treadmill the operator had opted out of. A contradictory stored
+    expiry does not override it — the exchange is the irreversible move
+    (#740).
+
+    Otherwise the app pair gates everything: without ``app_id`` and
     ``app_secret`` there is no exchange to make, so an expiry that cannot be
     acted on stays a *warning* (the configure card and the status snapshot),
     not a doomed API call on every request.
     """
+    if credentials.token_never_expires:
+        return False
+
     if not credentials.app_id or not credentials.app_secret:
         return False
 

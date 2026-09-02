@@ -217,6 +217,13 @@ def _clear_stale_refresh_clock(name: str, section_payload: dict[str, Any]) -> No
     different kind, it would send a system-user-only parameter on a user
     token exchange — the very confusion the field was added to end.
 
+    ``token_never_expires`` (#740) goes for the fourth time, and it is the
+    one whose inheritance is silent rather than noisy: it is Graph's verdict
+    that the token being replaced was permanent, and
+    :func:`mureo.auth._should_refresh` returns ``False`` on it before every
+    other clock. Left behind, a hand-entered 60-day token would be treated
+    as permanent for its whole life and expire without a single warning.
+
     Only the token write clears the clock — writing ``META_ADS_ACCOUNT_ID``,
     say, leaves the token untouched, so its stamp, expiry and type still
     describe it.
@@ -225,6 +232,7 @@ def _clear_stale_refresh_clock(name: str, section_payload: dict[str, Any]) -> No
         section_payload.pop("token_obtained_at", None)
         section_payload.pop("token_expires_at", None)
         section_payload.pop("token_type", None)
+        section_payload.pop("token_never_expires", None)
 
 
 def write_credential_env_var(

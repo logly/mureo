@@ -865,10 +865,20 @@ def _merge_meta_section(
     token_obtained_at = _resolve_token_obtained_at(meta, access_token, prior_meta)
     if token_obtained_at is not None:
         meta_data["token_obtained_at"] = token_obtained_at
-    # Both describe THIS token, so both follow the same rule: explicit wins,
-    # a prior value survives only while the token is unchanged, and a new
-    # token inherits neither (#726).
-    for field_name in ("token_expires_at", "token_type"):
+    # Graph's "this one is permanent" verdict, resolved first because it
+    # decides whether an expiry may be written at all (#740).
+    never_expires = _resolve_token_bound_flag(
+        meta, access_token, prior_meta, "token_never_expires"
+    )
+    if never_expires:
+        meta_data["token_never_expires"] = True
+    # All three describe THIS token, so all three follow the same rule:
+    # explicit wins, a prior value survives only while the token is
+    # unchanged, and a new token inherits none of them (#726). A token Meta
+    # called permanent gets no expiry key beside the flag — a countdown and
+    # "never" cannot both be true, and the flag is the one Graph stated.
+    fields = ("token_type",) if never_expires else ("token_expires_at", "token_type")
+    for field_name in fields:
         value = _resolve_token_bound_field(meta, access_token, prior_meta, field_name)
         if value is not None:
             meta_data[field_name] = value
@@ -933,6 +943,27 @@ def _resolve_token_bound_field(
         if prior_value:
             return str(prior_value)
     return None
+
+
+def _resolve_token_bound_flag(
+    meta: MetaAdsCredentials,
+    access_token: str,
+    prior_meta: dict[str, Any],
+    field_name: str,
+) -> bool:
+    """:func:`_resolve_token_bound_field`'s rule, for a boolean verdict.
+
+    Same three cases — explicit value wins, a prior value survives only
+    while the token is UNCHANGED, otherwise nothing — but the answer is a
+    ``bool`` rather than a string, so ``False`` reads as "not established"
+    and the caller writes no key (#740).
+    """
+
+    if getattr(meta, field_name, False):
+        return True
+    if access_token and access_token == prior_meta.get("access_token"):
+        return bool(prior_meta.get(field_name))
+    return False
 
 
 def save_credentials(

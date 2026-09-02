@@ -144,6 +144,48 @@ class TestAuthCommands:
             result = runner.invoke(app, ["auth", "status"])
             assert result.exit_code == 0
 
+    def _meta_status_output(self, **kwargs):
+        from mureo.auth import MetaAdsCredentials
+        from mureo.cli.main import app
+
+        creds = MetaAdsCredentials(access_token="tok", account_id="act_1", **kwargs)
+        with (
+            patch("mureo.cli.auth_cmd.load_google_ads_credentials", return_value=None),
+            patch("mureo.cli.auth_cmd.load_meta_ads_credentials", return_value=creds),
+            patch("mureo.cli.auth_cmd.load_amazon_ads_credentials", return_value=None),
+        ):
+            result = runner.invoke(app, ["auth", "status"])
+        assert result.exit_code == 0
+        return result.output
+
+    def test_auth_status_says_a_permanent_meta_token_does_not_expire(self):
+        """#740: Meta reports a token issued without an expiry as permanent,
+        and mureo never renews one. The status line says so rather than
+        leaving the operator to assume a 60-day countdown."""
+
+        output = self._meta_status_output(token_never_expires=True)
+        assert "Meta Ads: Authenticated (account_id: act_1)" in output
+        assert "(token does not expire)" in output
+
+    def test_auth_status_shows_the_meta_token_expiry_date(self):
+        output = self._meta_status_output(token_expires_at="2026-11-01T00:00:00+00:00")
+        assert "(expires 2026-11-01)" in output
+
+    def test_auth_status_prefers_the_permanent_verdict_over_a_stale_date(self):
+        output = self._meta_status_output(
+            token_expires_at="2026-11-01T00:00:00+00:00",
+            token_never_expires=True,
+        )
+        assert "(token does not expire)" in output
+        assert "2026-11-01" not in output
+
+    def test_auth_status_says_nothing_about_an_unknown_meta_expiry(self):
+        """No date and no verdict is not a fact to report — mureo simply
+        never learned when this token dies."""
+
+        output = self._meta_status_output()
+        assert "expire" not in output.split("Amazon Ads")[0].split("Meta Ads")[1]
+
     def test_auth_check_google_no_creds(self, _no_creds):
         from mureo.cli.main import app
 

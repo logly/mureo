@@ -328,6 +328,17 @@ def _detect_meta_token(credentials_path: Path) -> dict[str, Any]:
     credential dies on Tuesday", which is worth saying loudest to exactly
     the operator mureo cannot help automatically.
 
+    **And the third signal, which silences both (#740):
+    ``token_never_expires``.** Graph reports a permanent token as
+    ``expires_at: 0``, and the paste route records that verdict. A token
+    with no end date cannot be expiring, so ``access_token_expiring`` and
+    ``access_token_expiry_warning`` are both False whatever the age stamp
+    and the app pair say — the age clock is measuring a life that does not
+    run out, and ``mureo.auth._should_refresh`` is not going to exchange it
+    either. ``access_token_never_expires`` is reported instead, so the row
+    can state the fact once rather than nag about a countdown that does not
+    exist.
+
     Read-only and never raises, like every other detector here.
     """
     payload = read_json_safe(credentials_path)
@@ -337,16 +348,20 @@ def _detect_meta_token(credentials_path: Path) -> dict[str, Any]:
     refreshable = bool(section.get("app_id")) and bool(section.get("app_secret"))
     raw_expiry = section.get("token_expires_at")
     days_left = _days_until(raw_expiry)
+    never_expires = bool(section.get("token_never_expires"))
     return {
         "access_token_age_days": age,
-        "access_token_expiring": refreshable
+        "access_token_never_expires": never_expires,
+        "access_token_expiring": not never_expires
+        and refreshable
         and age is not None
         and age > META_ACCESS_TOKEN_WARN_DAYS,
         # Echoed only when it parsed, so the UI never renders a date it
         # could not interpret.
         "access_token_expires_at": str(raw_expiry) if days_left is not None else None,
         "access_token_expires_in_days": days_left,
-        "access_token_expiry_warning": days_left is not None
+        "access_token_expiry_warning": not never_expires
+        and days_left is not None
         and days_left < META_ACCESS_TOKEN_EXPIRY_WARN_DAYS,
     }
 

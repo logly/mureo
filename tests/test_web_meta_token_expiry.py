@@ -47,6 +47,15 @@ _TOKEN_INFO = {
     "expires_at": _EXPIRES_AT,
     "data_access_expires_at": _DATA_ACCESS_EXPIRES_AT,
     "issued_at": _ISSUED_AT,
+    "never_expires": False,
+}
+
+_PERMANENT_TOKEN_INFO = {
+    "type": "SYSTEM_USER",
+    "expires_at": None,
+    "data_access_expires_at": None,
+    "issued_at": _ISSUED_AT,
+    "never_expires": True,
 }
 
 
@@ -54,6 +63,7 @@ def _probe_result(
     *,
     token_info: dict[str, Any] | None = None,
     token_inspect_error: str | None = None,
+    token_inspect_skipped: bool = False,
 ) -> dict[str, Any]:
     return {
         "scopes": ["ads_management", "ads_read"],
@@ -61,6 +71,7 @@ def _probe_result(
         "accounts": [{"id": "act_1", "name": "One"}],
         "token_info": token_info,
         "token_inspect_error": token_inspect_error,
+        "token_inspect_skipped": token_inspect_skipped,
     }
 
 
@@ -101,8 +112,11 @@ def _save(
     wiz: ConfigureWizard,
     payload: dict[str, Any],
     probe: dict[str, Any],
+    calls: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    async def _fake(token: str) -> dict[str, Any]:
+    async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
+        if calls is not None:
+            calls.append(dict(kwargs, access_token=token))
         return probe
 
     with patch(_PROBE, side_effect=_fake):
@@ -221,7 +235,237 @@ def test_failed_inspection_still_saves_and_warns(wizard: ConfigureWizard) -> Non
 
     assert body["status"] == "ok"
     assert "token_inspect_failed" in body["warnings"]
+    assert "token_expiry_untracked" not in body["warnings"]
     assert _stored(wizard)["access_token"] == "sys-tok"
+
+
+# ---------------------------------------------------------------------------
+# The app pair is what makes an inspection possible at all (#740)
+# ---------------------------------------------------------------------------
+
+
+def test_the_inspection_uses_the_submitted_app_pair(wizard: ConfigureWizard) -> None:
+    """``debug_token`` will not accept the pasted token as its own
+    credential, so the app pair the card carries is what the probe inspects
+    with."""
+
+    calls: list[dict[str, Any]] = []
+    _save(
+        wizard,
+        {
+            "access_token": "sys-tok",
+            "app_id": "app-123",
+            "app_secret": "secret-456",
+        },
+        _probe_result(token_info=_TOKEN_INFO),
+        calls,
+    )
+
+    assert calls == [
+        {
+            "access_token": "sys-tok",
+            "app_id": "app-123",
+            "app_secret": "secret-456",
+        }
+    ]
+
+
+def test_the_inspection_falls_back_to_the_stored_app_pair(
+    wizard: ConfigureWizard,
+) -> None:
+    """Re-pasting a token without re-typing the app fields still inspects:
+    the pair is read off disk BEFORE the save, so this call is not answered
+    with what it happened to submit."""
+
+    _save(
+        wizard,
+        {
+            "access_token": "sys-tok",
+            "app_id": "app-123",
+            "app_secret": "secret-456",
+        },
+        _probe_result(token_info=_TOKEN_INFO),
+    )
+
+    calls: list[dict[str, Any]] = []
+    _save(
+        wizard,
+        {"access_token": "sys-tok-2"},
+        _probe_result(token_info=_TOKEN_INFO),
+        calls,
+    )
+
+    assert calls == [
+        {
+            "access_token": "sys-tok-2",
+            "app_id": "app-123",
+            "app_secret": "secret-456",
+        }
+    ]
+
+
+def test_a_submitted_app_pair_outranks_the_stored_one(
+    wizard: ConfigureWizard,
+) -> None:
+    _save(
+        wizard,
+        {
+            "access_token": "sys-tok",
+            "app_id": "app-123",
+            "app_secret": "secret-456",
+        },
+        _probe_result(token_info=_TOKEN_INFO),
+    )
+
+    calls: list[dict[str, Any]] = []
+    _save(
+        wizard,
+        {
+            "access_token": "sys-tok",
+            "app_id": "app-999",
+            "app_secret": "secret-999",
+        },
+        _probe_result(token_info=_TOKEN_INFO),
+        calls,
+    )
+
+    assert calls[0]["app_id"] == "app-999"
+    assert calls[0]["app_secret"] == "secret-999"
+
+
+def test_no_app_pair_anywhere_warns_that_the_expiry_is_untracked(
+    wizard: ConfigureWizard,
+) -> None:
+    """ "mureo did not check" is not "Meta refused". The old
+    ``token_inspect_failed`` copy read as a transient error and sent
+    operators back to re-paste a token that was never the problem (#740)."""
+
+    calls: list[dict[str, Any]] = []
+    body = _save(
+        wizard,
+        {"access_token": "sys-tok"},
+        _probe_result(token_inspect_skipped=True),
+        calls,
+    )
+
+    assert calls == [{"access_token": "sys-tok", "app_id": None, "app_secret": None}]
+    assert body["status"] == "ok"
+    assert "token_expiry_untracked" in body["warnings"]
+    assert "token_inspect_failed" not in body["warnings"]
+    assert "token_expiry_unknown" not in body["warnings"]
+
+
+def test_an_inspection_that_ran_and_found_nothing_says_unknown(
+    wizard: ConfigureWizard,
+) -> None:
+    """The one case ``token_expiry_unknown`` is left for: Graph answered,
+    and its answer carried neither a date nor a "never"."""
+
+    info = dict(_TOKEN_INFO, expires_at=None, never_expires=False)
+    body = _save(
+        wizard,
+        {"access_token": "sys-tok", "app_id": "app-1", "app_secret": "s-1"},
+        _probe_result(token_info=info),
+    )
+
+    assert "token_expiry_unknown" in body["warnings"]
+    assert "token_expiry_untracked" not in body["warnings"]
+
+
+# ---------------------------------------------------------------------------
+# A token Meta calls permanent (#740)
+# ---------------------------------------------------------------------------
+
+
+def test_a_permanent_token_is_recorded_as_permanent(
+    wizard: ConfigureWizard,
+) -> None:
+    body = _save(
+        wizard,
+        {"access_token": "sys-tok", "app_id": "app-1", "app_secret": "s-1"},
+        _probe_result(token_info=_PERMANENT_TOKEN_INFO),
+    )
+
+    assert body["token_never_expires"] is True
+    assert body["token_expires_at"] is None
+    meta = _stored(wizard)
+    assert meta["token_never_expires"] is True
+    assert "token_expires_at" not in meta
+
+
+def test_a_permanent_token_gets_no_expiry_warning(wizard: ConfigureWizard) -> None:
+    """There is no countdown to show and nothing to fix, so the card says
+    the fact once and stops."""
+
+    body = _save(
+        wizard,
+        {"access_token": "sys-tok", "app_id": "app-1", "app_secret": "s-1"},
+        _probe_result(token_info=_PERMANENT_TOKEN_INFO),
+    )
+
+    assert body["warnings"] == []
+
+
+def test_a_permanent_token_is_not_nagged_about_auto_refresh(
+    wizard: ConfigureWizard,
+) -> None:
+    """With the app pair stored, ``auto_refresh`` is still false — mureo will
+    not exchange a permanent token — and the operator is not told to arm a
+    renewal that must never run."""
+
+    body = _save(
+        wizard,
+        {
+            "access_token": "sys-tok",
+            "app_id": "app-123",
+            "app_secret": "secret-456",
+        },
+        _probe_result(token_info=_PERMANENT_TOKEN_INFO),
+    )
+
+    assert body["auto_refresh"] is False
+    assert "auto_refresh_unavailable" not in body["warnings"]
+
+
+def test_validate_only_reports_a_permanent_token(wizard: ConfigureWizard) -> None:
+    body = _save(
+        wizard,
+        {
+            "access_token": "sys-tok",
+            "app_id": "app-1",
+            "app_secret": "s-1",
+            "validate_only": True,
+        },
+        _probe_result(token_info=_PERMANENT_TOKEN_INFO),
+    )
+
+    assert body["token_never_expires"] is True
+    assert body["warnings"] == []
+    assert not wizard.host_paths.credentials_path.exists()
+
+
+def test_a_replacement_token_does_not_inherit_permanence(
+    wizard: ConfigureWizard,
+) -> None:
+    """The verdict describes ONE token. A later paste that Graph reports
+    with a 60-day expiry must land on the clock, not behind the old
+    token's promise."""
+
+    _save(
+        wizard,
+        {"access_token": "sys-tok", "app_id": "app-1", "app_secret": "s-1"},
+        _probe_result(token_info=_PERMANENT_TOKEN_INFO),
+    )
+    body = _save(
+        wizard,
+        {"access_token": "sys-tok-2"},
+        _probe_result(token_info=_TOKEN_INFO),
+    )
+
+    assert body["token_never_expires"] is False
+    meta = _stored(wizard)
+    assert "token_never_expires" not in meta
+    assert meta["token_expires_at"] == _EXPIRES_AT
 
 
 def test_known_expiry_without_app_credentials_warns_it_cannot_extend(

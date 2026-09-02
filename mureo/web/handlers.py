@@ -1457,10 +1457,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
           grant later without re-pasting.
 
         #726 — the token's lifetime. Business Manager mints system-user
-        tokens with a 60-day life, so the "never expires, keep it off the
-        refresh clock" premise this route was built on was wrong and cost
-        every affected install a silent outage every couple of months. The
-        route now:
+        tokens with a 60-day life unless the operator asked for none, so the
+        "never expires, keep it off the refresh clock" premise this route was
+        built on was wrong and cost every affected install a silent outage
+        every couple of months. The route now:
 
         * inspects the token (``debug_token``) and persists
           ``token_obtained_at`` plus, when Graph reports one,
@@ -1475,6 +1475,22 @@ class ConfigureHandler(BaseHTTPRequestHandler):
           ``auto_refresh_unavailable``. Values already on disk are kept when
           this call does not carry them — re-pasting a token must not
           disarm a refresh the operator already configured.
+
+        #740 — what the inspection actually needs, and what it can find.
+        ``debug_token`` will not accept the pasted token as its own
+        credential: Graph demands the app access token of the app that
+        issued it. So the app pair is not only what ARMS the renewal, it is
+        what makes the expiry knowable at all, and this route resolves it
+        from the payload or, failing that, from what is already on disk —
+        read BEFORE the save, so the answer describes the operator's
+        configuration rather than this one request. Without a pair anywhere
+        the inspection is skipped and the response says
+        ``token_expiry_untracked``, which is a different sentence to the
+        operator than ``token_inspect_failed``. And when Graph reports the
+        token as permanent (``expires_at: 0``), that verdict is persisted as
+        ``token_never_expires`` and echoed back: there is no countdown to
+        warn about, and no renewal to offer, because mureo must never
+        exchange a permanent token for a 60-day one.
 
         Nothing secret is echoed: the response carries dates, the token
         ``type`` and machine-readable warning codes, never the token or the
@@ -1496,6 +1512,25 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         app_secret = str(payload.get("app_secret") or "").strip() or None
         validate_only = bool(payload.get("validate_only", False))
 
+        from mureo.auth import MetaAdsCredentials, load_meta_ads_credentials
+        from mureo.auth_setup import save_credentials
+
+        credentials_path = self.wizard.host_paths.credentials_path
+        # Read BEFORE the save: the inspection needs an app access token, and
+        # the operator may have stored the pair on an earlier paste rather
+        # than typed it again now (#740). A file that cannot be read is not
+        # an error here — it only means there is no stored pair to fall back
+        # on, and the inspection is skipped the same way.
+        try:
+            stored_before = load_meta_ads_credentials(credentials_path)
+        except Exception:  # noqa: BLE001
+            logger.exception("Meta credentials pre-read failed")
+            stored_before = None
+        inspect_app_id = app_id or (stored_before.app_id if stored_before else None)
+        inspect_app_secret = app_secret or (
+            stored_before.app_secret if stored_before else None
+        )
+
         # The configure handler is synchronous with no running event loop.
         # Use the shared run_coroutine helper (not a bare asyncio.run) so a
         # future running-loop caller does not raise RuntimeError — which the
@@ -1505,7 +1540,13 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # trust a client-echoed probe result, which could claim access the
         # token does not actually have.
         try:
-            probe = run_coroutine(validate_meta_access_token(access_token))
+            probe = run_coroutine(
+                validate_meta_access_token(
+                    access_token,
+                    app_id=inspect_app_id,
+                    app_secret=inspect_app_secret,
+                )
+            )
         except MetaAccountFetchError as exc:
             # Token is valid but /me/adaccounts failed — a DISTINCT condition
             # from an invalid token so the UI can tell the operator to retry
@@ -1538,13 +1579,24 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # ``mureo.auth._is_system_user_token``. ``None`` when the inspection
         # failed, which reads as "not a system user".
         token_type = token_info.get("type")
+        # Graph's ``expires_at: 0`` — a promise, not a gap. Kept apart from
+        # "unknown" all the way to disk, because only one of the two may go
+        # on a refresh clock (#740).
+        token_never_expires = bool(token_info.get("never_expires"))
         # Machine-readable codes, not prose: the card maps each to an i18n
         # string, so the wording lives in the locale file and the wire stays
         # stable for downstream consumers.
         warnings: list[str] = []
-        if probe.get("token_inspect_error"):
+        if probe.get("token_inspect_skipped"):
+            # mureo did not ask, because it had nothing to ask with. Saying
+            # "Meta declined" here sent operators off to re-paste a token
+            # that was never the problem.
+            warnings.append("token_expiry_untracked")
+        elif probe.get("token_inspect_error"):
             warnings.append("token_inspect_failed")
-        elif not token_expires_at:
+        elif not token_expires_at and not token_never_expires:
+            # The inspection ran, succeeded, and came back with neither a
+            # date nor a "never".
             warnings.append("token_expiry_unknown")
 
         if validate_only:
@@ -1556,6 +1608,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                     "accounts": probe["accounts"],
                     "token_type": token_type,
                     "token_expires_at": token_expires_at,
+                    "token_never_expires": token_never_expires,
                     "data_access_expires_at": token_info.get("data_access_expires_at"),
                     "warnings": warnings,
                 },
@@ -1576,10 +1629,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-        from mureo.auth import MetaAdsCredentials, load_meta_ads_credentials
-        from mureo.auth_setup import save_credentials
-
-        credentials_path = self.wizard.host_paths.credentials_path
         # Stamped here rather than left to ``_merge_meta_section``'s default
         # so the response can quote the same instant that lands on disk.
         token_obtained_at = datetime.now(tz=timezone.utc).isoformat()
@@ -1597,6 +1646,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                     token_obtained_at=token_obtained_at,
                     token_expires_at=token_expires_at,
                     token_type=token_type,
+                    token_never_expires=token_never_expires,
                 ),
                 account_id=account_id,
             )
@@ -1615,10 +1665,14 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             stored = None
         auto_refresh = bool(
             stored is not None
+            and not stored.token_never_expires
             and stored.app_id
             and stored.app_secret
             and stored.token_expires_at
         )
+        # Only a token with a date can be renewed before it, so a permanent
+        # one is never told that a renewal is unavailable — there is nothing
+        # to renew and nothing for the operator to fix (#740).
         if token_expires_at and not auto_refresh:
             warnings.append("auto_refresh_unavailable")
 
@@ -1632,6 +1686,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 "token_type": token_type,
                 "token_obtained_at": token_obtained_at,
                 "token_expires_at": token_expires_at,
+                "token_never_expires": token_never_expires,
                 "data_access_expires_at": token_info.get("data_access_expires_at"),
                 "auto_refresh": auto_refresh,
                 "warnings": warnings,

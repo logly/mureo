@@ -2,6 +2,41 @@
 
 ### Fixed
 
+- **mureo can finally read a pasted Meta token's expiry — and it will never
+  renew a token Meta says is permanent** (#740). The `debug_token`
+  inspection added in #726 has never once worked in the field. It was sent
+  as a POST, to keep the token out of a URL httpx logs at INFO, and Graph
+  refuses that verb outright (`Unsupported post request`, subcode 33). So
+  `token_type` and `token_expires_at` were never recorded, the configure
+  card never showed an expiry, and every install fell back to the 53-day
+  age clock the issue was raised to replace.
+
+  Switching to GET is necessary but not sufficient: a system-user token
+  cannot inspect itself either (`(#100) You must provide an app access
+  token, or a user access token that is an owner or developer of the app`).
+  The inspection now authenticates with the **app access token** of the app
+  that issued the token, which makes the card's optional App ID / App Secret
+  the thing that lets mureo *read* the expiry, not only renew it. With no
+  pair stored the call is skipped rather than attempted, and the card says
+  so in its own words — a new `token_expiry_untracked` warning that tells
+  the operator what to enter, instead of the `token_inspect_failed` copy
+  that read like a transient Meta outage and sent people back to re-paste a
+  working token. The inspected token travels in the query string now, so the
+  probe filters the `httpx` / `httpcore` loggers for the duration of the one
+  call and the app access token rides in an `Authorization` header.
+
+  The second half is a token that Meta reports as `expires_at: 0` — the
+  Access Token Debugger's "Expires: Never". mureo used to read that as
+  "unknown", indistinguishable from an absent field, so a permanent token
+  with the app pair stored fell through to the age clock and got exchanged
+  for a 60-day one: a strict downgrade that then kept the 60-day treadmill
+  going. Graph's verdict is now persisted as `token_never_expires`, and
+  `auth._should_refresh` returns False on it before every other clock —
+  whatever else is on record. The configure card, the dashboard row and
+  `mureo auth status` state the fact plainly instead of counting down, no
+  renewal is offered for a token that must not be renewed, and a
+  hand-entered replacement token does not inherit the promise.
+
 - **Running the test suite no longer writes stub tokens into a real
   credentials file** (#739). Several Meta token tests called
   `refresh_meta_token_if_needed` with no `path` against a mocked Graph that

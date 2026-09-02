@@ -182,6 +182,61 @@ async def test_unparseable_expiry_falls_back_to_the_age_rule(raw: str) -> None:
     assert result.access_token == "new-refreshed-token"
 
 
+# ---------------------------------------------------------------------------
+# A token Meta called permanent is never exchanged (#740)
+# ---------------------------------------------------------------------------
+
+
+async def test_a_permanent_token_is_never_exchanged() -> None:
+    """Graph reports a never-expiring token as ``expires_at: 0``, which used
+    to be indistinguishable from "unknown" — so with the app pair stored the
+    53-day age clock fired and swapped a permanent token for a 60-day one, a
+    strict downgrade that then kept the treadmill going (#740)."""
+
+    creds = MetaAdsCredentials(
+        access_token="old-token",
+        app_id="app-123",
+        app_secret="secret-456",
+        token_obtained_at=_days_ago_iso(900),
+        token_never_expires=True,
+    )
+
+    await _assert_no_exchange(creds)
+
+
+async def test_a_permanent_token_outranks_a_stored_expiry() -> None:
+    """Contradictory records: one says permanent, the other says it died
+    last week. The exchange is the irreversible move, so the flag wins."""
+
+    creds = MetaAdsCredentials(
+        access_token="old-token",
+        app_id="app-123",
+        app_secret="secret-456",
+        token_obtained_at=_days_ago_iso(70),
+        token_expires_at=_in_days(-7),
+        token_never_expires=True,
+    )
+
+    await _assert_no_exchange(creds)
+
+
+async def test_a_permanent_system_user_token_is_left_alone() -> None:
+    """The kind of token the maintainer's own install holds: Graph's
+    debugger says "Expires: Never", the app pair is stored, and the age
+    clock is long past."""
+
+    creds = MetaAdsCredentials(
+        access_token="old-token",
+        app_id="app-123",
+        app_secret="secret-456",
+        token_obtained_at=_days_ago_iso(120),
+        token_type="SYSTEM_USER",
+        token_never_expires=True,
+    )
+
+    await _assert_no_exchange(creds)
+
+
 async def test_expiry_alone_does_not_arm_the_refresh_without_the_app_pair() -> None:
     """No app_id/app_secret, no exchange — an operator who pasted a token
     without the app credentials gets the warning path, not a broken call."""
@@ -334,6 +389,65 @@ async def test_a_stale_expiry_is_dropped_when_graph_reports_none(
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
+
+
+def test_loader_reads_token_never_expires(tmp_path: Path) -> None:
+    from mureo.auth import load_meta_ads_credentials
+
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps(
+            {
+                "meta_ads": {
+                    "access_token": "tok",
+                    "token_obtained_at": _days_ago_iso(1),
+                    "token_never_expires": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    creds = load_meta_ads_credentials(cred_path)
+
+    assert creds is not None
+    assert creds.token_never_expires is True
+
+
+def test_loader_defaults_token_never_expires_to_false(tmp_path: Path) -> None:
+    """Every credential written before this field existed, and every one the
+    OAuth path writes, has no verdict — and no verdict is not a promise."""
+
+    from mureo.auth import load_meta_ads_credentials
+
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps({"meta_ads": {"access_token": "tok"}}), encoding="utf-8"
+    )
+
+    creds = load_meta_ads_credentials(cred_path)
+
+    assert creds is not None
+    assert creds.token_never_expires is False
+
+
+def test_loader_coerces_a_hand_edited_flag_to_a_bool(tmp_path: Path) -> None:
+    """The file is hand-editable, so the field arrives as whatever JSON the
+    operator typed. A truthy value means "permanent"; the stored type never
+    leaks into the dataclass."""
+
+    from mureo.auth import load_meta_ads_credentials
+
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps({"meta_ads": {"access_token": "tok", "token_never_expires": "yes"}}),
+        encoding="utf-8",
+    )
+
+    creds = load_meta_ads_credentials(cred_path)
+
+    assert creds is not None
+    assert creds.token_never_expires is True
 
 
 def test_loader_reads_token_expires_at(tmp_path: Path) -> None:
