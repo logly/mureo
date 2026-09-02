@@ -208,6 +208,8 @@ mureo upgrade --no-refresh # upgrade the package(s) only; skip the post-upgrade 
 
 After a successful upgrade, mureo runs a **post-upgrade refresh** so the new code actually takes effect: it re-deploys the bundled skills into `~/.claude/skills/` and any plugin-provided native slash skills (the `mureo.native_skills` entry-point group, #439) into both `~/.claude/skills/` and `~/.codex/skills/`, upgrades the installed credential-guard hooks, and restarts the always-on service. The refresh only touches a host that already has a skills directory, so it never force-installs skills you removed on purpose. Pass `--no-refresh` to upgrade the package(s) alone.
 
+Upgrading the package **by itself does not update the deployed workflow skills** — they are copies, and only an install rewrites them. `pip install -U mureo` (or `pipx upgrade mureo`) therefore leaves them behind, as does the refresh above for a host it does not deploy the bundle to. Re-install them with `mureo setup claude-code --skip-auth` (`mureo setup codex --skip-auth` for Codex); it is safe to re-run and needs no OAuth. `mureo upgrade` closes each run by naming the state of every host skills directory it finds — `up to date`, `stale (<old> installed, <new> shipped)` or `incomplete` — and the configure UI's **Setup** tab flags a stale set on the workflow-skills row with the same command (#728).
+
 The configure UI's **About mureo** tab surfaces the same capability for GUI users: it shows installed versions, checks the index for newer mureo / plugin releases in the background, and offers a one-click "update all" button.
 
 ## Rollback Commands

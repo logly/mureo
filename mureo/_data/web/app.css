@@ -1565,6 +1565,21 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   line-height: 1.55;
 }
 
+/* #728 — the skills row's staleness note reuses the sub-note above (same
+   full-width second line, same muted voice: it is a "look at this", not an
+   emergency). Only the command it ends on needs anything of its own, and
+   inline rather than the boxed .connector-url-row treatment because it is
+   the tail of a sentence, not a field to copy from. */
+.dashboard-skills-stale-note code {
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: var(--type-caption-size);
+  white-space: nowrap;
+}
+
 /* #579 — the Meta credential row's re-authentication control and its
    expiry hint. Both live inside the same flex <li> as the label and the
    Remove button, so they take a full-width line of their own (the

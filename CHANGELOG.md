@@ -2,6 +2,30 @@
 
 ### Fixed
 
+- **Workflow skills left behind by an older mureo no longer read as
+  installed** (#728). The basic-setup row asked one question — does every
+  shipped `SKILL.md` exist in the host's skills directory — and `pip install
+  -U mureo` does not answer it: the deployed copies under `~/.claude/skills`
+  (or `~/.codex/skills`) are only ever written by an install, so they stay
+  exactly as they were while the package moves on. A daily-check skill from
+  0.10.39 sat on a 0.17 install reading ✓, driving workflows written against
+  tools that had changed underneath them.
+
+  Every shipped `SKILL.md` pins the mureo that shipped it in its frontmatter,
+  and `install_skills` copies the file verbatim — so the deployed copy can be
+  dated. The check now compares deployed copies against the files they were
+  copied from and reports one of three states: `missing` (something is not
+  there), `stale` (all there, not all current) or `current`. A missing skill
+  still outranks a stale one; the remedy is the same install either way.
+
+  The dashboard's skills row draws a stale set as not-ok and says which mureo
+  the copies came from, which one this package ships, and the command that
+  fixes it: `mureo setup claude-code --skip-auth` (`codex` for Codex). Its
+  Remove and Reinstall buttons are untouched — the files are on disk, and the
+  reinstall is the overwrite that ends it. `mureo upgrade` prints the same
+  line for every host skills directory it finds, including the Codex one its
+  own post-upgrade refresh does not write to.
+
 - **Running the test suite no longer writes stub tokens into a real
   credentials file** (#739). Several Meta token tests called
   `refresh_meta_token_if_needed` with no `path` against a mocked Graph that
