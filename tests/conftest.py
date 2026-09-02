@@ -50,3 +50,64 @@ def _reset_duplicate_account_warn_latch():
     platform_guards._DUPLICATE_ACCOUNT_WARNED.clear()
     yield
     platform_guards._DUPLICATE_ACCOUNT_WARNED.clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_credential_writes(monkeypatch, tmp_path_factory):
+    """Keep every test's credential writes inside a throwaway home (#739).
+
+    The two ``path``-less credential writers — ``refresh_meta_token_if_needed``
+    and ``save_amazon_access_token`` — resolve their destination through
+    ``mureo.auth._resolve_write_path`` →
+    ``mureo.core.runtime_context.runtime_credentials_path``. That resolver has
+    two ways of reaching a real file:
+
+    - the fallback is ``Path.home() / ".mureo" / "credentials.json"``, i.e. the
+      contributor's OWN credentials; and
+    - when ANY ``mureo.runtime_context_factory`` entry point is installed in
+      the interpreter running the suite, the fallback is ignored entirely and
+      the write lands wherever that plugin's ``SecretStore`` points — which on
+      an operator machine is the shared credentials file. ``pip install -e .``
+      of a host distribution alongside mureo is enough to arm this.
+
+    Tests that never meant to write anything real were doing exactly that: a
+    mocked Graph 200 makes the refresh succeed, and the save that follows is
+    not mocked. Because ``get_runtime_context`` caches the resolved context
+    process-wide, a later ``HOME`` patch could not undo it either.
+
+    So: point ``HOME`` (POSIX ``Path.home()``) and ``USERPROFILE`` (Windows
+    ``Path.home()``; CI runs test-windows) at a fresh temp dir, make the
+    factory group look empty, and drop the cached context on both sides of the
+    test. Autouse in the root ``conftest.py`` for the same reason as the
+    fixtures above: a per-module opt-in only protects the modules that
+    remember, which is the failure mode this replaces.
+
+    Tests that deliberately install a fake factory keep working — they patch
+    the same ``entry_points`` attribute later in the stack, so their stub wins
+    for the duration of the test and unwinds before this fixture restores the
+    original.
+    """
+    from mureo.core import runtime_context
+    from mureo.core.runtime_context import (
+        RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP,
+    )
+
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    real_entry_points = runtime_context.entry_points
+
+    def _entry_points_without_factories(*args, **kwargs):
+        """Hide installed factories; every other group is passed through."""
+        if kwargs.get("group") == RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP:
+            return []
+        return real_entry_points(*args, **kwargs)
+
+    monkeypatch.setattr(
+        runtime_context, "entry_points", _entry_points_without_factories
+    )
+
+    runtime_context.reset_runtime_context()
+    yield
+    runtime_context.reset_runtime_context()

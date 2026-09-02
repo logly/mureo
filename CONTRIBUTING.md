@@ -47,6 +47,15 @@ ruff check mureo/
 pytest tests/ -v
 ```
 
+Run the suite in a clean virtualenv that has mureo and its `[dev]` extra and
+nothing else. The root `tests/conftest.py` points the home directory at a
+throwaway temp dir and hides any installed `mureo.runtime_context_factory`
+entry point for the duration of every test, so a test that exercises a
+credentials writer can never reach your real `~/.mureo/credentials.json` — nor
+a plugin's shared credential store, which the write-path resolver would
+otherwise prefer (#739). Keeping the venv clean keeps whatever else is
+installed out of the results as well.
+
 ### With Coverage
 
 ```bash
