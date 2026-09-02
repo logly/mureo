@@ -12,6 +12,7 @@ import typer
 
 from mureo.auth import (
     AmazonAdsCredentials,
+    MetaAdsCredentials,
     load_amazon_ads_credentials,
     load_google_ads_credentials,
     load_meta_ads_credentials,
@@ -44,6 +45,27 @@ def _amazon_token_shape(creds: AmazonAdsCredentials) -> str:
     return "access token stored (no refresh pair — renew it manually)"
 
 
+def _meta_token_lifetime(creds: MetaAdsCredentials) -> str:
+    """How long the stored Meta token has, as a suffix for the status line.
+
+    Three states, and only two of them are facts worth printing. Meta
+    reports a token issued without an expiry as permanent, which mureo
+    records as ``token_never_expires`` and never renews (#740) — that
+    outranks any date left on record, because it is Graph's own verdict
+    about the token on disk. Otherwise the expiry the paste card learned is
+    shown as a plain date. An unknown expiry prints nothing: mureo simply
+    never asked, and inventing a countdown from the obtained-at stamp is
+    what the age clock already gets wrong for a system-user token.
+    """
+
+    if creds.token_never_expires:
+        return " (token does not expire)"
+    raw = creds.token_expires_at
+    if isinstance(raw, str) and raw.strip():
+        return f" (expires {raw.strip()[:10]})"
+    return ""
+
+
 @auth_app.command("status")  # type: ignore[untyped-decorator, unused-ignore]
 def auth_status() -> None:
     """Display authentication status."""
@@ -69,7 +91,10 @@ def auth_status() -> None:
 
     if meta_creds is not None:
         aid = meta_creds.account_id or "not set"
-        typer.echo(f"Meta Ads: Authenticated (account_id: {aid})")
+        typer.echo(
+            f"Meta Ads: Authenticated (account_id: {aid})"
+            f"{_meta_token_lifetime(meta_creds)}"
+        )
     else:
         typer.echo("Meta Ads: Not authenticated")
 

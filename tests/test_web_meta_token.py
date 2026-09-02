@@ -89,7 +89,7 @@ class TestMetaTokenRoute:
     def test_validate_only_returns_probe_without_saving(
         self, wizard: ConfigureWizard
     ) -> None:
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake) as probe:
@@ -110,7 +110,7 @@ class TestMetaTokenRoute:
             assert "meta_ads" not in data
 
     def test_save_success_persists_token(self, wizard: ConfigureWizard) -> None:
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake):
@@ -138,7 +138,7 @@ class TestMetaTokenRoute:
         writes one when resolved or previously saved) — and still no
         refresh-clock fields."""
 
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake):
@@ -165,7 +165,7 @@ class TestMetaTokenRoute:
         could post ``""``. Both mean "no account" — neither is cross-checked
         against the probe list nor persisted."""
 
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake):
@@ -186,7 +186,7 @@ class TestMetaTokenRoute:
         account_id the operator already stored — ``_merge_meta_section``
         carries the prior value forward when none is submitted."""
 
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake):
@@ -213,7 +213,7 @@ class TestMetaTokenRoute:
             "accounts": [{"id": "act_1", "name": "One"}],
         }
 
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             return probe_result
 
         with patch(_PROBE, side_effect=_fake):
@@ -234,7 +234,7 @@ class TestMetaTokenRoute:
     ) -> None:
         from mureo.meta_ads.accounts import MetaTokenInvalidError
 
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             raise MetaTokenInvalidError("Invalid OAuth access token. | subcode=463")
 
         with (
@@ -294,7 +294,7 @@ class TestMetaTokenRoute:
         ``account_fetch_failed``, NOT mislabeled ``token_invalid``."""
         from mureo.meta_ads.accounts import MetaAccountFetchError
 
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             raise MetaAccountFetchError("Meta ad-account listing failed: boom")
 
         with (
@@ -320,7 +320,7 @@ class TestMetaTokenRoute:
             "accounts": [{"id": "act_1", "name": "One"}],
         }
 
-        async def _fake(token: str) -> dict[str, Any]:
+        async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             return probe_result
 
         with (

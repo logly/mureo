@@ -48,6 +48,7 @@ def _write_stale_meta_section(path: Path) -> None:
                     "token_obtained_at": _STALE_STAMP,
                     "token_expires_at": _STALE_EXPIRY,
                     "token_type": "SYSTEM_USER",
+                    "token_never_expires": True,
                 },
                 # A second provider must survive the single-field write.
                 "google_ads": {"developer_token": "dev-token"},
@@ -120,6 +121,36 @@ class TestMetaAccessTokenLeavesRefreshClock:
         creds = load_meta_ads_credentials(path)
         assert creds is not None
         assert creds.token_type is None
+
+    def test_stale_never_expires_verdict_is_dropped(self, tmp_path: Path) -> None:
+        """#740: Graph's "this one is permanent" verdict describes the
+        replaced token. Inherited, a hand-entered 60-day token would sit
+        ahead of every refresh clock and expire without a single warning."""
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCESS_TOKEN", "SYSTEM-USER-TOKEN", credentials_path=path
+        )
+
+        meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+        assert "token_never_expires" not in meta
+        creds = load_meta_ads_credentials(path)
+        assert creds is not None
+        assert creds.token_never_expires is False
+
+    def test_writing_another_meta_field_keeps_the_never_expires_verdict(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "credentials.json"
+        _write_stale_meta_section(path)
+
+        write_credential_env_var(
+            "META_ADS_ACCOUNT_ID", "act_999", credentials_path=path
+        )
+
+        meta = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+        assert meta["token_never_expires"] is True
 
     def test_writing_another_meta_field_keeps_the_token_type(
         self, tmp_path: Path

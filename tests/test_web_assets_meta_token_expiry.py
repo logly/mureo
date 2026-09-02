@@ -46,6 +46,11 @@ _NEW_KEYS = (
     "wizard.auth.meta_token_warn_auto_refresh_unavailable",
     "dashboard.meta_token_expires_in",
     "dashboard.meta_token_expired",
+    # #740
+    "wizard.auth.meta_token_never_expires",
+    "wizard.auth.meta_token_expiry_untracked",
+    "wizard.auth.meta_token_warn_expiry_untracked",
+    "dashboard.meta_token_never_expires",
 )
 
 
@@ -88,6 +93,86 @@ class TestExpiryIsShownOnSave:
         assert "warnings" in js
         assert "token_inspect_failed" in js
         assert "auto_refresh_unavailable" in js
+
+    def test_untracked_expiry_has_its_own_warning(self) -> None:
+        """#740: "mureo did not ask" is not "Meta refused", and the second
+        sentence sent operators off to re-paste a working token."""
+        js = _js()
+        assert "token_expiry_untracked" in js
+
+
+class TestUntrackedExpiryLine:
+    """#740: with no app pair, the expiry line and the warning under the
+    button used to contradict each other — one said Meta returned nothing,
+    the other said mureo never asked. Only the second is true."""
+
+    def test_the_expiry_line_branches_on_the_warning_code(self) -> None:
+        js = _js()
+        start = js.index("function renderExpiry")
+        window = js[start : start + 1200]
+        assert 'includes("token_expiry_untracked")' in window
+        assert "wizard.auth.meta_token_expiry_untracked" in window
+
+    def test_the_untracked_branch_comes_before_the_unknown_one(self) -> None:
+        """Order is the whole fix: an untracked expiry has no date either, so
+        the "Meta reported no expiry" branch would otherwise answer for it."""
+        js = _js()
+        start = js.index("function renderExpiry")
+        window = js[start : start + 1200]
+        assert window.index("wizard.auth.meta_token_expiry_untracked") < window.index(
+            "wizard.auth.meta_token_expiry_unknown"
+        )
+
+    def test_the_unknown_line_is_still_rendered(self) -> None:
+        """Kept for the inspect-failed and genuinely-empty cases, where
+        "Meta did not report an expiry" is the accurate sentence."""
+        js = _js()
+        assert "wizard.auth.meta_token_expiry_unknown" in js
+
+    @pytest.mark.parametrize("locale", ["en", "ja"])
+    def test_the_two_lines_do_not_say_the_same_thing(self, locale: str) -> None:
+        data = json.loads(_read("i18n.json"))[locale]
+        untracked = data["wizard.auth.meta_token_expiry_untracked"]
+        unknown = data["wizard.auth.meta_token_expiry_unknown"]
+        assert untracked.strip() and untracked != unknown
+        # The untracked line points at the note; it must not blame Meta.
+        assert "Meta" not in untracked
+
+
+class TestPermanentTokenSurfaces:
+    """#740: Meta reports a token issued without an expiry as permanent, and
+    both surfaces say so plainly instead of showing a missing countdown."""
+
+    def test_card_renders_the_never_expires_line(self) -> None:
+        js = _js()
+        assert "token_never_expires" in js
+        assert "wizard.auth.meta_token_never_expires" in js
+
+    def test_dashboard_row_reads_the_status_field(self) -> None:
+        js = _js()
+        assert "access_token_never_expires" in js
+        assert "dashboard.meta_token_never_expires" in js
+
+    @pytest.mark.parametrize("locale", ["en", "ja"])
+    def test_the_never_expires_lines_promise_no_renewal(self, locale: str) -> None:
+        """The card line has to say the second half too: mureo could renew a
+        60-day token, and it deliberately will not touch this one."""
+        data = json.loads(_read("i18n.json"))[locale]
+        assert data["wizard.auth.meta_token_never_expires"].strip()
+        assert data["dashboard.meta_token_never_expires"].strip()
+        assert "mureo" in data["wizard.auth.meta_token_never_expires"]
+
+
+class TestAppPairHintExplainsInspection:
+    @pytest.mark.parametrize("locale", ["en", "ja"])
+    def test_hint_ties_the_app_pair_to_reading_the_expiry(self, locale: str) -> None:
+        """#740: the pair is not only what ARMS the renewal — without it
+        Meta will not describe the token at all, so mureo cannot even learn
+        the date. The old copy only mentioned renewal."""
+        data = json.loads(_read("i18n.json"))[locale]
+        hint = data["wizard.auth.meta_token_app_hint"]
+        needle = "expiry" if locale == "en" else "有効期限"
+        assert needle in hint
 
 
 class TestDashboardCountdown:

@@ -538,13 +538,34 @@
       return Math.floor((at - Date.now()) / 86400000);
     }
 
-    // #726: a system-user token is minted with a 60-day life. Saying so at
-    // paste time is the whole point — an operator who never learns the date
-    // finds out when a report fails.
+    // #726: a system-user token issued with the 60-day expiry dies on a
+    // date. Saying so at paste time is the whole point — an operator who
+    // never learns the date finds out when a report fails.
+    //
+    // #740: and one issued without an expiry does not die at all. Meta
+    // reports that explicitly, so the card states it instead of the
+    // "no countdown" line, which read as a gap in what mureo knew.
     function renderExpiry(body) {
+      if (body && body.token_never_expires === true) {
+        expiryP.textContent = MUREO.t("wizard.auth.meta_token_never_expires");
+        expiryP.setAttribute("data-i18n", "wizard.auth.meta_token_never_expires");
+        return;
+      }
+      // No app pair anywhere, so mureo never asked. "Meta did not report an
+      // expiry" would contradict the warning under the button, which says
+      // the opposite — and only one of the two can be true (#740).
+      const codes = (body && body.warnings) || [];
+      if (Array.isArray(codes) && codes.includes("token_expiry_untracked")) {
+        expiryP.textContent = MUREO.t("wizard.auth.meta_token_expiry_untracked");
+        expiryP.setAttribute(
+          "data-i18n", "wizard.auth.meta_token_expiry_untracked");
+        return;
+      }
       const iso = body && body.token_expires_at;
       const days = iso ? daysUntil(iso) : null;
       if (days === null) {
+        // Meta answered and its answer carried no date — the inspection
+        // either failed or came back empty. The wording says exactly that.
         expiryP.textContent = MUREO.t("wizard.auth.meta_token_expiry_unknown");
         expiryP.setAttribute("data-i18n", "wizard.auth.meta_token_expiry_unknown");
         return;
@@ -561,7 +582,11 @@
     // Machine codes from the save/validate response -> operator sentences.
     // token_expiry_unknown is deliberately absent: renderExpiry already
     // states it inline, and saying it twice reads as two problems.
+    // token_expiry_untracked is here and token_inspect_failed stays: "mureo
+    // did not ask" and "Meta refused" are different problems with different
+    // fixes, and the second one used to answer for both (#740).
     const WARNING_KEYS = {
+      token_expiry_untracked: "wizard.auth.meta_token_warn_expiry_untracked",
       token_inspect_failed: "wizard.auth.meta_token_warn_inspect_failed",
       auto_refresh_unavailable:
         "wizard.auth.meta_token_warn_auto_refresh_unavailable",
@@ -718,6 +743,11 @@
   //   stored WITH the app pair can be exchanged, so the collector reports
   //   False without one however old it is, and a token with no obtained-at
   //   stamp has an unknown age that says nothing.
+  //
+  // #740 ``access_token_never_expires`` outranks both: Meta itself said
+  // this token has no end date, so there is nothing to count down and
+  // nothing to re-authenticate for. The row states the fact and stops —
+  // neutral, not a warning.
   function buildMetaExpiringHint(status) {
     const row = status && status.meta_token ? status.meta_token : null;
     if (!row) return null;
@@ -725,6 +755,11 @@
     // meta-reauth-hint earns the note a full-width line inside the flex
     // credential row, the way dashboard-provider-hosted-note does.
     note.className = "field-hint mark-no meta-reauth-hint";
+    if (row.access_token_never_expires === true) {
+      note.textContent = MUREO.t("dashboard.meta_token_never_expires");
+      note.setAttribute("data-i18n", "dashboard.meta_token_never_expires");
+      return note;
+    }
     if (row.access_token_expiry_warning === true) {
       const days = row.access_token_expires_in_days;
       const date = (row.access_token_expires_at || "").slice(0, 10);

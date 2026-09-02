@@ -474,7 +474,7 @@ The credential resolution logic is centralized in `mureo/auth.py`. Both the CLI 
 
 ### Meta Ads Token Auto-Refresh
 
-When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at` timestamp in `credentials.json`. If the Long-Lived Token is 53+ days old (7-day safety margin before the 60-day expiry), mureo automatically exchanges it for a fresh token via the Meta Graph API. This requires `app_id` and `app_secret` to be present in the credentials. The refresh is protected by an `asyncio.Lock` to prevent concurrent refresh races, and the updated token is written atomically to `credentials.json` with `0600` file permissions. If the refresh fails (network error, invalid app credentials, etc.), mureo falls back to the existing token and logs a warning.
+When loading Meta Ads credentials, `mureo/auth.py` first checks `token_never_expires` — Meta's own `debug_token` verdict for a token issued without an expiry — and a token carrying it is never exchanged, whatever else is stored. Otherwise it uses `token_expires_at` when the paste card learned one (due 7 days before that date), and falls back to the `token_obtained_at` timestamp in `credentials.json`: if the Long-Lived Token is 53+ days old (7-day safety margin before the 60-day expiry), mureo automatically exchanges it for a fresh token via the Meta Graph API. This requires `app_id` and `app_secret` to be present in the credentials. The refresh is protected by an `asyncio.Lock` to prevent concurrent refresh races, and the updated token is written atomically to `credentials.json` with `0600` file permissions. If the refresh fails (network error, invalid app credentials, etc.), mureo falls back to the existing token and logs a warning.
 
 ### Amazon Ads Token Minting and Refresh
 

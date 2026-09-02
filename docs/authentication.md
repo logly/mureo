@@ -242,12 +242,11 @@ Generate one (4 steps):
    **Admin** role.
 2. Assign the **ad account** (Manage ads) and the **Page** (Manage content) to
    that system user.
-3. Generate a token **for your Live app**, choose the **60-day expiry**
-   (Business settings offers no "never" option for new tokens), and select
-   the scopes `ads_management`, `ads_read`, `business_management`,
-   `pages_manage_ads`, `pages_read_engagement` (add the remaining `pages_*` /
-   `leads_retrieval` scopes from the table above for Page / Lead Ads / Instant
-   Form features).
+3. Generate a token **for your Live app** — pick the **60-day expiry** if you
+   want mureo to track and renew it — and select the scopes
+   `ads_management`, `ads_read`, `business_management`, `pages_manage_ads`,
+   `pages_read_engagement` (add the remaining `pages_*` / `leads_retrieval`
+   scopes from the table above for Page / Lead Ads / Instant Form features).
 4. Copy the generated token.
 
 **Entering the token in the configure UI.** In the Meta Ads authentication step
@@ -256,29 +255,44 @@ Facebook*), paste the token, click **Validate token** (this reports the granted
 vs missing scopes and lists the ad accounts the token can reach), pick the ad
 account, then **Save**.
 
-**These tokens expire.** Business Manager mints system-user tokens with a
-**60-day** life. When you paste one, mureo asks Meta's Graph `debug_token`
-endpoint when it dies and records the answer as `token_expires_at` beside the
-token, so the status card can count the days down and warn you once fewer
-than **14** remain. If Meta declines to describe the token, it is saved
-anyway and the card says the expiry is unknown — the inspection never blocks
-a save.
+**Most of these tokens expire.** Business settings offers a **60-day** expiry
+for a new system-user token; a token issued without one does not expire at
+all. mureo asks Meta's Graph `debug_token` endpoint which of the two it has
+and records the answer beside the token — a date as `token_expires_at`, or
+Meta's "never" verdict as `token_never_expires`. With a date, the status card
+counts the days down and warns you once fewer than **14** remain. With
+"never", it says the token does not expire and leaves it alone: mureo never
+exchanges a permanent token, because that would trade it for a 60-day one.
 
-The card also takes an **optional App ID and App Secret**. Fill them in and
-mureo extends the token for you a week before it expires, using Meta's
-documented exchange for expiring system-user tokens
-(`grant_type=fb_exchange_token` with `set_token_expires_in_60_days`; see
-[Install Apps, Generate, Refresh, and Revoke
-Tokens](https://developers.facebook.com/docs/business-management-apis/system-users/install-apps-and-generate-tokens)).
-Leave them blank and nothing breaks — mureo simply warns you in time to
-generate and paste a fresh token by hand. Values already stored are kept when
-you re-paste a token without re-entering them.
+**The App ID and App Secret are what make that inspection possible.** Meta
+only describes a token to the app that issued it: `debug_token` is a GET
+authenticated with an *app access token* (`app_id|app_secret`), and a
+system-user token cannot inspect itself. So the card's **optional App ID and
+App Secret** do two jobs:
+
+- **read the expiry** — without the pair mureo skips the inspection entirely
+  and the card says the expiry is untracked, naming the two fields to fill
+  in. That is not an error, and it never blocks the save: the token is
+  stored and works either way. If Meta *refuses* the inspection (usually
+  because the pair belongs to a different app than the one that issued the
+  token), the card says that instead;
+- **renew a 60-day token** — a week before it expires, using Meta's
+  documented exchange for expiring system-user tokens
+  (`grant_type=fb_exchange_token` with `set_token_expires_in_60_days`; see
+  [Install Apps, Generate, Refresh, and Revoke
+  Tokens](https://developers.facebook.com/docs/business-management-apis/system-users/install-apps-and-generate-tokens)).
+  A token issued without an expiry is never renewed, whatever is stored.
+
+Leave the pair blank and nothing breaks — mureo simply cannot show or track
+the date. Values already stored are kept when you re-paste a token without
+re-entering them, and they are what the inspection uses on that later paste.
 
 Prefer that card. Saving `META_ADS_ACCESS_TOKEN` through the Setup tab's
 **mureo Credentials (advanced)** form also works — a hand-entered token is
 stored as entered and stays off the auto-refresh clock (that write clears
-both `token_obtained_at` and `token_expires_at`, because they describe the
-token being replaced and this form makes no Graph call to learn new ones) —
+`token_obtained_at`, `token_expires_at`, `token_type` and
+`token_never_expires`, because they all describe the token being replaced and
+this form makes no Graph call to learn new ones) —
 but it writes one field, so it neither validates the token, nor reads its
 expiry, nor lets you pick an ad account.
 
@@ -288,7 +302,7 @@ expiry, nor lets you pick an ad account.
 2. Navigate to your app > **Settings > Basic**.
 3. Copy the **App ID** and **App Secret**.
 
-These are optional for basic use, but **required for automatic token refresh** (see below).
+These are optional for basic use, but **required for reading a pasted token's expiry** and **required for automatic token refresh** (see below). Meta only describes a token to the app that issued it, so the pair has to belong to that app.
 
 ## Meta Ads Token Auto-Refresh
 
@@ -296,24 +310,30 @@ mureo can automatically refresh Long-Lived Tokens before they expire, so you nev
 
 ### How It Works
 
-1. When `mureo auth setup` saves a Meta Ads token, it records a `token_obtained_at` ISO 8601 timestamp in `credentials.json`. The configure UI's paste card additionally records `token_expires_at` — the expiry Meta itself reported for that token.
+1. When `mureo auth setup` saves a Meta Ads token, it records a `token_obtained_at` ISO 8601 timestamp in `credentials.json`. The configure UI's paste card additionally records what Meta's `debug_token` reported for that token — `token_expires_at` when it has an expiry, `token_never_expires: true` when it does not. That inspection needs the app ID and secret of the issuing app; without them nothing is recorded and the expiry stays untracked.
 2. Each time Meta Ads credentials are loaded, mureo checks whether the token is due.
-3. **If `token_expires_at` is known**, the token is due **7 days before that date**. This is the only correct clock for a pasted system-user token: it may have been minted at any point in its 60-day life, so its age says little about how long it has left.
-4. **If it is not known**, mureo falls back to the token's age: **53+ days old**, a 7-day margin before the ~60-day life of a long-lived user token that mureo minted itself.
-5. Either way mureo exchanges it for a fresh token via the Meta Graph API. `set_token_expires_in_60_days=true` is added **only when `token_type` says `SYSTEM_USER`** — Meta documents that parameter for refreshing a system-user token and not for the long-lived user token exchange, and the token's own kind is the only thing that distinguishes the two. The new token, timestamp and expiry are written back to `credentials.json` atomically.
-6. This runs on every path that opens a Meta client: the MCP tools and, since #726, the analytics adapters behind `mureo_analytics_run` and the report skills.
+3. **If `token_never_expires` is set**, the token is never exchanged — whatever else is stored. Meta reported it as permanent, and swapping it for a 60-day token would be a downgrade.
+4. **If `token_expires_at` is known**, the token is due **7 days before that date**. This is the only correct clock for a pasted system-user token: it may have been minted at any point in its 60-day life, so its age says little about how long it has left.
+5. **If it is not known**, mureo falls back to the token's age: **53+ days old**, a 7-day margin before the ~60-day life of a long-lived user token that mureo minted itself.
+6. Either way mureo exchanges it for a fresh token via the Meta Graph API. `set_token_expires_in_60_days=true` is added **only when `token_type` says `SYSTEM_USER`** — Meta documents that parameter for refreshing a system-user token and not for the long-lived user token exchange, and the token's own kind is the only thing that distinguishes the two. The new token, timestamp and expiry are written back to `credentials.json` atomically.
+7. This runs on every path that opens a Meta client: the MCP tools and, since #726, the analytics adapters behind `mureo_analytics_run` and the report skills.
 
 ### Requirements
 
 | Field | Required | Why |
 |-------|----------|-----|
-| `app_id` | Yes | Needed for the token exchange API call |
-| `app_secret` | Yes | Needed for the token exchange API call |
+| `app_id` | Yes | Needed to inspect the token (`debug_token`) and for the token exchange API call |
+| `app_secret` | Yes | Same — the two form the app access token both calls authenticate with |
 | `token_obtained_at` | Auto | Written by `mureo auth setup` and the paste card; can be added manually (ISO 8601 format) |
 | `token_expires_at` | Auto | Written by the paste card from Meta's `debug_token`, and by each refresh. When present it replaces the 53-day age rule with "7 days before this date" |
 | `token_type` | Auto | Graph's `debug_token` verdict, written by the paste card only. `SYSTEM_USER` selects the system-user refresh; absent or anything else uses the documented user-token exchange |
+| `token_never_expires` | Auto | Graph's other `debug_token` verdict (`expires_at: 0`), written by the paste card only. When `true`, mureo never exchanges the token and never warns about an expiry |
 
 If `app_id` or `app_secret` are missing, auto-refresh is silently skipped and the existing token is used as-is.
+
+`token_never_expires` must be a JSON boolean — mureo logs and ignores any other value, including the string `"false"`, and treats the token as one whose expiry it never established.
+
+**If your credentials live outside mureo's own file** — a host that builds `MetaAdsCredentials` itself through a `mureo.runtime_context_factory` plugin — that store has to carry `token_never_expires` through for the "never renewed" guarantee to apply. Without it the field defaults to `False`, and a permanent token stored alongside an app ID and secret can still be exchanged for a 60-day one. That is the pre-#740 behaviour, never worse than it, but it is not the fix either.
 
 ### credentials.json with auto-refresh fields
 
