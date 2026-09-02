@@ -408,6 +408,11 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
   asserts every anchor still resolves, so a refactor cannot turn the harness into a
   no-op that always "passes".
 - Framework: pytest + pytest-asyncio
+- Run the suite in a clean virtualenv (mureo + `[dev]`, nothing else). The root
+  `tests/conftest.py` also points the home directory at a temp dir and hides any
+  installed `mureo.runtime_context_factory` entry point for every test, so a
+  credentials writer called without a `path` cannot reach the real
+  `~/.mureo/credentials.json` or a plugin's shared store (#739)
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests
 - Use `@pytest.mark.unit` / `@pytest.mark.integration` for categorization
 - Async test mode: auto (`asyncio_mode = "auto"`)

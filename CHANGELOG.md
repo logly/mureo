@@ -2,6 +2,26 @@
 
 ### Fixed
 
+- **Running the test suite no longer writes stub tokens into a real
+  credentials file** (#739). Several Meta token tests called
+  `refresh_meta_token_if_needed` with no `path` against a mocked Graph that
+  answers 200 — so the save that follows the refresh ran for real. With no
+  plugin installed that write went to the contributor's own
+  `~/.mureo/credentials.json`; with a `mureo.runtime_context_factory`
+  installed alongside mureo it went wherever that host's `SecretStore` points,
+  because the write-path resolver prefers the store over the default it is
+  handed. Either way a test's `refreshed-1` could end up as the stored Meta
+  access token, and the process-wide context cache meant a later `HOME` patch
+  could not take it back.
+
+  The root `conftest.py` now isolates every test: the home directory points at
+  a throwaway temp dir, the runtime-context factory group reads empty, and the
+  cached context is dropped on both sides of the test. Tests that install
+  their own fake factory are unaffected — they patch the same seam later in
+  the stack. The Meta provenance tests pass an explicit `path` and assert the
+  refreshed token reached it, and `tests/test_conftest_credential_isolation.py`
+  pins the isolation itself so it cannot quietly stop working.
+
 - **A proposal card has room inside its frame again, and its note sits under
   its title** (#737). On the detail screen the warn-tinted cards in the
   proposals panel rendered with no horizontal padding — the text ran up

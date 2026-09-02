@@ -59,6 +59,22 @@ def _in_days(days: int) -> str:
     return (datetime.now(tz=timezone.utc) + timedelta(days=days)).isoformat()
 
 
+def _stored_token(path: Path) -> str:
+    """The ``meta_ads`` access token the refresh persisted to ``path``.
+
+    Every test below hands ``refresh_meta_token_if_needed`` an explicit
+    ``path``: a mocked Graph 200 means the save really runs, and a
+    ``path``-less call resolves through ``auth._resolve_write_path``, which
+    lands on the host's own credentials file whenever a
+    ``mureo.runtime_context_factory`` is installed in the interpreter running
+    the suite (#739). Reading the file back also pins that the token the
+    exchange returned is the one that reached disk.
+    """
+    section = json.loads(path.read_text(encoding="utf-8"))["meta_ads"]
+    token: str = section["access_token"]
+    return token
+
+
 def _graph_ok(token: str = "new-token") -> httpx.Response:
     return httpx.Response(
         200,
@@ -192,9 +208,10 @@ async def test_a_pasted_system_user_token_does_send_the_flag(tmp_path: Path) -> 
 # ---------------------------------------------------------------------------
 
 
-async def test_known_expiry_alone_does_not_arm_the_flag() -> None:
+async def test_known_expiry_alone_does_not_arm_the_flag(tmp_path: Path) -> None:
     """An expiry with no provenance is exactly the state cycle two lands in."""
 
+    path = tmp_path / "credentials.json"
     creds = MetaAdsCredentials(
         access_token="tok",
         app_id="app-1",
@@ -205,13 +222,15 @@ async def test_known_expiry_alone_does_not_arm_the_flag() -> None:
     )
 
     with _Graph() as graph:
-        await refresh_meta_token_if_needed(creds)
+        await refresh_meta_token_if_needed(creds, path=path)
 
     assert _FLAG not in graph.last_body
+    assert _stored_token(path) == "refreshed-1"
 
 
 @pytest.mark.parametrize("token_type", ["USER", "PAGE", "APP", "", "SYSTEM  USER"])
-async def test_only_system_user_arms_the_flag(token_type: str) -> None:
+async def test_only_system_user_arms_the_flag(token_type: str, tmp_path: Path) -> None:
+    path = tmp_path / "credentials.json"
     creds = MetaAdsCredentials(
         access_token="tok",
         app_id="app-1",
@@ -222,17 +241,21 @@ async def test_only_system_user_arms_the_flag(token_type: str) -> None:
     )
 
     with _Graph() as graph:
-        await refresh_meta_token_if_needed(creds)
+        await refresh_meta_token_if_needed(creds, path=path)
 
     assert _FLAG not in graph.last_body
+    assert _stored_token(path) == "refreshed-1"
 
 
 @pytest.mark.parametrize("token_type", ["SYSTEM_USER", "system_user", " System_User "])
-async def test_graph_casing_and_padding_are_tolerated(token_type: str) -> None:
+async def test_graph_casing_and_padding_are_tolerated(
+    token_type: str, tmp_path: Path
+) -> None:
     """Graph's documented spelling is upper-case, but a value that round-trips
     through JSON and a UI should not decide a security-relevant branch on
     whitespace."""
 
+    path = tmp_path / "credentials.json"
     creds = MetaAdsCredentials(
         access_token="tok",
         app_id="app-1",
@@ -243,17 +266,19 @@ async def test_graph_casing_and_padding_are_tolerated(token_type: str) -> None:
     )
 
     with _Graph() as graph:
-        await refresh_meta_token_if_needed(creds)
+        await refresh_meta_token_if_needed(creds, path=path)
 
     assert graph.last_body[_FLAG] == "true"
+    assert _stored_token(path) == "refreshed-1"
 
 
-async def test_a_failed_inspection_leaves_the_flag_off() -> None:
+async def test_a_failed_inspection_leaves_the_flag_off(tmp_path: Path) -> None:
     """``token_inspect_failed`` means mureo never learned the type. Guessing
     "probably system user, the card asks for one" is the guess that put the
     parameter on a user token in the first place — and omitting it costs
     nothing, since the exchange returns a 60-day token either way."""
 
+    path = tmp_path / "credentials.json"
     creds = MetaAdsCredentials(
         access_token="tok",
         app_id="app-1",
@@ -265,9 +290,10 @@ async def test_a_failed_inspection_leaves_the_flag_off() -> None:
     )
 
     with _Graph() as graph:
-        await refresh_meta_token_if_needed(creds)
+        await refresh_meta_token_if_needed(creds, path=path)
 
     assert _FLAG not in graph.last_body
+    assert _stored_token(path) == "refreshed-1"
 
 
 # ---------------------------------------------------------------------------
