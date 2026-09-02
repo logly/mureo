@@ -94,10 +94,11 @@ SKILLS_CURRENT = "current"
 _SKILL_FRONTMATTER_DELIM = "---"
 
 # ``version:`` anywhere inside the frontmatter block. Deliberately indifferent
-# to the indentation that puts it under ``metadata:``: the shipped files are
+# to the indentation that puts it under ``metadata:``, and unanchored at the
+# end so a trailing ``# comment`` does not hide the pin: the shipped files are
 # the only writers of the key, and a stricter parse would answer "unknown"
-# (i.e. stale) for a file whose block was merely reordered.
-_SKILL_VERSION_RE = re.compile(r"^\s*version:\s*(\S+)\s*$")
+# (i.e. stale) for a file whose block was merely reordered or annotated.
+_SKILL_VERSION_RE = re.compile(r"^\s*version:\s*(\S+)")
 
 # Bytes of a SKILL.md read to find its frontmatter. Comfortably past the
 # longest block mureo ships (~2 KB of description) and far short of the 64 KiB

@@ -291,7 +291,14 @@ def _report_skill_freshness() -> None:
             continue
         try:
             status = _detect_workflow_skills(dest)
-        except Exception:  # noqa: BLE001 — a report never fails the upgrade
+        except Exception as exc:  # noqa: BLE001 — never fails the upgrade
+            # Named, not swallowed: a silent skip here is indistinguishable
+            # from an up-to-date set, which is the very confusion this report
+            # exists to end.
+            typer.echo(
+                f"Workflow skills: could not check {host} ({type(exc).__name__}).",
+                err=True,
+            )
             continue
         fix = f"run: mureo setup {host} --skip-auth"
         if status.state == SKILLS_CURRENT:

@@ -872,9 +872,15 @@ def test_report_skill_freshness_flags_an_incomplete_set(
 
 
 def test_report_skill_freshness_never_fails_the_upgrade(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Best-effort, like every other post-upgrade step."""
+    """Best-effort, like every other post-upgrade step — and, like them, it
+    names the failure on stderr.
+
+    A check that skipped in silence would be read as the "up to date" it did
+    not say: the whole point of the line is that a stale set is invisible
+    without it, so its absence must not look like good news.
+    """
     from mureo.cli import upgrade_cmd
 
     _deploy_skills(tmp_path / ".claude" / "skills", "0.10.39")
@@ -886,6 +892,12 @@ def test_report_skill_freshness_never_fails_the_upgrade(
     monkeypatch.setattr("mureo.web.status_collector._detect_workflow_skills", _boom)
 
     upgrade_cmd._report_skill_freshness()  # must not raise
+
+    captured = capsys.readouterr()
+    assert (
+        "Workflow skills: could not check claude-code (RuntimeError)." in captured.err
+    )
+    assert captured.out == ""
 
 
 def test_restart_managed_service_noop_when_not_installed(

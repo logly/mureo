@@ -724,6 +724,30 @@ class TestReadSkillVersion:
         )
         assert _read_skill_version(path) == "0.10.39"
 
+    def test_trailing_comment_does_not_hide_the_pin(self, tmp_path: Path) -> None:
+        """A YAML comment after the value is still the same value. Reading it
+        as "no version" would report a perfectly current install as stale —
+        the one direction this check must never invent."""
+        path = tmp_path / "SKILL.md"
+        path.write_text(
+            "---\nname: x\nmetadata:\n  version: 0.17.2  # pinned by CI\n---\n",
+            encoding="utf-8",
+        )
+        assert _read_skill_version(path) == "0.17.2"
+
+    def test_bom_prefixed_file_still_reads(self, tmp_path: Path) -> None:
+        """Some Windows editors prepend a UTF-8 BOM on save, which would push
+        the opening delimiter off line 1 — the same hazard
+        ``mureo.core.skills.parser`` strips it for."""
+        path = tmp_path / "SKILL.md"
+        path.write_bytes(b"\xef\xbb\xbf" + _skill_md("0.17.2").encode("utf-8"))
+        assert _read_skill_version(path) == "0.17.2"
+
+    def test_crlf_line_endings_still_read(self, tmp_path: Path) -> None:
+        path = tmp_path / "SKILL.md"
+        path.write_bytes(_skill_md("0.17.2").replace("\n", "\r\n").encode("utf-8"))
+        assert _read_skill_version(path) == "0.17.2"
+
     def test_missing_file_is_unknown(self, tmp_path: Path) -> None:
         assert _read_skill_version(tmp_path / "nope" / "SKILL.md") is None
 
