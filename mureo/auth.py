@@ -220,6 +220,30 @@ def load_google_ads_credentials(
     return _load_google_ads_from_env()
 
 
+def _coerce_never_expires(raw: Any) -> bool:
+    """Read a stored ``token_never_expires`` — only a JSON boolean counts.
+
+    The field decides whether mureo will EVER renew this token, and it
+    arrives from a hand-editable file or a third-party credential store, so
+    it is validated at the boundary rather than trusted. ``bool()`` alone
+    would be a trap: ``bool("false")`` is ``True``, so a writer that stored
+    the string ``"false"`` — a value that reads as "no" to a human — would
+    have disabled the refresh permanently and silently.
+
+    Anything that is not a ``bool`` is refused, logged once so the operator
+    can find it, and read as "not established" — which is the pre-#740
+    behaviour and never worse than it. Absent is the normal case (every
+    credential written before the field existed) and says nothing.
+    """
+
+    if raw is None:
+        return False
+    if isinstance(raw, bool):
+        return raw
+    logger.warning("Ignoring non-boolean token_never_expires: %r", raw)
+    return False
+
+
 def load_meta_ads_credentials(
     path: Path | None = None,
 ) -> MetaAdsCredentials | None:
@@ -248,11 +272,12 @@ def load_meta_ads_credentials(
                 account_id=meta_section.get("account_id"),
                 token_expires_at=meta_section.get("token_expires_at"),
                 token_type=meta_section.get("token_type"),
-                # ``bool(...)`` and nothing more: the file is hand-editable,
-                # so this arrives as whatever JSON the operator typed. A
-                # truthy value is the promise; the stored type never travels
-                # further than this line.
-                token_never_expires=bool(meta_section.get("token_never_expires")),
+                # Validated, not coerced: the file is hand-editable, so this
+                # arrives as whatever JSON the writer chose, and only a real
+                # boolean is a verdict — see :func:`_coerce_never_expires`.
+                token_never_expires=_coerce_never_expires(
+                    meta_section.get("token_never_expires")
+                ),
             )
 
     # Environment variable fallback

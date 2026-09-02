@@ -331,6 +331,10 @@ mureo can automatically refresh Long-Lived Tokens before they expire, so you nev
 
 If `app_id` or `app_secret` are missing, auto-refresh is silently skipped and the existing token is used as-is.
 
+`token_never_expires` must be a JSON boolean — mureo logs and ignores any other value, including the string `"false"`, and treats the token as one whose expiry it never established.
+
+**If your credentials live outside mureo's own file** — a host that builds `MetaAdsCredentials` itself through a `mureo.runtime_context_factory` plugin — that store has to carry `token_never_expires` through for the "never renewed" guarantee to apply. Without it the field defaults to `False`, and a permanent token stored alongside an app ID and secret can still be exchanged for a 60-day one. That is the pre-#740 behaviour, never worse than it, but it is not the fix either.
+
 ### credentials.json with auto-refresh fields
 
 ```json

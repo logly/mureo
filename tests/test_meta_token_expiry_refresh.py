@@ -25,6 +25,7 @@ Marks: unit — httpx is mocked, nothing outbound.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
@@ -431,23 +432,57 @@ def test_loader_defaults_token_never_expires_to_false(tmp_path: Path) -> None:
     assert creds.token_never_expires is False
 
 
-def test_loader_coerces_a_hand_edited_flag_to_a_bool(tmp_path: Path) -> None:
-    """The file is hand-editable, so the field arrives as whatever JSON the
-    operator typed. A truthy value means "permanent"; the stored type never
-    leaks into the dataclass."""
+@pytest.mark.parametrize("raw", ["false", "true", "yes", 1, 0, [], {"a": 1}])
+def test_loader_rejects_a_non_boolean_flag(
+    tmp_path: Path, raw: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Only a JSON boolean is a verdict.
+
+    The file is hand-editable and third-party stores write it too, so the
+    field arrives as whatever the writer typed. ``bool("false")`` is
+    ``True`` — a value that reads as "no" to a human would have disabled the
+    refresh forever, silently. Anything that is not a boolean is refused at
+    the boundary, logged once, and treated as "not established", which is
+    the pre-#740 behaviour and never worse.
+    """
 
     from mureo.auth import load_meta_ads_credentials
 
     cred_path = tmp_path / "credentials.json"
     cred_path.write_text(
-        json.dumps({"meta_ads": {"access_token": "tok", "token_never_expires": "yes"}}),
+        json.dumps({"meta_ads": {"access_token": "tok", "token_never_expires": raw}}),
         encoding="utf-8",
     )
 
-    creds = load_meta_ads_credentials(cred_path)
+    with caplog.at_level(logging.WARNING, logger="mureo.auth"):
+        creds = load_meta_ads_credentials(cred_path)
 
     assert creds is not None
-    assert creds.token_never_expires is True
+    assert creds.token_never_expires is False
+    assert any(
+        "token_never_expires" in record.getMessage() for record in caplog.records
+    ), "a refused value must leave a trace"
+
+
+def test_loader_does_not_warn_about_an_absent_flag(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Absent is the normal case — every credential written before #740 and
+    every one the OAuth path writes. It is not a complaint."""
+
+    from mureo.auth import load_meta_ads_credentials
+
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps({"meta_ads": {"access_token": "tok"}}), encoding="utf-8"
+    )
+
+    with caplog.at_level(logging.WARNING, logger="mureo.auth"):
+        creds = load_meta_ads_credentials(cred_path)
+
+    assert creds is not None
+    assert creds.token_never_expires is False
+    assert not [r for r in caplog.records if "token_never_expires" in r.getMessage()]
 
 
 def test_loader_reads_token_expires_at(tmp_path: Path) -> None:

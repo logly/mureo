@@ -35,7 +35,18 @@
   whatever else is on record. The configure card, the dashboard row and
   `mureo auth status` state the fact plainly instead of counting down, no
   renewal is offered for a token that must not be renewed, and a
-  hand-entered replacement token does not inherit the promise.
+  hand-entered replacement token does not inherit the promise. Only a JSON
+  boolean counts as that verdict: anything else on disk is logged and read
+  as "not established", because `bool("false")` is `True` and a stored
+  string that reads as "no" would have disabled the renewal forever.
+
+  A credential store outside mureo's own file — a host that builds
+  `MetaAdsCredentials` itself through a `mureo.runtime_context_factory`
+  plugin — has to carry `token_never_expires` through to get the
+  no-renewal guarantee. Without it the field defaults to `False`, which is
+  the pre-#740 behaviour: a permanent token stored with the app pair can
+  still be exchanged for a 60-day one. Never worse than before, but not
+  fixed either.
 
 - **Running the test suite no longer writes stub tokens into a real
   credentials file** (#739). Several Meta token tests called

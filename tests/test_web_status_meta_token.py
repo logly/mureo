@@ -346,6 +346,31 @@ class TestPermanentTokenSilencesBothWarnings:
         row = _detect_meta_token(_credentials(tmp_path, _app_backed(2)))
         assert row["access_token_never_expires"] is False
 
+    @pytest.mark.parametrize("raw", ["false", "true", "yes", 1, 0, []])
+    def test_a_non_boolean_verdict_is_refused(self, tmp_path: Path, raw: Any) -> None:
+        """Same boundary as the loader: only a JSON boolean is a verdict.
+
+        ``bool("false")`` is ``True``, so a hand-edited or third-party value
+        that reads as "no" would otherwise have silenced the expiry warning
+        on the dashboard as well as disabling the refresh."""
+
+        section = _app_backed(2)
+        section["token_never_expires"] = raw
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_never_expires"] is False
+
+    def test_a_refused_verdict_does_not_suppress_the_expiry_warning(
+        self, tmp_path: Path
+    ) -> None:
+        """The whole point of refusing it: the warning that a real "never"
+        silences must come back for a value mureo does not trust."""
+
+        section = _app_backed(2)
+        section["token_never_expires"] = "false"
+        section["token_expires_at"] = _expiry(1)
+        row = _detect_meta_token(_credentials(tmp_path, section))
+        assert row["access_token_expiry_warning"] is True
+
     def test_age_past_the_threshold_is_not_expiring(self, tmp_path: Path) -> None:
         """The app pair is stored and the token is far past the refresh
         threshold, which is exactly the state that used to nag — and, worse,

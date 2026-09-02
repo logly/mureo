@@ -239,8 +239,26 @@ def _unix_to_iso(raw: Any) -> str | None:
 _TOKEN_QUERY_PARAM_NAMES = ("input_token", "access_token")
 
 #: The third-party loggers that print a request URL. httpx logs
-#: ``request.url`` at INFO; httpcore logs the connection trace at DEBUG.
-_HTTP_LOGGER_NAMES = ("httpx", "httpcore")
+#: ``request.url`` at INFO through the ``httpx`` logger; httpcore logs its
+#: connection trace at DEBUG through one logger PER TRANSPORT LAYER.
+#:
+#: The children are listed individually on purpose. A ``logging.Filter``
+#: attached with ``Logger.addFilter`` is consulted only for records logged
+#: through that exact logger object — unlike handlers and levels, filters
+#: are NOT inherited down the hierarchy. So a filter on ``httpcore`` alone
+#: would never see a single ``httpcore.http11`` record, and a host
+#: application running httpcore at DEBUG would still get the token.
+#: ``httpcore`` and ``httpx`` stay in the list because either package may
+#: log through its own root name in a future release.
+_HTTP_LOGGER_NAMES = (
+    "httpx",
+    "httpcore",
+    "httpcore.connection",
+    "httpcore.http11",
+    "httpcore.http2",
+    "httpcore.proxy",
+    "httpcore.socks",
+)
 
 
 class _TokenQueryLogFilter(logging.Filter):
@@ -250,8 +268,10 @@ class _TokenQueryLogFilter(logging.Filter):
     in the URL — and httpx logs ``request.url`` at INFO, which
     ``MUREO_LOG_LEVEL`` does not bound because it only governs mureo's own
     loggers. Rather than guess at the host application's logging config, the
-    inspection installs this on the HTTP loggers for the duration of the one
-    call and removes it in a ``finally``.
+    inspection installs this on every logger in
+    :data:`_HTTP_LOGGER_NAMES` for the duration of the one call and removes
+    it in a ``finally``. That list names httpcore's per-layer child loggers
+    one by one, because filters are not inherited by child loggers.
 
     It matches on the parameter NAME, not on the token: a filter that
     compared against the secret would need the secret, and every record it
@@ -308,9 +328,10 @@ async def inspect_meta_access_token(
        ``never_expires`` with ``expires_at`` still ``None``.
 
     The inspected token therefore rides in the query string. The app access
-    token does not: it goes in an ``Authorization: Bearer`` header, and the
-    HTTP loggers are filtered for the duration of the call
-    (:class:`_TokenQueryLogFilter`) so neither reaches a log record (#605).
+    token does not: it goes in an ``Authorization: Bearer`` header, and
+    every httpx/httpcore logger named in :data:`_HTTP_LOGGER_NAMES` is
+    filtered for the duration of the call (:class:`_TokenQueryLogFilter`) so
+    neither reaches a log record (#605).
 
     Args:
         access_token: the Meta access token to describe.

@@ -348,7 +348,14 @@ def _detect_meta_token(credentials_path: Path) -> dict[str, Any]:
     refreshable = bool(section.get("app_id")) and bool(section.get("app_secret"))
     raw_expiry = section.get("token_expires_at")
     days_left = _days_until(raw_expiry)
-    never_expires = bool(section.get("token_never_expires"))
+    # Same boundary check the loader applies, from the same helper, so the
+    # dashboard and the refresh path cannot disagree about what counts as
+    # "permanent" (#740). Imported at call time like the other cross-package
+    # imports in this module, so a status read does not drag in the whole
+    # credential stack at import.
+    from mureo.auth import _coerce_never_expires
+
+    never_expires = _coerce_never_expires(section.get("token_never_expires"))
     return {
         "access_token_age_days": age,
         "access_token_never_expires": never_expires,

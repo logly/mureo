@@ -408,6 +408,42 @@ class _Capture(logging.Handler):
         self.messages.append(record.getMessage())
 
 
+def _real_client_on(handler: Any) -> Any:
+    """Patch ``httpx.AsyncClient`` to a REAL client over a mock transport.
+
+    The ``AsyncMock`` double used elsewhere in this file never builds a
+    request, so it cannot show what httpx and httpcore log. These tests need
+    the real stack with a fake socket underneath.
+    """
+
+    transport = httpx.MockTransport(handler)
+    real_client_cls = httpx.AsyncClient
+
+    def _factory(**kwargs: Any) -> httpx.AsyncClient:
+        kwargs.pop("transport", None)
+        return real_client_cls(transport=transport, **kwargs)
+
+    return patch("httpx.AsyncClient", side_effect=_factory)
+
+
+class _AttachedCapture:
+    """A capturing handler on ``name``, at DEBUG, restored on exit."""
+
+    def __init__(self, name: str) -> None:
+        self.logger = logging.getLogger(name)
+        self.capture = _Capture()
+        self._level = self.logger.level
+
+    def __enter__(self) -> _Capture:
+        self.logger.addHandler(self.capture)
+        self.logger.setLevel(logging.DEBUG)
+        return self.capture
+
+    def __exit__(self, *_exc: Any) -> None:
+        self.logger.removeHandler(self.capture)
+        self.logger.setLevel(self._level)
+
+
 @pytest.mark.asyncio
 async def test_the_token_never_reaches_an_httpx_log_record() -> None:
     """``debug_token`` is GET-only, so the inspected token has to travel in
@@ -473,6 +509,153 @@ async def test_the_httpx_loggers_are_left_as_they_were_found() -> None:
 
     assert list(logging.getLogger("httpx").filters) == httpx_filters
     assert list(logging.getLogger("httpcore").filters) == httpcore_filters
+
+
+#: The loggers httpcore actually emits through. ``httpcore`` itself never
+#: logs anything — every trace record comes from one of these children, and
+#: a ``logging.Filter`` on the parent is not consulted for them.
+_HTTPCORE_EMITTERS = (
+    "httpcore.connection",
+    "httpcore.http11",
+    "httpcore.http2",
+    "httpcore.proxy",
+    "httpcore.socks",
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("emitter", _HTTPCORE_EMITTERS)
+async def test_the_token_never_reaches_an_httpcore_log_record(emitter: str) -> None:
+    """A filter on the ``httpcore`` logger is inert.
+
+    ``Logger.addFilter`` applies only to records logged through that exact
+    logger object — filters are NOT inherited by child loggers the way
+    handlers and levels are. httpcore logs its request trace through
+    ``httpcore.connection`` / ``httpcore.http11`` / …, so the parent-only
+    filter never saw a single one of those records, and a host application
+    running httpcore at DEBUG would have got the token in its log.
+    """
+
+    from mureo.meta_ads.accounts import inspect_meta_access_token
+
+    leak = "send_request_headers.started request=<Request [b'GET']> input_token=%s"
+    emitter_logger = logging.getLogger(emitter)
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        # Emitted WHILE the call is in flight, which is the only moment the
+        # filter is installed — exactly like httpcore's own trace records.
+        emitter_logger.debug(leak, _TOKEN)
+        return httpx.Response(200, json=_FULL_DATA)
+
+    with _AttachedCapture(emitter) as capture, _real_client_on(_handler):
+        info = await inspect_meta_access_token(
+            _TOKEN, app_id=_APP_ID, app_secret=_APP_SECRET
+        )
+
+        assert info["type"] == "SYSTEM_USER"
+        for message in capture.messages:
+            assert _TOKEN not in message, f"the token leaked: {message}"
+
+        # And the silence is scoped to the call: the same record gets
+        # through once the inspection has returned, so a host application's
+        # own httpcore logging is not collateral damage.
+        emitter_logger.debug(leak, _TOKEN)
+        assert any(_TOKEN in message for message in capture.messages)
+
+
+@pytest.mark.asyncio
+async def test_every_filtered_logger_is_left_as_it_was_found() -> None:
+    """Every name the probe touches is restored, not just the two parents."""
+
+    from mureo.meta_ads.accounts import (
+        _HTTP_LOGGER_NAMES,
+        MetaTokenInspectError,
+        inspect_meta_access_token,
+    )
+
+    assert "httpx" in _HTTP_LOGGER_NAMES
+    assert "httpcore" in _HTTP_LOGGER_NAMES
+    for emitter in _HTTPCORE_EMITTERS:
+        assert emitter in _HTTP_LOGGER_NAMES, f"{emitter} is never filtered"
+
+    before = {
+        name: list(logging.getLogger(name).filters) for name in _HTTP_LOGGER_NAMES
+    }
+
+    with (
+        _patched_client(_debug_route({"error": {"message": "nope"}}, status=400)),
+        pytest.raises(MetaTokenInspectError),
+    ):
+        await inspect_meta_access_token(_TOKEN, app_id=_APP_ID, app_secret=_APP_SECRET)
+
+    for name, filters in before.items():
+        assert list(logging.getLogger(name).filters) == filters, name
+
+
+# ---------------------------------------------------------------------------
+# A transport error quotes the request it failed on
+# ---------------------------------------------------------------------------
+
+
+def _exploding_transport_handler(request: httpx.Request) -> httpx.Response:
+    """Fail the way a transport failure actually reads.
+
+    httpx's transport exceptions carry the request, and the lower-level
+    errors they wrap routinely quote the URL — which now holds the inspected
+    token — and, in a proxy/TLS trace, the request headers, which hold the
+    app access token.
+    """
+
+    raise httpx.ConnectError(
+        f"boom url={request.url} auth={request.headers['Authorization']}",
+        request=request,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_transport_error_leaks_neither_secret() -> None:
+    from mureo.meta_ads.accounts import (
+        MetaTokenInspectError,
+        inspect_meta_access_token,
+    )
+
+    with (
+        _real_client_on(_exploding_transport_handler),
+        pytest.raises(MetaTokenInspectError) as exc,
+    ):
+        await inspect_meta_access_token(_TOKEN, app_id=_APP_ID, app_secret=_APP_SECRET)
+
+    detail = str(exc.value)
+    assert _TOKEN not in detail
+    assert _APP_SECRET not in detail
+    assert "REDACTED" in detail
+
+
+@pytest.mark.asyncio
+async def test_a_transport_error_is_scrubbed_on_the_validate_path_too() -> None:
+    """``token_inspect_error`` is echoed to the configure card and written to
+    ``configure.log``, so it is the same boundary."""
+
+    from mureo.meta_ads.accounts import validate_meta_access_token
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "/me/permissions" in url:
+            return httpx.Response(200, json=_PERMS)
+        if "/me/adaccounts" in url:
+            return httpx.Response(200, json=_ACCTS)
+        return _exploding_transport_handler(request)
+
+    with _real_client_on(_handler):
+        result = await validate_meta_access_token(
+            _TOKEN, app_id=_APP_ID, app_secret=_APP_SECRET
+        )
+
+    assert result["token_info"] is None
+    error = result["token_inspect_error"]
+    assert error
+    assert _TOKEN not in error
+    assert _APP_SECRET not in error
 
 
 # ---------------------------------------------------------------------------
