@@ -57,8 +57,14 @@ def test_stays_readable_under_the_size_budget() -> None:
     - #726: one — the Meta token-expiry bullet. A credential that dies on a
       known date is a finding the daily run is the only place to raise, and
       raising it after the token lapses is not raising it at all.
+    - #747: five — three rules and the blank line each of the two paragraphs
+      needs. The grain guard beside the learning- and delivery-state ones,
+      the flags read-back, and the display-surface rule. Each says what the
+      writer may NOT assert, and a rule of that kind only works in the step
+      whose output it constrains: a reservation that is checked one step
+      later has already been dropped from the field the operator reads.
     """
-    assert len(_body().splitlines()) <= 176
+    assert len(_body().splitlines()) <= 181
 
 
 def test_two_modes_documented() -> None:
