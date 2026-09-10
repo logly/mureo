@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.17.4] - 2026-09-10
+
 ### Fixed
 
 - **A verdict hedged in the report stays hedged where the operator reads it,
