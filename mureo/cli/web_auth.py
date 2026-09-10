@@ -392,7 +392,8 @@ def render_google_account_picker(
     """Radio-group picker for a Google Ads customer_id.
 
     ``accounts`` is the list returned by ``list_accessible_accounts``:
-    dicts with ``id``, ``name``, ``is_manager``, ``parent_id``.
+    dicts with ``id``, ``name`` (``None`` when the account has none),
+    ``is_manager``, ``parent_id``, ``level`` and ``status``.
     """
     csrf = html.escape(session.csrf_token, quote=True)
     loc = session.locale
@@ -410,7 +411,10 @@ def render_google_account_picker(
     rows = []
     for idx, acct in enumerate(accounts):
         acct_id = html.escape(str(acct.get("id", "")), quote=True)
-        name = html.escape(str(acct.get("name", "")))
+        # ``name`` is ``None`` for an account that has none (#746) — render
+        # the id on its own rather than the literal string "None" or a
+        # dangling em dash.
+        name = acct.get("name")
         is_manager = bool(acct.get("is_manager"))
         parent_id = acct.get("parent_id")
         badges: list[str] = []
@@ -422,10 +426,15 @@ def render_google_account_picker(
             f" <span class='hint'>({'; '.join(badges)})</span>" if badges else ""
         )
         checked = " checked" if idx == 0 else ""
+        label = (
+            f"<code>{acct_id}</code> — {html.escape(str(name))}{badge_html}"
+            if name
+            else f"<code>{acct_id}</code>{badge_html}"
+        )
         rows.append(
             f"""<label style="display:flex; align-items:baseline; gap:8px; margin:6px 0; font-weight:normal">
   <input type="radio" name="account_id" value="{acct_id}"{checked} required>
-  <span><code>{acct_id}</code> — {name}{badge_html}</span>
+  <span>{label}</span>
 </label>"""
         )
     rows_html = "\n".join(rows)
@@ -464,12 +473,19 @@ def render_meta_account_picker(
     rows = []
     for idx, acct in enumerate(accounts):
         acct_id = html.escape(str(acct.get("id", "")), quote=True)
-        name = html.escape(str(acct.get("name", "")))
+        # ``name`` is ``None`` for an unnamed ad account (#746) — the id
+        # stands alone rather than being followed by the string "None".
+        name = acct.get("name")
         checked = " checked" if idx == 0 else ""
+        label = (
+            f"<code>{acct_id}</code> — {html.escape(str(name))}"
+            if name
+            else f"<code>{acct_id}</code>"
+        )
         rows.append(
             f"""<label style="display:flex; align-items:baseline; gap:8px; margin:6px 0; font-weight:normal">
   <input type="radio" name="account_id" value="{acct_id}"{checked} required>
-  <span><code>{acct_id}</code> — {name}</span>
+  <span>{label}</span>
 </label>"""
         )
     rows_html = "\n".join(rows)

@@ -26,6 +26,56 @@
   `analysis_exclusion_impact_preview`'s `unknown` coverage (#547), one step
   earlier in the run.
 
+- **Account pickers now carry enough metadata to tell two accounts apart,
+  and stop presenting a partial or failed listing as the whole truth**
+  (#746). Every account lister returned the bare minimum, so a Business
+  Manager holding one ad account per market — all of them called some
+  variant of "Brand" — produced a dropdown nobody could choose from.
+  `list_meta_ad_accounts` now asks Graph for `business{id,name}`,
+  `currency`, `timezone_name`, `disable_reason` and `end_advertiser_name`
+  alongside the id, name and status it already had, and passes each row
+  through as Graph returned it (`business` stays a nested object rather
+  than being flattened).
+
+  The Meta walk also stops lying about its own completeness. Hitting the
+  50-page cap, or refusing a `paging.next` URL that does not point at the
+  Graph host, wrote a warning to the operator log — which no UI reads — and
+  handed back a silently short list. The result is now a
+  `MetaAdAccountList`: a plain list in every respect that matters
+  (`MetaAdAccountList([row]) == [row]`, so no caller changes) with a
+  `truncated` flag saying whether accounts are missing.
+
+  `list_accessible_accounts` (Google Ads) gained `level` and `status` on
+  every row — the hierarchy depth and the account status enum's name, read
+  from a new `customer.status` column — so a SUSPENDED account is no longer
+  visually identical to the live one next to it.
+
+  Unnamed accounts stop borrowing their own id. Both listers used to copy
+  the account id into `name`, which made "this account has no name" and
+  "this account is named after its id" the same row. `name` is now `None`,
+  and the two OAuth-wizard pickers plus the interactive `mureo auth setup`
+  prompts render the id once instead of printing the literal string
+  `None`.
+
+  Plugin-supplied rows are no longer flattened either: `list_oauth_accounts`
+  used to normalise every hook result down to `{id, name}`, discarding
+  exactly the fields a plugin would use to disambiguate its own accounts.
+  Any JSON-serialisable extra key now reaches the picker endpoint
+  untouched, and a value that cannot be encoded is dropped from its row
+  rather than turning the account list into a 500.
+
+  **One behaviour change for library callers**: `list_accessible_accounts`
+  raises `GoogleAdsAccountListError` when the listing call fails instead of
+  returning `[]`. An empty list still means "these credentials reach no
+  accounts" — the point is that it now means only that, where before an
+  expired refresh token, a rejected developer token and a genuinely empty
+  Google account were reported identically. The message carries the failing
+  exception's class name only (its text can embed the request metadata),
+  the `mureo auth setup` wizard catches it and still saves the credentials
+  it just obtained, the configure wizard already degraded on any exception,
+  and the `google_ads_accounts_list` MCP tool now returns an error envelope
+  instead of an empty roster an agent would have believed.
+
 ## [0.17.3] - 2026-09-02
 
 ### Fixed

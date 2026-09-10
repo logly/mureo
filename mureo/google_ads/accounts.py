@@ -19,7 +19,9 @@ need to change.
 The returned shape stays ``list[dict[str, Any]]`` (the same dict
 shape the auth-setup wizard has always produced). A future minor
 release MAY introduce a frozen-dataclass parallel return type; the
-dict shape will remain supported for at least one minor.
+dict shape will remain supported for at least one minor. A listing
+that fails outright raises :class:`GoogleAdsAccountListError` rather
+than returning an empty list (#746).
 """
 
 from __future__ import annotations
@@ -30,9 +32,118 @@ from typing import TYPE_CHECKING, Any
 from mureo.google_ads._gaql_validator import validate_static_query
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mureo.auth import GoogleAdsCredentials
 
 logger = logging.getLogger(__name__)
+
+
+class GoogleAdsAccountListError(RuntimeError):
+    """The account listing failed — no roster could be built (#746).
+
+    Distinct from an empty list, which is the legitimate "these
+    credentials reach no accounts" answer. Collapsing the two meant an
+    expired refresh token, a rejected developer token and a brand-new
+    Google account with nothing in it were all reported as "no accounts",
+    and every caller carried on as if that were a fact.
+
+    The message names the failing exception's CLASS only. See the raise
+    site for why its text must not travel with it.
+    """
+
+
+def _enum_name(value: Any) -> str | None:
+    """Render a proto-plus enum value as its name string.
+
+    ``customer.status`` and ``customer_client.status`` come back as enum
+    wrappers whose ``.name`` is the GAQL string (``"ENABLED"``,
+    ``"SUSPENDED"``, ``"CANCELED"``, …), which is the form worth showing
+    an operator — the raw value is an integer. Anything without a string
+    ``.name`` falls back to ``str()``, and an unset field reads as
+    ``None`` rather than the misleading ``"0"``.
+    """
+
+    name = getattr(value, "name", None)
+    if isinstance(name, str):
+        return name
+    if value:
+        return str(value)
+    return None
+
+
+def _describe_customer(
+    ga_service: Any, customer_id: str
+) -> tuple[str | None, bool, str | None]:
+    """Return ``(name, is_manager, status)`` for one accessible customer.
+
+    Degrades rather than fails: a customer whose info query the API
+    refuses still belongs in the roster — the caller already knows its id
+    — it simply has no metadata to show, so it reads
+    ``(None, False, None)``. ``name`` is ``None`` (not the id) when the
+    account has no descriptive name, so a consumer can tell an unnamed
+    account from one named after its own id.
+    """
+
+    try:
+        query = validate_static_query(
+            "SELECT customer.descriptive_name, customer.manager, "
+            "customer.status FROM customer LIMIT 1"
+        )
+        for row in ga_service.search(customer_id=customer_id, query=query):
+            return (
+                row.customer.descriptive_name or None,
+                bool(row.customer.manager),
+                _enum_name(row.customer.status),
+            )
+    except Exception as exc:  # noqa: BLE001
+        # Class name only — see the note above list_accessible_customers.
+        logger.debug(
+            "Failed to retrieve account info: %s (%s)",
+            customer_id,
+            type(exc).__name__,
+        )
+    return None, False, None
+
+
+def _traverse_children(ga_service: Any, mcc_id: str, add: Callable[..., None]) -> None:
+    """Hand every enabled child account under ``mcc_id`` to ``add``.
+
+    ``ga_service`` must already be built with ``mcc_id`` as its
+    ``login_customer_id``. Degrades rather than fails: an MCC whose
+    traversal is refused contributes no children and the walk moves on —
+    the manager account itself is already in the roster.
+    """
+
+    try:
+        child_query = validate_static_query(
+            "SELECT "
+            "  customer_client.id, "
+            "  customer_client.descriptive_name, "
+            "  customer_client.manager, "
+            "  customer_client.level, "
+            "  customer_client.status "
+            "FROM customer_client "
+            "WHERE customer_client.status = 'ENABLED' "
+            "AND customer_client.level > 0"
+        )
+        for child_row in ga_service.search(customer_id=mcc_id, query=child_query):
+            child = child_row.customer_client
+            add(
+                str(child.id),
+                child.descriptive_name or None,
+                is_manager=bool(child.manager),
+                parent_id=mcc_id,
+                level=int(child.level),
+                status=_enum_name(child.status),
+            )
+    except Exception as exc:  # noqa: BLE001
+        # Class name only — see the note above list_accessible_customers.
+        logger.warning(
+            "Failed to retrieve child accounts for MCC %s (%s)",
+            mcc_id,
+            type(exc).__name__,
+        )
 
 
 async def list_accessible_accounts(
@@ -57,16 +168,27 @@ async def list_accessible_accounts(
             each MCC as its own ``login_customer_id``.
 
     Returns:
-        List of account info dicts. Each dict contains:
+        List of account info dicts. An empty list means the credentials
+        reached the API and it reported no accounts. Each dict contains:
 
         - ``id``: Customer ID (10-digit string).
-        - ``name``: Descriptive name (falls back to the ID when the
-          API does not surface one).
+        - ``name``: Descriptive name, or ``None`` when the account has
+          none (the id is NOT copied in — an unnamed account and one
+          named after its own id are different things).
         - ``is_manager``: ``True`` when this is an MCC account.
         - ``parent_id``: Parent MCC ID for child accounts reached via
           MCC traversal. ``None`` for directly accessible accounts.
           When set, it is the value to pass as ``login_customer_id``
           when operating on the child.
+        - ``level``: Depth below the MCC the account was reached
+          through. ``0`` for a directly accessible account.
+        - ``status``: The account status enum's name (``"ENABLED"``,
+          ``"SUSPENDED"``, …), or ``None`` when it could not be read.
+
+    Raises:
+        GoogleAdsAccountListError: When the listing call itself failed,
+            so no roster could be built. Never confuse this with an
+            empty list — see the class docstring.
     """
     from google.ads.googleads.client import GoogleAdsClient
     from google.oauth2.credentials import Credentials as OAuthCredentials
@@ -103,16 +225,23 @@ async def list_accessible_accounts(
         # mureo/cli/web_auth.py); doing it there and not here left the leak
         # in place.
         logger.warning("Failed to retrieve account list (%s)", type(exc).__name__)
-        return []
+        # ``from None`` for the same reason the message carries the class
+        # name alone: a printed ``__cause__`` would put the whole grpc repr
+        # — request metadata included — in front of whoever sees the error.
+        raise GoogleAdsAccountListError(
+            f"Failed to retrieve account list ({type(exc).__name__})"
+        ) from None
 
     accounts: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
 
     def _add(
         customer_id: str,
-        name: str,
+        name: str | None,
         is_manager: bool = False,
         parent_id: str | None = None,
+        level: int = 0,
+        status: str | None = None,
     ) -> None:
         if customer_id in seen_ids:
             return
@@ -122,6 +251,8 @@ async def list_accessible_accounts(
                 "name": name,
                 "is_manager": is_manager,
                 "parent_id": parent_id,
+                "level": level,
+                "status": status,
             }
         )
         seen_ids.add(customer_id)
@@ -143,67 +274,22 @@ async def list_accessible_accounts(
         own_client = _make_client(login_cid=customer_id)
         own_ga_service = own_client.get_service("GoogleAdsService")
 
-        name = customer_id
-        is_manager = False
-        try:
-            query = validate_static_query(
-                "SELECT customer.descriptive_name, customer.manager "
-                "FROM customer LIMIT 1"
-            )
-            rows = own_ga_service.search(customer_id=customer_id, query=query)
-            for row in rows:
-                name = row.customer.descriptive_name or customer_id
-                is_manager = bool(row.customer.manager)
-                break
-        except Exception as exc:  # noqa: BLE001
-            # Class name only — see the note above list_accessible_customers.
-            logger.debug(
-                "Failed to retrieve account info: %s (%s)",
-                customer_id,
-                type(exc).__name__,
-            )
-
-        _add(customer_id, name, is_manager=is_manager, parent_id=None)
-
-        if not is_manager:
-            continue
+        name, is_manager, status = _describe_customer(own_ga_service, customer_id)
+        _add(
+            customer_id,
+            name,
+            is_manager=is_manager,
+            parent_id=None,
+            level=0,
+            status=status,
+        )
 
         # Step 3: Traverse child accounts under this MCC. Same client
         # already has ``login_customer_id`` set to the MCC.
-        try:
-            child_query = validate_static_query(
-                "SELECT "
-                "  customer_client.id, "
-                "  customer_client.descriptive_name, "
-                "  customer_client.manager, "
-                "  customer_client.level, "
-                "  customer_client.status "
-                "FROM customer_client "
-                "WHERE customer_client.status = 'ENABLED' "
-                "AND customer_client.level > 0"
-            )
-            child_rows = own_ga_service.search(
-                customer_id=customer_id, query=child_query
-            )
-            for child_row in child_rows:
-                child = child_row.customer_client
-                child_id = str(child.id)
-                child_name = child.descriptive_name or child_id
-                _add(
-                    child_id,
-                    child_name,
-                    is_manager=bool(child.manager),
-                    parent_id=customer_id,
-                )
-        except Exception as exc:  # noqa: BLE001
-            # Class name only — see the note above list_accessible_customers.
-            logger.warning(
-                "Failed to retrieve child accounts for MCC %s (%s)",
-                customer_id,
-                type(exc).__name__,
-            )
+        if is_manager:
+            _traverse_children(own_ga_service, customer_id, _add)
 
     return accounts
 
 
-__all__ = ["list_accessible_accounts"]
+__all__ = ["GoogleAdsAccountListError", "list_accessible_accounts"]

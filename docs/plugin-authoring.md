@@ -400,8 +400,12 @@ Two patterns worth noting in the example:
 - **Cross-reference**: the optional field's description points to where
   the value comes from — for Google Ads, the `parent_id` returned by
   `mureo.google_ads.list_accessible_accounts` for child accounts
-  reached via MCC traversal. Surfacing this in the description lets
-  tooling auto-populate the field from a discovery call.
+  reached via MCC traversal (each row also carries `id`, `name` — `None`
+  when the account has none — plus `is_manager`, `level` and
+  `status`; the call raises `GoogleAdsAccountListError` when the
+  listing itself fails, and an empty list means "no accounts").
+  Surfacing this in the description lets tooling auto-populate the
+  field from a discovery call.
 
 #### Secret per-account fields
 
@@ -439,6 +443,38 @@ material (refresh tokens, system user tokens) is operator-shared and
 lives in the `SecretStore` base layer, not in
 `account_credential_fields`. Use `secret=True` when the per-account
 slice itself is the secret.
+
+#### Post-auth account picker (`list_oauth_accounts`)
+
+A provider whose `AccountOAuthConfig` names an `accounts_field` can also
+expose a `list_oauth_accounts(credentials)` hook (sync or async). After
+consent, the configure UI calls
+`GET /api/credentials/plugins/<provider>/accounts` and renders one radio
+per returned account, writing the chosen id into `accounts_field`. The
+hook receives the provider's stored credentials section, so it can read
+the token it just obtained under `target_field`.
+
+Return one mapping per reachable account:
+
+```python
+@staticmethod
+def list_oauth_accounts(credentials: dict[str, str]) -> list[dict[str, object]]:
+    return [
+        {"id": "act_1", "name": "Brand JP", "currency": "JPY",
+         "business": {"id": "b1", "name": "Brand Holdings"}},
+        {"id": "act_2"},  # no name — rendered as the id alone
+    ]
+```
+
+- `id` is required. A row without a usable one is dropped.
+- `name` is optional. It reaches the picker as `null` when the plugin
+  gives none — mureo does **not** substitute the id, so an unnamed
+  account is not shown as if it were named after its own id.
+- **Any other JSON-serialisable key is passed through unchanged**, nested
+  objects included. Two accounts called "Brand" are told apart by what
+  you return beside the name, so return it. A value that cannot be
+  JSON-encoded is dropped from its row (the row itself is kept) rather
+  than failing the whole listing.
 
 ### Declaring your platform's delivery model (optional)
 

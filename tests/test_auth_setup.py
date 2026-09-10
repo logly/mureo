@@ -427,6 +427,168 @@ async def test_list_accessible_accounts_empty() -> None:
     assert accounts == []
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_accessible_accounts_raises_when_listing_fails() -> None:
+    """A failed listing raises instead of returning ``[]`` (#746).
+
+    ``[]`` is the legitimate "this login reaches no accounts" answer, so
+    reusing it for "the call blew up" made an expired refresh token look
+    like a brand-new Google account. The raised message names the failing
+    exception CLASS only — a ``GoogleAdsException``'s ``str()`` prints the
+    underlying grpc ``debug_error_string``, which carries the request
+    metadata (developer token, authorization header).
+    """
+    from mureo.auth_setup import list_accessible_accounts
+    from mureo.google_ads.accounts import GoogleAdsAccountListError
+
+    class _SdkListingError(RuntimeError):
+        pass
+
+    creds = GoogleAdsCredentials(
+        developer_token="dev-tok",
+        client_id="cid",
+        client_secret="csec",
+        refresh_token="rtok",
+    )
+
+    mock_ga_client = MagicMock()
+    mock_customer_service = MagicMock()
+    mock_customer_service.list_accessible_customers.side_effect = _SdkListingError(
+        "debug_error_string metadata developer-token-SECRET"
+    )
+    mock_ga_client.get_service.return_value = mock_customer_service
+
+    with (
+        patch(
+            "google.ads.googleads.client.GoogleAdsClient", return_value=mock_ga_client
+        ),
+        pytest.raises(GoogleAdsAccountListError) as excinfo,
+    ):
+        await list_accessible_accounts(creds)
+
+    message = str(excinfo.value)
+    assert "_SdkListingError" in message
+    assert "developer-token-SECRET" not in message
+    # ``from None`` — the chained exception would print the same metadata.
+    assert excinfo.value.__cause__ is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_accessible_accounts_reports_level_and_status() -> None:
+    """Every row carries the hierarchy level and the account status (#746).
+
+    ``level`` is 0 for a directly accessible account and the
+    ``customer_client.level`` for a child; ``status`` is the enum's own
+    name string, which is what tells an operator a SUSPENDED account apart
+    from an identically named live one.
+    """
+    from mureo.auth_setup import list_accessible_accounts
+
+    creds = GoogleAdsCredentials(
+        developer_token="dev-tok",
+        client_id="cid",
+        client_secret="csec",
+        refresh_token="rtok",
+    )
+
+    mock_ga_client = MagicMock()
+    mock_customer_service = MagicMock()
+    mock_response = MagicMock()
+    mock_response.resource_names = ["customers/1111111111"]
+    mock_customer_service.list_accessible_customers.return_value = mock_response
+
+    mcc_row = MagicMock()
+    mcc_row.customer.descriptive_name = "Parent MCC"
+    mcc_row.customer.manager = True
+    mcc_row.customer.status.name = "ENABLED"
+
+    child_row = MagicMock()
+    child_row.customer_client.id = 2222222222
+    child_row.customer_client.descriptive_name = "Child A"
+    child_row.customer_client.manager = False
+    child_row.customer_client.level = 1
+    child_row.customer_client.status.name = "ENABLED"
+
+    mock_ga_service = MagicMock()
+    mock_ga_service.search.side_effect = [[mcc_row], [child_row]]
+
+    def _get_service(name: str) -> MagicMock:
+        if name == "CustomerService":
+            return mock_customer_service
+        return mock_ga_service
+
+    mock_ga_client.get_service.side_effect = _get_service
+
+    with patch(
+        "google.ads.googleads.client.GoogleAdsClient", return_value=mock_ga_client
+    ):
+        accounts = await list_accessible_accounts(creds)
+
+    assert accounts[0]["id"] == "1111111111"
+    assert accounts[0]["level"] == 0
+    assert accounts[0]["status"] == "ENABLED"
+    assert accounts[1]["id"] == "2222222222"
+    assert accounts[1]["level"] == 1
+    assert accounts[1]["status"] == "ENABLED"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_accessible_accounts_unnamed_account_reports_name_none() -> None:
+    """An account with no descriptive name reports ``name: None`` (#746).
+
+    The id used to be copied into ``name``, so an unnamed account rendered
+    as if it were called after its own customer ID.
+    """
+    from mureo.auth_setup import list_accessible_accounts
+
+    creds = GoogleAdsCredentials(
+        developer_token="dev-tok",
+        client_id="cid",
+        client_secret="csec",
+        refresh_token="rtok",
+    )
+
+    mock_ga_client = MagicMock()
+    mock_customer_service = MagicMock()
+    mock_response = MagicMock()
+    mock_response.resource_names = ["customers/1234567890"]
+    mock_customer_service.list_accessible_customers.return_value = mock_response
+
+    row = MagicMock()
+    row.customer.descriptive_name = ""
+    row.customer.manager = False
+    row.customer.status.name = "ENABLED"
+
+    mock_ga_service = MagicMock()
+    mock_ga_service.search.return_value = [row]
+
+    def _get_service(name: str) -> MagicMock:
+        if name == "CustomerService":
+            return mock_customer_service
+        return mock_ga_service
+
+    mock_ga_client.get_service.side_effect = _get_service
+
+    with patch(
+        "google.ads.googleads.client.GoogleAdsClient", return_value=mock_ga_client
+    ):
+        accounts = await list_accessible_accounts(creds)
+
+    assert accounts == [
+        {
+            "id": "1234567890",
+            "name": None,
+            "is_manager": False,
+            "parent_id": None,
+            "level": 0,
+            "status": "ENABLED",
+        }
+    ]
+
+
 # ---------------------------------------------------------------------------
 # 8. Full setup flow (input / OAuth / API all mocked)
 # ---------------------------------------------------------------------------
@@ -1207,6 +1369,37 @@ def test_select_account_fallback_valid_choice() -> None:
         result = _select_account(accounts)
 
     assert result == "222"
+
+
+@pytest.mark.unit
+def test_select_account_fallback_unnamed_account_prints_id_once() -> None:
+    """An account with ``name: None`` is labelled by its id alone (#746).
+
+    The lister no longer copies the id into ``name``, so the label must
+    render the id once rather than the literal string ``None`` (or the id
+    twice, as ``"1234567890 (1234567890)"``).
+    """
+    from mureo.auth_setup import _select_account
+
+    accounts = [
+        {"id": "111", "name": None},
+        {"id": "222", "name": "Account B"},
+    ]
+
+    with (
+        patch("simple_term_menu.TerminalMenu", side_effect=ImportError),
+        patch("builtins.input", return_value="1"),
+        patch("builtins.print") as mock_print,
+    ):
+        result = _select_account(accounts)
+
+    assert result == "111"
+    printed = "\n".join(
+        str(call.args[0]) for call in mock_print.call_args_list if call.args
+    )
+    assert "None" not in printed
+    assert "111 (111)" not in printed
+    assert "111" in printed
 
 
 @pytest.mark.unit

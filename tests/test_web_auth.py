@@ -866,6 +866,28 @@ class TestRenderGoogleAccountPicker:
         assert "Direct account" in html
         assert "Child of MCC" in html
 
+    def test_unnamed_account_renders_id_once(self) -> None:
+        """An account with ``name: None`` shows its id, not "None" (#746).
+
+        The lister stopped copying the id into ``name``, so the picker owns
+        the fallback: no dangling em dash, no literal ``None``, and the id
+        printed once rather than twice.
+        """
+        session = WizardSession()
+        accounts = [
+            {
+                "id": "1234567890",
+                "name": None,
+                "is_manager": False,
+                "parent_id": None,
+                "level": 0,
+                "status": "ENABLED",
+            }
+        ]
+        html = render_google_account_picker(session, accounts)
+        assert "None" not in html
+        assert "<code>1234567890</code></span>" in html
+
     def test_escapes_account_names(self) -> None:
         session = WizardSession()
         accounts = [
@@ -893,6 +915,14 @@ class TestRenderMetaAccountPicker:
         assert 'action="/meta-ads/select-account"' in html
         assert "act_111" in html
         assert "Primary" in html
+
+    def test_unnamed_account_renders_id_once(self) -> None:
+        """Same fallback on the Meta picker: id alone, never "None" (#746)."""
+        session = WizardSession()
+        accounts = [{"id": "act_111", "name": None, "account_status": 1}]
+        html = render_meta_account_picker(session, accounts)
+        assert "None" not in html
+        assert "<code>act_111</code></span>" in html
 
 
 class TestGoogleAccountPickerRoute:
