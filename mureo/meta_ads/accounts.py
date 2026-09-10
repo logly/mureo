@@ -14,10 +14,12 @@ The original import path ``mureo.auth_setup.list_meta_ad_accounts``
 remains valid via a thin re-export there — existing callers do not
 need to change.
 
-The returned shape stays ``list[dict[str, Any]]`` (the same dict
-shape the auth-setup wizard has always produced). A future minor
-release MAY introduce a frozen-dataclass parallel return type; the
-dict shape will remain supported for at least one minor.
+The returned shape stays a list of dicts (the same dict shape the
+auth-setup wizard has always produced), now as the
+:class:`MetaAdAccountList` subclass that adds a ``truncated`` flag
+and compares equal to a plain list. A future minor release MAY
+introduce a frozen-dataclass parallel return type; the dict shape
+will remain supported for at least one minor.
 """
 
 from __future__ import annotations
@@ -41,6 +43,20 @@ _HTTP_TIMEOUT = 30.0
 # ``adaccounts`` edge. Defaults to 25 when omitted — too small for any
 # Business Manager with more than a handful of accounts.
 _PAGE_SIZE = 100
+
+# The ``adaccounts`` fields mureo asks Graph for. ``id,name,account_status``
+# alone cannot tell two ad accounts apart when both are called "Brand" —
+# which is the normal state of a Business Manager holding one account per
+# market. The owning business, the currency and the timezone are what an
+# operator recognises an account by; ``disable_reason`` and
+# ``end_advertiser_name`` say why a disabled account is disabled and who it
+# runs for. ``business{id,name}`` is a nested-object selector: Graph returns
+# it as an object, and it is passed through as-is rather than flattened, so
+# a consumer reads ``row["business"]["name"]``.
+_ADACCOUNT_FIELDS = (
+    "id,name,account_status,business{id,name},currency,timezone_name,"
+    "disable_reason,end_advertiser_name"
+)
 
 # Defensive upper bound on the cursor walk. 50 pages × 100 = 5000 ad
 # accounts — well past anything seen in practice. Caps a buggy Graph
@@ -74,6 +90,43 @@ def _redact(message: str, secret: str) -> str:
     if not secret:
         return message
     return message.replace(secret, "***REDACTED***")
+
+
+class MetaAdAccountList(list[dict[str, Any]]):
+    """The ad accounts a token can reach, plus whether that list is whole.
+
+    Compares, iterates, indexes and slices exactly like the plain
+    ``list[dict[str, Any]]`` :func:`list_meta_ad_accounts` used to return —
+    ``MetaAdAccountList([row]) == [row]`` — so no existing caller has to
+    change. The one addition is :attr:`truncated`.
+
+    Attributes:
+        truncated: True when the walk stopped before Graph ran out of
+            cursors, so accounts the token can reach are missing from this
+            list. False (the default) means the list is complete. Before
+            #746 a truncated walk only wrote a warning to the operator log,
+            which no UI reads — a partial dropdown was indistinguishable
+            from a full one.
+    """
+
+    truncated: bool = False
+
+
+def _normalise_account_row(row: Any) -> Any:
+    """Return ``row`` with an explicit ``name`` key.
+
+    Graph omits ``name`` entirely for an ad account that has none. The key
+    is always present on the way out, ``None`` when Graph gave nothing, so
+    a consumer can tell "unnamed" from "named after its own id" — the old
+    behaviour copied the id into ``name`` and the two collapsed (#746).
+
+    Everything else Graph returned is passed through untouched, nested
+    objects (``business``) included.
+    """
+
+    if not isinstance(row, dict):
+        return row
+    return {**row, "name": row.get("name")}
 
 
 class MetaTokenValidationError(RuntimeError):
@@ -549,7 +602,7 @@ async def validate_meta_access_token(
     }
 
 
-async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
+async def list_meta_ad_accounts(access_token: str) -> MetaAdAccountList:
     """Retrieve the list of Meta ad accounts the access token can reach.
 
     Calls ``GET /me/adaccounts`` on the Graph API and walks the
@@ -562,20 +615,31 @@ async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
         access_token: Meta Ads access token (System User or User token).
 
     Returns:
-        List of ad account dicts (``id``, ``name``, ``account_status``).
+        A :class:`MetaAdAccountList` — a plain list of ad account dicts
+        that also carries a ``truncated`` flag. Each dict is the row Graph
+        returned for the fields in :data:`_ADACCOUNT_FIELDS`: ``id``,
+        ``name`` (``None`` when the account has none), ``account_status``,
+        ``business`` (a nested ``{"id", "name"}`` object, passed through
+        unflattened), ``currency``, ``timezone_name``, ``disable_reason``
+        and ``end_advertiser_name``. Graph omits a field it has no value
+        for, so only ``id`` and ``name`` are guaranteed present.
+
+        ``truncated`` is True when the walk stopped early — the page cap
+        was reached, or a ``paging.next`` URL was refused — meaning
+        reachable accounts are missing from the list.
 
     Raises:
         RuntimeError: When the Graph API call fails (network error or
             non-2xx response).
     """
-    accounts: list[dict[str, Any]] = []
+    accounts = MetaAdAccountList()
     next_url: str | None = f"{_META_GRAPH_API_BASE}/me/adaccounts"
     # ``params`` is only sent on the first request — subsequent
     # ``paging.next`` URLs already carry every query parameter Graph
     # needs (including ``access_token`` and ``after`` cursor), so
     # resending them would corrupt the cursor.
     first_request_params: dict[str, Any] | None = {
-        "fields": "id,name,account_status",
+        "fields": _ADACCOUNT_FIELDS,
         "limit": _PAGE_SIZE,
         "access_token": access_token,
     }
@@ -590,21 +654,31 @@ async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
                         "Refusing to follow non-Graph paging.next URL; "
                         "truncating Meta ad-account list."
                     )
+                    # The refusal is the right call, but it leaves the list
+                    # partial — say so to the caller as well as the log.
+                    accounts.truncated = True
                     break
                 response = await client.get(next_url, params=first_request_params)
                 response.raise_for_status()
                 payload = response.json()
-                accounts.extend(payload.get("data", []) or [])
+                accounts.extend(
+                    _normalise_account_row(row) for row in payload.get("data", []) or []
+                )
                 next_url = (payload.get("paging") or {}).get("next")
                 first_request_params = None
             else:
-                # Loop exhausted the cap — log so the gap is visible in
-                # operator logs even though the UI sees a finite list.
-                logger.warning(
-                    "Meta ad-account pagination hit the %d-page cap; some "
-                    "accounts may be missing from the configure UI.",
-                    _MAX_PAGES,
-                )
+                # Loop exhausted the cap. A walk whose final page carried no
+                # cursor is complete, cap or not; only a pending cursor means
+                # accounts were left behind. Log so the gap is visible in
+                # operator logs, and flag the list so the UI can say the
+                # same thing to the operator looking at the dropdown.
+                if next_url:
+                    logger.warning(
+                        "Meta ad-account pagination hit the %d-page cap; some "
+                        "accounts may be missing from the configure UI.",
+                        _MAX_PAGES,
+                    )
+                    accounts.truncated = True
         return accounts
     except Exception as exc:
         # Scrub the access token before it lands in operator logs or UI.
@@ -620,6 +694,7 @@ async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
 
 __all__ = [
     "MetaAccountFetchError",
+    "MetaAdAccountList",
     "MetaTokenInspectError",
     "MetaTokenInspectUnavailable",
     "MetaTokenInvalidError",

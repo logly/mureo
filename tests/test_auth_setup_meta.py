@@ -351,6 +351,9 @@ async def test_list_meta_ad_accounts_refuses_non_graph_paging_next() -> None:
     # followed, so the dropdown silently truncates rather than leaking.
     assert accounts == [{"id": "act_1", "name": "A1", "account_status": 1}]
     assert mock_client.get.call_count == 1
+    # A refused cursor leaves the list partial too — the caller is told so
+    # rather than having to read the log (#746).
+    assert accounts.truncated is True
     # The truncation must be visible in operator logs.
     assert warn.called
     assert "non-Graph" in warn.call_args.args[0]
@@ -478,6 +481,161 @@ async def test_list_meta_ad_accounts_caps_page_walk() -> None:
     # Operators must see a warning when the cap truncated the list.
     assert warn.called
     assert "cap" in warn.call_args.args[0]
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_requests_metadata_fields() -> None:
+    """The first request asks for the fields that tell accounts apart (#746).
+
+    ``id,name,account_status`` alone cannot distinguish two ad accounts
+    both called "Brand": the owning Business Manager, the currency and the
+    timezone are what an operator recognises them by.
+    """
+    from mureo.meta_ads.accounts import _ADACCOUNT_FIELDS
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"data": [], "paging": {}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        await list_meta_ad_accounts(access_token="tok")
+
+    fields = mock_client.get.call_args.kwargs["params"]["fields"]
+    assert fields == _ADACCOUNT_FIELDS
+    for field in (
+        "id",
+        "name",
+        "account_status",
+        "business{id,name}",
+        "currency",
+        "timezone_name",
+        "disable_reason",
+        "end_advertiser_name",
+    ):
+        assert field in fields
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_unnamed_account_reports_name_none() -> None:
+    """An account Graph gives no ``name`` for comes back with ``name: None``.
+
+    Copying the id into ``name`` made an unnamed account indistinguishable
+    from one actually called ``act_222`` (#746). Everything else Graph
+    returned — including the nested ``business`` object — passes through
+    unflattened.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": [
+            {
+                "id": "act_111",
+                "name": "Brand A",
+                "business": {"id": "b1", "name": "BM One"},
+                "currency": "JPY",
+            },
+            {"id": "act_222", "account_status": 1},
+        ],
+        "paging": {},
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert accounts[0]["name"] == "Brand A"
+    assert accounts[0]["business"] == {"id": "b1", "name": "BM One"}
+    assert accounts[0]["currency"] == "JPY"
+    assert "name" in accounts[1]
+    assert accounts[1]["name"] is None
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_flags_truncation_at_page_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hitting the page cap is reported to the caller, not only to the log.
+
+    A warning in the operator log does not reach the configure UI, so a
+    truncated dropdown looked exactly like a complete one (#746).
+    """
+    monkeypatch.setattr("mureo.meta_ads.accounts._MAX_PAGES", 2)
+
+    looping_page = MagicMock()
+    looping_page.status_code = 200
+    looping_page.json.return_value = {
+        "data": [{"id": "act_x", "name": "X", "account_status": 1}],
+        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=loop"},
+    }
+    looping_page.raise_for_status = MagicMock()
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=looping_page)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert accounts.truncated is True
+    assert len(accounts) == 2, "both fetched pages are still returned"
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_complete_walk_is_not_truncated() -> None:
+    """A walk that reaches the last cursor reports a complete list."""
+    page1 = MagicMock()
+    page1.status_code = 200
+    page1.json.return_value = {
+        "data": [{"id": "act_1", "name": "A1"}],
+        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=c1"},
+    }
+    page1.raise_for_status = MagicMock()
+
+    page2 = MagicMock()
+    page2.status_code = 200
+    page2.json.return_value = {"data": [{"id": "act_2", "name": "A2"}], "paging": {}}
+    page2.raise_for_status = MagicMock()
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1, page2])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert accounts.truncated is False
+    assert len(accounts) == 2
+
+
+@pytest.mark.unit
+def test_meta_ad_account_list_compares_like_a_plain_list() -> None:
+    """The truncation signal must not change how the result is used."""
+    from mureo.meta_ads import MetaAdAccountList
+
+    rows = [{"id": "act_1", "name": "A1"}, {"id": "act_2", "name": None}]
+    accounts = MetaAdAccountList(rows)
+
+    assert accounts == rows
+    assert list(accounts) == rows
+    assert accounts[1]["name"] is None
+    assert accounts.truncated is False
 
 
 @pytest.mark.unit
@@ -1145,3 +1303,40 @@ async def test_setup_meta_ads_uses_input_func(tmp_path: Path) -> None:
 
     # input_func should be called (not the direct input call).
     assert mock_input.call_count >= 2
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_exact_cap_walk_is_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A walk whose last page lands exactly on the cap is not truncated.
+
+    The cap bounds how many pages are fetched, not how many exist: when
+    the final fetched page carries no cursor, nothing was left behind.
+    """
+    monkeypatch.setattr("mureo.meta_ads.accounts._MAX_PAGES", 2)
+
+    page1 = MagicMock()
+    page1.status_code = 200
+    page1.json.return_value = {
+        "data": [{"id": "act_1", "name": "A1"}],
+        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=c1"},
+    }
+    page1.raise_for_status = MagicMock()
+
+    page2 = MagicMock()
+    page2.status_code = 200
+    page2.json.return_value = {"data": [{"id": "act_2", "name": "A2"}], "paging": {}}
+    page2.raise_for_status = MagicMock()
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1, page2])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert accounts.truncated is False
+    assert len(accounts) == 2

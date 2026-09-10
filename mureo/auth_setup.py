@@ -163,6 +163,20 @@ def _restore_terminal_state(fd: int | None, state: Any | None) -> None:
         termios.tcsetattr(fd, termios.TCSADRAIN, state)
 
 
+def _account_label(account: dict[str, Any]) -> str:
+    """``"Name (id)"``, or the bare id when the account has no name (#746).
+
+    The account listers no longer copy the id into ``name`` for an account
+    that has none, so ``name`` can be ``None``. Formatting it blindly would
+    print the literal string ``None``, and falling back to the id inside
+    the same template would print the id twice.
+    """
+
+    account_id = str(account.get("id", ""))
+    name = account.get("name")
+    return f"{name} ({account_id})" if name else account_id
+
+
 def _select_account(
     accounts: list[dict[str, Any]],
     *,
@@ -177,7 +191,7 @@ def _select_account(
         The selected account ID, or None.
     """
     if label_fn is None:
-        label_fn = lambda a: f"{a['name']} ({a['id']})"  # noqa: E731
+        label_fn = _account_label
 
     labels = [label_fn(a) for a in accounts]
 
@@ -204,7 +218,7 @@ def _select_account(
             print("Selection cancelled. You can configure it later.")
             return None
         selected = accounts[idx]
-        print(f"Selected: {selected['name']} ({selected['id']})")
+        print(f"Selected: {_account_label(selected)}")
         return selected["id"]  # type: ignore[no-any-return]
     except (ImportError, NotImplementedError):
         # Fall back to plain number input when the arrow-key menu is
@@ -220,7 +234,7 @@ def _select_account(
             choice = int(input("Enter number: ").strip())
             if 1 <= choice <= len(accounts):
                 selected = accounts[choice - 1]
-                print(f"Selected: {selected['name']} ({selected['id']})")
+                print(f"Selected: {_account_label(selected)}")
                 return selected["id"]  # type: ignore[no-any-return]
         except (ValueError, IndexError):
             pass
@@ -1080,7 +1094,21 @@ async def setup_google_ads(
         refresh_token=oauth_result.refresh_token,
     )
 
-    accounts = await _reexport("list_accessible_accounts")(temp_creds)
+    # Imported here, not at module scope: the package __init__ loads the
+    # Google Ads SDK and this module is on the ``mureo setup`` startup path
+    # (#486) — same reason the listers themselves are lazy re-exports.
+    from mureo.google_ads.accounts import GoogleAdsAccountListError
+
+    try:
+        accounts = await _reexport("list_accessible_accounts")(temp_creds)
+    except GoogleAdsAccountListError as exc:
+        # The listing failing is no longer disguised as "no accounts"
+        # (#746) — but it must not cost the operator the refresh token they
+        # just granted either. Say what happened and fall through to the
+        # save below with an empty roster.
+        print(f"Could not list accessible accounts ({exc}).")
+        print("You can manually add the Customer ID to credentials.json later.")
+        accounts = []
 
     selected_id: str | None = None
     login_customer_id: str | None = None
@@ -1480,20 +1508,20 @@ async def setup_meta_ads(
     # Account selection
     if len(accounts) == 1:
         selected = accounts[0]
-        print(f"\nAd account: {selected['name']} ({selected['id']})")
+        print(f"\nAd account: {_account_label(selected)}")
     else:
         print("\nPlease select an ad account:\n")
 
         def _meta_label(a: dict[str, Any]) -> str:
             status = "active" if a.get("account_status") == 1 else "inactive"
-            return f"{a['name']} ({a['id']}) [{status}]"
+            return f"{_account_label(a)} [{status}]"
 
         selected_id = _select_account(accounts, label_fn=_meta_label)
         if selected_id is not None:
             selected = next(a for a in accounts if a["id"] == selected_id)
         else:
             selected = accounts[0]
-            print(f"Default: {selected['name']} ({selected['id']})")
+            print(f"Default: {_account_label(selected)}")
 
     account_id: str = selected["id"]
 
@@ -1516,7 +1544,7 @@ async def setup_meta_ads(
     )
 
     print(f"\nCredentials saved: {resolved_path}")
-    print(f"Account: {selected['name']} ({account_id})")
+    print(f"Account: {_account_label(selected)}")
 
     return meta_creds
 

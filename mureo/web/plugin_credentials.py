@@ -27,6 +27,7 @@ sensitive, and the configure-UI layer honours it.
 from __future__ import annotations
 
 import inspect
+import json
 import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
@@ -223,11 +224,28 @@ def _oauth_to_dict(provider_class: type) -> dict[str, Any] | None:
     return block
 
 
+def _json_safe(value: Any) -> bool:
+    """True when ``value`` survives :func:`json.dumps`.
+
+    Extra keys from a plugin hook are passed through to the picker
+    endpoint, which serialises the whole row with ``send_json``. A single
+    value that cannot serialise would turn the account list into a 500 —
+    the exact failure mode the #336 handler exists to avoid — so the value
+    is dropped here and the row itself still reaches the operator.
+    """
+
+    try:
+        json.dumps(value)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def list_oauth_accounts(
     provider_name: str,
     *,
     secret_store: SecretStore | None = None,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Enumerate the accounts a provider's OAuth token can reach (#336).
 
     Powers the post-auth account picker for a provider whose
@@ -235,7 +253,7 @@ def list_oauth_accounts(
     a ``list_oauth_accounts`` hook. The hook receives the provider's stored
     credentials section (so it can read the obtained token under
     ``target_field``) and returns one mapping per reachable account; this
-    function normalises each to ``{"id": ..., "name": ...}`` for the UI.
+    function pins ``id`` and ``name`` on each and passes the rest through.
 
     Args:
         provider_name: Snake_case registry key of the provider.
@@ -243,9 +261,14 @@ def list_oauth_accounts(
             :class:`FilesystemSecretStore` at ``~/.mureo/credentials.json``.
 
     Returns:
-        A list of ``{"id", "name"}`` dicts (``name`` falls back to ``id``).
-        Entries without a usable id are dropped — a malformed hook row
-        cannot inject a blank radio option.
+        A list of dicts carrying ``id``, ``name`` (``None`` when the plugin
+        gives none — the id is NOT copied in) plus any JSON-serialisable
+        extra keys the plugin returned, so a picker can show the currency,
+        the owning business or whatever else tells two identically named
+        accounts apart (#746). A value that cannot be serialised is dropped
+        from its row rather than failing the whole listing. Entries without
+        a usable id are dropped — a malformed hook row cannot inject a
+        blank radio option.
 
     Raises:
         UnknownProviderError: ``provider_name`` is not registered.
@@ -289,7 +312,7 @@ def list_oauth_accounts(
     # runs in-process with no timeout, so cancellation/timeout is the hook's
     # own responsibility (a ThreadingMixIn server confines a hang to this
     # request thread).
-    accounts: list[dict[str, str]] = []
+    accounts: list[dict[str, Any]] = []
     try:
         result: Any = lister(credentials)
         if inspect.isawaitable(result):
@@ -300,8 +323,19 @@ def list_oauth_accounts(
             acct_id = str(row.get("id", "")).strip()
             if not acct_id:
                 continue
-            name = str(row.get("name", "")).strip() or acct_id
-            accounts.append({"id": acct_id, "name": name})
+            raw_name = row.get("name")
+            # Every extra the plugin returned rides along, minus anything
+            # that cannot be JSON-encoded; ``id`` and ``name`` are then
+            # pinned to the normalised values the picker relies on.
+            account = {
+                key: value
+                for key, value in row.items()
+                if isinstance(key, str) and _json_safe(value)
+            }
+            account["id"] = acct_id
+            name = str(raw_name).strip() if raw_name is not None else ""
+            account["name"] = name or None
+            accounts.append(account)
     except Exception as exc:  # noqa: BLE001 — opaque hook; never 500.
         # Log the type only; the credentials section (token) must not leak
         # into logs through the exception's str().

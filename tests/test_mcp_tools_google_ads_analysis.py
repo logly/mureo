@@ -132,6 +132,40 @@ class TestGoogleAdsBudgetCreateAndAccountsHandlers:
         parsed = json.loads(result[0].text)
         assert [a["id"] for a in parsed] == ["111", "222"]
 
+    async def test_accounts_list_surfaces_listing_failure_not_empty_roster(
+        self,
+    ) -> None:
+        """A failed listing reaches the agent as an error, not as ``[]``.
+
+        The id-free discovery path used to receive ``[]`` when the listing
+        blew up (#746), so an agent recovering from an unset customer_id
+        was told there are no accounts — a dead end indistinguishable from
+        a real one. The lister now raises ``GoogleAdsAccountListError``,
+        the handler lets it out, and ``api_error_handler`` renders it as an
+        error envelope.
+        """
+        mod = _import_google_ads_tools()
+        from mureo.google_ads import GoogleAdsAccountListError
+        from mureo.mcp._helpers import API_ERROR_PREFIX
+
+        creds = MagicMock()
+        with (
+            patch("mureo.byod.runtime.byod_has", return_value=False),
+            patch("mureo.auth.load_google_ads_credentials", return_value=creds),
+            patch(
+                "mureo.google_ads.list_accessible_accounts",
+                side_effect=GoogleAdsAccountListError(
+                    "Failed to retrieve account list (GoogleAdsException)"
+                ),
+            ),
+        ):
+            result = await mod.handle_tool("google_ads_accounts_list", {})
+
+        assert result[0].text.startswith(API_ERROR_PREFIX)
+        assert "Failed to retrieve account list" in result[0].text
+        # The old behaviour: an empty roster the agent would have believed.
+        assert result[0].text != "[]"
+
     async def test_accounts_list_byod_keeps_scoped_client_path(self) -> None:
         """BYOD must keep using the customer-scoped client (CSV-backed
         `list_accounts`), NOT the id-free discovery primitive — even with no

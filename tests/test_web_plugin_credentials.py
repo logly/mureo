@@ -1228,7 +1228,7 @@ def test_list_oauth_accounts_returns_normalised_rows(
         assert creds["access_token"] == "TKN"
         return [
             {"id": "act_1", "name": "Brand A"},
-            {"id": "act_2"},  # name falls back to id
+            {"id": "act_2"},  # no name → None, NOT a copy of the id
             {"name": "no id — dropped"},  # no id → dropped
             "garbage",  # non-mapping → dropped
         ]
@@ -1246,7 +1246,80 @@ def test_list_oauth_accounts_returns_normalised_rows(
     accounts = list_oauth_accounts("broker", secret_store=store)
     assert accounts == [
         {"id": "act_1", "name": "Brand A"},
-        {"id": "act_2", "name": "act_2"},
+        {"id": "act_2", "name": None},
+    ]
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_passes_extra_keys_through(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Whatever else the plugin returned reaches the picker unchanged (#746).
+
+    Normalising every row down to ``{"id", "name"}`` threw away the only
+    fields that tell two identically named accounts apart — the currency,
+    the owning business — and left the plugin no way to surface them.
+    """
+    from mureo.web.plugin_credentials import list_oauth_accounts
+
+    def _lister(creds: dict[str, str]) -> list[dict[str, object]]:
+        return [
+            {
+                "id": "act_3",
+                "name": "C",
+                "currency": "JPY",
+                "business": {"id": "b1", "name": "BM"},
+            }
+        ]
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "broker", fields=_broker_fields(), oauth=_broker_oauth(), lister=_lister
+            )
+        ],
+    )
+    store = _store(tmp_path)
+    store.save("broker", {"access_token": "TKN"})
+    assert list_oauth_accounts("broker", secret_store=store) == [
+        {
+            "id": "act_3",
+            "name": "C",
+            "currency": "JPY",
+            "business": {"id": "b1", "name": "BM"},
+        }
+    ]
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_drops_unserialisable_extra_value(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A value ``json.dumps`` chokes on is dropped, the row is kept.
+
+    The picker endpoint serialises the whole row with ``send_json``; one
+    unserialisable extra from a plugin would otherwise turn a working
+    account list into a 500, which is the failure mode the #336 handler
+    exists to avoid.
+    """
+    from mureo.web.plugin_credentials import list_oauth_accounts
+
+    def _lister(creds: dict[str, str]) -> list[dict[str, object]]:
+        return [{"id": "act_4", "name": "D", "handle": object(), "currency": "USD"}]
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "broker", fields=_broker_fields(), oauth=_broker_oauth(), lister=_lister
+            )
+        ],
+    )
+    store = _store(tmp_path)
+    store.save("broker", {"access_token": "TKN"})
+    assert list_oauth_accounts("broker", secret_store=store) == [
+        {"id": "act_4", "name": "D", "currency": "USD"}
     ]
 
 

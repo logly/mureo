@@ -410,7 +410,10 @@ def test_accounts_endpoint_returns_normalised_accounts(
         "_entries",
         {
             "meta_ads_logly": _picker_entry(
-                lambda creds: [{"id": "act_1", "name": "Brand"}]
+                lambda creds: [
+                    {"id": "act_1", "name": "Brand", "currency": "JPY"},
+                    {"id": "act_2"},
+                ]
             )
         },
     )
@@ -418,7 +421,12 @@ def test_accounts_endpoint_returns_normalised_accounts(
     resp = _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
     assert resp.status == 200
     body = json.loads(resp.read())
-    assert body["accounts"] == [{"id": "act_1", "name": "Brand"}]
+    # Extra keys the plugin returned travel all the way to the picker, and
+    # an account the plugin gave no name for arrives as ``null`` (#746).
+    assert body["accounts"] == [
+        {"id": "act_1", "name": "Brand", "currency": "JPY"},
+        {"id": "act_2", "name": None},
+    ]
 
 
 @pytest.mark.unit
