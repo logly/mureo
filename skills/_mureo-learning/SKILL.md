@@ -2,7 +2,7 @@
 name: _mureo-learning
 description: "Evidence-based marketing decision framework: statistical thinking for AI agents operating ad accounts."
 metadata:
-  version: 0.17.3
+  version: 0.17.4
   openclaw:
     category: "marketing"
     requires:
