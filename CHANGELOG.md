@@ -1,5 +1,31 @@
 ## [Unreleased]
 
+### Fixed
+
+- **A verdict hedged in the report stays hedged where the operator reads it,
+  and a verdict about one placement may only cite rows at that placement's
+  grain** (#747). `/daily-check` could carry a correct reservation in its
+  `narrative` — the figure was an aggregate above the grain the action
+  applies to, so the run could not tell which sub-entity produced the result
+  — while the `flags` entry, the `nav_message` and the heading stated the
+  same finding as fact and ranked it the day's top risk. Every validator
+  passed: flags are checked for vocabulary and severity, `nav_message` for
+  length, `narrative` for length, `totals` for raw figures, and nothing
+  compares one field against another. Three additive rules in the skill, no schema change:
+  step 15 may not state on the display surface what the narrative says it
+  cannot tell (the finding loses the chip, not the reservation); step 12
+  re-reads the narrative before writing `flags`, so a reservation either
+  travels into the flag's `params` or the flag is not raised at that severity
+  — `action` is for a finding defensible without the caveat; and a new
+  **Grain guard** joins the learning-state and delivery-state guards, so an
+  exclusion, restart or bid verdict cites only rows that exist at its own
+  grain and otherwise reports the question as undecidable at this grain,
+  naming the row that would settle it. Like the guards beside it, it removes
+  the right to assert, not the numbers, and it is never raised at `action`:
+  an undecidable question is not a risk. Same ethic as
+  `analysis_exclusion_impact_preview`'s `unknown` coverage (#547), one step
+  earlier in the run.
+
 ## [0.17.3] - 2026-09-02
 
 ### Fixed
