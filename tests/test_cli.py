@@ -210,6 +210,25 @@ class TestAuthCommands:
             assert result.exit_code == 0
             assert "developer_token" in result.output
 
+    def test_auth_check_google_without_developer_token(self):
+        """#751: a credential with no developer token reports null, not a
+        mask of the empty string."""
+        from mureo.auth import GoogleAdsCredentials
+        from mureo.cli.main import app
+
+        creds = GoogleAdsCredentials(
+            client_id="client-id",
+            client_secret="client-secret",
+            refresh_token="refresh-token",
+        )
+        with patch(
+            "mureo.cli.auth_cmd.load_google_ads_credentials",
+            return_value=creds,
+        ):
+            result = runner.invoke(app, ["auth", "check-google"])
+            assert result.exit_code == 0
+            assert json.loads(result.output)["developer_token"] is None
+
     def test_auth_check_meta_no_creds(self, _no_creds):
         from mureo.cli.main import app
 

@@ -1,5 +1,37 @@
 ## [Unreleased]
 
+### Changed
+
+- **Google Ads no longer requires a developer token; setup moves to the
+  Google Cloud Console flow** (#751). Google sunset Google Ads API developer
+  tokens on 2026-09-09: the API access level is now a property of the Google
+  Cloud project that issued the OAuth client, the `developer-token` header is
+  optional and ignored by the API servers, and a future major API version
+  will reject it outright. New users request access in the Cloud Console
+  (**APIs & Services → Google Ads API → Overview**, no manager account
+  needed), so `developer_token` / `GOOGLE_ADS_DEVELOPER_TOKEN` are optional
+  everywhere: the credentials loader accepts a file or an environment with no
+  token (and reads an empty value as absent) as long as the three OAuth
+  values are there, `mureo auth setup` lets you press Enter at the prompt and
+  writes no empty key, `mureo configure`'s Google form keeps the token field (now
+  last and no longer `required`) and validates only Client ID and Client
+  Secret, and `mureo auth
+  check-google` reports `"developer_token": null` when there is none. A
+  legacy token already in `~/.mureo/credentials.json` is still read, still
+  sent, and is preserved when the wizard is re-run and the prompt skipped —
+  nothing to migrate. Existing users should confirm the access level on their
+  project's Google Ads API Overview page (Google migrated every project that
+  called the API with an approved token in the 90 days before the sunset) and
+  that their developers hold owner/editor IAM roles on that project. The
+  `google-ads` dependency moves to `>=32,<33` for the SDK release that made
+  the token optional, and mureo now pins the API version it speaks (`v23`)
+  explicitly on every client it builds, so the library's own default moving
+  to `v25` cannot silently desynchronise the services from the
+  `google.ads.googleads.v23` types mureo imports. The `google-ads-official`
+  provider follows upstream and moves `GOOGLE_ADS_DEVELOPER_TOKEN` from its
+  required to its optional env vars — Application Default Credentials alone
+  now make it credentialed.
+
 ## [0.17.4] - 2026-09-10
 
 ### Fixed

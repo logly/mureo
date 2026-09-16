@@ -53,7 +53,7 @@ Create `~/.mureo/credentials.json`:
 ```json
 {
   "google_ads": {
-    "developer_token": "YOUR_DEVELOPER_TOKEN",
+    "developer_token": "OPTIONAL_LEGACY_TOKEN",
     "client_id": "YOUR_OAUTH_CLIENT_ID",
     "client_secret": "YOUR_OAUTH_CLIENT_SECRET",
     "refresh_token": "YOUR_REFRESH_TOKEN",
@@ -74,7 +74,7 @@ If `~/.mureo/credentials.json` is not found, mureo reads from environment variab
 
 | Platform | Variable | Required |
 |----------|----------|----------|
-| Google Ads | `GOOGLE_ADS_DEVELOPER_TOKEN` | Yes |
+| Google Ads | `GOOGLE_ADS_DEVELOPER_TOKEN` | No (legacy) |
 | Google Ads | `GOOGLE_ADS_CLIENT_ID` | Yes |
 | Google Ads | `GOOGLE_ADS_CLIENT_SECRET` | Yes |
 | Google Ads | `GOOGLE_ADS_REFRESH_TOKEN` | Yes |
@@ -488,7 +488,7 @@ Every platform returns the SAME envelope when mureo could not authenticate. It i
 {
   "status": "auth_error",
   "auth_cause": "no_credentials",
-  "detail": "Credentials not found. Set environment variables (GOOGLE_ADS_DEVELOPER_TOKEN, ...) or ~/.mureo/credentials.json."
+  "detail": "Credentials not found. Set environment variables (GOOGLE_ADS_CLIENT_ID, ...) or ~/.mureo/credentials.json."
 }
 ```
 

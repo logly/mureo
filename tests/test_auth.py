@@ -498,3 +498,145 @@ def test_load_credentials_default_path(
 
     data = load_credentials()
     assert "google_ads" in data
+
+
+# ---------------------------------------------------------------------------
+# 15. developer_token is optional (#751)
+#
+# Google stopped issuing Google Ads API developer tokens on 2026-09-09 —
+# API access is now a property of the Cloud project that owns the OAuth
+# client. Credentials must therefore load with the token absent, empty, or
+# still present (legacy files), while the three OAuth values stay required.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_load_google_ads_credentials_file_without_developer_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A credentials file with no developer_token key still loads."""
+    monkeypatch.delenv("GOOGLE_ADS_DEVELOPER_TOKEN", raising=False)
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps(
+            {
+                "google_ads": {
+                    "client_id": "cid",
+                    "client_secret": "csec",
+                    "refresh_token": "rtok",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    creds = load_google_ads_credentials(path=cred_path)
+
+    assert creds is not None
+    assert creds.developer_token is None
+    assert creds.client_id == "cid"
+
+
+@pytest.mark.unit
+def test_load_google_ads_credentials_file_empty_developer_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty developer_token string is normalized to None."""
+    monkeypatch.delenv("GOOGLE_ADS_DEVELOPER_TOKEN", raising=False)
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps(
+            {
+                "google_ads": {
+                    "developer_token": "",
+                    "client_id": "cid",
+                    "client_secret": "csec",
+                    "refresh_token": "rtok",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    creds = load_google_ads_credentials(path=cred_path)
+
+    assert creds is not None
+    assert creds.developer_token is None
+
+
+@pytest.mark.unit
+def test_load_google_ads_credentials_file_without_refresh_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The three OAuth values are still required — no refresh_token, no creds."""
+    for name in (
+        "GOOGLE_ADS_DEVELOPER_TOKEN",
+        "GOOGLE_ADS_CLIENT_ID",
+        "GOOGLE_ADS_CLIENT_SECRET",
+        "GOOGLE_ADS_REFRESH_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps(
+            {
+                "google_ads": {
+                    "developer_token": "dev-token-123",
+                    "client_id": "cid",
+                    "client_secret": "csec",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_google_ads_credentials(path=cred_path) is None
+
+
+@pytest.mark.unit
+def test_load_google_ads_credentials_from_env_without_developer_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GOOGLE_ADS_DEVELOPER_TOKEN is no longer needed for the env fallback."""
+    nonexistent = tmp_path / "nonexistent.json"
+    monkeypatch.delenv("GOOGLE_ADS_DEVELOPER_TOKEN", raising=False)
+    monkeypatch.setenv("GOOGLE_ADS_CLIENT_ID", "env-client-id")
+    monkeypatch.setenv("GOOGLE_ADS_CLIENT_SECRET", "env-client-secret")
+    monkeypatch.setenv("GOOGLE_ADS_REFRESH_TOKEN", "env-refresh-token")
+
+    creds = load_google_ads_credentials(path=nonexistent)
+
+    assert creds is not None
+    assert creds.developer_token is None
+    assert creds.client_id == "env-client-id"
+
+
+@pytest.mark.unit
+def test_load_google_ads_credentials_from_env_empty_developer_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty GOOGLE_ADS_DEVELOPER_TOKEN is normalized to None."""
+    nonexistent = tmp_path / "nonexistent.json"
+    monkeypatch.setenv("GOOGLE_ADS_DEVELOPER_TOKEN", "")
+    monkeypatch.setenv("GOOGLE_ADS_CLIENT_ID", "env-client-id")
+    monkeypatch.setenv("GOOGLE_ADS_CLIENT_SECRET", "env-client-secret")
+    monkeypatch.setenv("GOOGLE_ADS_REFRESH_TOKEN", "env-refresh-token")
+
+    creds = load_google_ads_credentials(path=nonexistent)
+
+    assert creds is not None
+    assert creds.developer_token is None
+
+
+@pytest.mark.unit
+def test_load_google_ads_credentials_from_env_without_refresh_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing refresh_token still yields None from the env fallback."""
+    nonexistent = tmp_path / "nonexistent.json"
+    monkeypatch.setenv("GOOGLE_ADS_DEVELOPER_TOKEN", "env-dev-token")
+    monkeypatch.setenv("GOOGLE_ADS_CLIENT_ID", "env-client-id")
+    monkeypatch.setenv("GOOGLE_ADS_CLIENT_SECRET", "env-client-secret")
+    monkeypatch.delenv("GOOGLE_ADS_REFRESH_TOKEN", raising=False)
+
+    assert load_google_ads_credentials(path=nonexistent) is None

@@ -2317,3 +2317,113 @@ def test_save_credentials_explicit_path_wins_over_the_runtime_override(
     assert data["google_ads"]["developer_token"] == "dev-tok"
     assert not tenant.exists()
     assert not legacy.exists()
+
+
+# ---------------------------------------------------------------------------
+# Developer token optional in the terminal wizard (#751)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_setup_google_ads_flow_skips_developer_token(tmp_path: Path) -> None:
+    """Pressing Enter at the Developer Token prompt is a valid answer.
+
+    Google stopped issuing developer tokens on 2026-09-09, so the wizard
+    must complete without one and must not write an empty key into the
+    saved credentials.
+    """
+    from mureo.auth_setup import OAuthResult, setup_google_ads
+
+    cred_path = tmp_path / "credentials.json"
+
+    user_inputs = iter(
+        [
+            "",  # Developer Token — skipped
+            "test-client-id.apps.googleusercontent.com",
+            "test-client-secret",
+        ]
+    )
+
+    mock_oauth_result = OAuthResult(
+        refresh_token="1//test-refresh-token",
+        access_token="ya29.test-access-token",
+    )
+
+    with (
+        patch("mureo.auth_setup.input_func", side_effect=user_inputs),
+        patch(
+            "mureo.auth_setup.run_google_oauth",
+            new_callable=AsyncMock,
+            return_value=mock_oauth_result,
+        ),
+        patch(
+            "mureo.google_ads.accounts.list_accessible_accounts",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        result = await setup_google_ads(credentials_path=cred_path)
+
+    assert result.developer_token is None
+    assert result.refresh_token == "1//test-refresh-token"
+
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert "developer_token" not in data["google_ads"]
+    assert data["google_ads"]["client_id"] == (
+        "test-client-id.apps.googleusercontent.com"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_setup_google_ads_flow_keeps_prior_developer_token(
+    tmp_path: Path,
+) -> None:
+    """Re-running the wizard must not drop a legacy token already on disk.
+
+    The operator who skips the (now optional) prompt is not asking for the
+    harmless value they saved earlier to be deleted.
+    """
+    from mureo.auth_setup import OAuthResult, setup_google_ads
+
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps(
+            {
+                "google_ads": {
+                    "developer_token": "legacy-token",
+                    "client_id": "old-cid",
+                    "client_secret": "old-csec",
+                    "refresh_token": "old-rtok",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    user_inputs = iter(["", "new-client-id", "new-client-secret"])
+
+    mock_oauth_result = OAuthResult(
+        refresh_token="1//new-refresh-token",
+        access_token="ya29.new-access-token",
+    )
+
+    with (
+        patch("mureo.auth_setup.input_func", side_effect=user_inputs),
+        patch(
+            "mureo.auth_setup.run_google_oauth",
+            new_callable=AsyncMock,
+            return_value=mock_oauth_result,
+        ),
+        patch(
+            "mureo.google_ads.accounts.list_accessible_accounts",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        await setup_google_ads(credentials_path=cred_path)
+
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert data["google_ads"]["developer_token"] == "legacy-token"
+    assert data["google_ads"]["client_id"] == "new-client-id"

@@ -138,8 +138,8 @@ def build_provider_env(
     Driven by the EXACT env var names a provider declares (its catalog
     ``required_env`` + ``optional_env``) rather than a blanket section dump,
     so it emits ONLY what the upstream reads — e.g. ``google-ads-mcp``
-    authenticates via ADC and reads ``GOOGLE_ADS_DEVELOPER_TOKEN`` +
-    ``GOOGLE_APPLICATION_CREDENTIALS`` (+ optional
+    authenticates via ADC (+ optional legacy
+    ``GOOGLE_ADS_DEVELOPER_TOKEN``, + optional
     ``GOOGLE_ADS_LOGIN_CUSTOMER_ID``), never the Client-Library trio.
 
     For each name in ``env_names`` that binds to ``section`` (section-aware

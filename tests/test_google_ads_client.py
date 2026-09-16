@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from google.ads.googleads.errors import GoogleAdsException
 
+from mureo.google_ads._api_version import GOOGLE_ADS_API_VERSION
 from mureo.google_ads.client import (
     _VALID_MATCH_TYPES,
     _VALID_STATUSES,
@@ -110,6 +111,7 @@ class TestGoogleAdsApiClientInit:
                 credentials=creds,
                 developer_token="tok",
                 login_customer_id="9999999999",
+                version=GOOGLE_ADS_API_VERSION,
             )
 
     def test_コンストラクタ_login_customer_id未指定時はcustomer_id(self) -> None:
@@ -124,7 +126,33 @@ class TestGoogleAdsApiClientInit:
                 credentials=creds,
                 developer_token="tok",
                 login_customer_id="1234567890",
+                version=GOOGLE_ADS_API_VERSION,
             )
+
+    def test_コンストラクタ_developer_token省略時はNoneで構築(self) -> None:
+        """#751: Google stopped issuing developer tokens on 2026-09-09.
+
+        The client must build without one — the SDK accepts ``None`` and
+        the API ignores the header — and it must pin the API version so a
+        google-ads-python upgrade cannot silently move the services away
+        from the ``google.ads.googleads.v23`` types mureo imports.
+        """
+        creds = MagicMock()
+        with patch("mureo.google_ads.client.GoogleAdsClient") as mock_gads:
+            client = GoogleAdsApiClient(
+                credentials=creds,
+                customer_id="1234567890",
+            )
+            mock_gads.assert_called_once_with(
+                credentials=creds,
+                developer_token=None,
+                login_customer_id="1234567890",
+                version=GOOGLE_ADS_API_VERSION,
+            )
+        assert client._customer_id == "1234567890"
+
+    def test_APIバージョン定数はv23(self) -> None:
+        assert GOOGLE_ADS_API_VERSION == "v23"
 
 
 # ---------------------------------------------------------------------------

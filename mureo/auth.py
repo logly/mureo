@@ -55,12 +55,20 @@ class GoogleAdsCredentials:
     holds the MCC ID (used as the login header for API calls) and
     `customer_id` holds the actual target account ID. For directly
     accessible accounts, both typically hold the same value.
+
+    ``developer_token`` is legacy and optional (#751). Google stopped
+    issuing Google Ads API developer tokens on 2026-09-09: the API access
+    level is now a property of the Google Cloud project that issued the
+    OAuth client, and the ``developer-token`` header is ignored by the API
+    servers. The field is kept because sending it is harmless and older
+    credentials files carry one; ``None`` is the normal value for anything
+    set up after that date.
     """
 
-    developer_token: str
     client_id: str
     client_secret: str
     refresh_token: str
+    developer_token: str | None = None
     login_customer_id: str | None = None
     customer_id: str | None = None
 
@@ -196,7 +204,9 @@ def load_google_ads_credentials(
     google_section = _resolve_secret_store(path).load("google_ads")
 
     if isinstance(google_section, dict) and google_section:
-        developer_token = google_section.get("developer_token", "")
+        # Legacy and optional since 2026-09 (#751): an empty string in an
+        # older file means "none", not "an empty token".
+        developer_token = google_section.get("developer_token") or None
         client_id = google_section.get("client_id", "")
         client_secret = google_section.get("client_secret", "")
         refresh_token = google_section.get("refresh_token", "")
@@ -206,7 +216,7 @@ def load_google_ads_credentials(
         # earlier mureo versions).
         customer_id = google_section.get("customer_id") or login_customer_id
 
-        if developer_token and client_id and client_secret and refresh_token:
+        if client_id and client_secret and refresh_token:
             return GoogleAdsCredentials(
                 developer_token=developer_token,
                 client_id=client_id,
@@ -1033,14 +1043,16 @@ def _resolve_secret_store(path: Path | None) -> SecretStore:
 
 def _load_google_ads_from_env() -> GoogleAdsCredentials | None:
     """Load Google Ads credentials from environment variables."""
-    developer_token = os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", "")
+    # GOOGLE_ADS_DEVELOPER_TOKEN is legacy and optional since 2026-09
+    # (#751); an empty value means "none", not "an empty token".
+    developer_token = os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN") or None
     client_id = os.environ.get("GOOGLE_ADS_CLIENT_ID", "")
     client_secret = os.environ.get("GOOGLE_ADS_CLIENT_SECRET", "")
     refresh_token = os.environ.get("GOOGLE_ADS_REFRESH_TOKEN", "")
     login_customer_id = os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
     customer_id = os.environ.get("GOOGLE_ADS_CUSTOMER_ID") or login_customer_id
 
-    if not (developer_token and client_id and client_secret and refresh_token):
+    if not (client_id and client_secret and refresh_token):
         return None
 
     return GoogleAdsCredentials(

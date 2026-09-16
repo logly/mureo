@@ -2,8 +2,8 @@
 
 The configure UI (``mureo configure``) spawns this wizard via
 ``mureo.web.oauth_bridge`` for a single platform at a time. The user
-pastes the Google Ads Developer Token / OAuth Client ID / Secret (or
-Meta App ID / Secret), clicks "Continue", completes OAuth in the same
+pastes the Google Ads OAuth Client ID / Secret (or Meta App ID /
+Secret), clicks "Continue", completes OAuth in the same
 browser window, and the wizard saves ``~/.mureo/credentials.json``
 without requiring any terminal interaction.
 
@@ -240,11 +240,11 @@ _I18N: dict[str, dict[str, str]] = {
         "meta.notice": "During sign-in you may see a permission warning for <code>business_management</code>. This is required for ad accounts reached through a Business Portfolio and is safe to accept.",
         "google.title": "Google Ads — mureo setup",
         "google.heading": "Google Ads credentials",
-        "google.intro": "Paste the three values below. Links next to each field take you to the page in Google's console where each value is displayed.",
-        "google.dev_token_label": "Developer Token",
-        "google.dev_token_hint": 'Available in the Google Ads API Center — <a href="https://ads.google.com/aw/apicenter" target="_blank" rel="noopener">ads.google.com/aw/apicenter</a>. Requires an approved Google Ads manager account.',
+        "google.intro": "Paste the OAuth client values below. Links next to each field open the page in Google Cloud Console where each value is displayed. The developer token is optional — Google no longer issues them.",
+        "google.dev_token_label": "Developer Token (optional, legacy)",
+        "google.dev_token_hint": 'Google stopped issuing developer tokens on 2026-09-09; API access now comes from the Cloud project that owns the OAuth client (<a href="https://console.cloud.google.com/apis/api/googleads.googleapis.com/overview" target="_blank" rel="noopener">APIs &amp; Services → Google Ads API</a>). Leave this empty unless you still have one.',
         "google.client_id_label": "OAuth Client ID",
-        "google.client_id_hint": 'Create an OAuth 2.0 client (Application type: Desktop) in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → APIs &amp; Services → Credentials</a>.',
+        "google.client_id_hint": 'Enable the Google Ads API and request access on its Overview page, then create an OAuth 2.0 client (Application type: Desktop) in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → APIs &amp; Services → Credentials</a>.',
         "google.client_secret_label": "OAuth Client Secret",
         "google.client_secret_hint": "Shown once when the OAuth client is created. Re-open the client in Cloud Console to copy it again.",
         "google.submit": "Continue to Google sign-in",
@@ -279,11 +279,11 @@ _I18N: dict[str, dict[str, str]] = {
         "meta.notice": "サインイン中に <code>business_management</code> のパーミッション警告が表示されることがあります。Business Portfolio 経由の広告アカウントに必要な権限で、許可しても安全です。",
         "google.title": "Google Ads — mureo セットアップ",
         "google.heading": "Google Ads 認証情報",
-        "google.intro": "下記の 3 つの値を貼り付けてください。各項目のリンクをクリックすると、Google 管理画面の該当ページが開きます。",
-        "google.dev_token_label": "Developer Token",
-        "google.dev_token_hint": 'Google Ads API センター — <a href="https://ads.google.com/aw/apicenter" target="_blank" rel="noopener">ads.google.com/aw/apicenter</a> から取得できます。承認済みの Google Ads マネージャアカウントが必要です。',
+        "google.intro": "OAuth クライアントの値を貼り付けてください。各項目のリンクをクリックすると、Google Cloud Console の該当ページが開きます。Developer Token は任意です（Google は発行を終了しました）。",
+        "google.dev_token_label": "Developer Token（任意・旧方式）",
+        "google.dev_token_hint": 'Google は 2026-09-09 に Developer Token の発行を終了しました。API のアクセスレベルは OAuth クライアントを作成した Cloud プロジェクトで決まります（<a href="https://console.cloud.google.com/apis/api/googleads.googleapis.com/overview" target="_blank" rel="noopener">APIs &amp; Services → Google Ads API</a>）。手元にある場合だけ入力してください。',
         "google.client_id_label": "OAuth Client ID",
-        "google.client_id_hint": '<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → APIs &amp; Services → Credentials</a> で OAuth 2.0 クライアント（種別: Desktop）を作成してください。',
+        "google.client_id_hint": 'Google Ads API を有効化し、その Overview ページでアクセスを申請したうえで、<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → APIs &amp; Services → Credentials</a> で OAuth 2.0 クライアント（種別: Desktop）を作成してください。',
         "google.client_secret_label": "OAuth Client Secret",
         "google.client_secret_hint": "OAuth クライアント作成時に一度だけ表示されます。Cloud Console で再度開いてコピーしてください。",
         "google.submit": "Google サインインに進む",
@@ -354,7 +354,7 @@ def render_meta_secrets_form(session: WizardSession) -> str:
 
 
 def render_google_secrets_form(session: WizardSession) -> str:
-    """Form for Developer Token / Client ID / Secret."""
+    """Form for Client ID / Secret plus the optional legacy Developer Token."""
     csrf = html.escape(session.csrf_token, quote=True)
     loc = session.locale
     lang = _html_lang(loc)
@@ -367,10 +367,6 @@ def render_google_secrets_form(session: WizardSession) -> str:
 <form method="post" action="/google-ads/submit">
   <input type="hidden" name="csrf_token" value="{csrf}">
 
-  <label for="developer_token">{_t(loc, "google.dev_token_label")}</label>
-  <input id="developer_token" name="developer_token" type="text" required autocomplete="off">
-  <div class="hint">{_t(loc, "google.dev_token_hint")}</div>
-
   <label for="client_id">{_t(loc, "google.client_id_label")}</label>
   <input id="client_id" name="client_id" type="text" required autocomplete="off">
   <div class="hint">{_t(loc, "google.client_id_hint")}</div>
@@ -378,6 +374,10 @@ def render_google_secrets_form(session: WizardSession) -> str:
   <label for="client_secret">{_t(loc, "google.client_secret_label")}</label>
   <input id="client_secret" name="client_secret" type="password" required autocomplete="off">
   <div class="hint">{_t(loc, "google.client_secret_hint")}</div>
+
+  <label for="developer_token">{_t(loc, "google.dev_token_label")}</label>
+  <input id="developer_token" name="developer_token" type="text" autocomplete="off">
+  <div class="hint">{_t(loc, "google.dev_token_hint")}</div>
 
   <button type="submit">{_t(loc, "google.submit")}</button>
 </form>
@@ -667,11 +667,16 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(403, "CSRF token invalid")
             return
 
-        dev_token = form.get("developer_token", "").strip()
+        # developer_token is legacy and optional (#751): Google stopped
+        # issuing them on 2026-09-09 and the API access level now comes
+        # from the Cloud project that owns the OAuth client.
+        dev_token = form.get("developer_token", "").strip() or None
         client_id = form.get("client_id", "").strip()
         client_secret = form.get("client_secret", "").strip()
-        if not (dev_token and client_id and client_secret):
-            self._send_html(render_error("All three fields are required."), status=400)
+        if not (client_id and client_secret):
+            self._send_html(
+                render_error("Client ID and Client Secret are required."), status=400
+            )
             return
 
         redirect_uri = (
@@ -792,14 +797,14 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         # accessible accounts. This is the gap the terminal flow was
         # already filling and the web flow was silently skipping.
         probe_creds = GoogleAdsCredentials(
-            developer_token=sess.google_developer_token or "",
+            developer_token=sess.google_developer_token,
             client_id=sess.google_client_id or "",
             client_secret=sess.google_client_secret or "",
             refresh_token=refresh_token,
         )
         if self.server.wizard.multi_account_auth:
-            # Multi-account backend (#198): the developer_token + OAuth
-            # client are operator-shared; the per-client ``customer_id``
+            # Multi-account backend (#198): the OAuth client is
+            # operator-shared; the per-client ``customer_id``
             # is supplied out of band. Persist the shared credentials and
             # skip the account probe + picker entirely — going straight
             # to /done without ever calling the Google Ads API.
@@ -897,7 +902,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         parent_id = match.get("parent_id")
         login_cid = str(parent_id) if parent_id else chosen_id
         creds = GoogleAdsCredentials(
-            developer_token=sess.google_developer_token or "",
+            developer_token=sess.google_developer_token,
             client_id=sess.google_client_id or "",
             client_secret=sess.google_client_secret or "",
             refresh_token=sess.google_refresh_token,

@@ -1,6 +1,6 @@
 # BYOD: 自分のアカウントのデータで mureo を試す
 
-OAuth クライアントの登録も、Google Ads Developer Token の申請も、SaaS への
+OAuth クライアントの登録も、Google Ads API のアクセス申請も、SaaS への
 サインアップも要りません。**Google Ads Script でスプレッドシートに書き出す
 （または Meta 広告マネージャからエクスポートする）→ XLSX を mureo に渡す**
 だけで、5分後には Claude Code から `/daily-check` が走ります。
@@ -32,7 +32,7 @@ mureo がこの XLSX を **ローカルのファイルとして読むだけ** �
 ## なぜ BYOD なのか
 
 ローカル完結で広告分析をやるときの最大のハードルは、OAuth の登録と
-Developer Token の審査（数日〜数週間）です。BYOD はそこを丸ごとスキップ
+Google Ads API のアクセス審査（数日〜数週間）です。BYOD はそこを丸ごとスキップ
 できます。
 
 - デモデータではなく、**実アカウントのデータ**で mureo の挙動を試せる

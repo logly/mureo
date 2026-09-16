@@ -74,13 +74,25 @@ class TestRenderGoogleSecretsForm:
         assert 'name="csrf_token"' in html
         assert "TOKEN_123" in html
 
-    def test_has_three_required_secret_fields(self) -> None:
+    def test_has_three_secret_fields(self) -> None:
         session = WizardSession()
         html = render_google_secrets_form(session)
         for field in ("developer_token", "client_id", "client_secret"):
             assert f'name="{field}"' in html
         # client_secret should be type=password to avoid over-the-shoulder leak.
         assert 'type="password"' in html
+
+    def test_developer_token_field_is_not_required(self) -> None:
+        """#751: Google stopped issuing developer tokens on 2026-09-09, so
+        the browser must not block the submit on an empty field."""
+        html = render_google_secrets_form(WizardSession())
+        dev_token_input = next(
+            line for line in html.splitlines() if 'id="developer_token"' in line
+        )
+        assert "required" not in dev_token_input
+        for field in ("client_id", "client_secret"):
+            line = next(ln for ln in html.splitlines() if f'id="{field}"' in ln)
+            assert "required" in line
 
     def test_posts_to_submit_endpoint(self) -> None:
         html = render_google_secrets_form(WizardSession())
@@ -93,7 +105,17 @@ class TestRenderGoogleSecretsForm:
         html = render_google_secrets_form(WizardSession())
         # Full path (not host-only substring) — precise + CodeQL-clean.
         assert "https://console.cloud.google.com/apis/credentials" in html
-        assert "https://ads.google.com/aw/apicenter" in html
+        assert (
+            "https://console.cloud.google.com/apis/api/googleads.googleapis.com/overview"
+            in html
+        )
+
+    def test_no_link_to_the_retired_google_ads_api_center(self) -> None:
+        """#751: the API Center no longer issues developer tokens, so the
+        wizard must not send anyone there — in either locale."""
+        for locale in ("en", "ja"):
+            html = render_google_secrets_form(WizardSession(locale=locale))
+            assert "apicenter" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +276,61 @@ class TestGoogleAdsSubmitRoute:
         assert kwargs["redirect_uri"] == (
             f"http://localhost:{wizard.port}/google-ads/callback"
         )
+
+    def test_empty_developer_token_still_proceeds(self, wizard: Any) -> None:
+        """#751: the developer token is optional — an empty field must
+        reach Google's sign-in, not a validation error."""
+        fake_flow = MagicMock()
+
+        with (
+            patch("mureo.cli.web_auth.build_google_flow", return_value=fake_flow),
+            patch(
+                "mureo.cli.web_auth.google_auth_url",
+                return_value=(
+                    "https://accounts.google.com/o/oauth2/auth?fake=1",
+                    "state-xyz",
+                ),
+            ),
+        ):
+            data = urllib.parse.urlencode(
+                {
+                    "csrf_token": wizard.session.csrf_token,
+                    "developer_token": "",
+                    "client_id": "CID-abc",
+                    "client_secret": "SECRET-xyz",
+                }
+            ).encode()
+            req = urllib.request.Request(
+                _url(wizard, "/google-ads/submit"), data=data, method="POST"
+            )
+            opener = urllib.request.build_opener(_NoRedirect())
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                opener.open(req, timeout=2.0)
+
+            assert exc_info.value.code == 302
+
+        assert wizard.session.google_developer_token is None
+        assert wizard.session.google_client_id == "CID-abc"
+
+    def test_missing_client_id_returns_400(self, wizard: Any) -> None:
+        """The OAuth pair stays mandatory — and the message says so."""
+        data = urllib.parse.urlencode(
+            {
+                "csrf_token": wizard.session.csrf_token,
+                "developer_token": "DT-123",
+                "client_id": "",
+                "client_secret": "SECRET-xyz",
+            }
+        ).encode()
+        req = urllib.request.Request(
+            _url(wizard, "/google-ads/submit"), data=data, method="POST"
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=2.0)
+
+        assert exc_info.value.code == 400
+        body = exc_info.value.read().decode("utf-8")
+        assert "Client ID and Client Secret are required." in body
 
 
 class TestGoogleAdsCallbackRoute:
