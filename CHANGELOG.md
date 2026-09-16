@@ -2,6 +2,17 @@
 
 ### Changed
 
+- **Google Ads API v25** (#753). mureo now speaks Google Ads API v25 (was
+  `v23`): the `GOOGLE_ADS_API_VERSION` pin and every
+  `google.ads.googleads.<version>` import moved together, so the services the
+  client calls and the enum / type modules `mappers` and `_enum_names`
+  import are the same version by construction (`policy.learning_rules` only
+  cites the enum's reference URL and was updated by hand). The
+  descriptor-driven sweep was re-run against the v25 protos: every GAQL field
+  mureo selects and every attribute its mappers read still exists, and nothing
+  mureo selects or reads was among what v24 and v25 removed. `google-ads` 32.x
+  is required (already pinned by #751).
+
 - **Google Ads no longer requires a developer token; setup moves to the
   Google Cloud Console flow** (#751). Google sunset Google Ads API developer
   tokens on 2026-09-09: the API access level is now a property of the Google
@@ -24,10 +35,11 @@
   called the API with an approved token in the 90 days before the sunset) and
   that their developers hold owner/editor IAM roles on that project. The
   `google-ads` dependency moves to `>=32,<33` for the SDK release that made
-  the token optional, and mureo now pins the API version it speaks (`v23`)
-  explicitly on every client it builds, so the library's own default moving
-  to `v25` cannot silently desynchronise the services from the
-  `google.ads.googleads.v23` types mureo imports. The `google-ads-official`
+  the token optional, and mureo now pins the API version it speaks
+  explicitly on every client it builds (`v23` here; #753 above moves the pin
+  and the imports to `v25` together), so the library's own default can never
+  silently desynchronise the services from the `google.ads.googleads.<version>`
+  types mureo imports. The `google-ads-official`
   provider follows upstream and moves `GOOGLE_ADS_DEVELOPER_TOKEN` from its
   required to its optional env vars — Application Default Credentials alone
   now make it credentialed.

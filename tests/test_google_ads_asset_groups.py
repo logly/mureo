@@ -8,7 +8,7 @@ the swap that replaces one text asset. The image swap has its own module,
 
 **Real SDK messages, faked transport.** A ``GoogleAdsClient`` built with
 mock credentials opens no channel until a call is actually issued, so the
-tests below run the production code against the real v23 protos: the
+tests below run the production code against the real v25 protos: the
 operations the swap builds, the enums it sets and the resource-name paths
 it derives are the ones the API would receive. Only ``_search`` and the
 outbound ``GoogleAdsService.mutate`` are replaced. A ``MagicMock`` client
@@ -29,11 +29,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from google.ads.googleads import util
 from google.ads.googleads.errors import GoogleAdsException
-from google.ads.googleads.v23.services.types.asset_group_asset_service import (
+from google.ads.googleads.v25.services.types.asset_group_asset_service import (
     MutateAssetGroupAssetResult,
 )
-from google.ads.googleads.v23.services.types.asset_service import MutateAssetResult
-from google.ads.googleads.v23.services.types.google_ads_service import (
+from google.ads.googleads.v25.services.types.asset_service import MutateAssetResult
+from google.ads.googleads.v25.services.types.google_ads_service import (
     GoogleAdsRow,
     MutateGoogleAdsResponse,
     MutateOperationResponse,
@@ -739,7 +739,7 @@ class TestFieldTypeConstants:
         assert not set(PMAX_TEXT_FIELD_TYPES) & set(PMAX_IMAGE_FIELD_TYPES)
 
     def test_every_field_type_is_a_real_asset_field_type_enum_member(self) -> None:
-        from google.ads.googleads.v23.enums.types.asset_field_type import (
+        from google.ads.googleads.v25.enums.types.asset_field_type import (
             AssetFieldTypeEnum,
         )
 
@@ -758,7 +758,7 @@ class TestFieldTypeConstants:
         """The SDK's own corroboration that these are asset-group slots:
         ``AssetGroupErrorEnum`` defines ``NOT_ENOUGH_*`` for exactly the
         three required image field types and for no other."""
-        from google.ads.googleads.v23.errors.types.asset_group_error import (
+        from google.ads.googleads.v25.errors.types.asset_group_error import (
             AssetGroupErrorEnum,
         )
 

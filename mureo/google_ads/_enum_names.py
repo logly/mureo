@@ -18,42 +18,42 @@ from __future__ import annotations
 
 from typing import Any
 
-from google.ads.googleads.v23.enums.types.ad_network_type import AdNetworkTypeEnum
-from google.ads.googleads.v23.enums.types.asset_field_type import AssetFieldTypeEnum
-from google.ads.googleads.v23.enums.types.asset_link_status import AssetLinkStatusEnum
-from google.ads.googleads.v23.enums.types.asset_performance_label import (
+from google.ads.googleads.v25.enums.types.ad_network_type import AdNetworkTypeEnum
+from google.ads.googleads.v25.enums.types.asset_field_type import AssetFieldTypeEnum
+from google.ads.googleads.v25.enums.types.asset_link_status import AssetLinkStatusEnum
+from google.ads.googleads.v25.enums.types.asset_performance_label import (
     AssetPerformanceLabelEnum,
 )
-from google.ads.googleads.v23.enums.types.change_client_type import ChangeClientTypeEnum
-from google.ads.googleads.v23.enums.types.change_event_resource_type import (
+from google.ads.googleads.v25.enums.types.change_client_type import ChangeClientTypeEnum
+from google.ads.googleads.v25.enums.types.change_event_resource_type import (
     ChangeEventResourceTypeEnum,
 )
-from google.ads.googleads.v23.enums.types.conversion_action_category import (
+from google.ads.googleads.v25.enums.types.conversion_action_category import (
     ConversionActionCategoryEnum,
 )
-from google.ads.googleads.v23.enums.types.conversion_action_type import (
+from google.ads.googleads.v25.enums.types.conversion_action_type import (
     ConversionActionTypeEnum,
 )
-from google.ads.googleads.v23.enums.types.criterion_system_serving_status import (
+from google.ads.googleads.v25.enums.types.criterion_system_serving_status import (
     CriterionSystemServingStatusEnum,
 )
-from google.ads.googleads.v23.enums.types.day_of_week import DayOfWeekEnum
-from google.ads.googleads.v23.enums.types.device import DeviceEnum
-from google.ads.googleads.v23.enums.types.keyword_match_type import (
+from google.ads.googleads.v25.enums.types.day_of_week import DayOfWeekEnum
+from google.ads.googleads.v25.enums.types.device import DeviceEnum
+from google.ads.googleads.v25.enums.types.keyword_match_type import (
     KeywordMatchTypeEnum,
 )
-from google.ads.googleads.v23.enums.types.keyword_plan_competition_level import (
+from google.ads.googleads.v25.enums.types.keyword_plan_competition_level import (
     KeywordPlanCompetitionLevelEnum,
 )
-from google.ads.googleads.v23.enums.types.minute_of_hour import MinuteOfHourEnum
-from google.ads.googleads.v23.enums.types.placement_type import PlacementTypeEnum
-from google.ads.googleads.v23.enums.types.recommendation_type import (
+from google.ads.googleads.v25.enums.types.minute_of_hour import MinuteOfHourEnum
+from google.ads.googleads.v25.enums.types.placement_type import PlacementTypeEnum
+from google.ads.googleads.v25.enums.types.recommendation_type import (
     RecommendationTypeEnum,
 )
-from google.ads.googleads.v23.enums.types.resource_change_operation import (
+from google.ads.googleads.v25.enums.types.resource_change_operation import (
     ResourceChangeOperationEnum,
 )
-from google.ads.googleads.v23.enums.types.tracking_code_type import (
+from google.ads.googleads.v25.enums.types.tracking_code_type import (
     TrackingCodeTypeEnum,
 )
 

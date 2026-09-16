@@ -188,11 +188,13 @@ class PlatformLearningRules:
 #: class that caused the strategy to re-enter learning. That makes the enum
 #: both the state read AND the trigger list, from one first-party source —
 #: and the exact enum ships inside the ``google-ads`` client this repo already
-#: depends on (``google.ads.googleads.v23.enums.types
+#: depends on (``google.ads.googleads.v25.enums.types
 #: .bidding_strategy_system_status``), so the quotes below are checkable
-#: offline.
+#: offline. The quotes were taken from the v23 reference page on the date
+#: below; the URL now points at v25, whose enum carries every member quoted
+#: here unchanged (re-checked against the SDK's v25 enum for #753).
 _GOOGLE_ENUM_URL = (
-    "https://developers.google.com/google-ads/api/reference/rpc/v23/"
+    "https://developers.google.com/google-ads/api/reference/rpc/v25/"
     "BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus"
 )
 _GOOGLE_RETRIEVED = "2026-08-07"

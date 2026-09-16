@@ -747,11 +747,11 @@ class _PerformanceAnalysisMixin:
 
 def _daily_delivery_row(row: Any) -> dict[str, Any]:
     """Map one GAQL ``segments.date`` row to the shared delivery shape."""
-    # v23 carries the flight end as ``end_date_time`` ("YYYY-MM-DD HH:MM:SS");
-    # there is no ``campaign.end_date`` to select, and the detector compares
-    # whole days, so only the date half is kept — see ``date_half`` for the
-    # 2037-12-30 "no end date" value it can return (harmless here: a cliff can
-    # never post-date it).
+    # v25 (as v23 did) carries the flight end as ``end_date_time``
+    # ("YYYY-MM-DD HH:MM:SS"); there is no ``campaign.end_date`` to select, and
+    # the detector compares whole days, so only the date half is kept — see
+    # ``date_half`` for the 2037-12-30 "no end date" value it can return
+    # (harmless here: a cliff can never post-date it).
     return {
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),

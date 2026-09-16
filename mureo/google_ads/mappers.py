@@ -2,43 +2,43 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from google.ads.googleads.v23.enums.types.ad_group_criterion_approval_status import (
+from google.ads.googleads.v25.enums.types.ad_group_criterion_approval_status import (
     AdGroupCriterionApprovalStatusEnum,
 )
-from google.ads.googleads.v23.enums.types.ad_group_criterion_status import (
+from google.ads.googleads.v25.enums.types.ad_group_criterion_status import (
     AdGroupCriterionStatusEnum,
 )
-from google.ads.googleads.v23.enums.types.ad_strength import AdStrengthEnum
-from google.ads.googleads.v23.enums.types.ad_type import AdTypeEnum
-from google.ads.googleads.v23.enums.types.advertising_channel_type import (
+from google.ads.googleads.v25.enums.types.ad_strength import AdStrengthEnum
+from google.ads.googleads.v25.enums.types.ad_type import AdTypeEnum
+from google.ads.googleads.v25.enums.types.advertising_channel_type import (
     AdvertisingChannelTypeEnum,
 )
-from google.ads.googleads.v23.enums.types.age_range_type import AgeRangeTypeEnum
-from google.ads.googleads.v23.enums.types.asset_type import AssetTypeEnum
-from google.ads.googleads.v23.enums.types.bidding_strategy_system_status import (
+from google.ads.googleads.v25.enums.types.age_range_type import AgeRangeTypeEnum
+from google.ads.googleads.v25.enums.types.asset_type import AssetTypeEnum
+from google.ads.googleads.v25.enums.types.bidding_strategy_system_status import (
     BiddingStrategySystemStatusEnum,
 )
-from google.ads.googleads.v23.enums.types.bidding_strategy_type import (
+from google.ads.googleads.v25.enums.types.bidding_strategy_type import (
     BiddingStrategyTypeEnum,
 )
-from google.ads.googleads.v23.enums.types.budget_delivery_method import (
+from google.ads.googleads.v25.enums.types.budget_delivery_method import (
     BudgetDeliveryMethodEnum,
 )
-from google.ads.googleads.v23.enums.types.budget_period import BudgetPeriodEnum
-from google.ads.googleads.v23.enums.types.budget_status import BudgetStatusEnum
-from google.ads.googleads.v23.enums.types.campaign_primary_status_reason import (
+from google.ads.googleads.v25.enums.types.budget_period import BudgetPeriodEnum
+from google.ads.googleads.v25.enums.types.budget_status import BudgetStatusEnum
+from google.ads.googleads.v25.enums.types.campaign_primary_status_reason import (
     CampaignPrimaryStatusReasonEnum,
 )
-from google.ads.googleads.v23.enums.types.criterion_type import CriterionTypeEnum
-from google.ads.googleads.v23.enums.types.gender_type import GenderTypeEnum
-from google.ads.googleads.v23.enums.types.income_range_type import (
+from google.ads.googleads.v25.enums.types.criterion_type import CriterionTypeEnum
+from google.ads.googleads.v25.enums.types.gender_type import GenderTypeEnum
+from google.ads.googleads.v25.enums.types.income_range_type import (
     IncomeRangeTypeEnum,
 )
-from google.ads.googleads.v23.enums.types.mime_type import MimeTypeEnum
-from google.ads.googleads.v23.enums.types.parental_status_type import (
+from google.ads.googleads.v25.enums.types.mime_type import MimeTypeEnum
+from google.ads.googleads.v25.enums.types.parental_status_type import (
     ParentalStatusTypeEnum,
 )
-from google.ads.googleads.v23.enums.types.policy_topic_entry_type import (
+from google.ads.googleads.v25.enums.types.policy_topic_entry_type import (
     PolicyTopicEntryTypeEnum,
 )
 
@@ -351,7 +351,7 @@ def map_campaign(campaign: Any) -> dict[str, Any]:
         result["bidding_strategy_system_status"] = map_bidding_system_status(
             campaign.bidding_strategy_system_status
         )
-    # v23 has no ``campaign.start_date`` / ``campaign.end_date``: the flight is
+    # v25 has no ``campaign.start_date`` / ``campaign.end_date``: the flight is
     # spelled ``start_date_time`` / ``end_date_time`` ("YYYY-MM-DD HH:MM:SS").
     # Consumers (diagnostics) compare whole days, so only the date half is kept
     # under the historical ``start_date`` / ``end_date`` keys — see
@@ -687,7 +687,7 @@ def map_tag_snippet(snippet: Any) -> dict[str, Any]:
             if hasattr(snippet, "type_")
             else None
         ),
-        # The v23 proto spells the page-header snippet ``global_site_tag``;
+        # The v25 proto spells the page-header snippet ``global_site_tag``;
         # the response key stays ``page_header`` for backward compatibility
         # with the documented google_ads_conversions_tag tool contract.
         "page_header": _safe_str(snippet, "global_site_tag"),

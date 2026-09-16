@@ -335,7 +335,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             developer_token=developer_token,
             login_customer_id=resolved_login_id,
             # Pinned, never the library default: mureo imports the
-            # ``google.ads.googleads.v23`` enums and types directly, so the
+            # ``google.ads.googleads.v25`` enums and types directly, so the
             # services must speak the same version (see _api_version).
             version=GOOGLE_ADS_API_VERSION,
         )

@@ -239,7 +239,7 @@ def test_a_live_keyword_row_survives_the_adapter_boundary() -> None:
     start from a name that is already spelled correctly.
     """
     from google.ads.googleads import util
-    from google.ads.googleads.v23.services.types.google_ads_service import GoogleAdsRow
+    from google.ads.googleads.v25.services.types.google_ads_service import GoogleAdsRow
 
     from mureo.google_ads.mappers import map_keyword
 

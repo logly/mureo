@@ -94,19 +94,19 @@ class TestRowMapping:
         Asserted against the SDK's own ``*_path`` builders rather than
         hardcoded strings, so a rename in a future API version fails here.
         """
-        from google.ads.googleads.v23.services.services.ad_group_ad_service import (
+        from google.ads.googleads.v25.services.services.ad_group_ad_service import (
             AdGroupAdServiceClient,
         )
-        from google.ads.googleads.v23.services.services.ad_group_bid_modifier_service import (  # noqa: E501
+        from google.ads.googleads.v25.services.services.ad_group_bid_modifier_service import (  # noqa: E501
             AdGroupBidModifierServiceClient,
         )
-        from google.ads.googleads.v23.services.services.ad_group_criterion_service import (  # noqa: E501
+        from google.ads.googleads.v25.services.services.ad_group_criterion_service import (  # noqa: E501
             AdGroupCriterionServiceClient,
         )
-        from google.ads.googleads.v23.services.services.ad_service import (
+        from google.ads.googleads.v25.services.services.ad_service import (
             AdServiceClient,
         )
-        from google.ads.googleads.v23.services.services.campaign_criterion_service import (  # noqa: E501
+        from google.ads.googleads.v25.services.services.campaign_criterion_service import (  # noqa: E501
             CampaignCriterionServiceClient,
         )
 
@@ -281,7 +281,7 @@ class TestRowMapping:
         passed while changing nothing.
         """
         from google.ads.googleads import util
-        from google.ads.googleads.v23.resources.types.change_event import ChangeEvent
+        from google.ads.googleads.v25.resources.types.change_event import ChangeEvent
 
         from mureo.change_import.dedupe import (
             _OPERATION_ALIASES,

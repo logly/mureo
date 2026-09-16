@@ -32,7 +32,7 @@ Two properties worth keeping when editing this file:
 The second half of the file applies both properties one layer down, to the
 literal attribute reads in `google_ads/mappers.py`: a SELECT sweep cannot see
 `hasattr(campaign, "end_date")`, and that is exactly how `map_campaign` came to
-read two fields v23 does not have.
+read two fields v25 does not have.
 """
 
 from __future__ import annotations
@@ -45,9 +45,9 @@ import re
 import pytest
 
 #: The API version mureo's client code imports. Kept next to the imports it
-#: mirrors (``mureo.google_ads.*`` import ``googleads.v23`` directly); if those
+#: mirrors (``mureo.google_ads.*`` import ``googleads.v25`` directly); if those
 #: move, this must move with them or the sweep validates the wrong schema.
-_API_VERSION = "v23"
+_API_VERSION = "v25"
 
 _SOURCE_ROOT = pathlib.Path(__file__).resolve().parent.parent / "mureo"
 
@@ -195,7 +195,7 @@ def test_every_selected_gaql_field_exists_on_the_proto(
 #
 # A SELECT sweep cannot see ``hasattr(campaign, "end_date")``, and that gap is
 # not hypothetical: ``map_campaign`` read ``campaign.start_date`` /
-# ``campaign.end_date`` — names the v23 Campaign does not have, it spells them
+# ``campaign.end_date`` — names the v25 Campaign does not have, it spells them
 # ``start_date_time`` / ``end_date_time`` — so both keys were never populated
 # and the campaign date-range diagnosis was dead. The ``hasattr`` guard made
 # the omission look deliberate and ``MagicMock`` made every test agree.

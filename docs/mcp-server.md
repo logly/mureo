@@ -870,7 +870,7 @@ Read-only: it calls no platform API and changes nothing.
 
 | Platform | Learning state readable by mureo? | Reset triggers known? |
 |---|---|---|
-| Google Ads | **Yes** — `bidding_details.bidding_strategy_system_status` on the campaign's STATE.json snapshot | **Yes** — Google's own `LEARNING_*` enum members ([`BiddingStrategySystemStatus`](https://developers.google.com/google-ads/api/reference/rpc/v23/BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus)) |
+| Google Ads | **Yes** — `bidding_details.bidding_strategy_system_status` on the campaign's STATE.json snapshot | **Yes** — Google's own `LEARNING_*` enum members ([`BiddingStrategySystemStatus`](https://developers.google.com/google-ads/api/reference/rpc/v25/BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus)) |
 | Meta Ads | No — Meta exposes [`learning_stage_info`](https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-learning-stage-info/) on the **ad set**; mureo's client does not request it and STATE.json is campaign-level | No — Meta documents that "significant edits" restart the phase without enumerating them |
 | Amazon Ads (official-MCP bridge) | No — no learning-state read exists on the bridged tool surface | No |
 | Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |

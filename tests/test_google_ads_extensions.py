@@ -550,7 +550,7 @@ class TestGetBidAdjustments:
         ``google_ads_bid_adjustments_get`` promises "DEVICE" (#588).
         """
         from google.ads.googleads import util
-        from google.ads.googleads.v23.services.types.google_ads_service import (
+        from google.ads.googleads.v25.services.types.google_ads_service import (
             GoogleAdsRow,
         )
 
@@ -655,7 +655,7 @@ class TestListChangeHistory:
         Asserting against the vendored proto rather than a hardcoded list, so
         the check keeps working when the query gains a field.
         """
-        from google.ads.googleads.v23.resources.types.change_event import (
+        from google.ads.googleads.v25.resources.types.change_event import (
             ChangeEvent,
         )
 
@@ -750,7 +750,7 @@ class TestListScheduleTargeting:
         (#588).
         """
         from google.ads.googleads import util
-        from google.ads.googleads.v23.services.types.google_ads_service import (
+        from google.ads.googleads.v25.services.types.google_ads_service import (
             GoogleAdsRow,
         )
 

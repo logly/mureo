@@ -11,7 +11,7 @@ metadata:
     cliHelp: "mureo --help"
 ---
 
-# Google Ads (v23)
+# Google Ads (v25)
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
 > **There is no `mureo google-ads …` CLI command.** Every operation below is an

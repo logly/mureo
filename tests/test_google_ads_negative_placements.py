@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from google.ads.googleads import util
-from google.ads.googleads.v23.services.types.google_ads_service import GoogleAdsRow
+from google.ads.googleads.v25.services.types.google_ads_service import GoogleAdsRow
 
 from mureo.google_ads._placement_mappers import map_placement_performance
 from mureo.google_ads.client import GoogleAdsApiClient
