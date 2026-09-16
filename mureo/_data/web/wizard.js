@@ -97,7 +97,7 @@
 
   // ``auth`` MUST precede ``providers_install``: the official upstream
   // MCPs read credentials ONLY from env vars resolved (at install time)
-  // from ~/.mureo/credentials.json, so the Developer-Token + OAuth slot
+  // from ~/.mureo/credentials.json, so the Google OAuth slot
   // has to populate that file BEFORE the provider block is written.
   // (Native flows never show ``providers_install``, so the swap is inert
   // for them.)
@@ -144,9 +144,10 @@
     // provider choice, so surfacing the auth step before the choice is
     // made would strand the user on an ambiguous slot.
     // Google Ads: BOTH native and official need the same credentials
-    // (Developer Token + Google OAuth refresh token). The official
-    // upstream MCP can't see credentials.json, so the auth step still
-    // runs to collect them — they're injected as env at install time.
+    // (Google OAuth client + refresh token; the legacy Developer Token
+    // is optional). The official upstream MCP can't see
+    // credentials.json, so the auth step still runs to collect them —
+    // they're injected as env at install time.
     // Meta: only the native path is queued here; official Meta is a
     // hosted MCP whose OAuth is the HTTP-transport handshake Claude
     // performs on first connect (handled on the providers_install page).

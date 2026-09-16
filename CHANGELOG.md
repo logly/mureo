@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Stale developer-token copy after the 0.18.0 sunset changes** (#756). The
+  `mureo configure` official-Google-Ads install hint no longer says a Developer
+  Token is required — the service-account JSON path is the only credential the
+  official server needs — the `credentials.json` samples in the authentication
+  and Docker docs list the token last and mark it optional, and the
+  plugin-authoring guide, the Amazon Ads docs and the code comments describe
+  the shared Google credential as the OAuth client with the token as optional
+  legacy. No behaviour change.
+
 ## [0.18.0] - 2026-09-17
 
 ### Changed

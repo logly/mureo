@@ -603,3 +603,34 @@ def test_every_data_i18n_key_in_app_html_is_translated() -> None:
     for locale in ("en", "ja"):
         missing = [k for k in keys if not catalog[locale].get(k)]
         assert not missing, f"{locale} has no string for: {missing}"
+
+
+@pytest.mark.unit
+class TestGoogleAdsNeedsCredentialsCopyIsCurrent:
+    """#756 — the official-Google-Ads install hint must not claim that a
+    Developer Token is required.
+
+    Since #751 the token is optional legacy: the only credential the
+    official server actually needs is the service-account JSON path. The
+    JA hint still names the token in a parenthetical that says it is no
+    longer required, so the term itself is not banned — only the specific
+    stale sentences the wizard used to render, per locale.
+    """
+
+    _KEYS = (
+        "wizard.providers_install.needs_credentials.google_ads",
+        "wizard.providers_install.still_needs_credentials",
+    )
+
+    _STALE_PHRASES = {
+        "en": ("Developer Token is also required", "Developer Token was set"),
+        "ja": ("Developer Token も必要", "Developer Token を設定したか"),
+    }
+
+    def test_stale_developer_token_requirement_copy_is_gone(self) -> None:
+        data = _load_i18n()
+        for locale, phrases in self._STALE_PHRASES.items():
+            for key in self._KEYS:
+                value = data[locale][key]
+                for phrase in phrases:
+                    assert phrase not in value, f"{locale}/{key} still says {phrase!r}"

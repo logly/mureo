@@ -477,6 +477,6 @@ regional hosts:
 - **No deep mureo analytics:** the per-platform analysis keyed to
   mureo's native tool names does not exist for Amazon (tracked in
   #120). Amazon read findings are advisory.
-- **Credentials exposure class** is identical to the Google developer
-  token / Meta access token already stored in
+- **Credentials exposure class** is identical to the Google OAuth
+  refresh token / Meta access token already stored in
   `~/.mureo/credentials.json`.

@@ -99,8 +99,8 @@ def _google_creds(tmp_path: Path) -> Path:
     auto-disable gate fires.
 
     The upstream ``google-ads-mcp`` authenticates via ADC, so 'credentialed'
-    means the developer token + a service-account path
-    (``GOOGLE_APPLICATION_CREDENTIALS``), NOT the Client-Library trio."""
+    means a service-account path (``GOOGLE_APPLICATION_CREDENTIALS``), NOT
+    the Client-Library trio; the legacy developer token is optional."""
     creds = tmp_path / ".mureo" / "credentials.json"
     creds.parent.mkdir(parents=True, exist_ok=True)
     creds.write_text(

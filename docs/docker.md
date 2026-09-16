@@ -29,11 +29,11 @@ Schema for hand-crafting:
 ```json
 {
   "google_ads": {
-    "developer_token": "...",
     "client_id": "...apps.googleusercontent.com",
     "client_secret": "...",
     "refresh_token": "...",
-    "login_customer_id": "1234567890"
+    "login_customer_id": "1234567890",
+    "developer_token": "OPTIONAL_LEGACY_TOKEN"
   },
   "meta_ads": { "access_token": "..." }
 }

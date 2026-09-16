@@ -491,8 +491,8 @@ def _credential_env_for(
     The env is built from the provider's declared ``required_env`` +
     ``optional_env`` (not a blanket section dump), so only the names the
     upstream actually reads are injected — e.g. Google Ads' ADC env
-    (dev-token + ``GOOGLE_APPLICATION_CREDENTIALS`` + optional MCC login id),
-    never the Client-Library trio the upstream ignores (#102).
+    (``GOOGLE_APPLICATION_CREDENTIALS`` + optional MCC login id and legacy
+    dev-token), never the Client-Library trio the upstream ignores (#102).
     """
     if spec.install_kind == "hosted_http":
         return {}
@@ -597,12 +597,12 @@ def _install_provider_code(
     # platform once the official provider is actually credentialed — meaning
     # ALL of its ``required_env`` resolved to a stored value, not merely that
     # SOME google_ads env exists. The upstream MCP reads its config ONLY from
-    # env vars (Google Ads via ADC: dev-token + GOOGLE_APPLICATION_CREDENTIALS),
-    # so a partially-credentialed registration cannot authenticate; disabling
-    # native then would strand the user with zero working tools for that
-    # platform (official dead AND native off). When not fully credentialed we
-    # register the provider (with whatever partial env is present), (re-)enable
-    # native, and signal that credentials are still needed.
+    # env vars (Google Ads via ADC: GOOGLE_APPLICATION_CREDENTIALS; dev-token
+    # optional), so a partially-credentialed registration cannot authenticate;
+    # disabling native then would strand the user with zero working tools for
+    # that platform (official dead AND native off). When not fully credentialed
+    # we register the provider (with whatever partial env is present),
+    # (re-)enable native, and signal that credentials are still needed.
     credentialed = platform is not None and _is_credentialed(spec, extra_env)
     try:
         if credentialed:

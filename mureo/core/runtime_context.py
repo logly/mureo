@@ -265,12 +265,13 @@ def runtime_multi_account_auth() -> bool:
     """Return whether the active ``SecretStore`` is a multi-account backend.
 
     A backend whose credentials are operator-shared across many client
-    accounts (e.g. an agency plugin: one Google ``developer_token`` +
-    OAuth client, one Meta app, serving N clients whose
-    ``customer_id`` / ``account_id`` are supplied per-request out of
-    band) advertises this by exposing ``multi_account_auth = True`` on
-    its store. The configure-UI OAuth flow then persists only the
-    shared credentials and skips the per-account picker (#198).
+    accounts (e.g. an agency plugin: one Google OAuth client (plus the
+    optional legacy ``developer_token``), one Meta app, serving N
+    clients whose ``customer_id`` / ``account_id`` are supplied
+    per-request out of band) advertises this by exposing
+    ``multi_account_auth = True`` on its store. The configure-UI OAuth
+    flow then persists only the shared credentials and skips the
+    per-account picker (#198).
 
     Resolution mirrors :func:`runtime_credentials_path`:
 

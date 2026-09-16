@@ -52,11 +52,11 @@ Create `~/.mureo/credentials.json` with the following structure:
 ```json
 {
   "google_ads": {
-    "developer_token": "YOUR_DEVELOPER_TOKEN",
     "client_id": "YOUR_OAUTH_CLIENT_ID",
     "client_secret": "YOUR_OAUTH_CLIENT_SECRET",
     "refresh_token": "YOUR_REFRESH_TOKEN",
-    "login_customer_id": "1234567890"
+    "login_customer_id": "1234567890",
+    "developer_token": "OPTIONAL_LEGACY_TOKEN"
   },
   "meta_ads": {
     "access_token": "YOUR_ACCESS_TOKEN",
@@ -444,5 +444,7 @@ Example output for `mureo auth check-google`:
   "login_customer_id": "1234567890"
 }
 ```
+
+`developer_token` is `null` unless a legacy token is stored; a stored one is shown masked, as above.
 
 Secrets are masked, showing only the last 4 characters. This lets you verify the right credentials are loaded without exposing them.
