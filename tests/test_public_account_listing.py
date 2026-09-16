@@ -335,3 +335,48 @@ async def test_resolves_name_for_account_under_separate_mcc() -> None:
         "a client must be constructed with the separately-linked MCC "
         "as its own login_customer_id"
     )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_accessible_accounts_builds_client_without_developer_token() -> None:
+    """#751: the account probe runs on the OAuth client alone.
+
+    Google stopped issuing developer tokens on 2026-09-09, so a
+    credential loaded from a file that never had one carries ``None`` —
+    which is passed straight through. The API version is pinned so the
+    services the probe calls stay on the version whose types mureo
+    imports.
+    """
+    from mureo.auth import GoogleAdsCredentials
+    from mureo.google_ads import list_accessible_accounts
+    from mureo.google_ads._api_version import GOOGLE_ADS_API_VERSION
+
+    creds = GoogleAdsCredentials(
+        client_id="cid",
+        client_secret="csec",
+        refresh_token="rtok",
+    )
+
+    captured: list[dict[str, Any]] = []
+    empty_response = MagicMock()
+    empty_response.resource_names = []
+
+    def _client_factory(**kwargs: Any) -> MagicMock:
+        captured.append(kwargs)
+        client = MagicMock()
+        customer_service = MagicMock()
+        customer_service.list_accessible_customers.return_value = empty_response
+        client.get_service.return_value = customer_service
+        return client
+
+    with patch(
+        "google.ads.googleads.client.GoogleAdsClient",
+        side_effect=_client_factory,
+    ):
+        accounts = await list_accessible_accounts(creds)
+
+    assert accounts == []
+    assert captured, "a GoogleAdsClient must have been constructed"
+    assert captured[0]["developer_token"] is None
+    assert captured[0]["version"] == GOOGLE_ADS_API_VERSION

@@ -195,12 +195,12 @@ Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually exec
 
 | Platform | What you need |
 |---|---|
-| **Google Ads** | [Developer Token](https://developers.google.com/google-ads/api/docs/get-started/dev-token) + OAuth Client ID + Client Secret |
+| **Google Ads** | OAuth Client ID + Client Secret from a Google Cloud project with [Google Ads API access](https://developers.google.com/google-ads/api/docs/get-started/introduction) (developer token no longer needed) |
 | **Meta Ads** | [Meta for Developers](https://developers.facebook.com/) App ID + App Secret (development mode is fine) |
 | **Amazon Ads** | A Login with Amazon (LwA) app: Client ID + (recommended) Refresh Token + Client Secret. See [`docs/amazon-ads.md`](amazon-ads.md) |
 | **GA4 / Search Console** | OAuth login (no developer token); the wizard handles this |
 
-> **Approval timing**: Google Ads developer-token approval can take 1–3 weeks. Use BYOD in the meantime — switch to Auth once approved.
+> **Approval timing**: Enabling the Google Ads API in the Cloud Console grants Test access (test accounts only) right away; Basic access for production accounts needs brand verification plus an application and is not instant. Use BYOD in the meantime.
 
 Credentials land in `~/.mureo/credentials.json` (permission `0600`). You never need to edit that file by hand — the wizard handles it.
 
@@ -266,8 +266,8 @@ Then run a workflow as in BYOD Step 4 above.
 A 30-second decision tree:
 
 1. **Just looking?** → Demo in Code or Desktop chat. 5–10 min. Fully reversible (delete the workspace dir).
-2. **Have your real account, no developer token?** → BYOD. 10–15 min including the export. Read-only, safe.
-3. **Have approved developer-token + want execution?** → Auth (Live API). 30–60 min first time. Required for `/rescue`, `/budget-rebalance` to actually push.
+2. **Have your real account, no API access yet?** → BYOD. 10–15 min including the export. Read-only, safe.
+3. **Have API access + want execution?** → Auth (Live API). 30–60 min first time. Required for `/rescue`, `/budget-rebalance` to actually push.
 
 | If you... | Pick |
 |---|---|

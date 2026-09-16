@@ -550,13 +550,15 @@ mureo auth check-google | jq .
 
 ```json
 {
-  "developer_token": "***************abcd",
+  "developer_token": null,
   "client_id": "123456789.apps.googleusercontent.com",
   "client_secret": "***************wxyz",
   "refresh_token": "***************efgh",
   "login_customer_id": "1234567890"
 }
 ```
+
+`developer_token` is `null` unless a legacy token is stored; a stored one is shown masked (`"***************abcd"`).
 
 Secrets are masked, showing only the last 4 characters.
 

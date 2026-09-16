@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 
 _NO_CREDS_MSG = (
     "Credentials not found. Set environment variables "
-    "(GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, "
-    "GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN) "
+    "(GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, "
+    "GOOGLE_ADS_REFRESH_TOKEN) "
     "or configure ~/.mureo/credentials.json."
 )
 

@@ -68,7 +68,7 @@ When you're ready to point mureo at *your* data, pick one of the two paths below
 
 ### Path A: Bring your own data (BYOD) — 5–10 min, no OAuth
 
-**Export your real account data as an XLSX, drop it into mureo, and get a strategy-grounded multi-platform diagnosis** — no OAuth flow, no developer-token approval. Import the bundle from the `mureo configure` dashboard (the same Demo / BYOD section), or from the terminal:
+**Export your real account data as an XLSX, drop it into mureo, and get a strategy-grounded multi-platform diagnosis** — no OAuth flow, no API-access approval. Import the bundle from the `mureo configure` dashboard (the same Demo / BYOD section), or from the terminal:
 
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
@@ -88,11 +88,11 @@ Connect mureo directly to the Google Ads / Meta Ads APIs. Required to actually e
 
 In the same `mureo configure` UI, open **Connect platforms**: interactive Google / Meta OAuth in the browser, with each field deep-linking to the right console page, plus official-MCP provider registration. (Terminal equivalent: `mureo auth setup`.) **[Authentication guide →](docs/authentication.md)**
 
-Prerequisites: a Google Ads Developer Token + OAuth Client, and/or a Meta App ID + Secret (development mode is fine). Both wizards walk you through obtaining them.
+Prerequisites: a Google Cloud project with Google Ads API access + an OAuth Client, and/or a Meta App ID + Secret (development mode is fine). Both wizards walk you through obtaining them.
 
 Once connected, open your working directory in Claude Code and run `/onboard` once — it generates `STRATEGY.md` and `STATE.json`, and commands become strategy-grounded only after those exist.
 
-> **Not familiar with Google Cloud Console or Meta for Developers?** OAuth flows and developer-token registration can feel intimidating. **Start with the demo or BYOD** — see what mureo can do in minutes, then decide whether the Live API path is worth setting up.
+> **Not familiar with Google Cloud Console or Meta for Developers?** OAuth flows and API-access registration can feel intimidating. **Start with the demo or BYOD** — see what mureo can do in minutes, then decide whether the Live API path is worth setting up.
 
 ### Which mode fits?
 

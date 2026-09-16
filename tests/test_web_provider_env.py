@@ -11,8 +11,9 @@ EXACT env var names a provider declares (its catalog ``required_env`` +
 ``optional_env``), so it emits only what the upstream reads (#102):
 
 - ``google-ads-mcp`` authenticates via ADC, so it needs
-  ``GOOGLE_ADS_DEVELOPER_TOKEN`` + ``GOOGLE_APPLICATION_CREDENTIALS`` (the
-  service-account path) + optional ``GOOGLE_ADS_LOGIN_CUSTOMER_ID`` — NOT
+  ``GOOGLE_APPLICATION_CREDENTIALS`` (the service-account path) + optional
+  ``GOOGLE_ADS_LOGIN_CUSTOMER_ID`` and optional legacy
+  ``GOOGLE_ADS_DEVELOPER_TOKEN`` (#751) — NOT
   the Client-Library trio (client_id/secret/refresh_token), which the
   upstream ignores entirely;
 - the resolution is SECTION-AWARE: the shared
@@ -40,9 +41,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 # The Google Ads ADC env the upstream actually reads (catalog
-# required_env + optional_env): dev token, service-account path (ADC), and
-# the optional login customer id. The Client-Library trio is deliberately
-# absent.
+# required_env + optional_env): the service-account path (ADC), the
+# optional login customer id and the optional legacy dev token (#751). The
+# Client-Library trio is deliberately absent.
 _GOOGLE_ADS_ADC_NAMES = (
     "GOOGLE_ADS_DEVELOPER_TOKEN",
     "GOOGLE_APPLICATION_CREDENTIALS",

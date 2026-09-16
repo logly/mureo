@@ -3,8 +3,8 @@
 > [日本語版](byod.ja.md)
 
 Run mureo against your **real Google Ads / Meta Ads account** in 5
-minutes — no OAuth Client ID to register, no Google Ads developer
-token to apply for, no SaaS connection of any kind. You run a Google
+minutes — no OAuth Client ID to register, no Google Ads API access
+to apply for, no SaaS connection of any kind. You run a Google
 Ads Script (or export from Meta Ads Manager), download the resulting
 Sheet/Excel as XLSX, drop it into mureo, and ask Claude Code to run
 `/daily-check`.
@@ -38,7 +38,7 @@ only ever reads the local XLSX file.**
 ## Why BYOD?
 
 The biggest barriers to local-first ad analysis are OAuth client
-registration and Google Ads developer-token approval (days to weeks).
+registration and Google Ads API access approval (days to weeks).
 BYOD avoids both:
 
 - Try mureo against **your actual account**, not a synthetic demo.

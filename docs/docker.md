@@ -39,13 +39,12 @@ Schema for hand-crafting:
 }
 ```
 
-Required: Google needs `developer_token` / `client_id` / `client_secret` / `refresh_token`. Meta needs `access_token`. Search Console reuses the Google OAuth credentials (OAuth app must include the `https://www.googleapis.com/auth/webmasters` scope).
+Required: Google needs `client_id` / `client_secret` / `refresh_token` (`developer_token` optional, legacy). Meta needs `access_token`. Search Console reuses the Google OAuth credentials (OAuth app must include the `https://www.googleapis.com/auth/webmasters` scope).
 
 **2. Environment variables** — useful for CI/CD where secrets come from a secret manager:
 
 ```bash
 docker run --rm \
-  -e GOOGLE_ADS_DEVELOPER_TOKEN=... \
   -e GOOGLE_ADS_CLIENT_ID=... \
   -e GOOGLE_ADS_CLIENT_SECRET=... \
   -e GOOGLE_ADS_REFRESH_TOKEN=... \

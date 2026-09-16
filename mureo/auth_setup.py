@@ -1,7 +1,7 @@
 """Authentication setup wizard
 
 Interactively configure credentials via mureo auth setup.
-Google Ads: Developer Token input -> Browser OAuth -> refresh_token retrieval -> Customer ID selection
+Google Ads: OAuth client input -> Browser OAuth -> refresh_token retrieval -> Customer ID selection
 Meta Ads: App ID/Secret input -> Browser OAuth -> Long-Lived Token retrieval -> Account ID selection
 """
 
@@ -820,11 +820,17 @@ def _merge_google_section(
     prior_google = existing.get("google_ads")
     prior_google = prior_google if isinstance(prior_google, dict) else {}
     google_data: dict[str, Any] = {
-        "developer_token": google.developer_token,
         "client_id": google.client_id,
         "client_secret": google.client_secret,
         "refresh_token": google.refresh_token,
     }
+    # developer_token is legacy and optional (#751). Write the key only
+    # when there is a value: a new setup omits it entirely, and an
+    # operator who re-runs the wizard and skips the (now optional) prompt
+    # keeps the harmless token they saved earlier rather than losing it.
+    developer_token = google.developer_token or prior_google.get("developer_token")
+    if developer_token:
+        google_data["developer_token"] = developer_token
     # login_customer_id: authentication context (MCC for child accounts,
     # otherwise the account itself)
     google_data["login_customer_id"] = google.login_customer_id
@@ -1048,7 +1054,7 @@ async def setup_google_ads(
     """Interactive setup for Google Ads authentication.
 
     1. Display prerequisite guidance
-    2. Developer Token input
+    2. Developer Token input (optional, legacy)
     3. OAuth Client ID input
     4. OAuth Client Secret input
     5. Browser OAuth -> refresh_token retrieval
@@ -1063,14 +1069,24 @@ async def setup_google_ads(
     """
     print("\n=== Google Ads Setup ===\n")
     print("Please prepare the following in advance:")
-    print("  1. Google Ads Developer Token (from the Google Ads API Center)")
+    print(
+        "  1. A Google Cloud project with Google Ads API access "
+        "(APIs & Services > Google Ads API — sign up there; "
+        "no manager account needed)"
+    )
     print("  2. OAuth 2.0 Client ID / Client Secret (created in the GCP Console)")
     print("     - Application type: Desktop app")
     print("     (Redirect URI is managed automatically by InstalledAppFlow)")
+    print(
+        "  3. Developer Token: no longer issued by Google "
+        "(optional; press Enter to skip)"
+    )
     print()
 
-    # Developer Token input
-    developer_token = input_func("Developer Token: ").strip()
+    # Developer Token input — legacy and optional since 2026-09 (#751).
+    developer_token = (
+        input_func("Developer Token (optional, press Enter to skip): ").strip() or None
+    )
 
     # OAuth Client ID / Secret input
     client_id = input_func("OAuth Client ID: ").strip()

@@ -50,8 +50,9 @@ The practical differences for Google and Meta:
 ### Official MCP — `google-ads-official`
 
 - Package `googleads/google-ads-mcp`, installed via pipx, **ADC** auth
-  (`GOOGLE_ADS_DEVELOPER_TOKEN` + `GOOGLE_APPLICATION_CREDENTIALS`; optional
-  `GOOGLE_ADS_LOGIN_CUSTOMER_ID` for MCC access).
+  (`GOOGLE_APPLICATION_CREDENTIALS`; optional
+  `GOOGLE_ADS_LOGIN_CUSTOMER_ID` for MCC access and optional legacy
+  `GOOGLE_ADS_DEVELOPER_TOKEN`).
 - Exposes **3 tools, all read-only**:
   - `search` — run a read-only GAQL query
   - `get_resource_metadata` — schema/metadata for a resource type

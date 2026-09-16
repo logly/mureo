@@ -335,8 +335,9 @@ class _KeywordsMixin:
             ):
                 raise ValueError(
                     "Keyword suggestion requires Basic or Standard access. "
-                    "The current Developer Token has Explorer access and cannot use this feature. "
-                    "Please apply for access level upgrade from the Google Ads API Center."
+                    "This Google Cloud project's Google Ads API access level "
+                    "is Explorer/Test. Apply for a higher access level in "
+                    "Google Cloud Console (APIs & Services → Google Ads API)."
                 ) from exc
             detail = self._extract_error_detail(exc)
             logger.error("Keyword suggestion failed: %s", detail)

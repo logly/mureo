@@ -136,22 +136,22 @@ CATALOG: tuple[ProviderSpec, ...] = (
                 ],
             }
         ),
-        required_env=(
+        required_env=("GOOGLE_APPLICATION_CREDENTIALS",),
+        optional_env=(
+            "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
             "GOOGLE_ADS_DEVELOPER_TOKEN",
-            "GOOGLE_APPLICATION_CREDENTIALS",
         ),
-        optional_env=("GOOGLE_ADS_LOGIN_CUSTOMER_ID",),
         notes=(
             "Installs the official Google Ads MCP from "
             "github.com/googleads/google-ads-mcp via pipx. The upstream "
             "authenticates via Application Default Credentials (ADC): set "
             "`GOOGLE_APPLICATION_CREDENTIALS` to a Google Ads service-account "
-            "JSON (or run `gcloud auth application-default login`) and a "
-            "`GOOGLE_ADS_DEVELOPER_TOKEN` (Google Cloud Console > Google Ads "
-            "API). It does NOT read the Client-Library "
-            "client_id/secret/refresh_token. Optional "
-            "`GOOGLE_ADS_LOGIN_CUSTOMER_ID` for MCC access; a FastMCP OAuth "
-            "proxy is also supported upstream but not wired by mureo."
+            "JSON (or run `gcloud auth application-default login`). It does "
+            "NOT read the Client-Library client_id/secret/refresh_token. "
+            "Optional `GOOGLE_ADS_LOGIN_CUSTOMER_ID` for MCC access and "
+            "optional `GOOGLE_ADS_DEVELOPER_TOKEN` (legacy — Google stopped "
+            "issuing them 2026-09); a FastMCP OAuth proxy is also supported "
+            "upstream but not wired by mureo."
         ),
         coexists_with_mureo_platform="google_ads",
     ),

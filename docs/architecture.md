@@ -324,7 +324,7 @@ class GoogleAdsApiClient(
 ```
 
 The base class (`GoogleAdsApiClient`) provides:
-- Constructor: accepts `Credentials`, `customer_id`, `developer_token`, `login_customer_id`
+- Constructor: accepts `Credentials`, `customer_id`, `developer_token` (optional), `login_customer_id`
 - `_search(query)`: async GAQL query execution via `run_in_executor`
 - `_get_service(name)`: access to Google Ads service objects
 - Input validation: `_validate_id()`, `_validate_status()`, `_validate_match_type()`, `_validate_date()`

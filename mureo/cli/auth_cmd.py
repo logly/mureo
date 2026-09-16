@@ -117,7 +117,11 @@ def check_google() -> None:
 
     # Display with masked secret parts
     info = {
-        "developer_token": _mask(creds.developer_token),
+        # Legacy and optional since 2026-09 (#751) — report its absence as
+        # null rather than a mask of an empty string.
+        "developer_token": (
+            _mask(creds.developer_token) if creds.developer_token else None
+        ),
         "client_id": creds.client_id,
         "client_secret": _mask(creds.client_secret),
         "refresh_token": _mask(creds.refresh_token),
@@ -253,7 +257,7 @@ def auth_upgrade_google() -> None:
     typer.echo("")
     typer.echo("This will open a browser to re-authenticate with Google.")
     typer.echo(
-        "Your existing credentials (Developer Token, Client ID, etc.) are preserved."
+        "Your existing credentials (Client ID, Client Secret, etc.) are preserved."
     )
     typer.echo("Only the refresh_token will be updated with expanded scopes")
     typer.echo("(Google Ads + Search Console).")

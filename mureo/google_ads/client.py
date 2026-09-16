@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 from mureo.core import clock
 from mureo.google_ads._analysis import _AnalysisMixin
+from mureo.google_ads._api_version import GOOGLE_ADS_API_VERSION
 from mureo.google_ads._creative import _CreativeMixin
 from mureo.google_ads._diagnostics import _DiagnosticsMixin
 from mureo.google_ads._enum_names import AD_NETWORK_TYPE_MAP, map_enum_name
@@ -316,10 +317,15 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         self,
         credentials: Credentials,
         customer_id: str,
-        developer_token: str,
+        developer_token: str | None = None,
         login_customer_id: str | None = None,
         throttler: Throttler | None = None,
     ) -> None:
+        # developer_token is legacy since 2026-09: Google stopped issuing
+        # tokens, the header is ignored by the API servers, and API access
+        # is a property of the Cloud project that issued the OAuth client.
+        # It is still forwarded when an older credentials file carries one.
+
         # login_customer_id resolution order:
         # 1. Explicitly provided value
         # 2. customer_id itself (fallback for standalone accounts)
@@ -328,6 +334,10 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             credentials=credentials,
             developer_token=developer_token,
             login_customer_id=resolved_login_id,
+            # Pinned, never the library default: mureo imports the
+            # ``google.ads.googleads.v23`` enums and types directly, so the
+            # services must speak the same version (see _api_version).
+            version=GOOGLE_ADS_API_VERSION,
         )
         self._customer_id = customer_id.replace("-", "")
         self._throttler = throttler

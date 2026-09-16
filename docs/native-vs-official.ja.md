@@ -51,8 +51,9 @@ Google と Meta における実務上の違い:
 ### 公式MCP — `google-ads-official`
 
 - パッケージ `googleads/google-ads-mcp` を pipx で導入。**ADC** 認証
-  （`GOOGLE_ADS_DEVELOPER_TOKEN` + `GOOGLE_APPLICATION_CREDENTIALS`。MCC
-  アクセス時は任意で `GOOGLE_ADS_LOGIN_CUSTOMER_ID`）。
+  （`GOOGLE_APPLICATION_CREDENTIALS`。MCC アクセス時は任意で
+  `GOOGLE_ADS_LOGIN_CUSTOMER_ID`、旧方式の `GOOGLE_ADS_DEVELOPER_TOKEN`
+  も任意）。
 - 公開ツールは **3つ、すべて読み取り専用**:
   - `search` — 読み取り専用の GAQL クエリ実行
   - `get_resource_metadata` — リソース型のスキーマ/メタデータ取得

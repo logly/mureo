@@ -195,12 +195,12 @@ mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャン
 
 | プラットフォーム | 必要なもの |
 |---|---|
-| **Google Ads** | [Developer Token](https://developers.google.com/google-ads/api/docs/get-started/dev-token) + OAuth Client ID + Client Secret |
+| **Google Ads** | [Google Ads API のアクセス権](https://developers.google.com/google-ads/api/docs/get-started/introduction)を持つ Google Cloud プロジェクトの OAuth Client ID + Client Secret(developer token は不要になりました) |
 | **Meta Ads** | [Meta for Developers](https://developers.facebook.com/) の App ID + App Secret(開発モードで OK) |
 | **Amazon Ads** | Login with Amazon (LwA) アプリの Client ID + (推奨) Refresh Token + Client Secret。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md) |
 | **GA4 / Search Console** | OAuth ログインのみ(developer token 不要、ウィザードが処理) |
 
-> **承認の所要時間**: Google Ads developer token の承認は 1〜3 週間かかることがあります。待ちの間は BYOD で運用 → 承認後に Auth へ移行が現実的。
+> **承認の所要時間**: Cloud Console で Google Ads API を有効化すると Test access(テストアカウントのみ)が即時に付与されます。本番アカウント向けの Basic access はブランド確認と申請が必要で、即時ではありません。待ちの間は BYOD で運用してください。
 
 認証情報は `~/.mureo/credentials.json` (権限 `0600`) に保存されます。手動編集不要 — ウィザードが処理します。
 
@@ -266,8 +266,8 @@ mureo auth check-meta
 30 秒の判断ツリー:
 
 1. **試したいだけ?** → デモ + Code または Desktop チャット。5〜10 分で完結。元に戻すのも簡単(workspace ディレクトリを消すだけ)。
-2. **自分のアカウントはあるが、developer token はまだ?** → BYOD。エクスポート含めて 10〜15 分。読み取り専用なので安全。
-3. **developer token 承認済みで実行までしたい?** → Auth (Live API)。初回 30〜60 分。`/rescue` や `/budget-rebalance` の実反映には必須。
+2. **自分のアカウントはあるが、API のアクセス権はまだ?** → BYOD。エクスポート含めて 10〜15 分。読み取り専用なので安全。
+3. **API のアクセス権があり実行までしたい?** → Auth (Live API)。初回 30〜60 分。`/rescue` や `/budget-rebalance` の実反映には必須。
 
 | こんな人は… | これを選ぶ |
 |---|---|

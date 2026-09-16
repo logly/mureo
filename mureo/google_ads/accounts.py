@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.google_ads._api_version import GOOGLE_ADS_API_VERSION
 from mureo.google_ads._gaql_validator import validate_static_query
 
 if TYPE_CHECKING:
@@ -204,8 +205,12 @@ async def list_accessible_accounts(
     def _make_client(login_cid: str | None = None) -> Any:
         return GoogleAdsClient(
             credentials=oauth_creds,
+            # ``None`` for a credential saved after Google stopped issuing
+            # developer tokens (2026-09); the SDK accepts it and the API
+            # ignores the header either way.
             developer_token=credentials.developer_token,
             login_customer_id=login_cid,
+            version=GOOGLE_ADS_API_VERSION,
         )
 
     # Step 1: Get directly accessible accounts

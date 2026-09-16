@@ -135,7 +135,7 @@ def test_required_env_documents_credentials() -> None:
     from mureo.providers.catalog import get_provider
 
     google = get_provider("google-ads-official")
-    assert "GOOGLE_ADS_DEVELOPER_TOKEN" in google.required_env
+    assert "GOOGLE_APPLICATION_CREDENTIALS" in google.required_env
 
     meta = get_provider("meta-ads-official")
     # Meta uses interactive OAuth — no pre-populated env vars expected.
@@ -171,18 +171,20 @@ def test_tiktok_ads_is_hosted_layered_endpoint() -> None:
 @pytest.mark.unit
 def test_google_ads_required_env_is_adc_not_client_library() -> None:
     """#102: ``google-ads-mcp`` authenticates via ADC, so the official
-    provider requires the developer token + a service-account path
+    provider requires a service-account path
     (``GOOGLE_APPLICATION_CREDENTIALS``) — NOT the Client-Library trio,
     which the upstream ignores. Declaring the trio as required made mureo
-    wrongly treat a client-library-only user as 'credentialed'."""
+    wrongly treat a client-library-only user as 'credentialed'.
+
+    #751: the developer token moved to ``optional_env`` — Google stopped
+    issuing them on 2026-09-09 and the upstream README lists it as
+    optional, so gating on it would misreport a credentialed user."""
     from mureo.providers.catalog import get_provider
 
     google = get_provider("google-ads-official")
 
-    assert google.required_env == (
-        "GOOGLE_ADS_DEVELOPER_TOKEN",
-        "GOOGLE_APPLICATION_CREDENTIALS",
-    )
+    assert google.required_env == ("GOOGLE_APPLICATION_CREDENTIALS",)
+    assert "GOOGLE_ADS_DEVELOPER_TOKEN" not in google.required_env
     # The Client-Library trio must NOT be required (upstream ignores it).
     assert "GOOGLE_ADS_CLIENT_ID" not in google.required_env
     assert "GOOGLE_ADS_CLIENT_SECRET" not in google.required_env
@@ -205,13 +207,17 @@ def test_provider_spec_has_optional_env_default_empty() -> None:
 
 @pytest.mark.unit
 def test_google_ads_optional_env_carries_login_customer_id() -> None:
-    """The optional ``GOOGLE_ADS_LOGIN_CUSTOMER_ID`` (MCC login id) is
-    emitted into the upstream env when set, but is not required to
-    consider the provider credentialed."""
+    """The optional ``GOOGLE_ADS_LOGIN_CUSTOMER_ID`` (MCC login id) and the
+    legacy ``GOOGLE_ADS_DEVELOPER_TOKEN`` (#751) are emitted into the
+    upstream env when set, but neither is required to consider the
+    provider credentialed."""
     from mureo.providers.catalog import get_provider
 
     google = get_provider("google-ads-official")
-    assert google.optional_env == ("GOOGLE_ADS_LOGIN_CUSTOMER_ID",)
+    assert google.optional_env == (
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+        "GOOGLE_ADS_DEVELOPER_TOKEN",
+    )
 
 
 @pytest.mark.unit

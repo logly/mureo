@@ -68,7 +68,7 @@ mureo configure
 
 ### まず自分のデータで試す（BYOD、5〜10分、OAuth 不要）
 
-**Google Ads / Meta Ads から XLSX として書き出して mureo に取り込むだけで、媒体をまたいだ戦略レベルの診断が手に入ります。** OAuth も Developer Token の審査待ちも要りません。取り込みは `mureo configure` のダッシュボード（デモと同じ Demo / BYOD セクション）から、またはターミナルからできます。
+**Google Ads / Meta Ads から XLSX として書き出して mureo に取り込むだけで、媒体をまたいだ戦略レベルの診断が手に入ります。** OAuth も Google Ads API のアクセス審査待ちも要りません。取り込みは `mureo configure` のダッシュボード（デモと同じ Demo / BYOD セクション）から、またはターミナルからできます。
 
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
@@ -88,11 +88,11 @@ mureo を Google Ads / Meta Ads API に直接接続します。実際に変更�
 
 同じ `mureo configure` の UI で「プラットフォーム接続」を開くと、各コンソールへのディープリンク付きで Google / Meta の OAuth をブラウザ内で完了でき、公式 MCP プロバイダの登録もできます。（ターミナルでは `mureo auth setup` で同じことができます。）**[認証ガイド →](docs/authentication.md)**
 
-前提として、Google Ads の Developer Token と OAuth クライアント、Meta の App ID と Secret が必要です（開発モードのままで構いません）。取得手順もウィザードが案内します。
+前提として、Google Ads API のアクセス権を持つ Google Cloud プロジェクトと OAuth クライアント、Meta の App ID と Secret が必要です（開発モードのままで構いません）。取得手順もウィザードが案内します。
 
 接続できたら、運用に使うディレクトリを Claude Code で開き、最初に `/onboard` を一度実行して `STRATEGY.md`（戦略）と `STATE.json`（状態）を生成してください。戦略に基づく運用は、この2つのファイルがあって初めて動きます。
 
-> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Developer Token の発行は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。**数分で mureo がどう動くかが分かるので、Live API のセットアップに踏み込むかどうかはそれから判断すれば大丈夫です。
+> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Google Ads API のアクセス申請は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。**数分で mureo がどう動くかが分かるので、Live API のセットアップに踏み込むかどうかはそれから判断すれば大丈夫です。
 
 ### どちらのモードが合うか
 

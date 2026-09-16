@@ -66,13 +66,15 @@ Create `~/.mureo/credentials.json` with the following structure:
 }
 ```
 
+`developer_token` is optional (legacy): Google stopped issuing developer tokens on 2026-09-09; sent if present, ignored by the API.
+
 You can include only the platforms you use. For example, if you only use Google Ads, the `meta_ads` section can be omitted.
 
 ### Google Ads Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `developer_token` | Yes | Google Ads API developer token |
+| `developer_token` | No | Legacy. Google stopped issuing developer tokens on 2026-09-09; sent if present, ignored by the API. |
 | `client_id` | Yes | OAuth 2.0 client ID |
 | `client_secret` | Yes | OAuth 2.0 client secret |
 | `refresh_token` | Yes | OAuth 2.0 refresh token |
@@ -94,7 +96,7 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_ADS_DEVELOPER_TOKEN` | Yes | API developer token |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | No | Legacy. Google stopped issuing developer tokens on 2026-09-09; sent if present, ignored by the API. |
 | `GOOGLE_ADS_CLIENT_ID` | Yes | OAuth 2.0 client ID |
 | `GOOGLE_ADS_CLIENT_SECRET` | Yes | OAuth 2.0 client secret |
 | `GOOGLE_ADS_REFRESH_TOKEN` | Yes | OAuth 2.0 refresh token |
@@ -128,22 +130,19 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 
 ## Obtaining Google Ads Credentials
 
-### 1. Developer Token
+### 1. Google Ads API access (Google Cloud Console)
 
-1. Sign in to your Google Ads Manager account at [ads.google.com](https://ads.google.com).
-2. Navigate to **Tools & Settings > Setup > API Center**.
-3. If you don't have a developer token, apply for one. For testing, you'll receive a test token immediately.
-4. Copy the developer token.
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project (or select an existing one).
+2. Enable the **Google Ads API** under **APIs & Services > Library**.
+3. On the Google Ads API **Overview** page, sign up for API access. Enabling the API grants **Test** access (test accounts only) right away; **Basic** access (production accounts) needs brand verification and an application on the same page, which Google may approve automatically. No Google Ads manager account is required.
+4. The access level belongs to **this project** -- every OAuth client you create in it inherits the project's access level.
 
 ### 2. OAuth 2.0 Client ID and Secret
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project (or select an existing one).
-3. Enable the **Google Ads API** under **APIs & Services > Library**.
-4. Navigate to **APIs & Services > Credentials**.
-5. Click **Create Credentials > OAuth client ID**.
-6. Select **Desktop app** as the application type.
-7. Copy the **Client ID** and **Client Secret**.
+1. In the **same project**, navigate to **APIs & Services > Credentials**.
+2. Click **Create Credentials > OAuth client ID**.
+3. Select **Desktop app** as the application type.
+4. Copy the **Client ID** and **Client Secret**.
 
 ### 3. Refresh Token
 
@@ -170,6 +169,14 @@ print("Refresh token:", flow.credentials.refresh_token)
 Alternatively, use the [Google OAuth Playground](https://developers.google.com/oauthplayground/) with the `https://www.googleapis.com/auth/adwords` scope.
 
 > **Scope matters.** The refresh token *must* carry the Google Ads scope `https://www.googleapis.com/auth/adwords`. Reusing a refresh token minted for a different scope makes Google Ads API calls fail at runtime with `ACCESS_TOKEN_SCOPE_INSUFFICIENT`. `mureo configure` / `mureo auth setup` request this scope (plus Search Console) automatically — prefer them over hand-minted tokens. Official reference: [Google Ads API — OAuth 2.0 scopes](https://developers.google.com/google-ads/api/docs/oauth/overview).
+
+### Existing users (migrating from a developer token)
+
+Google migrated the access level of every Cloud project that made API calls with an approved developer token in the 90 days before 2026-09-09. To confirm your setup:
+
+1. Open the project's **Google Ads API > Overview** page and check the access level shown there.
+2. Confirm the developers who work on the integration hold **owner** or **editor** IAM roles on the project.
+3. Leave the old `developer_token` in credentials.json or delete it -- mureo no longer needs it.
 
 ## Obtaining Meta Ads Credentials
 
@@ -381,7 +388,7 @@ reaches you in the morning report rather than in a failed run.
 
 `mureo auth setup` (also called as part of `mureo setup claude-code`) walks you through authentication interactively:
 
-1. **Google Ads OAuth** -- Enter Developer Token + Client ID/Secret, open browser for OAuth, select account.
+1. **Google Ads OAuth** -- Enter Client ID/Secret (developer token optional), open browser for OAuth, select account.
 2. **Meta Ads OAuth** -- Enter App ID/Secret, open browser for OAuth, obtain Long-Lived Token, select account.
 3. **MCP configuration** -- Choose global (`~/.claude/settings.json`) or project-level (`.mcp.json`).
 
