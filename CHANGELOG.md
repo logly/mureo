@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-17
+
 ### Changed
 
 - **Google Ads API v25** (#753). mureo now speaks Google Ads API v25 (was
