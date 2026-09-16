@@ -1072,8 +1072,12 @@ def test_importing_the_bridge_first_does_not_break_plugin_discovery() -> None:
         # Python 3.10) run inside collection. Escalating those would fail
         # this test for a third party's release calendar; the canary that
         # matters — PluginToolWarning, i.e. discovery actually degraded —
-        # stays an error.
+        # stays an error. google-ads 32.x adds a DeprecationWarning at
+        # import on Python 3.10 (#751) — scoped to that package so a
+        # deprecation raised by mureo's own imports still escalates.
         "warnings.simplefilter('default', FutureWarning)\n"
+        "warnings.filterwarnings('default', category=DeprecationWarning,"
+        " module=r'google\\.ads\\.googleads')\n"
         "import mureo.amazon_ads.bridge\n"  # bridge FIRST — the risky order
         "import mureo.mcp.server as s\n"
         "assert s._PLUGIN_DISPATCH is not None\n"
