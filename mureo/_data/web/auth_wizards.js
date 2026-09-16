@@ -132,7 +132,7 @@
         return;
       }
       if (res.body && res.body.status === "needs_credentials") {
-        // Still short of full creds (e.g. the Developer Token is missing).
+        // Still short of full creds (e.g. the service-account path is missing).
         setStatus("wizard.providers_install.still_needs_credentials");
       } else {
         const tmpl = MUREO.t("wizard.providers_install.failed");
@@ -372,10 +372,11 @@
   function buildAuthQueue(state) {
     const queue = [];
     if (state.platforms.google_ads) {
-      // Native AND official Google Ads both need the same Developer
-      // Token + Google OAuth refresh token. The official upstream MCP
-      // cannot read credentials.json, so we still collect them here and
-      // inject them as env into its MCP block at install time.
+      // Native AND official Google Ads both need the same Google OAuth
+      // client + refresh token (the legacy Developer Token is optional).
+      // The official upstream MCP cannot read credentials.json, so we
+      // still collect them here and inject them as env into its MCP
+      // block at install time.
       queue.push({ key: "google_ads", oauthProvider: "google" });
     }
     if (

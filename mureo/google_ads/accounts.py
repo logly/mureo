@@ -162,8 +162,9 @@ async def list_accessible_accounts(
     only to an MCC but needs to operate on its child accounts.
 
     Args:
-        credentials: Google Ads credentials (developer token + OAuth
-            client + refresh token). ``credentials.login_customer_id``
+        credentials: Google Ads credentials (OAuth client + refresh
+            token; the legacy developer token is optional).
+            ``credentials.login_customer_id``
             is used as the operator-wide MCC for the initial
             ``listAccessibleCustomers`` call; per-child traversal uses
             each MCC as its own ``login_customer_id``.

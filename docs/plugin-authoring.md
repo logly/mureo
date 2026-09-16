@@ -278,8 +278,9 @@ behaviour goes into secondary Protocols.
 Providers often need identifiers that vary per platform account —
 Google Ads `customer_id`, Meta Ads `ad_account_id`, an analytics
 product's `advertiser_id`. These are distinct from operator-shared
-OAuth credentials (developer tokens, refresh tokens) which typically
-apply to every account on the same platform.
+OAuth credentials (client secrets and refresh tokens; for Google
+Ads also the optional legacy developer token) which typically apply
+to every account on the same platform.
 
 Declare them via the optional `account_credential_fields` class
 attribute so introspection tooling — the `mureo providers …` CLI,
@@ -351,8 +352,8 @@ keep loading without modification, but a malformed declaration
 time so the failure surfaces near the plugin, not deep inside the
 consuming UI.
 
-OAuth-level / operator-shared credentials (developer token, app
-secret, refresh token) intentionally do NOT live here —
+OAuth-level / operator-shared credentials (OAuth client secret,
+refresh token, app secret) intentionally do NOT live here —
 `account_credential_fields` is for the per-account slice only.
 
 #### Multiple account-level fields
@@ -2835,11 +2836,12 @@ declaration is ignored (step 2 falls through).
 #### `multi_account_auth: bool` — operator-shared OAuth, N clients
 
 Declare `multi_account_auth = True` when the store's credentials are
-operator-shared across many client accounts — e.g. one Google
-`developer_token` + OAuth client, one Meta app, serving N clients whose
-`customer_id` / `account_id` arrive per-request out of band. The
-`mureo configure` OAuth flow then persists only the shared credentials
-and skips the per-account picker (#198).
+operator-shared across many client accounts — e.g. one Google OAuth
+client (plus the optional legacy `developer_token`), one Meta app,
+serving N clients whose `customer_id` / `account_id` arrive
+per-request out of band. The `mureo configure` OAuth flow then
+persists only the shared credentials and skips the per-account
+picker (#198).
 
 The value is honoured **only when it is exactly `True`** — `"yes"`,
 `1`, and a non-empty list all resolve to `False`, because a mistyped
@@ -3016,8 +3018,9 @@ class AcmeSecretStore:
     # The dashboard renders only shared auth fields for this provider;
     # per-account ids live on the host's own per-client forms (#207).
     ui_plugin_credential_fields = {
+        # developer_token is optional (legacy) since Google's 2026-09-09 sunset
         "google_ads": {
-            "developer_token", "client_id", "client_secret", "refresh_token",
+            "client_id", "client_secret", "refresh_token", "developer_token",
         },
     }
 

@@ -54,10 +54,11 @@ def _resolve_customer_id(requested: str | None, default: str | None) -> str:
 
     Every Google Ads tool funnels through ``_get_client``, which takes
     ``customer_id`` as a free caller argument while the (possibly shared)
-    developer token + OAuth can reach every managed account. This binds
-    the EFFECTIVE id — explicit argument or credentials default alike —
-    to the active client's allow-list, mirroring Search Console's
-    ``site_url`` enforcement (#375):
+    OAuth client (plus the optional legacy developer token) can reach
+    every managed account. This binds the EFFECTIVE id — explicit
+    argument or credentials default alike — to the active client's
+    allow-list, mirroring Search Console's ``site_url`` enforcement
+    (#375):
 
     - **Not tenant-scoped** (:func:`runtime_google_ads_customer_ids` →
       ``None``): unchanged — argument wins, credentials default

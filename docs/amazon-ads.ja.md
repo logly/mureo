@@ -473,4 +473,4 @@ Amazon のツールは mureo MCP サーバが動いている間だけ利用で�
   プラットフォーム固有分析は Amazon には存在しません（#120 で追跡）。
   Amazon の read 結果は参考情報として扱ってください。
 - **機密性のクラス**は、既に `~/.mureo/credentials.json` にある
-  Google developer token / Meta access token と同一です。
+  Google の OAuth refresh token / Meta access token と同一です。
