@@ -7,7 +7,7 @@ account already holds, or a local file that has to be uploaded first.
 **Real SDK messages, faked transport.** As in
 ``tests/test_google_ads_asset_groups.py``: a ``GoogleAdsClient`` built with
 mock credentials opens no channel until a call is issued, so the production
-code below runs against the real v23 protos — the operations it builds, the
+code below runs against the real v25 protos — the operations it builds, the
 enums it sets and the resource-name paths it derives are the ones the API
 would receive. Only ``_search``, ``upload_image_asset`` and the outbound
 ``GoogleAdsService.mutate`` are replaced. A ``MagicMock`` client would have
@@ -37,10 +37,10 @@ from unittest.mock import MagicMock
 import pytest
 from google.ads.googleads import util
 from google.ads.googleads.errors import GoogleAdsException
-from google.ads.googleads.v23.services.types.asset_group_asset_service import (
+from google.ads.googleads.v25.services.types.asset_group_asset_service import (
     MutateAssetGroupAssetResult,
 )
-from google.ads.googleads.v23.services.types.google_ads_service import (
+from google.ads.googleads.v25.services.types.google_ads_service import (
     GoogleAdsRow,
     MutateGoogleAdsResponse,
     MutateOperationResponse,
@@ -790,10 +790,10 @@ class TestImageErrorConstants:
     def test_every_translated_code_is_a_real_enum_member(self) -> None:
         """A misspelt code silently never matches, and the refusal it exists
         to explain reaches the agent raw."""
-        from google.ads.googleads.v23.errors.types.asset_group_error import (
+        from google.ads.googleads.v25.errors.types.asset_group_error import (
             AssetGroupErrorEnum,
         )
-        from google.ads.googleads.v23.errors.types.image_error import ImageErrorEnum
+        from google.ads.googleads.v25.errors.types.image_error import ImageErrorEnum
 
         from mureo.google_ads._asset_groups_images import (
             _IMAGE_CONSTRAINT_ERRORS,

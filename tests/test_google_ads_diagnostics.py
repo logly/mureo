@@ -543,7 +543,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         False, and this warning could never fire on a live account (#588).
         """
         from google.ads.googleads import util
-        from google.ads.googleads.v23.services.types.google_ads_service import (
+        from google.ads.googleads.v25.services.types.google_ads_service import (
             GoogleAdsRow,
         )
 

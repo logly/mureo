@@ -448,10 +448,10 @@ class TestSuggestKeywords:
         ``competition (LOW / MEDIUM / HIGH)`` (#588).
         """
         from google.ads.googleads import util
-        from google.ads.googleads.v23.common.types.keyword_plan_common import (
+        from google.ads.googleads.v25.common.types.keyword_plan_common import (
             KeywordPlanHistoricalMetrics,
         )
-        from google.ads.googleads.v23.services.types.keyword_plan_idea_service import (
+        from google.ads.googleads.v25.services.types.keyword_plan_idea_service import (
             GenerateKeywordIdeaResponse,
             GenerateKeywordIdeaResult,
         )

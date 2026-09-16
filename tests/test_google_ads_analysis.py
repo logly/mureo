@@ -1420,7 +1420,7 @@ class TestRsaAnalysisMixin:
         ``descriptions`` came back empty on every live account (#588).
         """
         from google.ads.googleads import util
-        from google.ads.googleads.v23.services.types.google_ads_service import (
+        from google.ads.googleads.v25.services.types.google_ads_service import (
             GoogleAdsRow,
         )
 
@@ -1625,7 +1625,7 @@ class TestAuctionAnalysisMixin:
         "1", while DESKTOP is 4 — matched nothing (#588).
         """
         from google.ads.googleads import util
-        from google.ads.googleads.v23.services.types.google_ads_service import (
+        from google.ads.googleads.v25.services.types.google_ads_service import (
             GoogleAdsRow,
         )
 

@@ -135,7 +135,7 @@ class TestGoogleAdsApiClientInit:
         The client must build without one — the SDK accepts ``None`` and
         the API ignores the header — and it must pin the API version so a
         google-ads-python upgrade cannot silently move the services away
-        from the ``google.ads.googleads.v23`` types mureo imports.
+        from the ``google.ads.googleads.v25`` types mureo imports.
         """
         creds = MagicMock()
         with patch("mureo.google_ads.client.GoogleAdsClient") as mock_gads:
@@ -151,8 +151,8 @@ class TestGoogleAdsApiClientInit:
             )
         assert client._customer_id == "1234567890"
 
-    def test_APIバージョン定数はv23(self) -> None:
-        assert GOOGLE_ADS_API_VERSION == "v23"
+    def test_api_version_constant_is_v25(self) -> None:
+        assert GOOGLE_ADS_API_VERSION == "v25"
 
 
 # ---------------------------------------------------------------------------
@@ -1409,7 +1409,7 @@ class TestGetNetworkPerformanceReport:
         (#588).
         """
         from google.ads.googleads import util
-        from google.ads.googleads.v23.services.types.google_ads_service import (
+        from google.ads.googleads.v25.services.types.google_ads_service import (
             GoogleAdsRow,
         )
 

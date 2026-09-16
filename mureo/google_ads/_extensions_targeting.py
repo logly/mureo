@@ -47,7 +47,7 @@ _RESOURCE_NAME_PATTERN = re.compile(r"customers/\d+/recommendations/\d+")
 CHANGE_HISTORY_ROW_LIMIT = 100
 
 # Google Ads DeviceEnum integer -> device name mapping
-# API v23 campaign_criterion.device.type_ returns int
+# API v25 campaign_criterion.device.type_ is an int-valued enum (safe as int)
 _DEVICE_ENUM_MAP: dict[int, str] = {
     2: "MOBILE",
     3: "TABLET",

@@ -14,17 +14,17 @@ from unittest.mock import MagicMock
 import pytest
 from google.ads.googleads import util
 from google.ads.googleads.client import GoogleAdsClient
-from google.ads.googleads.v23.common import TagSnippet
-from google.ads.googleads.v23.enums.types.keyword_match_type import (
+from google.ads.googleads.v25.common import TagSnippet
+from google.ads.googleads.v25.enums.types.keyword_match_type import (
     KeywordMatchTypeEnum,
 )
-from google.ads.googleads.v23.resources.types.ad_group_criterion import (
+from google.ads.googleads.v25.resources.types.ad_group_criterion import (
     AdGroupCriterion,
 )
-from google.ads.googleads.v23.resources.types.campaign import Campaign
-from google.ads.googleads.v23.resources.types.change_event import ChangeEvent
-from google.ads.googleads.v23.resources.types.conversion_action import ConversionAction
-from google.ads.googleads.v23.resources.types.recommendation import Recommendation
+from google.ads.googleads.v25.resources.types.campaign import Campaign
+from google.ads.googleads.v25.resources.types.change_event import ChangeEvent
+from google.ads.googleads.v25.resources.types.conversion_action import ConversionAction
+from google.ads.googleads.v25.resources.types.recommendation import Recommendation
 
 from mureo.google_ads._enum_names import (
     CHANGE_EVENT_RESOURCE_TYPE_MAP,
@@ -347,11 +347,11 @@ class TestMapCampaign:
     #
     # MagicMock answers hasattr for ANY name, so a mock-based test passes
     # against fields that do not exist. The flight-date mapping is therefore
-    # pinned against the vendored v23 proto.
+    # pinned against the vendored v25 proto.
 
     @staticmethod
     def _real_campaign() -> Campaign:
-        """A real v23 Campaign with the minimum map_campaign() reads."""
+        """A real v25 Campaign with the minimum map_campaign() reads."""
         campaign = Campaign()
         campaign.id = 12345
         campaign.name = "Real Proto Campaign"
@@ -394,11 +394,11 @@ class TestMapCampaign:
         assert "start_date" not in result
         assert "end_date" not in result
 
-    def test_v23_campaign_proto_has_no_start_date_or_end_date(self) -> None:
+    def test_v25_campaign_proto_has_no_start_date_or_end_date(self) -> None:
         """Regression pin for the silent-failure mode this mapper had.
 
         map_campaign used to read ``campaign.start_date`` / ``campaign.end_date``
-        behind ``hasattr`` guards. Those fields do not exist on the v23 proto, so
+        behind ``hasattr`` guards. Those fields do not exist on the v25 proto, so
         both keys were never populated and the campaign date-range diagnosis was
         permanently dead — silently, because every test used a MagicMock, which
         answers ``hasattr`` for any name. If someone reverts to the stale
@@ -753,7 +753,7 @@ class TestMapConversionAction:
 class TestMapTagSnippet:
     # Real proto only, never MagicMock: a mock answers every attribute name,
     # so the previous mock-based test passed against ``page_header``, a field
-    # the v23 TagSnippet does not have. The key was therefore always empty.
+    # the v25 TagSnippet does not have. The key was therefore always empty.
 
     @pytest.mark.parametrize("shape", SHAPES, ids=SHAPE_IDS)
     def test_global_site_tag_populates_the_page_header_key(
@@ -781,11 +781,11 @@ class TestMapTagSnippet:
         assert result["page_header"] == ""
         assert result["event_snippet"] == ""
 
-    def test_v23_tag_snippet_proto_has_no_page_header(self) -> None:
+    def test_v25_tag_snippet_proto_has_no_page_header(self) -> None:
         """Regression pin for the silent-failure mode this mapper had.
 
         map_tag_snippet used to read ``snippet.page_header``, which does not
-        exist on the v23 proto, so the key was permanently empty. The output
+        exist on the v25 proto, so the key was permanently empty. The output
         key keeps the ``page_header`` name for the documented tool contract,
         but the read must stay on ``global_site_tag``.
         """
