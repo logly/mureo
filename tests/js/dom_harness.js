@@ -552,6 +552,42 @@ function isVisible(el) {
 // The page
 // ---------------------------------------------------------------------
 
+// The dashboard bundle, in the order app.html loads it.
+const DASHBOARD_FILES = [
+  "reports_logic.js",
+  "reports_format.js",
+  "reports_sparkline.js",
+  "reports_display.js",
+  "reports_chart.js",
+  "reports_order.js",
+  "reports_triage.js",
+  "reports_overview.js",
+  "reports_hero.js",
+  "reports_index.js",
+  "dashboard_setup.js",
+  "dashboard_workspace.js",
+  "dashboard_about.js",
+  "dashboard_advisors.js",
+  "dashboard_reports_state.js",
+  "dashboard_reports_report.js",
+  "dashboard_reports_changes.js",
+  "dashboard_reports_chart.js",
+  "dashboard_reports_detail.js",
+  "dashboard_reports_overview.js",
+  "dashboard_reports_hero.js",
+  "dashboard_reports_cards.js",
+  "dashboard_reports_triage.js",
+  "dashboard_reports_table.js",
+  "dashboard_reports.js",
+  "dashboard_creative.js",
+  "dashboard_plugins.js",
+  "dashboard.js",
+];
+
+// The configure wizard's auth step. auth_wizards_meta.js must run first —
+// auth_wizards.js reaches the Meta cards through window.MUREO_AUTH_META.
+const AUTH_WIZARD_FILES = ["auth_wizards_meta.js", "auth_wizards.js"];
+
 /**
  * Evaluate the real reports modules + dashboard.js against the real
  * app.html, in a context shaped like a browser.
@@ -561,6 +597,20 @@ function isVisible(el) {
  * for is not what an interaction test is about.
  */
 function loadDashboardPage(routes) {
+  return loadPage(routes, DASHBOARD_FILES);
+}
+
+/**
+ * The same page and sandbox, running the auth-wizard bundle instead —
+ * so a test can call `window.MUREO_AUTH.buildAuthQueue` /
+ * `renderSequentialQueue` against the real files.
+ */
+function loadAuthWizardPage(routes) {
+  return loadPage(routes, AUTH_WIZARD_FILES);
+}
+
+/** Build the browser-shaped context and run `files` in it, in order. */
+function loadPage(routes, files) {
   const html = fs.readFileSync(path.join(WEB, "app.html"), "utf-8");
   const root = parseHtml(html);
   const body = root.querySelector("body") || root;
@@ -633,36 +683,7 @@ function loadDashboardPage(routes) {
   sandbox.self = sandbox;
   const context = vm.createContext(sandbox);
 
-  for (const file of [
-    "reports_logic.js",
-    "reports_format.js",
-    "reports_sparkline.js",
-    "reports_display.js",
-    "reports_chart.js",
-    "reports_order.js",
-    "reports_triage.js",
-    "reports_overview.js",
-    "reports_hero.js",
-    "reports_index.js",
-    "dashboard_setup.js",
-    "dashboard_workspace.js",
-    "dashboard_about.js",
-    "dashboard_advisors.js",
-    "dashboard_reports_state.js",
-    "dashboard_reports_report.js",
-    "dashboard_reports_changes.js",
-    "dashboard_reports_chart.js",
-    "dashboard_reports_detail.js",
-    "dashboard_reports_overview.js",
-    "dashboard_reports_hero.js",
-    "dashboard_reports_cards.js",
-    "dashboard_reports_triage.js",
-    "dashboard_reports_table.js",
-    "dashboard_reports.js",
-    "dashboard_creative.js",
-    "dashboard_plugins.js",
-    "dashboard.js",
-  ]) {
+  for (const file of files) {
     new vm.Script(fs.readFileSync(path.join(WEB, file), "utf-8"), {
       filename: file,
     }).runInContext(context);
@@ -687,6 +708,7 @@ module.exports = {
   computedDisplay,
   isVisible,
   loadDashboardPage,
+  loadAuthWizardPage,
   settle,
   DISPLAY_BY_CLASS,
   HIDDEN_DISPLAY_BY_CLASS,

@@ -217,6 +217,8 @@ mureo setup claude-code             # interactive OAuth wizard が setup の一�
 
 setup コマンドはローカル Web ウィザードを `http://127.0.0.1:<random-port>/` で起動し、各 token / secret を入力するフォームを表示。同じブラウザ内で OAuth フローも完結します。`--no-google-ads` / `--no-meta-ads` で個別に skip 可能。
 
+Google の refresh token が既に保存されている場合(Google Ads と Search Console は同じトークンを共有します)、ウィザードはその認証ステップを skip し、保存済みトークンを再利用する旨を表示します。改めて取り直したいときは **Google を再認証する** ボタンを押してください。
+
 > **Amazon Ads** は「自動で戻ってくる」方式ではなく、コード貼り付け方式のウィザードです(Amazon の同意にはローカルツールが待ち受けられるループバックコールバックがないため)。`mureo configure` を開き、ダッシュボードの **Plugin credentials** にある **Amazon Ads** カードに Login with Amazon の **クライアント ID** と **クライアントシークレット** を入力(または `AMAZON_ADS_*` 環境変数を設定)→ **Amazon の同意ページを開く** をクリックして許可 → リダイレクト先のアドレスをカードに貼り付け、の順です。mureo が両方のトークンを保存し、ツール一覧も更新します。最後に MCP サーバーを再起動してください。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。
 
 ### B. Desktop チャットで認証

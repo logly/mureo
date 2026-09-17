@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -508,6 +509,29 @@ def _credential_env_for(
     )
 
 
+# Required env names whose value is a path the upstream MCP opens at
+# launch. A value that does not point at a readable regular file cannot
+# authenticate, so it must not count as credentialed (no-strand, #102 /
+# #761).
+_FILE_PATH_ENV: frozenset[str] = frozenset({"GOOGLE_APPLICATION_CREDENTIALS"})
+
+
+def _readable_file(value: str) -> bool:
+    """True when ``value``, exactly as stored, is an absolute regular file.
+
+    The value is injected verbatim into the upstream's env block and opened
+    there by a process that does no shell expansion, so the check must use
+    the same bytes: no ``expanduser`` (``~/sa.json`` would pass here and
+    fail there) and no relative paths (resolved against the MCP host's cwd,
+    not ours).
+    """
+    try:
+        path = Path(value)
+        return path.is_absolute() and path.is_file() and os.access(path, os.R_OK)
+    except (OSError, ValueError):
+        return False
+
+
 def _is_credentialed(spec: ProviderSpec, extra_env: Mapping[str, str]) -> bool:
     """True when EVERY ``required_env`` name resolved to a stored value.
 
@@ -526,9 +550,18 @@ def _is_credentialed(spec: ProviderSpec, extra_env: Mapping[str, str]) -> bool:
     stay on. Unreachable today (the only empty-``required_env`` entry is the
     hosted Meta provider, which short-circuits before the gate) but it
     preserves the no-strand invariant if a future provider changes that.
+
+    Presence alone is not enough for a path-valued name (``_FILE_PATH_ENV``,
+    e.g. ``GOOGLE_APPLICATION_CREDENTIALS``): the upstream opens that file at
+    launch, so a stored path that is missing, unreadable or a directory means
+    an official server that cannot authenticate. Such a value therefore does
+    NOT credential the provider — the install reports ``needs_credentials``
+    and mureo-native stays on instead of being switched off behind it (#761).
     """
     return bool(spec.required_env) and all(
-        name in extra_env for name in spec.required_env
+        name in extra_env
+        and (name not in _FILE_PATH_ENV or _readable_file(extra_env[name]))
+        for name in spec.required_env
     )
 
 

@@ -606,6 +606,37 @@ def test_every_data_i18n_key_in_app_html_is_translated() -> None:
 
 
 @pytest.mark.unit
+class TestGoogleOauthReuseKeysParity:
+    """#761 — the auth step's "Google is already authorized" note and the
+    button that asks for a fresh authorization anyway.
+
+    The note is no longer a dead end: skipping the Google slot is only
+    acceptable if the operator can still force it back, so the button's
+    label has to exist in both locales next to the note's own key.
+    """
+
+    _KEYS = (
+        "auth_wizard.google.already_authenticated",
+        "auth_wizard.google.reauthorize",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
 class TestGoogleAdsNeedsCredentialsCopyIsCurrent:
     """#756 — the official-Google-Ads install hint must not claim that a
     Developer Token is required.
