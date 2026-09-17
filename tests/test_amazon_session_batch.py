@@ -17,8 +17,8 @@ under test: handshakes, sessions, and closes.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
-import importlib
 import json
 import time
 from typing import TYPE_CHECKING, Any
@@ -29,6 +29,7 @@ from mureo.amazon_ads import reversal as rev
 from mureo.amazon_ads.bridge import AmazonAdsBridge
 from mureo.amazon_ads.lwa import LwaTokens
 from mureo.auth import AmazonAdsCredentials
+from tests._server_reload import reloaded_server
 
 # The same deterministic clock the non-batched deadline test drives, so both
 # halves of the bound are exercised the same way rather than two ways.
@@ -665,7 +666,8 @@ class _HangingReadTransport(_FakeTransport):
         return {"success": True} if self.calls[-1][1] != _QUERY else _HANG
 
 
-def _reload_server(
+@contextlib.contextmanager
+def _reloaded_server(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     transport: Any,
@@ -673,26 +675,33 @@ def _reload_server(
     creds: AmazonAdsCredentials | None = None,
     refresher: Any = None,
 ):
-    from mureo.amazon_ads import bridge as bmod
+    """Reload the server against ``transport``, then restore a clean module.
+
+    The bridge is built zero-arg at server IMPORT time and captures all four
+    bridge-module attributes below right then, so they go through
+    ``reloaded_server`` and are undone before the restoring reload (#760).
+    ``plugin_audit._audit_path`` is read per call, not at import, so it stays
+    on ``monkeypatch``.
+    """
     from mureo.mcp import plugin_audit
 
     mp = tmp_path / "amazon_tools.json"
     mp.write_text(json.dumps(_E2E_MANIFEST))
     resolved = creds if creds is not None else _creds(access_token="Atza|S")
-    monkeypatch.setattr(
-        "mureo.core.providers.registry.discover_providers", lambda **_kw: ()
-    )
-    monkeypatch.setattr(bmod, "manifest_path", lambda: mp)
-    monkeypatch.setattr(bmod, "load_amazon_ads_credentials", lambda *a, **k: resolved)
-    monkeypatch.setattr(bmod, "_default_connect", transport)
+    patches: dict[str, Any] = {
+        "mureo.amazon_ads.bridge.manifest_path": lambda: mp,
+        "mureo.amazon_ads.bridge.load_amazon_ads_credentials": (
+            lambda *a, **k: resolved
+        ),
+        "mureo.amazon_ads.bridge._default_connect": transport,
+    }
     if refresher is not None:
         # The server builds the bridge zero-arg at import, so the DEFAULT
         # refresher is what a cancelled call would reach for.
-        monkeypatch.setattr(bmod, "refresh_access_token", refresher)
+        patches["mureo.amazon_ads.bridge.refresh_access_token"] = refresher
     monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl")
-    from mureo.mcp import server as mod
-
-    return importlib.reload(mod)
+    with reloaded_server(lambda **_kw: (), patches=patches) as mod:
+        yield mod
 
 
 @pytest.mark.integration
@@ -713,8 +722,7 @@ class TestEndToEndPartialPlan:
                 RuntimeError("the session died"),
             ]
         )
-        mod = _reload_server(monkeypatch, tmp_path, t)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, t) as mod:
             args = {
                 "body": {
                     "accessRequestedAccount": dict(_ACCOUNT),
@@ -741,8 +749,6 @@ class TestEndToEndPartialPlan:
             assert t.call_sessions == [1, 1, 2]
             assert t.handshakes == [1, 2]
             assert t.closed == [1, 2]
-        finally:
-            importlib.reload(mod)
 
     async def test_a_cancel_during_the_read_propagates_and_never_mutates(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -763,8 +769,7 @@ class TestEndToEndPartialPlan:
         write_state_file(tmp_path / "STATE.json", StateDocument())
         monkeypatch.chdir(tmp_path)
         t = _HangingReadTransport()
-        mod = _reload_server(monkeypatch, tmp_path, t)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, t) as mod:
             args = {
                 "body": {
                     "accessRequestedAccount": dict(_ACCOUNT),
@@ -779,8 +784,6 @@ class TestEndToEndPartialPlan:
             assert [c[1] for c in t.calls] == [_QUERY]  # the write never ran
             assert read_state_file(tmp_path / "STATE.json").action_log == ()
             await _until(lambda: t.closed == [1])  # …and the session is closed
-        finally:
-            importlib.reload(mod)
 
     async def test_a_cancel_during_the_write_never_re_issues_it(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -801,7 +804,7 @@ class TestEndToEndPartialPlan:
         monkeypatch.chdir(tmp_path)
         refreshed: list[int] = []
         t = _HangingWriteTransport()
-        mod = _reload_server(
+        with _reloaded_server(
             monkeypatch,
             tmp_path,
             t,
@@ -809,8 +812,7 @@ class TestEndToEndPartialPlan:
             refresher=lambda c: (
                 refreshed.append(1) or LwaTokens("Atza|NEW", "Atzr|R2", 3600)
             ),
-        )
-        try:
+        ) as mod:
             args = {
                 "body": {
                     "accessRequestedAccount": dict(_ACCOUNT),
@@ -830,5 +832,3 @@ class TestEndToEndPartialPlan:
             assert [c[1] for c in t.calls].count(_UPDATE) == 1
             assert refreshed == []
             assert read_state_file(tmp_path / "STATE.json").action_log == ()
-        finally:
-            importlib.reload(mod)

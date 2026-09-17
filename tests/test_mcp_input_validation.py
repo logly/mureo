@@ -15,6 +15,7 @@ from mureo.mcp.server import (
     _validate_tool_input,
     handle_call_tool,
 )
+from tests._server_reload import reloaded_server
 
 pytestmark = pytest.mark.unit
 
@@ -40,7 +41,6 @@ def test_plugin_tools_are_validated() -> None:
     Exercised with a synthetic plugin so the assertion does not depend on
     which third-party providers happen to be installed in the environment.
     """
-    import importlib
     from typing import Any
 
     from mcp.types import TextContent, Tool
@@ -82,18 +82,9 @@ def test_plugin_tools_are_validated() -> None:
             ),
         )
 
-    import mureo.core.providers.registry as registry
-    from mureo.mcp import server as mod
-
-    original = registry.discover_providers
-    registry.discover_providers = _disc
-    try:
-        mod = importlib.reload(mod)
+    with reloaded_server(_disc) as mod:
         assert "iv_schema_plugin_spend" in mod._PLUGIN_NAMES
         assert "iv_schema_plugin_spend" in mod._TOOL_VALIDATORS
-    finally:
-        registry.discover_providers = original
-        importlib.reload(mod)
 
 
 @_budget_registered
