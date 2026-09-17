@@ -9,6 +9,7 @@ skipped and counted, never fatal.
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -54,7 +55,11 @@ def _write(path: Path, *records: dict[str, Any] | str) -> Path:
 
 
 def _run(*args: str) -> Any:
-    return runner.invoke(app, ["journal", *args])
+    # ``FORCE_COLOR`` in the ambient environment (GitHub Actions sets it)
+    # makes rich emit ANSI even into CliRunner's in-memory stream, which
+    # splits ``--last`` in typer's usage error. Drop it for the invocation
+    # so the output is the plain text the assertions read.
+    return runner.invoke(app, ["journal", *args], env={"FORCE_COLOR": None})
 
 
 def _json_lines(output: str) -> list[dict[str, Any]]:
@@ -191,7 +196,12 @@ def test_a_non_positive_last_is_rejected_at_the_boundary(
     log = _write(tmp_path / "JOURNAL.jsonl", _entry())
     result = _run("--path", str(log), "--last", value)
     assert result.exit_code == 2
-    assert "--last" in result.output
+    # Under a colour-capable terminal (CI) typer renders the usage error
+    # through rich, which splits ``--last`` across ANSI escapes; compare
+    # the plain text.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "--last" in plain
+    assert "Invalid value" in plain
 
 
 def test_malformed_lines_are_skipped_and_counted(tmp_path: Path) -> None:
