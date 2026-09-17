@@ -39,6 +39,12 @@
   (#603); reads now do too, through one shared `exception_text`, and the
   plugin-audit / journal scrubber additionally masks `developer-token` and
   `authorization` values.
+- **`docs/native-vs-official.md` claimed Yahoo / LINE / Logly (and GA4) as
+  native families** (#762). Only Google Ads, Meta Ads and Search Console ship
+  in this repository; the rest are provider-registry plugins or the official
+  GA4 driver. Tool counts and the official-MCP sections re-verified against
+  0.18.0, English and Japanese pages; `architecture.md` draws GA4 outside the
+  native boxes.
 
 - **Stale developer-token copy after the 0.18.0 sunset changes** (#756). The
   `mureo configure` official-Google-Ads install hint no longer says a Developer
