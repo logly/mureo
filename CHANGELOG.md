@@ -45,6 +45,15 @@
   GA4 driver. Tool counts and the official-MCP sections re-verified against
   0.18.0, English and Japanese pages; `architecture.md` draws GA4 outside the
   native boxes.
+- **`mureo configure` re-asked for Google OAuth on every run and could switch
+  mureo-native off behind an unreadable service-account path** (#761). The
+  Google Ads auth slot is now skipped when a Google refresh token is already
+  on disk (as the Search Console slot already was), with a **Re-authorize
+  Google** button, and the "already authorized" note no longer vanishes when
+  another auth slot follows it. A `GOOGLE_APPLICATION_CREDENTIALS` value must
+  be an absolute path to a readable file before the official Google Ads
+  provider counts as credentialed, so a mistyped path keeps mureo-native on
+  and reaches the wizard's `still_needs_credentials` message.
 
 - **Stale developer-token copy after the 0.18.0 sunset changes** (#756). The
   `mureo configure` official-Google-Ads install hint no longer says a Developer

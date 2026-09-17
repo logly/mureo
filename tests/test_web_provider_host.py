@@ -100,15 +100,31 @@ def _google_creds(tmp_path: Path) -> Path:
 
     The upstream ``google-ads-mcp`` authenticates via ADC, so 'credentialed'
     means a service-account path (``GOOGLE_APPLICATION_CREDENTIALS``), NOT
-    the Client-Library trio; the legacy developer token is optional."""
+    the Client-Library trio; the legacy developer token is optional. The
+    path must resolve to a readable file — since #761 a dangling path is
+    deliberately NOT credentialed — so a real one is written here."""
     creds = tmp_path / ".mureo" / "credentials.json"
     creds.parent.mkdir(parents=True, exist_ok=True)
     creds.write_text(
-        '{"google_ads": {"developer_token": "DT",'
-        ' "service_account_path": "/p/ads-sa.json"}}',
+        json.dumps(
+            {
+                "google_ads": {
+                    "developer_token": "DT",
+                    "service_account_path": str(_sa_file(tmp_path)),
+                }
+            }
+        ),
         "utf-8",
     )
     return creds
+
+
+def _sa_file(tmp_path: Path) -> Path:
+    """Create (once) and return a readable service-account JSON file."""
+    sa_path = tmp_path / "ads-sa.json"
+    if not sa_path.exists():
+        sa_path.write_text('{"type": "service_account"}', "utf-8")
+    return sa_path
 
 
 def _unfreeze(value: Any) -> Any:
@@ -272,13 +288,22 @@ class TestInstallProviderInjectsCredentialEnv:
         ignores) is NEVER injected, even when present in credentials.json."""
         from mureo.web import setup_actions
 
+        sa_path = _sa_file(tmp_path)
         creds = tmp_path / ".mureo" / "credentials.json"
         creds.parent.mkdir(parents=True, exist_ok=True)
         creds.write_text(
-            '{"google_ads": {"developer_token": "DT",'
-            ' "service_account_path": "/p/ads-sa.json",'
-            ' "login_customer_id": "123",'
-            ' "client_id": "CID", "client_secret": "CS", "refresh_token": "RT"}}',
+            json.dumps(
+                {
+                    "google_ads": {
+                        "developer_token": "DT",
+                        "service_account_path": str(sa_path),
+                        "login_customer_id": "123",
+                        "client_id": "CID",
+                        "client_secret": "CS",
+                        "refresh_token": "RT",
+                    }
+                }
+            ),
             "utf-8",
         )
 
@@ -297,7 +322,7 @@ class TestInstallProviderInjectsCredentialEnv:
         _, kwargs = mock_disable.call_args
         assert kwargs["extra_env"] == {
             "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
-            "GOOGLE_APPLICATION_CREDENTIALS": "/p/ads-sa.json",
+            "GOOGLE_APPLICATION_CREDENTIALS": str(sa_path),
             "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "123",
         }
 
@@ -352,11 +377,18 @@ class TestInstallProviderInjectsCredentialEnv:
         previously collected the values and discarded them)."""
         from mureo.web import setup_actions
 
+        sa_path = _sa_file(tmp_path)
         creds = tmp_path / ".mureo" / "credentials.json"
         creds.parent.mkdir(parents=True, exist_ok=True)
         creds.write_text(
-            '{"ga4": {"service_account_path": "/p/sa.json",'
-            ' "project_id": "proj-1"}}',
+            json.dumps(
+                {
+                    "ga4": {
+                        "service_account_path": str(sa_path),
+                        "project_id": "proj-1",
+                    }
+                }
+            ),
             "utf-8",
         )
 
@@ -376,7 +408,7 @@ class TestInstallProviderInjectsCredentialEnv:
         assert result.status == "ok"
         _, kwargs = mock_disable.call_args
         assert kwargs["extra_env"] == {
-            "GOOGLE_APPLICATION_CREDENTIALS": "/p/sa.json",
+            "GOOGLE_APPLICATION_CREDENTIALS": str(sa_path),
             "GOOGLE_PROJECT_ID": "proj-1",
         }
 
@@ -462,7 +494,7 @@ class TestInstallProviderInjectsCredentialEnv:
 
 @pytest.mark.unit
 class TestIsCredentialedGate:
-    def test_all_required_present_is_credentialed(self) -> None:
+    def test_all_required_present_is_credentialed(self, tmp_path: Path) -> None:
         from mureo.web.setup_actions import _is_credentialed
 
         spec = get_provider(_GOOGLE)  # required: DEV_TOKEN + GAC
@@ -470,7 +502,7 @@ class TestIsCredentialedGate:
             spec,
             {
                 "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
-                "GOOGLE_APPLICATION_CREDENTIALS": "/p/sa.json",
+                "GOOGLE_APPLICATION_CREDENTIALS": str(_sa_file(tmp_path)),
             },
         )
 
@@ -482,7 +514,7 @@ class TestIsCredentialedGate:
         spec = get_provider(_GOOGLE)
         assert not _is_credentialed(spec, {"GOOGLE_ADS_DEVELOPER_TOKEN": "DT"})
 
-    def test_optional_env_is_not_required(self) -> None:
+    def test_optional_env_is_not_required(self, tmp_path: Path) -> None:
         """A missing OPTIONAL name does not block credentialing."""
         from mureo.web.setup_actions import _is_credentialed
 
@@ -492,7 +524,7 @@ class TestIsCredentialedGate:
             spec,
             {
                 "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
-                "GOOGLE_APPLICATION_CREDENTIALS": "/p/sa.json",
+                "GOOGLE_APPLICATION_CREDENTIALS": str(_sa_file(tmp_path)),
             },
         )
 

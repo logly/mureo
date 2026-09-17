@@ -92,6 +92,10 @@
       // (credentials_present.amazon_ads), not a token flag.
       amazon: { configured: false },
     },
+    // Set when the operator presses "Re-authorize Google" on the auth step;
+    // forces the Google OAuth slot back into the queue for this wizard run
+    // only (never persisted).
+    reauthorizeGoogle: false,
     stepIndex: 0,
   };
 

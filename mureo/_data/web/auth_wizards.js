@@ -369,20 +369,29 @@
     );
   }
 
+  function googleOauthSlotNeeded(state) {
+    // A saved Google OAuth is reused rather than re-collected, unless the
+    // operator pressed "Re-authorize Google" on the auth step (which sets
+    // reauthorizeGoogle for this wizard run only).
+    return !googleHasOauthOnDisk(state) || Boolean(state.reauthorizeGoogle);
+  }
+
   function buildAuthQueue(state) {
     const queue = [];
-    if (state.platforms.google_ads) {
+    if (state.platforms.google_ads && googleOauthSlotNeeded(state)) {
       // Native AND official Google Ads both need the same Google OAuth
       // client + refresh token (the legacy Developer Token is optional).
       // The official upstream MCP cannot read credentials.json, so we
       // still collect them here and inject them as env into its MCP
-      // block at install time.
+      // block at install time. When /api/status reports
+      // credentials_oauth.google the saved token already satisfies both,
+      // so the slot is skipped — see googleOauthSlotNeeded.
       queue.push({ key: "google_ads", oauthProvider: "google" });
     }
     if (
       state.platforms.search_console &&
       !state.platforms.google_ads &&
-      !googleHasOauthOnDisk(state)
+      googleOauthSlotNeeded(state)
     ) {
       // SC standalone — own Google OAuth slot.
       queue.push({ key: "search_console", oauthProvider: "google" });
@@ -618,71 +627,117 @@
     wrap.appendChild(continueBtn);
   }
 
-  function renderSequentialQueue(host, state, render) {
-    // Inline note: Search Console alone + Google already authenticated
-    // means we silently skipped the SC OAuth slot. Tell the user so the
-    // wizard's "no auth step shown" isn't mysterious.
-    const scSkippedByGoogle =
-      state.platforms.search_console &&
-      !state.platforms.google_ads &&
-      googleHasOauthOnDisk(state);
-    if (scSkippedByGoogle) {
-      const note = document.createElement("div");
-      note.className = "wizard-shared-with-sc-note";
-      note.textContent = MUREO.t("auth_wizard.google.already_authenticated");
-      host.appendChild(note);
+  // Leave the auth step: the outer wizard owns the step order, so hand
+  // control to its gotoNext when it is there and fall back to a re-render.
+  function leaveAuthStep(render) {
+    if (
+      window.MUREO_WIZARD &&
+      typeof window.MUREO_WIZARD.gotoNext === "function"
+    ) {
+      window.MUREO_WIZARD.gotoNext();
+    } else {
+      render();
     }
+  }
+
+  // The Google OAuth already on disk covers Google Ads AND Search Console,
+  // so their slots were skipped. Say so — a silently missing auth step is
+  // mysterious — and offer the deliberate way back in: re-authorizing
+  // rebuilds the queue with the Google slot in it (this run only; the flag
+  // is never persisted).
+  function buildGoogleReusedNote(state, render) {
+    const note = document.createElement("div");
+    note.className = "wizard-shared-with-sc-note";
+    note.setAttribute("data-google-oauth-reused", "");
+    const text = document.createElement("span");
+    const textKey = "auth_wizard.google.already_authenticated";
+    text.textContent = MUREO.t(textKey);
+    text.setAttribute("data-i18n", textKey);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    btn.textContent = MUREO.t("auth_wizard.google.reauthorize");
+    btn.setAttribute("data-i18n", "auth_wizard.google.reauthorize");
+    btn.setAttribute("data-google-reauthorize", "");
+    btn.addEventListener("click", function () {
+      state.reauthorizeGoogle = true;
+      render();
+    });
+    note.appendChild(text);
+    note.appendChild(document.createTextNode(" "));
+    note.appendChild(btn);
+    return note;
+  }
+
+  // Nothing left to authorize. Outer Back/Next are hidden while the auth
+  // step is active, so the step renders its own Continue. The success line
+  // is only honest when something was actually authorized here — after a
+  // reuse the note above already explains why the step is empty.
+  function appendQueueDoneControls(slotHost, googleReused, render) {
+    if (!googleReused) {
+      const note = document.createElement("p");
+      note.textContent = MUREO.t("wizard.auth.oauth_success");
+      slotHost.appendChild(note);
+    }
+    const continueBtn = document.createElement("button");
+    continueBtn.type = "button";
+    continueBtn.className = "btn btn-primary";
+    continueBtn.textContent = MUREO.t("wizard.next");
+    continueBtn.addEventListener("click", function () {
+      leaveAuthStep(render);
+    });
+    continueBtn.style.marginTop = "16px";
+    slotHost.appendChild(continueBtn);
+  }
+
+  // The reused-OAuth note replaces the slot that would have carried the
+  // step's heading, so it brings its own: the Google Ads title when that
+  // platform is selected, otherwise Search Console's.
+  function buildGoogleReusedHeading(state) {
+    const heading = document.createElement("h3");
+    const key = state.platforms.google_ads
+      ? "wizard.auth.google_ads_title"
+      : "wizard.auth.search_console_title";
+    heading.textContent = MUREO.t(key);
+    heading.setAttribute("data-i18n", key);
+    return heading;
+  }
+
+  function renderSequentialQueue(host, state, render) {
+    const googleReused =
+      (state.platforms.google_ads || state.platforms.search_console) &&
+      googleHasOauthOnDisk(state) &&
+      !state.reauthorizeGoogle;
+    if (googleReused) {
+      host.appendChild(buildGoogleReusedHeading(state));
+      host.appendChild(buildGoogleReusedNote(state, render));
+    }
+    // Slots live in their own child element: advancing the queue clears
+    // ONLY that element, so the note above survives the whole step (it
+    // used to be wiped the moment any other slot followed it).
+    const slotHost = document.createElement("div");
+    host.appendChild(slotHost);
 
     const queue = buildAuthQueue(state);
     if (queue.length === 0) {
-      // Empty queue can happen when the only selected platform is
-      // Search Console AND Google OAuth is already on disk (Issue #7).
-      // Outer Back/Next are hidden while the auth step is active, so
-      // we render a Continue button that hands control back to the
-      // outer wizard's gotoNext.
-      if (!scSkippedByGoogle) {
-        const note = document.createElement("p");
-        note.textContent = MUREO.t("wizard.auth.oauth_success");
-        host.appendChild(note);
-      }
-      const continueBtn = document.createElement("button");
-      continueBtn.type = "button";
-      continueBtn.className = "btn btn-primary";
-      continueBtn.textContent = MUREO.t("wizard.next");
-      continueBtn.addEventListener("click", function () {
-        if (
-          window.MUREO_WIZARD &&
-          typeof window.MUREO_WIZARD.gotoNext === "function"
-        ) {
-          window.MUREO_WIZARD.gotoNext();
-        } else {
-          render();
-        }
-      });
-      host.appendChild(continueBtn);
+      appendQueueDoneControls(slotHost, googleReused, render);
       return;
     }
 
     const cursor = { index: 0 };
     function renderCurrent() {
-      while (host.firstChild) host.removeChild(host.firstChild);
+      while (slotHost.firstChild) slotHost.removeChild(slotHost.firstChild);
       const slot = queue[cursor.index];
       if (!slot) return;
       const wrap = renderStepWizard(slot, state, function onSlotDone() {
         cursor.index += 1;
         if (cursor.index < queue.length) {
           renderCurrent();
-        } else if (
-          window.MUREO_WIZARD &&
-          typeof window.MUREO_WIZARD.gotoNext === "function"
-        ) {
-          // Hand control back to outer wizard once the queue empties.
-          window.MUREO_WIZARD.gotoNext();
         } else {
-          render();
+          leaveAuthStep(render);
         }
       }, state);
-      host.appendChild(wrap);
+      slotHost.appendChild(wrap);
     }
     renderCurrent();
   }
