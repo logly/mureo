@@ -22,11 +22,12 @@ The system is organized into four layers. Each layer has a clear responsibility 
 │  AI Agent (LLM): Strategic judgment, creative gen    │
 ├─────────────────────────────────────────────────────┤
 │  Tool Connection Layer                               │
-│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌─────┐      │
-│  │Google Ads│ │Meta Ads  │ │Search  │ │ GA4 │      │
-│  │(mureo)   │ │(mureo)   │ │Console │ │(MCP)│      │
-│  │          │ │          │ │(mureo) │ │     │      │
-│  └──────────┘ └──────────┘ └────────┘ └─────┘      │
+│  ┌──────────┐ ┌──────────┐ ┌────────┐  ┌─────────┐ │
+│  │Google Ads│ │Meta Ads  │ │Search  │  │GA4      │ │
+│  │(mureo)   │ │(mureo)   │ │Console │  │(official│ │
+│  │          │ │          │ │(mureo) │  │ MCP)    │ │
+│  └──────────┘ └──────────┘ └────────┘  └─────────┘ │
+│  mureo-native                           external   │
 └─────────────────────────────────────────────────────┘
 ```
 

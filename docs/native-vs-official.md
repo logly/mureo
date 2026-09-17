@@ -1,16 +1,23 @@
 # mureo native tools vs. official MCP providers (Google, Meta & Amazon)
 
-> Status: 2026-06-16. The official ad-platform MCPs are in beta and their tool
+> Status: 2026-09-17. The official ad-platform MCPs are in beta and their tool
 > surface changes over time — re-verify before relying on a specific capability.
 > See also [architecture.md](./architecture.md) and [byod.md](./byod.md).
 
 ## Summary
 
-mureo ships its own **native** tool families (Google Ads, Meta Ads, GA4, Search
-Console, Yahoo, LINE, Logly). The ad platforms now also publish **official MCP
-servers**, and mureo can install and register those as *drivers*. They are not
-mutually exclusive: mureo is the control plane, and an official MCP is a thin
-driver onto the platform's own API.
+mureo ships its own **native** tool families for three platforms: Google Ads,
+Meta Ads and Search Console (`mureo/google_ads`, `mureo/meta_ads`,
+`mureo/search_console` in this repository). GA4 is **not** native — mureo
+installs Google's official Analytics MCP as the `ga4-official` provider
+(`mureo providers add ga4-official`; see [integrations.md](./integrations.md)).
+Every other platform arrives as a separately distributed, pip-installable
+plugin that mureo discovers through the provider registry (the
+`mureo.providers` entry-point group); see
+[plugin-authoring.md](./plugin-authoring.md). The ad platforms now also publish
+**official MCP servers**, and mureo can install and register those as
+*drivers*. They are not mutually exclusive: mureo is the control plane, and an
+official MCP is a thin driver onto the platform's own API.
 
 There are **three** connection models in mureo today:
 
@@ -34,7 +41,7 @@ The practical differences for Google and Meta:
 | Official MCP | `googleads/google-ads-mcp` (pipx, ADC) | hosted `https://mcp.facebook.com/ads` (OAuth) |
 | Official tool count | **3 — read-only** | **29 — read + write** |
 | Official can mutate? | No | Yes (direct to live account, no undo/draft/confirm) |
-| mureo native tool count | **89** | **90** |
+| mureo native tool count | **92** | **90** |
 | mureo native can mutate? | Yes | Yes |
 | Safety (rollback, action_log, strategy gating) | native only | native only |
 | BYOD / `mureo demo` (CSV, no live API) | native only | native only |
@@ -61,7 +68,7 @@ The practical differences for Google and Meta:
   budget creation or edits, no status changes, no applying recommendations, no
   conversion setup.
 
-### mureo native — Google Ads (89 tools)
+### mureo native — Google Ads (92 tools)
 
 Full read **and** write, exposed as opinionated, task-level tools:
 
@@ -211,10 +218,12 @@ Setup, environment variables, and the full caveat list: [amazon-ads.md](./amazon
 
 When you install an official provider for a platform mureo also serves natively,
 mureo sets `MUREO_DISABLE_<PLATFORM>=1` on its own MCP server block so the two do
-not expose duplicate tools. Per issue #102 / PR #265, **native tools are not
-disabled until the official provider is actually credentialed** — you are never
-left with zero working tools. Removing the official provider clears the flag and
-re-enables native tools.
+not expose duplicate tools. Per issue #102 / PR #265, `mureo configure`
+**does not disable native tools until the official provider is actually
+credentialed** (every one of its `required_env` names resolved to a stored
+value), so that path never leaves you with zero working tools; the
+`mureo providers add` CLI sets the flag as soon as it registers the provider.
+Removing the official provider clears the flag and re-enables native tools.
 
 - Switch native → official: `mureo providers add <provider>` (or the configure dashboard toggle)
 - Switch back: `mureo providers remove <provider>`

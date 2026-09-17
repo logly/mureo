@@ -1,13 +1,21 @@
 # mureo標準ツール と 公式MCP の違い（Google / Meta / Amazon）
 
-> 状態: 2026-06-16。各広告プラットフォームの公式MCPはベータであり、提供ツール
+> 状態: 2026-09-17。各広告プラットフォームの公式MCPはベータであり、提供ツール
 > は時期によって変化します。特定機能に依存する前に最新状態を再確認してください。
 > 関連: [architecture.md](./architecture.md)、[byod.ja.md](./byod.ja.md)。
 
 ## 概要
 
-mureo は自前の **標準（native）** ツール群（Google Ads、Meta Ads、GA4、Search
-Console、Yahoo、LINE、Logly）を提供します。一方で各広告プラットフォームは
+mureo が自前で提供する **標準（native）** ツール群は Google Ads、Meta Ads、
+Search Console の 3 プラットフォームです（本リポジトリの `mureo/google_ads`、
+`mureo/meta_ads`、`mureo/search_console`）。GA4 は標準ツール **ではありません**
+— mureo は Google 公式の Analytics MCP を `ga4-official` プロバイダとして
+インストールします（`mureo providers add ga4-official`。詳細は
+[integrations.md](./integrations.md)）。それ以外のプラットフォームはすべて、
+別配布の pip インストール可能なプラグインとして提供され、mureo はプロバイダ
+レジストリ（`mureo.providers` エントリポイントグループ）経由でそれらを検出
+します。詳細は [plugin-authoring.md](./plugin-authoring.md) を参照してください。
+一方で各広告プラットフォームは
 **公式MCPサーバー** を公開しており、mureo はそれらを *ドライバ* として
 インストール・登録できます。両者は排他ではありません。mureo がコントロール
 プレーン（司令塔）であり、公式MCP はプラットフォーム自身のAPIへの薄い
@@ -36,7 +44,7 @@ Google と Meta における実務上の違い:
 | 公式MCP | `googleads/google-ads-mcp`（pipx, ADC） | ホスト型 `https://mcp.facebook.com/ads`（OAuth） |
 | 公式ツール数 | **3 — 読み取り専用** | **29 — 読み取り＋書き込み** |
 | 公式で変更操作できる？ | 不可 | 可（本番アカウントへ即時反映。取り消し/下書き/確認なし） |
-| mureo標準ツール数 | **89** | **90** |
+| mureo標準ツール数 | **92** | **90** |
 | mureo標準で変更操作できる？ | 可 | 可 |
 | 安全機構（ロールバック / 操作ログ / 戦略ゲート） | 標準のみ | 標準のみ |
 | BYOD / `mureo demo`（CSV、ライブAPI不要） | 標準のみ | 標準のみ |
@@ -62,7 +70,7 @@ Google と Meta における実務上の違い:
   予算の作成・編集、ステータス変更、推奨の適用、コンバージョン設定は
   できません。
 
-### mureo標準 — Google Ads（89ツール）
+### mureo標準 — Google Ads（92ツール）
 
 読み取りに加えて **書き込み** も可能。タスク単位の「意図を持った」ツールとして
 提供されます:
@@ -210,10 +218,13 @@ Claude  →  ローカルの mureo MCP  →  Amazon のホスト型MCPエンド�
 
 mureo が標準で対応するプラットフォームの公式プロバイダをインストールすると、
 mureo は自身のMCPサーバーブロックに `MUREO_DISABLE_<PLATFORM>=1` を設定し、
-ツールの重複公開を防ぎます。issue #102 / PR #265 により、**公式プロバイダが
-実際にクレデンシャル設定されるまで標準ツールは無効化されません** — 利用可能な
-ツールが一つも無い状態に陥ることはありません。公式プロバイダを削除すると
-フラグは解除され、標準ツールが再び有効になります。
+ツールの重複公開を防ぎます。issue #102 / PR #265 により、`mureo configure` は
+**公式プロバイダが実際にクレデンシャル設定される（`required_env` のすべてが
+保存済みの値に解決される）まで標準ツールを無効化しません**。この経路では利用
+可能なツールが一つも無い状態に陥ることはありません。一方 CLI の
+`mureo providers add` は、プロバイダを登録した時点で `MUREO_DISABLE_*` を
+立てます。公式プロバイダを削除するとフラグは解除され、標準ツールが再び
+有効になります。
 
 - 標準 → 公式へ切替: `mureo providers add <provider>`（または configure ダッシュボードのトグル）
 - 元に戻す: `mureo providers remove <provider>`
