@@ -1689,6 +1689,8 @@ Each entry in a campaign's `ads` array records one ad's delivery state, so a cha
 
 Each entry in `action_log` records an action taken by a workflow command, with optional fields for evidence-based outcome tracking.
 
+`action_log` is the **curated** record, not the complete one. It holds the changes that carry strategy semantics — an observation window, a reversal plan, batch membership — because that is what strategy review and `rollback_plan_get` read. The complete record is the **journal** (`JOURNAL.jsonl`, #758): one line for every MCP tool call, including the calls that were denied by a policy gate, refused by the exclusion preflight, rejected as invalid, or that failed at the platform — none of which belong in `action_log`, since nothing changed. When "what did the agent try, and what got refused?" is the question, read `mureo journal --failures`; when "what changed, and how do I undo it?" is the question, read `action_log`. See [`mcp-server.md`](mcp-server.md#journal-journaljsonl).
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `timestamp` | `string` | No — server-stamped | ISO 8601 timestamp of the action, with UTC offset. Written by `mureo_state_action_log_append` from the **server's** clock — a value supplied by the caller is ignored, so a drifted agent date is never persisted. Always present in a stored entry |

@@ -86,6 +86,8 @@ mureo/
 ├── mcp/                 # MCP server (Google/Meta/Search Console + Rollback/Analysis + Analytics registry, Creative Studio, Learning, mureo Context)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── _helpers.py                        # Shared handler utilities
+│   ├── journal.py                         # Append-only JOURNAL.jsonl of every tool call + outcome (#758)
+│   ├── _journal_hook.py                   # Dispatcher hook: family/mutating classification, one record per call (#758)
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules
 │   ├── _handlers_google_ads.py            # Google Ads base handlers
@@ -118,7 +120,7 @@ mureo/
 │   ├── _handlers_mureo_context.py         # Context (STRATEGY/STATE) handlers
 │   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
 │   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89)
-├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair; ad ops are via MCP)
+├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair + journal; ad ops are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── setup_cmd.py     # `mureo setup claude-code` / `cursor` / `codex` / `gemini`
 │   ├── setup_codex.py   # Codex install-kit: MCP, credential guard, operational + foundation skills
@@ -131,6 +133,7 @@ mureo/
 │   ├── upgrade_cmd.py   # `mureo upgrade` — pipx venv-aware bulk upgrade of mureo + plugins
 │   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*` / `upgrade-google`
 │   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
+│   ├── journal_cmd.py   # `mureo journal` — read back JOURNAL.jsonl (last/tool/since/failures/mutations/json)
 │   ├── repair_cmd.py    # `mureo repair platform-key` — drop a platforms entry the DOCUMENT
 │   │                    #   shows to be wrong (duplicate of a resolvable key, or empty stub);
 │   │                    #   dry run by default, backs up first (#610/#616).

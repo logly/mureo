@@ -279,6 +279,22 @@ audit log (`mureo/mcp/plugin_audit.py`) and in the `mureo amazon` CLI's
 error output, which reuses the same scrubber. Tokens and secrets do not
 appear in tool error messages.
 
+**Tool-call journal.** Every MCP tool call is recorded as one line in
+`JOURNAL.jsonl` (`mureo/mcp/journal.py`). It is created `0600`
+(owner-only), its arguments are masked and its failure reasons scrubbed
+with the **same** masker and scrubber as the plugin audit log above, and
+it never stores result bodies or credentials. A caught exception is
+curated before it is scrubbed and written — for Google Ads that is the
+server-side error message only, never the gRPC call repr that carries the
+request metadata. Unlike the audit log it
+lives in the **workspace directory**, next to `STATE.json` /
+`STRATEGY.md` (falling back to `~/.mureo/journal.jsonl` when the server
+is not bound to a workspace). If you commit your workspace to git, add
+`JOURNAL.jsonl` to `.gitignore` — masked arguments are still an
+operational record of which accounts and campaigns you touched, and it
+does not belong in a shared repository. Set `MUREO_DISABLE_JOURNAL=1` to
+switch it off entirely.
+
 **Rotation.** LwA refresh tokens are long-lived but **not permanent** —
 plan on re-authorizing roughly annually. Amazon signals a dead refresh
 token with `invalid_grant`, and mureo surfaces that verbatim; there is

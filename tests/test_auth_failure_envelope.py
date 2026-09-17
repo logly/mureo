@@ -36,11 +36,48 @@ from mureo.mcp._helpers import (
     _json_result,
     _no_creds_result,
     api_error_handler,
+    exception_text,
     is_auth_error_result,
     is_error_result,
 )
 
 pytestmark = pytest.mark.unit
+
+
+class _LeakyErrorEntry:
+    """One entry of a ``GoogleAdsException``-shaped ``failure.errors``."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
+class _LeakyFailure:
+    def __init__(self, *messages: str) -> None:
+        self.errors = [_LeakyErrorEntry(message) for message in messages]
+
+
+class _LeakyGoogleAdsError(Exception):
+    """A stand-in for ``GoogleAdsException``, leak and all.
+
+    ``str(GoogleAdsException)`` prints the underlying ``grpc.Call`` repr,
+    which carries ``debug_error_string()`` — and with it the request
+    metadata: the developer token and the ``authorization`` header. The
+    curated text lives in ``failure.errors[0].message`` (#603).
+    """
+
+    #: The credential the real exception's ``__str__`` spills.
+    SECRET = "SECRET123"
+
+    def __init__(self, *messages: str) -> None:
+        super().__init__("grpc call repr")
+        self.failure = _LeakyFailure(*messages)
+
+    def __str__(self) -> str:
+        return (
+            "<_InactiveRpcError ... debug_error_string = "
+            f'{{"metadata": {{"developer-token": "{self.SECRET}", '
+            f'"authorization": "Bearer {self.SECRET}"}}}}>'
+        )
 
 
 def _payload(result: list[Any]) -> dict[str, Any]:
@@ -241,3 +278,68 @@ class TestApiErrorHandlerRouting:
 
         with pytest.raises(ValueError, match="customer_id"):
             await handler()
+
+
+# ---------------------------------------------------------------------------
+# exception_text — the one place a caught exception becomes visible text
+# ---------------------------------------------------------------------------
+
+
+class TestExceptionText:
+    def test_prefers_the_curated_platform_message(self) -> None:
+        exc = _LeakyGoogleAdsError("curated")
+        assert exception_text(exc) == "curated"
+
+    def test_never_falls_back_to_the_leaky_str(self) -> None:
+        exc = _LeakyGoogleAdsError("curated")
+        assert _LeakyGoogleAdsError.SECRET not in exception_text(exc)
+
+    def test_an_empty_errors_list_leaves_only_the_type_name(self) -> None:
+        exc = _LeakyGoogleAdsError()
+        assert exception_text(exc) == "_LeakyGoogleAdsError"
+
+    def test_an_error_without_a_message_leaves_only_the_type_name(self) -> None:
+        exc = _LeakyGoogleAdsError("")
+        assert exception_text(exc) == "_LeakyGoogleAdsError"
+
+    def test_an_ordinary_exception_keeps_its_message_unchanged(self) -> None:
+        assert exception_text(ValueError("boom")) == "boom"
+
+    def test_a_message_less_exception_is_named_by_its_type(self) -> None:
+        assert exception_text(RuntimeError()) == "RuntimeError"
+
+
+class TestApiErrorHandlerCuratesExceptionText:
+    """#603 on the read paths too: the envelope must not carry the repr.
+
+    Mutation paths curate through ``_extract_error_detail``; every read
+    (``*_list``, ``*_report``, …) returned ``str(exc)``, which for a Google
+    Ads failure is the gRPC call repr — request metadata included. Both
+    branches of the handler go through ``exception_text`` now, and since
+    #758 that same text is what the journal records.
+    """
+
+    async def test_the_api_error_branch_carries_the_curated_message(self) -> None:
+        @api_error_handler
+        async def handler() -> list[TextContent]:
+            raise _LeakyGoogleAdsError("curated")
+
+        text = (await handler())[0].text
+        assert text == f"{API_ERROR_PREFIX} curated"
+        assert _LeakyGoogleAdsError.SECRET not in text
+
+    async def test_the_auth_branch_carries_the_curated_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "mureo.mcp._helpers.classify_auth_exception",
+            lambda exc: AUTH_CAUSE_TOKEN_INVALID,
+        )
+
+        @api_error_handler
+        async def handler() -> list[TextContent]:
+            raise _LeakyGoogleAdsError("curated")
+
+        result = await handler()
+        assert _payload(result)["detail"] == "curated"
+        assert _LeakyGoogleAdsError.SECRET not in result[0].text

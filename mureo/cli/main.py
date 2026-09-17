@@ -24,6 +24,7 @@ from mureo.cli.byod_cmd import byod_app
 from mureo.cli.configure_cmd import configure_app
 from mureo.cli.demo_cmd import demo_app
 from mureo.cli.install_desktop_cmd import install_desktop_app
+from mureo.cli.journal_cmd import journal_app
 from mureo.cli.learn_cmd import learn_app
 from mureo.cli.open_cmd import open_app
 from mureo.cli.providers_cmd import providers_app
@@ -52,6 +53,7 @@ app.add_typer(configure_app)
 app.add_typer(open_app)
 app.add_typer(service_app)
 app.add_typer(learn_app)
+app.add_typer(journal_app)
 app.add_typer(upgrade_app)
 
 logger = logging.getLogger(__name__)

@@ -28,6 +28,7 @@ mureo <subcommand-group> <command> [options]
 | `amazon` | Amazon Ads official-MCP bridge setup |
 | `install-desktop` | Wire mureo into Claude Desktop chat (macOS) |
 | `learn` | Append insights to the diagnostic knowledge base |
+| `journal` | Show the append-only journal of MCP tool calls |
 | `rollback` | Inspect reversible actions recorded in STATE.json |
 | `repair` | Repair STATE.json problems mureo can fix without guessing |
 
@@ -275,6 +276,23 @@ Agent: rollback_apply({index: 0, confirm: true}) → dispatches.
 ### Reverting a whole bulk change
 
 A bulk pass wrapped in a batch (`mureo_batch_begin` / `mureo_batch_end`) is planned as one unit by `rollback_plan_get` with `batch_id` instead of `index` — it reports every member, overall and per-platform coverage (`full` / `partial` / `none`), and the reason each member it cannot reverse. That surface is **MCP-only**: `mureo rollback list` / `show` still work entry by entry, and neither the batch tools nor batch planning has a CLI command today. Ask the agent for the batch plan before applying anything; a batch where only some members can be restored will say so there.
+
+## Journal Commands
+
+`mureo journal` reads back the append-only record of **every** MCP tool call — including the ones that were denied, refused or failed, which never reach `action_log`. Read-only: the file is never rewritten or rotated by this command. See [`mcp-server.md`](mcp-server.md#journal-journaljsonl) for the record schema and where the file lives.
+
+```bash
+mureo journal                          # the last 50 calls, as a plain table
+mureo journal --last 200               # a longer tail
+mureo journal --failures               # only outcome != ok (denied/refused/failed)
+mureo journal --mutations              # only calls classified as mutations
+mureo journal --tool meta_ads_campaigns_update
+mureo journal --since 2026-09-01       # UTC date, inclusive
+mureo journal --json                   # raw records, one JSON object per line
+mureo journal --path ./JOURNAL.jsonl   # read a specific file
+```
+
+Filters combine, and `--last` applies **after** filtering — `--failures --last 20` means the last 20 failures, not the failures among the last 20 calls. A missing journal is not an error (`no journal at <path>`, exit 0): a workspace where no tool has run yet, or an operator who set `MUREO_DISABLE_JOURNAL=1`, simply has none. Unparseable lines — a half-written final line after a crash — are skipped and counted on stderr rather than failing the read.
 
 ## Repair Commands
 

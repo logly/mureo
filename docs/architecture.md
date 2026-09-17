@@ -71,6 +71,16 @@ Mutations are bounded by a rollback allow-list, GAQL injection guards, BYOD read
 
 Every decision is recorded in an append-only ledger: who proposed, when, with what reasoning, on what evidence, with what predicted impact, with what rollback plan. Decisions are reversible. An official MCP records API calls, not strategic intent. This is the layer that makes AI ad ops survivable in regulated industries (GDPR, CCPA) and through procurement / SOC2 review.
 
+Three trails, three jobs:
+
+| Trail | What is in it | Where |
+|-------|---------------|-------|
+| **Journal** (#758) | **Every** tool call that entered the dispatcher, with its outcome — `ok`, platform error, exception, policy denial, preflight refusal, invalid arguments — and its masked arguments. The complete primary record; read it with `mureo journal`. | `JOURNAL.jsonl` in the workspace (else `~/.mureo/journal.jsonl`) |
+| **`action_log`** | The curated summary: mutations that carry strategy semantics — observation window, reversal plan, batch membership. Much smaller than the journal, and what `rollback_plan_get` plans from. | `STATE.json` |
+| **Plugin audit** | The pre-#758 trail of plugin / bridge tool calls, kept unchanged for compatibility. | `~/.mureo/plugin_audit.jsonl` |
+
+The journal answers "what did this agent actually try"; `action_log` answers "what changed, and how do I undo it". A refused or failed attempt is in the first and — correctly — not in the second.
+
 mureo's value increases — not decreases — as official MCPs ship.
 
 ## Package Structure
@@ -376,6 +386,9 @@ server.py :: _create_server()
   │                                        + … + plugin / bridge tools appended last)
   │
   └── call_tool(name, arguments)
+        │
+        │   (every exit below — result, refusal, denial, exception — leaves
+        │    exactly one journal.record_call(...) line; see "Audit" above)
         │
     │   ├── name in _GOOGLE_ADS_NAMES? → handle_google_ads_tool(name, args)
         │     │

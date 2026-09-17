@@ -234,6 +234,19 @@ class TestScrubFreeText:
             # ...and the hyphenated spellings, for the same reason.
             ("client-secret=amzn1.oa2-cs.v1.SUPERSECRETVALUE", "SUPERSECRETVALUE"),
             ("refresh-token=Atzr-plain-shaped-value", "Atzr-plain-shaped-value"),
+            # #758 — Google's request metadata spells its credential
+            # ``developer-token``, and a gRPC debug string prints the metadata
+            # verbatim. All three spellings, like every other key family.
+            ("developer-token: abc123XYZ", "abc123XYZ"),
+            ("developer_token=abc123XYZ", "abc123XYZ"),
+            ('{"developerToken": "abc123XYZ"}', "abc123XYZ"),
+            # ``authorization`` as a key. A Bearer value is already caught by
+            # the token pass above; this pins that the key form is masked too.
+            ("authorization: Bearer abc.def", "abc.def"),
+            # A Basic scheme: the key pass masks the scheme word, the value
+            # pass masks the base64 credential that follows it.
+            ("Authorization=Basic dXNlcjpwYXNzd29yZA==", "dXNlcjpwYXNzd29yZA=="),
+            ("HTTP 401 with Basic dXNlcjpwYXNzd29yZA==", "dXNlcjpwYXNzd29yZA=="),
         ],
     )
     def test_credential_values_are_redacted(self, text: str, leaked: str) -> None:
@@ -266,6 +279,10 @@ class TestScrubFreeText:
             "cannot exchange: no client_secret in amazon_ads credentials",
             "Amazon rejected the authorization code (error='invalid_grant'). "
             "Codes are single-use and expire 5 minutes after consent",
+            # ``Basic`` as a word, not a scheme: short or non-base64 values
+            # after it are prose and must survive.
+            "Basic plan does not include this report",
+            "Basic auth failed for user",
         ],
     )
     def test_ordinary_diagnostics_survive_unchanged(self, text: str) -> None:

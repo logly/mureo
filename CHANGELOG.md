@@ -1,6 +1,44 @@
 ## [Unreleased]
 
+### Added
+
+- **Dispatcher-level journal** (#758, phase 1). Every MCP tool call that
+  enters the dispatcher now leaves exactly one append-only JSON line in
+  `JOURNAL.jsonl` — every family (built-in Google / Meta / Search Console /
+  analysis / context / learning / creative studio / rollback / batch /
+  change-import, and every plugin) and every outcome: `ok`, a platform
+  error envelope, an exception, a policy denial, an exclusion-preflight
+  refusal, invalid arguments. Until now only plugin calls were recorded
+  (`plugin_audit.jsonl`) and `STATE.json`'s `action_log` received a small
+  allow-list of native mutations, so the calls an operator most wants to
+  see after the fact — the ones that were refused or that failed — were
+  the ones nothing kept. The journal is the complete record; `action_log`
+  keeps its job as the curated, strategy-aware summary of what actually
+  changed, and `plugin_audit.jsonl` is untouched. Each record carries the
+  tool, family, whether it was a mutation, the masked arguments, the
+  outcome and its scrubbed reason, the duration, the open `batch_id`, the
+  MCP client, and the mureo version — never a result body and never a
+  credential: arguments go through the same masker and reasons through
+  the same scrubber as the plugin audit log. The file is written `0600`
+  beside `STATE.json` / `STRATEGY.md` so the record travels with the
+  workspace (a directory that is not a workspace falls back to
+  `~/.mureo/journal.jsonl` rather than being littered with a file nobody
+  asked for); commit the workspace to git and you should add
+  `JOURNAL.jsonl` to `.gitignore`. Read it with the new `mureo journal`
+  (`--last` / `--tool` / `--since` / `--failures` / `--mutations` /
+  `--json` / `--path`), and switch the whole thing off with
+  `MUREO_DISABLE_JOURNAL=1`. No behaviour change for any caller: the
+  dispatcher returns and raises exactly what it did before.
+
 ### Fixed
+
+- **Raw `GoogleAdsException` text in read-path error results.**
+  `api_error_handler` returned `str(exc)` for a failing read (`*_list`,
+  `*_report`, …), which for a Google Ads error is the gRPC call repr —
+  request metadata included. Mutation paths already curated the message
+  (#603); reads now do too, through one shared `exception_text`, and the
+  plugin-audit / journal scrubber additionally masks `developer-token` and
+  `authorization` values.
 
 - **Stale developer-token copy after the 0.18.0 sunset changes** (#756). The
   `mureo configure` official-Google-Ads install hint no longer says a Developer

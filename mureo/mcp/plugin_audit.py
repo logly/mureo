@@ -52,8 +52,13 @@ _SENSITIVE_KEY = re.compile(
 # run past the closing quote of a JSON string and swallow the rest of the
 # document, leaving structurally broken text for whoever reads the record.
 # A bearer token cannot contain a quote, so stopping there cannot leak.
+#
+# ``Basic`` is an ordinary English word ("Basic plan"), so its alternative
+# is deliberately narrower: only a base64-shaped value of 16+ characters
+# counts, which is what an ``Authorization: Basic`` header actually carries.
 _SECRET_VALUE = re.compile(
-    r"(Bearer\s+[^\s'\"]+|Atza\|[^\s'\"]+|Atzr\|[^\s'\"]+)",
+    r"(Bearer\s+[^\s'\"]+|Basic\s+[A-Za-z0-9+/=]{16,}"
+    r"|Atza\|[^\s'\"]+|Atzr\|[^\s'\"]+)",
     re.IGNORECASE,
 )
 
@@ -79,9 +84,15 @@ _SECRET_VALUE = re.compile(
 # ``adProductFilter``, ``authorizationCode``), and this scrubber's whole job
 # is redacting error bodies from surfaces like it. Matches ``_SENSITIVE_KEY``
 # above, which was already spelled this way.
+#
+# ``developer[_-]?token`` and ``authorization`` joined the list for #758: the
+# journal routes every platform family's error text through this scrubber, and
+# Google's request metadata — which a gRPC debug string prints verbatim —
+# spells the credential ``developer-token`` and the header ``authorization``.
+# ``authorization`` carries no separator of its own, so it is listed bare.
 _SECRET_KEY_VALUE = re.compile(
     r"((?:client[_-]?secret|refresh[_-]?token|access[_-]?token"
-    r"|api[_-]?key|password)"
+    r"|developer[_-]?token|api[_-]?key|password|authorization)"
     r"['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]+",
     re.IGNORECASE,
 )
@@ -124,7 +135,7 @@ _CODE_KEY_VALUE = re.compile(
 )
 
 
-def _scrub(text: str) -> str:
+def scrub_text(text: str) -> str:
     """Redact secret-shaped substrings from a free-text error string.
 
     Three passes, all value-only: token prefixes (``Bearer …``,
@@ -132,6 +143,10 @@ def _scrub(text: str) -> str:
     narrowly-anchored ``code=<authorization code>``. Everything else —
     HTTP status, exception type, the failing operation — survives, so a
     scrubbed message is still a usable diagnostic.
+
+    Public since #758: the dispatcher journal (:mod:`mureo.mcp.journal`)
+    scrubs its ``reason`` with the very same passes, so one trail can
+    never redact less than the other.
     """
     scrubbed = _SECRET_VALUE.sub("***", text)
     scrubbed = _SECRET_KEY_VALUE.sub(r"\1***", scrubbed)
@@ -143,8 +158,13 @@ def _audit_path() -> Path:
     return Path.home() / ".mureo" / "plugin_audit.jsonl"
 
 
-def _mask(value: Any, *, _depth: int = 0) -> Any:
-    """Recursively mask secrets and truncate over-long strings."""
+def mask_arguments(value: Any, *, _depth: int = 0) -> Any:
+    """Recursively mask secrets and truncate over-long strings.
+
+    Public since #758 for the same reason as :func:`scrub_text`: the
+    dispatcher journal masks its ``args`` with this exact function, so the
+    two trails cannot drift apart on what counts as a secret.
+    """
     if _depth > 4:
         return "<...>"
     if isinstance(value, str):
@@ -156,12 +176,22 @@ def _mask(value: Any, *, _depth: int = 0) -> Any:
         for k, v in value.items():
             key = str(k)
             out[key] = (
-                "***" if _SENSITIVE_KEY.search(key) else _mask(v, _depth=_depth + 1)
+                "***"
+                if _SENSITIVE_KEY.search(key)
+                else mask_arguments(v, _depth=_depth + 1)
             )
         return out
     if isinstance(value, (list, tuple)):
-        return [_mask(v, _depth=_depth + 1) for v in list(value)[:50]]
+        return [mask_arguments(v, _depth=_depth + 1) for v in list(value)[:50]]
     return value
+
+
+#: Pre-#758 private spellings. Kept as aliases, not as re-implementations:
+#: ``mureo.web.handlers``, ``mureo.amazon_ads.session_auth``,
+#: ``mureo.cli.amazon_cmd`` and ``tests/test_mcp_plugin_audit.py`` import
+#: them, and a second definition is a second answer to "what is a secret".
+_mask = mask_arguments
+_scrub = scrub_text
 
 
 def record_plugin_call(
@@ -192,12 +222,12 @@ def record_plugin_call(
             "tool": tool,
             "source": source or "<unknown>",
             "ok": ok,
-            "args": _mask(arguments if isinstance(arguments, dict) else {}),
+            "args": mask_arguments(arguments if isinstance(arguments, dict) else {}),
         }
         if platform_ok is False:
             rec["platform_ok"] = False
         if error is not None:
-            rec["error"] = _scrub(error)[:_MAX_STR]
+            rec["error"] = scrub_text(error)[:_MAX_STR]
         path = _audit_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(rec, ensure_ascii=False, default=str) + "\n"
