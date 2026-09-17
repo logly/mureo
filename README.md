@@ -41,7 +41,7 @@ mureo ships its own connectors for Google Ads, Meta Ads, and Search Console toda
 - **Strategy-grounded** — every decision reads `STRATEGY.md` (persona, USP, brand voice, goals)
 - **Safety-gated** — rollback allow-list, GAQL guards, BYOD read-only by default, credential guard, per-platform throttle
 - **Cross-platform** — Google Ads / Meta Ads / Amazon Ads / TikTok Ads / Search Console / GA4 in one workflow
-- **Auditable** — append-only action log with rollback
+- **Auditable** — append-only action log with rollback, plus a journal of *every* tool call and its outcome (`mureo journal`)
 - **Local-first** — credentials never leave your machine
 - **Learnable** — `/learn` builds account-specific knowledge over time
 

@@ -17,6 +17,7 @@ import functools
 import inspect
 import json
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -237,6 +238,40 @@ def is_error_result(result: list[Any] | None) -> bool:
     return is_auth_error_result(result)
 
 
+def exception_text(exc: BaseException) -> str:
+    """Turn a caught exception into text an operator may safely see.
+
+    The ONE place a caught exception becomes operator-visible text, because
+    ``str(exc)`` is not safe for every exception mureo catches.
+    ``GoogleAdsException`` does not curate its ``__str__``: formatting it
+    prints the underlying ``grpc.Call`` repr, which carries
+    ``debug_error_string()`` and with it the request metadata — the
+    developer token and the ``authorization`` header. The curated text is
+    the server-side ``failure.errors[0].message`` (#603). The mutation
+    paths learned that in #603; every read path returned ``str(exc)``, and
+    since #758 that text is also copied into the journal.
+
+    Duck-typed on ``failure.errors`` rather than imported from
+    :mod:`mureo.google_ads.client`, like
+    :func:`mureo.core.auth_failure._is_google_ads_auth_failure`: this module
+    is shared by every platform and must not depend on the Google client.
+    """
+    errors = getattr(getattr(exc, "failure", None), "errors", None)
+    if isinstance(errors, Iterable):
+        # A platform-shaped failure: ``str(exc)`` is off limits even when the
+        # curated message is missing, so an empty ``errors`` costs the detail,
+        # never the credential.
+        for error in errors:
+            message = str(getattr(error, "message", "") or "")
+            if message:
+                return message
+        return type(exc).__name__
+    # Every other exception mureo catches already curates its own message,
+    # so the operator-facing text stays exactly what it was; only an empty
+    # message falls back to the type name so the envelope is never blank.
+    return str(exc) or type(exc).__name__
+
+
 def api_error_handler(
     func: Callable[..., Coroutine[Any, Any, list[TextContent]]],
 ) -> Callable[..., Coroutine[Any, Any, list[TextContent]]]:
@@ -260,10 +295,12 @@ def api_error_handler(
             # platforms that did answer is partial. Flattening it into the
             # same untyped string as a quota error is what let an expired
             # token read as a quiet account (#580).
+            # Curated, never ``str(exc)``: see :func:`exception_text`.
+            detail = exception_text(exc)
             cause = classify_auth_exception(exc)
             if cause is not None:
-                return _auth_error_result(cause, str(exc))
-            return [TextContent(type="text", text=f"{API_ERROR_PREFIX} {exc}")]
+                return _auth_error_result(cause, detail)
+            return [TextContent(type="text", text=f"{API_ERROR_PREFIX} {detail}")]
         finally:
             bucket = _active_clients.get() or []
             _active_clients.reset(token)

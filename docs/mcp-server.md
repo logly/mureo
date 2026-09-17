@@ -959,6 +959,55 @@ not third-party plugins. The in-tree **Amazon Ads bridge** rides this
 same dispatch branch but *is* mureo's own code, so it does have a gate:
 `MUREO_DISABLE_AMAZON_ADS=1`.
 
+## Journal (`JOURNAL.jsonl`)
+
+Every call that enters the dispatcher leaves exactly **one** append-only
+JSON line — whatever the family (built-in or plugin) and whatever the
+outcome. A refused, denied or failed call is recorded exactly like a
+successful one: "what did the agent actually try" is the question this
+file answers, and a trail of successes cannot answer it.
+
+| Field | Meaning |
+|-------|---------|
+| `v` | Record schema version (`1` today) |
+| `ts` | UTC ISO-8601 timestamp, second precision |
+| `session` | Random id minted once per server process |
+| `client` | `"<MCP client name>/<version>"`, or `null` when the client did not report one |
+| `mureo` | The mureo version that served the call |
+| `workspace_id` | The bound workspace identifier |
+| `tool` | Tool name as dispatched |
+| `family` | `google_ads`, `meta_ads`, `search_console`, `rollback`, `batch`, `change_import`, `analysis`, `mureo_context`, `analytics`, `learning`, `learning_preflight`, `creative_studio`, `plugin`, `unknown` |
+| `source` | Plugin distribution — present only when `family` is `plugin` |
+| `mutating` | Whether the call was classified as a mutation |
+| `args` | The call's arguments, **masked** (secret-shaped keys → `***`, long strings truncated) |
+| `outcome` | `ok` / `platform_error` / `exception` / `denied` / `refused` / `invalid_args` |
+| `reason` | Why a non-`ok` outcome happened; scrubbed and capped at 512 chars. Absent for `ok` |
+| `duration_ms` | Wall-clock milliseconds around gate + validation + preflight + handler |
+| `batch_id` | The batch open at the time, or `null` |
+| `rollback` | `true` only when the call was a rollback's reversal leg |
+
+**What is never written.** Result bodies and credentials. The journal
+stores the masked arguments and the outcome — never what a tool returned,
+and never a token: `args` go through the same masker and `reason` through
+the same scrubber as the plugin audit log.
+
+**Where the file lives.** Beside `STATE.json` / `STRATEGY.md` when the
+server is bound to a real workspace directory (`<workspace>/JOURNAL.jsonl`),
+so the record travels with the workspace. A directory holding neither is
+not a workspace, and mureo will not drop files in it: those calls go to
+`~/.mureo/journal.jsonl`.
+
+**Opt-out.** Set `MUREO_DISABLE_JOURNAL=1` (exact string `1`) in the
+server's environment to write nothing at all.
+
+Read it with the CLI — see [`cli.md`](cli.md#journal-commands):
+
+```bash
+mureo journal                       # the last 50 calls, as a table
+mureo journal --failures --last 20  # the last 20 refused / failed calls
+mureo journal --tool meta_ads_campaigns_update --json
+```
+
 ## Workflow Commands
 
 Beyond individual MCP tools, mureo provides higher-level operational workflows via **Claude Code slash commands**. These commands orchestrate multiple MCP tools in sequence, guided by the strategy context defined in `STRATEGY.md`.
@@ -1129,6 +1178,8 @@ API errors (rate limits, invalid parameters, etc.) are caught by the `@api_error
   }
 ]
 ```
+
+The text after the prefix is **curated**, never the raw `str(exception)`: a platform exception that carries a structured server-side failure (Google Ads) is rendered as that failure's own message, because formatting such an exception directly prints the transport-level repr — request metadata and credentials included. Every other exception is rendered as its own message (the exception type name when that message is empty).
 
 ### Validation Errors
 

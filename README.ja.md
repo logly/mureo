@@ -41,7 +41,7 @@ mureo は Google 広告、Meta 広告、Search Console の接続を自前で同�
 - **戦略準拠**：すべての判断が `STRATEGY.md`（ペルソナ、USP、ブランドボイス、目標）を読み込む
 - **セーフティゲート**：rollback allow-list、GAQL ガード、BYOD は既定で read-only、認証情報ガード、プラットフォーム別スロットリング
 - **クロスプラットフォーム**：Google 広告 / Meta 広告 / Amazon 広告 / TikTok 広告 / Search Console / GA4 を 1 つのワークフローで
-- **監査可能**：追記専用の action log、rollback 対応
+- **監査可能**：追記専用の action log、rollback 対応。さらに全ツール呼び出しとその結果を記録する journal（`mureo journal`）
 - **ローカルファースト**：認証情報はお手元のPCから出ない
 - **学習可能**：`/learn` でアカウント固有のナレッジを継続的に蓄積
 

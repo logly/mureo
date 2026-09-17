@@ -52,10 +52,12 @@ if TYPE_CHECKING:
     from mcp.types import Tool
 
     from mureo.core.policy import PolicyDecision, PolicyGate
+    from mureo.mcp._journal_hook import JournalledCall
     from mureo.mcp.tool_provider import MCPToolProvider
 
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp._helpers import is_error_result
+from mureo.mcp._journal_hook import capture_client_info, journal_call
 from mureo.mcp._plugin_declarations import (
     _register_bridged_money_declarations,
     _register_plugin_bid_declarations,
@@ -818,18 +820,36 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     every mutation. Soft enforcement only — never refuses. See
     :mod:`mureo.core.strategy_reminder`.
 
+    Whatever the family and whatever the exit — result, refusal, denial
+    or exception — the call leaves exactly one journal record (#758). See
+    :mod:`mureo.mcp.journal` and :mod:`mureo.mcp._journal_hook`.
+
     Raises:
         ValueError: Unknown tool name, schema-invalid arguments, or a
             missing required parameter.
     """
+    with journal_call(name, arguments) as call:
+        return await _gated_dispatch(name, arguments, call)
+
+
+async def _gated_dispatch(
+    name: str, arguments: dict[str, Any], call: JournalledCall
+) -> list[Any]:
+    """Gate, validate, preflight and dispatch one call, telling ``call``
+    which exit was taken so the journal records this call exactly once."""
     decision = _evaluate_policy_gates(name, arguments)
     if decision is not None:
+        call.denied(decision.reason)
         return _refuse_text_content(name, decision)
     # Schema-validate AFTER the gate decision (a policy denial is absolute and
     # need not depend on arg validity) but BEFORE any handler, before-state
     # capture, or real-spend API call — so an out-of-bounds budget/bid is
     # rejected before it can reach a live campaign.
-    _validate_tool_input(name, arguments)
+    try:
+        _validate_tool_input(name, arguments)
+    except ValueError as exc:
+        call.invalid_args(exc)
+        raise
     # #547: size a bulk exclusion / block / negative-keyword batch against the
     # account's own recent delivery before it is applied. Runs here rather than
     # in a PolicyGate because it needs one AWAITED platform read and the gate
@@ -839,9 +859,10 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     # no exclusion rule in STRATEGY.md ## Guardrails.
     preflight = await exclusion_impact_preflight(name, arguments)
     if preflight.refusal_reason is not None:
+        call.refused(preflight.refusal_reason)
         return exclusion_refusal_content(preflight)
     result = append_exclusion_impact_notice(
-        await _dispatch_tool(name, arguments), preflight
+        call.completed(await _dispatch_tool(name, arguments)), preflight
     )
     # #548: a change that restarts an automated bid strategy's learning period
     # says so in its own result, so the next change in a troubleshooting
@@ -1147,6 +1168,9 @@ def _create_server() -> Server:
 
     @server.call_tool()  # type: ignore[untyped-decorator]
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
+        # Which client is on the other end, for the journal (#758). Once per
+        # process, best-effort — never fails a call. See the hook module.
+        capture_client_info(server)
         return await handle_call_tool(name, arguments)
 
     return server

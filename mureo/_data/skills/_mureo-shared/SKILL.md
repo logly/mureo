@@ -229,6 +229,8 @@ What can join a batch, and how far a reversal can actually go, differs by platfo
 - **Hosted connectors** (`tiktok_ads`) — join only through your own `mureo_state_action_log_append` calls, and their reversal is never executed by mureo. The batch plan is still worth having: it is an accurate manual checklist instead of a memory exercise.
 - **Search Console** — its mutations are not recorded in `action_log` at all, so they cannot join a batch today.
 
+None of that changes what is in the **journal**: every tool call you make is already one line in `JOURNAL.jsonl`, whatever the platform and whatever the outcome, so an attempt that was refused, denied or failed is recoverable there even though it is correctly absent from `action_log` (`mureo journal --failures`).
+
 If you cannot open a batch (older mureo without the tools), say so and record each entry individually — do not silently do a bulk pass with no grouping.
 
 ## Changes made outside mureo
