@@ -8,12 +8,14 @@ Manifest absent ⇒ no Amazon tools (regression-safe).
 
 from __future__ import annotations
 
-import importlib
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+from tests._server_reload import reloaded_server
 
 _MANIFEST = {
     "generated_at": "2026-05-18T00:00:00+00:00",
@@ -62,37 +64,44 @@ def _no_thirdparty(**_kw):
     return ()
 
 
-def _reload_server(
+@contextlib.contextmanager
+def _reloaded_server(
     monkeypatch,
     tmp_path: Path,
     *,
     with_manifest: bool,
     manifest: dict[str, Any] | None = None,
     connect=_fake_connect,
+    registry_entries: dict[str, Any] | None = None,
+    env: dict[str, str | None] | None = None,
 ):
-    from mureo.amazon_ads import bridge as bmod
+    """Serve the bridge from ``tmp_path``, then hand the suite a clean server.
+
+    Everything the bridge captures when the server builds it at IMPORT time
+    goes through ``reloaded_server`` so it is undone BEFORE the restoring
+    reload (#760). ``plugin_audit._audit_path`` is read per dispatched call,
+    not at import, so it stays on ``monkeypatch``.
+    """
     from mureo.auth import AmazonAdsCredentials
     from mureo.mcp import plugin_audit
 
     mp = tmp_path / "amazon_tools.json"
     if with_manifest:
         mp.write_text(json.dumps(manifest or _MANIFEST))
-    monkeypatch.setattr(
-        "mureo.core.providers.registry.discover_providers", _no_thirdparty
-    )
-    monkeypatch.setattr(bmod, "manifest_path", lambda: mp)
-    monkeypatch.setattr(
-        bmod,
-        "load_amazon_ads_credentials",
-        lambda *a, **k: AmazonAdsCredentials(
-            client_id="cid", access_token="Atza|SECRET"
-        ),
-    )
-    monkeypatch.setattr(bmod, "_default_connect", connect)
     monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl")
-    from mureo.mcp import server as mod
-
-    return importlib.reload(mod)
+    patches: dict[str, Any] = {
+        "mureo.amazon_ads.bridge.manifest_path": lambda: mp,
+        "mureo.amazon_ads.bridge.load_amazon_ads_credentials": (
+            lambda *a, **k: AmazonAdsCredentials(
+                client_id="cid", access_token="Atza|SECRET"
+            )
+        ),
+        "mureo.amazon_ads.bridge._default_connect": connect,
+    }
+    if registry_entries is not None:
+        patches["mureo.core.providers.default_registry._entries"] = registry_entries
+    with reloaded_server(_no_thirdparty, patches=patches, env=env) as mod:
+        yield mod
 
 
 def _seed_state(d: Path) -> None:
@@ -109,14 +118,11 @@ class TestAmazonServerWiring:
     ) -> None:
         from mureo.amazon_ads.bridge import AmazonAdsBridge
 
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=True)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, with_manifest=True) as mod:
             assert "campaign_management-create_campaign" in mod._PLUGIN_NAMES
             assert "account_management-query_advertiser_account" in mod._PLUGIN_NAMES
             disp = mod._PLUGIN_DISPATCH["campaign_management-create_campaign"]
             assert isinstance(disp, AmazonAdsBridge)
-        finally:
-            importlib.reload(mod)
 
     async def test_mutating_amazon_call_audited_and_promoted(
         self, monkeypatch, tmp_path
@@ -125,8 +131,7 @@ class TestAmazonServerWiring:
 
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=True)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, with_manifest=True) as mod:
             out = await mod.handle_call_tool(
                 "campaign_management-create_campaign", {"name": "X"}
             )
@@ -145,8 +150,6 @@ class TestAmazonServerWiring:
             # ``mureo.core.platform_keys``.
             assert e.platform == "plugin:mureo-amazon-ads-bridge:amazon_ads"
             assert e.observation_due is not None  # Phase 4 window
-        finally:
-            importlib.reload(mod)
 
     async def test_readonly_amazon_call_not_promoted(
         self, monkeypatch, tmp_path
@@ -155,30 +158,24 @@ class TestAmazonServerWiring:
 
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=True)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, with_manifest=True) as mod:
             await mod.handle_call_tool(
                 "account_management-query_advertiser_account", {}
             )
             doc = read_state_file(tmp_path / "STATE.json")
             assert doc.action_log == ()  # read-only ⇒ jsonl audit only
             assert (tmp_path / "audit.jsonl").exists()
-        finally:
-            importlib.reload(mod)
 
     def test_no_manifest_means_no_amazon_tools_regression_safe(
         self, monkeypatch, tmp_path
     ) -> None:
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=False)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, with_manifest=False) as mod:
             amazon = [
                 n
                 for n in mod._PLUGIN_NAMES
                 if "campaign_management" in n or "account_management" in n
             ]
             assert amazon == []
-        finally:
-            importlib.reload(mod)
 
 
 _REVERSIBLE_MANIFEST = {
@@ -273,17 +270,14 @@ class TestBridgedFailureIsNotRecordedAsAMutation:
     ):
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
-        mod = _reload_server(
+        with _reloaded_server(
             monkeypatch,
             tmp_path,
             with_manifest=True,
             manifest=manifest,
             connect=_connect_returning(text, is_error=is_error),
-        )
-        try:
+        ) as mod:
             return await mod.handle_call_tool(tool, {"campaignId": "C1"})
-        finally:
-            importlib.reload(mod)
 
     async def test_json_error_envelope_skips_the_action_log(
         self, monkeypatch, tmp_path
@@ -513,45 +507,35 @@ class TestAmazonRegistryRegistration:
         from mureo.amazon_ads.bridge import AmazonAdsBridge
         from mureo.core.providers import default_registry
 
-        monkeypatch.setattr(default_registry, "_entries", {})
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=True)
-        try:
+        with _reloaded_server(
+            monkeypatch, tmp_path, with_manifest=True, registry_entries={}
+        ):
             assert "amazon_ads" in default_registry
             assert default_registry.get("amazon_ads").provider_class is AmazonAdsBridge
-        finally:
-            importlib.reload(mod)
 
     def test_discover_yields_the_amazon_entry_exactly_once(
         self, monkeypatch, tmp_path
     ) -> None:
-        from mureo.core.providers import default_registry
-
-        monkeypatch.setattr(default_registry, "_entries", {})
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=True)
-        try:
+        with _reloaded_server(
+            monkeypatch, tmp_path, with_manifest=True, registry_entries={}
+        ) as mod:
             names = [e.name for e in mod._discover_with_amazon()]
             assert names.count("amazon_ads") == 1
             # Idempotent: calling again (as a re-discovery would) does not
             # duplicate the entry either.
             names = [e.name for e in mod._discover_with_amazon()]
             assert names.count("amazon_ads") == 1
-        finally:
-            importlib.reload(mod)
 
     def test_each_amazon_tool_is_collected_exactly_once(
         self, monkeypatch, tmp_path
     ) -> None:
-        from mureo.core.providers import default_registry
-
-        monkeypatch.setattr(default_registry, "_entries", {})
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=True)
-        try:
+        with _reloaded_server(
+            monkeypatch, tmp_path, with_manifest=True, registry_entries={}
+        ) as mod:
             names = [t.name for t in mod._PLUGIN_TOOLS]
             assert names.count("campaign_management-create_campaign") == 1
             assert names.count("account_management-query_advertiser_account") == 1
             assert len(mod._ALL_TOOLS) == len({t.name for t in mod._ALL_TOOLS})
-        finally:
-            importlib.reload(mod)
 
     def test_registration_contributes_zero_tools_without_a_manifest(
         self, monkeypatch, tmp_path
@@ -559,13 +543,11 @@ class TestAmazonRegistryRegistration:
         """Registry presence must not create tools out of thin air."""
         from mureo.core.providers import default_registry
 
-        monkeypatch.setattr(default_registry, "_entries", {})
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=False)
-        try:
+        with _reloaded_server(
+            monkeypatch, tmp_path, with_manifest=False, registry_entries={}
+        ) as mod:
             assert "amazon_ads" in default_registry  # UI can still configure it
             assert mod._PLUGIN_TOOLS == []
-        finally:
-            importlib.reload(mod)
 
 
 @pytest.mark.unit
@@ -727,16 +709,14 @@ class TestAmazonDisableEnvVar:
     def test_mcp_server_exposes_no_amazon_tools_when_disabled(
         self, monkeypatch, tmp_path
     ) -> None:
-        from mureo.core.providers import default_registry
-
-        monkeypatch.setattr(default_registry, "_entries", {})
-        monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", "1")
-        mod = _reload_server(monkeypatch, tmp_path, with_manifest=True)
-        try:
+        with _reloaded_server(
+            monkeypatch,
+            tmp_path,
+            with_manifest=True,
+            registry_entries={},
+            env={"MUREO_DISABLE_AMAZON_ADS": "1"},
+        ) as mod:
             assert "campaign_management-create_campaign" not in mod._PLUGIN_NAMES
-        finally:
-            monkeypatch.delenv("MUREO_DISABLE_AMAZON_ADS", raising=False)
-            importlib.reload(mod)
 
     def test_configure_process_omits_amazon_when_disabled(self, monkeypatch) -> None:
         from mureo.core.providers import default_registry

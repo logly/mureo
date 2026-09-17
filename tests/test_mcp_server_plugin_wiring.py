@@ -11,6 +11,7 @@ from mcp.types import TextContent, Tool, ToolAnnotations
 
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import ProviderEntry
+from tests._server_reload import reloaded_server
 
 
 class _Plugin:
@@ -47,18 +48,14 @@ def _fake_discover(**_kw: Any) -> tuple[ProviderEntry, ...]:
 
 
 @pytest.fixture
-def server_with_plugin(monkeypatch):
-    """Reload server.py with discovery returning one plugin."""
-    # collect_plugin_tools resolves registry.discover_providers live at
-    # call time, so patching the registry attribute is sufficient.
-    monkeypatch.setattr(
-        "mureo.core.providers.registry.discover_providers", _fake_discover
-    )
-    from mureo.mcp import server as mod
+def server_with_plugin():
+    """Reload server.py with discovery returning one plugin.
 
-    mod = importlib.reload(mod)
-    yield mod
-    importlib.reload(mod)  # restore clean module for other tests
+    ``reloaded_server`` restores discovery BEFORE its restoring reload, so
+    the fake plugin cannot survive into a later test module (#760).
+    """
+    with reloaded_server(_fake_discover) as mod:
+        yield mod
 
 
 @pytest.mark.unit
@@ -104,7 +101,7 @@ class _CoreShadowPlugin:
 
 
 @pytest.mark.unit
-def test_plugin_cannot_shadow_a_real_builtin_tool(monkeypatch) -> None:
+def test_plugin_cannot_shadow_a_real_builtin_tool() -> None:
     """End-to-end: a plugin advertising a core tool name is dropped,
     and the built-in keeps ownership of that name in dispatch.
     """
@@ -120,16 +117,10 @@ def test_plugin_cannot_shadow_a_real_builtin_tool(monkeypatch) -> None:
             ),
         )
 
-    monkeypatch.setattr("mureo.core.providers.registry.discover_providers", _disc)
-    from mureo.mcp import server as mod
-
-    mod = importlib.reload(mod)
-    try:
+    with reloaded_server(_disc) as mod:
         assert "rollback_plan_get" not in mod._PLUGIN_NAMES
         assert "rollback_plan_get" in mod._ROLLBACK_NAMES  # built-in owns it
         # Dispatch reaches the built-in family check first regardless.
-    finally:
-        importlib.reload(mod)
 
 
 class _PreflightShadowPlugin:
@@ -153,7 +144,7 @@ class _PreflightShadowPlugin:
 
 
 @pytest.mark.unit
-def test_plugin_cannot_shadow_the_learning_preflight_tool(monkeypatch) -> None:
+def test_plugin_cannot_shadow_the_learning_preflight_tool() -> None:
     """#680: the learning-preflight family was missing from the
     hand-maintained ``reserved_names`` union, so a plugin claiming
     ``mureo_learning_reset_preflight`` was collected instead of dropped —
@@ -173,11 +164,7 @@ def test_plugin_cannot_shadow_the_learning_preflight_tool(monkeypatch) -> None:
             ),
         )
 
-    monkeypatch.setattr("mureo.core.providers.registry.discover_providers", _disc)
-    from mureo.mcp import server as mod
-
-    mod = importlib.reload(mod)
-    try:
+    with reloaded_server(_disc) as mod:
         assert tool_name in mod._LEARNING_PREFLIGHT_NAMES  # built-in owns it
         assert tool_name not in mod._PLUGIN_NAMES
         listed = [t.name for t in mod._ALL_TOOLS]
@@ -185,8 +172,6 @@ def test_plugin_cannot_shadow_the_learning_preflight_tool(monkeypatch) -> None:
         # The built-in's schema — not the plugin's empty one — still governs
         # input validation for that name.
         assert "tool_name" in mod._TOOL_VALIDATORS[tool_name].schema["required"]
-    finally:
-        importlib.reload(mod)
 
 
 @pytest.mark.unit
@@ -316,13 +301,7 @@ class TestPluginAuditAndThrottle:
 
         log = tmp_path / "plugin_audit.jsonl"
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers", _boom_discover
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_boom_discover) as mod:
             with pytest.raises(RuntimeError, match="plugin blew up"):
                 await mod.handle_call_tool("boom_plugin_explode", {"x": 1})
             # Error recorded...
@@ -331,8 +310,6 @@ class TestPluginAuditAndThrottle:
             # ...and the server is NOT dead — a built-in still dispatches.
             names = {t.name for t in await mod.handle_list_tools()}
             assert "rollback_plan_get" in names
-        finally:
-            importlib.reload(mod)
 
 
 # ---------------------------------------------------------------------------
@@ -501,8 +478,6 @@ class TestPhase2Promotion:
         ``action_log`` under one platform — one platform's action recorded
         as another's.
         """
-        import importlib
-
         from mureo.context.state import read_state_file
         from mureo.mcp import plugin_audit
 
@@ -511,14 +486,7 @@ class TestPhase2Promotion:
         monkeypatch.setattr(
             plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
         )
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_multi,
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_multi) as mod:
             await mod.handle_call_tool("sibling_a_update", {})
             await mod.handle_call_tool("sibling_b_update", {})
             doc = read_state_file(tmp_path / "STATE.json")
@@ -526,8 +494,6 @@ class TestPhase2Promotion:
                 "plugin:shared-dist:sibling_a",
                 "plugin:shared-dist:sibling_b",
             ]
-        finally:
-            importlib.reload(mod)
 
     async def test_readonly_plugin_not_promoted(self, tmp_path, monkeypatch) -> None:
         from mureo.context.state import read_state_file
@@ -538,36 +504,18 @@ class TestPhase2Promotion:
         monkeypatch.setattr(
             plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
         )
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_ReadOnlyPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_ReadOnlyPlugin)) as mod:
             await mod.handle_call_tool("ro_plugin_report", {})
             doc = read_state_file(tmp_path / "STATE.json")
             assert doc.action_log == ()  # read-only ⇒ jsonl only
             assert (tmp_path / "audit.jsonl").exists()
-        finally:
-            importlib.reload(mod)
 
-    def test_declared_throttle_gets_dedicated_bucket(self, monkeypatch) -> None:
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_ThrottleHintPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+    def test_declared_throttle_gets_dedicated_bucket(self) -> None:
+        with reloaded_server(_disc_for(_ThrottleHintPlugin)) as mod:
             assert "th_plugin_go" in mod._PLUGIN_TOOL_THROTTLERS
             assert (
                 mod._PLUGIN_TOOL_THROTTLERS["th_plugin_go"] is not mod._PLUGIN_THROTTLER
             )
-        finally:
-            importlib.reload(mod)
 
     async def test_dispatch_passes_arguments_to_identity_promotion(
         self, tmp_path, monkeypatch
@@ -580,14 +528,7 @@ class TestPhase2Promotion:
         monkeypatch.setattr(
             plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
         )
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_IdentityPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_IdentityPlugin)) as mod:
             await mod.handle_call_tool(
                 "identity_plugin_update_placement",
                 {"campaignRef": "c1", "placementRef": "p1"},
@@ -596,8 +537,6 @@ class TestPhase2Promotion:
             assert entry.campaign_id == "c1"
             assert entry.entity_type == "placement"
             assert entry.entity_id == "p1"
-        finally:
-            importlib.reload(mod)
 
 
 # ---------------------------------------------------------------------------
@@ -636,21 +575,14 @@ class _StrictSchemaPlugin:
 class TestGapAPluginSchemaValidation:
     @pytest.fixture
     def server_strict(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_StrictSchemaPlugin),
-        )
         # Keep the audit jsonl out of the developer's home/cwd.
         from mureo.mcp import plugin_audit
 
         monkeypatch.setattr(
             plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
         )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        yield mod
-        importlib.reload(mod)
+        with reloaded_server(_disc_for(_StrictSchemaPlugin)) as mod:
+            yield mod
 
     def test_validator_built_for_plugin_tool(self, server_strict) -> None:
         # GAP A: a plugin tool's schema is now compiled into a validator,
@@ -706,10 +638,6 @@ class TestGapBPluginStrategyReminder:
         monkeypatch.setattr(
             plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
         )
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_ReadOnlyPlugin),
-        )
         fake_ctx = MagicMock()
         fake_ctx.state_store.read_strategy.return_value = [
             StrategyEntry(context_type="goal", title="Q2 CPA target", content="x"),
@@ -718,14 +646,9 @@ class TestGapBPluginStrategyReminder:
             "mureo.core.strategy_reminder.get_runtime_context", lambda: fake_ctx
         )
         monkeypatch.delenv("MUREO_DISABLE_STRATEGY_REMINDER", raising=False)
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_ReadOnlyPlugin)) as mod:
             out = await mod.handle_call_tool("ro_plugin_report", {})
             assert all("Q2 CPA target" not in getattr(c, "text", "") for c in out)
-        finally:
-            importlib.reload(mod)
 
 
 @pytest.mark.unit
@@ -748,20 +671,11 @@ class TestGapCPluginReversalParamKeys:
             None,
         )
 
-    def test_schemaless_plugin_tool_returns_true_none(self, monkeypatch) -> None:
+    def test_schemaless_plugin_tool_returns_true_none(self) -> None:
         # _ReadOnlyPlugin's tool declares empty properties → (True, None):
         # registered but no plan-time key restriction.
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_ReadOnlyPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_ReadOnlyPlugin)) as mod:
             assert mod.plugin_reversal_param_keys("ro_plugin_report") == (True, None)
-        finally:
-            importlib.reload(mod)
 
 
 # ---------------------------------------------------------------------------
@@ -820,14 +734,7 @@ class TestErrorEnvelopeNotPromoted:
         monkeypatch.chdir(tmp_path)
         audit = tmp_path / "audit.jsonl"
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: audit)
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_ErrorEnvelopePlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_ErrorEnvelopePlugin)) as mod:
             out = await mod.handle_call_tool("err_plugin_pause", {"campaign_id": "123"})
             # The error envelope is returned to the agent unchanged.
             assert out[0].text == "API error: quota exceeded"
@@ -839,8 +746,6 @@ class TestErrorEnvelopeNotPromoted:
             rec = json.loads(audit.read_text(encoding="utf-8").splitlines()[0])
             assert rec["tool"] == "err_plugin_pause"
             assert rec["ok"] is True
-        finally:
-            importlib.reload(mod)
 
     async def test_error_result_still_appends_strategy_reminder(
         self, tmp_path, monkeypatch
@@ -855,10 +760,6 @@ class TestErrorEnvelopeNotPromoted:
         monkeypatch.setattr(
             plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
         )
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_ErrorEnvelopePlugin),
-        )
         fake_ctx = MagicMock()
         fake_ctx.state_store.read_strategy.return_value = [
             StrategyEntry(context_type="goal", title="Q2 CPA target", content="x"),
@@ -867,16 +768,11 @@ class TestErrorEnvelopeNotPromoted:
             "mureo.core.strategy_reminder.get_runtime_context", lambda: fake_ctx
         )
         monkeypatch.delenv("MUREO_DISABLE_STRATEGY_REMINDER", raising=False)
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_ErrorEnvelopePlugin)) as mod:
             out = await mod.handle_call_tool("err_plugin_pause", {"campaign_id": "123"})
             # Error envelope preserved AND the reminder still appended.
             assert out[0].text == "API error: quota exceeded"
             assert any("Q2 CPA target" in getattr(c, "text", "") for c in out)
-        finally:
-            importlib.reload(mod)
 
     async def test_normal_result_still_promoted(
         self, server_with_plugin, tmp_path, monkeypatch
@@ -1151,14 +1047,7 @@ class TestCaptureReversal:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_CaptureReversalPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_CaptureReversalPlugin)) as mod:
             await mod.handle_call_tool(
                 "cap_plugin_set_status", {"ad_id": "A1", "status": "paused"}
             )
@@ -1182,8 +1071,6 @@ class TestCaptureReversal:
             assert plan.status == RollbackStatus.SUPPORTED
             assert plan.operation == "cap_plugin_set_status"
             assert plan.params == {"ad_id": "A1", "status": "enabled"}
-        finally:
-            importlib.reload(mod)
 
     async def test_falls_back_to_static_when_no_capture_hook(
         self, tmp_path, monkeypatch
@@ -1194,22 +1081,13 @@ class TestCaptureReversal:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_StaticReversalPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_StaticReversalPlugin)) as mod:
             await mod.handle_call_tool("static_plugin_act", {})
             doc = read_state_file(tmp_path / "STATE.json")
             assert doc.action_log[0].reversible_params == {
                 "operation": "static_plugin_act",
                 "params": {"k": "v"},
             }
-        finally:
-            importlib.reload(mod)
 
     async def test_capture_failure_falls_back_to_static_without_blocking(
         self, tmp_path, monkeypatch
@@ -1220,14 +1098,7 @@ class TestCaptureReversal:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_CaptureRaisesPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_CaptureRaisesPlugin)) as mod:
             # The mutation still succeeds despite capture_reversal raising.
             out = await mod.handle_call_tool("raise_plugin_act", {})
             assert out[0].text == "ok"
@@ -1237,8 +1108,6 @@ class TestCaptureReversal:
                 "operation": "raise_plugin_act",
                 "params": {},
             }
-        finally:
-            importlib.reload(mod)
 
     async def test_capture_not_called_for_read_only_tool(
         self, tmp_path, monkeypatch
@@ -1249,18 +1118,9 @@ class TestCaptureReversal:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_ReadOnlyCapturePlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_ReadOnlyCapturePlugin)) as mod:
             await mod.handle_call_tool("ro_cap_plugin_report", {})
             assert _CAPTURE_CALLS == []  # read-only ⇒ capture skipped
-        finally:
-            importlib.reload(mod)
 
     async def test_captured_reversal_dropped_on_error_envelope(
         self, tmp_path, monkeypatch
@@ -1276,14 +1136,7 @@ class TestCaptureReversal:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_CaptureButErrorsPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_CaptureButErrorsPlugin)) as mod:
             out = await mod.handle_call_tool(
                 "cap_err_plugin_set_status", {"ad_id": "A1"}
             )
@@ -1292,8 +1145,6 @@ class TestCaptureReversal:
             assert _CAPTURE_CALLS == [("cap_err_plugin_set_status", {"ad_id": "A1"})]
             doc = read_state_file(tmp_path / "STATE.json")
             assert doc.action_log == ()
-        finally:
-            importlib.reload(mod)
 
     async def test_a_cancelled_capture_propagates_and_the_mutation_never_runs(
         self, tmp_path, monkeypatch
@@ -1315,14 +1166,7 @@ class TestCaptureReversal:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_CaptureHangsPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_CaptureHangsPlugin)) as mod:
             task = asyncio.create_task(
                 mod.handle_call_tool("hang_plugin_act", {"ad_id": "A1"})
             )
@@ -1335,8 +1179,6 @@ class TestCaptureReversal:
             with pytest.raises(asyncio.CancelledError):
                 await task
             assert _MUTATION_CALLS == []  # the write never happened
-        finally:
-            importlib.reload(mod)
 
     async def test_a_capture_failure_records_the_mutation_unreversed(
         self, tmp_path, monkeypatch
@@ -1350,19 +1192,10 @@ class TestCaptureReversal:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
-        monkeypatch.setattr(
-            "mureo.core.providers.registry.discover_providers",
-            _disc_for(_CaptureRaisesNoMetaPlugin),
-        )
-        from mureo.mcp import server as mod
-
-        mod = importlib.reload(mod)
-        try:
+        with reloaded_server(_disc_for(_CaptureRaisesNoMetaPlugin)) as mod:
             out = await mod.handle_call_tool("bare_raise_plugin_act", {"ad_id": "A1"})
             assert out[0].text == "ok"
             assert _MUTATION_CALLS == ["bare_raise_plugin_act"]
             entry = read_state_file(tmp_path / "STATE.json").action_log[0]
             assert entry.action == "bare_raise_plugin_act"
             assert entry.reversible_params is None  # audit-only, not a guess
-        finally:
-            importlib.reload(mod)

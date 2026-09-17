@@ -16,8 +16,8 @@ allowed to assume — no more.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
-import importlib
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from mureo.amazon_ads import reversal as rev
+from tests._server_reload import reloaded_server
 
 _ACCOUNT = {"profileId": "1234567890"}
 
@@ -1018,8 +1019,16 @@ class _E2ESession:
         )()
 
 
-def _reload_server(monkeypatch, tmp_path: Path, calls: list, *, fail_query: bool):
-    from mureo.amazon_ads import bridge as bmod
+@contextlib.contextmanager
+def _reloaded_server(monkeypatch, tmp_path: Path, calls: list, *, fail_query: bool):
+    """Reload the server with the bridge pointed at a faked Amazon endpoint.
+
+    The bridge captures ``manifest_path`` / ``load_amazon_ads_credentials`` /
+    ``_default_connect`` when the server constructs it at IMPORT time, so all
+    three ride ``reloaded_server`` and are undone before the restoring reload
+    (#760). ``plugin_audit._audit_path`` is read per call, not at import, so
+    it stays on ``monkeypatch``.
+    """
     from mureo.auth import AmazonAdsCredentials
     from mureo.mcp import plugin_audit
 
@@ -1036,22 +1045,20 @@ def _reload_server(monkeypatch, tmp_path: Path, calls: list, *, fail_query: bool
 
         return _CM()
 
-    monkeypatch.setattr(
-        "mureo.core.providers.registry.discover_providers", lambda **_kw: ()
-    )
-    monkeypatch.setattr(bmod, "manifest_path", lambda: mp)
-    monkeypatch.setattr(
-        bmod,
-        "load_amazon_ads_credentials",
-        lambda *a, **k: AmazonAdsCredentials(
-            client_id="cid", access_token="Atza|SECRET"
-        ),
-    )
-    monkeypatch.setattr(bmod, "_default_connect", _connect)
     monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl")
-    from mureo.mcp import server as mod
-
-    return importlib.reload(mod)
+    with reloaded_server(
+        lambda **_kw: (),
+        patches={
+            "mureo.amazon_ads.bridge.manifest_path": lambda: mp,
+            "mureo.amazon_ads.bridge.load_amazon_ads_credentials": (
+                lambda *a, **k: AmazonAdsCredentials(
+                    client_id="cid", access_token="Atza|SECRET"
+                )
+            ),
+            "mureo.amazon_ads.bridge._default_connect": _connect,
+        },
+    ) as mod:
+        yield mod
 
 
 def _seed_state(d: Path) -> None:
@@ -1081,8 +1088,7 @@ class TestEndToEndRollbackPlan:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         calls: list[Any] = []
-        mod = _reload_server(monkeypatch, tmp_path, calls, fail_query=False)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, calls, fail_query=False) as mod:
             out = await mod.handle_call_tool(
                 "campaign_management-update_campaign_state", copy.deepcopy(_E2E_ARGS)
             )
@@ -1103,8 +1109,6 @@ class TestEndToEndRollbackPlan:
             assert plan.params["body"]["campaigns"] == [
                 {"campaignId": "C1", "state": "ENABLED"}
             ]
-        finally:
-            importlib.reload(mod)
 
     async def test_the_capture_read_is_inside_the_mutation_throttle_slot(
         self, monkeypatch, tmp_path
@@ -1114,8 +1118,7 @@ class TestEndToEndRollbackPlan:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         calls: list[Any] = []
-        mod = _reload_server(monkeypatch, tmp_path, calls, fail_query=False)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, calls, fail_query=False) as mod:
             real_throttle = mod._acquire_plugin_throttle
 
             async def _recording_throttle(name: str) -> None:
@@ -1131,8 +1134,6 @@ class TestEndToEndRollbackPlan:
                 "campaign_management-query_campaign",
                 "campaign_management-update_campaign_state",
             ]
-        finally:
-            importlib.reload(mod)
 
     async def test_capture_failure_never_blocks_the_write(
         self, monkeypatch, tmp_path
@@ -1142,8 +1143,7 @@ class TestEndToEndRollbackPlan:
         _seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         calls: list[Any] = []
-        mod = _reload_server(monkeypatch, tmp_path, calls, fail_query=True)
-        try:
+        with _reloaded_server(monkeypatch, tmp_path, calls, fail_query=True) as mod:
             out = await mod.handle_call_tool(
                 "campaign_management-update_campaign_state", copy.deepcopy(_E2E_ARGS)
             )
@@ -1152,5 +1152,3 @@ class TestEndToEndRollbackPlan:
             entry = read_state_file(tmp_path / "STATE.json").action_log[0]
             assert entry.action == "campaign_management-update_campaign_state"
             assert entry.reversible_params is None  # audit-only, not a guess
-        finally:
-            importlib.reload(mod)
