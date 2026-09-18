@@ -63,8 +63,13 @@ def test_stays_readable_under_the_size_budget() -> None:
       writer may NOT assert, and a rule of that kind only works in the step
       whose output it constrains: a reservation that is checked one step
       later has already been dropped from the field the operator reads.
+    - #767: two — the report header naming the STATE.json this run read, and
+      the blank line before it. A "days since the last check" verdict that
+      does not name the file it was computed from is not checkable, which is
+      exactly how a card running in one workspace and a terminal opened in
+      another produced a wrong verdict nobody could see was wrong.
     """
-    assert len(_body().splitlines()) <= 181
+    assert len(_body().splitlines()) <= 183
 
 
 def test_two_modes_documented() -> None:

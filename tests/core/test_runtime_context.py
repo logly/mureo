@@ -131,6 +131,50 @@ def test_workspace_id_rejects_empty_or_whitespace(bad: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# notices — free-text runtime warnings the context read tools echo (#767)
+# ---------------------------------------------------------------------------
+
+
+def _ctx_with_notices(notices: Any) -> RuntimeContext:
+    return RuntimeContext(
+        secret_store=_S(),
+        state_store=_St(),
+        knowledge_store=_K(),
+        throttle_store=_T(),
+        workspace_id="default",
+        notices=notices,
+    )
+
+
+@pytest.mark.unit
+def test_notices_default_to_empty() -> None:
+    """The single-workspace default has nothing to warn about, so the field
+    is absent from the envelope unless an alternate runtime fills it."""
+    assert _ctx().notices == ()
+
+
+@pytest.mark.unit
+def test_notices_round_trip() -> None:
+    ctx = _ctx_with_notices(("launched outside a client workspace",))
+    assert ctx.notices == ("launched outside a client workspace",)
+
+
+@pytest.mark.unit
+def test_notices_reject_a_list() -> None:
+    """A ``list`` is refused rather than coerced — the dataclass is frozen
+    and a mutable member would defeat that."""
+    with pytest.raises(ValueError, match="notices"):
+        _ctx_with_notices(["a"])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad", [("",), ("  ",), ("\t",), (1,), (None,)])
+def test_notices_reject_blank_or_non_string_items(bad: Any) -> None:
+    with pytest.raises(ValueError, match="notices"):
+        _ctx_with_notices(bad)
+
+
+# ---------------------------------------------------------------------------
 # default_runtime_context() — wires the four file-backed default stores
 # ---------------------------------------------------------------------------
 
@@ -162,6 +206,14 @@ def test_default_factory_workspace_id_is_default_sentinel(tmp_path: Path) -> Non
 
     ctx = default_runtime_context(workspace=tmp_path)
     assert ctx.workspace_id == "default"
+
+
+@pytest.mark.unit
+def test_default_factory_yields_empty_notices(tmp_path: Path) -> None:
+    """Nothing in OSS produces a notice — the factory must not invent one."""
+    from mureo.core.runtime_context import default_runtime_context
+
+    assert default_runtime_context(workspace=tmp_path).notices == ()
 
 
 @pytest.mark.unit

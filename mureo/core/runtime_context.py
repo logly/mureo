@@ -18,6 +18,11 @@ can be wired before the refactor lands.
 the canonical value is the literal :data:`DEFAULT_WORKSPACE_ID`;
 alternate runtimes are free to use any other non-empty string. Empty
 strings are rejected at construction time.
+
+``notices`` carries free-text warnings an alternate runtime wants the
+agent to read rather than lose on stderr (#767). It is empty for the
+single-workspace default and is echoed by the context read tools in
+their response envelope only — never persisted.
 """
 
 from __future__ import annotations
@@ -45,12 +50,14 @@ DEFAULT_WORKSPACE_ID = "default"
 
 @dataclass(frozen=True)
 class RuntimeContext:
-    """Immutable bundle of pluggable backends + a workspace identifier.
+    """Immutable bundle of pluggable backends + a workspace identifier,
+    plus any free-text ``notices`` the runtime wants the agent to see.
 
     The dataclass is frozen so a context can be passed safely across
     threads / coroutines without races on its fields. The pointed-to
     stores are *not* required to be immutable — they encapsulate their
-    own concurrency story.
+    own concurrency story. ``notices`` is a tuple (not a list) for the
+    same reason: a mutable member would defeat the freeze.
     """
 
     secret_store: SecretStore
@@ -58,16 +65,29 @@ class RuntimeContext:
     knowledge_store: KnowledgeStore
     throttle_store: ThrottleStore
     workspace_id: str
+    #: Free-text notices an alternate runtime wants the agent to SEE — e.g.
+    #: "launched outside a client workspace while 3 clients are registered".
+    #: Echoed by the context read tools (``mureo_state_get`` /
+    #: ``mureo_strategy_get``) in their response envelope only; never
+    #: persisted. Empty for the single-workspace default.
+    notices: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        """Reject empty / whitespace-only ``workspace_id``.
+        """Reject an empty / whitespace-only ``workspace_id`` and any
+        ``notices`` value that is not a tuple of non-blank strings.
 
         Matches the validation pattern used by
         :func:`mureo.core.providers.base.validate_provider_name` —
-        identifiers in this layer must be unambiguous strings.
+        identifiers in this layer must be unambiguous strings. A ``list``
+        of notices is refused rather than coerced: the dataclass is
+        frozen, and a mutable member would defeat that.
         """
         if not isinstance(self.workspace_id, str) or not self.workspace_id.strip():
             raise ValueError("workspace_id must be a non-empty, non-whitespace string")
+        if not isinstance(self.notices, tuple) or not all(
+            isinstance(notice, str) and notice.strip() for notice in self.notices
+        ):
+            raise ValueError("notices must be a tuple of non-empty strings")
 
 
 # ---------------------------------------------------------------------------

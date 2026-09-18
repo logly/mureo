@@ -1293,6 +1293,140 @@ async def test_read_tool_descriptions_advertise_server_now(name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# #767 — the read tools name the STATE.json they read, and surface the
+# runtime's notices.
+#
+# Observed: an agency card ran /daily-check with cwd = the client workspace;
+# the next day the operator's own terminal (another directory) read another
+# STATE.json and reported "last check 11 days ago". Nothing in the response
+# said which file had been consulted, so the verdict was uncheckable.
+# ---------------------------------------------------------------------------
+
+
+def _inject_notices(monkeypatch, notices: tuple[str, ...]) -> None:
+    """Swap the cached ``RuntimeContext`` for one carrying ``notices``.
+
+    Same seam the workspace-routing test above uses — an alternate runtime
+    is the only thing that produces notices, so it has to be simulated."""
+    from mureo.core.runtime_context import RuntimeContext, default_runtime_context
+
+    base = default_runtime_context()
+    monkeypatch.setattr(
+        "mureo.core.runtime_context._cached_context",
+        RuntimeContext(
+            secret_store=base.secret_store,
+            state_store=base.state_store,
+            knowledge_store=base.knowledge_store,
+            throttle_store=base.throttle_store,
+            workspace_id=base.workspace_id,
+            notices=notices,
+        ),
+    )
+
+
+async def test_state_get_names_the_file_it_read(cwd_to_tmp) -> None:
+    (cwd_to_tmp / "STATE.json").write_text(
+        json.dumps({"version": "2", "platforms": {}, "action_log": []}),
+        encoding="utf-8",
+    )
+    mod = _import_tools()
+    payload = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+    assert payload["path"] == str(cwd_to_tmp / "STATE.json")
+    assert payload["workspace_id"] == "default"
+    # Omitted when the runtime has none, so the default shape stays minimal.
+    assert "notices" not in payload
+
+
+async def test_state_get_names_the_file_when_it_is_absent(cwd_to_tmp) -> None:
+    """The empty-default branch is exactly where naming the file matters: a
+    missing STATE.json in the wrong directory is what reads as "no history"."""
+    mod = _import_tools()
+    payload = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+    assert payload["path"] == str(cwd_to_tmp / "STATE.json")
+    assert payload["workspace_id"] == "default"
+    assert "notices" not in payload
+
+
+async def test_state_get_echoes_runtime_notices(cwd_to_tmp, monkeypatch) -> None:
+    _inject_notices(monkeypatch, ("hello",))
+    mod = _import_tools()
+    payload = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+    assert payload["notices"] == ["hello"]
+
+
+async def test_strategy_get_names_the_workspace(cwd_to_tmp) -> None:
+    (cwd_to_tmp / "STRATEGY.md").write_text("# Strategy\n", encoding="utf-8")
+    mod = _import_tools()
+    payload = json.loads((await mod.handle_tool("mureo_strategy_get", {}))[0].text)
+    assert payload["path"] == str(cwd_to_tmp / "STRATEGY.md")
+    assert payload["workspace_id"] == "default"
+    assert "notices" not in payload
+
+
+async def test_strategy_get_names_the_workspace_when_absent(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    payload = json.loads((await mod.handle_tool("mureo_strategy_get", {}))[0].text)
+    assert payload["exists"] is False
+    assert payload["path"] == str(cwd_to_tmp / "STRATEGY.md")
+    assert payload["workspace_id"] == "default"
+    assert "notices" not in payload
+
+
+async def test_strategy_get_echoes_runtime_notices(cwd_to_tmp, monkeypatch) -> None:
+    _inject_notices(monkeypatch, ("hello",))
+    mod = _import_tools()
+    payload = json.loads((await mod.handle_tool("mureo_strategy_get", {}))[0].text)
+    assert payload["notices"] == ["hello"]
+
+
+async def test_envelope_fields_are_not_persisted_by_a_later_write(
+    cwd_to_tmp, monkeypatch
+) -> None:
+    """Round-trip guard, same contract as ``server_now``: echo the whole read
+    response into STATE.json (what a Code-path bulk ``Write`` does), then let
+    any mureo write touch the file — none of the three envelope keys may
+    survive into the persisted document."""
+    _inject_notices(monkeypatch, ("hello",))
+    (cwd_to_tmp / "STATE.json").write_text(
+        json.dumps({"version": "2", "platforms": {}, "action_log": []}),
+        encoding="utf-8",
+    )
+    mod = _import_tools()
+    read = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+    assert {"path", "workspace_id", "notices"} <= read.keys()
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(read), encoding="utf-8")
+
+    await mod.handle_tool(
+        "mureo_state_report_set",
+        {
+            "report": "daily",
+            "summary": {
+                "generated_at": "2026-06-17T00:00:00+00:00",
+                "period": "2026-06-17",
+            },
+        },
+    )
+    await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {"entry": {"action": "test", "platform": "google_ads"}},
+    )
+    on_disk = json.loads((cwd_to_tmp / "STATE.json").read_text(encoding="utf-8"))
+    for key in ("path", "workspace_id", "notices"):
+        assert key not in on_disk
+
+
+@pytest.mark.parametrize("name", ["mureo_state_get", "mureo_strategy_get"])
+async def test_read_tool_descriptions_advertise_the_file_they_read(
+    name: str,
+) -> None:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == name)
+    assert "path" in tool.description
+    assert "workspace_id" in tool.description
+    assert "notices" in tool.description
+
+
+# ---------------------------------------------------------------------------
 # #468 — ad-level status travels through mureo_state_upsert_campaign
 # ---------------------------------------------------------------------------
 
