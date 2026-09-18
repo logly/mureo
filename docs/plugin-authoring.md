@@ -2758,7 +2758,10 @@ construction time. `notices` must be a **tuple** of non-blank strings
 (a list is rejected — the context is frozen, and a mutable member
 would defeat that); the two context read tools echo it in their
 response envelope, so leave it empty unless the runtime has something
-the agent must see. Register a **zero-arg callable returning a
+the agent must see. Raise a notice **only** for a condition under which
+the agent should NOT proceed on this workspace: workspace-bound skills
+(`/daily-check`) read a notice as a stop signal and end the run on it
+rather than continue. Register a **zero-arg callable returning a
 `RuntimeContext`** under the entry-point group:
 
 ```toml

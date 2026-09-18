@@ -170,6 +170,25 @@ def test_daily_check_names_the_file_behind_a_stale_verdict() -> None:
     assert any("`path`" in ln for ln in missing)
 
 
+def test_daily_check_stops_on_runtime_notices() -> None:
+    """A notice means the runtime does not consider this session to be on the
+    workspace it should be on. Making the mismatch visible is not enough: the
+    run must END at step 0, or the session still spends a full deep check
+    diagnosing the wrong STATE.json and answers "the last check was 11 days
+    ago". Pinned in the step-0 paragraph — a stop rule further down the file
+    is read after the steps it is supposed to prevent."""
+    paragraphs = [
+        block
+        for block in _body("daily-check").split("\n\n")
+        if "0. **Establish today**" in block
+    ]
+    assert paragraphs, "daily-check must keep its step-0 paragraph"
+    step_zero = paragraphs[0]
+    assert "server_now" in step_zero
+    assert "`notices` is non-empty, stop" in step_zero
+    assert "do not run steps 1–15" in step_zero
+
+
 def test_daily_check_never_persists_the_envelope_fields() -> None:
     """``path`` / ``workspace_id`` / ``notices`` are response fields, exactly
     like ``server_now``; a persisted copy is tomorrow's lie."""

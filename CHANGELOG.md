@@ -11,9 +11,11 @@
   was 11 days ago" was uncheckable because nothing said which file that
   came from. Like `server_now` these are response fields only and are never
   persisted. `RuntimeContext.notices` is new (default empty) so an alternate
-  runtime can put a warning in front of the agent instead of on stderr. `/daily-check` now opens its report
-  with a `Workspace:` line and names the file when it declares the previous
-  summary missing or stale.
+  runtime can put a warning in front of the agent instead of on stderr.
+  `/daily-check` now opens its report with a `Workspace:` line and names
+  the file when it declares the previous summary missing or stale, and
+  stops at step 0 when `notices` is non-empty instead of diagnosing the
+  wrong `STATE.json`.
 
 - **Dispatcher-level journal** (#758, phase 1). Every MCP tool call that
   enters the dispatcher now leaves exactly one append-only JSON line in
