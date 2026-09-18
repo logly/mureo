@@ -137,6 +137,53 @@ def test_shared_tool_selection_documents_the_clock() -> None:
     assert "never write `server_now` back into STATE.json" in body
 
 
+# ---------------------------------------------------------------------------
+# #767 — a verdict about "the last check" is only checkable if the report
+# names the STATE.json it was computed from.
+# ---------------------------------------------------------------------------
+
+
+def test_daily_check_opens_its_report_with_the_workspace_it_read() -> None:
+    """An operator whose scheduled card ran in one workspace and whose
+    terminal opened another has to see the mismatch in the report header,
+    not deduce it from a wrong "N days since the last check"."""
+    body = _body("daily-check")
+    assert "Workspace:" in body
+    assert "`path`" in body
+    assert "`workspace_id`" in body
+    assert "`notices`" in body
+
+
+def test_daily_check_names_the_file_behind_a_stale_verdict() -> None:
+    """The deep trigger and the missing-summary fallback are the two places
+    that declare the stored report old or absent — both must name the file."""
+    body = _body("daily-check")
+    deep = [ln for ln in body.splitlines() if "older than 7 days" in ln]
+    assert deep, "daily-check must keep its deep trigger"
+    assert any("`path`" in ln for ln in deep)
+    missing = [ln for ln in body.splitlines() if "summary is **missing**" in ln]
+    assert missing, "daily-check must keep its missing-summary fallback"
+    assert any("`path`" in ln for ln in missing)
+
+
+def test_daily_check_never_persists_the_envelope_fields() -> None:
+    """``path`` / ``workspace_id`` / ``notices`` are response fields, exactly
+    like ``server_now``; a persisted copy is tomorrow's lie."""
+    assert (
+        "never write `path`, `workspace_id` or `notices` into state.json"
+        in _body("daily-check").lower()
+    )
+
+
+def test_shared_tool_selection_names_the_file_the_read_tools_read() -> None:
+    """``_mureo-shared`` owns the rule every skill reads, so the "which file
+    did this come from" answer belongs next to the clock rule."""
+    body = (_PACKAGED / "_mureo-shared" / "SKILL.md").read_text(encoding="utf-8")
+    assert "name the file they read (`path`)" in body
+    assert "`workspace_id`" in body
+    assert "`notices`" in body
+
+
 def test_daily_check_forbids_the_already_fetched_short_circuit() -> None:
     """The exact observed failure: "today's report is already fetched —
     re-displaying" against a days-old date."""

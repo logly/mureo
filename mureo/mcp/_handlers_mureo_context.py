@@ -38,6 +38,19 @@ than becoming a fossilised "today". Symmetrically,
 ``mureo_state_action_log_append`` stamps the entry ``timestamp``
 server-side: a model-supplied value is ignored, so a drifted date can no
 longer be persisted and read back later as fact.
+
+Which file was read (#767)
+--------------------------
+The same two read entry points also name the file they consulted
+(``path``), the runtime's ``workspace_id`` and — when the runtime has
+any — its ``notices``. A scheduled run whose cwd is one workspace and an
+operator terminal opened in another read different STATE.json files, and
+"the last check was 11 days ago" is uncheckable unless the response says
+which file it came from. These three follow the same rule as
+``server_now``: added AFTER serialization, ignored by ``parse_state``,
+dropped by ``render_state``, never persisted. ``notices`` is omitted
+when empty, so the default single-workspace response gains only the two
+always-present keys.
 """
 
 from __future__ import annotations
@@ -82,6 +95,24 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+def _runtime_envelope() -> dict[str, Any]:
+    """Return the runtime half of the read-tool response envelope (#767).
+
+    ``notices`` is omitted when the runtime has none so the default
+    single-workspace response does not grow an always-empty list.
+    """
+    # Lazy import, as everywhere else in this package: importing
+    # ``mureo.core.runtime_context`` at module load would pull the state
+    # layer into every handler import (see ``_helpers``).
+    from mureo.core.runtime_context import get_runtime_context
+
+    ctx = get_runtime_context()
+    envelope: dict[str, Any] = {"workspace_id": ctx.workspace_id}
+    if ctx.notices:
+        envelope["notices"] = list(ctx.notices)
+    return envelope
+
+
 async def handle_strategy_get(arguments: dict[str, Any]) -> list[TextContent]:
     path = resolve_workspace_path(arguments, "STRATEGY.md", store_attr="strategy_path")
     # ``server_now`` on both branches: a skill that starts from STRATEGY.md
@@ -94,6 +125,7 @@ async def handle_strategy_get(arguments: dict[str, Any]) -> list[TextContent]:
                 "exists": False,
                 "path": str(path),
                 "server_now": server_now_iso(),
+                **_runtime_envelope(),
             }
         )
     text = path.read_text(encoding="utf-8")
@@ -103,6 +135,7 @@ async def handle_strategy_get(arguments: dict[str, Any]) -> list[TextContent]:
             "exists": True,
             "path": str(path),
             "server_now": server_now_iso(),
+            **_runtime_envelope(),
         }
     )
 
@@ -228,12 +261,21 @@ async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     doc = read_state_file(path)
     payload = _state_to_dict(doc)
     # Response-envelope only (#460). ``_state_to_dict`` renders the parsed
-    # document, so this key is added AFTER serialization and is never part of
-    # what gets written back: ``parse_state`` ignores unknown top-level keys
+    # document, so these keys are added AFTER serialization and are never part
+    # of what gets written back: ``parse_state`` ignores unknown top-level keys
     # and ``render_state`` emits only known ones, so an agent that echoes this
-    # response into STATE.json loses the key on the next mureo write instead
+    # response into STATE.json loses them on the next mureo write instead
     # of leaving a stale "today" behind.
+    #
+    # ``path`` / ``workspace_id`` / ``notices`` follow the same rule (#767):
+    # they say WHICH STATE.json this answer came from, which is what makes a
+    # "last check was N days ago" verdict checkable when a scheduled run and
+    # an operator terminal sit in different workspaces. ``notices`` is omitted
+    # when the runtime has none, so the legacy shape is unchanged for the
+    # default runtime except for the two new always-present keys.
     payload["server_now"] = server_now_iso()
+    payload["path"] = str(path)
+    payload.update(_runtime_envelope())
     # Optional action_log scoping (context weight-reduction). Applied AFTER
     # server_now, and only ``pending`` / ``none`` mutate the payload — ``all``
     # (the default) keeps the response byte-identical to the legacy shape.

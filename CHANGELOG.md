@@ -2,6 +2,19 @@
 
 ### Added
 
+- **`mureo_state_get` names the file it read** (#767). The two context
+  read tools (`mureo_state_get` / `mureo_strategy_get`) now carry `path` —
+  the file the answer came from — the runtime's `workspace_id`, and, when
+  the runtime provides any, `notices`. A scheduled run whose cwd is one
+  workspace and an operator terminal opened in another read different
+  `STATE.json` files, and "the last check was 11 days ago" was uncheckable
+  because nothing said which file that came from. Like `server_now` these
+  are response fields only and are never persisted. `RuntimeContext.notices`
+  is new (default empty) so an alternate runtime can put a warning in front
+  of the agent instead of on stderr. `/daily-check` now opens its report
+  with a `Workspace:` line and names the file when it declares the previous
+  summary missing or stale.
+
 - **Dispatcher-level journal** (#758, phase 1). Every MCP tool call that
   enters the dispatcher now leaves exactly one append-only JSON line in
   `JOURNAL.jsonl` — every family (built-in Google / Meta / Search Console /
