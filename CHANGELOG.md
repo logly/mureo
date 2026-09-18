@@ -1,5 +1,21 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Socket reads on the configure and wizard servers are bounded** (#773). The
+  configure UI's `ConfigureHandler` and the browser OAuth wizard's
+  `_WizardHandler` set no socket timeout, so a POST that announced a
+  within-cap `Content-Length` and then never sent the body left
+  `rfile.read(length)` blocked forever and pinned the worker thread serving
+  it. Both handlers now set `timeout = SOCKET_READ_TIMEOUT_SECONDS` (30 s),
+  which the stdlib applies to the connection in `setup()`; an expired read is
+  caught, logged through the handlers' own logger, and closes just that
+  connection. The deadline covers socket reads only — the request line,
+  headers and body — and does not bound the time a handler spends calling a
+  platform API after the request has been read. Both servers are loopback-only
+  and no reachable code path could exploit this remotely, but #766 had widened
+  the stalled-body window to Host-rejected requests too.
+
 ## [0.20.0] - 2026-09-19
 
 ### Fixed

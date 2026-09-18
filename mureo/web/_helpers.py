@@ -14,7 +14,7 @@ import json
 import logging
 import secrets as _secrets
 import urllib.parse
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
@@ -45,6 +45,15 @@ def run_coroutine(coro: Any) -> Any:
 # Cap form bodies to a small size — the configure UI only ever POSTs
 # short JSON payloads (tens of bytes).
 MAX_BODY_BYTES = 16 * 1024
+
+# Deadline for SOCKET READS ONLY — the request line, the headers and the
+# body (#773). A browser on the same machine never needs more than this
+# to finish sending a request it has already started, and without a
+# deadline a POST that announces a within-cap Content-Length and then
+# sends nothing pins its worker thread forever. It does NOT bound the
+# time a handler spends calling platform APIs after the request is read:
+# those calls happen with the socket idle and carry their own timeouts.
+SOCKET_READ_TIMEOUT_SECONDS: Final = 30.0
 
 
 def fresh_csrf_token() -> str:
