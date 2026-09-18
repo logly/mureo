@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-18
+
 ### Added
 
 - **`mureo_state_get` names the file it read** (#767). `mureo_state_get`
