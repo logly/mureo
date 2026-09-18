@@ -655,16 +655,8 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def _handle_google_submit(self) -> None:
-        if not self._host_header_ok():
-            self.send_error(403, "Host header not allowed (DNS rebinding guard)")
-            return
-
-        form = self._read_form()
+        form = self._read_form_guarded()
         if form is None:
-            self.send_error(413, "Payload too large")
-            return
-        if not self._csrf_ok(form.get("csrf_token", "")):
-            self.send_error(403, "CSRF token invalid")
             return
 
         # developer_token is legacy and optional (#751): Google stopped
@@ -872,16 +864,8 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         )
 
     def _handle_google_account_submit(self) -> None:
-        if not self._host_header_ok():
-            self.send_error(403, "Host header not allowed (DNS rebinding guard)")
-            return
-
-        form = self._read_form()
+        form = self._read_form_guarded()
         if form is None:
-            self.send_error(413, "Payload too large")
-            return
-        if not self._csrf_ok(form.get("csrf_token", "")):
-            self.send_error(403, "CSRF token invalid")
             return
 
         sess = self.server.wizard.session
@@ -924,16 +908,8 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
     # --- Meta flow ------------------------------------------------------
 
     def _handle_meta_submit(self) -> None:
-        if not self._host_header_ok():
-            self.send_error(403, "Host header not allowed (DNS rebinding guard)")
-            return
-
-        form = self._read_form()
+        form = self._read_form_guarded()
         if form is None:
-            self.send_error(413, "Payload too large")
-            return
-        if not self._csrf_ok(form.get("csrf_token", "")):
-            self.send_error(403, "CSRF token invalid")
             return
 
         app_id = form.get("app_id", "").strip()
@@ -1117,16 +1093,8 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         self._send_html(render_meta_account_picker(sess, sess.meta_ad_accounts))
 
     def _handle_meta_account_submit(self) -> None:
-        if not self._host_header_ok():
-            self.send_error(403, "Host header not allowed (DNS rebinding guard)")
-            return
-
-        form = self._read_form()
+        form = self._read_form_guarded()
         if form is None:
-            self.send_error(413, "Payload too large")
-            return
-        if not self._csrf_ok(form.get("csrf_token", "")):
-            self.send_error(403, "CSRF token invalid")
             return
 
         sess = self.server.wizard.session
@@ -1265,6 +1233,33 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
     def _csrf_ok(self, supplied: str) -> bool:
         expected = self.server.wizard.session.csrf_token
         return bool(supplied) and _secrets.compare_digest(supplied, expected)
+
+    def _read_form_guarded(self) -> dict[str, str] | None:
+        """Read the POST form, then run the Host / size / CSRF gates.
+
+        Returns the parsed form, or ``None`` once the matching error
+        response has already been sent — callers just ``return``.
+
+        #766 — the body is drained BEFORE any gate answers. Writing a
+        403 and closing while the client is still sending its body
+        aborts the connection on Windows (WinError 10053), so the client
+        sees a socket error instead of the status. The checks below keep
+        their original order (host → size → csrf). ``_read_form`` caps
+        at ``_MAX_FORM_BYTES`` and returns ``None`` without reading for
+        a hostile Content-Length, so this stays bounded — that case
+        still answers 413 exactly as before.
+        """
+        form = self._read_form()
+        if not self._host_header_ok():
+            self.send_error(403, "Host header not allowed (DNS rebinding guard)")
+            return None
+        if form is None:
+            self.send_error(413, "Payload too large")
+            return None
+        if not self._csrf_ok(form.get("csrf_token", "")):
+            self.send_error(403, "CSRF token invalid")
+            return None
+        return form
 
     def _read_form(self) -> dict[str, str] | None:
         try:

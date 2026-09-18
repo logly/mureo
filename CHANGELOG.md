@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Host-gated POSTs drain the request body before answering 403** (#766). The
+  configure UI's `do_POST` and the four submit routes of the browser OAuth
+  wizard (`mureo configure`'s web-auth server) ran their Host-header gate
+  before reading the body, so a rejected request got its 403 written — and its
+  connection closed — while the client could still be sending. Windows
+  surfaces that as `ConnectionAbortedError [WinError 10053]` instead of the
+  status, which flaked the `test-windows` job. The body is now read first
+  (still capped at `MAX_BODY_BYTES` / `_MAX_FORM_BYTES`, and an oversized or
+  malformed `Content-Length` is still refused unread with a 413); the order of
+  the checks themselves is unchanged.
+
 ### Changed
 
 - **Meta Graph / Marketing API v26.0** (#770). mureo now speaks Graph and
