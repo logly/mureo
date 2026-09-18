@@ -12,8 +12,10 @@ from __future__ import annotations
 import http.client
 import io
 import json
+import socket
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,6 +25,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mureo.web._helpers import SOCKET_READ_TIMEOUT_SECONDS
 from mureo.web.handlers import ConfigureHandler
 from mureo.web.server import ConfigureWizard
 
@@ -3266,3 +3269,64 @@ class TestGetCreativeImage:
         ):
             _get(wizard, self.ROUTE)
         assert exc.value.code == 404
+
+
+# ---------------------------------------------------------------------------
+# #773 — socket-read timeout
+# ---------------------------------------------------------------------------
+
+#: How long the server may take to hang up on a stalled body. Generous
+#: next to the 0.5 s timeout the test patches in, but far below the 5 s
+#: the client itself waits — so an untimed-out server fails loudly.
+_STALL_CLOSE_DEADLINE = 2.0
+
+
+def _stalled_post(port: int, path: str) -> float:
+    """Announce a body, never send it; return seconds until the close.
+
+    Fails rather than hangs if the server keeps the connection (and the
+    worker thread behind it) alive: the client's own 5 s timeout is the
+    backstop.
+    """
+    request = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 10\r\n"
+        "\r\n"
+    ).encode()
+    with socket.create_connection(("127.0.0.1", port), timeout=5.0) as conn:
+        conn.sendall(request)
+        started = time.monotonic()
+        try:
+            leftover = conn.recv(1)
+        except TimeoutError as exc:
+            raise AssertionError(
+                "the server never closed the connection on a stalled body"
+            ) from exc
+        elapsed = time.monotonic() - started
+    assert leftover == b"", f"expected a closed connection, read {leftover!r}"
+    return elapsed
+
+
+@pytest.mark.unit
+class TestSocketReadTimeout:
+    """A POST whose body never arrives must not pin a worker thread."""
+
+    def test_handler_uses_the_shared_timeout(self) -> None:
+        assert ConfigureHandler.timeout == SOCKET_READ_TIMEOUT_SECONDS
+
+    def test_stalled_body_is_closed_and_server_keeps_serving(
+        self, wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Shorten the handler's OWN deadline. A class that sets none is
+        # the #773 regression itself, so the test refuses to supply the
+        # attribute under test — it asserts on it instead.
+        assert (
+            ConfigureHandler.__dict__.get("timeout") is not None
+        ), "ConfigureHandler sets no socket read timeout"
+        monkeypatch.setattr(ConfigureHandler, "timeout", 0.5)
+        elapsed = _stalled_post(wizard.port, "/api/csrf")
+        assert elapsed < _STALL_CLOSE_DEADLINE
+        # The timeout costs one connection, not the server.
+        assert _get(wizard, "/api/csrf").status == 200

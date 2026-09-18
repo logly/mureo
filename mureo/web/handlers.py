@@ -80,6 +80,7 @@ from mureo.meta_ads.accounts import (
 )
 from mureo.oauth_authcode import parse_loopback_callback_url
 from mureo.web._helpers import (
+    SOCKET_READ_TIMEOUT_SECONDS,
     compare_csrf,
     host_header_ok,
     parse_json_body,
@@ -596,6 +597,18 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     """Per-request handler for the configure-UI server."""
 
     wizard: ConfigureWizard
+
+    #: Deadline for socket reads (#773). ``StreamRequestHandler.setup()``
+    #: applies it with ``self.connection.settimeout(self.timeout)``
+    #: (CPython 3.12 ``socketserver.py:807``) whenever it is not None,
+    #: and ``setup()`` below chains to it. A read that then expires
+    #: raises ``TimeoutError`` (``socket.timeout`` is an alias since
+    #: 3.10), which ``BaseHTTPRequestHandler.handle_one_request`` catches
+    #: to log "Request timed out" and close the connection (CPython 3.12
+    #: ``http/server.py:426-429``). That log goes through ``log_error``
+    #: → ``log_message``, which is overridden below to write to the
+    #: logger, so nothing lands on stderr.
+    timeout = SOCKET_READ_TIMEOUT_SECONDS
 
     # ------------------------------------------------------------------
     # Lifecycle

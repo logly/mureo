@@ -57,6 +57,7 @@ from mureo.auth_setup import (
 from mureo.core.secret_store import FilesystemSecretStore
 from mureo.logging_setup import safe_http_log_line
 from mureo.oauth_authcode import OAuthExchangeError, exchange_authorization_code
+from mureo.web._helpers import SOCKET_READ_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -552,6 +553,18 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
     """Route dispatcher for the wizard HTTP server."""
 
     server: _WizardServer
+
+    #: Deadline for socket reads (#773), shared with the configure UI's
+    #: handler. ``StreamRequestHandler.setup()`` applies it with
+    #: ``self.connection.settimeout(self.timeout)`` (CPython 3.12
+    #: ``socketserver.py:807``) whenever it is not None. A read that then
+    #: expires raises ``TimeoutError`` (``socket.timeout`` is an alias
+    #: since 3.10), which ``BaseHTTPRequestHandler.handle_one_request``
+    #: catches to log "Request timed out" and close the connection
+    #: (CPython 3.12 ``http/server.py:426-429``). That log goes through
+    #: ``log_error`` → ``log_message``, which is overridden below to
+    #: write to the logger, so nothing lands on stderr.
+    timeout = SOCKET_READ_TIMEOUT_SECONDS
 
     # --- routing ---------------------------------------------------------
 
