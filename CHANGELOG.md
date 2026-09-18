@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-19
+
 ### Fixed
 
 - **Host-gated POSTs drain the request body before answering 403** (#766). The
