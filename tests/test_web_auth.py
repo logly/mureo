@@ -12,11 +12,14 @@ the network.
 
 from __future__ import annotations
 
+import http.client
+import io
 import sys
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
@@ -25,6 +28,7 @@ import pytest
 from mureo.cli.web_auth import (  # noqa: I001
     WebAuthWizard,
     WizardSession,
+    _WizardHandler,
     render_google_account_picker,
     render_google_secrets_form,
     render_meta_account_picker,
@@ -905,6 +909,56 @@ class TestSecurityHardening:
         # is what distinguishes the cap doing its job from the server dying on
         # the oversize body — the failure mode the cap exists to prevent.
         assert _fetch(wizard, "/google-ads").status == 200
+
+
+class TestHostRejectionDrainsBody:
+    """#766 — a host-rejected POST must consume the request body first.
+
+    Answering 403 while the client is still writing its body makes
+    Windows abort the connection (``WinError 10053``) instead of
+    delivering the 4xx, which flaked ``test-windows``. Driven socketless
+    so the assertion is on the read position, not on platform timing.
+    """
+
+    BODY = b"csrf_token=T&client_id=CID&client_secret=SEC"
+
+    @staticmethod
+    def _handler(body: bytes) -> tuple[_WizardHandler, io.BytesIO, io.BytesIO]:
+        """Build a _WizardHandler over in-memory files, no socket."""
+        port = 8765
+        raw_headers = (
+            b"Host: attacker.example.com\r\n"
+            b"Content-Type: application/x-www-form-urlencoded\r\n"
+            b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n"
+        )
+        handler = _WizardHandler.__new__(_WizardHandler)
+        rfile = io.BytesIO(body)
+        wfile = io.BytesIO()
+        handler.rfile = rfile
+        handler.wfile = wfile
+        handler.headers = http.client.parse_headers(io.BytesIO(raw_headers))
+        handler.server = SimpleNamespace(  # type: ignore[assignment]
+            server_address=("127.0.0.1", port)
+        )
+        handler.path = "/google-ads/submit"
+        handler.command = "POST"
+        handler.requestline = "POST /google-ads/submit HTTP/1.1"
+        handler.request_version = "HTTP/1.1"
+        handler.client_address = ("127.0.0.1", 54321)
+        return handler, rfile, wfile
+
+    def test_body_is_drained_before_the_403_is_written(self) -> None:
+        handler, rfile, wfile = self._handler(self.BODY)
+
+        handler.do_POST()
+
+        assert rfile.tell() == len(
+            self.BODY
+        ), "the request body was still unread when the 403 was written"
+        assert rfile.read() == b""
+        status_line = wfile.getvalue().split(b"\r\n", 1)[0]
+        assert status_line.startswith(b"HTTP/1.0 403 ")
+        assert b"Host header not allowed" in status_line
 
 
 class TestDoneRoute:

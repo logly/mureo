@@ -9,17 +9,21 @@ test never makes outbound calls or mutates the real filesystem.
 
 from __future__ import annotations
 
+import http.client
+import io
 import json
 import sys
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mureo.web.handlers import ConfigureHandler
 from mureo.web.server import ConfigureWizard
 
 if TYPE_CHECKING:
@@ -116,6 +120,56 @@ class TestHostHeaderValidation:
         url = f"http://localhost:{wizard.port}/api/csrf"
         resp = urllib.request.urlopen(url, timeout=2.0)
         assert resp.status == 200
+
+
+@pytest.mark.unit
+class TestHostRejectionDrainsBody:
+    """#766 — a host-rejected POST must consume the request body first.
+
+    Answering 403 while the client is still writing its body makes
+    Windows abort the connection (``WinError 10053``) instead of
+    delivering the 4xx, which flaked ``test-windows``. Driven socketless
+    so the assertion is on the read position, not on platform timing.
+    """
+
+    BODY = b'{"k": 1}'
+
+    @staticmethod
+    def _handler(body: bytes) -> tuple[ConfigureHandler, io.BytesIO, io.BytesIO]:
+        """Build a ConfigureHandler over in-memory files, no socket."""
+        port = 8765
+        raw_headers = (
+            b"Host: attacker.example.com\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n"
+        )
+        handler = ConfigureHandler.__new__(ConfigureHandler)
+        rfile = io.BytesIO(body)
+        wfile = io.BytesIO()
+        handler.rfile = rfile
+        handler.wfile = wfile
+        handler.headers = http.client.parse_headers(io.BytesIO(raw_headers))
+        handler.server = SimpleNamespace(  # type: ignore[assignment]
+            server_address=("127.0.0.1", port)
+        )
+        handler.path = "/api/locale"
+        handler.requestline = "POST /api/locale HTTP/1.1"
+        handler.request_version = "HTTP/1.1"
+        handler.client_address = ("127.0.0.1", 54321)
+        return handler, rfile, wfile
+
+    def test_body_is_drained_before_the_403_is_written(self) -> None:
+        handler, rfile, wfile = self._handler(self.BODY)
+
+        handler.do_POST()
+
+        assert rfile.tell() == len(
+            self.BODY
+        ), "the request body was still unread when the 403 was written"
+        assert rfile.read() == b""
+        raw = wfile.getvalue()
+        assert raw.split(b"\r\n", 1)[0] == b"HTTP/1.0 403 Forbidden"
+        assert b'{"error": "host_not_allowed"}' in raw
 
 
 @pytest.mark.unit

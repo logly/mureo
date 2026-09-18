@@ -744,9 +744,15 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         send_error_json(self, 404, "not_found")
 
     def do_POST(self) -> None:  # noqa: N802
+        # #766 — drain the body BEFORE any gate answers. Writing a 403
+        # and closing while the client is still sending its body aborts
+        # the connection on Windows (WinError 10053), so the client sees
+        # a socket error instead of the status. Keep the read first; the
+        # checks below preserve the original order (host → size → json →
+        # csrf). ``read_body`` caps at MAX_BODY_BYTES, so this is bounded.
+        body = read_body(self)
         if not self._host_ok():
             return
-        body = read_body(self)
         if body is None:
             send_error_json(self, 413, "payload_too_large")
             return
