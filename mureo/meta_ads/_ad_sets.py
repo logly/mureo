@@ -105,7 +105,13 @@ class AdSetsMixin:
                 (cents for USD, whole yen for JPY). Set to 0 for CBO campaigns.
             billing_event: Billing event (IMPRESSIONS, LINK_CLICKS, etc.)
             optimization_goal: Optimization goal (REACH, LINK_CLICKS, CONVERSIONS, etc.)
-            targeting: Targeting settings
+            targeting: Targeting settings, sent to Meta as-is. Since
+                Marketing API v26.0 an ad set under a special-ad-category
+                campaign (HOUSING, EMPLOYMENT, CREDIT,
+                FINANCIAL_PRODUCTS_SERVICES) whose targeting is relaxable
+                must carry ``targeting_automation.advantage_audience``
+                explicitly set to 1 or 0 in here, or Meta rejects the
+                create call.
             status: Initial status (default: PAUSED)
             use_dynamic_creative: Enable dynamic creative
             bid_amount: Bid amount in the currency's minor units (cents for

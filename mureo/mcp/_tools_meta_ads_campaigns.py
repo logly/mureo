@@ -405,6 +405,12 @@ TOOLS: list[Tool] = [
             "Meta targeting spec object; at minimum supply "
             "geo_locations and age bounds. Default initial status is "
             "PAUSED — only ACTIVE when the operator has confirmed spend. "
+            "Since Marketing API v26.0, an ad set under a special-ad-"
+            "category campaign (HOUSING, EMPLOYMENT, CREDIT, "
+            "FINANCIAL_PRODUCTS_SERVICES) whose targeting is relaxable is "
+            "rejected unless targeting.targeting_automation."
+            "advantage_audience is set to 1 or 0 — targeting is passed "
+            "through as-is, so put it inside targeting. "
             "After creation, attach ads with meta_ads_ads_create."
         ),
         inputSchema={

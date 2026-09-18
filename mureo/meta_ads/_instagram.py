@@ -92,7 +92,10 @@ class InstagramMixin:
             "creative": json.dumps(
                 {
                     "object_story_id": object_story_id,
-                    "instagram_actor_id": ig_user_id,
+                    # ``instagram_actor_id`` was deprecated in Graph API
+                    # v22.0 and stopped working on every version on
+                    # 2025-09-09 (#770).
+                    "instagram_user_id": ig_user_id,
                 }
             ),
             "status": "PAUSED",

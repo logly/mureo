@@ -30,8 +30,8 @@ written beside it — an exclusion nobody has to justify is how the old list
 got to 46.
 
 **Cost.** In a full run the imports are amortised — the heavy transitive
-deps (``mcp``, ``google-ads``, ``facebook-business``) are already loaded by
-other tests, and the suite total does not move. Run this file *by itself*
+deps (``mcp``, ``google-ads``) are already loaded by other tests, and the
+suite total does not move. Run this file *by itself*
 and you pay them alone: roughly 2x the wall time and ~40MB more RSS than
 the 46-module version. That is the workflow of someone debugging an import
 problem, so it is written down rather than left to be discovered.

@@ -4,7 +4,8 @@ Send conversion events to Meta Ads from the server side.
 Browser pixel accuracy has decreased due to iOS ATT, etc.,
 making CAPI essential for improving measurement accuracy.
 
-Endpoint: POST https://graph.facebook.com/v21.0/{pixel_id}/events
+Endpoint: POST {graph_api_base}/{pixel_id}/events, where the Graph API
+base carries the version pinned in :mod:`mureo.meta_ads._api_version`.
 """
 
 from __future__ import annotations

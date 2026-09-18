@@ -11,7 +11,7 @@ metadata:
     cliHelp: "mureo --help"
 ---
 
-# Meta Ads (Marketing API v21.0)
+# Meta Ads (Marketing API v26.0)
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
 ## Tool Summary
@@ -178,6 +178,8 @@ metadata:
             targeting (object), status (default: "PAUSED")
   ```
   Optimization goals: `REACH`, `IMPRESSIONS`, `OFFSITE_CONVERSIONS`, `LINK_CLICKS`, `LANDING_PAGE_VIEWS`, `LEAD_GENERATION`, `VALUE`
+
+  Since Marketing API v26.0, an ad set under a special-ad-category campaign (`HOUSING`, `EMPLOYMENT`, `CREDIT`, `FINANCIAL_PRODUCTS_SERVICES`) whose targeting is relaxable is rejected unless `targeting.targeting_automation.advantage_audience` is set to `1` or `0` — `targeting` is passed through as-is, so set it inside `targeting`.
 
 - `update` -- Update ad set settings. **Requires user confirmation.**
   ```

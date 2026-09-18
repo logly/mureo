@@ -31,12 +31,15 @@ from urllib.parse import urlparse
 
 import httpx
 
+from mureo.meta_ads._api_version import GRAPH_API_BASE
+
 logger = logging.getLogger(__name__)
 
 # Same surface as ``mureo.auth_setup`` — mirrored here so the public
-# module does not depend on private constants in the auth-setup
-# module. Keep in sync if either side bumps the Graph API version.
-_META_GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
+# module does not depend on private constants in the auth-setup module.
+# Both sides now read the pin from :mod:`mureo.meta_ads._api_version`,
+# so a version bump lands in one file (#770).
+_META_GRAPH_API_BASE = GRAPH_API_BASE
 _HTTP_TIMEOUT = 30.0
 
 # Largest page size Graph API will accept without truncation for the

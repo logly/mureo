@@ -160,19 +160,29 @@ class AudiencesMixin:
         Args:
             name: Audience name
             source_audience_id: Source custom audience ID
-            country: Target country code (single or list)
+            country: Target country. A single ISO code goes to
+                ``lookalike_spec.country``; several go to
+                ``lookalike_spec.location_spec.geo_locations.countries``,
+                because ``country`` is a single-code subfield and Meta began
+                enforcing the ``lookalike_spec`` subfield types in Marketing
+                API v24.0 — on every version since 2026-01-06 (#770).
             ratio: Similarity ratio (0.01=top 1%, 0.05=top 5%, max 0.20)
             starting_ratio: Starting position of similarity (default 0.0, used for range specification)
 
         Returns:
             Created lookalike audience information
         """
-        lookalike_spec = {
+        lookalike_spec: dict[str, Any] = {
             "origin_audience_id": source_audience_id,
             "starting_ratio": starting_ratio,
             "ratio": ratio,
-            "country": country if isinstance(country, list) else country,
         }
+        if isinstance(country, str):
+            lookalike_spec["country"] = country
+        else:
+            lookalike_spec["location_spec"] = {
+                "geo_locations": {"countries": list(country)}
+            }
 
         data: dict[str, Any] = {
             "name": name,
