@@ -2740,7 +2740,8 @@ read.
 ### The `RuntimeContext` entry point
 
 `mureo.core.runtime_context.RuntimeContext` is a frozen dataclass
-bundling four pluggable backends plus a workspace identifier:
+bundling four pluggable backends, a workspace identifier and any
+free-text notices the runtime wants the agent to read:
 
 | Field | Protocol | File-backed default |
 |---|---|---|
@@ -2749,10 +2750,15 @@ bundling four pluggable backends plus a workspace identifier:
 | `knowledge_store` | `mureo.core.knowledge_store.KnowledgeStore` | `FilesystemKnowledgeStore` — the `/learn` knowledge file |
 | `throttle_store` | `mureo.core.throttle_store.ThrottleStore` | `ProcessLocalThrottleStore` |
 | `workspace_id` | `str` | `DEFAULT_WORKSPACE_ID` (`"default"`) |
+| `notices` | `tuple[str, ...]` | `()` — free-text warnings the read tools echo to the agent; never persisted |
 
 `workspace_id` is opaque to mureo — any non-empty, non-whitespace
 string works; an empty or whitespace-only value is rejected at
-construction time. Register a **zero-arg callable returning a
+construction time. `notices` must be a **tuple** of non-blank strings
+(a list is rejected — the context is frozen, and a mutable member
+would defeat that); the two context read tools echo it in their
+response envelope, so leave it empty unless the runtime has something
+the agent must see. Register a **zero-arg callable returning a
 `RuntimeContext`** under the entry-point group:
 
 ```toml
@@ -3063,6 +3069,8 @@ def build_runtime_context() -> RuntimeContext:
         default_runtime_context(),
         secret_store=AcmeSecretStore(tenant),
         workspace_id=tenant.id,
+        # Free-text warnings the context read tools echo to the agent (#767).
+        notices=("launched outside a client workspace",),
     )
 ```
 

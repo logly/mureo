@@ -485,8 +485,8 @@ TOOLS: list[Tool] = [
         name="mureo_strategy_get",
         description=(
             "Read STRATEGY.md and return its raw markdown text plus an "
-            "exists flag, ``server_now`` (the server's clock as ISO 8601 "
-            "with UTC offset), the ``path`` it read and the runtime "
+            "exists flag, the ``path`` it read, ``server_now`` (the server's "
+            "clock as ISO 8601 with UTC offset) and the runtime "
             "``workspace_id`` (and ``notices`` when the runtime has any). "
             "Returns empty markdown when the file is "
             "absent (skills should treat that as 'no strategy yet', "

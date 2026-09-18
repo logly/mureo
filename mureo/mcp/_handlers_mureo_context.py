@@ -41,16 +41,17 @@ longer be persisted and read back later as fact.
 
 Which file was read (#767)
 --------------------------
-The same two read entry points also name the file they consulted
-(``path``), the runtime's ``workspace_id`` and — when the runtime has
-any — its ``notices``. A scheduled run whose cwd is one workspace and an
-operator terminal opened in another read different STATE.json files, and
-"the last check was 11 days ago" is uncheckable unless the response says
-which file it came from. These three follow the same rule as
-``server_now``: added AFTER serialization, ignored by ``parse_state``,
-dropped by ``render_state``, never persisted. ``notices`` is omitted
-when empty, so the default single-workspace response gains only the two
-always-present keys.
+Both read entry points name the file they consulted and the runtime
+they ran under. ``mureo_strategy_get`` already carried ``path``;
+``mureo_state_get`` gains it here, and both gain the runtime's
+``workspace_id`` plus — when the runtime has any — its ``notices``. A
+scheduled run whose cwd is one workspace and an operator terminal opened
+in another read different STATE.json files, and "the last check was 11
+days ago" is uncheckable unless the response says which file it came
+from. All of these follow the same rule as ``server_now``: added AFTER
+serialization, ignored by ``parse_state``, dropped by ``render_state``,
+never persisted. ``notices`` is omitted when empty, so the default
+single-workspace response gains only the two always-present keys.
 """
 
 from __future__ import annotations

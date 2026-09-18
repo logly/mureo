@@ -147,11 +147,15 @@ def test_daily_check_opens_its_report_with_the_workspace_it_read() -> None:
     """An operator whose scheduled card ran in one workspace and whose
     terminal opened another has to see the mismatch in the report header,
     not deduce it from a wrong "N days since the last check"."""
-    body = _body("daily-check")
-    assert "Workspace:" in body
-    assert "`path`" in body
-    assert "`workspace_id`" in body
-    assert "`notices`" in body
+    header = [ln for ln in _body("daily-check").splitlines() if "Workspace:" in ln]
+    assert header, "daily-check must keep its report header"
+    # Pinned on the header LINE, not on the body: a `path` mention elsewhere in
+    # the skill must not be able to satisfy this.
+    line = header[0]
+    assert "workspace_id:" in line, "the header must show the workspace_id too"
+    assert "`path`" in line
+    assert "`workspace_id`" in line
+    assert "`notices`" in line
 
 
 def test_daily_check_names_the_file_behind_a_stale_verdict() -> None:
