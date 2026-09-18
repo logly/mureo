@@ -260,6 +260,31 @@ class ActionLogEntry:
         same reason ``set_report``'s does: an entry already on disk is real
         history, and a document that arrived from elsewhere must stay
         readable rather than being refused wholesale.
+    reason: WHY this change was made, in the agent's own words at the moment
+        it dispatched the call (#758 phase 2). Every mutating tool takes a
+        ``reason`` parameter and
+        :func:`mureo.context.state.append_action_log` stamps it here, so the
+        rationale survives the session that held it. Bounded by
+        :data:`~mureo.core.actor.ACTION_REASON_MAX_CHARS` on the write path,
+        which REFUSES an over-long value rather than truncating it — the same
+        rule the display fields follow. ``None`` — the default, and what
+        every entry written before this field existed carries — means no
+        rationale was given.
+
+        Only ever mureo's OWN motive. An ``origin="external"`` entry does
+        not inherit the importing call's rationale: mureo did not make that
+        change and has no standing to say why it was made.
+    session_id: The journal session of the process that WROTE this entry —
+        which is not always the process that made the change (an import or
+        a replay writes somebody else's). The same id the matching
+        ``JOURNAL.jsonl`` records carry, which is what joins the curated
+        summary to the complete call record: given an entry, an operator can
+        pull every call that session also made. Stamped by
+        ``append_action_log`` when unset; an explicit value is kept.
+    client: The MCP client label (``"<name>/<version>"``) the writing process
+        was serving, or ``None`` for a CLI or library write — which is an
+        honest answer, not a gap: nothing there had a client. Documents the
+        writer, like ``session_id``, and is stamped alongside it.
     """
 
     timestamp: str
@@ -287,10 +312,15 @@ class ActionLogEntry:
     # Appended after every pre-#706 field, same positional-compatibility rule.
     display_title: str | None = None
     display_summary: str | None = None
+    # Appended after every pre-#758 field, same positional-compatibility rule.
+    reason: str | None = None
+    session_id: str | None = None
+    client: str | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
         self._validate_origin()
+        self._validate_actor()
         if self.batch_id is not None:
             if not isinstance(self.batch_id, str) or not self.batch_id.strip():
                 raise ValueError("batch_id must be a non-empty string")
@@ -312,6 +342,37 @@ class ActionLogEntry:
             object.__setattr__(
                 self, "reversible_params", copy.deepcopy(self.reversible_params)
             )
+
+    def _validate_actor(self) -> None:
+        """Enforce the #758 rationale/identity invariants.
+
+        A non-string here is a caller bug — a hand-edited STATE.json, a
+        recorder passing an id through unconverted — and it has to say so
+        by field name. Left alone it used to surface three frames later as
+        ``'int' object has no attribute 'strip'``, which names neither the
+        field nor the file.
+
+        ``reason`` and the two identity fields differ on BLANK on purpose.
+        An empty rationale is a real answer ("none was given") and reads as
+        ``None``; an empty ``session_id`` or ``client`` is a broken write,
+        because the process that wrote the entry always had an identity —
+        so those are refused, matching ``batch_id`` and ``origin``.
+        """
+        if self.reason is not None:
+            if not isinstance(self.reason, str):
+                raise ValueError("reason must be a string")
+            # The LENGTH bound lives on the write path (see the field
+            # docstring), not here: an entry already on disk is history.
+            object.__setattr__(self, "reason", self.reason.strip() or None)
+        for name in ("session_id", "client"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be a string")
+            if not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+            object.__setattr__(self, name, value.strip())
 
     def _validate_origin(self) -> None:
         """Enforce the #545 provenance invariants.

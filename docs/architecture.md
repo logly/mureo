@@ -77,7 +77,7 @@ Three trails, three jobs:
 | Trail | What is in it | Where |
 |-------|---------------|-------|
 | **Journal** (#758) | **Every** tool call that entered the dispatcher, with its outcome — `ok`, platform error, exception, policy denial, preflight refusal, invalid arguments — and its masked arguments. The complete primary record; read it with `mureo journal`. | `JOURNAL.jsonl` in the workspace (else `~/.mureo/journal.jsonl`) |
-| **`action_log`** | The curated summary: mutations that carry strategy semantics — observation window, reversal plan, batch membership. Much smaller than the journal, and what `rollback_plan_get` plans from. | `STATE.json` |
+| **`action_log`** | The curated summary: mutations that carry strategy semantics — observation window, reversal plan, batch membership. Much smaller than the journal, and what `rollback_plan_get` plans from. Since #758 phase 2 each entry also carries the `session_id` the journal stamps on its own records, so the two trails join: from one entry an operator can pull every call the session that made it also made — plus `reason`, the rationale the agent gave at the time. | `STATE.json` |
 | **Plugin audit** | The pre-#758 trail of plugin / bridge tool calls, kept unchanged for compatibility. | `~/.mureo/plugin_audit.jsonl` |
 
 The journal answers "what did this agent actually try"; `action_log` answers "what changed, and how do I undo it". A refused or failed attempt is in the first and — correctly — not in the second.

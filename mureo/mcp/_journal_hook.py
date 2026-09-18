@@ -18,6 +18,9 @@ Three jobs:
 - :func:`journal_call` — the context manager that times the dispatch,
   classifies the outcome, and writes the one record on the way out,
   including the exits that raise.
+- :func:`take_rationale` — the one step that has to happen before any of
+  the dispatcher's exits, splitting the injected ``reason`` off the
+  arguments and filing it under its own key (#758 phase 2).
 
 The name-set lookups import ``mureo.mcp.server`` **lazily, inside the
 functions**: ``server`` imports this module at load time, so a top-level
@@ -36,10 +39,11 @@ from typing import TYPE_CHECKING, Any
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp import journal
 from mureo.mcp._helpers import exception_text, is_error_result
+from mureo.mcp._reason_param import split_call_reason
 from mureo.rollback.executor import is_rollback_dispatch_active
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Collection, Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +72,41 @@ _FAMILIES: tuple[tuple[str, str], ...] = (
 UNKNOWN_FAMILY = "unknown"
 
 _PLUGIN_FAMILY = "plugin"
+
+
+def take_rationale(
+    call: JournalledCall,
+    name: str,
+    arguments: dict[str, Any],
+    injected: Collection[str],
+) -> tuple[str | None, dict[str, Any]]:
+    """Split the injected ``reason`` off ``arguments`` and file it on ``call``.
+
+    Lives here, and runs before every gate, because a rationale is only
+    worth asking for if the records that need it most have it: a DENIED
+    mutation is exactly the call an operator asks "why did it try that?"
+    about. Returning the handler's arguments separately also keeps the
+    policy gates reading the same set the handler will — ``reason`` is
+    mureo's parameter, and a gate has no business seeing it.
+
+    An over-long rationale is classified as ``invalid_args``, like the
+    schema violation it is, and re-raised for the caller to surface.
+
+    Returns:
+        The rationale (``None`` when none was given, or when this tool
+        owns its own ``reason``) and the arguments to dispatch with.
+
+    Raises:
+        ValueError: the rationale is over its bound.
+    """
+    try:
+        reason, handler_args = split_call_reason(name, arguments, injected)
+    except ValueError as exc:
+        call.invalid_args(exc)
+        raise
+    if name in injected:  # a tool owning its ``reason`` keeps it in ``args``
+        call.set_rationale(reason)
+    return reason, handler_args
 
 
 def tool_family(name: str) -> str:
@@ -129,7 +168,7 @@ class JournalledCall:
     record either way.
     """
 
-    __slots__ = ("arguments", "outcome", "reason", "tool", "_started")
+    __slots__ = ("arguments", "outcome", "rationale", "reason", "tool", "_started")
 
     def __init__(self, tool: str, arguments: dict[str, Any]) -> None:
         self.tool = tool
@@ -140,7 +179,28 @@ class JournalledCall:
         self.arguments = dict(arguments) if isinstance(arguments, dict) else {}
         self.outcome = "ok"
         self.reason: str | None = None
+        self.rationale: str | None = None
         self._started = time.monotonic()
+
+    def set_rationale(self, reason: str | None) -> None:
+        """Record WHY the agent made this call (#758 phase 2).
+
+        ``reason`` is the dispatcher-injected parameter, already split off
+        the arguments the handler will receive. It is removed from the
+        snapshot here too: ``args`` is what the agent asked the TOOL to do,
+        and an operator filtering the journal on arguments must not find a
+        sentence sitting where a parameter belongs. The rationale gets its
+        own key instead.
+
+        **Call this only for a tool ``reason`` was INJECTED into.** On the
+        two tools that declare a ``reason`` of their own it is a persisted
+        value — the operator-facing "why was this account not collected"
+        note — which the handler receives and which therefore belongs in
+        ``args``; lifting it out would both lose it from the record of what
+        was asked and file it under a key that means something else.
+        """
+        self.rationale = reason
+        self.arguments.pop("reason", None)
 
     def denied(self, reason: str) -> None:
         """A policy gate refused the call before any handler ran."""
@@ -192,6 +252,7 @@ class JournalledCall:
                 arguments=self.arguments,
                 outcome=self.outcome,
                 reason=self.reason,
+                rationale=self.rationale,
                 duration_ms=int((time.monotonic() - self._started) * 1000),
                 source=(
                     plugin_source_of(self.tool) if family == _PLUGIN_FAMILY else None
@@ -230,6 +291,7 @@ __all__ = [
     "capture_client_info",
     "journal_call",
     "plugin_source_of",
+    "take_rationale",
     "tool_family",
     "tool_mutating",
 ]

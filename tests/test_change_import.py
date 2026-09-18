@@ -206,6 +206,26 @@ class TestExternalOriginIsRecorded:
         assert entry.action.startswith("external_change:")
         assert "operator@example.com" in (entry.summary or "")
 
+    def test_an_imported_entry_does_not_inherit_the_call_rationale(
+        self, tmp_path: Path
+    ) -> None:
+        """#758 phase 2 -- ``mureo_external_changes_import`` is mutating and
+        so takes a ``reason``, but the entries it writes describe somebody
+        else's changes. The rationale belongs to the import, not to them."""
+        from mureo.core.actor import bind_call_reason
+
+        state_file = tmp_path / "STATE.json"
+        with bind_call_reason("polling before the daily check"):
+            append_action_log(
+                state_file,
+                to_action_log_entry(_change(), recorded_at=NOW),
+                join_active_batch=False,
+            )
+
+        stored = read_state_file(state_file).action_log[0]
+        assert stored.origin == EXTERNAL_ORIGIN
+        assert stored.reason is None
+
     def test_mureo_originated_entries_carry_no_origin(self) -> None:
         """Every pre-#545 entry, and every mureo write, stays origin-free."""
         entry = ActionLogEntry(

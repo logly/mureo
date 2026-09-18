@@ -54,12 +54,17 @@ from __future__ import annotations
 import json
 import logging
 import os
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import mureo
+
+# Re-exported below: the process identity moved to ``mureo.core.actor`` in
+# #758 phase 2 so ``mureo.context.state`` can stamp it onto an ``action_log``
+# entry without importing ``mureo.mcp``. Kept importable from here — this is
+# where every existing caller looks for it.
+from mureo.core.actor import client_info, session_id, set_client_info
 from mureo.fsutil import secure_chmod
 from mureo.mcp.plugin_audit import mask_arguments, scrub_text
 
@@ -82,45 +87,13 @@ HOME_JOURNAL_FILENAME = "journal.jsonl"
 #: docstring for why a directory holding neither is not.
 WORKSPACE_MARKERS = ("STATE.json", "STRATEGY.md")
 
-#: Hard cap on ``reason``: the audit log's budget — a diagnostic, not a dump.
+#: Hard cap on ``reason`` and ``rationale``: the audit log's budget — a
+#: diagnostic, not a dump. A LINE-LENGTH cap, so over-long text is
+#: truncated rather than refused; losing the record would be worse than
+#: losing its tail. Not to be confused with
+#: :data:`mureo.core.actor.ACTION_REASON_MAX_CHARS`, which is a write rule
+#: on a value the CALLER supplies and refuses an over-long one outright.
 MAX_REASON_CHARS = 512
-
-#: One id per server process, minted on first use. Lets a reader group the
-#: calls of one MCP session without the client having to supply anything.
-_session: str | None = None
-
-#: ``"<name>/<version>"`` of the connected MCP client, or ``None`` when the
-#: SDK did not report one. Set once per process by the dispatcher.
-_client: str | None = None
-
-
-def session_id() -> str:
-    """Return this process's journal session id (minted on first use)."""
-    global _session
-    if _session is None:
-        _session = uuid.uuid4().hex
-    return _session
-
-
-def set_client_info(name: str, version: str) -> None:
-    """Record which MCP client is connected, for every later record.
-
-    Called once per process by the dispatcher from inside the low-level
-    SDK's request context. Ignored when the name is empty — an unnamed
-    client is no more informative than ``null`` and would only make the
-    field look populated.
-    """
-    global _client
-    label = str(name).strip()
-    if not label:
-        return
-    revision = str(version).strip()
-    _client = f"{label}/{revision}" if revision else label
-
-
-def client_info() -> str | None:
-    """Return the connected client label, or ``None`` if unknown."""
-    return _client
 
 
 def _state_path() -> Path | None:
@@ -233,6 +206,7 @@ def build_record(
     outcome: str,
     duration_ms: int,
     reason: str | None = None,
+    rationale: str | None = None,
     source: str | None = None,
     rollback: bool = False,
 ) -> dict[str, Any]:
@@ -251,6 +225,13 @@ def build_record(
         record["source"] = source or "<unknown>"
     record["mutating"] = bool(mutating)
     record["args"] = mask_arguments(arguments if isinstance(arguments, dict) else {})
+    # Beside ``args``, never inside it: ``args`` is what the agent asked the
+    # TOOL to do, and an operator filtering on arguments must not find a
+    # sentence sitting where a parameter belongs. Emitted only when given, so
+    # a record without a rationale keeps the phase-1 shape and RECORD_VERSION
+    # stays 1.
+    if rationale is not None:
+        record["rationale"] = scrub_text(str(rationale))[:MAX_REASON_CHARS]
     record["outcome"] = outcome
     if outcome != "ok" and reason is not None:
         record["reason"] = scrub_text(str(reason))[:MAX_REASON_CHARS]
@@ -285,6 +266,7 @@ def record_call(
     outcome: str,
     duration_ms: int,
     reason: str | None = None,
+    rationale: str | None = None,
     source: str | None = None,
     rollback: bool = False,
 ) -> None:
@@ -293,7 +275,10 @@ def record_call(
     ``outcome`` is one of ``ok`` / ``platform_error`` / ``exception`` /
     ``denied`` / ``refused`` / ``invalid_args``, and ``reason`` explains
     it (scrubbed, capped, and ignored for ``ok`` — a success has nothing
-    to explain). ``source`` is the plugin distribution and is passed only
+    to explain). ``rationale`` is the opposite half: WHY the agent made
+    the call, supplied by the agent itself on a mutating tool's ``reason``
+    parameter (#758 phase 2), recorded whatever the outcome was.
+    ``source`` is the plugin distribution and is passed only
     for plugin tools; ``rollback`` marks a rollback's reversal leg. The
     classification of ``family`` and ``mutating`` belongs to the
     dispatcher — see :mod:`mureo.mcp._journal_hook`.
@@ -309,6 +294,7 @@ def record_call(
             outcome=outcome,
             duration_ms=duration_ms,
             reason=reason,
+            rationale=rationale,
             source=source,
             rollback=rollback,
         )

@@ -363,6 +363,11 @@ async def handle_state_action_log_append(
         # sentence it can shorten.
         display_title=raw.get("display_title"),
         display_summary=raw.get("display_summary"),
+        # #758 phase 2: normally omitted — this call's own ``reason``
+        # parameter is stamped on by ``append_action_log``. An explicit value
+        # is for an entry whose rationale is NOT this call's (a backfill, an
+        # imported change), and wins over the stamped one.
+        reason=raw.get("reason"),
     )
     try:
         doc = append_action_log(path, entry)

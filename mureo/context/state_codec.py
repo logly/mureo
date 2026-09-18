@@ -144,6 +144,9 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "occurred_at",
                 "display_title",
                 "display_summary",
+                "reason",
+                "session_id",
+                "client",
             }
         ),
         "_parse_action_log_entry / _action_log_entry_to_dict",
@@ -565,6 +568,12 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         # looks like.
         display_title=e.get("display_title"),
         display_summary=e.get("display_summary"),
+        # #758 phase 2 — the rationale and the writing session. Absent on
+        # every entry written before they existed, which is what "nobody
+        # recorded why, and we cannot say who" looks like.
+        reason=e.get("reason"),
+        session_id=e.get("session_id"),
+        client=e.get("client"),
     )
 
 
@@ -719,6 +728,15 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["display_title"] = e.display_title
     if e.display_summary is not None:
         result["display_summary"] = e.display_summary
+    # #758 phase 2: emitted only when set, so an entry written before the
+    # rationale and actor existed round-trips byte-identically and gains no
+    # key on the next write.
+    if e.reason is not None:
+        result["reason"] = e.reason
+    if e.session_id is not None:
+        result["session_id"] = e.session_id
+    if e.client is not None:
+        result["client"] = e.client
     return result
 
 

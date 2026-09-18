@@ -251,6 +251,27 @@ class TestRecordNativeMutation:
             "params": {"campaign_id": "c1"},
         }
 
+    def test_promotes_the_call_rationale_and_the_writing_session(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """#758 phase 2 — a native status toggle carries WHY and WHO without
+        ``record_native_mutation`` knowing either exists."""
+        from mureo.context.state import read_state_file
+        from mureo.core import actor
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(actor, "_session", "sess-native")
+        monkeypatch.setattr(actor, "_client", "Claude Code/1.4.2")
+        with actor.bind_call_reason("CPA is 3x target for 14 days"):
+            nr.record_native_mutation(
+                "meta_ads_campaigns_pause", {"campaign_id": "c1"}, "ACTIVE"
+            )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.reason == "CPA is 3x target for 14 days"
+        assert entry.session_id == "sess-native"
+        assert entry.client == "Claude Code/1.4.2"
+
     def test_records_sub_campaign_identity(self, tmp_path, monkeypatch) -> None:
         from mureo.context.state import read_state_file
 

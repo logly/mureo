@@ -149,6 +149,12 @@ _ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
     "occurred_at": "2026-08-05T09:14:00+09:00",
     "display_title": "Raised the Brand budget",
     "display_summary": "Brand Search was capped every afternoon; +20% daily.",
+    # #758 phase 2 — the rationale and the writing session. Set explicitly
+    # here, because ``append_action_log`` only STAMPS an identity that is
+    # missing: an explicit one is kept, which is what this guard checks.
+    "reason": "Brand Search hit its cap every afternoon for nine days.",
+    "session_id": "0123456789abcdef0123456789abcdef",
+    "client": "Claude Code/1.4.2",
 }
 
 #: One distinctive value per display model (#706). The nested maps exist for

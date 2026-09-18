@@ -31,6 +31,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# ``scrub_text`` is re-exported, not re-implemented: the passes moved down
+# to :mod:`mureo.core.scrub` in #758 phase 2 so ``mureo.context.state`` can
+# scrub a rationale without importing the MCP layer. It stays importable
+# from here — this is where every existing caller looks for it. The
+# redundant alias is what marks it an EXPLICIT re-export for strict mypy.
+from mureo.core.scrub import scrub_text as scrub_text
 from mureo.fsutil import secure_chmod
 
 logger = logging.getLogger(__name__)
@@ -42,115 +48,6 @@ _SENSITIVE_KEY = re.compile(
     r"|access[_-]?token|refresh[_-]?token|client[_-]?secret|bearer|cookie)",
     re.IGNORECASE,
 )
-# Secret-shaped *values* that can appear in a free-text error string
-# (``error`` is not key/value-masked like ``args``). Covers HTTP bearer
-# headers and Amazon LwA access/refresh tokens (Atza|… / Atzr|…). The
-# Amazon bridge is the first credentialed plugin path, so this is
-# defense-in-depth for every plugin's recorded exception text.
-#
-# Every alternative stops at whitespace OR a quote. ``Bearer\s+\S+`` used to
-# run past the closing quote of a JSON string and swallow the rest of the
-# document, leaving structurally broken text for whoever reads the record.
-# A bearer token cannot contain a quote, so stopping there cannot leak.
-#
-# ``Basic`` is an ordinary English word ("Basic plan"), so its alternative
-# is deliberately narrower: only a base64-shaped value of 16+ characters
-# counts, which is what an ``Authorization: Basic`` header actually carries.
-_SECRET_VALUE = re.compile(
-    r"(Bearer\s+[^\s'\"]+|Basic\s+[A-Za-z0-9+/=]{16,}"
-    r"|Atza\|[^\s'\"]+|Atzr\|[^\s'\"]+)",
-    re.IGNORECASE,
-)
-
-# Second shape: ``key=value`` / ``key: value`` credential leaks. An HTTP
-# client that echoes the form body it POSTed spills the client secret in
-# plain text, which the token-prefix patterns above do not match (an LwA
-# client secret has no distinguishing prefix). The KEY and separator are
-# kept so the diagnostic still reads "client_secret=***" rather than
-# losing the context of what failed.
-#
-# The value stops at the first separator that cannot be part of a token
-# (whitespace, quote, comma, ``&``, or a closing bracket), so only the
-# credential — not the rest of the sentence — is redacted.
-# The optional quotes around the separator catch the dict/JSON rendering
-# an exception's ``repr`` produces (``{'client_secret': 'shh'}``) as well
-# as the bare form-encoded one.
-#
-# EVERY key word separator is optional (``[_-]?``), so ``client_secret``,
-# ``client-secret`` and ``clientSecret`` are all masked. Three of the five
-# alternatives once required a literal underscore, which meant the camelCase
-# spelling leaked in cleartext (#528) — and camelCase is not exotic here:
-# Amazon's own surface is camelCase throughout (``advertiserAccountId``,
-# ``adProductFilter``, ``authorizationCode``), and this scrubber's whole job
-# is redacting error bodies from surfaces like it. Matches ``_SENSITIVE_KEY``
-# above, which was already spelled this way.
-#
-# ``developer[_-]?token`` and ``authorization`` joined the list for #758: the
-# journal routes every platform family's error text through this scrubber, and
-# Google's request metadata — which a gRPC debug string prints verbatim —
-# spells the credential ``developer-token`` and the header ``authorization``.
-# ``authorization`` carries no separator of its own, so it is listed bare.
-_SECRET_KEY_VALUE = re.compile(
-    r"((?:client[_-]?secret|refresh[_-]?token|access[_-]?token"
-    r"|developer[_-]?token|api[_-]?key|password|authorization)"
-    r"['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]+",
-    re.IGNORECASE,
-)
-
-# ``code`` on its own is far too common in ordinary error prose ("status
-# code = 400", "error code: 17"), so it gets a deliberately narrow rule.
-# Only two shapes count:
-#   - ``code=…`` with NO space before the ``=`` (the query-string /
-#     form-body shape an authorization code actually leaks in), and
-#   - the QUOTED dict-key shape ``'code': '…'`` that an exception repr
-#     produces.
-# Bare ``code: 12345678`` prose is deliberately NOT matched. The value
-# must also be at least _MIN_CODE_VALUE_LEN token characters — Amazon's
-# authorization codes are long alphanumerics; status codes and errnos
-# are not.
-#
-# The key may END in ``code`` rather than BE it (``authorizationCode``,
-# ``authCode``, ``oauth_code``): the same credential lands in whatever field
-# name a platform picked, and the original word-boundary lookbehind let those
-# through in full (#528). Dropping the lookbehind is all that takes — the
-# pattern simply matches the ``code`` at the END of the key and leaves the
-# prefix untouched, so ``authorizationCode": "…"`` becomes
-# ``authorizationCode": "***"``. Broadening the KEY is the safe direction: the
-# length rule still keeps ``status_code=400`` and friends readable, and
-# over-masking costs legibility while under-masking costs a credential.
-#
-# Deliberately NOT written as a ``[\w-]*code`` prefix: that form backtracks
-# quadratically on a long non-matching string (a 2 MB error body hung the
-# test suite), and this scrubber runs on attacker-influenceable text.
-#
-# Not covered, deliberately: a bare NUMERIC code is never masked (an LwA
-# authorization code is a long alphanumeric string, never an integer), so the
-# asymmetry with string codes is a legibility quirk, not a leak.
-_MIN_CODE_VALUE_LEN = 8
-_CODE_KEY_VALUE = re.compile(
-    r"((?:code=['\"]?|code['\"]\s*:\s*['\"]))[^\s,;&'\"}\])]{"
-    + str(_MIN_CODE_VALUE_LEN)
-    + r",}",
-    re.IGNORECASE,
-)
-
-
-def scrub_text(text: str) -> str:
-    """Redact secret-shaped substrings from a free-text error string.
-
-    Three passes, all value-only: token prefixes (``Bearer …``,
-    ``Atza|…``, ``Atzr|…``), ``key=value`` credential pairs, and the
-    narrowly-anchored ``code=<authorization code>``. Everything else —
-    HTTP status, exception type, the failing operation — survives, so a
-    scrubbed message is still a usable diagnostic.
-
-    Public since #758: the dispatcher journal (:mod:`mureo.mcp.journal`)
-    scrubs its ``reason`` with the very same passes, so one trail can
-    never redact less than the other.
-    """
-    scrubbed = _SECRET_VALUE.sub("***", text)
-    scrubbed = _SECRET_KEY_VALUE.sub(r"\1***", scrubbed)
-    return _CODE_KEY_VALUE.sub(r"\1***", scrubbed)
 
 
 def _audit_path() -> Path:

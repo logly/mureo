@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.types import TextContent, Tool
 
+from mureo.core import actor
 from mureo.core.policy import PolicyDecision, PolicyGate
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import ProviderEntry
@@ -354,6 +355,207 @@ async def test_raising_plugin_is_recorded_once_in_the_journal(
     assert record["reason"] == "RuntimeError: plugin exploded"
 
 
+async def test_reason_is_split_off_before_the_handler_and_journalled(
+    log: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The handler receives what it declared; the rationale gets its own key.
+
+    ``args`` is the record of what the agent asked the TOOL to do, so the
+    rationale must not sit inside it — an operator filtering on arguments
+    would otherwise read a sentence as a parameter.
+    """
+    from mureo.mcp import server
+
+    seen: list[dict[str, Any]] = []
+
+    async def _handler(name: str, arguments: dict[str, Any]) -> list[Any]:
+        seen.append(dict(arguments))
+        return [TextContent(type="text", text="ok")]
+
+    monkeypatch.setattr(server, "handle_rollback_tool", _handler)
+    monkeypatch.setattr(server, "_evaluate_policy_gates", lambda n, a: None)
+    await server.handle_call_tool(
+        "rollback_apply",
+        {"index": 0, "confirm": True, "reason": "the budget change overshot"},
+    )
+
+    assert seen == [{"index": 0, "confirm": True}]
+    record = _only(log)
+    assert record["rationale"] == "the budget change overshot"
+    assert record["args"] == {"index": 0, "confirm": True}
+
+
+async def test_a_tool_with_its_own_reason_keeps_it_in_the_journal_args(
+    log: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``reason`` is a PERSISTED value on these two, not a rationale.
+
+    ``mureo_state_platform_not_collected_set`` writes the operator-facing
+    "why was this account not collected" note; it was never injected, so
+    it must be neither stripped from the arguments the handler receives
+    nor lifted out of the journal's ``args``. Recording it as a
+    ``rationale`` instead would move a persisted value into a field that
+    means something else, and lose it from the record of what was asked.
+    """
+    from mureo.mcp import server
+
+    seen: list[dict[str, Any]] = []
+
+    async def _handler(name: str, arguments: dict[str, Any]) -> list[Any]:
+        seen.append(dict(arguments))
+        return [TextContent(type="text", text="ok")]
+
+    monkeypatch.setattr(server, "handle_mureo_context_tool", _handler)
+    monkeypatch.setattr(server, "_evaluate_policy_gates", lambda n, a: None)
+    arguments = {
+        "platform": "meta_ads",
+        "account_id": "act_1",
+        "reason": "the Meta access token expired",
+    }
+    await server.handle_call_tool(
+        "mureo_state_platform_not_collected_set", dict(arguments)
+    )
+
+    assert "mureo_state_platform_not_collected_set" not in server._REASON_TOOLS
+    assert seen == [arguments]
+    record = _only(log)
+    assert record["args"] == arguments
+    assert "rationale" not in record
+
+
+async def test_a_denied_call_still_records_its_rationale(
+    log: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rationale is split off BEFORE the gates, so the exits that never
+    reach a handler record it too -- and never leak ``reason`` into ``args``.
+
+    A refused mutation is exactly the call an operator asks "why did it try
+    that?" about, so it is the last record that should be missing the answer.
+    """
+    from mureo.mcp import server
+
+    decision = PolicyDecision(allowed=False, reason="read-only mode is active")
+    monkeypatch.setattr(server, "_evaluate_policy_gates", lambda n, a: decision)
+    await server.handle_call_tool(
+        "rollback_apply",
+        {"index": 0, "confirm": True, "reason": "the budget change overshot"},
+    )
+
+    record = _only(log)
+    assert record["outcome"] == "denied"
+    assert record["rationale"] == "the budget change overshot"
+    assert record["args"] == {"index": 0, "confirm": True}
+
+
+async def test_the_policy_gates_do_not_see_the_rationale(
+    log: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``reason`` is mureo's parameter, not the tool's: a gate reading the
+    call's arguments must see the same set the handler will."""
+    from mureo.mcp import server
+
+    seen: list[dict[str, Any]] = []
+
+    def _gate(name: str, arguments: dict[str, Any]) -> PolicyDecision | None:
+        seen.append(dict(arguments))
+        return None
+
+    async def _handler(name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+    monkeypatch.setattr(server, "_evaluate_policy_gates", _gate)
+    monkeypatch.setattr(server, "handle_rollback_tool", _handler)
+    await server.handle_call_tool(
+        "rollback_apply", {"index": 0, "confirm": True, "reason": "because"}
+    )
+    assert seen == [{"index": 0, "confirm": True}]
+
+
+async def test_an_over_long_reason_is_invalid_args(log: Path) -> None:
+    """Refused rather than truncated, and classified like any other schema
+    violation so the journal reads the same for both."""
+    from mureo.core.actor import ACTION_REASON_MAX_CHARS
+    from mureo.mcp.server import handle_call_tool
+
+    with pytest.raises(ValueError, match="reason"):
+        await handle_call_tool(
+            "rollback_apply",
+            {
+                "index": 0,
+                "confirm": True,
+                "reason": "x" * (ACTION_REASON_MAX_CHARS + 1),
+            },
+        )
+    assert _only(log)["outcome"] == "invalid_args"
+
+
+async def test_the_journalled_rationale_is_bounded(log: Path) -> None:
+    """A rationale arriving at ``build_record`` from anywhere else is capped
+    like ``reason`` is: the journal's own line budget, not the schema's."""
+    journal.record_call(
+        tool="t",
+        family="google_ads",
+        mutating=True,
+        arguments={},
+        outcome="ok",
+        duration_ms=1,
+        rationale="z" * (journal.MAX_REASON_CHARS + 50),
+    )
+    assert len(_only(log)["rationale"]) == journal.MAX_REASON_CHARS
+
+
+async def test_a_read_tool_rejects_reason_at_the_schema(log: Path) -> None:
+    """Read-only tools get no ``reason``: their schemas stay closed, so a
+    rationale sent to one is a caller error rather than a silent drop."""
+    from mureo.mcp.server import handle_call_tool
+
+    with pytest.raises(ValueError, match="reason"):
+        await handle_call_tool("rollback_plan_get", {"index": 0, "reason": "why not"})
+    assert _only(log)["outcome"] == "invalid_args"
+
+
+async def test_the_call_reason_contextvar_is_cleared_after_the_call(
+    log: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mureo.core.actor import current_call_reason
+    from mureo.mcp import server
+
+    inside: list[str | None] = []
+
+    async def _handler(name: str, arguments: dict[str, Any]) -> list[Any]:
+        inside.append(current_call_reason())
+        return [TextContent(type="text", text="ok")]
+
+    monkeypatch.setattr(server, "handle_rollback_tool", _handler)
+    monkeypatch.setattr(server, "_evaluate_policy_gates", lambda n, a: None)
+    await server.handle_call_tool(
+        "rollback_apply", {"index": 0, "confirm": True, "reason": "because"}
+    )
+
+    assert inside == ["because"]
+    assert current_call_reason() is None
+
+
+async def test_the_call_reason_contextvar_is_cleared_after_a_raise(
+    log: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mureo.core.actor import current_call_reason
+    from mureo.mcp import server
+
+    async def _boom(name: str, arguments: dict[str, Any]) -> list[Any]:
+        raise RuntimeError("handler exploded")
+
+    monkeypatch.setattr(server, "handle_rollback_tool", _boom)
+    monkeypatch.setattr(server, "_evaluate_policy_gates", lambda n, a: None)
+    with pytest.raises(RuntimeError, match="handler exploded"):
+        await server.handle_call_tool(
+            "rollback_apply", {"index": 0, "confirm": True, "reason": "because"}
+        )
+
+    assert current_call_reason() is None
+    assert _only(log)["rationale"] == "because"
+
+
 def test_client_info_is_read_from_the_sdk_request_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -362,7 +564,7 @@ def test_client_info_is_read_from_the_sdk_request_context(
 
     from mureo.mcp._journal_hook import capture_client_info
 
-    monkeypatch.setattr(journal, "_client", None)
+    monkeypatch.setattr(actor, "_client", None)
     params = InitializeRequestParams(
         protocolVersion="2025-06-18",
         capabilities=ClientCapabilities(),
@@ -385,7 +587,7 @@ def test_client_info_stays_null_outside_a_request_context(
         def request_context(self) -> Any:
             raise LookupError("called outside of a request context")
 
-    monkeypatch.setattr(journal, "_client", None)
+    monkeypatch.setattr(actor, "_client", None)
     capture_client_info(_NoContext())  # must not raise
     assert journal.client_info() is None
 

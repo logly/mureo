@@ -233,6 +233,8 @@ What can join a batch, and how far a reversal can actually go, differs by platfo
 
 None of that changes what is in the **journal**: every tool call you make is already one line in `JOURNAL.jsonl`, whatever the platform and whatever the outcome, so an attempt that was refused, denied or failed is recoverable there even though it is correctly absent from `action_log` (`mureo journal --failures`).
 
+**Pass `reason` on every mutation.** Every mutating tool takes an optional `reason`: one or two sentences naming the evidence you acted on and the effect you expect — `"CPA has been 3x target for 14 days at 40 conversions; pausing should move account CPA under target within the week"`. Not a restatement of the call (`"pausing the ad set"` is worth nothing), and not the whole analysis (500 characters, refused if over — shorten it, mureo will not truncate it for you). It is recorded twice: in the journal beside the call, and on the `action_log` entry the call produces, alongside the id of your session. That is the only reason the next session — or the operator, months later — can tell why a change was made rather than only that it was. You are the last point at which that sentence exists; nothing downstream can reconstruct it. One exception: `mureo_state_action_log_append` takes no call-level `reason` — it records a change rather than making one, so put the rationale in the entry's own `reason` field.
+
 If you cannot open a batch (older mureo without the tools), say so and record each entry individually — do not silently do a bulk pass with no grouping.
 
 ## Changes made outside mureo

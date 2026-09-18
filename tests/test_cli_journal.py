@@ -97,6 +97,61 @@ def test_table_lists_the_columns(tmp_path: Path) -> None:
         assert cell in row
 
 
+def test_an_ok_row_shows_the_rationale_in_the_last_column(tmp_path: Path) -> None:
+    """One column, two readings: a failure explains itself, a success says
+    why the agent made the change."""
+    log = _write(
+        tmp_path / "JOURNAL.jsonl",
+        _entry(tool="rollback_apply", rationale="the budget change overshot"),
+    )
+    result = _run("--path", str(log))
+    assert result.exit_code == 0, result.output
+    assert "reason/rationale" in result.output
+    row = next(ln for ln in result.output.splitlines() if "rollback_apply" in ln)
+    assert "the budget change overshot" in row
+
+
+def test_a_failed_row_shows_the_failure_not_the_rationale(tmp_path: Path) -> None:
+    log = _write(
+        tmp_path / "JOURNAL.jsonl",
+        _entry(
+            tool="rollback_apply",
+            outcome="denied",
+            reason="read-only mode is active",
+            rationale="the budget change overshot",
+        ),
+    )
+    result = _run("--path", str(log))
+    row = next(ln for ln in result.output.splitlines() if "rollback_apply" in ln)
+    assert "read-only mode is active" in row
+    assert "overshot" not in row
+
+
+def test_the_table_cell_is_one_line_of_plain_text(tmp_path: Path) -> None:
+    """A journal is read in a terminal and the text in it came from a model.
+
+    A newline would break the column alignment into nonsense and an ANSI
+    escape would recolour the operator's terminal, so both are flattened
+    before the cell is cut to width. ``--json`` keeps the raw text.
+    """
+    log = _write(
+        tmp_path / "JOURNAL.jsonl",
+        _entry(
+            tool="rollback_apply",
+            rationale="line one\n\x1b[31mline two\x1b[0m\tand   three",
+        ),
+    )
+    result = _run("--path", str(log))
+    assert "\x1b[31m" not in result.output
+    assert "line one line two and three" in result.output
+
+
+def test_json_keeps_the_rationale_verbatim(tmp_path: Path) -> None:
+    log = _write(tmp_path / "JOURNAL.jsonl", _entry(rationale="z" * 300))
+    result = _run("--path", str(log), "--json")
+    assert _json_lines(result.output)[0]["rationale"] == "z" * 300
+
+
 def test_long_reasons_are_truncated_in_the_table(tmp_path: Path) -> None:
     log = _write(
         tmp_path / "JOURNAL.jsonl", _entry(outcome="exception", reason="z" * 300)

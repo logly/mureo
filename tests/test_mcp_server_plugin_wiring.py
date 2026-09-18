@@ -468,6 +468,30 @@ class TestPhase2Promotion:
         # outcome like a built-in op.
         assert doc.action_log[0].observation_due is not None
 
+    async def test_promoted_entry_carries_the_rationale_and_the_actor(
+        self, server_with_plugin, tmp_path, monkeypatch
+    ) -> None:
+        """#758 phase 2 — the plugin promotion path inherits both from the
+        shared ``append_action_log`` choke point, not from the plugin ABI."""
+        from mureo.context.state import read_state_file
+        from mureo.core import actor
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        monkeypatch.setattr(actor, "_session", "sess-plugin")
+        monkeypatch.setattr(actor, "_client", "Claude Code/1.4.2")
+        await server_with_plugin.handle_call_tool(
+            "wired_plugin_echo", {"msg": "x", "reason": "the bridge reported waste"}
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.reason == "the bridge reported waste"
+        assert entry.session_id == "sess-plugin"
+        assert entry.client == "Claude Code/1.4.2"
+
     async def test_two_providers_of_one_distribution_log_distinct_keys(
         self, tmp_path, monkeypatch
     ) -> None:

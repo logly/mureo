@@ -18,6 +18,7 @@ from mcp.types import Tool
 
 from mureo.context.models import DAILY_DATE_KEY_PATTERN
 from mureo.context.state import DAILY_RETENTION_DAYS
+from mureo.core.actor import ACTION_REASON_MAX_CHARS
 from mureo.core.display_contract import (
     ACTION_LOG_DISPLAY_RULE,
     ACTION_LOG_DISPLAY_SUMMARY_MAX_CHARS,
@@ -123,8 +124,10 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "observation_due, reversible_params, rollback_of, evaluation_of, "
         "batch_id (normally stamped by the server — see the field), the "
         "provenance trio origin / external_id / occurred_at for a change "
-        "mureo did NOT make (see those fields), and display_title / "
-        "display_summary — the one line the dashboard shows for this entry."
+        "mureo did NOT make (see those fields), display_title / "
+        "display_summary — the one line the dashboard shows for this entry — "
+        "and reason — WHY the change was made, which only this call can "
+        "supply (see the field)."
     ),
     "properties": {
         "timestamp": {
@@ -265,6 +268,21 @@ _ACTION_LOG_ENTRY_PROPERTY = {
                 "text — no markdown: ``**bold**`` is shown to a person as "
                 "asterisks. Keep the full reasoning in ``summary``, which "
                 "nothing here shortens. " + ACTION_LOG_DISPLAY_RULE
+            ),
+        },
+        "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": ACTION_REASON_MAX_CHARS,
+            "description": (
+                "WHY this change was made — one or two sentences naming the "
+                "evidence and the expected effect. SET IT whenever the change "
+                "you are recording had a reason: unlike every other mutating "
+                "tool, this one takes no call-level ``reason``, because it "
+                "RECORDS a change rather than making one, so this field is "
+                "the only place the rationale can go. Leave it out only for "
+                "an entry that genuinely had none. Refused rather than "
+                "truncated when over the bound."
             ),
         },
     },

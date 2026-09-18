@@ -21,6 +21,7 @@ stderr, so the damage is visible without hiding the rest.
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -42,7 +43,28 @@ DEFAULT_LAST = 50
 #: Reason column budget. The full text stays in ``--json``.
 REASON_WIDTH = 80
 
-_HEADERS = ("ts", "outcome", "tool", "family", "ms", "batch_id", "reason")
+#: Anything that would stop the cell being one line of plain text.
+#:
+#: Three passes, in order. ANSI escape sequences go WHOLE — dropping only
+#: the leading ``\x1b`` would leave ``[31m`` sitting in the operator's
+#: table as literal text. Then the remaining C0/C1 control characters,
+#: then runs of whitespace. All of it matters for a table built by padding
+#: strings: a newline breaks the column alignment of every row after it,
+#: and an escape sequence written by a model recolours or repositions the
+#: terminal of whoever reads the journal back.
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-Z\\-_]")
+_UNPRINTABLE = re.compile(r"[\x00-\x1f\x7f-\x9f]+")
+_WHITESPACE = re.compile(r"\s+")
+
+_HEADERS = (
+    "ts",
+    "outcome",
+    "tool",
+    "family",
+    "ms",
+    "batch_id",
+    "reason/rationale",
+)
 
 _LAST_OPTION = typer.Option(
     DEFAULT_LAST,
@@ -124,8 +146,27 @@ def _matches(
     return True
 
 
+def _explanation(record: dict[str, Any]) -> str:
+    """The one sentence this row is worth showing, by outcome.
+
+    A failure explains ITSELF — that is what the operator scanning the
+    table is looking for, and it must not be displaced by the agent's
+    rationale for attempting it. A successful call has nothing to explain,
+    so the column shows WHY the change was made instead (#758 phase 2).
+    Both readings are in ``--json`` in full, under their own keys.
+
+    Flattened to one line of printable text before the caller truncates
+    it: this is model-written prose in a column built by padding strings.
+    """
+    if record.get("outcome") != "ok":
+        text = str(record.get("reason") or "")
+    else:
+        text = str(record.get("rationale") or "")
+    return _WHITESPACE.sub(" ", _UNPRINTABLE.sub(" ", _ANSI.sub("", text))).strip()
+
+
 def _row(record: dict[str, Any]) -> tuple[str, ...]:
-    reason = str(record.get("reason") or "")
+    reason = _explanation(record)
     return (
         str(record.get("ts", "")),
         str(record.get("outcome", "")),

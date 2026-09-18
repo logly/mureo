@@ -282,6 +282,12 @@ _ENTRY_FIELD_VALUES: dict[str, Any] = {
     # are inside the bounds a real append would be held to.
     "display_title": "Excluded 12 placements",
     "display_summary": "All 12 spent with no conversions in the last 30 days.",
+    # #758 phase 2 — WHY and WHO. Explicit here for the same reason as the
+    # display line: ``append_action_log`` stamps these only when they are
+    # missing, so an explicit value must survive the round trip untouched.
+    "reason": "All 12 spent with no conversions for 30 days.",
+    "session_id": "0123456789abcdef0123456789abcdef",
+    "client": "Claude Code/1.4.2",
     # The one field the round-trip is ALLOWED to change: it arrives unset and
     # comes back carrying the open batch.
     "batch_id": None,

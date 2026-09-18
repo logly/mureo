@@ -292,6 +292,8 @@ mureo journal --json                   # raw records, one JSON object per line
 mureo journal --path ./JOURNAL.jsonl   # read a specific file
 ```
 
+The last column reads `reason/rationale`: for a non-`ok` call it is why the call failed, and for a successful one it is the `reason` the agent passed — why the change was made. `--json` carries both in full, under their own keys.
+
 Filters combine, and `--last` applies **after** filtering — `--failures --last 20` means the last 20 failures, not the failures among the last 20 calls. A missing journal is not an error (`no journal at <path>`, exit 0): a workspace where no tool has run yet, or an operator who set `MUREO_DISABLE_JOURNAL=1`, simply has none. Unparseable lines — a half-written final line after a crash — are skipped and counted on stderr rather than failing the read.
 
 ## Repair Commands
