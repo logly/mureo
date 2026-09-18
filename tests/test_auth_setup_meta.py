@@ -19,12 +19,13 @@ from mureo.auth_setup import (
     run_meta_oauth,
     setup_meta_ads,
 )
+from mureo.meta_ads._api_version import GRAPH_API_BASE, OAUTH_DIALOG_URL
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-_GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
+_GRAPH_API_BASE = GRAPH_API_BASE
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +38,7 @@ def test_generate_meta_auth_url() -> None:
     """The correct Facebook authorization URL is generated."""
     url = _generate_meta_auth_url(app_id="123456", port=8080)
 
-    assert "https://www.facebook.com/v21.0/dialog/oauth" in url
+    assert OAUTH_DIALOG_URL in url
     assert "client_id=123456" in url
     assert "redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback" in url or (
         "redirect_uri=http://localhost:8080/callback" in url
@@ -256,7 +257,7 @@ async def test_list_meta_ad_accounts_follows_paging_next_until_exhausted() -> No
         "data": [
             {"id": f"act_{i}", "name": f"A{i}", "account_status": 1} for i in range(100)
         ],
-        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=cur1"},
+        "paging": {"next": f"{_GRAPH_API_BASE}/me/adaccounts?after=cur1"},
     }
     page1.raise_for_status = MagicMock()
 
@@ -267,7 +268,7 @@ async def test_list_meta_ad_accounts_follows_paging_next_until_exhausted() -> No
             {"id": f"act_{i}", "name": f"A{i}", "account_status": 1}
             for i in range(100, 175)
         ],
-        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=cur2"},
+        "paging": {"next": f"{_GRAPH_API_BASE}/me/adaccounts?after=cur2"},
     }
     page2.raise_for_status = MagicMock()
 
@@ -308,13 +309,9 @@ async def test_list_meta_ad_accounts_follows_paging_next_until_exhausted() -> No
     assert calls[0].args[0].endswith("/me/adaccounts")
     assert calls[0].kwargs["params"]["access_token"] == "bm-token"
     assert calls[0].kwargs["params"]["limit"] >= 100
-    assert calls[1].args[0] == (
-        "https://graph.facebook.com/v21.0/me/adaccounts?after=cur1"
-    )
+    assert calls[1].args[0] == f"{_GRAPH_API_BASE}/me/adaccounts?after=cur1"
     assert calls[1].kwargs.get("params") is None
-    assert calls[2].args[0] == (
-        "https://graph.facebook.com/v21.0/me/adaccounts?after=cur2"
-    )
+    assert calls[2].args[0] == f"{_GRAPH_API_BASE}/me/adaccounts?after=cur2"
     assert calls[2].kwargs.get("params") is None
 
 
@@ -375,7 +372,7 @@ async def test_list_meta_ad_accounts_mid_walk_failure_discards_partial_and_redac
         "data": [{"id": "act_1", "name": "A1", "account_status": 1}],
         "paging": {
             "next": (
-                "https://graph.facebook.com/v21.0/me/adaccounts"
+                f"{_GRAPH_API_BASE}/me/adaccounts"
                 "?after=cur&access_token=SECRET-TOKEN-XYZ"
             )
         },
@@ -388,7 +385,7 @@ async def test_list_meta_ad_accounts_mid_walk_failure_discards_partial_and_redac
     page2.raise_for_status = MagicMock(
         side_effect=Exception(
             "Client error '401 Unauthorized' for url "
-            "'https://graph.facebook.com/v21.0/me/adaccounts"
+            f"'{_GRAPH_API_BASE}/me/adaccounts"
             "?after=cur&access_token=SECRET-TOKEN-XYZ'"
         )
     )
@@ -456,7 +453,7 @@ async def test_list_meta_ad_accounts_caps_page_walk() -> None:
     looping_page.status_code = 200
     looping_page.json.return_value = {
         "data": [{"id": "act_x", "name": "X", "account_status": 1}],
-        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=loop"},
+        "paging": {"next": f"{_GRAPH_API_BASE}/me/adaccounts?after=loop"},
     }
     looping_page.raise_for_status = MagicMock()
 
@@ -578,7 +575,7 @@ async def test_list_meta_ad_accounts_flags_truncation_at_page_cap(
     looping_page.status_code = 200
     looping_page.json.return_value = {
         "data": [{"id": "act_x", "name": "X", "account_status": 1}],
-        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=loop"},
+        "paging": {"next": f"{_GRAPH_API_BASE}/me/adaccounts?after=loop"},
     }
     looping_page.raise_for_status = MagicMock()
 
@@ -602,7 +599,7 @@ async def test_list_meta_ad_accounts_complete_walk_is_not_truncated() -> None:
     page1.status_code = 200
     page1.json.return_value = {
         "data": [{"id": "act_1", "name": "A1"}],
-        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=c1"},
+        "paging": {"next": f"{_GRAPH_API_BASE}/me/adaccounts?after=c1"},
     }
     page1.raise_for_status = MagicMock()
 
@@ -1320,7 +1317,7 @@ async def test_list_meta_ad_accounts_exact_cap_walk_is_complete(
     page1.status_code = 200
     page1.json.return_value = {
         "data": [{"id": "act_1", "name": "A1"}],
-        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=c1"},
+        "paging": {"next": f"{_GRAPH_API_BASE}/me/adaccounts?after=c1"},
     }
     page1.raise_for_status = MagicMock()
 

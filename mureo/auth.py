@@ -30,6 +30,7 @@ import httpx
 
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 from mureo.fsutil import file_lock, lock_path_for
+from mureo.meta_ads._api_version import OAUTH_TOKEN_URL
 
 if TYPE_CHECKING:
     from mureo.google_ads import GoogleAdsApiClient
@@ -500,7 +501,7 @@ _TOKEN_EXPIRY_REFRESH_LEAD_DAYS = 7
 #: :func:`_is_system_user_token`.
 _META_SYSTEM_USER_TOKEN_TYPE = "SYSTEM_USER"
 
-_META_GRAPH_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token"
+_META_GRAPH_TOKEN_URL = OAUTH_TOKEN_URL
 _refresh_lock = asyncio.Lock()
 
 #: Caps on the Graph-authored fields quoted in a refresh failure (#605).

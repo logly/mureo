@@ -246,9 +246,10 @@ def _select_account(
 # :mod:`mureo.meta_ads.accounts` (the public-API home for Meta account
 # discovery). Importing from there keeps a single source of truth so a
 # Graph API version bump only needs to land in one place.
+from mureo.meta_ads._api_version import OAUTH_DIALOG_URL  # noqa: E402
 from mureo.meta_ads.accounts import _HTTP_TIMEOUT, _META_GRAPH_API_BASE  # noqa: E402
 
-_META_AUTH_URL = "https://www.facebook.com/v21.0/dialog/oauth"
+_META_AUTH_URL = OAUTH_DIALOG_URL
 _META_OAUTH_SCOPES = (
     "ads_management,ads_read,business_management,"
     "pages_show_list,pages_manage_ads,pages_read_engagement,leads_retrieval"

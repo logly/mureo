@@ -26,6 +26,7 @@ from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
 )
+from mureo.meta_ads._api_version import OAUTH_TOKEN_URL
 
 
 @pytest.fixture(autouse=True)
@@ -288,7 +289,7 @@ async def test_refresh_api_call_parameters() -> None:
         await refresh_meta_token_if_needed(creds)
 
     mock_client.post.assert_called_once_with(
-        "https://graph.facebook.com/v21.0/oauth/access_token",
+        OAUTH_TOKEN_URL,
         data={
             "grant_type": "fb_exchange_token",
             "client_id": "app-123",

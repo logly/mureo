@@ -12,6 +12,7 @@ from mureo.meta_ads._ad_rules import AdRulesMixin
 from mureo.meta_ads._ad_sets import AdSetsMixin
 from mureo.meta_ads._ads import AdsMixin
 from mureo.meta_ads._analysis import AnalysisMixin
+from mureo.meta_ads._api_version import GRAPH_API_BASE
 from mureo.meta_ads._audiences import AudiencesMixin
 from mureo.meta_ads._campaigns import CampaignsMixin
 from mureo.meta_ads._catalog import CatalogMixin
@@ -182,12 +183,13 @@ class MetaAdsApiClient(
 ):
     """Meta Marketing API client.
 
-    Operates Meta Ads (Facebook/Instagram) using Graph API v21.0.
+    Operates Meta Ads (Facebook/Instagram) using the Graph API version
+    pinned in :mod:`mureo.meta_ads._api_version`.
     Includes built-in rate limit monitoring and exponential backoff retry.
     Provides campaigns, ad sets, ads, and insights operations via mixin multiple inheritance.
     """
 
-    BASE_URL = "https://graph.facebook.com/v21.0"
+    BASE_URL = GRAPH_API_BASE
 
     def __init__(
         self,

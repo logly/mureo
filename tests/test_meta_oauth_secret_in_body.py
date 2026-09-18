@@ -19,7 +19,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token"
+from mureo.meta_ads._api_version import OAUTH_TOKEN_URL
+
+_TOKEN_URL = OAUTH_TOKEN_URL
 
 
 def _mock_client(json_body: dict[str, Any]) -> tuple[Any, Any]:

@@ -1,5 +1,32 @@
 ## [Unreleased]
 
+### Changed
+
+- **Meta Graph / Marketing API v26.0** (#770). mureo now speaks Graph and
+  Marketing API v26.0 (was `v21.0`). The old pin had outlived its version:
+  Marketing API v21.0 expired on 2025-09-09, so Meta had been quietly serving
+  our ads calls on whatever the oldest live version happened to be, and v26.0's
+  breaking changes apply to *every* version on 2026-10-27 regardless of what a
+  caller pins. The version is now one constant —
+  `mureo.meta_ads._api_version.META_GRAPH_API_VERSION`, re-exported from
+  `mureo.meta_ads` — from which the ad client's `BASE_URL`, the ad-account
+  listing base, the OAuth dialog URL and the token-grant URL are all derived; a
+  test scans the package so a literal version can never come back. Two
+  changelog items reached our code and were migrated with it:
+  `boost_instagram_post` sends `instagram_user_id` instead of the
+  `instagram_actor_id` deprecated in v22.0 (dead on all versions since
+  2025-09-09), and `create_lookalike_audience` now puts several countries in
+  `lookalike_spec.location_spec.geo_locations.countries` rather than passing a
+  list to the single-code `country` subfield, whose types v24.0 began enforcing
+  on all versions on 2026-01-06. The ad-set create docstring, MCP tool and
+  `_mureo-meta-ads` skill now say that since v26.0 an ad set under a
+  special-ad-category campaign (housing, employment, credit, financial
+  products and services) with relaxable targeting is rejected unless
+  `targeting.targeting_automation.advantage_audience` is explicitly `1` or `0`.
+  The `facebook-business` dependency was dropped: nothing imports it — mureo
+  talks to Graph over `httpx` — so it was pure install weight and supply-chain
+  surface.
+
 ## [0.19.0] - 2026-09-18
 
 ### Added

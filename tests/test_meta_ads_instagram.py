@@ -290,8 +290,10 @@ class TestBoostInstagramPost:
         data = call_args[0][1]
         creative = json.loads(data["creative"])
         assert creative["object_story_id"] == "ig_111_media_222"
-        assert "instagram_actor_id" in creative
-        assert creative["instagram_actor_id"] == "ig_111"
+        # ``instagram_actor_id`` was deprecated in Graph API v22.0 and stopped
+        # working on ALL versions on 2025-09-09 (#770).
+        assert "instagram_actor_id" not in creative
+        assert creative["instagram_user_id"] == "ig_111"
         assert data["adset_id"] == "adset_456"
         assert data["status"] == "PAUSED"
 

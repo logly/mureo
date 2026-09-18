@@ -1048,15 +1048,23 @@ class TestAudiencesMixin:
         assert spec["origin_audience_id"] == "source1"
         assert spec["ratio"] == 0.05
         assert spec["country"] == "JP"
+        assert "location_spec" not in spec
 
     @pytest.mark.asyncio
     async def test_create_lookalike_audience_multi_country(self, client) -> None:
+        """Several countries travel as ``location_spec``, never as ``country``.
+
+        ``lookalike_spec.country`` is a single ISO code. Meta began enforcing
+        the subfield types in v24.0 (all versions since 2026-01-06), so a list
+        there is now rejected instead of quietly ignored (#770).
+        """
         await client.create_lookalike_audience(
             "Lookalike2", "source1", ["JP", "US"], 0.10, starting_ratio=0.02
         )
         data = client._post.call_args[0][1]
         spec = json.loads(data["lookalike_spec"])
-        assert spec["country"] == ["JP", "US"]
+        assert "country" not in spec
+        assert spec["location_spec"] == {"geo_locations": {"countries": ["JP", "US"]}}
         assert spec["starting_ratio"] == 0.02
 
 

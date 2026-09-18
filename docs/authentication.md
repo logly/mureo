@@ -218,7 +218,7 @@ Notes:
 2. Exchange it for a long-lived token (60 days):
 
 ```bash
-curl -X POST "https://graph.facebook.com/v21.0/oauth/access_token" \
+curl -X POST "https://graph.facebook.com/v26.0/oauth/access_token" \
   -d "grant_type=fb_exchange_token" \
   -d "client_id=YOUR_APP_ID" \
   -d "client_secret=YOUR_APP_SECRET" \

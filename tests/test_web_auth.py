@@ -30,6 +30,7 @@ from mureo.cli.web_auth import (  # noqa: I001
     render_meta_account_picker,
     render_meta_secrets_form,
 )
+from mureo.meta_ads._api_version import OAUTH_DIALOG_URL
 
 if TYPE_CHECKING:
     from http.client import HTTPResponse
@@ -603,7 +604,7 @@ class TestMetaAdsSubmitRoute:
             assert exc_info.value.code == 500
 
     def test_valid_submit_redirects_to_facebook(self, wizard: Any) -> None:
-        fake_url = "https://www.facebook.com/v21.0/dialog/oauth?client_id=A"
+        fake_url = f"{OAUTH_DIALOG_URL}?client_id=A"
 
         with patch(
             "mureo.cli.web_auth.build_meta_auth_url", return_value=fake_url
