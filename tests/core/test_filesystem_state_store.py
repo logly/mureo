@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from mureo.context.models import ActionLogEntry, StateDocument, StrategyEntry
+from mureo.core.actor import session_id
 from mureo.core.state_store import FilesystemStateStore, StateStore
 
 
@@ -76,7 +77,15 @@ def test_append_action_log_accumulates(tmp_path: Path) -> None:
     e2 = ActionLogEntry(timestamp="2026-01-02T00:00:00Z", action="b", platform="m")
     store.append_action_log(e1)
     store.append_action_log(e2)
-    assert store.read_state().action_log == (e1, e2)
+    # ``session_id`` is stamped on the way through the write path (#758
+    # phase 2), so the stored entries differ from the ones handed in by
+    # exactly that field — compare what the caller actually supplied.
+    stored = store.read_state().action_log
+    assert [(e.timestamp, e.action, e.platform) for e in stored] == [
+        (e1.timestamp, e1.action, e1.platform),
+        (e2.timestamp, e2.action, e2.platform),
+    ]
+    assert all(e.session_id == session_id() for e in stored)
 
 
 @pytest.mark.unit
@@ -87,7 +96,10 @@ def test_append_action_log_creates_state_file_when_missing(tmp_path: Path) -> No
     entry = ActionLogEntry(timestamp="2026-01-01T00:00:00Z", action="a", platform="g")
     store.append_action_log(entry)
     assert (tmp_path / "STATE.json").exists()
-    assert store.read_state().action_log == (entry,)
+    stored = store.read_state().action_log
+    assert len(stored) == 1
+    assert stored[0].action == entry.action
+    assert stored[0].session_id == session_id()
 
 
 @pytest.mark.unit

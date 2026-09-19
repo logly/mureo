@@ -55,9 +55,10 @@ if TYPE_CHECKING:
     from mureo.mcp._journal_hook import JournalledCall
     from mureo.mcp.tool_provider import MCPToolProvider
 
+from mureo.core.actor import bind_call_reason
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp._helpers import is_error_result
-from mureo.mcp._journal_hook import capture_client_info, journal_call
+from mureo.mcp._journal_hook import capture_client_info, journal_call, take_rationale
 from mureo.mcp._plugin_declarations import (
     _register_bridged_money_declarations,
     _register_plugin_bid_declarations,
@@ -65,6 +66,7 @@ from mureo.mcp._plugin_declarations import (
     _register_plugin_pattern_fallbacks,
     _register_plugin_read_only_hints,
 )
+from mureo.mcp._reason_param import inject_reason_params, mutating_predicate
 from mureo.mcp._result_decorations import (
     _capture_plugin_reversal,
     _maybe_append_batch_reminder,
@@ -308,6 +310,56 @@ _ALL_TOOLS.extend(_PLUGIN_TOOLS)
 _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
 
 
+# One conservative shared bucket for all plugin tool calls. Built-in
+# platforms keep their own per-platform throttlers; this only gates the
+# plugin dispatch branch.
+#
+# Kept as a module-level attribute because (a) existing tests
+# monkey-patch it directly to inject a spy throttler and (b) the lazy
+# seeding helper below copies its instance into the resolved
+# :class:`ProcessLocalThrottleStore` so the same bucket is observed
+# regardless of which path enters the dispatcher.
+_PLUGIN_THROTTLER = Throttler(PLUGIN_THROTTLE)
+
+# Phase 2 (#114): per-tool safety semantics derived from STANDARD MCP
+# metadata (annotations.readOnlyHint + optional meta["mureo"]). No new
+# ABI surface. A declared throttle hint gets its own bucket; everything
+# else shares _PLUGIN_THROTTLER. Undeclared ⇒ mutating (conservative).
+#
+# Keyed by BARE tool name, and that is safe rather than lucky (#589):
+# ``collect_plugin_tools`` already dedupes tool names first-wins, dropping the
+# duplicate from BOTH ``_PLUGIN_TOOLS`` and ``_PLUGIN_DISPATCH`` and naming the
+# two distributions involved. So this map — and the three declaration
+# registries fed from it below — holds the semantics of the ONE tool that is
+# actually dispatchable under that name. A second distribution's declaration
+# can never be paired with a first distribution's tool, which is what re-keying
+# by ``(distribution, name)`` would have bought; what identity is needed for is
+# the *message*, and that is emitted where identity lives, at collection.
+_PLUGIN_SEMANTICS: dict[str, ToolSemantics] = {
+    t.name: derive_semantics(t) for t in _PLUGIN_TOOLS
+}
+_PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
+    name: Throttler(sem.throttle)
+    for name, sem in _PLUGIN_SEMANTICS.items()
+    if sem.throttle is not None
+}
+
+
+_register_plugin_budget_declarations(_PLUGIN_SEMANTICS)
+_register_plugin_bid_declarations(_PLUGIN_SEMANTICS)
+_register_bridged_money_declarations(_PLUGIN_SEMANTICS, _PLUGIN_DISPATCH)
+_register_plugin_read_only_hints(_PLUGIN_SEMANTICS)
+_register_plugin_pattern_fallbacks(_PLUGIN_SEMANTICS)
+
+
+# ``reason`` on every mutating tool (#758 phase 2) — see _reason_param. Here,
+# because the validators below must see the injected schema. ``_ALL_TOOLS`` is
+# REBOUND, never mutated: the registry modules' own Tools stay untouched.
+_ALL_TOOLS, _REASON_TOOLS = inject_reason_params(
+    _ALL_TOOLS, mutating_predicate(_PLUGIN_NAMES, _PLUGIN_SEMANTICS)
+)
+
+
 # Pre-compiled JSON Schema validators for every tool, keyed by tool name.
 # The MCP framework does not enforce ``inputSchema``, so declared bounds
 # (``minimum``, ``required``, ``type``, ``enum``) are advisory until checked
@@ -366,48 +418,6 @@ def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
     first = errors[0]
     location = "/".join(str(p) for p in first.path) or "(root)"
     raise ValueError(f"Invalid arguments for {name}: at '{location}': {first.message}")
-
-
-# One conservative shared bucket for all plugin tool calls. Built-in
-# platforms keep their own per-platform throttlers; this only gates the
-# plugin dispatch branch.
-#
-# Kept as a module-level attribute because (a) existing tests
-# monkey-patch it directly to inject a spy throttler and (b) the lazy
-# seeding helper below copies its instance into the resolved
-# :class:`ProcessLocalThrottleStore` so the same bucket is observed
-# regardless of which path enters the dispatcher.
-_PLUGIN_THROTTLER = Throttler(PLUGIN_THROTTLE)
-
-# Phase 2 (#114): per-tool safety semantics derived from STANDARD MCP
-# metadata (annotations.readOnlyHint + optional meta["mureo"]). No new
-# ABI surface. A declared throttle hint gets its own bucket; everything
-# else shares _PLUGIN_THROTTLER. Undeclared ⇒ mutating (conservative).
-#
-# Keyed by BARE tool name, and that is safe rather than lucky (#589):
-# ``collect_plugin_tools`` already dedupes tool names first-wins, dropping the
-# duplicate from BOTH ``_PLUGIN_TOOLS`` and ``_PLUGIN_DISPATCH`` and naming the
-# two distributions involved. So this map — and the three declaration
-# registries fed from it below — holds the semantics of the ONE tool that is
-# actually dispatchable under that name. A second distribution's declaration
-# can never be paired with a first distribution's tool, which is what re-keying
-# by ``(distribution, name)`` would have bought; what identity is needed for is
-# the *message*, and that is emitted where identity lives, at collection.
-_PLUGIN_SEMANTICS: dict[str, ToolSemantics] = {
-    t.name: derive_semantics(t) for t in _PLUGIN_TOOLS
-}
-_PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
-    name: Throttler(sem.throttle)
-    for name, sem in _PLUGIN_SEMANTICS.items()
-    if sem.throttle is not None
-}
-
-
-_register_plugin_budget_declarations(_PLUGIN_SEMANTICS)
-_register_plugin_bid_declarations(_PLUGIN_SEMANTICS)
-_register_bridged_money_declarations(_PLUGIN_SEMANTICS, _PLUGIN_DISPATCH)
-_register_plugin_read_only_hints(_PLUGIN_SEMANTICS)
-_register_plugin_pattern_fallbacks(_PLUGIN_SEMANTICS)
 
 
 # Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names
@@ -837,14 +847,20 @@ async def _gated_dispatch(
 ) -> list[Any]:
     """Gate, validate, preflight and dispatch one call, telling ``call``
     which exit was taken so the journal records this call exactly once."""
-    decision = _evaluate_policy_gates(name, arguments)
+    # #758 phase 2: ``reason`` is mureo's parameter, not the handler's, and it
+    # comes off first so that every exit below records it and none of them
+    # passes it on. Bound to the task further down, where append_action_log
+    # reads it without any of the five recorders having to forward it.
+    reason, handler_args = take_rationale(call, name, arguments, _REASON_TOOLS)
+    decision = _evaluate_policy_gates(name, handler_args)
     if decision is not None:
         call.denied(decision.reason)
         return _refuse_text_content(name, decision)
     # Schema-validate AFTER the gate decision (a policy denial is absolute and
     # need not depend on arg validity) but BEFORE any handler, before-state
     # capture, or real-spend API call — so an out-of-bounds budget/bid is
-    # rejected before it can reach a live campaign.
+    # rejected before it can reach a live campaign. On the FULL arguments:
+    # the served schema is the one ``reason`` was injected into.
     try:
         _validate_tool_input(name, arguments)
     except ValueError as exc:
@@ -857,17 +873,18 @@ async def _gated_dispatch(
     # lands before any mutation. No-ops (and issues no read) for every tool
     # that is not a registered exclusion surface, and for an operator who wrote
     # no exclusion rule in STRATEGY.md ## Guardrails.
-    preflight = await exclusion_impact_preflight(name, arguments)
-    if preflight.refusal_reason is not None:
-        call.refused(preflight.refusal_reason)
-        return exclusion_refusal_content(preflight)
-    result = append_exclusion_impact_notice(
-        call.completed(await _dispatch_tool(name, arguments)), preflight
-    )
+    with bind_call_reason(reason):
+        preflight = await exclusion_impact_preflight(name, handler_args)
+        if preflight.refusal_reason is not None:
+            call.refused(preflight.refusal_reason)
+            return exclusion_refusal_content(preflight)
+        result = append_exclusion_impact_notice(
+            call.completed(await _dispatch_tool(name, handler_args)), preflight
+        )
     # #548: a change that restarts an automated bid strategy's learning period
     # says so in its own result, so the next change in a troubleshooting
     # sequence is not made blind. No-op for everything else.
-    result = _maybe_append_learning_reset_notice(name, arguments, result)
+    result = _maybe_append_learning_reset_notice(name, handler_args, result)
     # Push, not pull: if this MCP process is older than the mureo installed on
     # disk (operator upgraded but did not fully restart Claude), append a
     # one-time restart warning so the agent surfaces it WITHOUT having to ask

@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 import mureo
+from mureo.core import actor
 from mureo.core.runtime_context import (
     RuntimeContext,
     default_runtime_context,
@@ -89,6 +90,7 @@ class TestRecordShape:
             mutating=True,
             outcome="exception",
             reason="RuntimeError('nope')",
+            rationale="pausing the losing ad set",
             rollback=True,
         )
         rec = _lines(log)[0]
@@ -104,6 +106,7 @@ class TestRecordShape:
             "source",
             "mutating",
             "args",
+            "rationale",
             "outcome",
             "reason",
             "duration_ms",
@@ -115,7 +118,20 @@ class TestRecordShape:
         assert rec["workspace_id"] == "ws-under-test"
         assert rec["source"] == "acme-dist"
         assert rec["mutating"] is True
+        assert rec["rationale"] == "pausing the losing ad set"
         assert rec["rollback"] is True
+
+    def test_rationale_is_absent_when_the_caller_gave_none(self, log: Path) -> None:
+        """Additive: a call with no rationale writes the pre-#758-phase-2
+        record shape, so ``RECORD_VERSION`` stays 1."""
+        _record()
+        assert "rationale" not in _lines(log)[0]
+
+    def test_rationale_is_scrubbed_like_every_other_free_text(self, log: Path) -> None:
+        _record(rationale="rotating after api_key=SHHHTHISISSECRET leaked")
+        rationale = _lines(log)[0]["rationale"]
+        assert "SHHHTHISISSECRET" not in rationale
+        assert rationale.startswith("rotating after api_key=***")
 
     def test_source_is_absent_for_a_builtin(self, log: Path) -> None:
         _record()
@@ -144,7 +160,7 @@ class TestRecordShape:
     def test_client_is_null_until_the_sdk_reports_one(
         self, log: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(journal, "_client", None)
+        monkeypatch.setattr(actor, "_client", None)
         _record()
         assert _lines(log)[0]["client"] is None
         journal.set_client_info("Claude Code", "1.4.2")

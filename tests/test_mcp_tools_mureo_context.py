@@ -2122,6 +2122,33 @@ async def test_action_log_append_stores_the_display_line(cwd_to_tmp) -> None:
     assert entry["summary"] == "x" * 400
 
 
+async def test_action_log_append_stores_an_explicit_reason(cwd_to_tmp) -> None:
+    """#758 phase 2 — a caller that knows its own rationale states it on the
+    entry, and that wins over whatever the dispatcher bound."""
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {
+            "entry": {
+                "action": "google_ads_budget_update",
+                "platform": "google_ads",
+                "reason": "CPA held under target for 14 days",
+            }
+        },
+    )
+    entry = json.loads(result[0].text)["action_log"][0]
+    assert entry["reason"] == "CPA held under target for 14 days"
+
+
+def test_action_log_schema_bounds_the_reason() -> None:
+    from mureo.core.actor import ACTION_REASON_MAX_CHARS
+
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_action_log_append")
+    entry = tool.inputSchema["properties"]["entry"]["properties"]
+    assert entry["reason"]["maxLength"] == ACTION_REASON_MAX_CHARS
+
+
 async def test_action_log_append_refuses_an_overlong_display_line(cwd_to_tmp) -> None:
     mod = _import_tools()
     with pytest.raises(ValueError, match="display_title"):

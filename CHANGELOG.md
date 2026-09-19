@@ -1,5 +1,46 @@
 ## [Unreleased]
 
+### Added
+
+- **Rationale and actor on every action_log entry** (#758, phase 2). Every
+  mutating MCP tool — built-in and plugin — now takes an optional `reason`
+  string: one or two sentences naming the evidence and the expected effect.
+  It is stripped out of the arguments before the policy gates run, so a
+  denied or refused call records why it was attempted; it goes into the
+  journal under its own `rationale` key (beside `args`, never inside it),
+  and is stamped onto whatever `action_log` entry the call produces. The
+  rationale is scrubbed by the same rules as the rest of the trail, at one
+  boundary, so `STATE.json` and `JOURNAL.jsonl` cannot redact differently.
+  The entry
+  gains three fields: `reason`, `session_id` — the journal session of the
+  process that wrote it, which is what joins a curated `action_log` line to
+  the complete `JOURNAL.jsonl` record of the same session — and `client`, the
+  MCP client label, `null` for a CLI or library write. All three are stamped
+  at the single write choke point
+  (`mureo.context.state.append_action_log`), so the five recording paths —
+  the `mureo_state_action_log_append` handler, the native status-toggle
+  recorder, the plugin/bridge promotion, the rollback executor and the change
+  importer — pick them up without a line of their own. An over-long `reason`
+  is refused rather than truncated (500 characters), the same write-boundary
+  rule the dashboard display fields follow. Three tools that write
+  `STATE.json` rather than an ad account take `reason` too —
+  `mureo_batch_begin`, `mureo_state_set_conversion_events` and
+  `mureo_external_changes_import` — even though they are not classified as
+  mutations. Three do not: `mureo_state_action_log_append`, which records a
+  change instead of making one and so carries the rationale in its
+  `entry.reason` field, and the two that already declared a `reason` of
+  their own — `mureo_state_platform_not_collected_set` and
+  `mureo_state_workspace_not_collected_set`, where it is the persisted "why
+  was this not collected" note — which are left completely alone: no
+  injection, no stripping, no rationale. An **observed** entry
+  (`origin: "external"`) never inherits the importing call's rationale:
+  mureo did not make that change and has no standing to say why it was made.
+  Old STATE.json files gain no new key: the three
+  fields are emitted only when set, so an entry written before this round
+  trips byte-identically. `mureo journal`'s last column now shows the failure
+  reason for a non-`ok` call and the rationale for a successful one (header:
+  `reason/rationale`); `--json` carries both in full.
+
 ### Fixed
 
 - **Socket reads on the configure and wizard servers are bounded** (#773). The

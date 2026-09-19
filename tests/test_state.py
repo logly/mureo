@@ -1191,6 +1191,263 @@ class TestAppendActionLog:
         assert len(updated.action_log) == 1
 
 
+class TestActionLogRationaleAndActor:
+    """#758 phase 2: every ``action_log`` write carries WHY and WHO.
+
+    ``append_action_log`` is the one choke point all five recorders funnel
+    through, so stamping here is what makes the rationale and the writing
+    session's identity platform-agnostic — no recorder, tool schema or
+    plugin ABI has to know they exist.
+    """
+
+    @staticmethod
+    def _entry(**overrides: Any) -> ActionLogEntry:
+        fields: dict[str, Any] = {
+            "timestamp": "2026-09-19T09:00:00Z",
+            "action": "budget.update",
+            "platform": "google_ads",
+        }
+        fields.update(overrides)
+        return ActionLogEntry(**fields)
+
+    @pytest.mark.unit
+    def test_session_and_client_are_stamped_when_unset(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.core import actor
+
+        monkeypatch.setattr(actor, "_session", "sess-1")
+        monkeypatch.setattr(actor, "_client", "Claude Code/1.4.2")
+        fp = tmp_path / "STATE.json"
+        entry = append_action_log(fp, self._entry()).action_log[0]
+        assert entry.session_id == "sess-1"
+        assert entry.client == "Claude Code/1.4.2"
+
+    @pytest.mark.unit
+    def test_a_library_write_has_no_client(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.core import actor
+
+        monkeypatch.setattr(actor, "_session", "sess-1")
+        monkeypatch.setattr(actor, "_client", None)
+        entry = append_action_log(tmp_path / "STATE.json", self._entry()).action_log[0]
+        assert entry.client is None
+        assert entry.session_id == "sess-1"
+
+    @pytest.mark.unit
+    def test_an_explicit_identity_is_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An imported or replayed entry names the session that made the
+        change, not the one replaying it."""
+        from mureo.core import actor
+
+        monkeypatch.setattr(actor, "_session", "sess-now")
+        monkeypatch.setattr(actor, "_client", "Claude Code/1.4.2")
+        entry = append_action_log(
+            tmp_path / "STATE.json",
+            self._entry(session_id="sess-then", client="Cursor/0.9"),
+        ).action_log[0]
+        assert entry.session_id == "sess-then"
+        assert entry.client == "Cursor/0.9"
+
+    @pytest.mark.unit
+    def test_reason_is_stamped_from_the_bound_call_rationale(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.core.actor import bind_call_reason
+
+        fp = tmp_path / "STATE.json"
+        with bind_call_reason("CPA is 3x target for 14 days"):
+            doc = append_action_log(fp, self._entry())
+        assert doc.action_log[0].reason == "CPA is 3x target for 14 days"
+        assert read_state_file(fp).action_log[0].reason == (
+            "CPA is 3x target for 14 days"
+        )
+
+    @pytest.mark.unit
+    def test_an_entry_reason_wins_over_the_bound_one(self, tmp_path: Path) -> None:
+        from mureo.core.actor import bind_call_reason
+
+        with bind_call_reason("the dispatcher's rationale"):
+            doc = append_action_log(
+                tmp_path / "STATE.json", self._entry(reason="the caller's own")
+            )
+        assert doc.action_log[0].reason == "the caller's own"
+
+    @pytest.mark.unit
+    def test_no_reason_anywhere_leaves_the_field_unset(self, tmp_path: Path) -> None:
+        doc = append_action_log(tmp_path / "STATE.json", self._entry())
+        assert doc.action_log[0].reason is None
+
+    @pytest.mark.unit
+    def test_an_over_long_reason_is_refused_and_the_file_is_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.core.actor import ACTION_REASON_MAX_CHARS
+
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        before = fp.read_bytes()
+        with pytest.raises(ValueError, match="reason"):
+            append_action_log(
+                fp, self._entry(reason="x" * (ACTION_REASON_MAX_CHARS + 1))
+            )
+        assert fp.read_bytes() == before
+
+    @pytest.mark.unit
+    def test_an_over_long_bound_reason_is_refused_too(self, tmp_path: Path) -> None:
+        from mureo.core.actor import ACTION_REASON_MAX_CHARS, bind_call_reason
+
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        before = fp.read_bytes()
+        with (
+            bind_call_reason("y" * (ACTION_REASON_MAX_CHARS + 1)),
+            pytest.raises(ValueError, match="reason"),
+        ):
+            append_action_log(fp, self._entry())
+        assert fp.read_bytes() == before
+
+    @pytest.mark.unit
+    def test_the_three_fields_round_trip_through_the_codec(self) -> None:
+        doc = StateDocument(
+            version="2",
+            action_log=(
+                self._entry(
+                    reason="spend outran the plan",
+                    session_id="sess-1",
+                    client="Claude Code/1.4.2",
+                ),
+            ),
+        )
+        reparsed = parse_state(render_state(doc)).action_log[0]
+        assert reparsed.reason == "spend outran the plan"
+        assert reparsed.session_id == "sess-1"
+        assert reparsed.client == "Claude Code/1.4.2"
+
+    @pytest.mark.unit
+    def test_an_old_document_gains_none_of_the_three_keys(self) -> None:
+        """An entry written before #758 phase 2 round-trips byte-identically."""
+        doc = StateDocument(version="2", action_log=(self._entry(),))
+        rendered = json.loads(render_state(doc))["action_log"][0]
+        assert "reason" not in rendered
+        assert "session_id" not in rendered
+        assert "client" not in rendered
+
+    @pytest.mark.unit
+    def test_a_blank_reason_on_the_entry_reads_as_absent(self) -> None:
+        assert self._entry(reason="   ").reason is None
+
+    @pytest.mark.unit
+    def test_an_observed_change_does_not_inherit_the_call_rationale(
+        self, tmp_path: Path
+    ) -> None:
+        """A rationale explains a change mureo MADE.
+
+        An ``origin="external"`` entry is one mureo only read out of a
+        platform's change history. Stamping the importing call's reason on
+        it would file mureo's motive under somebody else's change -- the
+        same confusion #545 refuses for ``reversible_params``.
+        """
+        from mureo.core.actor import bind_call_reason
+
+        with bind_call_reason("polling before the daily check"):
+            doc = append_action_log(
+                tmp_path / "STATE.json",
+                self._entry(origin="external", external_id="google_ads|abc"),
+            )
+        assert doc.action_log[0].reason is None
+
+    @pytest.mark.unit
+    def test_an_observed_change_keeps_an_explicit_reason(self, tmp_path: Path) -> None:
+        """Only the FALLBACK is withheld: a caller stating the external
+        change's own reason is recording a fact, not mureo's motive."""
+        from mureo.core.actor import bind_call_reason
+
+        with bind_call_reason("polling before the daily check"):
+            doc = append_action_log(
+                tmp_path / "STATE.json",
+                self._entry(
+                    origin="external",
+                    external_id="google_ads|abc",
+                    reason="the operator raised the budget in the UI",
+                ),
+            )
+        assert doc.action_log[0].reason == "the operator raised the budget in the UI"
+
+    @pytest.mark.unit
+    def test_an_observed_change_still_names_the_writing_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``session_id`` documents the process that WROTE the entry, which
+        is true of an import too."""
+        from mureo.core import actor
+
+        monkeypatch.setattr(actor, "_session", "sess-import")
+        doc = append_action_log(
+            tmp_path / "STATE.json",
+            self._entry(origin="external", external_id="google_ads|abc"),
+        )
+        assert doc.action_log[0].session_id == "sess-import"
+
+    @pytest.mark.unit
+    def test_the_stored_reason_is_scrubbed(self, tmp_path: Path) -> None:
+        """One scrubbing boundary, so STATE.json cannot redact less than
+        JOURNAL.jsonl does."""
+        from mureo.core.actor import bind_call_reason
+
+        with bind_call_reason("retrying after api_key=SHHHTHISISSECRET failed"):
+            doc = append_action_log(tmp_path / "STATE.json", self._entry())
+        assert doc.action_log[0].reason == "retrying after api_key=*** failed"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("field", ["reason", "session_id", "client"])
+    def test_a_non_string_identity_field_is_refused(self, field: str) -> None:
+        with pytest.raises(ValueError, match=f"{field} must be a string"):
+            self._entry(**{field: 123})
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("field", ["session_id", "client"])
+    def test_a_blank_identity_field_is_refused(self, field: str) -> None:
+        """Unlike ``reason``, a blank here is a broken write rather than
+        "nothing was said" -- matching ``batch_id`` and ``origin``."""
+        with pytest.raises(ValueError, match=f"{field} must be a non-empty string"):
+            self._entry(**{field: "  "})
+
+    @pytest.mark.unit
+    def test_a_document_with_a_non_string_reason_is_refused_cleanly(
+        self, tmp_path: Path
+    ) -> None:
+        """A hand-edited STATE.json reaches the dataclass through the codec:
+        the operator gets the field name, not an ``AttributeError``."""
+        fp = tmp_path / "STATE.json"
+        fp.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "action_log": [
+                        {
+                            "timestamp": "2026-09-19T09:00:00Z",
+                            "action": "a",
+                            "platform": "google_ads",
+                            "reason": 123,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        # A raw ``ValueError`` out of the dataclass, exactly like a bad
+        # ``batch_id``: ``ContextFileError`` is this module's name for "the
+        # FILE could not be read", which is not what went wrong here.
+        with pytest.raises(ValueError, match="reason must be a string"):
+            read_state_file(fp)
+        # ...and the tolerant read still returns the rest of the document.
+        assert read_state_file(fp, strict=False).action_log == ()
+
+
 class TestSetReport:
     """Stage c: set_report writes a structured analysis summary into the
     STATE.json ``reports`` section so a read-only dashboard can render the

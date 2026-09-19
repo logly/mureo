@@ -117,6 +117,30 @@ class TestExecuteRollback:
         assert new_entry.reversible_params is None
 
     @pytest.mark.asyncio
+    async def test_the_reversal_entry_carries_the_call_rationale(
+        self, tmp_path: Path
+    ) -> None:
+        """#758 phase 2 — ``rollback_apply``'s ``reason`` reaches the
+        ``rollback_of`` entry through the bound call rationale, so the
+        executor needs no new parameter."""
+        from mureo.core import actor
+
+        state_file = tmp_path / "STATE.json"
+        _write_state(state_file, [_budget_update_entry()])
+
+        with actor.bind_call_reason("the budget change overshot pacing"):
+            await execute_rollback(
+                state_file=state_file,
+                index=0,
+                confirm=True,
+                dispatcher=_FakeDispatcher(),
+            )
+
+        new_entry = read_state_file(state_file).action_log[1]
+        assert new_entry.reason == "the budget change overshot pacing"
+        assert new_entry.session_id == actor.session_id()
+
+    @pytest.mark.asyncio
     async def test_confirm_false_refuses(self, tmp_path: Path) -> None:
         state_file = tmp_path / "STATE.json"
         _write_state(state_file, [_budget_update_entry()])

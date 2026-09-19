@@ -423,6 +423,19 @@ def append_action_log(
     the MCP handler means no caller — handler, library user or future recorder
     — can invent a change set or grow one after it was closed and reported.
 
+    It is also where WHY and WHO are stamped (#758 phase 2): the rationale
+    the agent gave on the call's ``reason`` parameter, the writing process's
+    journal session, and the connected MCP client. Same argument as the batch
+    id — doing it here is what makes all three platform-agnostic, and what
+    joins an ``action_log`` entry to the ``JOURNAL.jsonl`` records of the
+    session that wrote it.
+
+    An **observed** entry (``origin="external"``, #545) is the exception, and
+    only for the rationale: mureo did not make that change, so the reason it
+    happened is not mureo's to state and the call's rationale is not inherited.
+    The identity fields are still stamped — they document the process that
+    WROTE the row, which an import genuinely is.
+
     Args:
         path: STATE.json location.
         entry: The entry to append. An explicit ``batch_id`` on it wins over the
@@ -441,14 +454,22 @@ def append_action_log(
         BatchError: ``entry.batch_id`` names no declared batch, or names one
             that has already been closed.
         ValueError: ``entry.display_title`` / ``entry.display_summary`` is over
-            its bound (#706). Refused, never truncated, and refused BEFORE the
-            file is opened — so a rejected append leaves the log exactly as it
-            was and the caller still holds the sentence it can shorten.
+            its bound (#706), or the rationale is over
+            :data:`~mureo.core.actor.ACTION_REASON_MAX_CHARS` (#758). Refused,
+            never truncated, and refused BEFORE the file is opened — so a
+            rejected append leaves the log exactly as it was and the caller
+            still holds the sentence it can shorten.
     """
     # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
     # ``state_store`` -> this module, so a module-level import would be a cycle
     # (the same reason ``metrics_windows`` and ``report_summary`` are imported
     # inside their callers below).
+    from mureo.core.actor import (
+        client_info,
+        current_call_reason,
+        normalize_reason,
+        session_id,
+    )
     from mureo.core.display_contract import validate_action_log_display
 
     # Outside the lock: the dashboard's one-line rendering is a WRITE rule, so
@@ -458,11 +479,29 @@ def append_action_log(
         display_title=entry.display_title,
         display_summary=entry.display_summary,
     )
+    # An explicit rationale on the entry wins over the one bound to the call:
+    # a caller that states its own reason knows something the dispatcher's
+    # blanket parameter does not. An observed change falls back to nothing
+    # instead: the importing call's reason explains the IMPORT, and stamping
+    # it here would file mureo's motive under somebody else's change. Bounded
+    # before the file is opened, exactly like the display fields.
+    inherited = None if entry.origin is not None else current_call_reason()
+    reason = normalize_reason(entry.reason if entry.reason is not None else inherited)
 
     def _build(doc: StateDocument) -> StateDocument:
         if entry.batch_id is not None:
             ensure_joinable(doc, entry.batch_id)
         stamped = stamp_batch(entry, active_batch(doc)) if join_active_batch else entry
+        # An explicit identity is kept: an imported or replayed entry names
+        # the session that made the change, not the one replaying it.
+        stamped = replace(
+            stamped,
+            reason=reason,
+            session_id=(
+                stamped.session_id if stamped.session_id is not None else session_id()
+            ),
+            client=stamped.client if stamped.client is not None else client_info(),
+        )
         # ``last_synced_at`` is deliberately NOT re-stamped: appending an action
         # is not a sync, and the dashboard's "Synced N ago" freshness must keep
         # reflecting the last real sync. Every other section is carried over by

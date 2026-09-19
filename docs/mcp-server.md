@@ -817,7 +817,7 @@ Both read tools carry a **`server_now`** field — the server's clock as ISO 860
 | `mureo_strategy_get` | Read STRATEGY.md — raw markdown plus an `exists` flag (empty markdown when absent), `server_now`, the `path` it read and the runtime `workspace_id` (and `notices` when the runtime has any) | *(none)* |
 | `mureo_strategy_set` | Atomically replace STRATEGY.md (parsed for well-formedness before writing) | `markdown` |
 | `mureo_state_get` | Read STATE.json as a parsed v2 document (version, platforms, campaigns, action_log) plus `server_now`, the `path` it read and the runtime `workspace_id` (and `notices` when the runtime has any) | *(none)* |
-| `mureo_state_action_log_append` | Atomically append a single action_log entry for later evaluation (`timestamp` is stamped server-side). The entry may carry `display_title` (≤40 chars) and `display_summary` (≤120) — the one line the dashboard shows for it, refused rather than truncated when over. They add a rendering and replace nothing: `summary` is still written as fully as the next agent needs | `entry` |
+| `mureo_state_action_log_append` | Atomically append a single action_log entry for later evaluation (`timestamp` is stamped server-side). The entry may carry `display_title` (≤40 chars) and `display_summary` (≤120) — the one line the dashboard shows for it, refused rather than truncated when over. They add a rendering and replace nothing: `summary` is still written as fully as the next agent needs. `session_id` and `client` are stamped by the server from the writing session. `reason` (≤500) is **yours to set**: unlike every other mutating tool this one takes no call-level `reason`, because it records a change rather than making one, so the entry's field is the only place the rationale can go | `entry` |
 | `mureo_state_upsert_campaign` | Upsert a CampaignSnapshot (with optional performance `metrics`) into STATE.json | `campaign` |
 | `mureo_state_report_set` | Persist a structured report summary for the read-only dashboard. `report` names the kind, one per skill that writes one — `daily`, `weekly`, `monthly`, `goal`, `audience`, `experiment`, `fatigue`, `pacing`, `tracking`. The structure is enforced: headline figures belong in `totals` as raw numbers (a canonical metric carrying a string is refused — it renders as nothing), each finding is its own `flags` entry, and `narrative` is capped at 400 characters, a longer one being refused rather than truncated. Reports already on disk are untouched — the bound applies to new writes | `report`, `summary` |
 | `mureo_state_display_set` | Write the **display contract** — the small, write-guarded surface the dashboard renders, separate from everything else in STATE.json. Five sections: `nav_message` (one operator line, ≤80 chars), `highlights` (≤3 `{tone, text}` chips, tone `good`/`watch`/`bad`, text ≤60), `proposals` (`{title ≤30, body ≤80, status proposed`/`done, date}`), `breakdown.campaigns` / `.adgroups` (rows of `{name, spend, mcpa, target_cpa, state, note ≤40}`, `state` from a closed set), and `stated_values` (`{label ≤24, value}` where the value is a raw number or a string ≤12 chars — prose is refused). Over a bound or outside a vocabulary the write is **refused, never truncated**. `source` (the writing skill, ≤24) is **required** alongside any section and `generated_at` is stamped server-side, so a screen always says who drew it and when. The whole section is replaced by what the call states, and a call that states nothing clears it — so a second writer the same day must read the current contract first and carry over the other skill's still-live `proposals`, and nothing else. The KPI funnel and the daily chart are deliberately **not** writable: mureo computes both from the stored totals | *(none, but `source` once any section is stated)* |
@@ -980,11 +980,39 @@ file answers, and a trail of successes cannot answer it.
 | `source` | Plugin distribution — present only when `family` is `plugin` |
 | `mutating` | Whether the call was classified as a mutation |
 | `args` | The call's arguments, **masked** (secret-shaped keys → `***`, long strings truncated) |
+| `rationale` | WHY the agent made the call — the `reason` parameter it passed. Scrubbed. Absent when none was given |
 | `outcome` | `ok` / `platform_error` / `exception` / `denied` / `refused` / `invalid_args` |
 | `reason` | Why a non-`ok` outcome happened; scrubbed and capped at 512 chars. Absent for `ok` |
 | `duration_ms` | Wall-clock milliseconds around gate + validation + preflight + handler |
 | `batch_id` | The batch open at the time, or `null` |
 | `rollback` | `true` only when the call was a rollback's reversal leg |
+
+**Every mutating tool accepts `reason`.** One or two sentences naming the
+evidence and the expected effect — mureo's own parameter, not the handler's:
+it is split off before the policy gates, so no tool ever receives it and a
+call that is denied or refused still records why it was attempted. It lands
+in two places, the journal's `rationale` above and the `reason` field of
+whatever `action_log` entry the call produces, which is what lets a later
+session read why a change was made rather than only that it was. Over 500
+characters it is refused, never truncated; whatever survives is scrubbed by
+the same rules as the rest of the trail, so a rationale that quotes a
+failing request cannot leak a key into either file.
+
+Three tools that write `STATE.json` rather than an ad account take it too —
+`mureo_batch_begin`, `mureo_state_set_conversion_events` and
+`mureo_external_changes_import` — even though they are not classified as
+mutations. Three do not:
+
+- `mureo_state_action_log_append` **records** a change instead of making
+  one, so the rationale goes in its `entry.reason` field, where it describes
+  the change rather than the act of writing it down;
+- `mureo_state_platform_not_collected_set` and
+  `mureo_state_workspace_not_collected_set` keep a `reason` of their own,
+  where the string is the persisted "why was this not collected" note.
+
+An **observed** entry (`origin: "external"`) never inherits the importing
+call's rationale: mureo did not make that change and has no standing to say
+why it was made.
 
 **What is never written.** Result bodies and credentials. The journal
 stores the masked arguments and the outcome — never what a tool returned,
