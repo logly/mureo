@@ -65,12 +65,13 @@ def test_stays_readable_under_the_size_budget() -> None:
     two lines, then #706's fifteen for the display-contract step, then #726's
     one for the Meta token expiry check, then #747's five for the three rules
     that keep a hedged verdict hedged, then #767's two for the report header
-    that names the STATE.json the run read. The reason the number is what it is
-    lives with the same pin in ``test_daily_check_incremental``; the two are
-    deliberately kept equal, so a budget raised in one file and forgotten in
-    the other fails here.
+    that names the STATE.json the run read, then #758 phase 5's two for the
+    observations ``mureo_state_get`` closes by itself. The reason the number is
+    what it is lives with the same pin in ``test_daily_check_incremental``; the
+    two are deliberately kept equal, so a budget raised in one file and
+    forgotten in the other fails here.
     """
-    assert len(_body().splitlines()) <= 183
+    assert len(_body().splitlines()) <= 185
 
 
 def test_names_the_absent_tool_surface_condition() -> None:

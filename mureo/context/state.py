@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
     from mureo.context.models import ActionLogEntry, CampaignSnapshot
 
+from mureo.context.actor_stamp import stamp_actor
 from mureo.context.batch import (
     BatchError,
     active_batch,
@@ -469,12 +470,7 @@ def append_action_log(
     # ``state_store`` -> this module, so a module-level import would be a cycle
     # (the same reason ``metrics_windows`` and ``report_summary`` are imported
     # inside their callers below).
-    from mureo.core.actor import (
-        client_info,
-        current_call_reason,
-        normalize_reason,
-        session_id,
-    )
+    from mureo.core.actor import current_call_reason, normalize_reason
     from mureo.core.display_contract import validate_action_log_display
 
     # Outside the lock: the dashboard's one-line rendering is a WRITE rule, so
@@ -498,15 +494,10 @@ def append_action_log(
             ensure_joinable(doc, entry.batch_id)
         stamped = stamp_batch(entry, active_batch(doc)) if join_active_batch else entry
         # An explicit identity is kept: an imported or replayed entry names
-        # the session that made the change, not the one replaying it.
-        stamped = replace(
-            stamped,
-            reason=reason,
-            session_id=(
-                stamped.session_id if stamped.session_id is not None else session_id()
-            ),
-            client=stamped.client if stamped.client is not None else client_info(),
-        )
+        # the session that made the change, not the one replaying it. Shared
+        # with the automatic observation closure (#758 phase 5), which writes
+        # entries of its own inside one locked document write.
+        stamped = stamp_actor(stamped, reason)
         # ``last_synced_at`` is deliberately NOT re-stamped: appending an action
         # is not a sync, and the dashboard's "Synced N ago" freshness must keep
         # reflecting the last real sync. Every other section is carried over by

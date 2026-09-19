@@ -85,6 +85,7 @@ from mureo.context.state import (
 from mureo.context.strategy import RAW_HEADING_TYPE, parse_strategy, write_strategy_file
 from mureo.core.clock import server_now_iso
 from mureo.fsutil import backup_file
+from mureo.mcp._auto_evaluation_hook import _auto_evaluate
 from mureo.mcp._handlers_decisions import apply_decisions_scope
 from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
 
@@ -257,6 +258,11 @@ def _apply_action_log_scope(payload: dict[str, Any], scope: Any) -> None:
 
 async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
+    # #758 phase 5: close whatever past-due observation this document already
+    # decides, BEFORE the read, so the answer carries the closures rather
+    # than the entries they close. Never raises; its keys are response-only,
+    # like ``server_now``.
+    auto = _auto_evaluate(path, arguments)
     # read_state_file already returns an empty default StateDocument when
     # the file is absent; round-trip through render_state to keep the
     # missing-file and present-file branches in lockstep.
@@ -278,6 +284,7 @@ async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     payload["server_now"] = server_now_iso()
     payload["path"] = str(path)
     payload.update(_runtime_envelope())
+    payload.update(auto)
     # Optional action_log scoping (context weight-reduction). Applied AFTER
     # server_now, and only ``pending`` / ``none`` mutate the payload — ``all``
     # (the default) keeps the response byte-identical to the legacy shape.

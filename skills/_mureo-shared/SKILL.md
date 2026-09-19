@@ -238,6 +238,8 @@ None of that changes what is in the **journal**: every tool call you make is alr
 
 **Pass `reason` on every mutation.** Every mutating tool takes an optional `reason`: one or two sentences naming the evidence you acted on and the effect you expect — `"CPA has been 3x target for 14 days at 40 conversions; pausing should move account CPA under target within the week"`. Not a restatement of the call (`"pausing the ad set"` is worth nothing), and not the whole analysis (500 characters, refused if over — shorten it, mureo will not truncate it for you). It is recorded twice: in the journal beside the call, and on the `action_log` entry the call produces, alongside the id of your session. That is the only reason the next session — or the operator, months later — can tell why a change was made rather than only that it was. You are the last point at which that sentence exists; nothing downstream can reconstruct it. One exception: `mureo_state_action_log_append` takes no call-level `reason` — it records a change rather than making one, so put the rationale in the entry's own `reason` field.
 
+**Past-due observations close themselves.** An entry with an `observation_due` leaves the pending set only when a later entry records its closure (`evaluation_of: <index>`), and `mureo_state_get` now writes that record itself for every past-due entry its own document decides — reporting each one under `auto_evaluations` — so the only ones you still have to evaluate and close by hand are the ones it lists in `auto_evaluation_skipped`, each with the reason it could not (daily-check step 9).
+
 If you cannot open a batch (older mureo without the tools), say so and record each entry individually — do not silently do a bulk pass with no grouping.
 
 ## Decision records
