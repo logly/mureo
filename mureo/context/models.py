@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mureo.context.decisions import DecisionRecord
 
 #: ``ActionLogEntry.origin`` value for a change mureo OBSERVED rather than
 #: performed (#545). ``origin is None`` — every entry written before this
@@ -757,6 +760,13 @@ class StateDocument:
     # problem one level up — and would put a guarded surface inside an
     # unguarded one.
     display: DisplayContract | None = None
+    # The reasoning trail (#758 phase 3) — see
+    # :class:`mureo.context.decisions.DecisionRecord`. Append-only like
+    # ``action_log``, and separate from ``display.proposals`` because that
+    # section is REPLACED WHOLE on every write and so cannot be a history.
+    # Empty by default and emitted only when non-empty, so a STATE.json
+    # written before this section existed parses unchanged and gains no key.
+    decisions: tuple[DecisionRecord, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         """Defensive copies for mutable fields."""
@@ -766,6 +776,8 @@ class StateDocument:
             object.__setattr__(self, "action_log", tuple(self.action_log))
         if not isinstance(self.batches, tuple):
             object.__setattr__(self, "batches", tuple(self.batches))
+        if not isinstance(self.decisions, tuple):
+            object.__setattr__(self, "decisions", tuple(self.decisions))
         if self.reports is not None:
             object.__setattr__(self, "reports", copy.deepcopy(self.reports))
         if self.workspace_not_collected is not None:

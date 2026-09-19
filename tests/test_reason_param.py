@@ -187,12 +187,16 @@ class TestTheInjectedSetIsNotJustTheClassifier:
             assert name in server._REASON_TOOLS
             assert _reason_schema(_served_builtins()[name]) == REASON_PROPERTY
 
-    def test_the_action_log_writer_is_exempt(self) -> None:
-        """It RECORDS a change; it is not the change. The rationale lives on
-        the entry it writes, and a second one at call level would be a
-        different sentence about the same event."""
+    def test_the_tools_that_carry_their_own_rationale_are_exempt(self) -> None:
+        """Both RECORD a rationale rather than being the change it explains.
+        ``mureo_state_action_log_append`` puts it on the entry it writes and
+        ``mureo_decision_record`` in its own ``rationale`` field; a second
+        sentence at call level would be about a different event ("why am I
+        writing this row"), landing beside it and competing with it."""
         from mureo.mcp import server
 
+        expected = {"mureo_state_action_log_append", "mureo_decision_record"}
+        assert set(REASON_EXEMPT_BUILTINS) == expected
         for name in REASON_EXEMPT_BUILTINS:
             assert name not in server._REASON_TOOLS
             assert _reason_schema(_served_builtins()[name]) is None

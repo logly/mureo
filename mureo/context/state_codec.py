@@ -40,6 +40,11 @@ import logging
 from dataclasses import fields as dataclass_fields
 from typing import Any
 
+from mureo.context._decision_codec import (
+    DECISION_COVERAGE,
+    decision_to_dict,
+    parse_decisions,
+)
 from mureo.context.display_codec import (
     display_contract_to_dict,
     parse_display_contract,
@@ -100,6 +105,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "workspace_not_collected",
                 "batches",
                 "display",
+                "decisions",
             }
         ),
         "parse_state / render_state",
@@ -225,6 +231,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
         frozenset({"label", "value"}),
         "display_codec._parse_stated_values / ._stated_value_to_dict",
     ),
+    DECISION_COVERAGE,
 )
 
 
@@ -537,6 +544,7 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
         # rule, so a value already on disk is content an operator has, and
         # refusing to read it would only delete that.
         display=parse_display_contract(data.get("display")),
+        decisions=parse_decisions(data.get("decisions"), strict=strict),
     )
 
 
@@ -647,6 +655,8 @@ def render_state(doc: StateDocument) -> str:
     # live one.
     if doc.display:
         data["display"] = display_contract_to_dict(doc.display)
+    if doc.decisions:
+        data["decisions"] = [decision_to_dict(d) for d in doc.decisions]
 
     return json.dumps(data, ensure_ascii=False, indent=2)
 

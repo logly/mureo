@@ -58,9 +58,9 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_thirteen_tools() -> None:
+def test_tools_module_exports_fourteen_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 13
+    assert len(mod.TOOLS) == 14
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
@@ -77,6 +77,9 @@ def test_tools_module_exports_thirteen_tools() -> None:
         "mureo_state_workspace_not_collected_set",
         "mureo_state_set_conversion_events",
         "mureo_outcome_evaluate",
+        # #758 phase 3 — the append-only reasoning trail, wired in as a
+        # partial of this family rather than a family of its own.
+        "mureo_decision_record",
     }
     assert {t.name for t in mod.TOOLS} == expected
 

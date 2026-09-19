@@ -1,6 +1,6 @@
 """mureo's STRATEGY.md / STATE.json MCP tool surface.
 
-Thirteen tools that expose mureo's context layer over MCP, so any MCP host
+Fourteen tools that expose mureo's context layer over MCP, so any MCP host
 (Claude Desktop chat, claude.ai web, Codex/Cursor, …) can read and
 update STRATEGY.md / STATE.json without direct filesystem access.
 
@@ -61,6 +61,9 @@ from mureo.mcp._handlers_mureo_context import (
     handle_strategy_get,
     handle_strategy_set,
 )
+from mureo.mcp._tools_decisions import DECISIONS_SCOPE_PROPERTY
+from mureo.mcp._tools_decisions import HANDLERS as DECISION_HANDLERS
+from mureo.mcp._tools_decisions import TOOLS as DECISION_TOOLS
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -577,7 +580,9 @@ TOOLS: list[Tool] = [
             "history. When filtered (``pending`` / ``none``) the response "
             "carries ``action_log_scope`` (the mode) and ``action_log_total`` "
             "(the full pre-filter entry count) so the log you were shown is "
-            "never mistaken for the complete history."
+            "never mistaken for the complete history. ``decisions`` scopes "
+            "the recorded decisions trail the same way and independently: "
+            "``all`` (default) or ``none``."
         ),
         inputSchema={
             "type": "object",
@@ -596,6 +601,7 @@ TOOLS: list[Tool] = [
                         "``action_log_total`` markers."
                     ),
                 },
+                "decisions": DECISIONS_SCOPE_PROPERTY,
             },
             "additionalProperties": False,
         },
@@ -1359,6 +1365,7 @@ TOOLS: list[Tool] = [
             "additionalProperties": False,
         },
     ),
+    *DECISION_TOOLS,
 ]
 
 
@@ -1378,6 +1385,7 @@ _HANDLERS = {
     ),
     "mureo_state_set_conversion_events": handle_state_set_conversion_events,
     "mureo_outcome_evaluate": handle_outcome_evaluate,
+    **DECISION_HANDLERS,
 }
 
 

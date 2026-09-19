@@ -1263,7 +1263,12 @@ __all__ = [
     "parse_state",
     "render_state",
     "with_platform_daily",
-    # Defined here.
+    # Defined here. ``_locked_state_mutation`` keeps its underscore — it is
+    # not for callers outside this package, it is the read-modify-write
+    # primitive every section's writer is built on — but it IS imported by
+    # ``mureo.context.decisions``, so it is declared rather than reached for
+    # through a name mypy's ``no_implicit_reexport`` treats as an accident.
+    "_locked_state_mutation",
     "append_action_log",
     "begin_batch",
     "end_batch",
