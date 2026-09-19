@@ -44,6 +44,22 @@ mureo persists marketing strategy in two files that travel with the project:
 
 Together these files give the AI agent enough context to make strategy-aware decisions without requiring a database.
 
+#### `history/` — what STATE.json is allowed to forget (#758 phase 4)
+
+STATE.json is a *working* document: it is read whole, re-rendered and written back on every mutation, so it has to stay bounded. Two sections pay for that bound with history — `platforms[<p>].daily` is trimmed to the most recent 35 days on every write, and `reports[<kind>]` is overwritten by every report write. Since #758 phase 4 neither loss is silent: the write archives what it is about to lose into a `history/` directory beside STATE.json, inside the same state-lock critical section, *before* the trimming write lands.
+
+```
+<workspace>/
+  STATE.json
+  history/
+    daily/2026-08.json      # one file per calendar month, every platform in it
+    reports/weekly.jsonl    # append-only, one line per version ever written
+```
+
+One file per **month** rather than per platform: a platform key can be `plugin:<dist>:<provider>`, and a key that has to become a filename is a key that can escape its directory — a month is a name mureo mints itself from a date it has already validated. A month file that fails to parse is **refused, never overwritten** (`ContextFileError`, naming the file), because rewriting it would delete a month of history to tidy a parse error; readers are tolerant instead and report which file they had to skip. The dashboard and every existing reader still read STATE.json alone — the archives add a record, they do not change what the document holds. Both are written owner-only (`0600`), but they are written differently: a month file is a read-modify-write, so it goes through the same temp-file → fsync → rename durability as STATE.json itself and holds its own sidecar lock (`<month>.json.lock`) for the merge — a different lock from `STATE.json.lock`, since a downstream writer holds the lock of the document *it* writes. The report ledger is a plain append of one line, like `JOURNAL.jsonl`: no rewrite, so nothing to make atomic.
+
+A downstream writer that merges `daily` inside its **own** atomic document write (`mureo.context.daily.with_platform_daily`, #710) still drops what it trims unless it passes `archive=`; the archive is not something the document-level merge can do on its own, since it does not know which file it is writing.
+
 ### Orchestration Layer
 
 This is where mureo's workflow commands, domain knowledge (skills), and the AI agent converge. Workflow commands like `/daily-check` and `/rescue` define multi-step operational procedures. Skills provide domain-specific reference material (operation mode definitions, diagnostic patterns). The AI agent (LLM) supplies strategic judgment, creative generation, and adaptive decision-making. The orchestration layer reads the strategy context, selects the appropriate tools, and synthesizes results into actionable recommendations.
@@ -171,6 +187,8 @@ mureo/
 │   ├── display_codec.py     # The `display` section's two codec halves (#706) — tolerant on
 │   │                        #   read, because every bound on that surface is a WRITE rule
 │   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)
+│   ├── history.py           # history/ archives beside STATE.json (#758) — the trimmed
+│   │                        #   daily days and every version of every report kind
 │   ├── platform_accounts.py # One ad account, one platform key — the shared account-id join
 │   ├── platform_guards.py   # Write-time guards over that join (refuse / warn on duplicates)
 │   └── errors.py            # Context-specific exceptions

@@ -2,6 +2,36 @@
 
 ### Added
 
+- **Trimmed daily days are archived, not dropped** (#758, phase 4). STATE.json
+  keeps the most recent 35 days of `platforms[<p>].daily` and drops the rest on
+  every write, because the whole document is read and re-rendered on each
+  mutation. The days that trim removes now land in
+  `history/daily/<YYYY-MM>.json` beside STATE.json first — one file per
+  calendar month with every platform in it, so a `plugin:<dist>:<provider>`
+  key never has to become a filename — written on the same state lock, before
+  the trimming write. A failing archive fails the write and leaves STATE.json
+  exactly as it was; a month file that does not parse is refused rather than
+  overwritten, since rewriting it would delete a month of history to tidy a
+  parse error. The document, the dashboard and every existing reader are
+  unchanged. Downstream writers that merge `daily` inside their own document
+  write (`with_platform_daily`, #710) still drop what they trim unless they
+  pass the new `archive=` callback — see
+  `mureo.context.history.archive_platform_daily`.
+- **Every version of every report is kept** (#758, phase 4).
+  `mureo_state_report_set` overwrites `reports[<kind>]`, so only the latest
+  version of a verdict survived in STATE.json and nothing could show how it
+  moved. Each write now also appends one line to
+  `history/reports/<kind>.jsonl` — the version being written included, so the
+  ledger alone is the full series — carrying `recorded_at`, the writing
+  session's `session_id` (which joins it to `JOURNAL.jsonl` and to
+  `action_log` entries of the same session) and the MCP `client` when one is
+  known. STATE.json still holds exactly the latest version and the dashboard
+  is untouched. Both archives are owner-only (`0600`); a report kind that
+  could escape its directory is refused before any file is touched.
+  `history/` lives in the workspace beside `STATE.json` and `JOURNAL.jsonl`,
+  so the record travels with the workspace exactly as the journal does — and,
+  like the journal today, it has **no rotation or size bound yet**; that
+  arrives with #758 phase 6.
 - **Rationale and actor on every action_log entry** (#758, phase 2). Every
   mutating MCP tool — built-in and plugin — now takes an optional `reason`
   string: one or two sentences naming the evidence and the expected effect.

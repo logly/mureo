@@ -57,6 +57,11 @@ from mureo.context.daily import (
 )
 from mureo.context.display_codec import parse_display_contract
 from mureo.context.errors import ContextFileError
+from mureo.context.history import (
+    append_report_history,
+    archive_platform_daily,
+    validate_report_kind_path,
+)
 from mureo.context.models import (
     NOT_COLLECTED_REASON_MAX_CHARS,
     BatchRecord,
@@ -600,6 +605,10 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
     preserved. When ``reports`` is ``None`` (old STATE.json), it starts from
     ``{}`` — so the call is backward compatible.
 
+    Every version written is also appended to
+    ``history/reports/<kind>.jsonl`` first, so the one it replaces survives
+    it (#758 phase 4a); a failed append fails the write.
+
     The kind is not checked here. The vocabulary
     (:data:`~mureo.core.report_kinds.REPORT_KINDS`) is enforced on the MCP
     tool over this function, as an ``enum`` the schema layer applies before
@@ -631,6 +640,7 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
     from mureo.core.report_summary import validate_report_summary
 
     validate_report_summary(summary)
+    validate_report_kind_path(report)
 
     def _build(doc: StateDocument) -> StateDocument:
         # Start from a shallow copy of the existing reports (or {} when the
@@ -638,6 +648,7 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
         # preserved rather than wiped.
         reports = dict(doc.reports) if doc.reports else {}
         reports[report] = summary
+        append_report_history(path, report, summary)
         return replace(doc, last_synced_at=_now_iso(), reports=reports)
 
     return _locked_state_mutation(path, _build)
@@ -962,7 +973,9 @@ def set_platform_daily(
 
     The stored history is capped at
     :data:`~mureo.context.daily.DAILY_RETENTION_DAYS` days on every write (see
-    :func:`~mureo.context.daily.capped_platform_daily`).
+    :func:`~mureo.context.daily.capped_platform_daily`); the days that trim
+    drops are archived under ``history/daily/<YYYY-MM>.json`` on this lock
+    first, so nothing is lost to the cap (#758 phase 4a).
 
     Re-stamps ``last_synced_at`` and writes back atomically under the state
     lock.
@@ -999,9 +1012,12 @@ def set_platform_daily(
     # happens, not whether it does.
     _reject_unusable_daily_keys(days, as_of_date=as_of_date)
 
+    def _archive(p: str, a: str, d: dict[str, dict[str, Any]]) -> None:
+        archive_platform_daily(path, p, a, d)
+
     def _build(doc: StateDocument) -> StateDocument:
         return with_platform_daily(
-            doc, platform, account_id, days, as_of_date=as_of_date
+            doc, platform, account_id, days, as_of_date=as_of_date, archive=_archive
         )
 
     return _locked_state_mutation(path, _build)
