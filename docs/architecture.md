@@ -101,6 +101,8 @@ Three trails, three jobs:
 
 The journal answers "what did this agent actually try"; `action_log` answers "what changed, and how do I undo it". A refused or failed attempt is in the first and — correctly — not in the second.
 
+One part of the `action_log` trail closes itself (#758 phase 5). An entry with an `observation_due` used to stay open until an agent remembered to append an `evaluation_of` record for it, and a forgotten one was re-evaluated on every run while the pending set grew. Where the verdict is fully determined by the document — a campaign-level action with a numeric baseline, on a platform whose campaign metrics were collected on or after the due date — `mureo_state_get` now scores it with the same deterministic `evaluate_outcome` an agent would call and appends the closure record itself, with the writing session's id and a machine-built `reason`. Everything it cannot decide (an external change, a missing baseline, metrics that predate the window) is reported back as a skip with its reason and still owes a manual evaluation. The write faces the same policy gates an `action_log` append does, so a read-only deployment skips it rather than bypassing them — see [mcp-server.md](mcp-server.md#automatic-observation-closure-758-phase-5).
+
 mureo's value increases — not decreases — as official MCPs ship.
 
 ## Package Structure

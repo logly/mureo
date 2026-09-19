@@ -35,6 +35,7 @@ __all__ = [
     "CLOSURE_INDEX_FIELDS",
     "closed_observation_indices",
     "due_observation_dates",
+    "parse_due_date",
 ]
 
 CLOSURE_INDEX_FIELDS: tuple[str, ...] = ("rollback_of", "evaluation_of")
@@ -101,13 +102,13 @@ def due_observation_dates(entries: Sequence[Any], today: date) -> list[date]:
     for index, entry in enumerate(entries):
         if index in closed:
             continue
-        parsed = _parse_due_date(_field(entry, "observation_due"))
+        parsed = parse_due_date(_field(entry, "observation_due"))
         if parsed is not None and parsed <= today:
             due.append(parsed)
     return due
 
 
-def _parse_due_date(value: Any) -> date | None:
+def parse_due_date(value: Any) -> date | None:
     """Parse an ISO-8601 ``observation_due`` date, or ``None``.
 
     Accepts the date-time spelling too (``2026-04-15T00:00:00+09:00``) and
@@ -122,3 +123,13 @@ def _parse_due_date(value: Any) -> date | None:
         return date.fromisoformat(text[:10])
     except ValueError:
         return None
+
+
+#: The parser's old private name, kept as an alias (#758 phase 5).
+#:
+#: It was private while this module had one caller. The automatic closure
+#: needs the same parse — for the ``observation_due`` it is judging and for
+#: the ``fetched_at`` of the metrics it would judge it against — and a
+#: second copy is exactly how two surfaces start disagreeing about which
+#: dates are readable.
+_parse_due_date = parse_due_date

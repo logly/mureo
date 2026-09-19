@@ -18,7 +18,9 @@ Coverage:
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -2367,3 +2369,198 @@ async def test_the_real_dispatch_path_refuses_an_overlong_action_log_line(
     assert "too long" in message
     assert ACTION_LOG_DISPLAY_RULE not in message
     assert not (cwd_to_tmp / "STATE.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Automatic observation closure (#758 phase 5)
+#
+# A past-due action_log entry whose outcome STATE.json already determines is
+# closed by ``mureo_state_get`` itself. What is pinned here is the handler
+# contract: the two response keys, the opt-out, the policy gate that decides
+# whether the write may happen at all, and that a broken closure never takes
+# the read down with it. The decision rules live in tests/test_auto_evaluation.
+# ---------------------------------------------------------------------------
+
+
+def _due_state(*, observation_due: str = "2026-07-20", fetched_at: str = "2026-07-27"):
+    return {
+        "version": "2",
+        "last_synced_at": "2026-07-27T09:00:00+09:00",
+        "platforms": {
+            "google_ads": {
+                "account_id": "acct-1",
+                "campaigns": [
+                    {
+                        "campaign_id": "camp_1",
+                        "campaign_name": "Brand",
+                        "status": "ENABLED",
+                        "metrics": {
+                            "cpa": 5000,
+                            "conversions": 10,
+                            "period": "LAST_30_DAYS",
+                            "fetched_at": fetched_at,
+                        },
+                    }
+                ],
+            }
+        },
+        "action_log": [
+            {
+                "timestamp": "2026-07-10T10:00:00+09:00",
+                "action": "google_ads_budget_update",
+                "platform": "google_ads",
+                "campaign_id": "camp_1",
+                "metrics_at_action": {"cpa": 10000, "conversions": 5},
+                "observation_due": observation_due,
+            }
+        ],
+    }
+
+
+def _write_due_state(root, **kwargs) -> None:
+    (root / "STATE.json").write_text(json.dumps(_due_state(**kwargs)), encoding="utf-8")
+
+
+async def test_state_get_closes_a_past_due_observation(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    _write_due_state(cwd_to_tmp)
+    mod = _import_tools()
+
+    payload = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+
+    assert payload["auto_evaluations"] == [
+        {
+            "index": 0,
+            "evaluation_index": 1,
+            "overall": "improved",
+            "summary": "Improved on conversions, cpa.",
+        }
+    ]
+    assert payload["auto_evaluation_skipped"] == []
+    # The response carries the appended record, not a stale pre-closure log.
+    appended = payload["action_log"][1]
+    assert appended["action"] == "outcome_evaluated"
+    assert appended["evaluation_of"] == 0
+    assert appended["reason"].startswith("Automatic observation closure (improved)")
+    assert appended["session_id"]
+    stored = json.loads((cwd_to_tmp / "STATE.json").read_text(encoding="utf-8"))
+    assert len(stored["action_log"]) == 2
+
+
+async def test_the_closed_entry_is_gone_from_the_pending_scope(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    _write_due_state(cwd_to_tmp)
+    mod = _import_tools()
+
+    result = await mod.handle_tool("mureo_state_get", {"action_log": "pending"})
+
+    payload = json.loads(result[0].text)
+    assert payload["auto_evaluations"][0]["index"] == 0
+    assert payload["action_log"] == []
+    assert payload["action_log_total"] == 2
+
+
+async def test_both_keys_are_present_when_nothing_is_due(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    _write_due_state(cwd_to_tmp, observation_due="2026-09-30")
+    mod = _import_tools()
+
+    payload = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+
+    assert payload["auto_evaluations"] == []
+    assert payload["auto_evaluation_skipped"] == []
+
+
+async def test_a_skipped_candidate_is_reported_with_its_reason(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    _write_due_state(cwd_to_tmp, fetched_at="2026-07-15")
+    mod = _import_tools()
+
+    payload = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+
+    assert payload["auto_evaluations"] == []
+    assert payload["auto_evaluation_skipped"] == [
+        {"index": 0, "reason": "current_metrics_predate_window"}
+    ]
+
+
+async def test_auto_evaluate_false_omits_the_keys_and_writes_nothing(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    _write_due_state(cwd_to_tmp)
+    before = (cwd_to_tmp / "STATE.json").read_bytes()
+    mod = _import_tools()
+
+    result = await mod.handle_tool("mureo_state_get", {"auto_evaluate": False})
+
+    payload = json.loads(result[0].text)
+    assert "auto_evaluations" not in payload
+    assert "auto_evaluation_skipped" not in payload
+    assert (cwd_to_tmp / "STATE.json").read_bytes() == before
+
+
+async def test_a_denying_policy_gate_skips_the_write(cwd_to_tmp, frozen_clock) -> None:
+    """A read-only host must not get a write through the read tool."""
+    from mureo.core.policy import PolicyDecision
+
+    class _ReadOnlyGate:
+        def evaluate(self, tool_name: str, arguments: dict) -> PolicyDecision:
+            if tool_name == "mureo_state_action_log_append":
+                return PolicyDecision(allowed=False, reason="read-only mode")
+            return PolicyDecision(allowed=True)
+
+    fake_ep = MagicMock()
+    fake_ep.name = "read_only_gate"
+    fake_ep.load.return_value = _ReadOnlyGate
+    _write_due_state(cwd_to_tmp)
+    before = (cwd_to_tmp / "STATE.json").read_bytes()
+    mod = _import_tools()
+
+    with patch(
+        "mureo.mcp.server._policy_gate_entry_points",
+        new=lambda: (fake_ep,),
+    ):
+        payload = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+
+    assert payload["auto_evaluations"] == []
+    assert payload["auto_evaluation_skipped"] == [
+        {"index": 0, "reason": "write_denied: read-only mode"}
+    ]
+    assert (cwd_to_tmp / "STATE.json").read_bytes() == before
+
+
+async def test_a_failing_closure_degrades_to_an_error_field(
+    cwd_to_tmp, frozen_clock, monkeypatch, caplog
+) -> None:
+    from mureo.context import auto_evaluation
+
+    def _boom(**kwargs):
+        raise RuntimeError("scoring is broken")
+
+    monkeypatch.setattr(auto_evaluation, "evaluate_outcome", _boom)
+    _write_due_state(cwd_to_tmp)
+    before = (cwd_to_tmp / "STATE.json").read_bytes()
+    mod = _import_tools()
+
+    with caplog.at_level(logging.WARNING, logger="mureo.mcp._auto_evaluation_hook"):
+        result = await mod.handle_tool("mureo_state_get", {})
+
+    payload = json.loads(result[0].text)
+    assert payload["auto_evaluation_error"] == "RuntimeError: scoring is broken"
+    assert payload["auto_evaluations"] == []
+    # The read itself still answered with the document.
+    assert payload["platforms"]["google_ads"]["campaigns"][0]["campaign_id"] == "camp_1"
+    assert (cwd_to_tmp / "STATE.json").read_bytes() == before
+    assert "scoring is broken" in caplog.text
+
+
+def test_state_get_schema_carries_the_auto_evaluate_switch() -> None:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_get")
+    prop = tool.inputSchema["properties"]["auto_evaluate"]
+    assert prop["type"] == "boolean"
+    assert "default true" in prop["description"]

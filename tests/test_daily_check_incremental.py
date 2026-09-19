@@ -68,8 +68,16 @@ def test_stays_readable_under_the_size_budget() -> None:
       does not name the file it was computed from is not checkable, which is
       exactly how a card running in one workspace and a terminal opened in
       another produced a wrong verdict nobody could see was wrong.
+    - #758 phase 5: two — the two step-9 bullets for the observations
+      ``mureo_state_get`` now closes by itself. One says the closures are
+      DONE (re-evaluating them double-counts an outcome and appends a second
+      evaluation record), the other maps each skip reason to what the agent
+      must still do. Both are read-back rules for a response field the agent
+      cannot infer, so neither can live in the docs instead: an agent that
+      does not know ``auto_evaluations`` exists either repeats the work or
+      drops the verdict.
     """
-    assert len(_body().splitlines()) <= 183
+    assert len(_body().splitlines()) <= 185
 
 
 def test_two_modes_documented() -> None:

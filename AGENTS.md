@@ -121,6 +121,10 @@ mureo/
 │   ├── _tools_decisions.py                # mureo_decision_record (#758 phase 3) — a PARTIAL of the
 │   │                                      #   mureo_context family, not a family of its own, so
 │   │                                      #   server.py and the journal labels are untouched
+│   ├── _auto_evaluation_hook.py           # mureo_state_get's automatic observation closure
+│   │                                      #   (#758 phase 5): the `auto_evaluate` switch, the
+│   │                                      #   policy-gate check that decides whether the write
+│   │                                      #   may happen, and the response fragment
 │   ├── _handlers_decisions.py             # Its handler: mints the id + timestamp, appends
 │   ├── _tools_history.py                  # mureo_history_query (#758 phase 4b) — another PARTIAL
 │   │                                      #   of the mureo_context family; READ-ONLY, so the
@@ -188,6 +192,13 @@ mureo/
 │   │                    #   past due (#651). ONE rule for `mureo_state_get(
 │   │                    #   action_log="pending")` and the Reports triage count;
 │   │                    #   two entry shapes (rendered dict / ActionLogEntry)
+│   ├── auto_evaluation.py # Closing a past-due observation mureo can decide on
+│   │                    #   its own (#758 phase 5): the rule order, the fixed
+│   │                    #   skip vocabulary, and ONE locked write for the whole
+│   │                    #   pass. Pure decision + write, no MCP imports
+│   ├── actor_stamp.py   # `stamp_actor` — the WHO/WHY stamp shared by
+│   │                    #   `append_action_log` and the automatic closure, so a
+│   │                    #   mureo-written entry carries the same identity on both
 │   ├── monthly_budget.py # The `## Custom: Monthly Budget` reader (#652) — the operator's
 │   │                     #   INTENDED monthly spend, twin of `guardrails_from_strategy_text`.
 │   │                     #   Separate type from `Guardrails` on purpose: a target is not a

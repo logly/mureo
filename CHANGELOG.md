@@ -27,6 +27,35 @@
   reaches as far back as it is given. Read-only: the tool takes no call-level
   `reason` and appends no strategy reminder. A missing STATE.json or journal
   is answered, not raised.
+- **Past-due observations close themselves** (#758, phase 5). An `action_log`
+  entry with an `observation_due` stayed open until an agent remembered to
+  append an `evaluation_of` record for it — `mureo_outcome_evaluate` is pure
+  and writes nothing — so a forgotten one was re-evaluated on every run while
+  the pending set grew without bound. `mureo_state_get` now scores every
+  past-due entry whose outcome its own document determines (a campaign-level
+  action with a numeric `metrics_at_action`, on a platform whose campaign
+  metrics were collected on or after the due date) with the same
+  deterministic `evaluate_outcome` an agent would call, and appends the
+  closure record itself — one locked write for the whole pass, the writing
+  session's `session_id` and a machine-built (and scrubbed) `reason` on each
+  entry, the whole scored snapshot in `metrics_at_action` so the verdict
+  stays checkable, no `batch_id`, and `last_synced_at` untouched. The
+  response carries `auto_evaluations` (what was closed, with the verdict) and
+  `auto_evaluation_skipped` (what still needs a manual evaluation, each with
+  a reason from a fixed vocabulary: `external_origin`, `no_baseline`,
+  `no_campaign_id`, `platform_not_in_state`, `campaign_not_in_state`,
+  `no_current_metrics`, `unparseable_due_date`, `current_metrics_undated`,
+  `current_metrics_predate_window`, `period_mismatch`,
+  `no_comparable_metric`). Metrics that predate the window are never scored,
+  a baseline and a snapshot that state different `period` windows are never
+  compared, and there is no fallback to `platform.last_synced_at` for an
+  undated snapshot. The write faces the same
+  policy gates a `mureo_state_action_log_append` call does, so a read-only
+  deployment reports `write_denied: <the gate's reason>` and STATE.json is
+  left byte-identical; nothing is written when nothing is due either. Pass
+  `auto_evaluate: false` to switch the pass off (both keys are then omitted),
+  and a failure degrades to an `auto_evaluation_error` field rather than
+  failing the read.
 - **Trimmed daily days are archived, not dropped** (#758, phase 4). STATE.json
   keeps the most recent 35 days of `platforms[<p>].daily` and drops the rest on
   every write, because the whole document is read and re-rendered on each

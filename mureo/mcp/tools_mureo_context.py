@@ -46,6 +46,7 @@ from mureo.core.metrics_windows import (
 )
 from mureo.core.report_kinds import REPORT_KIND_DESCRIPTION, REPORT_KINDS
 from mureo.core.report_summary import REPORT_SUMMARY_RULE
+from mureo.mcp._auto_evaluation_hook import AUTO_EVALUATE_PROPERTY
 from mureo.mcp._handlers_mureo_context import (
     handle_outcome_evaluate,
     handle_state_action_log_append,
@@ -584,7 +585,10 @@ TOOLS: list[Tool] = [
             "(the full pre-filter entry count) so the log you were shown is "
             "never mistaken for the complete history. ``decisions`` scopes "
             "the recorded decisions trail the same way and independently: "
-            "``all`` (default) or ``none``."
+            "``all`` (default) or ``none``. Unless ``auto_evaluate`` is "
+            "false, the call also CLOSES every past-due observation this "
+            "document decides on its own and reports them in "
+            "``auto_evaluations`` / ``auto_evaluation_skipped``."
         ),
         inputSchema={
             "type": "object",
@@ -604,6 +608,7 @@ TOOLS: list[Tool] = [
                     ),
                 },
                 "decisions": DECISIONS_SCOPE_PROPERTY,
+                "auto_evaluate": AUTO_EVALUATE_PROPERTY,
             },
             "additionalProperties": False,
         },
