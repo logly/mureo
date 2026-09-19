@@ -27,6 +27,11 @@ Masking is not re-implemented here — ``args`` go through
 less than the audit log does. The RESULT body is never stored, only the
 outcome and a capped reason string.
 
+The append itself is :func:`mureo.mcp.journal_chain.chain_append` since
+#758 phase 6: every line carries the hash of the line before it and of
+itself, and a file that reaches the size bound is rotated away
+(:mod:`mureo.core.rotation`) with the chain continuing into the new one.
+
 Where the file lives
 --------------------
 
@@ -51,7 +56,6 @@ every other ``MUREO_DISABLE_*`` gate in mureo) writes nothing at all.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -65,14 +69,16 @@ import mureo
 # entry without importing ``mureo.mcp``. Kept importable from here — this is
 # where every existing caller looks for it.
 from mureo.core.actor import client_info, session_id, set_client_info
-from mureo.fsutil import secure_chmod
+from mureo.mcp.journal_chain import chain_append
 from mureo.mcp.plugin_audit import mask_arguments, scrub_text
 
 logger = logging.getLogger(__name__)
 
 #: Schema version of one record. Bumped only for a breaking change, so a
-#: reader can tell one shape from another without guessing.
-RECORD_VERSION = 1
+#: reader can tell one shape from another without guessing. ``2`` since
+#: #758 phase 6 added the two chain keys (:mod:`mureo.mcp.journal_chain`);
+#: every reader accepts both, and a ``1`` line is simply unchained.
+RECORD_VERSION = 2
 
 #: Exact-string opt-out, mirroring ``mureo.mcp.server._is_disabled`` and
 #: ``mureo.core.strategy_reminder._OPT_OUT_ENV_VAR``. Any other value
@@ -228,8 +234,7 @@ def build_record(
     # Beside ``args``, never inside it: ``args`` is what the agent asked the
     # TOOL to do, and an operator filtering on arguments must not find a
     # sentence sitting where a parameter belongs. Emitted only when given, so
-    # a record without a rationale keeps the phase-1 shape and RECORD_VERSION
-    # stays 1.
+    # a record without a rationale keeps the shape it had before phase 2.
     if rationale is not None:
         record["rationale"] = scrub_text(str(rationale))[:MAX_REASON_CHARS]
     record["outcome"] = outcome
@@ -240,21 +245,6 @@ def build_record(
     if rollback:
         record["rollback"] = True
     return record
-
-
-def _append_line(path: Path, line: str) -> None:
-    """Append ``line`` to ``path``, creating it owner-only."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Create the file 0600 from the start (no world-readable window between
-    # create and a later chmod); chmod stays as belt-and-braces for a
-    # pre-existing file with looser perms. Same trick as ``plugin_audit``.
-    def _opener(target: str, flags: int) -> int:
-        return os.open(target, flags | os.O_APPEND | os.O_CREAT, 0o600)
-
-    with open(path, "a", encoding="utf-8", opener=_opener) as handle:
-        handle.write(line)
-    secure_chmod(path)
 
 
 def record_call(
@@ -298,8 +288,7 @@ def record_call(
             source=source,
             rollback=rollback,
         )
-        line = json.dumps(record, ensure_ascii=False, default=str) + "\n"
-        _append_line(journal_path(), line)
+        chain_append(journal_path(), record)
     except Exception:  # noqa: BLE001 — the journal must never break a call
         logger.warning("journal write failed for tool %r", tool, exc_info=True)
 

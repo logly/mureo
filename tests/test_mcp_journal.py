@@ -28,6 +28,7 @@ from mureo.core.runtime_context import (
 )
 from mureo.core.state_store import FilesystemStateStore
 from mureo.mcp import journal
+from mureo.mcp.journal_chain import verify_chain
 
 
 @pytest.fixture(autouse=True)
@@ -112,8 +113,10 @@ class TestRecordShape:
             "duration_ms",
             "batch_id",
             "rollback",
+            "prev",
+            "h",
         ]
-        assert rec["v"] == 1
+        assert rec["v"] == 2
         assert rec["mureo"] == mureo.__version__
         assert rec["workspace_id"] == "ws-under-test"
         assert rec["source"] == "acme-dist"
@@ -123,9 +126,18 @@ class TestRecordShape:
 
     def test_rationale_is_absent_when_the_caller_gave_none(self, log: Path) -> None:
         """Additive: a call with no rationale writes the pre-#758-phase-2
-        record shape, so ``RECORD_VERSION`` stays 1."""
+        record shape, so it costs no record-version bump of its own."""
         _record()
         assert "rationale" not in _lines(log)[0]
+
+    def test_every_record_is_chained(self, log: Path) -> None:
+        """The write goes through ``journal_chain``; #758 phase 6 pins the
+        chain itself in ``tests/test_journal_chain.py``."""
+        _record()
+        _record()
+        report = verify_chain([log])
+        assert (report.records, report.unchained) == (2, 0)
+        assert report.ok, report.first_break
 
     def test_rationale_is_scrubbed_like_every_other_free_text(self, log: Path) -> None:
         _record(rationale="rotating after api_key=SHHHTHISISSECRET leaked")

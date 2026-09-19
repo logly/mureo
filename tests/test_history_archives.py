@@ -53,6 +53,7 @@ from mureo.context.state import (
     set_report,
     write_state_file,
 )
+from mureo.core.rotation import MAX_BYTES_ENV_VAR, sibling_files
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -920,6 +921,83 @@ class TestReadReportHistory:
     def test_a_limit_below_one_is_refused(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="limit"):
             history.read_report_history(tmp_path / "STATE.json", "daily", limit=0)
+
+
+# ---------------------------------------------------------------------------
+# Rotation — the ledger is bounded per file, never in what it keeps (#758 p6)
+# ---------------------------------------------------------------------------
+
+
+class TestTheReportLedgerRotates:
+    def test_a_full_ledger_is_retired_before_the_next_append(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(MAX_BYTES_ENV_VAR, "400")
+        fp = _state(tmp_path)
+        for index in range(12):
+            set_report(fp, "daily", {"narrative": f"v{index}"})
+
+        files = sibling_files(_ledger(tmp_path, "daily"))
+        assert len(files) > 1, files
+        assert all(path.stat().st_size > 0 for path in files)
+
+    def test_nothing_is_lost_to_a_rotation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The bound is on one file's size, never on the history kept."""
+        monkeypatch.setenv(MAX_BYTES_ENV_VAR, "400")
+        fp = _state(tmp_path)
+        for index in range(12):
+            set_report(fp, "daily", {"narrative": f"v{index}"})
+
+        read = history.read_report_history(fp, "daily", limit=50)
+        assert [e["summary"]["narrative"] for e in read.entries] == [
+            f"v{index}" for index in range(12)
+        ]
+        assert read.skipped_lines == 0
+
+    def test_the_limit_still_takes_the_newest_across_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(MAX_BYTES_ENV_VAR, "400")
+        fp = _state(tmp_path)
+        for index in range(12):
+            set_report(fp, "daily", {"narrative": f"v{index}"})
+
+        read = history.read_report_history(fp, "daily", limit=2)
+        assert [e["summary"]["narrative"] for e in read.entries] == ["v10", "v11"]
+
+    def test_a_corrupt_line_in_a_rotated_file_is_counted_not_raised(
+        self, tmp_path: Path
+    ) -> None:
+        fp = _state(tmp_path)
+        set_report(fp, "daily", {"narrative": "live"})
+        rotated = _ledger(tmp_path, "daily").with_name("daily.20260919T000000Z.jsonl")
+        rotated.write_text("{not json\n", encoding="utf-8")
+
+        read = history.read_report_history(fp, "daily", limit=10)
+        assert [e["summary"]["narrative"] for e in read.entries] == ["live"]
+        assert read.skipped_lines == 1
+
+    def test_only_the_live_file_is_written_to(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rotated file is closed: an append after it must not reopen it."""
+        fp = _state(tmp_path)
+        set_report(fp, "daily", {"narrative": "first"})
+        ledger = _ledger(tmp_path, "daily")
+        rotated = ledger.with_name("daily.20260919T000000Z.jsonl")
+        ledger.rename(rotated)
+        before = rotated.read_bytes()
+
+        set_report(fp, "daily", {"narrative": "second"})
+
+        assert rotated.read_bytes() == before
+        read = history.read_report_history(fp, "daily", limit=10)
+        assert [e["summary"]["narrative"] for e in read.entries] == [
+            "first",
+            "second",
+        ]
 
 
 # ---------------------------------------------------------------------------

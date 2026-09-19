@@ -93,9 +93,14 @@ class TestTheCliUsesTheSharedReader:
         from mureo.cli import journal_cmd
 
         source = inspect.getsource(journal_cmd)
-        assert "from mureo.mcp.journal_read import read_records, record_matches" in (
-            source
-        )
+        assert "from mureo.mcp.journal_read import" in source
+        for name in (
+            "read_records_files",
+            "read_records_tail_files",
+            "record_matches",
+            "JOURNAL_SCAN_LINES",
+        ):
+            assert name in source
         assert "record_matches(" in source
 
 

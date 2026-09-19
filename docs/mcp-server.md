@@ -1004,7 +1004,7 @@ file answers, and a trail of successes cannot answer it.
 
 | Field | Meaning |
 |-------|---------|
-| `v` | Record schema version (`1` today) |
+| `v` | Record schema version (`2` since #758 phase 6; `1` lines are read unchanged) |
 | `ts` | UTC ISO-8601 timestamp, second precision |
 | `session` | Random id minted once per server process |
 | `client` | `"<MCP client name>/<version>"`, or `null` when the client did not report one |
@@ -1021,6 +1021,8 @@ file answers, and a trail of successes cannot answer it.
 | `duration_ms` | Wall-clock milliseconds around gate + validation + preflight + handler |
 | `batch_id` | The batch open at the time, or `null` |
 | `rollback` | `true` only when the call was a rollback's reversal leg |
+| `prev` | SHA-256 of the previous physical line — `""` for the very first line ever written |
+| `h` | SHA-256 of this record serialised without `h`; always the last key |
 
 **Every mutating tool accepts `reason`.** One or two sentences naming the
 evidence and the expected effect — mureo's own parameter, not the handler's:
@@ -1063,12 +1065,50 @@ not a workspace, and mureo will not drop files in it: those calls go to
 **Opt-out.** Set `MUREO_DISABLE_JOURNAL=1` (exact string `1`) in the
 server's environment to write nothing at all.
 
+### The hash chain (#758 phase 6)
+
+Every record ends with `prev` and `h` (above), so the file is a chain:
+each line names the exact bytes of the line before it, and names itself.
+An edited line fails its own `h`; a removed or spliced line fails the
+`prev` of the line after it. `RECORD_VERSION` is therefore `2` — a `v: 1`
+line, written before the chain existed, carries neither key, is reported
+as **unchained** and is never treated as tampering.
+
+**What the chain does not prove: tail truncation.** Every link points
+BACKWARDS, so deleting the last N lines leaves a shorter chain that is
+still internally consistent. Detecting that needs an anchor kept where
+the writer cannot reach it, which a local-first tool does not have.
+Everything before the last line is covered; that one gap is stated here
+rather than left for someone to discover.
+
+### Rotation
+
+A journal that has reached **32 MiB** is renamed out of the way before
+the next line is written — `JOURNAL.20260919T013000Z.jsonl`, the UTC
+instant it was retired at, in the same directory — and a fresh
+`JOURNAL.jsonl` is started. Set `MUREO_JOURNAL_MAX_BYTES` to another
+positive number of bytes to change the ceiling (anything else is refused
+with one warning and the default is used). mureo never deletes a rotated
+file: the bound is on the size of one file, never on how much of the
+record is kept.
+
+The chain **continues across a rotation**: the first line of the new file
+points at the last line of the retired one, so the files verify as one
+sequence — which also means that deleting or moving a rotated file by
+hand makes `--verify` report `prev_mismatch` at line 1 of the oldest
+file still present, since nothing distinguishes a file you pruned from
+one somebody else removed (mureo never deletes one itself). Readers follow the whole set — `mureo journal --all`,
+`mureo journal --verify` and the `journal` source of `mureo_history_query`
+all walk the rotated files with the live one.
+
 Read it with the CLI — see [`cli.md`](cli.md#journal-commands):
 
 ```bash
 mureo journal                       # the last 50 calls, as a table
 mureo journal --failures --last 20  # the last 20 refused / failed calls
 mureo journal --tool meta_ads_campaigns_update --json
+mureo journal --all                 # include the rotated files
+mureo journal --verify              # check the chain; exit 0 ok / 1 broken
 ```
 
 ## History (`history/`)
@@ -1080,7 +1120,9 @@ STATE.json stays bounded on purpose — it is read whole and re-rendered on ever
 | The `daily` days past the 35-day retention window | `history/daily/<YYYY-MM>.json` — one file per calendar month, every platform in it | `mureo_state_platform_daily_set` archives the days it is about to trim **before** the trimmed document is written. Re-filing a day replaces it, so a re-run adds nothing |
 | Every version of every report kind | `history/reports/<kind>.jsonl` — append-only, one JSON line per version | `mureo_state_report_set` appends the version it is writing, including the one that stays in STATE.json, so the ledger alone is the complete series. Each line carries `recorded_at`, the writing `session_id` and the MCP `client` when one is known |
 
-Neither changes what STATE.json holds or what the dashboard renders: the document still keeps 35 days and the latest report, and nothing reads the archives to draw a screen. A failing archive **fails the write** — STATE.json is left exactly as it was — because an archive that can be skipped is not an archive. A month file that does not parse (or that declares a version this mureo cannot merge) is refused rather than overwritten, and the refusal names the remedy: move that file aside to resume archiving. Each month file is merged under its own sidecar lock, so two writers landing in the same month cannot lose each other's days. The files are owner-only (`0600`) and live in the workspace, like `JOURNAL.jsonl`; there is **no rotation or size bound yet** (#758 phase 6).
+Neither changes what STATE.json holds or what the dashboard renders: the document still keeps 35 days and the latest report, and nothing reads the archives to draw a screen. A failing archive **fails the write** — STATE.json is left exactly as it was — because an archive that can be skipped is not an archive. A month file that does not parse (or that declares a version this mureo cannot merge) is refused rather than overwritten, and the refusal names the remedy: move that file aside to resume archiving. Each month file is merged under its own sidecar lock, so two writers landing in the same month cannot lose each other's days. The files are owner-only (`0600`) and live in the workspace, like `JOURNAL.jsonl`.
+
+**Rotation (#758 phase 6).** A report ledger that has reached the same 32 MiB ceiling as the journal (`MUREO_JOURNAL_MAX_BYTES`) is rotated away — `history/reports/daily.20260919T013000Z.jsonl` — inside the lock, before the line that filled it is appended, and `read_report_history` reads the rotated files with the live one, oldest first, so `limit` still means "the newest versions". The monthly daily archives need no bound: they are one file per calendar month and each is replaced in place. There is **no hash chain on the history files** — they are derived data, re-derivable from what the write path had, while STATE.json and the journal are the records of truth.
 
 ### History queries
 
@@ -1089,7 +1131,7 @@ Neither changes what STATE.json holds or what the dashboard renders: the documen
 | Source | What it returns | Notes |
 |--------|-----------------|-------|
 | `action_log` | The curated record of changes, each entry as `mureo_state_get` emits it plus its `index` in the FULL log | That index is what `related_actions` and `evaluation_of` refer to, so an entry returned here can be named by a later write |
-| `journal` | Every tool call and its outcome — including the `denied`, `refused`, `invalid_args` and failed ones that `action_log` correctly never holds | Bounded to the last **20 000** lines of `JOURNAL.jsonl`, reported as `scanned_lines`, because nothing rotates that file yet. The `path` is reported even when there is no journal |
+| `journal` | Every tool call and its outcome — including the `denied`, `refused`, `invalid_args` and failed ones that `action_log` correctly never holds | Bounded to the last **20 000** lines of the journal, reported as `scanned_lines`. The rotated files count towards the same bound, spent newest file first, so the cost of a query never grows with the age of the workspace. The `path` is reported even when there is no journal |
 | `daily` | The day-grain series for one platform: the archived months and the days still inside the document, merged into one | Requires `platform`. A day held in both is the **document's** — that is the copy the dashboard renders. With no `since`, read back **12 months** from `until` (or today) instead of over every month the account ever had; the section's `window` reports the `since` / `until` it answered from and whether that floor was `defaulted`. A month file that could not be read is named in `skipped_files` rather than left as a silent gap |
 | `reports` | Every version ever written of one report kind, oldest first | Requires `kind`, and a `kind` without the `reports` source is refused rather than ignored |
 

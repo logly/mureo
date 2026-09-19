@@ -2,6 +2,42 @@
 
 ### Added
 
+- **The journal is bounded, chained and checkable; a shortening
+  `action_log` write leaves a copy** (#758, phase 6). Three ways the audit
+  trail could quietly stop being one, closed together. **Rotation**:
+  `JOURNAL.jsonl` and each `history/reports/<kind>.jsonl` grew without a
+  ceiling, so a long-lived workspace paid for its whole history on every
+  read. A file that reaches 32 MiB (`MUREO_JOURNAL_MAX_BYTES` to change it;
+  anything but a positive integer is refused with one warning) is renamed to
+  `<name>.<UTC stamp>.<suffix>` before the line that filled it is written,
+  and a fresh file is started. **Nothing is ever deleted** — the bound is on
+  one file, not on the record — and every reader follows the whole set:
+  `mureo journal --all`, `read_report_history`, and the `journal` source of
+  `mureo_history_query`, whose 20 000-line scan cap is now spent newest file
+  first and counted across them. **A hash chain**: every journal record ends
+  with `prev` (SHA-256 of the previous physical line) and `h` (SHA-256 of the
+  record without `h`), so an edited line fails its own hash and a removed or
+  spliced one fails the next line's `prev` — across a rotation too, since the
+  first line of a new file points at the last line of the retired one. The
+  honest limit is documented and pinned by a test: truncating the TAIL is not
+  detectable by a backward-pointing chain, and mureo does not claim it is.
+  **`mureo journal --verify`** walks the live file and its rotated siblings as
+  one chain, prints a line per file and the verdict (`chain ok` /
+  `chain BROKEN at <file>:<line> (<why>)`, plus any `unchained` pre-phase-6
+  records), and exits 0 / 1 / 2 (ok / broken / no journal); `--json` returns
+  the report as an object, and the filter flags are ignored — a chain is a
+  property of the file, not of a selection from it. **The `action_log` backup
+  rule**: `action_log` is append-only by contract and every targeted mutator
+  honoured it, but a whole-document write (`StateStore.write_state`, a host's
+  import or restore, a repair) could shorten or rewrite it with nothing left
+  behind. `write_state_file` now backs the on-disk document up to
+  `STATE.json.bak.<unix_ns>` and warns with both lengths whenever the incoming
+  log is shorter than, or rewrites, the one on disk. The write still proceeds
+  — a document that cannot be written is a workspace nobody can repair — but a
+  backup that FAILS stops it, and the ordinary locked mutators hand the guard
+  the document they already read, so they pay no second read. No hash chain on
+  the `history/` files: they are derived data, while STATE.json and the
+  journal are the records of truth.
 - **`mureo_history_query` — one bounded read over every trail** (#758, phase
   4b). Four records answer "what happened before today" and each had its own
   door: `action_log` and the `daily` window only inside a whole
@@ -186,6 +222,16 @@
   platform API after the request has been read. Both servers are loopback-only
   and no reachable code path could exploit this remotely, but #766 had widened
   the stalled-body window to Host-rejected requests too.
+
+### Changed
+
+- **Journal `RECORD_VERSION` is `2`** (#758, phase 6): a record now ends with
+  the two chain keys `prev` and `h`. Every reader — `mureo journal`,
+  `mureo.mcp.journal_read` and `mureo_history_query` — accepts both versions,
+  and a `v: 1` line written before the chain existed is reported as
+  `unchained` by `--verify` rather than as a break. No migration: an existing
+  journal keeps its lines exactly as they are and the chain starts at the next
+  one written.
 
 ## [0.20.0] - 2026-09-19
 

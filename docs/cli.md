@@ -279,7 +279,7 @@ A bulk pass wrapped in a batch (`mureo_batch_begin` / `mureo_batch_end`) is plan
 
 ## Journal Commands
 
-`mureo journal` reads back the append-only record of **every** MCP tool call — including the ones that were denied, refused or failed, which never reach `action_log`. Read-only: the file is never rewritten or rotated by this command. See [`mcp-server.md`](mcp-server.md#journal-journaljsonl) for the record schema and where the file lives.
+`mureo journal` reads back the append-only record of **every** MCP tool call — including the ones that were denied, refused or failed, which never reach `action_log`. Read-only: the file is never rewritten by this command (the MCP server rotates it by size — see below). See [`mcp-server.md`](mcp-server.md#journal-journaljsonl) for the record schema and where the file lives.
 
 ```bash
 mureo journal                          # the last 50 calls, as a plain table
@@ -290,11 +290,17 @@ mureo journal --tool meta_ads_campaigns_update
 mureo journal --since 2026-09-01       # UTC date, inclusive
 mureo journal --json                   # raw records, one JSON object per line
 mureo journal --path ./JOURNAL.jsonl   # read a specific file
+mureo journal --all                    # include the rotated files, oldest first
+mureo journal --verify                 # check the hash chain over all of them
 ```
 
 The last column reads `reason/rationale`: for a non-`ok` call it is why the call failed, and for a successful one it is the `reason` the agent passed — why the change was made. `--json` carries both in full, under their own keys.
 
 Filters combine, and `--last` applies **after** filtering — `--failures --last 20` means the last 20 failures, not the failures among the last 20 calls. A missing journal is not an error (`no journal at <path>`, exit 0): a workspace where no tool has run yet, or an operator who set `MUREO_DISABLE_JOURNAL=1`, simply has none. Unparseable lines — a half-written final line after a crash — are skipped and counted on stderr rather than failing the read.
+
+**Rotated files (#758 phase 6).** A full journal is renamed to `JOURNAL.<UTC stamp>.jsonl` and a fresh one started. The default view still reads only the live file and notes on stderr how many rotated ones it left out; `--all` reads them too, oldest first, with the filters and `--last` applied to the combined result. `--all` is **bounded**: each rotated file can be as large as the live one was allowed to get, so it reads the last 20 000 lines across the whole set (newest file first) — the same budget `mureo_history_query` spends — and says so on stderr (`(scanned the last 20000 lines; older records not shown)`) when that budget ran out.
+
+**`--verify`** walks the live file and its rotated siblings as one hash chain, prints a line per file (`<name>: <n> records`) and then the verdict — `chain ok`, `chain BROKEN at <file>:<line> (<why>)` (`prev_mismatch` / `hash_mismatch` / `unparseable`), plus a count of `unchained` records written before the chain existed. It **ignores the filter flags** — a chain is a property of the file, not of a selection from it. `--json` prints the report as one object instead. Exit codes: **0** the chain holds, **1** it is broken, **2** there is no journal to check. What the chain cannot prove — a truncated tail — is stated in [`mcp-server.md`](mcp-server.md#the-hash-chain-758-phase-6). If you delete or move a rotated file by hand, expect `prev_mismatch` at line 1 of the oldest file still there: the chain cannot tell a file you pruned from one somebody removed, and mureo never deletes a rotated file itself.
 
 ## Repair Commands
 
