@@ -43,6 +43,8 @@ from mureo.context.models import DAILY_DATE_KEY_PATTERN, StateDocument
 from mureo.context.platform_guards import guard_platform_entry_write
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mureo.context.models import PlatformState
 
 #: How many days of ``PlatformState.daily`` history a write keeps (#690).
@@ -190,6 +192,25 @@ def _reject_unusable_daily_keys(
             )
 
 
+def _dropped_keys(daily: dict[str, dict[str, Any]]) -> set[str]:
+    """The date keys the retention rule drops — the ONE selection.
+
+    :func:`capped_platform_daily` and :func:`dropped_platform_daily` are both
+    defined from this, so the trim and the archive cannot disagree about
+    which days they are talking about. Two copies of the rule would be a
+    silent data loss the first time one of them was edited: a day the trim
+    drops but the archive does not report is a day nothing keeps.
+
+    Only ``YYYY-MM-DD`` keys count towards the cap, and only they are ever
+    selected — see :func:`capped_platform_daily` for why a key mureo could
+    not have written is kept rather than swept.
+    """
+    dated = [key for key in daily if _DAILY_DATE_KEY_RE.match(key)]
+    if len(dated) <= DAILY_RETENTION_DAYS:
+        return set()
+    return set(sorted(dated)[:-DAILY_RETENTION_DAYS])
+
+
 def capped_platform_daily(
     daily: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
@@ -210,11 +231,30 @@ def capped_platform_daily(
     document write still has to apply the retention rule, and importing a
     private name to do it made a downstream nightly write hostage to a rename.
     """
-    dated = [key for key in daily if _DAILY_DATE_KEY_RE.match(key)]
-    if len(dated) <= DAILY_RETENTION_DAYS:
+    dropped = _dropped_keys(daily)
+    if not dropped:
         return daily
-    dropped = set(sorted(dated)[:-DAILY_RETENTION_DAYS])
     return {key: value for key, value in daily.items() if key not in dropped}
+
+
+def dropped_platform_daily(
+    daily: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """The days :func:`capped_platform_daily` would drop — its exact complement.
+
+    ``kept | dropped`` is the input and ``kept & dropped`` is empty, for every
+    input: a write archives what it is about to lose, so a day this function
+    misses is a day nothing keeps, and a day it reports twice is a day the
+    archive and the document both claim.
+
+    The same two rules apply, for the same reasons: only ``YYYY-MM-DD`` keys
+    count towards the cap, and a key mureo could not have written is never
+    dropped — so it is never archived either. It stays in the document.
+
+    Order follows the input, like the trim it mirrors.
+    """
+    dropped = _dropped_keys(daily)
+    return {key: value for key, value in daily.items() if key in dropped}
 
 
 def with_platform_daily(
@@ -224,6 +264,7 @@ def with_platform_daily(
     days: dict[str, dict[str, Any]],
     *,
     as_of_date: date | None = None,
+    archive: Callable[[str, str, dict[str, dict[str, Any]]], None] | None = None,
 ) -> StateDocument:
     """``doc`` with ``days`` merged into a platform's ``daily`` history (#690).
 
@@ -261,6 +302,16 @@ def with_platform_daily(
             to judge against the host's clock. More than
             :data:`_MAX_ANCHOR_DAYS_AHEAD` days ahead of the server's date is
             refused (see :func:`_completeness_anchor`).
+        archive: Called ``(platform, account_id, dropped)`` with the days the
+            retention trim is about to drop, before the trimmed document is
+            built and only when there are any. **Default ``None`` keeps the
+            pre-#758 behaviour: the dropped days are simply gone.** A
+            downstream writer that merges ``daily`` inside its own document
+            write (#710) should pass
+            :func:`~mureo.context.history.archive_platform_daily` bound to
+            its own state path, or the history it trims is lost. A raising
+            archive aborts the merge — an archive that can be skipped is not
+            an archive.
 
     Returns:
         A new :class:`~mureo.context.models.StateDocument`, ``last_synced_at``
@@ -294,6 +345,15 @@ def with_platform_daily(
     merged.update(
         {day: _stamp_fetched_at(bucket, written_at) for day, bucket in days.items()}
     )
+
+    # Nothing is dropped without being kept somewhere first (#758 phase 4a).
+    # Called BEFORE the trimmed document is built and, on the STATE.json
+    # route, inside the state lock — so a failing archive fails the write
+    # rather than letting the trim proceed without it.
+    if archive is not None:
+        dropped = dropped_platform_daily(merged)
+        if dropped:
+            archive(platform, account_id, dropped)
 
     # Every other field has no input on a daily write and is carried over by
     # ``replace``.

@@ -728,7 +728,9 @@ and a manufactured zero both reads as an account that stopped spending and
 poisons the median the collapse detector baselines against. Readers render a
 gap as a gap.
 
-**The history is capped at 35 days on write.** 28 (`DEFAULT_BASELINE_DAYS`,
+**The history is capped at 35 days on write** — and since #758 phase 4 the
+days past the cap are archived to `history/daily/<YYYY-MM>.json` beside
+STATE.json rather than dropped. 28 (`DEFAULT_BASELINE_DAYS`,
 the collapse detector's trailing baseline) plus margin for an operator who
 raises `delivery_collapse_baseline_days` and for the days a collector missed
 — a gap is not backfilled, so 35 stored keys are not 35 calendar days. A key

@@ -578,6 +578,12 @@ shows fewer campaigns than you wrote — get these exact names right:
   not-recently-synced. `mureo_state_upsert_campaign` / `_platform_metrics_set`
   / `_report_set` set it for you (`_action_log_append` does not); on the Code
   `Write` path you must set it yourself.
+- **`history/` beside STATE.json** (#758) — the `daily` days trimmed past the
+  35-day retention cap and every version of every report kind are archived
+  there by the `mureo_state_*` write tools
+  (`history/daily/<YYYY-MM>.json`, `history/reports/<kind>.jsonl`) while
+  STATE.json keeps only the current window and the latest report, so never
+  hand-write, prune or carry over those files on the Code `Write` path.
 - **Top-level `batches`** (declared bulk change sets, #549) — **carry it over
   verbatim** on the Code `Write` path, together with each `action_log` entry's
   `batch_id`. Dropping either detaches a change set from its members, which is
