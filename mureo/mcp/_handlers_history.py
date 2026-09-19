@@ -15,9 +15,11 @@ Read-only, and bounded on purpose:
   it returned. Silence about truncation is how a partial answer gets read
   as a complete one.
 - **the journal scan is capped.** ``JOURNAL.jsonl`` grows one line per
-  tool call and nothing rotates it yet (#758 phase 6), so only the last
-  :data:`HISTORY_QUERY_JOURNAL_SCAN_LINES` lines are looked at and the
-  section reports how many that was.
+  tool call, so only the last :data:`HISTORY_QUERY_JOURNAL_SCAN_LINES`
+  lines are looked at and the section reports how many that was. Since
+  #758 phase 6 a full journal is rotated away, and the rotated files are
+  part of the record: the cap is spent newest file first and counts
+  across all of them.
 - **a dateless ``daily`` query is bounded too.** The archive is one file
   per month, so without a floor the cheapest-looking question — no dates
   at all — would open every month a years-old account ever had. With no
@@ -58,10 +60,15 @@ from mureo.context.state import read_state_file, render_state
 from mureo.core import clock
 from mureo.core.platform_keys import is_plugin_platform_key, plugin_distribution
 from mureo.core.report_kinds import REPORT_KINDS
+from mureo.core.rotation import sibling_files
 from mureo.mcp import journal
 from mureo.mcp._helpers import _json_result, resolve_workspace_path
 from mureo.mcp._journal_hook import JOURNAL_OUTCOMES
-from mureo.mcp.journal_read import read_records_tail, record_matches
+from mureo.mcp.journal_read import (
+    JOURNAL_SCAN_LINES,
+    read_records_tail_files,
+    record_matches,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -88,10 +95,12 @@ HISTORY_DEFAULT_SOURCES: Final[tuple[str, ...]] = ("action_log", "journal")
 HISTORY_QUERY_DEFAULT_LIMIT: Final[int] = 50
 HISTORY_QUERY_MAX_LIMIT: Final[int] = 200
 
-#: How many TAIL lines of ``JOURNAL.jsonl`` one query may look at. The
-#: journal is unrotated (#758 phase 6), so without this bound the cost of
-#: a query would grow with the age of the workspace.
-HISTORY_QUERY_JOURNAL_SCAN_LINES: Final[int] = 20_000
+#: How many TAIL lines of the journal one query may look at, counted
+#: across the live file and its rotated siblings. Without this bound the
+#: cost of a query would grow with the age of the workspace. The number
+#: itself lives in :mod:`mureo.mcp.journal_read`, shared with
+#: ``mureo journal --all``; this name is what callers already import.
+HISTORY_QUERY_JOURNAL_SCAN_LINES: Final[int] = JOURNAL_SCAN_LINES
 
 #: The same bound for a report ledger, counted in entries rather than
 #: lines. One report kind gains a line per write — daily at the most — so
@@ -432,10 +441,14 @@ def _journal_section(_path: Path, query: HistoryQuery) -> dict[str, Any]:
 
     The path is reported even when the file does not exist: "no journal"
     is only informative if the reader can see WHICH journal was looked for
-    — a session started in another directory reads another one.
+    — a session started in another directory reads another one. The
+    rotated siblings of that path are read too (#758 phase 6) — what was
+    rotated away is still what happened — and the scan bound is spent
+    over all of them, newest first.
     """
     path = journal.journal_path()
-    if not path.exists():
+    files = sibling_files(path)
+    if not files:
         return {
             "records": [],
             "returned": 0,
@@ -444,7 +457,7 @@ def _journal_section(_path: Path, query: HistoryQuery) -> dict[str, Any]:
             "skipped_lines": 0,
             "path": str(path),
         }
-    tail = read_records_tail(path, HISTORY_QUERY_JOURNAL_SCAN_LINES)
+    tail = read_records_tail_files(files, HISTORY_QUERY_JOURNAL_SCAN_LINES)
     matched = [record for record in tail.records if _journal_matches(record, query)]
     returned = matched[-query.limit :]
     return {

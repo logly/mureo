@@ -604,6 +604,42 @@ class TestJournalSource:
         assert [r["tool"] for r in section["records"]] == [f"t-{overshoot - 1}"]
         assert section["truncated"] is True
 
+    async def test_the_rotated_files_are_part_of_the_record(self, workspace) -> None:
+        """#758 phase 6: what rotated away is still what happened."""
+        rotated = workspace / "JOURNAL.20260919T000000Z.jsonl"
+        rotated.write_text(
+            json.dumps(_record(tool="archived_call")) + "\n", encoding="utf-8"
+        )
+        _journal(workspace, _record(tool="live_call"))
+        section = (await _call({"sources": ["journal"]}))["journal"]
+
+        assert [r["tool"] for r in section["records"]] == [
+            "archived_call",
+            "live_call",
+        ]
+
+    async def test_the_scan_bound_is_spent_newest_file_first(
+        self, workspace, monkeypatch
+    ) -> None:
+        """The cap is on the whole read, not on each file: the live file
+        spends it first and an older one is opened only with lines left."""
+        from mureo.mcp import _handlers_history
+
+        monkeypatch.setattr(_handlers_history, "HISTORY_QUERY_JOURNAL_SCAN_LINES", 10)
+        rotated = workspace / "JOURNAL.20260919T000000Z.jsonl"
+        rotated.write_text(
+            "".join(json.dumps(_record(tool=f"old-{i}")) + "\n" for i in range(8)),
+            encoding="utf-8",
+        )
+        _journal(workspace, *[_record(tool=f"new-{i}") for i in range(6)])
+        section = (await _call({"sources": ["journal"], "limit": 20}))["journal"]
+
+        assert section["scanned_lines"] == 10
+        assert [r["tool"] for r in section["records"]] == [
+            *[f"old-{i}" for i in range(4, 8)],
+            *[f"new-{i}" for i in range(6)],
+        ]
+
 
 # ---------------------------------------------------------------------------
 # daily

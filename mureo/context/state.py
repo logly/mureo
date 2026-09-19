@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
     from mureo.context.models import ActionLogEntry, CampaignSnapshot
 
+from mureo.context.action_log_guard import guard_action_log_shrink
 from mureo.context.actor_stamp import stamp_actor
 from mureo.context.batch import (
     BatchError,
@@ -144,14 +145,23 @@ def read_state_file(path: Path, *, strict: bool = True) -> StateDocument:
         raise ContextFileError(f"Failed to parse JSON in STATE.json: {path}") from exc
 
 
-def write_state_file(path: Path, doc: StateDocument) -> None:
+def write_state_file(
+    path: Path, doc: StateDocument, *, previous: StateDocument | None = None
+) -> None:
     """Atomically write a StateDocument to a STATE.json file.
 
     Also emits the advisory duplicate-account warning (#534) — see
     :func:`mureo.context.platform_guards.warn_on_duplicate_accounts`. The write
     proceeds regardless.
+
+    A write that shortens or rewrites the ``action_log`` on disk leaves a
+    timestamped copy of that document behind first (#758 phase 6) — see
+    :func:`mureo.context.action_log_guard.guard_action_log_shrink`. Pass
+    ``previous`` when the caller has already read the on-disk document
+    under the same lock, so the guard costs no second read.
     """
     warn_on_duplicate_accounts(path, doc)
+    guard_action_log_shrink(path, doc, previous=previous)
     text = render_state(doc)
     _atomic_write(path, text)
 
@@ -177,7 +187,7 @@ def _locked_state_mutation(
     with file_lock(_state_lock_path(path)):
         doc = read_state_file(path)
         new_doc = build(doc)
-        write_state_file(path, new_doc)
+        write_state_file(path, new_doc, previous=doc)
     return new_doc
 
 

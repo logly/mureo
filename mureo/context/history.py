@@ -456,6 +456,11 @@ def append_report_history(state_path: Path, kind: str, summary: dict[str, Any]) 
     is the deliberate direction: a record that over-reports can be
     reconciled, one that silently missed a version cannot.
 
+    A ledger that has reached the size bound is rotated away first (#758
+    phase 6, :mod:`mureo.core.rotation`) and this line starts a fresh
+    file. The bound is on one file, never on the history:
+    :func:`read_report_history` reads the rotated files too.
+
     Raises:
         ValueError: ``kind`` cannot name a file.
     """
@@ -463,6 +468,7 @@ def append_report_history(state_path: Path, kind: str, summary: dict[str, Any]) 
     # ``mureo.context.state``, which imports this module, so a module-level
     # import would close a cycle.
     from mureo.core.actor import client_info, session_id
+    from mureo.core.rotation import max_append_bytes, rotate_if_over
 
     safe_kind = validate_report_kind_path(kind)
     entry: dict[str, Any] = {
@@ -477,8 +483,38 @@ def append_report_history(state_path: Path, kind: str, summary: dict[str, Any]) 
     entry["summary"] = summary
 
     path = history_dir(state_path) / _REPORTS_SUBDIR / f"{safe_kind}.jsonl"
-    _append_json_line(path, entry)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Rotation and the append are one critical section: two writers that
+    # both found the file full would otherwise rotate it twice and the
+    # second would retire a file holding the first's line alone.
+    with file_lock(lock_path_for(path)):
+        rotate_if_over(
+            path, max_bytes=max_append_bytes(), now=datetime.now(timezone.utc)
+        )
+        _append_json_line(path, entry)
     return path
+
+
+def _read_report_lines(
+    path: Path, since: date | None
+) -> tuple[list[dict[str, Any]], int]:
+    """The in-range entries of one ledger file, and its unparseable lines."""
+    matched: list[dict[str, Any]] = []
+    skipped = 0
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                skipped += 1
+                continue
+            if not isinstance(entry, dict):
+                skipped += 1
+            elif _report_entry_in_range(entry, since):
+                matched.append(entry)
+    return matched, skipped
 
 
 def _report_entry_in_range(entry: dict[str, Any], since: date | None) -> bool:
@@ -512,9 +548,15 @@ def read_report_history(
     an append-only ledger can be truncated mid-line by a crash, and one such
     line must not cost the caller the rest of the history.
 
+    The rotated files of the ledger are read too (#758 phase 6), oldest
+    first, so ``limit`` still means "the newest versions" rather than "the
+    newest versions of the file that happens to be live".
+
     Raises:
         ValueError: ``kind`` cannot name a file, or ``limit`` is below 1.
     """
+    from mureo.core.rotation import sibling_files
+
     if limit < 1:
         raise ValueError(f"limit must be at least 1; got {limit}")
     path = (
@@ -522,24 +564,12 @@ def read_report_history(
         / _REPORTS_SUBDIR
         / f"{validate_report_kind_path(kind)}.jsonl"
     )
-    if not path.exists():
-        return ReportHistoryRead(entries=(), skipped_lines=0)
-
     matched: list[dict[str, Any]] = []
     skipped = 0
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            if not line.strip():
-                continue
-            try:
-                entry = json.loads(line)
-            except ValueError:
-                skipped += 1
-                continue
-            if not isinstance(entry, dict):
-                skipped += 1
-            elif _report_entry_in_range(entry, since):
-                matched.append(entry)
+    for file in sibling_files(path):
+        entries, unparseable = _read_report_lines(file, since)
+        matched.extend(entries)
+        skipped += unparseable
     return ReportHistoryRead(entries=tuple(matched[-limit:]), skipped_lines=skipped)
 
 

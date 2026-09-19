@@ -278,3 +278,181 @@ def test_a_clean_file_says_nothing_about_malformed_lines(tmp_path: Path) -> None
     log = _write(tmp_path / "JOURNAL.jsonl", _entry())
     result = _run("--path", str(log))
     assert "malformed" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# rotation and the chain (#758 phase 6)
+# ---------------------------------------------------------------------------
+
+
+def _chained(path: Path, *tools: str) -> Path:
+    from mureo.mcp.journal_chain import chain_append
+
+    for tool in tools:
+        chain_append(path, _entry(tool=tool, v=2))
+    return path
+
+
+def _tamper(path: Path, line_number: int, old: bytes, new: bytes) -> None:
+    lines = path.read_bytes().rstrip(b"\n").split(b"\n")
+    lines[line_number - 1] = lines[line_number - 1].replace(old, new)
+    path.write_bytes(b"".join(line + b"\n" for line in lines))
+
+
+def test_verify_reports_an_intact_chain(tmp_path: Path) -> None:
+    log = _chained(tmp_path / "JOURNAL.jsonl", "one", "two", "three")
+    result = _run("--path", str(log), "--verify")
+    assert result.exit_code == 0, result.output
+    assert "JOURNAL.jsonl: 3 records" in result.output
+    assert "chain ok" in result.output
+
+
+def test_verify_names_the_first_break(tmp_path: Path) -> None:
+    log = _chained(tmp_path / "JOURNAL.jsonl", "one", "two", "three")
+    _tamper(log, 2, b'"two"', b'"nope"')
+    result = _run("--path", str(log), "--verify")
+    assert result.exit_code == 1, result.output
+    assert "chain BROKEN at JOURNAL.jsonl:2 (hash_mismatch)" in result.output
+
+
+def test_verify_without_a_journal_exits_two(tmp_path: Path) -> None:
+    missing = tmp_path / "JOURNAL.jsonl"
+    result = _run("--path", str(missing), "--verify")
+    assert result.exit_code == 2
+    assert f"no journal at {missing}" in result.output
+
+
+def test_verify_counts_pre_phase_six_lines_as_unchained(tmp_path: Path) -> None:
+    """A journal written before the chain existed is not evidence of
+    tampering, so it is reported and still exits 0."""
+    log = _write(tmp_path / "JOURNAL.jsonl", _entry(tool="old"))
+    _chained(log, "new")
+    result = _run("--path", str(log), "--verify")
+    assert result.exit_code == 0, result.output
+    assert "1 unchained v1 record(s)" in result.output
+    assert "chain ok" in result.output
+
+
+def test_verify_json_is_the_report(tmp_path: Path) -> None:
+    log = _chained(tmp_path / "JOURNAL.jsonl", "one", "two")
+    result = _run("--path", str(log), "--verify", "--json")
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report == {
+        "files": 1,
+        "records": 2,
+        "unchained": 0,
+        "first_break": None,
+        "ok": True,
+    }
+
+
+def test_verify_json_describes_a_break(tmp_path: Path) -> None:
+    log = _chained(tmp_path / "JOURNAL.jsonl", "one", "two")
+    _tamper(log, 1, b'"one"', b'"won"')
+    result = _run("--path", str(log), "--verify", "--json")
+    assert result.exit_code == 1
+    report = json.loads(result.output)
+    assert report["ok"] is False
+    assert report["first_break"] == {
+        "file": str(log),
+        "line": 1,
+        "why": "hash_mismatch",
+    }
+
+
+def test_verify_walks_the_rotated_files_too(tmp_path: Path) -> None:
+    log = tmp_path / "JOURNAL.jsonl"
+    _chained(log, "one", "two")
+    rotated = tmp_path / "JOURNAL.20260919T013000Z.jsonl"
+    log.rename(rotated)
+    _chained(log, "three")
+    result = _run("--path", str(log), "--verify")
+    assert result.exit_code == 0, result.output
+    assert "JOURNAL.20260919T013000Z.jsonl: 2 records" in result.output
+    assert "JOURNAL.jsonl: 1 records" in result.output
+    assert "chain ok" in result.output
+
+
+def test_the_default_listing_notes_the_rotated_files(tmp_path: Path) -> None:
+    _write(tmp_path / "JOURNAL.20260919T013000Z.jsonl", _entry(tool="archived"))
+    log = _write(tmp_path / "JOURNAL.jsonl", _entry(tool="live"))
+    result = _run("--path", str(log), "--json")
+    assert [record["tool"] for record in _json_lines(result.output)] == ["live"]
+    assert "1 rotated file(s); pass --all to include" in result.output
+
+
+def test_a_journal_that_never_rotated_says_nothing_about_it(tmp_path: Path) -> None:
+    log = _write(tmp_path / "JOURNAL.jsonl", _entry())
+    result = _run("--path", str(log))
+    assert "rotated" not in result.output
+
+
+def test_all_reads_the_rotated_files_oldest_first(tmp_path: Path) -> None:
+    _write(tmp_path / "JOURNAL.20260918T000000Z.jsonl", _entry(tool="oldest"))
+    _write(tmp_path / "JOURNAL.20260919T000000Z.jsonl", _entry(tool="middle"))
+    log = _write(tmp_path / "JOURNAL.jsonl", _entry(tool="newest"))
+    result = _run("--path", str(log), "--all", "--json")
+    assert result.exit_code == 0, result.output
+    assert [record["tool"] for record in _json_lines(result.output)] == [
+        "oldest",
+        "middle",
+        "newest",
+    ]
+    assert "pass --all" not in result.output
+
+
+def test_all_still_obeys_last(tmp_path: Path) -> None:
+    _write(tmp_path / "JOURNAL.20260918T000000Z.jsonl", _entry(tool="oldest"))
+    log = _write(tmp_path / "JOURNAL.jsonl", _entry(tool="newest"))
+    result = _run("--path", str(log), "--all", "--last", "1", "--json")
+    assert [record["tool"] for record in _json_lines(result.output)] == ["newest"]
+
+
+def test_all_is_bounded_by_the_scan_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rotated files are 32 MiB each; reading them whole is not an option."""
+    from mureo.mcp import journal_read
+
+    monkeypatch.setattr(journal_read, "JOURNAL_SCAN_LINES", 3)
+    _write(
+        tmp_path / "JOURNAL.20260918T000000Z.jsonl",
+        *[_entry(tool=f"old-{index}") for index in range(4)],
+    )
+    log = _write(
+        tmp_path / "JOURNAL.jsonl",
+        *[_entry(tool=f"new-{index}") for index in range(2)],
+    )
+    result = _run("--path", str(log), "--all", "--json")
+    assert result.exit_code == 0, result.output
+    assert [record["tool"] for record in _json_lines(result.output)] == [
+        "old-3",
+        "new-0",
+        "new-1",
+    ]
+    assert "(scanned the last 3 lines; older records not shown)" in result.output
+
+
+def test_a_scan_that_reached_the_oldest_line_says_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mureo.mcp import journal_read
+
+    monkeypatch.setattr(journal_read, "JOURNAL_SCAN_LINES", 10)
+    _write(tmp_path / "JOURNAL.20260918T000000Z.jsonl", _entry(tool="oldest"))
+    log = _write(tmp_path / "JOURNAL.jsonl", _entry(tool="newest"))
+    result = _run("--path", str(log), "--all", "--json")
+    assert [record["tool"] for record in _json_lines(result.output)] == [
+        "oldest",
+        "newest",
+    ]
+    assert "scanned the last" not in result.output
+
+
+def test_the_cli_and_the_history_tool_share_one_scan_bound() -> None:
+    """Two bounds on the same file would drift; there is only one."""
+    from mureo.mcp._handlers_history import HISTORY_QUERY_JOURNAL_SCAN_LINES
+    from mureo.mcp.journal_read import JOURNAL_SCAN_LINES
+
+    assert HISTORY_QUERY_JOURNAL_SCAN_LINES is JOURNAL_SCAN_LINES

@@ -87,6 +87,9 @@ mureo/
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── _helpers.py                        # Shared handler utilities
 │   ├── journal.py                         # Append-only JOURNAL.jsonl of every tool call + outcome (#758)
+│   ├── journal_chain.py                   # The append itself (#758 phase 6): rotation, the `prev`/`h`
+│   │                                      #   hash chain across files, and verify_chain. A truncated
+│   │                                      #   TAIL is the one thing it cannot prove — say so, always
 │   ├── _journal_hook.py                   # Dispatcher hook: family/mutating classification, one record per call (#758)
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules
@@ -132,7 +135,8 @@ mureo/
 │   ├── _handlers_history.py               # Its handler: the filters, and one bounded section per
 │   │                                      #   source (action_log / journal / daily / reports)
 │   ├── journal_read.py                    # Reading JOURNAL.jsonl back — the parse, the date, the
-│   │                                      #   filter and the tail reader, shared with `mureo journal`
+│   │                                      #   filter and the tail reader, shared with `mureo journal`.
+│   │                                      #   The *_files forms walk the rotated siblings as one record
 │   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
 │   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89)
 ├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair + journal; ad ops are via MCP)
@@ -148,7 +152,9 @@ mureo/
 │   ├── upgrade_cmd.py   # `mureo upgrade` — pipx venv-aware bulk upgrade of mureo + plugins
 │   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*` / `upgrade-google`
 │   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
-│   ├── journal_cmd.py   # `mureo journal` — read back JOURNAL.jsonl (last/tool/since/failures/mutations/json)
+│   ├── journal_cmd.py   # `mureo journal` — read back JOURNAL.jsonl (last/tool/since/failures/mutations/json/all)
+│   ├── _journal_verify.py # `mureo journal --verify` — the hash chain over the live file and its
+│   │                    #   rotated siblings; exit 0 ok / 1 broken / 2 no journal (#758 phase 6)
 │   ├── repair_cmd.py    # `mureo repair platform-key` — drop a platforms entry the DOCUMENT
 │   │                    #   shows to be wrong (duplicate of a resolvable key, or empty stub);
 │   │                    #   dry run by default, backs up first (#610/#616).
@@ -226,6 +232,9 @@ mureo/
 │   │                      #   never dropped (#617). `drop_duplicates` is the one widening: a key
 │   │                      #   the OPERATOR named, dropped only against a same-account sibling
 │   │                      #   (#636). Drops, never merges; backs up; no action_log
+│   ├── action_log_guard.py # A whole-document write that shortens or rewrites action_log leaves a
+│   │                      #   timestamped backup and a WARNING first (#758 phase 6). Advisory like
+│   │                      #   warn_on_duplicate_accounts — but a backup that FAILS stops the write
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer
@@ -257,6 +266,8 @@ mureo/
 │   ├── importer.py      # Watermark, action_log write, per-platform outcome
 │   └── builtin/         # Native feeds — google_ads only today; see docs/change-import.md
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
+│   └── rotation.py      # Size-bounded append files (#758 phase 6): the one MUREO_JOURNAL_MAX_BYTES
+│                        #   reader, the rotated name, and sibling_files (the whole record, oldest first)
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
 ├── policy/              # Built-in policy gates (strategy_gate) — ship with OSS, run by default
 │   ├── learning_rules.py     # Per-platform learning-period facts + their first-party sources (#548)

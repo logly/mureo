@@ -11,6 +11,14 @@ Two shapes of question, two output modes:
 - ``--json`` emits the matching records verbatim, one per line, for
   ``jq`` and for an agent that wants the masked arguments.
 
+Two more since #758 phase 6, when the file gained a size bound and a
+hash chain: ``--all`` reads the rotated files too (the default view
+still reads only the live one, and says how many it left out), and
+``--verify`` checks the chain over all of them and answers in the exit
+code. ``--all`` is bounded by the same tail budget
+``mureo_history_query`` spends, because each rotated file can be as
+large as the live one was allowed to get.
+
 **Malformed lines are skipped, never fatal.** The journal is appended by
 a best-effort writer, so a crash can leave a half-written final line.
 Refusing to read the file for one bad line would cost the operator the
@@ -95,6 +103,17 @@ _JSON_OPTION = typer.Option(
 _PATH_OPTION = typer.Option(
     None, "--path", help="Read this journal file instead of the resolved one."
 )
+_ALL_OPTION = typer.Option(
+    False, "--all", help="Also read the rotated files, oldest first."
+)
+_VERIFY_OPTION = typer.Option(
+    False,
+    "--verify",
+    help=(
+        "Check the hash chain over the journal and its rotated files and "
+        "exit 0 (ok) / 1 (broken) / 2 (no journal). Ignores the filters."
+    ),
+)
 
 
 def _explanation(record: dict[str, Any]) -> str:
@@ -138,6 +157,33 @@ def _print_table(records: list[dict[str, Any]]) -> None:
         typer.echo("  ".join(cells).rstrip())
 
 
+def _read_sources(
+    sources: list[Path], *, bounded: bool
+) -> tuple[list[dict[str, Any]], int, bool]:
+    """The records to filter, the malformed count, and "there was more".
+
+    The live file alone is read WHOLE: that is the trade the command has
+    always made, and the file is bounded by rotation. Reading the rotated
+    ones too is a different size of question — each is up to
+    ``MUREO_JOURNAL_MAX_BYTES`` — so ``--all`` is bounded by the same
+    :data:`~mureo.mcp.journal_read.JOURNAL_SCAN_LINES` tail budget
+    ``mureo_history_query`` spends, newest file first. The third value
+    says the budget ran out, so the caller can say what it did not look
+    at rather than letting a bounded answer read as a complete one.
+    """
+    from mureo.mcp.journal_read import (
+        JOURNAL_SCAN_LINES,
+        read_records_files,
+        read_records_tail_files,
+    )
+
+    if not bounded:
+        records, skipped = read_records_files(sources)
+        return records, skipped, False
+    tail = read_records_tail_files(sources, JOURNAL_SCAN_LINES)
+    return tail.records, tail.skipped_lines, tail.scanned_lines >= JOURNAL_SCAN_LINES
+
+
 def _parse_since(since: str | None) -> date | None:
     if since is None:
         return None
@@ -157,25 +203,37 @@ def show_journal(
     mutations: bool = _MUTATIONS_OPTION,
     as_json: bool = _JSON_OPTION,
     path: str | None = _PATH_OPTION,
+    read_all: bool = _ALL_OPTION,
+    verify: bool = _VERIFY_OPTION,
 ) -> None:
     """Show recorded MCP tool calls, newest last."""
+    from mureo.core.rotation import sibling_files
     from mureo.mcp.journal import journal_path
 
     # The parse and the filter are shared with ``mureo_history_query``
     # (#758 phase 4b): one file must not have two answers to "does this
     # record match". Imported here, like ``journal_path``, because
     # ``mureo.mcp`` pulls the whole MCP server in at package import (#486).
-    from mureo.mcp.journal_read import read_records, record_matches
+    from mureo.mcp.journal_read import JOURNAL_SCAN_LINES, record_matches
 
     target = Path(path) if path is not None else journal_path()
-    if not target.exists():
+    if verify:
+        from mureo.cli._journal_verify import verify_command
+
+        raise typer.Exit(verify_command(target, as_json=as_json))
+
+    rotated = [file for file in sibling_files(target) if file != target]
+    sources = [*rotated] if read_all else []
+    if target.exists():
+        sources.append(target)
+    if not sources:
         # Not an error: a workspace where no tool has run yet, or an
         # operator who opted out, has no journal and that is a normal state.
         typer.echo(f"no journal at {target}")
         return
 
     cutoff = _parse_since(since)
-    records, skipped = read_records(target)
+    records, skipped, bound_hit = _read_sources(sources, bounded=read_all)
     kept = [
         record
         for record in records
@@ -196,3 +254,13 @@ def show_journal(
         _print_table(kept)
     if skipped:
         typer.echo(f"skipped {skipped} malformed line(s)", err=True)
+    if bound_hit:
+        typer.echo(
+            f"(scanned the last {JOURNAL_SCAN_LINES} lines; "
+            "older records not shown)",
+            err=True,
+        )
+    if rotated and not read_all:
+        # On stderr, like the malformed-line count: ``--json`` is piped
+        # into ``jq``, and a note is not one of the records.
+        typer.echo(f"({len(rotated)} rotated file(s); pass --all to include)", err=True)

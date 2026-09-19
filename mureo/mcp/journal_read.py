@@ -14,10 +14,15 @@ Two rules the readers here keep:
   thousand;
 - **a bounded read is available.** :func:`read_records_tail` returns the
   LAST ``max_lines`` records by seeking from the end, because the journal
-  grows one line per tool call and nothing rotates it yet (#758 phase 6).
-  A tool that read the whole file would grow with the workspace; the CLI
-  keeps reading it whole, which is the right trade for a command an
-  operator ran on purpose.
+  grows one line per tool call. A tool that read the whole file would
+  grow with the workspace; the CLI keeps reading it whole, which is the
+  right trade for a command an operator ran on purpose.
+- **the record is more than one file.** Since #758 phase 6 a full journal
+  is rotated away (:mod:`mureo.core.rotation`), so both readers have a
+  multi-file form — :func:`read_records_files` and
+  :func:`read_records_tail_files` — that walks the files of one record
+  oldest first. The tail form spends its line budget newest file first,
+  so the bound is on the whole read rather than on each file.
 
 Deliberately dependency-free: ``mureo.cli.main`` imports the command at
 startup, and every module this one imports is paid for on every ``mureo``
@@ -33,12 +38,20 @@ from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
     from pathlib import Path
 
 #: How much of the file one seek-and-read step pulls back. Big enough that
 #: a few hundred journal lines come back in one read, small enough that the
 #: tail of a huge file is never loaded whole.
 TAIL_BLOCK_BYTES = 65536
+
+#: How many TAIL lines of the journal one bounded read may look at,
+#: counted across the live file and its rotated siblings. Lives here
+#: because BOTH bounded readers use it — ``mureo_history_query`` and
+#: ``mureo journal --all`` — and two bounds on the same file would drift
+#: into two different answers to "is that everything?".
+JOURNAL_SCAN_LINES = 20_000
 
 
 @dataclass(frozen=True, eq=False)
@@ -79,6 +92,24 @@ def read_records(path: Path) -> tuple[list[dict[str, Any]], int]:
                 records.append(record)
             else:
                 skipped += 1
+    return records, skipped
+
+
+def read_records_files(paths: Iterable[Path]) -> tuple[list[dict[str, Any]], int]:
+    """:func:`read_records` over several files, in the order given.
+
+    Paths that do not exist are skipped: the caller is enumerating what a
+    rotation left behind, and a file that was moved or archived away
+    between the listing and the read is not an error.
+    """
+    records: list[dict[str, Any]] = []
+    skipped = 0
+    for path in paths:
+        if not path.exists():
+            continue
+        found, unparseable = read_records(path)
+        records.extend(found)
+        skipped += unparseable
     return records, skipped
 
 
@@ -213,11 +244,49 @@ def read_records_tail(path: Path, max_lines: int) -> JournalTail:
     return JournalTail(records=records, scanned_lines=scanned, skipped_lines=skipped)
 
 
+def read_records_tail_files(paths: Sequence[Path], max_lines: int) -> JournalTail:
+    """The last ``max_lines`` records across ``paths``, oldest first.
+
+    ``paths`` is oldest file first (what
+    :func:`~mureo.core.rotation.sibling_files` returns) and is consumed
+    in reverse, so the newest file spends the budget first and an older
+    one is opened only if lines are left. The bound is on the whole read,
+    not on each file: a caller that asked for 20 000 lines gets 20 000,
+    however many files they are spread over.
+
+    Raises:
+        ValueError: ``max_lines`` is below 1.
+    """
+    if max_lines < 1:
+        raise ValueError(f"max_lines must be at least 1; got {max_lines}")
+    remaining = max_lines
+    tails: list[JournalTail] = []
+    for path in reversed(paths):
+        if remaining < 1:
+            break
+        if not path.exists():
+            continue
+        tail = read_records_tail(path, remaining)
+        tails.append(tail)
+        remaining -= tail.scanned_lines
+    records: list[dict[str, Any]] = []
+    for tail in reversed(tails):
+        records.extend(tail.records)
+    return JournalTail(
+        records=records,
+        scanned_lines=sum(tail.scanned_lines for tail in tails),
+        skipped_lines=sum(tail.skipped_lines for tail in tails),
+    )
+
+
 __all__ = [
+    "JOURNAL_SCAN_LINES",
     "TAIL_BLOCK_BYTES",
     "JournalTail",
     "read_records",
+    "read_records_files",
     "read_records_tail",
+    "read_records_tail_files",
     "record_date",
     "record_matches",
     "tail_lines",
