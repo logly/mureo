@@ -89,12 +89,21 @@ STATE_WRITING_BUILTINS: frozenset[str] = frozenset(
 
 #: Built-in tools deliberately NOT asked for a call-level rationale.
 #:
-#: ``mureo_state_action_log_append`` RECORDS a change; it is not the
-#: change. The entry it writes carries its own ``reason`` field — the
-#: rationale for the thing that happened — and a second sentence at call
-#: level would be about a different event ("why am I writing this row"),
-#: landing in the same column and quietly competing with it.
-REASON_EXEMPT_BUILTINS: frozenset[str] = frozenset({"mureo_state_action_log_append"})
+#: Both RECORD a rationale rather than being the change one explains.
+#: ``mureo_state_action_log_append`` puts it on the entry it writes and
+#: ``mureo_decision_record`` in the record's own ``rationale`` — the
+#: reasoning for the thing that happened. A second sentence at call level
+#: would be about a different event ("why am I writing this row"), landing
+#: in the same column and quietly competing with it.
+#:
+#: ``mureo_decision_record`` is listed even though its name ends in no
+#: mutating suffix and the classifier already leaves it alone: the
+#: exemption is a decision about the tool, not an accident of its name,
+#: and a later rename must not silently start injecting a second rationale
+#: beside the one it exists to carry.
+REASON_EXEMPT_BUILTINS: frozenset[str] = frozenset(
+    {"mureo_state_action_log_append", "mureo_decision_record"}
+)
 
 
 def with_reason_property(tool: Tool) -> Tool:

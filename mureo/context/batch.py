@@ -63,9 +63,12 @@ class BatchError(Exception):
 
 
 #: Number of random bytes in the id suffix. Ids are workspace-local names, not
-#: secrets — this is collision avoidance across same-second batches, nothing
-#: more.
-_ID_ENTROPY_BYTES = 4
+#: secrets — this is collision avoidance across same-second ids, nothing more.
+#:
+#: Public because :mod:`mureo.context.decisions` mints ids to the same shape
+#: and must not drift from it: one workspace should not hand out four bytes of
+#: entropy in a batch id and two in a decision id.
+ID_ENTROPY_BYTES = 4
 
 #: How long a batch may stay open before it is reported as stale. A bulk pass
 #: is one working session; a batch still open a day later has almost certainly
@@ -86,7 +89,7 @@ def new_batch_id(started_at: str = "") -> str:
     from the timestamp, so two batches opened in the same second are still
     distinct.
     """
-    suffix = secrets.token_hex(_ID_ENTROPY_BYTES)
+    suffix = secrets.token_hex(ID_ENTROPY_BYTES)
     stamp = "".join(ch for ch in started_at[:19] if ch.isdigit() or ch == "T")
     return f"batch-{stamp}-{suffix}" if stamp else f"batch-{suffix}"
 
@@ -291,6 +294,7 @@ def batch_platforms(doc: StateDocument, batch_id: str) -> tuple[str, ...]:
 
 
 __all__ = [
+    "ID_ENTROPY_BYTES",
     "STALE_AFTER_HOURS",
     "BatchError",
     "active_batch",

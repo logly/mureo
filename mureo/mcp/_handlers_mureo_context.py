@@ -85,6 +85,7 @@ from mureo.context.state import (
 from mureo.context.strategy import RAW_HEADING_TYPE, parse_strategy, write_strategy_file
 from mureo.core.clock import server_now_iso
 from mureo.fsutil import backup_file
+from mureo.mcp._handlers_decisions import apply_decisions_scope
 from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
 
 if TYPE_CHECKING:
@@ -281,6 +282,9 @@ async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     # server_now, and only ``pending`` / ``none`` mutate the payload — ``all``
     # (the default) keeps the response byte-identical to the legacy shape.
     _apply_action_log_scope(payload, arguments.get("action_log", "all"))
+    # The decisions trail scopes independently of the log: dropping the log
+    # to save context must not silently drop the reasoning behind it (#758).
+    apply_decisions_scope(payload, arguments.get("decisions", "all"))
     return _json_result(payload)
 
 

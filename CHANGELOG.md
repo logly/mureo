@@ -41,6 +41,52 @@
   reason for a non-`ok` call and the rationale for a successful one (header:
   `reason/rationale`); `--json` carries both in full.
 
+- **Decision records** (#758, phase 3). A new append-only `decisions` section
+  in `STATE.json` and one tool, `mureo_decision_record`, so a proposal, the
+  operator's answer to it, and the figures it was judged on survive the
+  session that held them. `action_log` says what changed; it cannot say what
+  was CONSIDERED — a proposal that was turned down changed nothing, so it is
+  correctly absent from it, and it is exactly the record that stops the next
+  session proposing the same thing again. A record carries `status`
+  (`proposed` / `adopted` / `rejected` / `deferred`), `title` (≤120),
+  `rationale` (≤2000), the `metrics` it was judged on (≤20 keys, each value a
+  string / number / boolean / null — a nested object is refused, so the
+  figures stay comparable to an `action_log` entry's `metrics_at_action`),
+  and the joins back to the rest of the document: `related_actions` (indices
+  into the append-only `action_log`, validated at write time), `batch_id`
+  (validated against the declared batches — a CLOSED batch is accepted here,
+  unlike on an `action_log` append, because the verdict on a bulk pass is
+  normally recorded after it finished) and `supersedes`. `decision_id` and
+  `recorded_at` are minted server-side (the #460 rule), and `session_id` /
+  `client` are stamped from the writing session exactly as on an `action_log`
+  entry, so a decision and the changes it produced join on the same id.
+  **The section is append-only**: adopting a proposal appends an `adopted`
+  record naming the first in `supersedes` rather than editing it, because
+  editing in place would destroy the one thing the trail is for — that the
+  decision was first made as a proposal, at a time, on figures that were true
+  then. This is **not** `display.proposals`: that section is the dashboard's
+  screen and is REPLACED WHOLE on every `mureo_state_display_set`, so a
+  proposal written on Monday is gone the moment Tuesday's skill draws the
+  screen — it cannot be a history. Every bound is **refused, never
+  truncated**, the same write-boundary rule the display fields follow. Old
+  `STATE.json` files gain no new key: the section is emitted only when it
+  holds something, so a document written before this round-trips
+  byte-identically. `title`, `rationale` and every string `metrics` value are
+  **scrubbed** for secret-shaped substrings on the way in — the same
+  `scrub_text` boundary an `action_log` reason crosses, so the two trails
+  cannot disagree about what a secret is — and C0/C1 control characters are
+  stripped from them (TAB and newline survive: a rationale may be a short
+  paragraph). `mureo_state_get` returns the section when present and gains a
+  `decisions` argument that scopes it — `all` (default) or `none`, with
+  `decisions_total` and a `decisions_scope` marker left behind so an omitted
+  trail is never read as an empty one, and independent of `action_log` so
+  dropping the log to save context does not silently drop the reasoning
+  behind it. The tool is deliberately not classified as a platform
+  mutation — it writes `STATE.json`, not an ad account — so it triggers no
+  strategy reminder and takes no injected call-level `reason`: it carries its
+  own `rationale`. **No dashboard change in this phase**: rendering the trail
+  is a follow-up.
+
 ### Fixed
 
 - **Socket reads on the configure and wizard servers are bounded** (#773). The

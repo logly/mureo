@@ -118,6 +118,10 @@ mureo/
 │   ├── tools_learning_preflight.py        # mureo_learning_reset_preflight (#548)
 │   ├── tools_mureo_context.py             # STRATEGY.md / STATE.json + mureo_outcome_evaluate tools
 │   ├── _handlers_mureo_context.py         # Context (STRATEGY/STATE) handlers
+│   ├── _tools_decisions.py                # mureo_decision_record (#758 phase 3) — a PARTIAL of the
+│   │                                      #   mureo_context family, not a family of its own, so
+│   │                                      #   server.py and the journal labels are untouched
+│   ├── _handlers_decisions.py             # Its handler: mints the id + timestamp, appends
 │   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
 │   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89)
 ├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair + journal; ad ops are via MCP)
@@ -155,6 +159,14 @@ mureo/
 │   ├── state.py         # STATE.json parser/writer
 │   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
+│   ├── decisions.py     # The `decisions` section (#758 phase 3): DecisionRecord, its
+│   │                    #   bounds, append_decision and the pure queries. Append-only
+│   │                    #   — an adoption is a NEW record naming the first in
+│   │                    #   `supersedes`, never an edit — because `display.proposals`
+│   │                    #   is replaced whole on every dashboard write and so cannot
+│   │                    #   be a history
+│   ├── _decision_codec.py # That section's two codec halves. Strict like action_log's,
+│   │                    #   not tolerant like batches': a decision record IS history
 │   ├── daily.py         # The day-grain history write MINUS the file (#690/#710):
 │   │                    #   `with_platform_daily(doc, ...)` (guard + per-date merge +
 │   │                    #   trim) and `capped_platform_daily(daily)` (the 35-day
@@ -344,7 +356,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
-| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_display_set`, `mureo_state_platform_metrics_set`, `mureo_state_platform_daily_set`, `mureo_state_platform_not_collected_set`, `mureo_state_workspace_not_collected_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate` |
+| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_display_set`, `mureo_state_platform_metrics_set`, `mureo_state_platform_daily_set`, `mureo_state_platform_not_collected_set`, `mureo_state_workspace_not_collected_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate`, `mureo_decision_record` |
 
 ## Design Constraints
 

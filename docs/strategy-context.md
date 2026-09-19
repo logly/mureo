@@ -1654,6 +1654,7 @@ so it opens its one client's report either way.
 | `workspace_not_collected` | `object \| null` | Why the whole workspace could not be collected (see above). Absent until such a failure is recorded |
 | `batches` | `array` | Declared bulk change sets (see below). Absent until the first `mureo_batch_begin` |
 | `display` | `object \| null` | The write-guarded surface the dashboard renders (see [The display contract](#the-display-contract-706)). Absent until one is written, and absent again once it is cleared |
+| `decisions` | `array` | The append-only reasoning trail (see below). Absent until the first `mureo_decision_record` |
 | `customer_id` | `string \| null` | Legacy v1 field (kept for backward compatibility) |
 | `campaigns` | `array` | Legacy v1 field (kept for backward compatibility) |
 
@@ -1743,6 +1744,37 @@ Each entry in `batches` is one **declared** bulk change set (#549). A bulk pass 
 | `ended_at` | `string` | No — server-stamped | When the batch was closed. **Absent means the batch is open** and still collecting; at most one may be open. Once set, membership is final — no later entry can join |
 
 The record is kept after the batch closes rather than deleted, so a `batch_id` found in `action_log` still resolves to its label later. What can join a batch differs by platform — native non-status mutations must be recorded by the agent, and Search Console mutations are not recorded at all — see [`docs/mcp-server.md`](mcp-server.md#batch).
+
+#### Decision Record
+
+Each entry in `decisions` is one decision as it stood at one moment (#758, phase 3) — a proposal, or the operator's answer to one. `action_log` says what changed; this says what was **considered**, what was decided, and on which figures. A proposal that was rejected changed nothing, so it is correctly absent from `action_log` — and it is exactly the record that stops the next session proposing it again.
+
+**Not `display.proposals`.** That section holds proposals too and cannot be this: `mureo_state_display_set` replaces the whole `display` contract on every write, so Monday's proposal is gone the moment Tuesday's skill draws the screen. A screen is one moment, bounded to what fits on a card. `decisions` is the history — append-only, unbounded by the dashboard's widths, and never rewritten.
+
+**A status change is a new record.** Adopting a proposal does not edit the `proposed` record; it appends an `adopted` one naming the first in `supersedes`. Editing in place would destroy the one thing the trail is for — that the decision was first made as a proposal, at a time, on figures that were true then. The same rule `action_log` follows when it records a reversal as an entry rather than deleting the entry it reverses.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `decision_id` | `string` | No — server-minted | `dec-<YYYYMMDDTHHMMSS>-<8 hex>`. What `supersedes` joins on, and what you read out of the tool response to pass to the next call |
+| `recorded_at` | `string` | No — server-stamped | ISO 8601 timestamp with UTC offset, from the **server's** clock (#460). Never caller-supplied |
+| `status` | `string` | Yes | `proposed` / `adopted` / `rejected` / `deferred`. `deferred` is not `rejected` — "not now" and "no" call for different behaviour next week |
+| `title` | `string` | Yes | What is being decided, in one line (≤120 characters) |
+| `rationale` | `string` | Yes | Why — the evidence acted on and the effect expected (≤2000 characters) |
+| `metrics` | `object` | No | The figures the decision was judged on, **as they stood then** (e.g. `{"cpa_7d": 5200, "conversions_7d": 45}`). At most 20 keys; each value a string (≤200 characters), number, boolean or null — a nested object is refused, because these have to stay comparable to an `action_log` entry's `metrics_at_action`, and a non-finite number (`NaN`, `Infinity`) is refused because it has no JSON spelling and would make the whole file unreadable |
+| `platform` | `string` | No | Platform the decision is about, when it is about one |
+| `campaign_id` | `string` | No | Campaign the decision is about |
+| `entity_type` / `entity_id` | `string` | No | Sub-campaign identity (ad group, ad set, placement). A pair, under the same rule `action_log` follows — half an identity names nothing |
+| `related_actions` | `array` | No | Positional indices into the full, append-only `action_log` of the entries this decision produced. At most 50 — a decision that names more changes than that is a batch, and a batch has `batch_id`. Validated at write time; an index past the end of the log is refused |
+| `supersedes` | `string` | No | The `decision_id` of the record this one updates. Validated: it must name a decision already on record |
+| `batch_id` | `string` | No | The declared change set this decision concerns. A **closed** batch is accepted here, unlike on an `action_log` append — a decision joins nothing, and the verdict on a bulk pass is normally recorded after it finished |
+| `session_id` | `string` | No — server-stamped | The journal session of the process that wrote the record, so a decision and the changes it produced join on the same id |
+| `client` | `string` | No — server-stamped | The MCP client label, `null` for a CLI or library write |
+
+Every bound above **refuses** the write rather than truncating it: the caller still holds the sentence and can shorten it, while half a rationale reads as a defect and nobody downstream can tell what was cut. `decision_id` is unique — a second record under an id already on file is refused, because that is what `supersedes` joins on.
+
+**Free text is cleaned on the way in.** `title`, `rationale` and every string `metrics` value pass through the same `scrub_text` boundary an `action_log` reason crosses, so a secret-shaped substring (`api_key=sk-live-…`) is redacted before it reaches the file: a model that quotes the failing request into its reasoning must not leak the key into a file the operator commits. C0/C1 control characters are **stripped** rather than refused — they are not content, and losing a rationale over an invisible byte nobody meant to send would cost more than it saves, while leaving an ESC sequence in a field the CLI and the dashboard print back is a real hazard. TAB and newline survive, so a rationale may be a short paragraph.
+
+The dashboard does not render this section yet — that is a follow-up.
 
 ### Python API
 

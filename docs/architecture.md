@@ -78,6 +78,7 @@ Three trails, three jobs:
 |-------|---------------|-------|
 | **Journal** (#758) | **Every** tool call that entered the dispatcher, with its outcome — `ok`, platform error, exception, policy denial, preflight refusal, invalid arguments — and its masked arguments. The complete primary record; read it with `mureo journal`. | `JOURNAL.jsonl` in the workspace (else `~/.mureo/journal.jsonl`) |
 | **`action_log`** | The curated summary: mutations that carry strategy semantics — observation window, reversal plan, batch membership. Much smaller than the journal, and what `rollback_plan_get` plans from. Since #758 phase 2 each entry also carries the `session_id` the journal stamps on its own records, so the two trails join: from one entry an operator can pull every call the session that made it also made — plus `reason`, the rationale the agent gave at the time. | `STATE.json` |
+| **`decisions`** | The reasoning: what was CONSIDERED, what was decided, and on which figures (#758 phase 3). Append-only — an adoption or a rejection is a new record naming the first in `supersedes`, never an edit — and the only trail that holds a proposal which was turned down, since that changed nothing and so is correctly absent from `action_log`. Joined to the other two by `related_actions` and the same `session_id`. | `STATE.json` |
 | **Plugin audit** | The pre-#758 trail of plugin / bridge tool calls, kept unchanged for compatibility. | `~/.mureo/plugin_audit.jsonl` |
 
 The journal answers "what did this agent actually try"; `action_log` answers "what changed, and how do I undo it". A refused or failed attempt is in the first and — correctly — not in the second.
@@ -161,6 +162,12 @@ mureo/
 │   │                        #   separate fields the type refuses to cross
 │   ├── state.py             # STATE.json read / mutate / atomic write + state lock (re-exports the two below)
 │   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
+│   ├── decisions.py         # The `decisions` section (#758 phase 3): the record, the bounds,
+│   │                        #   the append_decision writer and the pure queries. Append-only,
+│   │                        #   because `display.proposals` is replaced whole on every
+│   │                        #   dashboard write and so cannot be a history
+│   ├── _decision_codec.py   # That section's two codec halves — strict like action_log's,
+│   │                        #   because a decision record IS history
 │   ├── display_codec.py     # The `display` section's two codec halves (#706) — tolerant on
 │   │                        #   read, because every bound on that surface is a WRITE rule
 │   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)
@@ -496,7 +503,7 @@ The Amazon bridge is the reason mureo sits in the request path rather than letti
 
 ## Command-Based Workflow System
 
-In addition to the 226 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 227 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 

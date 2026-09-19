@@ -73,6 +73,7 @@ import pytest
 
 from mureo.analysis.anomaly_detector import CampaignMetrics
 from mureo.analytics.builtin._live_clients import _merge_campaign_metrics
+from mureo.context.decisions import DecisionRecord
 from mureo.context.models import (
     EXTERNAL_ORIGIN,
     ActionLogEntry,
@@ -216,6 +217,25 @@ _BATCH_FIELD_VALUES: dict[str, Any] = {
     "ended_at": "2026-08-08T09:41:00+09:00",
 }
 
+#: One distinctive value per :class:`DecisionRecord` field (#758 phase 3).
+_DECISION_FIELD_VALUES: dict[str, Any] = {
+    "decision_id": "dec-20260808T093000-a1b2c3d4",
+    "recorded_at": "2026-08-08T09:30:00+09:00",
+    "status": "adopted",
+    "title": "Pause the losing ad groups",
+    "rationale": "CPA ran 3x target for 14 days at 40 conversions.",
+    "metrics": {"cpa_7d": 5200, "conversions_7d": 45},
+    "platform": _PLATFORM,
+    "campaign_id": "C-1",
+    "entity_type": "ad_group",
+    "entity_id": "AG-9",
+    "related_actions": (0,),
+    "supersedes": "dec-20260807T101500-0f0f0f0f",
+    "batch_id": "B-20260808-093000-a1b2",
+    "session_id": "sess-decision",
+    "client": "claude-code/1.2",
+}
+
 #: One distinctive value per :class:`CampaignSnapshot` field, minus the id the
 #: caller varies.
 _CAMPAIGN_FIELD_VALUES: dict[str, Any] = {
@@ -268,6 +288,7 @@ _DOCUMENT_FIELD_VALUES: dict[str, Any] = {
     },
     "batches": (BatchRecord(**_BATCH_FIELD_VALUES),),
     "display": DisplayContract(**_DISPLAY_FIELD_VALUES),
+    "decisions": (DecisionRecord(**_DECISION_FIELD_VALUES),),
 }
 
 #: Every model the STATE.json codec maps, with the map that must cover it.
@@ -286,6 +307,7 @@ _CODEC_MODELS: tuple[tuple[type, dict[str, Any]], ...] = (
     (DisplayBreakdown, _DISPLAY_BREAKDOWN_FIELD_VALUES),
     (DisplayBreakdownRow, _DISPLAY_BREAKDOWN_ROW_FIELD_VALUES),
     (DisplayStatedValue, _DISPLAY_STATED_VALUE_FIELD_VALUES),
+    (DecisionRecord, _DECISION_FIELD_VALUES),
 )
 
 

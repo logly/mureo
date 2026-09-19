@@ -237,6 +237,20 @@ None of that changes what is in the **journal**: every tool call you make is alr
 
 If you cannot open a batch (older mureo without the tools), say so and record each entry individually — do not silently do a bulk pass with no grouping.
 
+## Decision records
+
+`action_log` says what changed. It cannot say what you **considered**: a proposal the operator turned down changed nothing, so it is correctly absent — and it is exactly the record that stops the next session proposing the same thing again. `mureo_decision_record` is where that goes.
+
+1. **Before you surface a proposal**, record it: `mureo_decision_record` with `status: "proposed"`, a one-line `title`, your reasoning in `rationale`, and the figures you judged it on in `metrics` (`{"cpa_7d": 5200, "conversions_7d": 45}`). The figures matter as much as the sentence: a rationale read next month against next month's numbers is unfalsifiable. Keep the returned `decision_id`.
+2. **When the operator answers**, record that as a SECOND record — `status: "adopted"` / `"rejected"` / `"deferred"`, with `supersedes` set to the first record's `decision_id`. The section is append-only: never try to edit the first record, and never skip the proposal so you can write only the outcome. `deferred` is not `rejected` — "not now" and "no" call for different behaviour next week.
+3. **After you carry the change out**, name the `action_log` indices it produced in `related_actions` (on the adoption record, or on one more record), so the change and the reason for it are joined from either end.
+
+**`display.proposals` is the screen; this is the record.** The dashboard's `display` section is replaced WHOLE by whichever skill writes it last, so Monday's proposal is gone by Tuesday. Writing a proposal only there means it survives until the next dashboard write and no longer. Write both: the screen for today, the record for the trail.
+
+Reading them back: `mureo_state_get` returns the trail, and its `decisions` argument scopes it — `all` (default) or `none` when you only need the count. It is independent of `action_log`, so scoping the log down does not hide the reasoning.
+
+Bounds, and all of them refuse rather than truncate: `title` at most 120 characters, `rationale` at most 2000, `metrics` at most 20 keys whose values are plain numbers / strings (≤200 characters) / booleans / null (a nested object, and a `NaN` or infinity, are refused), and at most 50 `related_actions`. `decision_id` and `recorded_at` are minted by the server — do not compute either. Secret-shaped text in `title`, `rationale` or a string metric is redacted before it is stored, but do not rely on that: keep credentials out of your reasoning in the first place. If `mureo_decision_record` is unavailable (an older mureo), say so and keep the reasoning in the report `narrative`; do not silently drop it.
+
 ## Changes made outside mureo
 
 The `action_log` records what **mureo** did. It has never been the account's
