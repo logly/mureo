@@ -64,6 +64,8 @@ from mureo.mcp._handlers_mureo_context import (
 from mureo.mcp._tools_decisions import DECISIONS_SCOPE_PROPERTY
 from mureo.mcp._tools_decisions import HANDLERS as DECISION_HANDLERS
 from mureo.mcp._tools_decisions import TOOLS as DECISION_TOOLS
+from mureo.mcp._tools_history import HANDLERS as HISTORY_HANDLERS
+from mureo.mcp._tools_history import TOOLS as HISTORY_TOOLS
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -1367,6 +1369,7 @@ TOOLS: list[Tool] = [
         },
     ),
     *DECISION_TOOLS,
+    *HISTORY_TOOLS,
 ]
 
 
@@ -1387,6 +1390,7 @@ _HANDLERS = {
     "mureo_state_set_conversion_events": handle_state_set_conversion_events,
     "mureo_outcome_evaluate": handle_outcome_evaluate,
     **DECISION_HANDLERS,
+    **HISTORY_HANDLERS,
 }
 
 

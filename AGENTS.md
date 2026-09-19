@@ -122,6 +122,13 @@ mureo/
 │   │                                      #   mureo_context family, not a family of its own, so
 │   │                                      #   server.py and the journal labels are untouched
 │   ├── _handlers_decisions.py             # Its handler: mints the id + timestamp, appends
+│   ├── _tools_history.py                  # mureo_history_query (#758 phase 4b) — another PARTIAL
+│   │                                      #   of the mureo_context family; READ-ONLY, so the
+│   │                                      #   dispatcher injects no `reason` into its schema
+│   ├── _handlers_history.py               # Its handler: the filters, and one bounded section per
+│   │                                      #   source (action_log / journal / daily / reports)
+│   ├── journal_read.py                    # Reading JOURNAL.jsonl back — the parse, the date, the
+│   │                                      #   filter and the tail reader, shared with `mureo journal`
 │   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
 │   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89)
 ├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair + journal; ad ops are via MCP)
@@ -356,7 +363,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
-| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_display_set`, `mureo_state_platform_metrics_set`, `mureo_state_platform_daily_set`, `mureo_state_platform_not_collected_set`, `mureo_state_workspace_not_collected_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate`, `mureo_decision_record` |
+| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_display_set`, `mureo_state_platform_metrics_set`, `mureo_state_platform_daily_set`, `mureo_state_platform_not_collected_set`, `mureo_state_workspace_not_collected_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate`, `mureo_decision_record`, `mureo_history_query` |
 
 ## Design Constraints
 

@@ -64,11 +64,11 @@ class TestListTools:
 
     async def test_list_tools_returns_all_tools(self) -> None:
         """list_tools returns all tools (Google Ads 92 + Meta Ads 90 + Search Console 10
-        + Rollback 2 + Batch 3 + Change Import 1 + Analysis 5 + Mureo Context 14
+        + Rollback 2 + Batch 3 + Change Import 1 + Analysis 5 + Mureo Context 15
         + Analytics Registry 2 + Learning 2 + Learning pre-flight 1
-        + Creative Studio 5 = 227).
+        + Creative Studio 5 = 228).
 
-        Mureo Context is 14 since #638 added
+        Mureo Context is 15 since #638 added
         mureo_state_platform_not_collected_set, #661 added its
         document-level counterpart mureo_state_workspace_not_collected_set,
         #690 added mureo_state_platform_daily_set (the day-grain history
@@ -77,7 +77,10 @@ class TestListTools:
         reads, as opposed to the prose an agent writes for itself), and
         #758 phase 3 added mureo_decision_record (the append-only
         reasoning trail, which display.proposals cannot be because it is
-        replaced whole on every write).
+        replaced whole on every write), and #758 phase 4b added
+        mureo_history_query (the one bounded read over action_log, the
+        journal and the history/ archives — everything the current
+        document no longer holds).
 
         Analytics Registry is 2: mureo_analytics_modules_list +
         mureo_analytics_run (#440). Batch is 3: mureo_batch_begin / _end /
@@ -89,7 +92,7 @@ class TestListTools:
         mureo_learning_reset_preflight (#548)."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 227
+        assert len(tools) == 228
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads and Meta Ads tools are included."""

@@ -66,6 +66,21 @@ _FAMILIES: tuple[tuple[str, str], ...] = (
     ("_PLUGIN_NAMES", "plugin"),
 )
 
+#: Every ``outcome`` a record can carry — the verdicts :class:`JournalledCall`
+#: sets below, in the order the dispatcher can reach them. Stated as a
+#: constant since #758 phase 4b because ``mureo_history_query`` offers the
+#: vocabulary as a schema ``enum``: an agent filtering on ``"failed"`` (a
+#: word that appears in no record) would otherwise be told, truthfully and
+#: uselessly, that nothing matched.
+JOURNAL_OUTCOMES: tuple[str, ...] = (
+    "ok",
+    "platform_error",
+    "exception",
+    "denied",
+    "refused",
+    "invalid_args",
+)
+
 #: The family of a name no branch claims — an unknown tool, which the
 #: dispatcher answers with ``ValueError``. Recorded rather than dropped:
 #: an agent calling a tool that does not exist is worth seeing.
@@ -286,6 +301,7 @@ def journal_call(tool: str, arguments: dict[str, Any]) -> Iterator[JournalledCal
 
 
 __all__ = [
+    "JOURNAL_OUTCOMES",
     "UNKNOWN_FAMILY",
     "JournalledCall",
     "capture_client_info",
