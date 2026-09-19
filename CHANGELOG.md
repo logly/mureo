@@ -2,6 +2,31 @@
 
 ### Added
 
+- **`mureo_history_query` — one bounded read over every trail** (#758, phase
+  4b). Four records answer "what happened before today" and each had its own
+  door: `action_log` and the `daily` window only inside a whole
+  `mureo_state_get`, the journal only through the `mureo journal` CLI, and the
+  phase-4a archives through no tool at all — so an agent on a host without a
+  shell could not ask "what did we change on this campaign in July", and one
+  that could had to read a whole document to find out. The new tool takes
+  `sources` (`action_log`, `journal`, `daily`, `reports`; the first two by
+  default), the `since` / `until` UTC window, `platform`, `campaign_id`, the
+  `entity_type` + `entity_id` pair, `batch_id`, and the journal-only `tool`,
+  `outcome`, `mutations_only` and `failures_only`. `limit` (default 50, max
+  200) applies **per source**, the newest matches are kept, and every section
+  states whether more matched than it returned — a partial answer says so
+  rather than reading as a complete one. `action_log` entries carry their
+  index in the FULL log (the index `related_actions` and `evaluation_of`
+  refer to); `daily` merges the archived months with the days still in
+  STATE.json into one series, the document winning a day held in both; the
+  journal is read only to its last 20 000 lines, reported as `scanned_lines`,
+  because nothing rotates it yet, and a `daily` query with no `since` reads
+  the archive back 12 months from `until` (or today) rather than opening every
+  month a years-old account ever had — that section's `window` reports the
+  dates it answered from and `defaulted: true`, and an explicit `since`
+  reaches as far back as it is given. Read-only: the tool takes no call-level
+  `reason` and appends no strategy reminder. A missing STATE.json or journal
+  is answered, not raised.
 - **Trimmed daily days are archived, not dropped** (#758, phase 4). STATE.json
   keeps the most recent 35 days of `platforms[<p>].daily` and drops the rest on
   every write, because the whole document is read and re-rendered on each

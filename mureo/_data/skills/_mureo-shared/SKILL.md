@@ -105,6 +105,7 @@ Skills and commands describe "Read STRATEGY.md", "Update STATE.json", and "Appen
 | Read STRATEGY.md | `Read` tool | `mureo_strategy_get` MCP tool |
 | Replace STRATEGY.md | `Write` / `Edit` tool | `mureo_strategy_set` MCP tool |
 | Read STATE.json | `Read` tool | `mureo_state_get` MCP tool |
+| Ask about the PAST (beyond the current document) | `mureo_history_query` MCP tool | `mureo_history_query` MCP tool |
 | Establish the current date | `mureo_state_get` MCP tool (`server_now`) | `mureo_state_get` MCP tool (`server_now`) |
 | Append action_log entry | `mureo_state_action_log_append` MCP tool | `mureo_state_action_log_append` MCP tool |
 | Group a bulk change as one unit | `mureo_batch_begin` / `mureo_batch_end` MCP tools | `mureo_batch_begin` / `mureo_batch_end` MCP tools |
@@ -118,6 +119,8 @@ When you don't have direct filesystem tools (Desktop / Cowork / web), always rea
 The same two read tools also name the file they read (`path`), the runtime's `workspace_id`, and any runtime `notices`. `mureo_state_get` resolves the file from the MCP server's workspace — the directory the host launched it in, by default — so a session opened in another directory reads another STATE.json. Skills that compare against a stored report (`daily-check`) print these in their header so the operator can tell which file a verdict came from. A non-empty `notices` means the runtime does not consider this session to be on the right workspace; workspace-bound skills stop on it rather than proceed.
 
 For STATE.json **mutations** (`Upsert campaign snapshot` / `Append action_log entry`) prefer the `mureo_state_*` MCP tool on **every** host, **including Code**: they apply the correct schema atomically. A raw `Edit` easily omits the required `platforms[<platform>]` / `account_id`, and a platform/campaign missing those is **dropped** by the dashboard — the workspace then renders **empty / "not yet bootstrapped"** even after you wrote campaigns. Separately, `mureo_state_upsert_campaign` (and the metrics / report setters) stamp the top-level **`last_synced_at`** — the dashboard's "Synced N ago" freshness — which a hand-edit leaves stale (`mureo_state_action_log_append` does **not** re-stamp it). Hand-writing STATE.json directly with `Write` on Code is reserved for the **bulk-snapshot** flows (`sync-state` / `daily-check`); on that path you own replicating the full **STATE.json Schema** below, **including a fresh `last_synced_at`**.
+
+**Any question about the PAST goes to `mureo_history_query`, not to `mureo_state_get`.** The document holds the CURRENT state: 35 days of `daily`, the latest version of each report, and however much `action_log` the response was scoped to. Anything older is in the journal and in `history/` beside STATE.json, and this one tool reads all of it — "what did we change on this campaign in July" (`sources: ["action_log"]`, `campaign_id`, `since` / `until`), "show every version of the weekly report" (`sources: ["reports"]`, `kind: "weekly"`), "daily spend before the 35-day window" (`sources: ["daily"]`, `platform`), "what did that session try and get refused" (`sources: ["journal"]`, `failures_only: true`). Do not reach for the whole `mureo_state_get` to answer one of these — it cannot answer the last three at all, and reading the document to scan `action_log` by hand costs context you will want for the analysis. `limit` applies per source (default 50, max 200) and each section says `truncated` when more matched; narrow the window rather than assuming you saw everything. A `daily` query with no `since` reads the archive back 12 months and reports that window on the section — to go further back, say `since`. On the journal the `campaign_id` / `entity_id` filters are a best-effort match against the call's arguments, so treat a journal-only answer as evidence, not as an inventory.
 
 The platform tools (`google_ads_*`, `meta_ads_*`, `search_console_*`) are the same across all hosts because they only exist as MCP tools.
 
@@ -583,7 +586,9 @@ shows fewer campaigns than you wrote — get these exact names right:
   there by the `mureo_state_*` write tools
   (`history/daily/<YYYY-MM>.json`, `history/reports/<kind>.jsonl`) while
   STATE.json keeps only the current window and the latest report, so never
-  hand-write, prune or carry over those files on the Code `Write` path.
+  hand-write, prune or carry over those files on the Code `Write` path. Read
+  them with `mureo_history_query` (`sources: ["daily"]` / `["reports"]`),
+  never by opening the files yourself.
 - **Top-level `batches`** (declared bulk change sets, #549) — **carry it over
   verbatim** on the Code `Write` path, together with each `action_log` entry's
   `batch_id`. Dropping either detaches a change set from its members, which is

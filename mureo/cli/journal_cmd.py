@@ -16,17 +16,24 @@ a best-effort writer, so a crash can leave a half-written final line.
 Refusing to read the file for one bad line would cost the operator the
 other ten thousand; instead the bad lines are counted and reported on
 stderr, so the damage is visible without hiding the rest.
+
+The parse, the date and the filter themselves live in
+:mod:`mureo.mcp.journal_read`, shared with ``mureo_history_query`` (#758
+phase 4b) so the CLI and the tool cannot disagree about what matches.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
+
+if TYPE_CHECKING:
+    from datetime import date
 
 journal_app = typer.Typer(
     name="journal",
@@ -88,62 +95,6 @@ _JSON_OPTION = typer.Option(
 _PATH_OPTION = typer.Option(
     None, "--path", help="Read this journal file instead of the resolved one."
 )
-
-
-def _read_records(path: Path) -> tuple[list[dict[str, Any]], int]:
-    """Return the parsed records and the number of unparseable lines."""
-    records: list[dict[str, Any]] = []
-    skipped = 0
-    with path.open(encoding="utf-8") as handle:
-        for raw in handle:
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except ValueError:
-                skipped += 1
-                continue
-            if isinstance(record, dict):
-                records.append(record)
-            else:
-                skipped += 1
-    return records, skipped
-
-
-def _record_date(record: dict[str, Any]) -> date | None:
-    """The record's UTC date, or ``None`` when its ``ts`` is unusable."""
-    try:
-        parsed = datetime.fromisoformat(str(record.get("ts", "")))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc).date()
-
-
-def _matches(
-    record: dict[str, Any],
-    *,
-    tool: str | None,
-    since: date | None,
-    failures: bool,
-    mutations: bool,
-) -> bool:
-    """Whether ``record`` survives every filter that was asked for."""
-    if tool is not None and record.get("tool") != tool:
-        return False
-    if failures and record.get("outcome") == "ok":
-        return False
-    if mutations and record.get("mutating") is not True:
-        return False
-    if since is not None:
-        recorded = _record_date(record)
-        # A record with no usable timestamp cannot be shown to be on or
-        # after a date, so a date filter excludes it rather than guessing.
-        if recorded is None or recorded < since:
-            return False
-    return True
 
 
 def _explanation(record: dict[str, Any]) -> str:
@@ -210,6 +161,12 @@ def show_journal(
     """Show recorded MCP tool calls, newest last."""
     from mureo.mcp.journal import journal_path
 
+    # The parse and the filter are shared with ``mureo_history_query``
+    # (#758 phase 4b): one file must not have two answers to "does this
+    # record match". Imported here, like ``journal_path``, because
+    # ``mureo.mcp`` pulls the whole MCP server in at package import (#486).
+    from mureo.mcp.journal_read import read_records, record_matches
+
     target = Path(path) if path is not None else journal_path()
     if not target.exists():
         # Not an error: a workspace where no tool has run yet, or an
@@ -218,11 +175,11 @@ def show_journal(
         return
 
     cutoff = _parse_since(since)
-    records, skipped = _read_records(target)
+    records, skipped = read_records(target)
     kept = [
         record
         for record in records
-        if _matches(
+        if record_matches(
             record,
             tool=tool,
             since=cutoff,

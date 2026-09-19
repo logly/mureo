@@ -60,6 +60,8 @@ One file per **month** rather than per platform: a platform key can be `plugin:<
 
 A downstream writer that merges `daily` inside its **own** atomic document write (`mureo.context.daily.with_platform_daily`, #710) still drops what it trims unless it passes `archive=`; the archive is not something the document-level merge can do on its own, since it does not know which file it is writing.
 
+**Reading it back (#758 phase 4b).** `mureo_history_query` is the one tool over all of it: `action_log` and the archived + in-document `daily` series out of the workspace, `JOURNAL.jsonl` out of the journal, and `history/reports/<kind>.jsonl` out of the ledger — one set of filters, `limit` applied per source, and every section stating whether more matched than it returned. Three bounds are structural rather than cosmetic: the journal is read only to its last 20 000 lines (nothing rotates it until #758 phase 6, so an unbounded read would grow with the age of the workspace), a `daily` query with no `since` reads only the last 12 months of the one-file-per-month archive (same reason, same growth) and reports the window it used, and a query is capped at 200 entries per source, because the answer has to fit in the context of the agent that asked. The tool never writes: the archives are appended by the write path that would otherwise have dropped the data, and nothing reads them to build a screen.
+
 ### Orchestration Layer
 
 This is where mureo's workflow commands, domain knowledge (skills), and the AI agent converge. Workflow commands like `/daily-check` and `/rescue` define multi-step operational procedures. Skills provide domain-specific reference material (operation mode definitions, diagnostic patterns). The AI agent (LLM) supplies strategic judgment, creative generation, and adaptive decision-making. The orchestration layer reads the strategy context, selects the appropriate tools, and synthesizes results into actionable recommendations.
@@ -521,7 +523,7 @@ The Amazon bridge is the reason mureo sits in the request path rather than letti
 
 ## Command-Based Workflow System
 
-In addition to the 227 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 228 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 
