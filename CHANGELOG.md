@@ -2,6 +2,11 @@
 
 ### Added
 
+- **Guardrails card in the Advanced section of `mureo configure`** (#786) —
+  pick the account currency from a dropdown; writes/clears the `currency`
+  bullet in `## Guardrails` of the active workspace's STRATEGY.md (per
+  client on a multi-account backend), backup first, every other line
+  untouched.
 - **A `currency` bullet in `## Guardrails`** (#783). The ad account's ISO 4217
   code (`- currency: EUR`), upper-cased and validated against Meta's own
   offset table; an unrecognized code is dropped with one warning, the same way

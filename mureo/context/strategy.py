@@ -7,6 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 from mureo.context.errors import ContextFileError
@@ -164,24 +165,46 @@ def _strategy_lock_path(path: Path) -> Path:
     return path.with_name(path.name + ".lock")
 
 
+def mutate_strategy_file(
+    path: Path,
+    mutate: Callable[[list[StrategyEntry]], list[StrategyEntry]],
+) -> list[StrategyEntry]:
+    """Run ``mutate`` over the file's entries inside the cross-process lock.
+
+    mkdir -> lock -> read (a missing file reads as ``[]``) -> ``mutate`` ->
+    atomic write, which is the one read-modify-write shape every STRATEGY.md
+    writer needs: without the lock two concurrent callers last-writer-wins
+    away each other's change (a lost update). This mirrors
+    ``mureo.context.state._locked_state_mutation`` — STATE.json was already
+    protected (issue #115) while STRATEGY.md was not.
+
+    ``mutate`` must be PURE with respect to its argument: it returns the new
+    list rather than editing the one it was handed. It runs while the lock is
+    held, so anything it does besides deciding the new entries (taking a
+    backup, say) also happens before the write and under the same lock.
+
+    Returns:
+        The entries that were written.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(_strategy_lock_path(path)):
+        entries = mutate(read_strategy_file(path))
+        write_strategy_file(path, entries)
+    return entries
+
+
 def add_strategy_entry(path: Path, entry: StrategyEntry) -> list[StrategyEntry]:
     """Append an entry to the existing file.
 
     The read -> append -> write cycle runs inside the cross-process
-    ``file_lock`` so two concurrent callers cannot last-writer-wins away each
-    other's append (a lost update). This mirrors
-    ``mureo.context.state._locked_state_mutation`` — STATE.json was already
-    protected (issue #115) while STRATEGY.md was not; the write itself stays
-    atomic via ``write_strategy_file``.
+    ``file_lock`` (see :func:`mutate_strategy_file`) so two concurrent
+    callers cannot last-writer-wins away each other's append; the write
+    itself stays atomic via ``write_strategy_file``.
 
     Returns:
         Updated list of entries.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with file_lock(_strategy_lock_path(path)):
-        entries = [*read_strategy_file(path), entry]
-        write_strategy_file(path, entries)
-    return entries
+    return mutate_strategy_file(path, lambda entries: [*entries, entry])
 
 
 def remove_strategy_entry(
@@ -196,8 +219,9 @@ def remove_strategy_entry(
     If title is not specified, all entries matching context_type are removed.
 
     The read -> filter -> write cycle runs inside the same cross-process
-    ``file_lock`` as :func:`add_strategy_entry` so a concurrent add/remove
-    pair cannot clobber each other's change.
+    ``file_lock`` as :func:`add_strategy_entry` (see
+    :func:`mutate_strategy_file`) so a concurrent add/remove pair cannot
+    clobber each other's change.
 
     Returns:
         Updated list of entries.
@@ -208,9 +232,6 @@ def remove_strategy_entry(
             return True
         return bool(title is not None and e.title != title)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with file_lock(_strategy_lock_path(path)):
-        entries = read_strategy_file(path)
-        filtered = [e for e in entries if _should_keep(e)]
-        write_strategy_file(path, filtered)
-    return filtered
+    return mutate_strategy_file(
+        path, lambda entries: [e for e in entries if _should_keep(e)]
+    )

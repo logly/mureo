@@ -711,6 +711,22 @@
                   </form>
                 </details>
               </div>
+
+              <div class="dashboard-section" data-dashboard-guardrails>
+                <h2 data-i18n="dashboard.guardrails_title">Guardrails</h2>
+                <p data-i18n="dashboard.guardrails_desc">The unit the money caps in the Guardrails section of STRATEGY.md are written in. Meta carries budgets and bids in the account currency's minor units, so mureo divides them by this currency's offset before comparing. Zero-decimal currencies such as JPY need no conversion.</p>
+                <label class="dashboard-guardrails-client" data-guardrails-client-row hidden>
+                  <span data-i18n="dashboard.guardrails_client_label">Client</span>
+                  <select data-guardrails-client></select>
+                </label>
+                <label>
+                  <span data-i18n="dashboard.guardrails_currency_label">Account currency</span>
+                  <select data-guardrails-currency></select>
+                </label>
+                <button type="button" class="btn btn-primary" data-guardrails-save data-i18n="dashboard.guardrails_save">Save</button>
+                <p class="dashboard-guardrails-result" data-guardrails-result role="status" aria-live="polite"></p>
+                <small class="field-hint" data-guardrails-path></small>
+              </div>
             </div>
           </div>
 
@@ -873,6 +889,7 @@
   <script src="/static/reports_index.js"></script>
   <script src="/static/dashboard_setup.js"></script>
   <script src="/static/dashboard_workspace.js"></script>
+  <script src="/static/dashboard_guardrails.js"></script>
   <script src="/static/dashboard_about.js"></script>
   <script src="/static/dashboard_advisors.js"></script>
   <script src="/static/dashboard_reports_state.js"></script>
