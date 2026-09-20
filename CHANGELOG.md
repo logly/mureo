@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-20
+
 ### Added
 
 - **The journal is bounded, chained and checkable; a shortening
