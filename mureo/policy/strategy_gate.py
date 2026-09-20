@@ -157,6 +157,7 @@ logger = logging.getLogger(__name__)
 # mureo-pro, and the test-suite depend on. The three ``_``-prefixed registry
 # names are included deliberately: the test-suite imports them from this path.
 __all__ = [
+    "GUARDRAILS_BULLET_RE",
     "GUARDRAILS_HEADING",
     "Guardrails",
     "LearningPreflight",
@@ -247,6 +248,12 @@ GUARDRAILS_HEADING = "guardrails"
 
 
 _BULLET_RE = re.compile(r"^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$")
+
+#: Public alias of the bullet pattern above (#786). The configure dashboard
+#: edits one bullet of this section in place, so it has to recognise a line
+#: by exactly the rule that parses it — a second spelling would let the two
+#: halves disagree about which line carries the value.
+GUARDRAILS_BULLET_RE = _BULLET_RE
 
 
 @dataclass(frozen=True)

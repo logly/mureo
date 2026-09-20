@@ -38,6 +38,8 @@ Routes
 ``GET  /api/demo/scenarios``     → list registered demo scenarios
 ``POST /api/demo/init``          → scaffold a demo workspace
 ``GET  /api/byod/status``        → per-platform byod/live status
+``GET  /api/strategy/currency``  → Guardrails currency + the code options
+``POST /api/strategy/currency``  → set/clear the Guardrails currency bullet
 ``GET  /api/reports/clients``    → selectable reporting clients (Agency seam)
 ``GET  /api/reports/summary``    → read-only STATE.json report summary
 ``POST /api/reports/clients/archive`` → archive/un-archive one client (seam)
@@ -154,6 +156,7 @@ from mureo.web.setup_actions import (
     set_native_preference,
 )
 from mureo.web.status_collector import collect_status
+from mureo.web.strategy_currency import post_strategy_currency, serve_strategy_currency
 from mureo.web.upgrade_action import run_upgrade_all
 from mureo.web.version_check import get_update_status, request_update_refresh
 
@@ -300,6 +303,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "reports_index.js",
     "dashboard_setup.js",
     "dashboard_workspace.js",
+    "dashboard_guardrails.js",
     "dashboard_about.js",
     "dashboard_advisors.js",
     "dashboard_reports_state.js",
@@ -700,6 +704,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/byod/status":
             send_json(self, byod_status().as_dict())
+            return
+        if path == "/api/strategy/currency":
+            serve_strategy_currency(self)
             return
         if path == "/api/reports/clients":
             self._serve_reports_clients()
@@ -2280,6 +2287,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/byod/remove": _post_byod_remove,
         "/api/byod/clear": _post_byod_clear,
         "/api/reports/clients/archive": _post_reports_client_archive,
+        "/api/strategy/currency": lambda self, payload: post_strategy_currency(
+            self, payload
+        ),
         "/api/shutdown": _post_shutdown,
         "/api/pick/directory": _post_pick_directory,
         "/api/pick/file": _post_pick_file,

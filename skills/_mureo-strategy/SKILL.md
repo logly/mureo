@@ -234,7 +234,10 @@ keys (all optional):
   zero-decimal currencies such as JPY, and on a EUR account turns
   `max_daily_budget_per_campaign: 250` into a €2.50 cap. An unrecognized code
   is ignored with a warning (and the caps fall back to that minor-unit
-  behaviour); Google amounts are never affected by it.
+  behaviour); Google amounts are never affected by it. The code can also be
+  picked from a dropdown in the **Advanced** section of `mureo configure`
+  (the **Guardrails** card), which upserts this one bullet and leaves the
+  rest of STRATEGY.md untouched.
 - `max_daily_budget_per_campaign` — a budget mutation proposing more than this
   (per campaign) is **refused**. Given in **account-currency units**: Google
   Ads micros are converted (÷1e6), and Meta's minor units are converted

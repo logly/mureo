@@ -566,6 +566,7 @@ const DASHBOARD_FILES = [
   "reports_index.js",
   "dashboard_setup.js",
   "dashboard_workspace.js",
+  "dashboard_guardrails.js",
   "dashboard_about.js",
   "dashboard_advisors.js",
   "dashboard_reports_state.js",

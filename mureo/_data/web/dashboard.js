@@ -92,6 +92,10 @@
     return sectionModule("MUREO_DASHBOARD_PLUGINS", "dashboard_plugins.js");
   }
 
+  function guardrailsSection() {
+    return sectionModule("MUREO_DASHBOARD_GUARDRAILS", "dashboard_guardrails.js");
+  }
+
   // The section renderers, under their original names. renderAll() below is
   // unchanged from when they were defined in this file.
   function renderHostSection(status) {
@@ -124,6 +128,10 @@
 
   function renderByodStatus() {
     return workspaceSection().renderByodStatus();
+  }
+
+  function renderGuardrails() {
+    return guardrailsSection().renderGuardrails();
   }
 
   function renderAbout() {
@@ -170,6 +178,10 @@
 
   function wireByodImport() {
     return workspaceSection().wireByodImport();
+  }
+
+  function wireGuardrails() {
+    return guardrailsSection().wireGuardrails();
   }
 
   function wireByodClear() {
@@ -316,6 +328,7 @@
     renderEnvVarsSection(status);
     loadDemoScenarios();
     renderByodStatus();
+    renderGuardrails();
     renderAdvisors();
     renderReports();
     renderCreativeGallery();
@@ -330,6 +343,7 @@
     wireBulkClearButton();
     wireDemoCreate();
     wireByodImport();
+    wireGuardrails();
     wireByodClear();
     wireAdvisorForm();
     wireReportsBackButton();

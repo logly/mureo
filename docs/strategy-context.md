@@ -102,6 +102,8 @@ Every money cap (`max_daily_budget_per_campaign`, `max_total_daily_budget`, `max
 
 Meta is the exception that `currency` exists for (#783). Its write tools carry `daily_budget`, `lifetime_budget` and `bid_amount` in the account currency's **minor units** (cents for USD/EUR, whole yen for JPY), and the policy gate is synchronous, pure and I/O-free by contract — it cannot ask Meta what the account currency is. The `currency` bullet (an ISO 4217 code, case-insensitive) is how the operator tells it, and mureo then divides those three arguments by the currency's Meta offset before comparing them with the caps. The bullet **enforces nothing on its own**: a `## Guardrails` section containing only `currency` leaves the gate fail-open, and an unrecognized code is dropped with one warning.
 
+The bullet can also be picked from a dropdown in the **Advanced** section of `mureo configure` (the **Guardrails** card), which upserts this one line (backing the file up first) and leaves the rest of STRATEGY.md untouched.
+
 Without `currency`, Meta amounts are compared exactly as the tool carries them — in minor units. That is correct for zero-decimal currencies such as JPY and wrong everywhere else: on a EUR account `max_daily_budget_per_campaign: 250` then refuses a `daily_budget` of `25000` (= €250.00) and caps the campaign at €2.50. **Write `currency` on any USD/EUR-like account.** Two consequences follow from declaring it:
 
 - `max_daily_budget_increase_pct` compares the proposal with `current_daily_budget`, which is always currency units — so on Meta the percentage only means what it says once `currency` is set.

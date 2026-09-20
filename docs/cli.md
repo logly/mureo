@@ -121,7 +121,7 @@ mureo configure
 Credential entry has two front doors:
 
 - **`mureo auth setup` (terminal, default)** — walks you through Google Ads / Meta Ads setup via stdin prompts. Best when you're comfortable pasting secrets into a terminal.
-- **`mureo configure` (browser)** — starts a local UI on `http://127.0.0.1:<random-port>/` and opens your browser. It does the same credential entry (HTML forms + standard OAuth redirects, each field deep-linked to the right console) **and** the rest of Claude setup: pick the host, run basic setup, add official MCP providers, scaffold Demo/BYOD. Recommended when an AI agent (Claude Code, etc.) pointed you here, or you just prefer a GUI. (The old `mureo auth setup --web` was removed and folded into `mureo configure`.)
+- **`mureo configure` (browser)** — starts a local UI on `http://127.0.0.1:<random-port>/` and opens your browser. It does the same credential entry (HTML forms + standard OAuth redirects, each field deep-linked to the right console) **and** the rest of Claude setup: pick the host, run basic setup, add official MCP providers, set the Guardrails account currency (Advanced → Guardrails card), scaffold Demo/BYOD. Recommended when an AI agent (Claude Code, etc.) pointed you here, or you just prefer a GUI. (The old `mureo auth setup --web` was removed and folded into `mureo configure`.)
 
 Both end at the same destination: `~/.mureo/credentials.json` is populated and Claude (or any other MCP client) picks up mureo after a restart.
 
