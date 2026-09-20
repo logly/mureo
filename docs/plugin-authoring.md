@@ -1005,10 +1005,12 @@ is for those.
 ##### Bid declarations — getting your bids under the Guardrails
 
 Bids have the same gap budgets did, and the same fix. The built-in gate also
-enforces two **bid** caps — `max_bid_amount_per_ad_set` (a per-auction ceiling
-in account-currency **minor** units, like Meta's `bid_amount`) and
-`max_cpc_bid_per_ad_group` (in account-currency units, like Google's
-`cpc_bid_micros` after ÷1e6). A bid is a per-auction ceiling, not a spend
+enforces two **bid** caps — `max_bid_amount_per_ad_set` (a per-auction
+ceiling) and `max_cpc_bid_per_ad_group` (like Google's `cpc_bid_micros` after
+÷1e6). Both are in **account-currency units** whenever the operator declared
+a `currency` bullet in `## Guardrails` (#783); without one,
+`max_bid_amount_per_ad_set` is still read in the account's **minor** units,
+the unit Meta's own `bid_amount` carries. A bid is a per-auction ceiling, not a spend
 budget, so it gets its own caps. To find the proposed bid the gate scans the
 built-in Meta/Google keys; if your tool spells its bid any other way, the call
 is treated as "no bid proposed" and **allowed through with no error and no
@@ -1031,8 +1033,12 @@ Tool(
 ```
 
 - `bid_amount` — the argument key carrying a bid capped by
-  `max_bid_amount_per_ad_set`, compared in account-currency **minor** units
-  (direct, like Meta's `bid_amount`).
+  `max_bid_amount_per_ad_set`. Your value is used as declared (÷1e6 when
+  `unit` is `micros`) and is never converted out of minor units — that
+  conversion applies to Meta's built-in `bid_amount` only, because you state
+  your own unit here. So carry the same unit the operator's cap is written in:
+  account-currency units when they declared a `currency`, the account's minor
+  units when they did not.
 - `cpc_bid` — the argument key carrying a bid capped by
   `max_cpc_bid_per_ad_group`, compared in account-currency units (like
   Google's `cpc_bid_micros` after ÷1e6). At least one of `bid_amount` /

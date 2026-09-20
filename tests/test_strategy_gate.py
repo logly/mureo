@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
@@ -294,6 +295,132 @@ class TestEvaluateGuardrails:
             "google_ads_campaigns_update_status", {"status": "ENABLED"}, g
         )
         assert d.allowed is True
+
+
+class TestCurrencyBullet:
+    """The ``currency`` guardrail bullet (#783) — parsing only."""
+
+    def test_parses_and_upper_cases(self) -> None:
+        assert parse_guardrails("- currency: eur\n").currency == "EUR"
+
+    def test_unknown_code_is_dropped_with_one_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING):
+            g = parse_guardrails("- currency: XYZ\n")
+        assert g.currency is None
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "XYZ" in warnings[0].getMessage()
+
+    def test_absent_is_none(self) -> None:
+        assert parse_guardrails("- max_daily_budget_per_campaign: 250\n").currency is (
+            None
+        )
+
+    def test_currency_alone_enforces_nothing(self) -> None:
+        """It declares a unit; it is not a rule, so the gate stays fail-open."""
+        assert parse_guardrails("- currency: EUR\n").is_empty()
+
+
+class TestMetaMinorUnitsAgainstCurrencyCaps:
+    """Meta amounts are minor units; the caps are currency units (#783)."""
+
+    def test_meta_daily_budget_at_the_cap_is_allowed(self) -> None:
+        g = Guardrails(max_daily_budget_per_campaign=250, currency="EUR")
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "daily_budget": 25000}, g
+        )
+        assert d.allowed is True
+
+    def test_meta_daily_budget_over_the_cap_denies_in_currency_units(self) -> None:
+        g = Guardrails(max_daily_budget_per_campaign=250, currency="EUR")
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "daily_budget": 25001}, g
+        )
+        assert d.allowed is False
+        assert "250.01" in d.reason
+        assert "cap of 250 " in d.reason
+
+    def test_denial_message_keeps_the_cents(self) -> None:
+        """``:,.0f`` would print 250.50 as "250 exceeds the cap of 250"."""
+        g = Guardrails(max_daily_budget_per_campaign=250, currency="EUR")
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "daily_budget": 25050}, g
+        )
+        assert d.allowed is False
+        assert "250.50" in d.reason
+
+    def test_zero_decimal_currency_is_compared_as_written(self) -> None:
+        g = Guardrails(max_daily_budget_per_campaign=250, currency="JPY")
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "daily_budget": 25000}, g
+        )
+        assert d.allowed is False
+
+    def test_without_currency_meta_amounts_stay_minor_units(self) -> None:
+        """Today's documented fallback, pinned: no currency ⇒ no conversion."""
+        g = Guardrails(max_daily_budget_per_campaign=250)
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "daily_budget": 25000}, g
+        )
+        assert d.allowed is False
+
+    def test_google_micros_are_unaffected_by_currency(self) -> None:
+        g = Guardrails(max_daily_budget_per_campaign=250, currency="EUR")
+        allowed = evaluate_guardrails(
+            "google_ads_budget_update", {"budget_amount_micros": 250_000_000}, g
+        )
+        denied = evaluate_guardrails(
+            "google_ads_budget_update", {"budget_amount_micros": 250_010_000}, g
+        )
+        assert allowed.allowed is True
+        assert denied.allowed is False
+
+    def test_google_currency_unit_budget_is_unaffected_by_currency(self) -> None:
+        """A Google tool's plain ``daily_budget`` is already currency units."""
+        g = Guardrails(max_daily_budget_per_campaign=250, currency="EUR")
+        d = evaluate_guardrails(
+            "google_ads_budget_update", {"budget_id": "1", "daily_budget": 251}, g
+        )
+        assert d.allowed is False
+
+    def test_meta_lifetime_budget_is_converted(self) -> None:
+        g = Guardrails(max_lifetime_budget_per_campaign=1000, currency="EUR")
+        allowed = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "lifetime_budget": 100_000}, g
+        )
+        denied = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "lifetime_budget": 100_001}, g
+        )
+        assert allowed.allowed is True
+        assert denied.allowed is False
+
+    def test_increase_pct_compares_like_with_like(self) -> None:
+        """``current_daily_budget`` is currency units by convention, so the
+        percentage was nonsense for Meta until the proposal was converted."""
+        g = Guardrails(max_daily_budget_increase_pct=20, currency="EUR")
+        allowed = evaluate_guardrails(
+            "meta_ads_ad_sets_update",
+            {"daily_budget": 23000, "current_daily_budget": 200},
+            g,
+        )
+        denied = evaluate_guardrails(
+            "meta_ads_ad_sets_update",
+            {"daily_budget": 25000, "current_daily_budget": 200},
+            g,
+        )
+        assert allowed.allowed is True
+        assert denied.allowed is False
+
+    def test_oversized_meta_budget_still_fails_closed(self) -> None:
+        """inf / 100 is still inf — the division must not rescue it."""
+        g = Guardrails(max_daily_budget_per_campaign=250, currency="EUR")
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"daily_budget": int("9" * 309)}, g
+        )
+        assert d.allowed is False
+        assert "not a usable number" in d.reason
 
 
 class TestStrategyPolicyGate:

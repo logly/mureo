@@ -206,11 +206,12 @@ keys (all optional):
 
 ```markdown
 ## Guardrails
+- currency: JPY                      # account currency; Meta amounts are minor units of it
 - max_daily_budget_per_campaign: 50000
 - max_daily_budget_increase_pct: 20
 - max_total_daily_budget: 300000
 - max_lifetime_budget_per_campaign: 900000
-- max_bid_amount_per_ad_set: 5000   # minor units: 5000 = $50.00 (USD) but ¥5,000 (JPY)
+- max_bid_amount_per_ad_set: 5000    # currency units, like every cap here, once currency is set
 - max_cpc_bid_per_ad_group: 100      # currency units: 100 = $100 (USD) or ¥100 (JPY)
 - blocked_operations: google_ads_keywords_remove, meta_ads_audiences_delete
 - block_learning_resets: false
@@ -222,31 +223,47 @@ keys (all optional):
 - block_exclusions_without_impact_data: false
 ```
 
+- `currency` — the ad account's ISO 4217 code (e.g. `JPY`, `USD`, `EUR`). It
+  **enforces nothing on its own**; it declares the unit the caps below are
+  written in. Meta's write tools carry `daily_budget`, `lifetime_budget` and
+  `bid_amount` in the currency's **minor units** (cents for USD/EUR, whole yen
+  for JPY), and the gate is pure and I/O-free — it cannot ask Meta what the
+  account currency is — so this bullet is the only way it can convert them
+  before a comparison. **Write it on any USD/EUR-like account.** Without it
+  Meta amounts are compared as minor units, which is correct only for
+  zero-decimal currencies such as JPY, and on a EUR account turns
+  `max_daily_budget_per_campaign: 250` into a €2.50 cap. An unrecognized code
+  is ignored with a warning (and the caps fall back to that minor-unit
+  behaviour); Google amounts are never affected by it.
 - `max_daily_budget_per_campaign` — a budget mutation proposing more than this
-  (per campaign) is **refused**. Compared against the platform's native
-  budget value: Google Ads amounts in account-currency units (micros are
-  converted), Meta amounts in Meta's minor units — identical to currency
-  units for JPY and other zero-decimal currencies, but cents for USD-like
-  currencies.
+  (per campaign) is **refused**. Given in **account-currency units**: Google
+  Ads micros are converted (÷1e6), and Meta's minor units are converted
+  through `currency` (÷100 on an offset-100 currency, ÷1 on a zero-decimal
+  one). With no `currency` declared, a Meta amount is compared exactly as the
+  tool carries it — in minor units.
 - `max_daily_budget_increase_pct` — a budget raise larger than this percent is
   refused **when the current budget is supplied** (skills pass
-  `current_daily_budget`).
+  `current_daily_budget`, always in currency units). On Meta this percentage
+  is only meaningful once `currency` is declared — without it the proposal is
+  minor units and the baseline is currency units, so the two are not
+  comparable.
 - `max_total_daily_budget` — refused when a caller supplies
   `projected_total_daily_budget` above this.
 - `max_lifetime_budget_per_campaign` — a mutation proposing a lifetime /
-  period-total budget above this is refused. Compared against the
-  platform's native value: Meta `lifetime_budget` in Meta's minor units
-  (= currency units for JPY-like zero-decimal currencies, cents for
-  USD-like), Google Ads CUSTOM_PERIOD `total_amount` in currency units or
+  period-total budget above this is refused. Same unit rule as the daily cap:
+  **account-currency units**, with Meta `lifetime_budget` converted through
+  `currency` (and compared as minor units when none is declared), Google Ads
+  CUSTOM_PERIOD `total_amount` already in currency units and
   `total_amount_micros` converted from micros. Lifetime and daily budgets
   have distinct semantics, so declare this cap separately — a daily cap
   alone does not constrain lifetime-budget mutations.
 - `max_bid_amount_per_ad_set` — an ad-set mutation proposing a bid *cap* above
   this is **refused** (`meta_ads_ad_sets_create` / `meta_ads_ad_sets_update`
   `bid_amount`). A bid is a per-auction ceiling, not a spend budget, so it is
-  capped separately from the budget rules above. Compared against Meta's native
-  `bid_amount` in Meta's **minor units** (= currency units for JPY-like
-  zero-decimal currencies, cents for USD-like). The `bid_constraints`
+  capped separately from the budget rules above. With `currency` declared it
+  is in **account-currency units**, exactly like every other cap here, because
+  Meta's minor-unit `bid_amount` is converted first; **without** `currency` it
+  stays in Meta's minor units (unchanged behaviour). The `bid_constraints`
   `roas_average_floor` is a min-ROAS floor, not a spend amount, so it is **not**
   constrained by this cap.
 - `max_cpc_bid_per_ad_group` — an ad-group mutation proposing a CPC bid above
