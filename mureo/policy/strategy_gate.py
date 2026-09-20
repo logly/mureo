@@ -74,6 +74,16 @@ from typing import Any
 
 from mureo.core.policy import PolicyDecision
 
+# The unit layer (#783): Meta's write tools carry money in the account
+# currency's MINOR units while every cap below is in currency units, so the
+# operator's declared ``currency`` becomes a divisor — and the deny messages
+# get a format that survives a figure with cents.
+from mureo.policy.currency_units import (
+    _amount,
+    minor_unit_divisor,
+    parse_currency_code,
+)
+
 # The channel-resolution layer — "what does this call propose?" — lives in
 # another sibling (:mod:`mureo.policy.declaration_resolution`), split out for
 # the same file-size reason and re-exported here for the same import-path
@@ -248,13 +258,23 @@ class Guardrails:
     max_total_daily_budget: float | None = None
     max_lifetime_budget_per_campaign: float | None = None
     #: Bid caps. Distinct from budgets: a bid is a per-auction ceiling, not a
-    #: spend budget, so it gets its own cap. ``max_bid_amount_per_ad_set`` is
-    #: in account-currency MINOR units — identical to Meta's ``bid_amount``
-    #: argument (yen for JPY, cents for USD). ``max_cpc_bid_per_ad_group`` is in
+    #: spend budget, so it gets its own cap. ``max_cpc_bid_per_ad_group`` is in
     #: account-currency units — Google's ``cpc_bid_micros`` is converted from
     #: micros before comparison, mirroring the budget-micros convention.
+    #: ``max_bid_amount_per_ad_set`` is in the SAME currency units once
+    #: :attr:`currency` is declared, since Meta's ``bid_amount`` is then
+    #: converted out of minor units like the budgets (#783); with no
+    #: ``currency`` it stays minor units, as it always was.
     max_bid_amount_per_ad_set: float | None = None
     max_cpc_bid_per_ad_group: float | None = None
+    #: The ad account's ISO 4217 currency, upper-cased (#783). Enforces
+    #: nothing by itself — it is the UNIT the caps above are written in, and
+    #: the only way this pure, I/O-free gate can know that Meta's
+    #: minor-unit ``daily_budget`` / ``lifetime_budget`` / ``bid_amount``
+    #: need dividing before they are compared with them. Absent ⇒ Meta
+    #: amounts are compared as minor units (correct only for zero-decimal
+    #: currencies such as JPY), which is why :meth:`is_empty` ignores it.
+    currency: str | None = None
     blocked_operations: frozenset[str] = field(default_factory=frozenset)
     #: Learning-period reset refusals (#548). ``block_learning_resets``
     #: refuses every change mureo classifies as restarting an automated bid
@@ -282,6 +302,11 @@ class Guardrails:
 
     def is_empty(self) -> bool:
         """True when THIS gate has nothing to enforce.
+
+        Blind to ``currency`` for the same reason it is blind to the
+        ``exclusion_impact_*`` fields below: it declares a UNIT, not a rule,
+        so an operator who wrote only a currency has asked for no
+        enforcement at all.
 
         Deliberately blind to the ``exclusion_impact_*`` fields: they are
         enforced by the dispatcher pre-flight, not here, and counting them
@@ -359,7 +384,9 @@ def parse_guardrails(content: str) -> Guardrails:
 
     Recognizes ``- key: value`` bullets. Unknown keys are ignored (forward
     compatibility). A malformed numeric value drops that one rule rather than
-    failing the whole parse.
+    failing the whole parse — and so does an unrecognized ``currency`` code,
+    with one warning (see :func:`~mureo.policy.currency_units.
+    parse_currency_code`).
     """
     bullets = _bullets(content)
 
@@ -375,6 +402,7 @@ def parse_guardrails(content: str) -> Guardrails:
         max_lifetime_budget_per_campaign=number("max_lifetime_budget_per_campaign"),
         max_bid_amount_per_ad_set=number("max_bid_amount_per_ad_set"),
         max_cpc_bid_per_ad_group=number("max_cpc_bid_per_ad_group"),
+        currency=parse_currency_code(bullets.get("currency")),
         blocked_operations=frozenset(
             op.strip()
             for op in bullets.get("blocked_operations", "").split(",")
@@ -453,6 +481,14 @@ def evaluate_guardrails(
     switch the bid fallback off (or vice versa). Default ``False`` ⇒ every
     existing caller is byte-identical.
 
+    ``guardrails.currency`` (#783) is the unit the caps are written in. It
+    turns Meta's minor-unit ``daily_budget`` / ``lifetime_budget`` /
+    ``bid_amount`` into currency units before any comparison, so a EUR/USD
+    account's caps mean what they say — and so ``max_daily_budget_increase_pct``
+    finally compares like with like, since ``current_daily_budget`` is currency
+    units by mureo's convention. Absent ⇒ Meta amounts are compared as minor
+    units, exactly as before.
+
     ``learning`` (#548) is the pre-flight answer for this call — is the change
     reset-triggering, and is the campaign already in a learning period. Only
     the two ``block_learning_resets*`` rules consult it, and omitting it (the
@@ -480,8 +516,15 @@ def evaluate_guardrails(
             ),
         )
 
+    # #783: the caps are in the account's currency units, and Meta's write
+    # tools carry minor units. Resolved once, from the operator's declared
+    # ``currency``, and handed to both families so they cannot drift.
+    divisor = minor_unit_divisor(tool_name, guardrails.currency)
     inputs = _budget_inputs(
-        arguments, budget_declaration, pattern_fallback=pattern_fallback
+        arguments,
+        budget_declaration,
+        pattern_fallback=pattern_fallback,
+        minor_unit_divisor=divisor,
     )
     if inputs.unreadable_key is not None:
         # Fail CLOSED: the operator wrote a cap and the tool's declared
@@ -511,8 +554,8 @@ def evaluate_guardrails(
             return PolicyDecision(
                 allowed=False,
                 reason=(
-                    f"Proposed daily budget {proposed:,.0f} exceeds the "
-                    f"STRATEGY.md Guardrails cap of {cap:,.0f} "
+                    f"Proposed daily budget {_amount(proposed)} exceeds the "
+                    f"STRATEGY.md Guardrails cap of {_amount(cap)} "
                     f"(max_daily_budget_per_campaign)."
                 ),
             )
@@ -527,8 +570,9 @@ def evaluate_guardrails(
                         allowed=False,
                         reason=(
                             f"Proposed daily budget raises spend {increase_pct:.0f}% "
-                            f"({current:,.0f} → {proposed:,.0f}), over the STRATEGY.md "
-                            f"Guardrails limit of {pct_cap:.0f}% "
+                            f"({_amount(current)} → {_amount(proposed)}), over "
+                            f"the STRATEGY.md Guardrails limit of "
+                            f"{pct_cap:.0f}% "
                             f"(max_daily_budget_increase_pct)."
                         ),
                     )
@@ -548,7 +592,7 @@ def evaluate_guardrails(
                     allowed=False,
                     reason=(
                         f"Proposed daily budget raises spend from 0 to "
-                        f"{proposed:,.0f}, an unbounded increase from a zero "
+                        f"{_amount(proposed)}, an unbounded increase from a zero "
                         f"baseline that the {pct_cap:.0f}% STRATEGY.md Guardrails "
                         f"limit (max_daily_budget_increase_pct) cannot bound. "
                         f"Refusing it."
@@ -559,16 +603,17 @@ def evaluate_guardrails(
     # budgets, so they get their own cap rather than reusing the daily one.
     # Without this, a lifetime-budget mutation would sidestep every budget
     # guardrail the operator wrote (#367). Covers Meta's ``lifetime_budget``
-    # (minor units) and Google's CUSTOM_PERIOD ``total_amount_micros``
-    # (micros → currency units), mirroring the daily micros handling (#366).
+    # (minor units → currency units through ``currency``, #783) and Google's
+    # CUSTOM_PERIOD ``total_amount_micros`` (micros → currency units),
+    # mirroring the daily micros handling (#366).
     lifetime = inputs.lifetime
     lifetime_cap = guardrails.max_lifetime_budget_per_campaign
     if lifetime_cap is not None and lifetime is not None and lifetime > lifetime_cap:
         return PolicyDecision(
             allowed=False,
             reason=(
-                f"Proposed lifetime budget {lifetime:,.0f} exceeds the "
-                f"STRATEGY.md Guardrails cap of {lifetime_cap:,.0f} "
+                f"Proposed lifetime budget {_amount(lifetime)} exceeds the "
+                f"STRATEGY.md Guardrails cap of {_amount(lifetime_cap)} "
                 f"(max_lifetime_budget_per_campaign)."
             ),
         )
@@ -579,8 +624,8 @@ def evaluate_guardrails(
         return PolicyDecision(
             allowed=False,
             reason=(
-                f"Projected total daily budget {total:,.0f} exceeds the "
-                f"STRATEGY.md Guardrails cap of {total_cap:,.0f} "
+                f"Projected total daily budget {_amount(total)} exceeds the "
+                f"STRATEGY.md Guardrails cap of {_amount(total_cap)} "
                 f"(max_total_daily_budget)."
             ),
         )
@@ -592,7 +637,12 @@ def evaluate_guardrails(
     # saturated to inf, or a bare NaN/Infinity the wire allows) fails CLOSED
     # here, before any ``bid > cap`` comparison where ``nan > cap`` (False)
     # would silently defeat the cap.
-    bids = _bid_inputs(arguments, bid_declaration, pattern_fallback=pattern_fallback)
+    bids = _bid_inputs(
+        arguments,
+        bid_declaration,
+        pattern_fallback=pattern_fallback,
+        minor_unit_divisor=divisor,
+    )
     if bids.unreadable_key is not None:
         if is_scan_exhausted(bids.unreadable_key):
             return PolicyDecision(
@@ -614,8 +664,8 @@ def evaluate_guardrails(
         return PolicyDecision(
             allowed=False,
             reason=(
-                f"Proposed bid amount {bid:,.0f} exceeds the "
-                f"STRATEGY.md Guardrails cap of {bid_cap:,.0f} "
+                f"Proposed bid amount {_amount(bid)} exceeds the "
+                f"STRATEGY.md Guardrails cap of {_amount(bid_cap)} "
                 f"(max_bid_amount_per_ad_set)."
             ),
         )
@@ -626,8 +676,8 @@ def evaluate_guardrails(
         return PolicyDecision(
             allowed=False,
             reason=(
-                f"Proposed CPC bid {cpc_bid:,.0f} exceeds the "
-                f"STRATEGY.md Guardrails cap of {cpc_cap:,.0f} "
+                f"Proposed CPC bid {_amount(cpc_bid)} exceeds the "
+                f"STRATEGY.md Guardrails cap of {_amount(cpc_cap)} "
                 f"(max_cpc_bid_per_ad_group)."
             ),
         )

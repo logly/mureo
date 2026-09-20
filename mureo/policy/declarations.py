@@ -348,8 +348,12 @@ class BidDeclaration:
     A declaration names one or both of the two bid channels, mirroring how a
     ``BudgetDeclaration`` names its daily / lifetime / current channels:
 
-    - ``bid_amount_key`` — capped by ``max_bid_amount_per_ad_set``, compared in
-      account-currency MINOR units (like Meta's ``bid_amount``, direct).
+    - ``bid_amount_key`` — capped by ``max_bid_amount_per_ad_set``, read
+      directly (or ÷1e6 when ``micros``) and never converted out of minor
+      units: that conversion (#783) applies to Meta's built-in ``bid_amount``
+      only, because a declaring plugin states its own unit here. So the cap
+      is in whatever unit the operator's ``## Guardrails`` uses — currency
+      units once they declared a ``currency``, minor units if they did not.
     - ``cpc_bid_key`` — capped by ``max_cpc_bid_per_ad_group``, compared in
       account-currency units (like Google's ``cpc_bid_micros`` after ÷1e6).
 

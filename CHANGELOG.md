@@ -1,5 +1,46 @@
 ## [Unreleased]
 
+### Added
+
+- **A `currency` bullet in `## Guardrails`** (#783). The ad account's ISO 4217
+  code (`- currency: EUR`), upper-cased and validated against Meta's own
+  offset table; an unrecognized code is dropped with one warning, the same way
+  a malformed numeric value drops its one rule. It **enforces nothing by
+  itself** — a section containing only `currency` leaves the gate fail-open —
+  because it is not a rule but the UNIT the money caps are written in, and the
+  only way a synchronous, I/O-free `PolicyGate` can learn it. `onboard` now
+  offers it first when it writes the section.
+
+### Fixed
+
+- **The strategy gate compared Meta's minor-unit amounts with currency-unit
+  caps** (#783, reported by @luminouslabshealth). `_proposed_budget`,
+  `_proposed_lifetime_budget` and `_proposed_bid_amount` returned Meta's
+  `daily_budget` / `lifetime_budget` / `bid_amount` exactly as the write tools
+  take them — in the account currency's **minor** units — while the
+  `## Guardrails` caps are written in currency units and Google's `*_micros`
+  were already divided by 1e6. On a EUR/USD account
+  `max_daily_budget_per_campaign: 250` therefore refused a `daily_budget` of
+  `25000` (= €250.00) and capped the campaign at €2.50: fail-closed, so it
+  never overspent, but the caps were unusable at real budgets — and writing
+  them in minor units instead would have broken the same caps for Google,
+  which shares the fields. Invisible on JPY, where a minor unit IS a currency
+  unit, which is why it shipped. With `currency` declared, those three
+  arguments are now divided by the currency's Meta offset (new module
+  `mureo/policy/currency_units.py`) before any comparison — on the built-in
+  Meta path only, since a declaring plugin states its own unit. Everything
+  else is untouched: the Google micros conversion, the caller-supplied
+  `current_daily_budget` / `projected_total_daily_budget`, the other budget
+  spellings, and the fail-closed handling of a non-finite figure (an oversized
+  int saturated to `inf` is still `inf` after the division). Two consequences
+  worth knowing: `max_daily_budget_increase_pct` finally compares like with
+  like on Meta, since the baseline was always currency units; and
+  **`max_bid_amount_per_ad_set` becomes a cap in currency units** once
+  `currency` is set — with no `currency` it stays minor units, as before.
+  Denial messages now print a fractional amount as `250.50` rather than
+  rounding it to a `250` that reads as "250 exceeds the cap of 250"; integral
+  amounts are formatted exactly as they were.
+
 ## [0.21.0] - 2026-09-20
 
 ### Added

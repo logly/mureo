@@ -88,6 +88,25 @@ A section the STRATEGY.md parser preserves verbatim (it has no `context_type` of
 
 mureo parses this section itself — the agent passes the text through unchanged. Declaring nothing is fine: the zero-configuration checks still run. See [tracking-consistency.md](tracking-consistency.md).
 
+### `## Guardrails` (opt-in) — and the unit its caps are in
+
+A section the parser preserves verbatim and the built-in `StrategyPolicyGate` reads: one `- key: value` bullet per hard rule, enforced before dispatch. The full key list lives in `skills/_mureo-strategy/SKILL.md` → *Guardrails (machine-enforced hard rules)*; what belongs here is the **unit**, because it is the one thing a cap cannot be read without:
+
+```markdown
+## Guardrails
+- currency: JPY   # account currency; Meta amounts are minor units of it
+- max_daily_budget_per_campaign: 50000
+```
+
+Every money cap (`max_daily_budget_per_campaign`, `max_total_daily_budget`, `max_lifetime_budget_per_campaign`, `max_cpc_bid_per_ad_group`) is written in **account-currency units**. Google Ads `*_micros` arguments are divided by 1e6 before the comparison, and the two figures a caller supplies — `current_daily_budget` and `projected_total_daily_budget` — are currency units by mureo's own convention.
+
+Meta is the exception that `currency` exists for (#783). Its write tools carry `daily_budget`, `lifetime_budget` and `bid_amount` in the account currency's **minor units** (cents for USD/EUR, whole yen for JPY), and the policy gate is synchronous, pure and I/O-free by contract — it cannot ask Meta what the account currency is. The `currency` bullet (an ISO 4217 code, case-insensitive) is how the operator tells it, and mureo then divides those three arguments by the currency's Meta offset before comparing them with the caps. The bullet **enforces nothing on its own**: a `## Guardrails` section containing only `currency` leaves the gate fail-open, and an unrecognized code is dropped with one warning.
+
+Without `currency`, Meta amounts are compared exactly as the tool carries them — in minor units. That is correct for zero-decimal currencies such as JPY and wrong everywhere else: on a EUR account `max_daily_budget_per_campaign: 250` then refuses a `daily_budget` of `25000` (= €250.00) and caps the campaign at €2.50. **Write `currency` on any USD/EUR-like account.** Two consequences follow from declaring it:
+
+- `max_daily_budget_increase_pct` compares the proposal with `current_daily_budget`, which is always currency units — so on Meta the percentage only means what it says once `currency` is set.
+- `max_bid_amount_per_ad_set` becomes a cap in **currency units**, the same unit as every other cap. With no `currency` it stays in minor units, exactly as it always was.
+
 ### `## Custom: Monthly Budget` (opt-in)
 
 The operator's **intended monthly spend** — what `/budget-pacing` reads, offers to persist, and paces against:

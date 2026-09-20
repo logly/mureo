@@ -120,6 +120,34 @@ class TestEvaluateBidAmountGuardrail:
         assert d.allowed is False
 
 
+class TestBidAmountAgainstADeclaredCurrency:
+    """With ``currency`` declared the cap is in CURRENCY units (#783)."""
+
+    def test_bid_at_the_cap_is_allowed(self) -> None:
+        g = Guardrails(max_bid_amount_per_ad_set=5, currency="EUR")
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "bid_amount": 500}, g
+        )
+        assert d.allowed is True
+
+    def test_bid_over_the_cap_denies(self) -> None:
+        g = Guardrails(max_bid_amount_per_ad_set=5, currency="EUR")
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "bid_amount": 501}, g
+        )
+        assert d.allowed is False
+        assert "5.01" in d.reason
+        assert "max_bid_amount_per_ad_set" in d.reason
+
+    def test_without_currency_the_cap_stays_minor_units(self) -> None:
+        """Unchanged behaviour, pinned: the same bid is refused."""
+        g = Guardrails(max_bid_amount_per_ad_set=5)
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"ad_set_id": "1", "bid_amount": 500}, g
+        )
+        assert d.allowed is False
+
+
 class TestEvaluateCpcBidGuardrail:
     def test_cpc_bid_under_cap_allows(self) -> None:
         g = Guardrails(max_cpc_bid_per_ad_group=100)

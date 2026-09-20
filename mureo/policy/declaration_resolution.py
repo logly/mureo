@@ -32,6 +32,11 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from mureo.policy.currency_units import (
+    META_MINOR_UNIT_KEYS,
+    NO_CONVERSION_DIVISOR,
+    to_currency_units,
+)
 from mureo.policy.declarations import (
     BidDeclaration,
     BudgetDeclaration,
@@ -68,8 +73,9 @@ __all__ = [
 _BUDGET_KEYS = ("daily_budget", "proposed_daily_budget", "amount")
 _CURRENT_BUDGET_KEYS = ("current_daily_budget", "current")
 #: Argument keys carrying a proposed *bid cap* (distinct from a spend budget).
-#: ``bid_amount`` is Meta's ad-set bid cap in account-currency minor units
-#: (meta_ads_ad_sets_create / _update). Deliberately scalar-only: the sibling
+#: ``bid_amount`` is Meta's ad-set bid cap, carried in account-currency MINOR
+#: units (meta_ads_ad_sets_create / _update) and converted out of them by the
+#: caller's ``minor_unit_divisor`` (#783). Deliberately scalar-only: the sibling
 #: ``bid_constraints`` dict carries a ``roas_average_floor`` (a min-ROAS floor,
 #: not a spend amount) and must NOT be read as a proposed bid.
 _BID_AMOUNT_KEYS = ("bid_amount",)
@@ -123,6 +129,7 @@ def _budget_inputs(
     declaration: BudgetDeclaration | None,
     *,
     pattern_fallback: bool = False,
+    minor_unit_divisor: int = NO_CONVERSION_DIVISOR,
 ) -> _BudgetInputs:
     """Resolve the budget channels from declared keys, else the built-in scan.
 
@@ -144,12 +151,26 @@ def _budget_inputs(
     surface that let the overflow/NaN bypass exist in the first place. Mirrors
     the already-shipped declared path (#414), which denies on any unreadable
     declared key regardless of which cap reads it.
+
+    ``minor_unit_divisor`` (#783) converts Meta's minor-unit arguments into the
+    currency units the caps are written in. BUILT-IN path only: a declaring
+    plugin owns its argument vocabulary (and states its own unit through
+    ``micros``), while Meta's tools are built-in and never declared. The
+    finiteness check runs AFTER the division, exactly as it does for micros.
     """
     if declaration is None:
         channels: list[tuple[str, float | None]] = [
-            ("daily budget", _proposed_budget(arguments)),
+            (
+                "daily budget",
+                _proposed_budget(arguments, minor_unit_divisor=minor_unit_divisor),
+            ),
             ("current budget", _current_budget(arguments)),
-            ("lifetime budget", _proposed_lifetime_budget(arguments)),
+            (
+                "lifetime budget",
+                _proposed_lifetime_budget(
+                    arguments, minor_unit_divisor=minor_unit_divisor
+                ),
+            ),
             ("projected total daily budget", _projected_total(arguments)),
         ]
         for label, value in channels:
@@ -237,12 +258,26 @@ def _budget_inputs(
     )
 
 
-def _proposed_budget(arguments: dict[str, Any]) -> float | None:
+def _proposed_budget(
+    arguments: dict[str, Any],
+    *,
+    minor_unit_divisor: int = NO_CONVERSION_DIVISOR,
+) -> float | None:
+    """A proposed daily budget in currency units, or ``None``.
+
+    ``minor_unit_divisor`` (#783) converts the Meta spellings — and only
+    those, see :data:`~mureo.policy.currency_units.META_MINOR_UNIT_KEYS` —
+    out of the account currency's minor units. The other spellings are
+    already currency units, so the default leaves every caller unchanged.
+    """
     for key in _BUDGET_KEYS:
         if key in arguments:
             v = arguments[key]
             if isinstance(v, (int, float)) and not isinstance(v, bool):
-                return _saturate(v)
+                value = _saturate(v)
+                if key in META_MINOR_UNIT_KEYS:
+                    return to_currency_units(value, minor_unit_divisor)
+                return value
     # Google Ads budgets are sometimes expressed in micros —
     # budget_amount_micros on campaign tools, amount_micros on budget tools.
     for micros_key in ("budget_amount_micros", "amount_micros"):
@@ -252,17 +287,26 @@ def _proposed_budget(arguments: dict[str, Any]) -> float | None:
     return None
 
 
-def _proposed_lifetime_budget(arguments: dict[str, Any]) -> float | None:
+def _proposed_lifetime_budget(
+    arguments: dict[str, Any],
+    *,
+    minor_unit_divisor: int = NO_CONVERSION_DIVISOR,
+) -> float | None:
     """Extract a proposed lifetime / period-total budget in currency units.
 
     Both spellings of a Google total budget are covered — ``total_amount``
     (currency units) and ``total_amount_micros`` — so the cap cannot be
-    sidestepped by picking the other parameter form.
+    sidestepped by picking the other parameter form. Meta's
+    ``lifetime_budget`` is minor units and is divided by
+    ``minor_unit_divisor`` (#783); ``total_amount`` is not.
     """
     for key in ("lifetime_budget", "total_amount"):
         v = arguments.get(key)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return _saturate(v)
+            value = _saturate(v)
+            if key in META_MINOR_UNIT_KEYS:
+                return to_currency_units(value, minor_unit_divisor)
+            return value
     micros = arguments.get("total_amount_micros")
     if isinstance(micros, (int, float)) and not isinstance(micros, bool):
         return _saturate(micros) / 1_000_000
@@ -277,8 +321,12 @@ def _current_budget(arguments: dict[str, Any]) -> float | None:
     return None
 
 
-def _proposed_bid_amount(arguments: dict[str, Any]) -> float | None:
-    """Extract a proposed ad-set bid cap in account-currency minor units.
+def _proposed_bid_amount(
+    arguments: dict[str, Any],
+    *,
+    minor_unit_divisor: int = NO_CONVERSION_DIVISOR,
+) -> float | None:
+    """Extract a proposed ad-set bid cap from the built-in Meta spelling.
 
     Mirrors :func:`_proposed_budget`: scans the built-in Meta spelling
     (``bid_amount``) and saturates an oversized int to ``inf`` so it exceeds any
@@ -286,11 +334,18 @@ def _proposed_bid_amount(arguments: dict[str, Any]) -> float | None:
     a spend cap; the sibling ``bid_constraints`` dict carries a
     ``roas_average_floor`` (a min-ROAS floor, not a spend amount) and is
     deliberately not read here — see :data:`_BID_AMOUNT_KEYS`.
+
+    The unit follows ``minor_unit_divisor`` (#783): account-currency UNITS
+    when the operator declared a currency, minor units (the raw Meta value)
+    when they did not.
     """
     for key in _BID_AMOUNT_KEYS:
         v = arguments.get(key)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return _saturate(v)
+            value = _saturate(v)
+            if key in META_MINOR_UNIT_KEYS:
+                return to_currency_units(value, minor_unit_divisor)
+            return value
     return None
 
 
@@ -320,8 +375,9 @@ class _BidInputs:
     ``nan`` surviving the micros→currency division — collapses into
     :attr:`unreadable_key` so the caller fails closed once, before any
     ``bid > cap`` comparison (where ``nan > cap`` is always False and would
-    silently defeat the cap). ``bid_amount`` is in account-currency minor units;
-    ``cpc_bid`` is in currency units (post-division).
+    silently defeat the cap). ``cpc_bid`` is in currency units
+    (post-division), and so is ``bid_amount`` whenever the operator declared a
+    ``currency``; without one it stays the raw Meta minor-unit figure (#783).
     """
 
     bid_amount: float | None = None
@@ -335,6 +391,7 @@ def _bid_inputs(
     declaration: BidDeclaration | None = None,
     *,
     pattern_fallback: bool = False,
+    minor_unit_divisor: int = NO_CONVERSION_DIVISOR,
 ) -> _BidInputs:
     """Resolve the bid channels from declared keys, else the built-in scan.
 
@@ -355,10 +412,18 @@ def _bid_inputs(
     :func:`_declared_amount`: a present-but-unreadable declared key returns
     :data:`_UNREADABLE`, collapsing into :attr:`_BidInputs.unreadable_key` so
     the caller denies once — no second comparison path.
+
+    ``minor_unit_divisor`` (#783) is the budget twin's: it converts Meta's
+    minor-unit ``bid_amount`` into currency units on the BUILT-IN path, so
+    ``max_bid_amount_per_ad_set`` is read in the same unit as every other cap
+    once the operator declared a currency.
     """
     if declaration is None:
         channels: list[tuple[str, float | None]] = [
-            ("bid_amount", _proposed_bid_amount(arguments)),
+            (
+                "bid_amount",
+                _proposed_bid_amount(arguments, minor_unit_divisor=minor_unit_divisor),
+            ),
             ("cpc_bid_micros", _proposed_cpc_bid(arguments)),
         ]
         for label, value in channels:
