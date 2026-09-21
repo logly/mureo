@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.21.1] - 2026-09-21
+
 ### Added
 
 - **Guardrails card in the Advanced section of `mureo configure`** (#786) —
