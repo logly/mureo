@@ -197,6 +197,20 @@ class TestMaskingAndScrubbing:
         assert args["api_key"] == "***"
         assert args["cookie"] == "***"
 
+    def test_a_secret_inside_an_argument_value_is_scrubbed(self, log: Path) -> None:
+        """#779 — masking by KEY name left a secret pasted into an ordinary
+        free-text argument verbatim on the line, while the same sentence was
+        scrubbed on its way into ``STATE.json``."""
+        _record(
+            tool="mureo_state_action_log_append",
+            arguments={
+                "entry": {"reason": "rotating after access_token=SHHH_SECRET failed"}
+            },
+        )
+        assert "SHHH_SECRET" not in log.read_text(encoding="utf-8")
+        reason = _lines(log)[0]["args"]["entry"]["reason"]
+        assert reason == "rotating after access_token=*** failed"
+
     def test_long_argument_strings_are_truncated(self, log: Path) -> None:
         _record(arguments={"note": "x" * 2000})
         note = _lines(log)[0]["args"]["note"]

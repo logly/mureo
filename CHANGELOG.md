@@ -22,6 +22,22 @@
   honour `client=`: that is the seam the multi-client layer resolves each
   client's own STRATEGY.md through.
 
+### Fixed
+
+- **A secret pasted into an ordinary tool argument was written verbatim to
+  `JOURNAL.jsonl` and `plugin_audit.jsonl`** (#779). `mask_arguments` masked
+  by KEY name only: `api_key` as a *key* became `***`, but the same
+  credential sitting inside a free-text *value* — an `action_log` entry's
+  `reason`, a note, an item in a list — survived intact in both trails,
+  while that very sentence WAS scrubbed on its way into `STATE.json`. Two
+  stores, two rules. Every surviving string value now goes through the
+  shared `scrub_text` as well, **before** it is truncated: truncating first
+  can cut an `api_key=…` pair in half and leave a fragment no pattern
+  matches. Key masking, the 512-character cap, the list cap and the depth
+  guard are unchanged, and the scrubber's patterns were not widened — this
+  only changes where they are applied, so ordinary prose (`status code =
+  400`) still reads as it did.
+
 ## [0.21.1] - 2026-09-21
 
 ### Added

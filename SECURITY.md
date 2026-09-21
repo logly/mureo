@@ -283,7 +283,11 @@ appear in tool error messages.
 `JOURNAL.jsonl` (`mureo/mcp/journal.py`). It is created `0600`
 (owner-only), its arguments are masked and its failure reasons scrubbed
 with the **same** masker and scrubber as the plugin audit log above, and
-it never stores result bodies or credentials. A caught exception is
+it never stores result bodies or credentials. The masking is not by key
+name alone: a value under a secret-shaped key (`api_key`, `access_token`,
+…) becomes `***`, and every string value that survives is then run through
+the scrubber, so a credential pasted into an ordinary free-text argument
+is redacted in both files as well. A caught exception is
 curated before it is scrubbed and written — for Google Ads that is the
 server-side error message only, never the gRPC call repr that carries the
 request metadata. Unlike the audit log it

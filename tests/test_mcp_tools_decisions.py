@@ -322,11 +322,11 @@ async def test_a_secret_in_the_rationale_is_redacted_before_it_is_stored(
     leak the key into the file the operator commits.
 
     STATE.json and the response, which is the record as stored. The
-    journal's ``args`` are a separate, pre-existing question: it masks by
-    KEY name (``mask_arguments``) and does not scrub string VALUES, so an
-    ``action_log`` entry's own ``reason`` survives there verbatim too.
-    Changing that changes every plugin-audit record as well, so it is not
-    settled here.
+    journal's ``args`` were a separate, pre-existing question — they masked
+    by KEY name (``mask_arguments``) and left string VALUES alone, so the
+    same sentence survived there verbatim. #779 closed that gap: the masker
+    now scrubs string values too, in the journal and in the plugin audit
+    log alike. Pinned in ``tests/test_mcp_journal.py``.
     """
     payload = await _call(
         "mureo_decision_record",

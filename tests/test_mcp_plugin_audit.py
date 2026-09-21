@@ -65,6 +65,47 @@ class TestMask:
 
 
 @pytest.mark.unit
+class TestMaskScrubsStringValues:
+    """#779 — a secret pasted into an ordinary free-text argument.
+
+    Masking by KEY name alone left it verbatim in ``JOURNAL.jsonl`` and in
+    the plugin audit log, while the very same sentence WAS scrubbed on its
+    way into ``STATE.json``: two stores, two rules. Every surviving string
+    now goes through ``scrub_text`` as well.
+    """
+
+    def test_secret_in_a_nested_string_value_is_scrubbed(self) -> None:
+        out = _mask({"entry": {"reason": "rotating after api_key=SHHH_SECRET leaked"}})
+        reason = out["entry"]["reason"]
+        assert "SHHH_SECRET" not in reason
+        # The key and its separator survive, so the record still reads.
+        assert reason == "rotating after api_key=*** leaked"
+
+    def test_secret_in_a_string_inside_a_list_is_scrubbed(self) -> None:
+        out = _mask({"notes": ["harmless", "client_secret=SECRET-CLIENT-VALUE"]})
+        assert out["notes"] == ["harmless", "client_secret=***"]
+
+    def test_bearer_token_in_a_plain_string_value_is_scrubbed(self) -> None:
+        out = _mask({"note": "retrying with Authorization: Bearer Atza|SECRET.abc"})
+        assert "SECRET.abc" not in out["note"]
+        assert out["note"] == "retrying with Authorization: ***"
+
+    def test_a_secret_is_scrubbed_before_the_string_is_truncated(self) -> None:
+        """Order matters: truncating first can cut an ``api_key=…`` pair in
+        half and leave a fragment no pattern matches."""
+        out = _mask("api_key=SHHH_SECRET " + "x" * 2000)
+        assert "SHHH_SECRET" not in out
+        assert out.startswith("api_key=*** ")
+        assert out.endswith(plugin_audit._TRUNC)
+        assert len(out) <= plugin_audit._MAX_STR  # hard cap unchanged
+
+    def test_ordinary_text_is_not_over_masked(self) -> None:
+        out = _mask({"note": "status code = 400", "items": ["error code: 17"]})
+        assert out["note"] == "status code = 400"
+        assert out["items"] == ["error code: 17"]
+
+
+@pytest.mark.unit
 class TestRecordPluginCall:
     def test_writes_masked_jsonl_line(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

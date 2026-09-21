@@ -17,8 +17,11 @@ Design:
   tool call: any I/O / serialization failure is swallowed (logged at
   WARNING) so the plugin result still flows.
 - **Secret-masked.** Argument values under sensitivity-suggesting keys
-  are replaced with ``"***"``; over-long strings are truncated so a
-  plugin cannot bloat the log with a payload dump.
+  are replaced with ``"***"``; every surviving string value is then run
+  through :func:`~mureo.core.scrub.scrub_text`, so a secret pasted into
+  an ordinary free-text argument does not survive either (#779); and
+  over-long strings are truncated so a plugin cannot bloat the log with
+  a payload dump.
 """
 
 from __future__ import annotations
@@ -61,13 +64,28 @@ def mask_arguments(value: Any, *, _depth: int = 0) -> Any:
     Public since #758 for the same reason as :func:`scrub_text`: the
     dispatcher journal masks its ``args`` with this exact function, so the
     two trails cannot drift apart on what counts as a secret.
+
+    Three steps, in this order:
+
+    1. KEY masking — a sensitivity-suggesting key yields ``"***"`` and its
+       value is never inspected at all.
+    2. :func:`scrub_text` over every surviving string VALUE (#779). Masking
+       by key name alone let a secret pasted into an ordinary free-text
+       argument through verbatim, while the same sentence WAS scrubbed on
+       its way into ``STATE.json`` — two stores, two rules.
+    3. Truncation to :data:`_MAX_STR`.
+
+    Scrubbing before truncating is deliberate: truncating first can cut an
+    ``api_key=…`` pair in half and leave a fragment no pattern matches. The
+    hard cap is unchanged — the result is never longer than ``_MAX_STR``.
     """
     if _depth > 4:
         return "<...>"
     if isinstance(value, str):
-        if len(value) <= _MAX_STR:
-            return value
-        return value[: _MAX_STR - len(_TRUNC)] + _TRUNC  # hard cap == _MAX_STR
+        scrubbed = scrub_text(value)
+        if len(scrubbed) <= _MAX_STR:
+            return scrubbed
+        return scrubbed[: _MAX_STR - len(_TRUNC)] + _TRUNC  # hard cap == _MAX_STR
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for k, v in value.items():

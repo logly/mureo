@@ -1014,7 +1014,7 @@ file answers, and a trail of successes cannot answer it.
 | `family` | `google_ads`, `meta_ads`, `search_console`, `rollback`, `batch`, `change_import`, `analysis`, `mureo_context`, `analytics`, `learning`, `learning_preflight`, `creative_studio`, `plugin`, `unknown` |
 | `source` | Plugin distribution — present only when `family` is `plugin` |
 | `mutating` | Whether the call was classified as a mutation |
-| `args` | The call's arguments, **masked** (secret-shaped keys → `***`, long strings truncated) |
+| `args` | The call's arguments, **masked** (secret-shaped keys → `***`, secret-shaped values inside the remaining strings scrubbed, long strings truncated) |
 | `rationale` | WHY the agent made the call — the `reason` parameter it passed. Scrubbed. Absent when none was given |
 | `outcome` | `ok` / `platform_error` / `exception` / `denied` / `refused` / `invalid_args` |
 | `reason` | Why a non-`ok` outcome happened; scrubbed and capped at 512 chars. Absent for `ok` |
@@ -1054,7 +1054,10 @@ why it was made.
 **What is never written.** Result bodies and credentials. The journal
 stores the masked arguments and the outcome — never what a tool returned,
 and never a token: `args` go through the same masker and `reason` through
-the same scrubber as the plugin audit log.
+the same scrubber as the plugin audit log. Since #779 the masker also runs
+the scrubber over every string VALUE it keeps, so a credential pasted into
+a free-text argument is redacted too, not only one that arrived under a
+secret-shaped key.
 
 **Where the file lives.** Beside `STATE.json` / `STRATEGY.md` when the
 server is bound to a real workspace directory (`<workspace>/JOURNAL.jsonl`),
