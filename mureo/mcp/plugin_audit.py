@@ -101,6 +101,13 @@ SCRUB_WINDOW = _MAX_STR + STRADDLE_MARGIN
 #: ``design``, ``assign`` and ``signal`` with it and collapse three ordinary
 #: arguments to ``"***"`` — the whole value, unread. ``signature`` in full
 #: costs nothing and catches the field that matters.
+#:
+#: ``signature`` is the one root here that a future tool could legitimately
+#: take as an ORDINARY argument — a filter on a creative's signature, say.
+#: It would be recorded as ``"***"`` with no warning and no way for the
+#: operator to tell a masked value from a missing one. If that tool is ever
+#: written, this list needs an exception for it; the key path deliberately
+#: has no value-shape check to fall back on.
 _SENSITIVE_KEY = re.compile(
     r"(token|secret|password|passwd|pwd|credential|api[_-]?key"
     r"|private[_-]?key|signature|authorization"

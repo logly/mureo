@@ -1059,6 +1059,17 @@ the scrubber over every string VALUE it keeps, so a credential pasted into
 a free-text argument is redacted too, not only one that arrived under a
 secret-shaped key.
 
+An argument value is scrubbed under slightly narrower rules than an error
+message, because it is a parameter and not a sentence: the `code=` rule
+does not run (`…?promo_code=SUMMER2026` in a `final_url` is a landing
+page), and a one-word key such as `secret` or `password` needs an `=` or a
+quoted dict key rather than a space-padded colon (`"The secret: better
+ROAS"` is a headline). Compound keys — `client_secret`, `api_key`,
+`developer-token` — are redacted either way. The exception is a value
+under `reason` or `rationale`, which IS a sentence and is scrubbed exactly
+as `STATE.json` scrubs it, so the two stores never disagree. `SECURITY.md`
+lists the shapes.
+
 **Where the file lives.** Beside `STATE.json` / `STRATEGY.md` when the
 server is bound to a real workspace directory (`<workspace>/JOURNAL.jsonl`),
 so the record travels with the workspace. A directory holding neither is

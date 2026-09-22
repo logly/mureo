@@ -297,7 +297,9 @@ through the scrubber.
 **The scrubber recognises shapes; it does not detect secrets.** It redacts
 a value when the text takes a form it knows:
 
-- a `Bearer …` or `Basic <base64>` authorization header;
+- a `Bearer …` authorization header, or a `Basic <base64>` one whose
+  base64 value is at least **16 characters** — `Basic` is also an ordinary
+  English word ("Basic plan"), so a short value is left alone;
 - an Amazon LwA `Atza|…` (access) or `Atzr|…` (refresh) token;
 - a `key=value` / `key: value` pair whose key **ends in** one of
   `secret`, `password`, `passwd`, `pwd`, `credential(s)`, `authorization`,
@@ -306,7 +308,32 @@ a value when the text takes a form it knows:
   `token` — the last only when the value is at least 8 characters, so
   `token limit: 128000` still reads. Ending in, not equal to: `app_secret`
   and `appSecret` both match, in snake_case, camelCase and hyphenated
-  spellings alike.
+  spellings alike;
+- an authorization `code=…`, in error prose only — see below.
+
+**The rules differ between an error message and a tool argument.** They
+have to: `"The secret: better ROAS"` is a headline an agent writes into a
+`name` or a `primary_text`, and a journal that rewrites the ad copy an
+agent submitted cannot answer the question it exists for. So free text
+(an error, a `reason`, a `rationale`, a decision record) gets the wider
+reading, and an argument VALUE gets two narrower ones:
+
+- **`code=` is not applied to arguments.** In error prose, `code=` with no
+  space before the `=` is the query-string shape an Amazon authorization
+  code leaks in, and a value of 8+ characters is redacted (a bare
+  `status code = 400` never was). In an argument that same shape is
+  overwhelmingly an ordinary URL parameter — `…?promo_code=SUMMER2026` in
+  a `final_url` — so it is left as submitted.
+- **A one-word key needs machine punctuation in an argument.** `secret`,
+  `password`, `passwd`, `pwd`, `credential(s)`, `authorization`, `bearer`,
+  `cookie`, `signature` and bare `token` redact after an `=` or a quoted
+  dict key (`"password": "…"`), but not after a space-padded colon, which
+  is English punctuation. Compound keys (`client_secret`, `api_key`,
+  `developer-token`, …) are redacted after either, in both modes: nobody
+  writes `client_secret:` in a headline.
+
+An argument whose KEY NAME is credential-shaped is redacted regardless of
+either rule — that first stage never looks at the value at all.
 
 A credential carrying none of those keys and no recognisable prefix — one
 sitting in ordinary prose, such as *"the api key is …"* — is **not**

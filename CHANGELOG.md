@@ -34,9 +34,7 @@
   shared `scrub_text` as well, **before** it is truncated: `Basic <base64>`
   matches only base64, so a credential cut by the truncation marker would be
   unrecognisable and written in cleartext. Key masking, the 512-character
-  cap, the list cap and the depth guard are unchanged, and the scrubber's
-  patterns were not widened — this only changes where they are applied, so
-  ordinary prose (`status code = 400`) still reads as it did. Note for
+  cap, the list cap and the depth guard are unchanged. Note for
   callers of the public `mask_arguments`: a **top-level bare string** used
   to pass through untouched and is now scrubbed like any nested one.
 - **The `code=` rule no longer fires on tool arguments** (#779). It was
@@ -46,13 +44,22 @@
   (`…?promo_code=SUMMER2026` → `…?promo_code=***` in a `final_url`). The
   rule is unchanged everywhere it was meant to apply — `reason`,
   `rationale`, decision records and every scrubbed error string still lose
-  an authorization code.
-- **Argument scrubbing is bounded** (#779). Only the first 576 characters of
-  a string value are scrubbed (the 512-character cap plus slack for a
-  credential straddling the cut); the rest was truncated away regardless.
-  Masking runs on the event loop for every tool call, and MCP does not bound
-  argument size, so an unbounded scrub was a multi-second stall waiting for
-  a large payload.
+  an authorization code, including a `reason` that arrives as a tool
+  argument.
+- **Scrubbing is bounded** (#779). Every recorded string is cut to 512
+  characters, but the scrubber used to read all of it first: ~250 ms per
+  megabyte, on the event loop for arguments and on the request thread for
+  the configure wizard, for output that was 512 characters either way. It
+  now reads 512 + `STRADDLE_MARGIN` (64) characters and no more — 2 MB
+  drops from ~500 ms to ~0.15 ms. The margin is what makes the window safe
+  rather than merely cheap: a credential only leaves something behind if it
+  STARTS before the cut, and the longest shape the scrubber must see to
+  recognise one is `Basic ` plus its 16-character minimum value. Applies to
+  argument values, to a journal `reason` / `rationale`, to a plugin
+  `error`, and to the wizard's Amazon failure `detail`. A journal `reason`
+  is the case that forced it: an `invalid_args` reason is a jsonschema
+  message, and jsonschema embeds the rejected instance in it, so that
+  string was as long as the arguments the caller sent.
 - **`client`, `tool` and `source` are capped at 512 characters** in
   `JOURNAL.jsonl` and `plugin_audit.jsonl` (#779). `client` is the MCP
   client's self-declared `clientInfo` — unbounded external input on an
@@ -86,12 +93,41 @@
   survive. Expect more over-masking in free text — a long `nextPageToken`
   or a prose `credentials: …` now becomes `***`. That is the trade this
   scrubber is declared to make: over-masking costs legibility, under-masking
-  costs a credential.
+  costs a credential. Inside a tool ARGUMENT the one-word keys need machine
+  punctuation (see the next entry), so a space-padded `Set-Cookie: sid=…`
+  is redacted in an error message but not in an argument value; an argument
+  *named* `cookie` is still `***` from the key path alone.
+- **The scrubber no longer rewrites ad copy** (#779). Adding those one-word
+  keys made `secret`, `password`, `signature` and the rest fire on a
+  space-padded colon, and a colon is how a sentence is punctuated:
+  `headline`, `description`, `primary_text` and campaign `name` are the
+  most-written arguments in this product. `"The secret: better ROAS"` was
+  recorded as `"The secret: ***"`, `"Password: A Novel"` as `"Password:
+  ***"`, and the journal stopped being able to answer what the agent
+  submitted. `scrub_text` now takes an explicit `mode` — `PROSE` for an
+  error message, a `reason` or a rationale, `ARGUMENT` for a tool argument
+  value — and in `ARGUMENT` mode a one-word key needs an `=` or a quoted
+  dict key (`"password": "…"`). Compound keys (`client_secret`, `api_key`,
+  `developer-token`, …) are unchanged in both modes: nobody writes
+  `client_secret:` in a headline. Free-text scrubbing is byte-for-byte what
+  it was — verified across 40,846 string literals in the repository.
+- **A `reason` argument was scrubbed by two different rules** (#779). Three
+  built-in tools declare a `reason` parameter of their own
+  (`mureo_state_action_log_append` and the two `not_collected_set` tools),
+  and for those the sentence stays in `args` instead of becoming the
+  journal's rationale. It was therefore scrubbed as an ARGUMENT on the
+  journal line and as PROSE on its way into `STATE.json` — the same
+  sentence, two stores, two answers, which is the divergence this issue
+  exists to close. `mask_arguments` now scrubs a string under `reason` or
+  `rationale` as prose, whatever tool it came from, including a plugin's.
 - **`SECURITY.md` overstated the scrubber's guarantee** (#779). It said a
   credential pasted into an ordinary free-text argument "is redacted", full
   stop. It is redacted when it takes a shape the scrubber recognises; a
   credential in prose with no recognisable key and no prefix ("the api key
-  is …") is not detected. The section now says so.
+  is …") is not detected. The section now says so, and also documents what
+  it never had: the prose/argument split, the `code=` rule, and the
+  16-character minimum on a `Basic` value. A reader has to be able to
+  predict what their own `JOURNAL.jsonl` will contain.
 
 ## [0.21.1] - 2026-09-21
 
