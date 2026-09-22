@@ -212,6 +212,12 @@ class TestKeyCoverageMatchesTheKeyPath:
             "token " * 333_000,
             "private_ke" * 200_000,
         ],
+        # Explicit ids: without them pytest names each case after its
+        # 2 MB payload, and a 2 MB node id is what CI chokes on, not the
+        # scrub — the hosted runner spent an hour streaming each line of
+        # ``-v`` output, and Windows failed at setup with the id inside a
+        # path. Locally the same six cases run in seconds.
+        ids=["x", "space", "quote", "secret_", "token ", "private_ke"],
     )
     def test_a_two_megabyte_input_stays_linear(self, payload: str) -> None:
         """The ``_CODE_KEY_VALUE`` comment records a 2 MB error body that
