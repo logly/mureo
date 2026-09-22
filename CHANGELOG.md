@@ -109,8 +109,10 @@
   value — and in `ARGUMENT` mode a one-word key needs an `=` or a quoted
   dict key (`"password": "…"`). Compound keys (`client_secret`, `api_key`,
   `developer-token`, …) are unchanged in both modes: nobody writes
-  `client_secret:` in a headline. Free-text scrubbing is byte-for-byte what
-  it was — verified across 40,846 string literals in the repository.
+  `client_secret:` in a headline. Prose scrubbing is byte-for-byte what the
+  rest of this fix produces — verified over all 27,526 distinct string
+  literals in the repository. Against v0.21.1 it redacts more in 71 of
+  them, which is the key coverage above and not the mode split.
 - **A `reason` argument was scrubbed by two different rules** (#779). Three
   built-in tools declare a `reason` parameter of their own
   (`mureo_state_action_log_append` and the two `not_collected_set` tools),
@@ -118,8 +120,12 @@
   journal's rationale. It was therefore scrubbed as an ARGUMENT on the
   journal line and as PROSE on its way into `STATE.json` — the same
   sentence, two stores, two answers, which is the divergence this issue
-  exists to close. `mask_arguments` now scrubs a string under `reason` or
-  `rationale` as prose, whatever tool it came from, including a plugin's.
+  exists to close. `mask_arguments` now scrubs text under `reason` or
+  `rationale` as prose, whatever tool it came from, including a plugin's,
+  and the mode carries down the recursion. A plugin is free to declare
+  `reason` as a list or an object, and reading the mode off the immediate
+  value's type left `{"reason": ["password: hunter2hunter2"]}` recorded as
+  submitted while the identical sentence one level up was masked.
 - **`SECURITY.md` overstated the scrubber's guarantee** (#779). It said a
   credential pasted into an ordinary free-text argument "is redacted", full
   stop. It is redacted when it takes a shape the scrubber recognises; a

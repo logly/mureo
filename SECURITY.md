@@ -303,8 +303,9 @@ a value when the text takes a form it knows:
 - an Amazon LwA `Atza|…` (access) or `Atzr|…` (refresh) token;
 - a `key=value` / `key: value` pair whose key **ends in** one of
   `secret`, `password`, `passwd`, `pwd`, `credential(s)`, `authorization`,
-  `bearer`, `cookie`, `signature`, `api_key`, `secret_key`, `private_key`,
-  `access_key`, `access_token`, `refresh_token`, `developer_token`, or
+  `bearer`, `cookie`, `signature`, `api_key`, `client_secret`,
+  `secret_key`, `private_key`, `access_key`, `access_token`,
+  `refresh_token`, `developer_token`, or
   `token` — the last only when the value is at least 8 characters, so
   `token limit: 128000` still reads. Ending in, not equal to: `app_secret`
   and `appSecret` both match, in snake_case, camelCase and hyphenated
