@@ -58,6 +58,23 @@
   client's self-declared `clientInfo` — unbounded external input on an
   append-only, line-oriented file. An unreported client still records as
   `null`.
+- **The scrubber's key list now matches the one the argument masker uses**
+  (#779). The KEY path masks an argument whose name merely *contains*
+  `token` / `secret` / `password` / `credential` / `cookie`; the VALUE path
+  knew seven exact spellings, so the identical credential was redacted as an
+  argument key and written in cleartext inside a string. `app_secret` —
+  mureo's own Meta credential field — `appSecret`, `secret_key`,
+  `private_key`, `auth_token`, `authToken`, `id_token`, a bare `token=`,
+  `passwd`, `pwd`, `credential(s)`, `signature`, `aws_secret_access_key`,
+  `bearer` and `Set-Cookie:` all leaked; they no longer do. A root matches
+  the END of a key and never consumes the prefix, so `app_secret=…` still
+  reads `app_secret=***`. `key` is deliberately not a root (`monkey=`,
+  `keyword=`) and neither is `sig` (`design=`); bare `token` carries a
+  minimum value length so `token limit: 128000` and `max_tokens=4096`
+  survive. Expect more over-masking in free text — a long `nextPageToken`
+  or a prose `credentials: …` now becomes `***`. That is the trade this
+  scrubber is declared to make: over-masking costs legibility, under-masking
+  costs a credential.
 - **`SECURITY.md` overstated the scrubber's guarantee** (#779). It said a
   credential pasted into an ordinary free-text argument "is redacted", full
   stop. It is redacted when it takes a shape the scrubber recognises; a

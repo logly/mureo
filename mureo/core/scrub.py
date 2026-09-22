@@ -67,10 +67,53 @@ _SECRET_VALUE = re.compile(
 # Google's request metadata — which a gRPC debug string prints verbatim —
 # spells the credential ``developer-token`` and the header ``authorization``.
 # ``authorization`` carries no separator of its own, so it is listed bare.
+#
+# The roots below are the ones ``mureo.mcp.plugin_audit._SENSITIVE_KEY``
+# already masks an argument KEY for (#779). Until then this pattern knew
+# seven EXACT spellings while the key path matched those words as a
+# SUBSTRING, so the identical credential was redacted when it arrived as an
+# argument key and written in cleartext when it arrived inside a string —
+# ``app_secret`` most of all, which is mureo's own Meta credential field
+# (``mureo/auth.py``).
+#
+# A root matches the END of the key, not the whole of it; the prefix is
+# never part of the match, so ``app_secret=…`` becomes ``app_secret=***``
+# and ``appSecret`` / ``authToken`` / ``privateKey`` are caught by the same
+# ``[_-]?`` treatment every root already had. This is the technique
+# ``_CODE_KEY_VALUE`` below documents, and it is chosen over a
+# ``[\w-]*secret`` prefix wildcard for the reason recorded there: the
+# wildcard backtracks quadratically over a long non-matching string.
+#
+# ``key`` is deliberately NOT a root — it would eat ``monkey=``,
+# ``turkey=`` and ``keyword=`` — so each credential-bearing ``…key`` tail
+# is spelled out instead (``aws_secret_access_key`` lands on
+# ``access[_-]?key``). ``sig`` is not a root either: it would eat
+# ``design=``. ``signature`` is safe and is listed in full.
 _SECRET_KEY_VALUE = re.compile(
-    r"((?:client[_-]?secret|refresh[_-]?token|access[_-]?token"
-    r"|developer[_-]?token|api[_-]?key|password|authorization)"
+    r"((?:secret[_-]?key|private[_-]?key|access[_-]?key|api[_-]?key"
+    r"|access[_-]?token|refresh[_-]?token|developer[_-]?token"
+    r"|secret|password|passwd|pwd|credentials?"
+    r"|authorization|bearer|cookie|signature)"
     r"['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]+",
+    re.IGNORECASE,
+)
+
+# ``token`` is the one root that cannot go in the list above. In ordinary
+# prose it names a UNIT, not a credential ("token limit: 128000",
+# "token: 5"), so it takes the same minimum-value-length rule
+# ``_CODE_KEY_VALUE`` uses, for the same reason: a real token is a long
+# opaque string, a count is short. ``max_tokens=4096`` never matches at all
+# — the root has to sit at the END of the key, and there the ``s`` is in
+# the way.
+#
+# The three unambiguous ``…_token`` spellings stay in ``_SECRET_KEY_VALUE``
+# with no length rule, so this does not narrow what #528 and #758 already
+# covered: the leftmost match wins, and theirs starts earlier.
+_MIN_TOKEN_VALUE_LEN = 8
+_TOKEN_KEY_VALUE = re.compile(
+    r"(token['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]{"
+    + str(_MIN_TOKEN_VALUE_LEN)
+    + r",}",
     re.IGNORECASE,
 )
 
@@ -129,11 +172,12 @@ _CODE_KEY_VALUE = re.compile(
 def scrub_text(text: str, *, mask_code_key_value: bool = True) -> str:
     """Redact secret-shaped substrings from a free-text error string.
 
-    Three passes, all value-only: token prefixes (``Bearer …``,
-    ``Atza|…``, ``Atzr|…``), ``key=value`` credential pairs, and the
-    narrowly-anchored ``code=<authorization code>``. Everything else —
-    HTTP status, exception type, the failing operation — survives, so a
-    scrubbed message is still a usable diagnostic.
+    Four passes, all value-only: token prefixes (``Bearer …``,
+    ``Atza|…``, ``Atzr|…``), ``key=value`` credential pairs, the same for
+    a ``token`` key with a long enough value, and the narrowly-anchored
+    ``code=<authorization code>``. Everything else — HTTP status,
+    exception type, the failing operation — survives, so a scrubbed
+    message is still a usable diagnostic.
 
     Applied at ONE boundary per trail, so no two of them can redact
     differently: the plugin audit record, the journal line, and — since
@@ -153,6 +197,7 @@ def scrub_text(text: str, *, mask_code_key_value: bool = True) -> str:
     """
     scrubbed = _SECRET_VALUE.sub("***", text)
     scrubbed = _SECRET_KEY_VALUE.sub(r"\1***", scrubbed)
+    scrubbed = _TOKEN_KEY_VALUE.sub(r"\1***", scrubbed)
     if not mask_code_key_value:
         return scrubbed
     return _CODE_KEY_VALUE.sub(r"\1***", scrubbed)

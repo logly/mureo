@@ -289,12 +289,20 @@ name alone: a value under a secret-shaped key (`api_key`, `access_token`,
 the scrubber as well.
 
 **The scrubber recognises shapes; it does not detect secrets.** It redacts
-a value when the text takes a form it knows — a `Bearer …` or
-`Basic <base64>` authorization header, an Amazon LwA `Atza|…` / `Atzr|…`
-token, or one of a fixed list of `key=value` spellings (`client_secret`,
-`access_token`, `refresh_token`, `developer_token`, `api_key`, `password`,
-`authorization`, in snake_case, camelCase and hyphenated form). A
-credential carrying none of those keys and no recognisable prefix — one
+a value when the text takes a form it knows:
+
+- a `Bearer …` or `Basic <base64>` authorization header;
+- an Amazon LwA `Atza|…` (access) or `Atzr|…` (refresh) token;
+- a `key=value` / `key: value` pair whose key **ends in** one of
+  `secret`, `password`, `passwd`, `pwd`, `credential(s)`, `authorization`,
+  `bearer`, `cookie`, `signature`, `api_key`, `secret_key`, `private_key`,
+  `access_key`, `access_token`, `refresh_token`, `developer_token`, or
+  `token` — the last only when the value is at least 8 characters, so
+  `token limit: 128000` still reads. Ending in, not equal to: `app_secret`
+  and `appSecret` both match, in snake_case, camelCase and hyphenated
+  spellings alike.
+
+A credential carrying none of those keys and no recognisable prefix — one
 sitting in ordinary prose, such as *"the api key is …"* — is **not**
 detected and will be written as typed. Treat the scrubber as a backstop
 against accidental echo, not as a guarantee: do not paste credentials into
