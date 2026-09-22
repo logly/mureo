@@ -91,18 +91,85 @@ class TestMaskScrubsStringValues:
         assert out["note"] == "retrying with Authorization: ***"
 
     def test_a_secret_is_scrubbed_before_the_string_is_truncated(self) -> None:
-        """Order matters: truncating first can cut an ``api_key=…`` pair in
-        half and leave a fragment no pattern matches."""
+        """Order matters — and only ``Basic <base64>`` proves it.
+
+        A secret that STRADDLES the cut is the whole case for paying the
+        scrub cost first. ``api_key=…`` does not make it: its value class
+        happily eats ``…<truncated>``, so truncating first still produces a
+        match. ``Basic``'s value class is base64 only, so a truncated
+        credential is unrecognisable and would be written in cleartext.
+        """
+        out = _mask("x" * 484 + "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==")
+        assert "QWxhZGRpbj" not in out
+        assert out.endswith("***")
+        assert len(out) <= plugin_audit._MAX_STR  # hard cap unchanged
+
+    def test_the_hard_cap_still_applies_after_scrubbing(self) -> None:
         out = _mask("api_key=SHHH_SECRET " + "x" * 2000)
         assert "SHHH_SECRET" not in out
         assert out.startswith("api_key=*** ")
         assert out.endswith(plugin_audit._TRUNC)
-        assert len(out) <= plugin_audit._MAX_STR  # hard cap unchanged
+        assert len(out) == plugin_audit._MAX_STR
 
-    def test_ordinary_text_is_not_over_masked(self) -> None:
-        out = _mask({"note": "status code = 400", "items": ["error code: 17"]})
-        assert out["note"] == "status code = 400"
-        assert out["items"] == ["error code: 17"]
+    def test_an_argument_url_keeps_its_query_string(self) -> None:
+        """#779 review — ``code=`` is a rule for error PROSE, not arguments.
+
+        ``final_url`` is a real argument of ad creation and of sitelinks, and
+        a query string is full of ordinary ``…_code=`` parameters. Rewriting
+        the landing page an agent submitted defeats the reason the journal
+        exists.
+        """
+        url = "https://example.com/lp?utm_source=x&promo_code=SUMMER2026&ref=1"
+        out = _mask({"final_url": url, "name": "Q4 promo code=BLACKFRIDAY24"})
+        assert out["final_url"] == url
+        assert out["name"] == "Q4 promo code=BLACKFRIDAY24"
+
+    def test_the_code_rule_still_applies_to_free_text(self) -> None:
+        """The exemption is scoped to ``mask_arguments``: a ``reason`` or a
+        ``rationale`` goes through ``scrub_text`` directly and still loses an
+        authorization code."""
+        assert "ANabcdefgh12" not in plugin_audit._scrub("?code=ANabcdefgh12&scope=x")
+
+    def test_the_scrubber_never_sees_more_than_the_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cost per value is a constant, not O(len(value)).
+
+        ``mask_arguments`` runs on the asyncio event loop for every tool
+        call — twice for a plugin call — and MCP puts no bound on argument
+        size. Everything past the window is truncated away regardless.
+        """
+        seen: list[int] = []
+
+        def _spy(text: str, **kwargs: object) -> str:
+            seen.append(len(text))
+            return text
+
+        monkeypatch.setattr(plugin_audit, "scrub_text", _spy)
+        out = _mask("x" * 5_000_000)
+
+        assert seen == [plugin_audit.SCRUB_WINDOW]
+        assert len(out) == plugin_audit._MAX_STR
+
+
+@pytest.mark.unit
+class TestSensitiveKeysShortCircuit:
+    """Step 1 of ``mask_arguments``: a secret-shaped KEY means the value is
+    never inspected at all — not scrubbed, not recursed into, not truncated.
+    That is both the strongest redaction available and the reason a 10 MB
+    blob under ``api_key`` costs nothing."""
+
+    def test_a_huge_value_under_a_sensitive_key_is_not_inspected(self) -> None:
+        assert _mask({"api_key": "s" * 5_000_000}) == {"api_key": "***"}
+
+    def test_a_container_under_a_sensitive_key_is_not_recursed_into(self) -> None:
+        out = _mask(
+            {
+                "credentials": {"nested": "value", "deeper": [1, 2, 3]},
+                "tokens": ["one", "two"],
+            }
+        )
+        assert out == {"credentials": "***", "tokens": "***"}
 
 
 @pytest.mark.unit
@@ -170,6 +237,18 @@ class TestRecordPluginCall:
         assert second["ok"] is True
         assert second["platform_ok"] is False
         assert "FIELD_VALUE_IS_INVALID" in second["error"]
+
+    def test_tool_and_source_are_capped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No field of an append-only line may be unbounded, and ``args``
+        and ``error`` were the only two that were capped."""
+        log = tmp_path / "audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+        record_plugin_call(tool="t" * 5000, arguments={}, source="s" * 5000, ok=True)
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        assert len(rec["tool"]) == plugin_audit._MAX_STR
+        assert len(rec["source"]) == plugin_audit._MAX_STR
 
     def test_never_raises_on_io_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _boom() -> Path:

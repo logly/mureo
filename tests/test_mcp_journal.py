@@ -235,6 +235,49 @@ class TestMaskingAndScrubbing:
         _record(outcome="platform_error", reason="y" * 2000)
         assert len(_lines(log)[0]["reason"]) == 512
 
+    def test_an_argument_url_survives_masking(self, log: Path) -> None:
+        """#779 review — the ``code=`` rule is for error prose, not for the
+        landing page an agent actually submitted."""
+        url = "https://example.com/lp?utm_source=x&promo_code=SUMMER2026&ref=1"
+        _record(tool="google_ads_ad_create", arguments={"final_url": url})
+        assert _lines(log)[0]["args"]["final_url"] == url
+
+    def test_a_rationale_still_loses_an_authorization_code(self, log: Path) -> None:
+        """...while ``rationale`` goes through ``scrub_text`` directly and
+        keeps the rule."""
+        _record(rationale="retrying the exchange with code=ANabcdefgh12")
+        assert "ANabcdefgh12" not in log.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+class TestUnboundedFieldsAreCapped:
+    """A journal line is a line: no single field may be unbounded.
+
+    ``client`` is the strongest case — it is the MCP client's self-declared
+    ``clientInfo``, which :mod:`mureo.core.actor` only strips — but ``tool``
+    and ``source`` arrive from the same dispatch and get the same budget.
+    """
+
+    def test_client_is_capped(self, log: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(actor, "_client", "c" * 5000)
+        _record()
+        assert len(_lines(log)[0]["client"]) == journal.MAX_FIELD_CHARS
+
+    def test_tool_and_source_are_capped(self, log: Path) -> None:
+        _record(tool="t" * 5000, family="plugin", source="s" * 5000)
+        record = _lines(log)[0]
+        assert len(record["tool"]) == journal.MAX_FIELD_CHARS
+        assert len(record["source"]) == journal.MAX_FIELD_CHARS
+
+    def test_an_absent_client_stays_null(
+        self, log: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The cap must not turn ``None`` into ``""`` — "unknown" and
+        "reported nothing" are the same answer and both read as ``null``."""
+        monkeypatch.setattr(actor, "_client", None)
+        _record()
+        assert _lines(log)[0]["client"] is None
+
 
 @pytest.mark.unit
 class TestOutcomes:

@@ -103,6 +103,20 @@ _SECRET_KEY_VALUE = re.compile(
 # Not covered, deliberately: a bare NUMERIC code is never masked (an LwA
 # authorization code is a long alphanumeric string, never an integer), so the
 # asymmetry with string codes is a legibility quirk, not a leak.
+#
+# EXEMPTIBLE, and only this rule is (``mask_code_key_value=False``). The rule
+# was written for ERROR PROSE, where ``code=`` with no space before the ``=``
+# really is the query-string shape an authorization code leaks in. In a TOOL
+# ARGUMENT that same shape is overwhelmingly an ordinary URL parameter:
+# ``final_url`` is a real argument of ad creation and of sitelinks, and
+# ``…?promo_code=SUMMER2026`` is a landing page, not a credential. This
+# comment already records that ``code`` is "far too common in ordinary error
+# prose"; inside a query string it is commoner still, so dropping the rule
+# where the text is known to be a URL-bearing argument is the rule's own
+# intent applied one step further — not a relaxation of it. The exemption is
+# a FLAG on this one implementation rather than a second pattern set: two
+# pattern sets would be two answers to "what is a secret", which is exactly
+# what this module exists to prevent.
 _MIN_CODE_VALUE_LEN = 8
 _CODE_KEY_VALUE = re.compile(
     r"((?:code=['\"]?|code['\"]\s*:\s*['\"]))[^\s,;&'\"}\])]{"
@@ -112,7 +126,7 @@ _CODE_KEY_VALUE = re.compile(
 )
 
 
-def scrub_text(text: str) -> str:
+def scrub_text(text: str, *, mask_code_key_value: bool = True) -> str:
     """Redact secret-shaped substrings from a free-text error string.
 
     Three passes, all value-only: token prefixes (``Bearer …``,
@@ -125,7 +139,20 @@ def scrub_text(text: str) -> str:
     differently: the plugin audit record, the journal line, and — since
     #758 phase 2 — ``normalize_reason``, which every ``action_log``
     rationale passes through before it reaches STATE.json.
+
+    ``mask_code_key_value=False`` drops the third pass, and nothing else.
+    One caller passes it: :func:`~mureo.mcp.plugin_audit.mask_arguments`,
+    which scrubs tool ARGUMENTS rather than prose. ``…?promo_code=…`` in a
+    ``final_url`` is a landing page, not an authorization code, and a
+    journal that rewrites the URL an agent submitted cannot answer the
+    question it exists for. Every ``reason`` / ``rationale`` path calls
+    this function directly and therefore keeps the pass — those really are
+    free text, which is what the rule was written for. See the
+    ``_CODE_KEY_VALUE`` comment above for why the exemption is a flag on
+    one pattern set rather than a second one.
     """
     scrubbed = _SECRET_VALUE.sub("***", text)
     scrubbed = _SECRET_KEY_VALUE.sub(r"\1***", scrubbed)
+    if not mask_code_key_value:
+        return scrubbed
     return _CODE_KEY_VALUE.sub(r"\1***", scrubbed)

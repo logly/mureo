@@ -46,6 +46,26 @@ logger = logging.getLogger(__name__)
 
 _MAX_STR = 512
 _TRUNC = "…<truncated>"
+
+#: How much of a string value the scrubber is allowed to look at.
+#:
+#: Masking runs on the asyncio event loop for EVERY tool call — twice for a
+#: plugin call, since ``record_plugin_call`` runs inside ``journal_call`` —
+#: and nothing upstream bounds the size of an MCP argument. Scrubbing the
+#: whole value made that an unbounded O(n): ~250 ms per megabyte, 12 s for
+#: fifty 1 MB arguments, all of it blocking the loop.
+#:
+#: Nothing is lost by the window: the result is truncated to ``_MAX_STR``
+#: anyway, so text past it never reaches the file. The 64 characters of
+#: slack are for a credential that STRADDLES the cut — a match has to start
+#: before the cut to leave anything behind, and 64 more characters is enough
+#: to recognise every shape the scrubber knows (the longest key,
+#: ``developer_token`` plus quoting and separator, is ~20; ``Basic `` plus
+#: its 16-character minimum base64 value is 22). A value longer than that is
+#: still matched, because every pattern's value class is a ``+`` / ``{n,}``
+#: that happily matches the part inside the window.
+SCRUB_WINDOW = _MAX_STR + 64
+
 _SENSITIVE_KEY = re.compile(
     r"(token|secret|password|passwd|credential|api[_-]?key|authorization"
     r"|access[_-]?token|refresh[_-]?token|client[_-]?secret|bearer|cookie)",
@@ -69,21 +89,30 @@ def mask_arguments(value: Any, *, _depth: int = 0) -> Any:
 
     1. KEY masking — a sensitivity-suggesting key yields ``"***"`` and its
        value is never inspected at all.
-    2. :func:`scrub_text` over every surviving string VALUE (#779). Masking
-       by key name alone let a secret pasted into an ordinary free-text
-       argument through verbatim, while the same sentence WAS scrubbed on
-       its way into ``STATE.json`` — two stores, two rules.
+    2. :func:`scrub_text` over the first :data:`SCRUB_WINDOW` characters of
+       every surviving string VALUE (#779). Masking by key name alone let a
+       secret pasted into an ordinary free-text argument through verbatim,
+       while the same sentence WAS scrubbed on its way into ``STATE.json``
+       — two stores, two rules.
     3. Truncation to :data:`_MAX_STR`.
 
-    Scrubbing before truncating is deliberate: truncating first can cut an
-    ``api_key=…`` pair in half and leave a fragment no pattern matches. The
-    hard cap is unchanged — the result is never longer than ``_MAX_STR``.
+    Scrubbing before truncating is deliberate, and ``Basic <base64>`` is
+    the shape that makes it so: its value class is base64 only, so a
+    credential cut by the truncation marker is unrecognisable and would be
+    written in cleartext. (``api_key=…`` would survive either order — its
+    value class matches ``…<truncated>`` too.) The hard cap is unchanged —
+    the result is never longer than ``_MAX_STR``.
+
+    The ``code=`` pass is switched OFF here: it is a rule for error prose,
+    and in an argument the same shape is an ordinary URL parameter. See
+    :func:`~mureo.core.scrub.scrub_text`. Every ``reason`` / ``rationale``
+    calls that function directly and keeps the pass.
     """
     if _depth > 4:
         return "<...>"
     if isinstance(value, str):
-        scrubbed = scrub_text(value)
-        if len(scrubbed) <= _MAX_STR:
+        scrubbed = scrub_text(value[:SCRUB_WINDOW], mask_code_key_value=False)
+        if len(value) <= SCRUB_WINDOW and len(scrubbed) <= _MAX_STR:
             return scrubbed
         return scrubbed[: _MAX_STR - len(_TRUNC)] + _TRUNC  # hard cap == _MAX_STR
     if isinstance(value, dict):
@@ -134,8 +163,9 @@ def record_plugin_call(
     try:
         rec = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "tool": tool,
-            "source": source or "<unknown>",
+            # Capped like every other field: no part of a line is unbounded.
+            "tool": tool[:_MAX_STR],
+            "source": (source or "<unknown>")[:_MAX_STR],
             "ok": ok,
             "args": mask_arguments(arguments if isinstance(arguments, dict) else {}),
         }

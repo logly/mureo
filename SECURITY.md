@@ -286,8 +286,19 @@ with the **same** masker and scrubber as the plugin audit log above, and
 it never stores result bodies or credentials. The masking is not by key
 name alone: a value under a secret-shaped key (`api_key`, `access_token`,
 …) becomes `***`, and every string value that survives is then run through
-the scrubber, so a credential pasted into an ordinary free-text argument
-is redacted in both files as well. A caught exception is
+the scrubber as well.
+
+**The scrubber recognises shapes; it does not detect secrets.** It redacts
+a value when the text takes a form it knows — a `Bearer …` or
+`Basic <base64>` authorization header, an Amazon LwA `Atza|…` / `Atzr|…`
+token, or one of a fixed list of `key=value` spellings (`client_secret`,
+`access_token`, `refresh_token`, `developer_token`, `api_key`, `password`,
+`authorization`, in snake_case, camelCase and hyphenated form). A
+credential carrying none of those keys and no recognisable prefix — one
+sitting in ordinary prose, such as *"the api key is …"* — is **not**
+detected and will be written as typed. Treat the scrubber as a backstop
+against accidental echo, not as a guarantee: do not paste credentials into
+tool arguments or rationales. A caught exception is
 curated before it is scrubbed and written — for Google Ads that is the
 server-side error message only, never the gRPC call repr that carries the
 request metadata. Unlike the audit log it

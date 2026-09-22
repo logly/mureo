@@ -31,12 +31,38 @@
   `reason`, a note, an item in a list — survived intact in both trails,
   while that very sentence WAS scrubbed on its way into `STATE.json`. Two
   stores, two rules. Every surviving string value now goes through the
-  shared `scrub_text` as well, **before** it is truncated: truncating first
-  can cut an `api_key=…` pair in half and leave a fragment no pattern
-  matches. Key masking, the 512-character cap, the list cap and the depth
-  guard are unchanged, and the scrubber's patterns were not widened — this
-  only changes where they are applied, so ordinary prose (`status code =
-  400`) still reads as it did.
+  shared `scrub_text` as well, **before** it is truncated: `Basic <base64>`
+  matches only base64, so a credential cut by the truncation marker would be
+  unrecognisable and written in cleartext. Key masking, the 512-character
+  cap, the list cap and the depth guard are unchanged, and the scrubber's
+  patterns were not widened — this only changes where they are applied, so
+  ordinary prose (`status code = 400`) still reads as it did. Note for
+  callers of the public `mask_arguments`: a **top-level bare string** used
+  to pass through untouched and is now scrubbed like any nested one.
+- **The `code=` rule no longer fires on tool arguments** (#779). It was
+  written for error prose, where `code=` with no space is the query-string
+  shape an authorization code leaks in; applied to arguments it rewrote the
+  landing page an agent actually submitted
+  (`…?promo_code=SUMMER2026` → `…?promo_code=***` in a `final_url`). The
+  rule is unchanged everywhere it was meant to apply — `reason`,
+  `rationale`, decision records and every scrubbed error string still lose
+  an authorization code.
+- **Argument scrubbing is bounded** (#779). Only the first 576 characters of
+  a string value are scrubbed (the 512-character cap plus slack for a
+  credential straddling the cut); the rest was truncated away regardless.
+  Masking runs on the event loop for every tool call, and MCP does not bound
+  argument size, so an unbounded scrub was a multi-second stall waiting for
+  a large payload.
+- **`client`, `tool` and `source` are capped at 512 characters** in
+  `JOURNAL.jsonl` and `plugin_audit.jsonl` (#779). `client` is the MCP
+  client's self-declared `clientInfo` — unbounded external input on an
+  append-only, line-oriented file. An unreported client still records as
+  `null`.
+- **`SECURITY.md` overstated the scrubber's guarantee** (#779). It said a
+  credential pasted into an ordinary free-text argument "is redacted", full
+  stop. It is redacted when it takes a shape the scrubber recognises; a
+  credential in prose with no recognisable key and no prefix ("the api key
+  is …") is not detected. The section now says so.
 
 ## [0.21.1] - 2026-09-21
 
