@@ -45,6 +45,17 @@ from mureo.fsutil import secure_chmod
 
 logger = logging.getLogger(__name__)
 
+#: Hard cap on any one recorded string — an argument value, an ``error``,
+#: a wizard ``detail``. A diagnostic, not a payload dump.
+#:
+#: The SAME budget as :data:`mureo.mcp.journal.MAX_FIELD_CHARS` and
+#: :data:`mureo.mcp.journal.MAX_REASON_CHARS`, deliberately: the journal
+#: and this log record the same calls, and a reader comparing the two must
+#: not find one of them cut shorter than the other. They are three names
+#: rather than one because they cap three different KINDS of field —
+#: a value here, an identifier and a sentence there — and one of them may
+#: yet need to move alone. ``tests/test_mcp_journal.py`` pins the equality
+#: so moving one silently is not an option; move all three or say why.
 _MAX_STR = 512
 _TRUNC = "…<truncated>"
 

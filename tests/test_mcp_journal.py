@@ -28,7 +28,7 @@ from mureo.core.runtime_context import (
 )
 from mureo.core.scrub import STRADDLE_MARGIN
 from mureo.core.state_store import FilesystemStateStore
-from mureo.mcp import journal
+from mureo.mcp import journal, plugin_audit
 from mureo.mcp.journal_chain import verify_chain
 
 
@@ -268,6 +268,23 @@ class TestMaskingAndScrubbing:
         keeps the rule."""
         _record(rationale="retrying the exchange with code=ANabcdefgh12")
         assert "ANabcdefgh12" not in log.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+class TestTheTwoTrailsShareOneBudget:
+    """#779 review — three names, one number, and nothing said so.
+
+    The journal and the plugin audit log record the same calls. A reader
+    comparing them must not find one trail cut shorter than the other, so
+    the three caps are equal ON PURPOSE. They stay three names because
+    they cap three different kinds of field and one may yet need to move
+    alone — this test is what turns that into a decision instead of a
+    drift somebody notices in production.
+    """
+
+    def test_the_journal_and_the_audit_log_cut_at_the_same_length(self) -> None:
+        assert journal.MAX_REASON_CHARS == plugin_audit._MAX_STR
+        assert journal.MAX_FIELD_CHARS == plugin_audit._MAX_STR
 
 
 @pytest.mark.unit

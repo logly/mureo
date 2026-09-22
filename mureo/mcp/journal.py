@@ -100,6 +100,13 @@ WORKSPACE_MARKERS = ("STATE.json", "STRATEGY.md")
 #: losing its tail. Not to be confused with
 #: :data:`mureo.core.actor.ACTION_REASON_MAX_CHARS`, which is a write rule
 #: on a value the CALLER supplies and refuses an over-long one outright.
+#:
+#: "The audit log's budget" is literal: this is
+#: :data:`mureo.mcp.plugin_audit._MAX_STR`, and the two trails record the
+#: same calls, so a reader comparing them must not find one cut shorter
+#: than the other. Kept as separate names because they cap different KINDS
+#: of field and one may yet need to move alone; the equality is pinned in
+#: ``tests/test_mcp_journal.py`` so that has to be a decision, not a drift.
 MAX_REASON_CHARS = 512
 
 #: Hard cap on the short identity fields — ``client``, ``tool``, ``source``.
@@ -107,8 +114,11 @@ MAX_REASON_CHARS = 512
 #: ``clientInfo``, which :func:`mureo.core.actor.set_client_info` only
 #: strips, so it is unbounded external input landing on a line-oriented,
 #: append-only file. ``tool`` and ``source`` arrive from the same dispatch
-#: and get the same budget. Separate from :data:`MAX_REASON_CHARS` because
-#: they are identifiers rather than prose, even though the number matches.
+#: and get the same budget. Separate from :data:`MAX_REASON_CHARS` and from
+#: :data:`mureo.mcp.plugin_audit._MAX_STR` because they are identifiers
+#: rather than prose, even though all three numbers match — see
+#: :data:`MAX_REASON_CHARS` for why that sameness is deliberate and where
+#: it is pinned.
 MAX_FIELD_CHARS = 512
 
 
