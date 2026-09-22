@@ -11,13 +11,28 @@ updated.
 The rules stay value-only: an HTTP status, an exception type and the
 failing operation all survive, so a scrubbed message is still a usable
 diagnostic.
+
+One pattern set, two modes. Free text and a tool argument need different
+separator rules — ``"The secret: better ROAS"`` is a headline, not a
+credential dump — but they must not become two answers to "what is a
+secret". So the ROOTS are declared once and the MODE picks how strictly a
+key has to be punctuated to count. See :func:`scrub_text`.
 """
 
 from __future__ import annotations
 
 import re
+from typing import Literal
 
-__all__ = ["scrub_text"]
+#: What the text being scrubbed IS. Not a style preference — the two kinds
+#: leak differently and read differently, and :func:`scrub_text` refuses to
+#: guess which one a call site holds.
+ScrubMode = Literal["prose", "argument"]
+
+PROSE: ScrubMode = "prose"
+ARGUMENT: ScrubMode = "argument"
+
+__all__ = ["ARGUMENT", "PROSE", "ScrubMode", "scrub_text"]
 
 # Secret-shaped *values* that can appear in a free-text error string
 # (``error`` is not key/value-masked like ``args``). Covers HTTP bearer
@@ -89,32 +104,105 @@ _SECRET_VALUE = re.compile(
 # is spelled out instead (``aws_secret_access_key`` lands on
 # ``access[_-]?key``). ``sig`` is not a root either: it would eat
 # ``design=``. ``signature`` is safe and is listed in full.
-_SECRET_KEY_VALUE = re.compile(
-    r"((?:secret[_-]?key|private[_-]?key|access[_-]?key|api[_-]?key"
-    r"|access[_-]?token|refresh[_-]?token|developer[_-]?token"
-    r"|secret|password|passwd|pwd|credentials?"
-    r"|authorization|bearer|cookie|signature)"
-    r"['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]+",
-    re.IGNORECASE,
+# A COMPOUND root cannot occur in an English sentence. Nobody writes
+# "client_secret:" or "developer-token:" in a headline, so these keep the
+# permissive separator: an equals sign, a colon, with or without spaces and
+# quotes, whichever shape the leaking surface happened to use.
+#
+# ``client[_-]?secret`` is listed even though the bare ``secret`` root
+# already covers it: without it the compound would inherit the AMBIGUOUS
+# separator and ``client_secret: amzn1.oa2-cs.v1.…`` — the LwA form-body
+# echo this scrubber was originally written for — would stop matching in
+# ``argument`` mode.
+_UNAMBIGUOUS_KEY_ROOTS = (
+    "client[_-]?secret",
+    "secret[_-]?key",
+    "private[_-]?key",
+    "access[_-]?key",
+    "api[_-]?key",
+    "access[_-]?token",
+    "refresh[_-]?token",
+    "developer[_-]?token",
 )
 
-# ``token`` is the one root that cannot go in the list above. In ordinary
-# prose it names a UNIT, not a credential ("token limit: 128000",
-# "token: 5"), so it takes the same minimum-value-length rule
-# ``_CODE_KEY_VALUE`` uses, for the same reason: a real token is a long
-# opaque string, a count is short. ``max_tokens=4096`` never matches at all
-# — the root has to sit at the END of the key, and there the ``s`` is in
-# the way.
-#
-# The three unambiguous ``…_token`` spellings stay in ``_SECRET_KEY_VALUE``
-# with no length rule, so this does not narrow what #528 and #758 already
-# covered: the leftmost match wins, and theirs starts earlier.
+# A BARE root is also an ordinary English word, and ``Password:`` starts a
+# novel's title as readily as a credential dump. In an error string that is
+# a legibility cost worth paying; in a tool ARGUMENT it destroys the record,
+# because ``headline`` / ``description`` / ``primary_text`` / campaign
+# ``name`` are the most-written arguments in this product and a colon is how
+# a sentence is punctuated. See :data:`_ARGUMENT_SEPARATOR`.
+_AMBIGUOUS_KEY_ROOTS = (
+    "secret",
+    "password",
+    "passwd",
+    "pwd",
+    "credentials?",
+    "authorization",
+    "bearer",
+    "cookie",
+    "signature",
+)
+
+# ``token`` is ambiguous AND names a quantity ("token limit: 128000",
+# "token: 5"), so it is the one root that also carries a minimum value
+# length, exactly as ``_CODE_KEY_VALUE`` does and for the same reason: a
+# real token is a long opaque string, a count is short. ``max_tokens=4096``
+# never matches at all — a root has to sit at the END of the key, and there
+# the ``s`` is in the way. The three ``…_token`` compounds above keep their
+# unrestricted match, so this narrows nothing #528 and #758 covered: the
+# leftmost match wins and theirs starts earlier.
 _MIN_TOKEN_VALUE_LEN = 8
-_TOKEN_KEY_VALUE = re.compile(
-    r"(token['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]{"
-    + str(_MIN_TOKEN_VALUE_LEN)
-    + r",}",
-    re.IGNORECASE,
+
+# Everything up to the first character that cannot be part of a credential.
+_VALUE_CHAR = r"[^\s,;&'\"}\])]"
+
+#: Prose separator: ``k=v``, ``k = v``, ``k: v``, ``'k': 'v'``. The optional
+#: quotes catch the dict/JSON rendering an exception ``repr`` produces as
+#: well as the bare form-encoded one.
+_PROSE_SEPARATOR = r"['\"]?\s*[:=]\s*['\"]?"
+
+#: Argument separator for an ambiguous root: the shape ``_CODE_KEY_VALUE``
+#: already established — an ``=`` with NO space before it (the query-string
+#: and form-body shape a credential actually leaks in), or the QUOTED
+#: dict-key form. A space-padded colon is English punctuation, so it is
+#: excluded. Every machine-generated leak still matches; a sentence does
+#: not.
+_ARGUMENT_SEPARATOR = r"(?:=['\"]?|['\"]\s*:\s*['\"])"
+
+
+def _key_value_rule(
+    roots: tuple[str, ...], separator: str, min_value_len: int = 1
+) -> re.Pattern[str]:
+    """Compile one ``key<separator>value`` redaction rule.
+
+    The KEY and separator are kept (group 1) so the diagnostic still reads
+    ``client_secret=***`` rather than losing what failed. A root matches the
+    END of the key and the prefix is never consumed, which is what makes
+    ``app_secret`` and ``appSecret`` fall out of a root spelled ``secret``
+    — and why no ``[\\w-]*secret`` prefix wildcard is needed. That form
+    backtracks quadratically on a long non-matching string, and this
+    scrubber runs on attacker-influenceable text.
+    """
+    quantifier = "+" if min_value_len <= 1 else f"{{{min_value_len},}}"
+    return re.compile(
+        "((?:" + "|".join(roots) + ")" + separator + ")" + _VALUE_CHAR + quantifier,
+        re.IGNORECASE,
+    )
+
+
+_ALL_KEY_ROOTS = _UNAMBIGUOUS_KEY_ROOTS + _AMBIGUOUS_KEY_ROOTS
+
+_PROSE_KEY_VALUE = _key_value_rule(_ALL_KEY_ROOTS, _PROSE_SEPARATOR)
+_PROSE_TOKEN_KEY_VALUE = _key_value_rule(
+    ("token",), _PROSE_SEPARATOR, _MIN_TOKEN_VALUE_LEN
+)
+
+_ARGUMENT_KEY_VALUE = _key_value_rule(_UNAMBIGUOUS_KEY_ROOTS, _PROSE_SEPARATOR)
+_ARGUMENT_AMBIGUOUS_KEY_VALUE = _key_value_rule(
+    _AMBIGUOUS_KEY_ROOTS, _ARGUMENT_SEPARATOR
+)
+_ARGUMENT_TOKEN_KEY_VALUE = _key_value_rule(
+    ("token",), _ARGUMENT_SEPARATOR, _MIN_TOKEN_VALUE_LEN
 )
 
 # ``code`` on its own is far too common in ordinary error prose ("status
@@ -147,19 +235,16 @@ _TOKEN_KEY_VALUE = re.compile(
 # authorization code is a long alphanumeric string, never an integer), so the
 # asymmetry with string codes is a legibility quirk, not a leak.
 #
-# EXEMPTIBLE, and only this rule is (``mask_code_key_value=False``). The rule
-# was written for ERROR PROSE, where ``code=`` with no space before the ``=``
-# really is the query-string shape an authorization code leaks in. In a TOOL
-# ARGUMENT that same shape is overwhelmingly an ordinary URL parameter:
-# ``final_url`` is a real argument of ad creation and of sitelinks, and
+# PROSE ONLY — this rule does not run in ``argument`` mode. It was written
+# for ERROR PROSE, where ``code=`` with no space before the ``=`` really is
+# the query-string shape an authorization code leaks in. In a TOOL ARGUMENT
+# that same shape is overwhelmingly an ordinary URL parameter: ``final_url``
+# is a real argument of ad creation and of sitelinks, and
 # ``…?promo_code=SUMMER2026`` is a landing page, not a credential. This
 # comment already records that ``code`` is "far too common in ordinary error
 # prose"; inside a query string it is commoner still, so dropping the rule
 # where the text is known to be a URL-bearing argument is the rule's own
-# intent applied one step further — not a relaxation of it. The exemption is
-# a FLAG on this one implementation rather than a second pattern set: two
-# pattern sets would be two answers to "what is a secret", which is exactly
-# what this module exists to prevent.
+# intent applied one step further — not a relaxation of it.
 _MIN_CODE_VALUE_LEN = 8
 _CODE_KEY_VALUE = re.compile(
     r"((?:code=['\"]?|code['\"]\s*:\s*['\"]))[^\s,;&'\"}\])]{"
@@ -169,35 +254,47 @@ _CODE_KEY_VALUE = re.compile(
 )
 
 
-def scrub_text(text: str, *, mask_code_key_value: bool = True) -> str:
-    """Redact secret-shaped substrings from a free-text error string.
+def scrub_text(text: str, *, mode: ScrubMode = PROSE) -> str:
+    """Redact secret-shaped substrings from a string.
 
-    Four passes, all value-only: token prefixes (``Bearer …``,
-    ``Atza|…``, ``Atzr|…``), ``key=value`` credential pairs, the same for
-    a ``token`` key with a long enough value, and the narrowly-anchored
-    ``code=<authorization code>``. Everything else — HTTP status,
-    exception type, the failing operation — survives, so a scrubbed
-    message is still a usable diagnostic.
+    All passes are value-only: an HTTP status, an exception type and the
+    failing operation survive, so a scrubbed message is still a usable
+    diagnostic. Applied at ONE boundary per trail, so no two of them can
+    redact differently.
 
-    Applied at ONE boundary per trail, so no two of them can redact
-    differently: the plugin audit record, the journal line, and — since
-    #758 phase 2 — ``normalize_reason``, which every ``action_log``
-    rationale passes through before it reaches STATE.json.
+    ``mode`` says what the text IS, because the two kinds need different
+    rules and guessing per call site is how they drift apart:
 
-    ``mask_code_key_value=False`` drops the third pass, and nothing else.
-    One caller passes it: :func:`~mureo.mcp.plugin_audit.mask_arguments`,
-    which scrubs tool ARGUMENTS rather than prose. ``…?promo_code=…`` in a
-    ``final_url`` is a landing page, not an authorization code, and a
-    journal that rewrites the URL an agent submitted cannot answer the
-    question it exists for. Every ``reason`` / ``rationale`` path calls
-    this function directly and therefore keeps the pass — those really are
-    free text, which is what the rule was written for. See the
-    ``_CODE_KEY_VALUE`` comment above for why the exemption is a flag on
-    one pattern set rather than a second one.
+    ``PROSE`` (the default)
+        An error message, a ``reason``, a ``rationale``, a platform's
+        error body. Four passes: token prefixes (``Bearer …``, ``Atza|…``,
+        ``Atzr|…``), ``key: value`` credential pairs on every root, the
+        same for a ``token`` key with a long enough value, and the
+        narrowly-anchored ``code=<authorization code>``. This is the mode
+        ``normalize_reason`` uses, so an ``action_log`` reason is scrubbed
+        identically on its way to STATE.json and to the journal.
+
+    ``ARGUMENT``
+        The value of a tool argument. Two differences, both because the
+        text is a parameter rather than a sentence. The ``code=`` pass
+        does not run — ``…?promo_code=…`` in a ``final_url`` is a landing
+        page, and a journal that rewrites the URL an agent submitted
+        cannot answer the question it exists for. And an AMBIGUOUS root
+        (``secret``, ``password``, ``cookie``, ``signature``, bare
+        ``token``, …) needs an ``=`` or a quoted dict key rather than a
+        space-padded colon, because ``"The secret: better ROAS"`` is a
+        headline. Compound roots (``client_secret``, ``developer-token``)
+        keep the permissive separator in both modes; they do not occur in
+        an English sentence.
+
+    An unrecognised ``mode`` is treated as ``PROSE``. Prose is the wider
+    of the two, so the fail-safe direction is to over-mask.
     """
     scrubbed = _SECRET_VALUE.sub("***", text)
-    scrubbed = _SECRET_KEY_VALUE.sub(r"\1***", scrubbed)
-    scrubbed = _TOKEN_KEY_VALUE.sub(r"\1***", scrubbed)
-    if not mask_code_key_value:
-        return scrubbed
+    if mode == ARGUMENT:
+        scrubbed = _ARGUMENT_KEY_VALUE.sub(r"\1***", scrubbed)
+        scrubbed = _ARGUMENT_AMBIGUOUS_KEY_VALUE.sub(r"\1***", scrubbed)
+        return _ARGUMENT_TOKEN_KEY_VALUE.sub(r"\1***", scrubbed)
+    scrubbed = _PROSE_KEY_VALUE.sub(r"\1***", scrubbed)
+    scrubbed = _PROSE_TOKEN_KEY_VALUE.sub(r"\1***", scrubbed)
     return _CODE_KEY_VALUE.sub(r"\1***", scrubbed)

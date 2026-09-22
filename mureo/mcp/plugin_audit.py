@@ -39,6 +39,7 @@ from typing import Any
 # scrub a rationale without importing the MCP layer. It stays importable
 # from here — this is where every existing caller looks for it. The
 # redundant alias is what marks it an EXPLICIT re-export for strict mypy.
+from mureo.core.scrub import ARGUMENT, ScrubMode
 from mureo.core.scrub import scrub_text as scrub_text
 from mureo.fsutil import secure_chmod
 
@@ -122,31 +123,48 @@ def mask_arguments(value: Any, *, _depth: int = 0) -> Any:
     value class matches ``…<truncated>`` too.) The hard cap is unchanged —
     the result is never longer than ``_MAX_STR``.
 
-    The ``code=`` pass is switched OFF here: it is a rule for error prose,
-    and in an argument the same shape is an ordinary URL parameter. See
-    :func:`~mureo.core.scrub.scrub_text`. Every ``reason`` / ``rationale``
-    calls that function directly and keeps the pass.
+    Strings are scrubbed in ``ARGUMENT`` mode: the ``code=`` pass does not
+    run, and an ambiguous root needs an ``=`` or a quoted dict key rather
+    than a space-padded colon. Both differences exist because an argument
+    is a parameter, not a sentence — ``final_url`` carries
+    ``…?promo_code=…`` and ``headline`` carries ``"The secret: better
+    ROAS"``, and rewriting either one destroys the record this file exists
+    to be. See :func:`~mureo.core.scrub.scrub_text`.
     """
     if _depth > 4:
         return "<...>"
     if isinstance(value, str):
-        scrubbed = scrub_text(value[:SCRUB_WINDOW], mask_code_key_value=False)
-        if len(value) <= SCRUB_WINDOW and len(scrubbed) <= _MAX_STR:
-            return scrubbed
-        return scrubbed[: _MAX_STR - len(_TRUNC)] + _TRUNC  # hard cap == _MAX_STR
+        return _mask_string(value, mode=ARGUMENT)
     if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        for k, v in value.items():
-            key = str(k)
-            out[key] = (
-                "***"
-                if _SENSITIVE_KEY.search(key)
-                else mask_arguments(v, _depth=_depth + 1)
-            )
-        return out
+        return _mask_mapping(value, _depth=_depth)
     if isinstance(value, (list, tuple)):
         return [mask_arguments(v, _depth=_depth + 1) for v in list(value)[:50]]
     return value
+
+
+def _mask_string(value: str, *, mode: ScrubMode) -> str:
+    """Scrub one string value inside the window, then truncate it.
+
+    The window keeps the cost per value constant; the result is never
+    longer than :data:`_MAX_STR`. ``mode`` is the caller's answer to "is
+    this a parameter or a sentence" — see :func:`_mask_mapping`.
+    """
+    scrubbed = scrub_text(value[:SCRUB_WINDOW], mode=mode)
+    if len(value) <= SCRUB_WINDOW and len(scrubbed) <= _MAX_STR:
+        return scrubbed
+    return scrubbed[: _MAX_STR - len(_TRUNC)] + _TRUNC  # hard cap == _MAX_STR
+
+
+def _mask_mapping(value: dict[Any, Any], *, _depth: int) -> dict[str, Any]:
+    """Mask one mapping level: secret keys first, then everything else."""
+    out: dict[str, Any] = {}
+    for k, v in value.items():
+        key = str(k)
+        if _SENSITIVE_KEY.search(key):
+            out[key] = "***"
+        else:
+            out[key] = mask_arguments(v, _depth=_depth + 1)
+    return out
 
 
 #: Pre-#758 private spellings. Kept as aliases, not as re-implementations:

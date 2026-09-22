@@ -192,6 +192,89 @@ class TestMaskScrubsStringValues:
 
 
 @pytest.mark.unit
+class TestArgumentValuesAreNotAdCopy:
+    """#779 review 2 — the bare roots were eating advertising copy.
+
+    A root like ``secret`` or ``cookie`` matched on a space-padded colon,
+    which is how English punctuates a sentence and how nobody writes a
+    credential. ``headline``, ``description``, ``primary_text`` and a
+    campaign ``name`` are the most-written arguments in this product, and
+    the journal exists to record what the agent actually submitted.
+
+    The fix is the separator, not the root list: in ``argument`` mode an
+    ambiguous root needs the shape ``_CODE_KEY_VALUE`` already requires —
+    ``key=value`` with no space before the ``=``, or the quoted dict-key
+    form — so every machine-generated leak still matches.
+    """
+
+    @pytest.mark.parametrize(
+        "copy",
+        [
+            "The secret: better ROAS in 30 days",
+            "Trade secret: how we cut CPA 40%",
+            "Cookie: the new flavour drop",
+            "Signature: our chef's tasting menu",
+            "Credential: ISO 27001 certified",
+            "Password: freedom — a thriller",
+            # Judged with the six above: ``authorization`` is an ordinary
+            # English word in exactly the same way.
+            "Landing page authorization: pending review",
+        ],
+    )
+    def test_ad_copy_survives_the_argument_path(self, copy: str) -> None:
+        assert _mask({"headline": copy}) == {"headline": copy}
+
+    @pytest.mark.parametrize(
+        ("text", "leaked"),
+        [
+            # ``=`` with no space: every form-encoded and query-string leak.
+            ("app_secret=SHHH_SECRET_VALUE", "SHHH_SECRET_VALUE"),
+            ("cookie=SHHH_SECRET_VALUE", "SHHH_SECRET_VALUE"),
+            ("password=hunter2hunter2", "hunter2hunter2"),
+            ("authorization=SHHH_SECRET_VALUE", "SHHH_SECRET_VALUE"),
+            # A signed GCS URL — the real reason these roots are here.
+            (
+                "https://storage.googleapis.com/b/o.png?X-Goog-Credential="
+                "svc%40p.iam&X-Goog-Signature=abc123def456",
+                "abc123def456",
+            ),
+            # The quoted dict-key form an exception repr produces.
+            ('{"appSecret": "SHHH_SECRET_VALUE"}', "SHHH_SECRET_VALUE"),
+            ("{'cookie': 'SHHH_SECRET_VALUE'}", "SHHH_SECRET_VALUE"),
+            # Unambiguous compounds keep the loose separator: they do not
+            # occur in an English sentence, so a spaced colon is safe.
+            ("developer-token: abc123XYZ", "abc123XYZ"),
+            ("private_key: SHHH_SECRET_VALUE", "SHHH_SECRET_VALUE"),
+            # Spelled out as a compound for exactly this reason: the bare
+            # ``secret`` root would otherwise hand it the strict separator.
+            ("client_secret: amzn1.oa2-cs.v1.abcdef", "amzn1.oa2-cs.v1.abcdef"),
+        ],
+    )
+    def test_real_leak_shapes_still_match_in_an_argument(
+        self, text: str, leaked: str
+    ) -> None:
+        out = _mask({"note": text})["note"]
+        assert leaked not in out
+        assert "***" in out
+
+    @pytest.mark.parametrize(
+        "copy",
+        [
+            "The secret: better ROAS in 30 days",
+            "Cookie: the new flavour drop",
+            "Password: freedom — a thriller",
+            "Landing page authorization: pending review",
+        ],
+    )
+    def test_prose_mode_is_deliberately_unchanged(self, copy: str) -> None:
+        """The tightening is scoped to arguments. An error string, a
+        ``reason`` and a ``rationale`` keep today's wider rule — prose is
+        where a spaced colon really can introduce a credential, and where
+        over-masking costs legibility rather than the record itself."""
+        assert plugin_audit._scrub(copy) != copy
+
+
+@pytest.mark.unit
 class TestSensitiveKeysShortCircuit:
     """Step 1 of ``mask_arguments``: a secret-shaped KEY means the value is
     never inspected at all — not scrubbed, not recursed into, not truncated.
