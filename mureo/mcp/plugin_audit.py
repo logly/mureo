@@ -39,7 +39,7 @@ from typing import Any
 # scrub a rationale without importing the MCP layer. It stays importable
 # from here — this is where every existing caller looks for it. The
 # redundant alias is what marks it an EXPLICIT re-export for strict mypy.
-from mureo.core.scrub import ARGUMENT, ScrubMode
+from mureo.core.scrub import ARGUMENT, PROSE, ScrubMode
 from mureo.core.scrub import scrub_text as scrub_text
 from mureo.fsutil import secure_chmod
 
@@ -93,6 +93,27 @@ _SENSITIVE_KEY = re.compile(
 )
 
 
+#: Argument keys whose value is a SENTENCE, not a parameter — scrubbed in
+#: PROSE mode even though everything around them is an argument.
+#:
+#: :func:`~mureo.core.scrub.scrub_text` keys its rules on what the text IS,
+#: so something has to say so, and the key name is the only signal
+#: available at this depth. Matched exactly (case-insensitively): a key
+#: merely CONTAINING ``reason`` is some other parameter.
+#:
+#: Without this the fix for #779 reopened the divergence #779 exists to
+#: close. ``mureo.mcp._reason_param.split_call_reason`` returns the
+#: arguments UNTOUCHED for a tool that declares a ``reason`` of its own —
+#: ``mureo_state_action_log_append``,
+#: ``mureo_state_platform_not_collected_set`` and
+#: ``mureo_state_workspace_not_collected_set`` — so that sentence never
+#: becomes a rationale and stays inside ``args``. It would then be scrubbed
+#: by ARGUMENT rules here and by PROSE rules in
+#: :func:`mureo.core.actor.normalize_reason` on its way to STATE.json: one
+#: sentence, two stores, two answers.
+_PROSE_VALUE_KEYS = frozenset({"reason", "rationale"})
+
+
 def _audit_path() -> Path:
     """Resolve the audit file path (monkeypatched in tests)."""
     return Path.home() / ".mureo" / "plugin_audit.jsonl"
@@ -130,6 +151,11 @@ def mask_arguments(value: Any, *, _depth: int = 0) -> Any:
     ``…?promo_code=…`` and ``headline`` carries ``"The secret: better
     ROAS"``, and rewriting either one destroys the record this file exists
     to be. See :func:`~mureo.core.scrub.scrub_text`.
+
+    The exception is :data:`_PROSE_VALUE_KEYS` — a string under ``reason``
+    or ``rationale`` IS a sentence and is scrubbed in ``PROSE`` mode, so
+    that the three built-ins holding their own ``reason`` record it here
+    exactly as ``normalize_reason`` records it in ``STATE.json``.
     """
     if _depth > 4:
         return "<...>"
@@ -156,12 +182,19 @@ def _mask_string(value: str, *, mode: ScrubMode) -> str:
 
 
 def _mask_mapping(value: dict[Any, Any], *, _depth: int) -> dict[str, Any]:
-    """Mask one mapping level: secret keys first, then everything else."""
+    """Mask one mapping level: secret keys, prose keys, then the rest.
+
+    A prose key holding anything other than a string falls through to the
+    ordinary recursion — ``reason`` is prose when it IS a sentence, and a
+    plugin nesting a mapping under that name must not skip masking.
+    """
     out: dict[str, Any] = {}
     for k, v in value.items():
         key = str(k)
         if _SENSITIVE_KEY.search(key):
             out[key] = "***"
+        elif key.lower() in _PROSE_VALUE_KEYS and isinstance(v, str):
+            out[key] = _mask_string(v, mode=PROSE)
         else:
             out[key] = mask_arguments(v, _depth=_depth + 1)
     return out

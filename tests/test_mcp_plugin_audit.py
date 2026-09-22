@@ -275,6 +275,48 @@ class TestArgumentValuesAreNotAdCopy:
 
 
 @pytest.mark.unit
+class TestProseValuedArgumentKeys:
+    """An argument named ``reason`` or ``rationale`` holds a SENTENCE.
+
+    The mode split is keyed on what the text is, not on which function
+    reached it, so the masker has to say so for the keys whose values it
+    knows are prose. Otherwise the three built-ins that declare a
+    ``reason`` of their own — their argument never goes through
+    ``split_call_reason``, so it stays in ``args`` — would have that one
+    sentence scrubbed one way into ``JOURNAL.jsonl`` and another way into
+    ``STATE.json``.
+    """
+
+    @pytest.mark.parametrize("key", ["reason", "rationale", "Reason"])
+    def test_a_prose_key_is_scrubbed_as_prose(self, key: str) -> None:
+        sentence = "exchanging the grant with code=ANabcdefgh12 failed"
+        out = _mask({"entry": {key: sentence}})["entry"][key]
+        assert out == plugin_audit._scrub(sentence)
+        assert "ANabcdefgh12" not in out
+
+    def test_a_prose_key_at_the_top_level_too(self) -> None:
+        out = _mask({"reason": "not collected: code=ANabcdefgh12"})["reason"]
+        assert "ANabcdefgh12" not in out
+
+    def test_an_ordinary_key_keeps_argument_rules(self) -> None:
+        """The exception is scoped to prose keys — a ``final_url`` must
+        still keep its query string."""
+        url = "https://example.com/lp?promo_code=SUMMER2026"
+        assert _mask({"final_url": url})["final_url"] == url
+
+    def test_a_prose_key_holding_a_container_is_still_recursed(self) -> None:
+        """``reason`` is only prose when it IS a string; a plugin that
+        nests something under that name must not skip masking."""
+        out = _mask({"reason": {"api_key": "SHHH", "note": "hi"}})
+        assert out["reason"] == {"api_key": "***", "note": "hi"}
+
+    def test_a_prose_key_is_still_capped(self) -> None:
+        out = _mask({"reason": "y" * 2000})["reason"]
+        assert len(out) == plugin_audit._MAX_STR
+        assert out.endswith(plugin_audit._TRUNC)
+
+
+@pytest.mark.unit
 class TestSensitiveKeysShortCircuit:
     """Step 1 of ``mask_arguments``: a secret-shaped KEY means the value is
     never inspected at all — not scrubbed, not recursed into, not truncated.

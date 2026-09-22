@@ -242,6 +242,26 @@ class TestMaskingAndScrubbing:
         _record(tool="google_ads_ad_create", arguments={"final_url": url})
         assert _lines(log)[0]["args"]["final_url"] == url
 
+    def test_a_reason_owning_tool_scrubs_like_state_json(self, log: Path) -> None:
+        """#779 review 2 — the two stores must not disagree again.
+
+        Three built-ins declare a ``reason`` of their own, so
+        ``split_call_reason`` returns the arguments untouched and the
+        sentence stays inside ``args``. Scrubbing it in ARGUMENT mode there
+        while ``normalize_reason`` scrubs it in PROSE mode on its way to
+        STATE.json is exactly the "two stores, two rules" divergence #779
+        exists to close — reopened by the fix for it.
+        """
+        sentence = "exchanging the grant with code=ANabcdefgh12 failed"
+        _record(
+            tool="mureo_state_action_log_append",
+            arguments={"entry": {"reason": sentence}},
+        )
+        journalled = _lines(log)[0]["args"]["entry"]["reason"]
+
+        assert journalled == actor.normalize_reason(sentence)
+        assert "ANabcdefgh12" not in log.read_text(encoding="utf-8")
+
     def test_a_rationale_still_loses_an_authorization_code(self, log: Path) -> None:
         """...while ``rationale`` goes through ``scrub_text`` directly and
         keeps the rule."""
