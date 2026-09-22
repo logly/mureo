@@ -335,6 +335,23 @@ reading, and an argument VALUE gets two narrower ones:
 An argument whose KEY NAME is credential-shaped is redacted regardless of
 either rule — that first stage never looks at the value at all.
 
+**Free text is deliberately over-masked, and it looks like a bug.** In an
+error message, a `reason` or a `rationale`, a one-word key followed by a
+space-padded colon redacts the next word whatever it is:
+
+```
+The secret: better ROAS in 30 days   ->  The secret: *** ROAS in 30 days
+Cookie: the new flavour drop         ->  Cookie: *** new flavour drop
+ValueError: credentials: None        ->  ValueError: credentials: ***
+```
+
+That is the intended trade, not an oversight: over-masking costs
+legibility and under-masking costs a credential, and requiring machine
+punctuation in free text would let `password: hunter2` through. **Do not
+"fix" it by tightening the prose rules** — narrow them and the same edit
+that restores the sentence opens the leak. The narrow rules already exist
+for tool arguments, which is where ad copy actually travels.
+
 A credential carrying none of those keys and no recognisable prefix — one
 sitting in ordinary prose, such as *"the api key is …"* — is **not**
 detected and will be written as typed. Treat the scrubber as a backstop
