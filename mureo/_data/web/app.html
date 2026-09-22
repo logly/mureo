@@ -712,13 +712,18 @@
                 </details>
               </div>
 
+              <!-- guardrails-card:start -->
+              <!-- The card is the ACTIVE workspace's STRATEGY.md and nothing
+                   else. A backend with a client roster is served the page
+                   WITHOUT it: everything between these two markers is cut
+                   before the response leaves the server (#790, see
+                   mureo/web/app_html.py). There the currency is a per-client
+                   setting and belongs on the client's own edit form, and this
+                   card would write the operator's ambient workspace, which is
+                   no client's file. Keep the markers around the whole card. -->
               <div class="dashboard-section" data-dashboard-guardrails>
                 <h2 data-i18n="dashboard.guardrails_title">Guardrails</h2>
                 <p data-i18n="dashboard.guardrails_desc">The unit the money caps in the Guardrails section of STRATEGY.md are written in. Meta carries budgets and bids in the account currency's minor units, so mureo divides them by this currency's offset before comparing. Zero-decimal currencies such as JPY need no conversion.</p>
-                <label class="dashboard-guardrails-client" data-guardrails-client-row hidden>
-                  <span data-i18n="dashboard.guardrails_client_label">Client</span>
-                  <select data-guardrails-client></select>
-                </label>
                 <label>
                   <span data-i18n="dashboard.guardrails_currency_label">Account currency</span>
                   <select data-guardrails-currency></select>
@@ -727,6 +732,7 @@
                 <p class="dashboard-guardrails-result" data-guardrails-result role="status" aria-live="polite"></p>
                 <small class="field-hint" data-guardrails-path></small>
               </div>
+              <!-- guardrails-card:end -->
             </div>
           </div>
 

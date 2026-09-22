@@ -1017,15 +1017,6 @@ input[type="checkbox"] {
   margin: 10px 18px 10px 0;
 }
 
-/* The Guardrails card's client picker is shown only on a multi-account
-   backend (#786), and `.dashboard-section label` above sets an explicit
-   `display` — which overrides the UA `[hidden] { display: none }`, so a
-   single-workspace install would otherwise ship an empty dropdown on
-   screen. Same gotcha handled for .dashboard-reports-client / .btn. */
-.dashboard-guardrails-client[hidden] {
-  display: none;
-}
-
 /* …except a field that is a block of text in its own right. Those keep a
  * row to themselves, and a measure wide enough to read a command line in. */
 .dashboard-section label:has(textarea) {

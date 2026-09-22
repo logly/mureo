@@ -8,11 +8,20 @@
 // is SELECTED when the card opens (a dropdown that lost the stored value
 // invites an operator to "fix" it to something else), and what the Save
 // button actually posts.
+//
+// Since #790 the card knows nothing about clients. It reads and writes the
+// ACTIVE workspace's STRATEGY.md and nothing else, and a multi-client
+// backend is served no card at all — the markup is stripped before the
+// document leaves the server (`mureo/web/app_html.py`). So two more things
+// are pinned here: that nothing this module sends names a client, and that
+// a page served WITHOUT the card asks the currency endpoint for nothing.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { loadDashboardPage, settle, isVisible } = require("./dom_harness.js");
+const { loadDashboardPage, settle } = require("./dom_harness.js");
+
+const CURRENCY_ENDPOINT = "/api/strategy/currency";
 
 const CURRENCY_BODY = {
   status: "ok",
@@ -27,12 +36,24 @@ const CURRENCY_BODY = {
   exists: true,
 };
 
-async function openGuardrails(clients) {
-  const page = loadDashboardPage({
-    "/api/reports/clients": { clients: clients || [], can_archive: false },
+// A roster of two: the exact backend the deleted picker existed for. Every
+// test below runs against it, so each one also says that the card no longer
+// changes shape or destination when a client registry is present.
+const ROSTER = [
+  { slug: "acme", name: "Acme", active: true, archived: false },
+  { slug: "globex", name: "Globex", active: false, archived: false },
+];
+
+function loadGuardrails(currencyBody) {
+  return loadDashboardPage({
+    "/api/reports/clients": { clients: ROSTER, can_archive: false },
     "/api/reports/summary": {},
-    "/api/strategy/currency": CURRENCY_BODY,
+    "/api/strategy/currency": currencyBody || CURRENCY_BODY,
   });
+}
+
+async function openGuardrails(currencyBody) {
+  const page = loadGuardrails(currencyBody);
   page.document.dispatchEvent({ type: "mureo:ready" });
   await settle();
   // The dashboard opens on Setup, and isVisible() walks the ancestors — so
@@ -52,6 +73,10 @@ function openSection(page) {
 
 function currencySelect(page) {
   return page.root.querySelector("[data-guardrails-currency]");
+}
+
+function currencyRequests(page) {
+  return page.requests.filter((url) => url.startsWith(CURRENCY_ENDPOINT));
 }
 
 test.describe("the Guardrails card", function () {
@@ -94,34 +119,38 @@ test.describe("the Guardrails card", function () {
     assert.equal(hint.textContent, "dashboard.guardrails_path|path=/w/STRATEGY.md");
   });
 
-  test.it("hides the client row on a single-workspace install", async function () {
-    const page = await openGuardrails([]);
-    const row = page.root.querySelector("[data-guardrails-client-row]");
-    assert.equal(isVisible(row), false);
+  test.it("reads the active workspace, naming no client", async function () {
+    // Replaces the picker cases: the card used to ask
+    // /api/reports/clients first and hang a `client=` on this URL once the
+    // roster had two entries. With that same roster served, it asks once,
+    // for the one file the page is about (#790).
+    const page = await openGuardrails();
+    assert.deepEqual(currencyRequests(page), [CURRENCY_ENDPOINT]);
   });
 
-  test.it("shows the client picker when there is more than one", async function () {
-    const page = await openGuardrails([
-      { slug: "acme", name: "Acme", active: true, archived: false },
-      { slug: "globex", name: "Globex", active: false, archived: false },
-    ]);
-    const row = page.root.querySelector("[data-guardrails-client-row]");
-    assert.equal(isVisible(row), true);
-    const select = page.root.querySelector("[data-guardrails-client]");
-    assert.deepEqual(
-      select.children.map((o) => o.getAttribute("value")),
-      ["acme", "globex"]
-    );
-    assert.deepEqual(
-      select.children.map((o) => o.textContent),
-      ["Acme", "Globex"]
-    );
-    assert.equal(select.value, "acme");
+  test.it("shows no client control, roster or no roster", async function () {
+    const page = await openGuardrails();
+    assert.equal(page.root.querySelector("[data-guardrails-client-row]"), null);
+    assert.equal(page.root.querySelector("[data-guardrails-client]"), null);
+  });
+
+  test.it("does nothing when the server served no card", async function () {
+    // A multi-client backend gets the markup stripped server-side, so the
+    // whole module has to be inert on a page without it — not throw, and
+    // above all not read a file the operator is not looking at.
+    const page = loadGuardrails();
+    const card = page.root.querySelector("[data-dashboard-guardrails]");
+    assert.ok(card, "the fixture page should carry the card to remove");
+    card.parentNode.removeChild(card);
+    page.document.dispatchEvent({ type: "mureo:ready" });
+    await settle();
+    openSection(page);
+    assert.deepEqual(currencyRequests(page), []);
   });
 });
 
 test.describe("saving", function () {
-  test.it("posts the chosen code and no client on OSS", async function () {
+  test.it("posts the chosen code and names no client", async function () {
     // dom_harness's MUREO.postJson is a bare resolved stub that records
     // nothing, so the test installs a recording one over it.
     const page = await openGuardrails();
@@ -136,41 +165,16 @@ test.describe("saving", function () {
     // Compared field by field: the recorded object was built inside the
     // page's vm realm, so deepEqual would fail on the prototype alone.
     assert.equal(posted.length, 1);
-    assert.equal(posted[0].url, "/api/strategy/currency");
+    assert.equal(posted[0].url, CURRENCY_ENDPOINT);
     assert.equal(posted[0].body.currency, "JPY");
-    assert.equal(posted[0].body.client, null);
-  });
-
-  test.it("posts the selected client when the picker is shown", async function () {
-    const page = await openGuardrails([
-      { slug: "acme", name: "Acme", active: true, archived: false },
-      { slug: "globex", name: "Globex", active: false, archived: false },
-    ]);
-    const posted = [];
-    page.sandbox.MUREO.postJson = function (url, body) {
-      posted.push(body);
-      return Promise.resolve({ ok: true, body: { status: "ok", currency: "EUR" } });
-    };
-    page.root.querySelector("[data-guardrails-client]").value = "globex";
-    page.root.querySelector("[data-guardrails-save]").click();
-    await settle();
-    assert.equal(posted.length, 1);
-    assert.equal(posted[0].currency, "EUR");
-    assert.equal(posted[0].client, "globex");
+    // Not "client: null" — the card has no client to name at all (#790).
+    assert.deepEqual(Object.keys(posted[0].body), ["currency"]);
   });
 
   test.it("says so when the saved code is one mureo does not know", async function () {
-    const page = loadDashboardPage({
-      "/api/reports/clients": { clients: [], can_archive: false },
-      "/api/reports/summary": {},
-      "/api/strategy/currency": Object.assign({}, CURRENCY_BODY, {
-        currency: null,
-        raw_value: "XYZ",
-      }),
-    });
-    page.document.dispatchEvent({ type: "mureo:ready" });
-    await settle();
-    openSection(page);
+    const page = await openGuardrails(
+      Object.assign({}, CURRENCY_BODY, { currency: null, raw_value: "XYZ" })
+    );
     const result = page.root.querySelector("[data-guardrails-result]");
     assert.equal(result.textContent, "dashboard.guardrails_unknown_code|code=XYZ");
     assert.equal(currencySelect(page).value, "");

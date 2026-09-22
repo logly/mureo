@@ -1,6 +1,6 @@
 """The Guardrails ``currency`` bullet, written from ``mureo configure`` (#786).
 
-Three layers, in the order a change breaks them:
+Four layers, in the order a change breaks them:
 
 - the option table (what the dropdown may offer at all);
 - :func:`read_currency` / :func:`write_currency` — a surgical upsert into
@@ -8,11 +8,18 @@ Three layers, in the order a change breaks them:
   STRATEGY.md exactly as it found it, and must be readable back by the
   policy gate that the bullet exists for;
 - the two routes, on a real server, with the CSRF gate the rest of the
-  configure UI's writes go through.
+  configure UI's writes go through — including the ``client`` parameter,
+  which the CARD stopped sending in #790 but the routes still answer,
+  because that is the seam a multi-client layer resolves a client's own
+  STRATEGY.md through;
+- who is served the card at all: a single-workspace install gets it, a
+  backend that declares a client roster gets a document without it.
 """
 
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import json
 import threading
 import urllib.error
@@ -27,12 +34,14 @@ from mureo.context.strategy import (
     parse_strategy,
     read_strategy_file,
 )
+from mureo.core.state_store import FilesystemStateStore
 from mureo.policy.strategy_gate import guardrails_from_strategy_text
 from mureo.web.server import ConfigureWizard
 from mureo.web.strategy_currency import (
     CURRENCY_OPTIONS,
     StrategyCurrencyError,
     read_currency,
+    strategy_path_for_client,
     write_currency,
 )
 
@@ -302,16 +311,49 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     reset_runtime_context()
 
 
+class _AgencyStore(FilesystemStateStore):
+    """A store that ALSO declares the Agency client seam.
+
+    Declaring ``list_clients`` IS the opt-in
+    (:func:`~mureo.web.report_clients.agency_client_seam_present`), so this
+    reads the same workspace as the default store and differs from it in
+    exactly the one thing the card's visibility turns on.
+    """
+
+    def list_clients(self) -> list[dict[str, Any]]:
+        return [
+            {"slug": "acme", "name": "Acme", "active": True},
+            {"slug": "globex", "name": "Globex", "active": False},
+        ]
+
+
 @pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    """Start a ConfigureWizard bound to 127.0.0.1:0."""
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
+def agency_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """The same seam, pointed at a store that declares a client roster."""
+    from mureo.core.runtime_context import (
+        default_runtime_context,
+        reset_runtime_context,
+    )
+
+    reset_runtime_context()
+    ctx = dataclasses.replace(
+        default_runtime_context(workspace=tmp_path),
+        state_store=_AgencyStore(tmp_path),
+    )
+    monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
+    yield tmp_path
+    reset_runtime_context()
+
+
+@contextlib.contextmanager
+def _running_wizard(
+    home: Path, static_dir: Path | None = None
+) -> Iterator[ConfigureWizard]:
+    """A ConfigureWizard bound to 127.0.0.1:0, shut down on the way out."""
+    (home / ".claude" / "commands").mkdir(parents=True)
     (home / ".mureo").mkdir()
 
-    wiz = ConfigureWizard(home=home)
+    wiz = ConfigureWizard(home=home, static_dir=static_dir)
     thread = threading.Thread(target=wiz.serve, daemon=True)
     thread.start()
     wiz.wait_until_ready(timeout=5.0)
@@ -322,6 +364,38 @@ def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
         thread.join(timeout=2.0)
 
 
+@pytest.fixture
+def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
+    with _running_wizard(tmp_path / "home") as wiz:
+        yield wiz
+
+
+@pytest.fixture
+def wizard_without_card_markers(tmp_path: Path) -> Iterator[ConfigureWizard]:
+    """A wizard serving an ``app.html`` that lost its card markers.
+
+    Served out of a temp static dir, so the packaged asset is never
+    written to. This is the packaging defect the 500 exists for.
+    """
+    from pathlib import Path
+
+    from mureo.web.app_html import GUARDRAILS_CARD_END, GUARDRAILS_CARD_START
+
+    packaged = (
+        Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web" / "app.html"
+    )
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    broken = (
+        packaged.read_text(encoding="utf-8")
+        .replace(GUARDRAILS_CARD_START, "")
+        .replace(GUARDRAILS_CARD_END, "")
+    )
+    (static_dir / "app.html").write_text(broken, encoding="utf-8")
+    with _running_wizard(tmp_path / "broken-home", static_dir=static_dir) as wiz:
+        yield wiz
+
+
 def _url(wiz: ConfigureWizard, path: str) -> str:
     return f"http://127.0.0.1:{wiz.port}{path}"
 
@@ -330,6 +404,12 @@ def _get(wiz: ConfigureWizard, path: str) -> dict[str, Any]:
     with urllib.request.urlopen(_url(wiz, path), timeout=2.0) as res:
         body: dict[str, Any] = json.loads(res.read().decode("utf-8"))
     return body
+
+
+def _get_text(wiz: ConfigureWizard, path: str) -> str:
+    with urllib.request.urlopen(_url(wiz, path), timeout=2.0) as res:
+        text: str = res.read().decode("utf-8")
+    return text
 
 
 def _post(
@@ -426,3 +506,107 @@ class TestStrategyCurrencyRoutes:
         assert body["client"] == "acme"
         assert body["path"] == str(workspace / "STRATEGY.md")
         assert _get(wizard, "/api/strategy/currency?client=acme")["client"] == "acme"
+
+
+# ---------------------------------------------------------------------------
+# Who gets the card
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGuardrailsCardVisibility:
+    """The card is omitted for a multi-client backend (#790).
+
+    Asserted on the served document, because that is where the decision is
+    made: a browser that never receives the markup cannot be left showing a
+    live control by a script that failed to load.
+    """
+
+    def test_a_single_workspace_is_served_the_card(
+        self, wizard: ConfigureWizard, workspace: Path
+    ) -> None:
+        html = _get_text(wizard, "/")
+        assert "data-dashboard-guardrails" in html
+        assert "data-guardrails-currency" in html
+
+    def test_a_client_roster_is_served_a_page_without_it(
+        self, wizard: ConfigureWizard, agency_workspace: Path
+    ) -> None:
+        """Currency is a per-client setting there, and it belongs on the
+        client's own edit form — not on a card that would write the
+        operator's ambient workspace, which is no client's file."""
+        html = _get_text(wizard, "/")
+        assert "data-dashboard-guardrails" not in html
+        assert "data-guardrails-currency" not in html
+        # Only the card goes: the section it sat in, and the rest of the
+        # configure UI, are untouched.
+        assert "data-dashboard-advisors" in html
+        assert 'data-dashboard-group="demo"' in html
+
+    def test_a_page_that_cannot_be_cut_is_refused_not_served(
+        self, wizard_without_card_markers: ConfigureWizard, agency_workspace: Path
+    ) -> None:
+        """The 500 the strip's loudness is worth having.
+
+        Without this route wiring a marker defect would be a traceback at
+        best and a page WITH the card at worst — served to exactly the
+        backend the omission protects.
+        """
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            _get_text(wizard_without_card_markers, "/")
+        assert excinfo.value.code == 500
+        body = json.loads(excinfo.value.read())
+        assert body["error"] == "guardrails_card_markers_missing"
+
+    def test_a_single_workspace_never_reaches_that_refusal(
+        self, wizard_without_card_markers: ConfigureWizard, workspace: Path
+    ) -> None:
+        """Nothing is cut where there is no roster, so the same damaged
+        document still serves — the refusal is scoped to the one backend
+        that needs the card gone."""
+        html = _get_text(wizard_without_card_markers, "/")
+        assert "data-dashboard-guardrails" in html
+
+
+# ---------------------------------------------------------------------------
+# The client seam the card stopped using
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPerClientResolution:
+    """``client=`` still resolves a client's own STRATEGY.md (#790).
+
+    The card no longer sends it, so nothing in the browser would notice a
+    regression here — and this is precisely the seam the multi-client
+    layer that replaces the picker calls.
+    """
+
+    def test_a_client_slug_resolves_that_client_s_own_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.core.runtime_context import (
+            default_runtime_context,
+            reset_runtime_context,
+        )
+
+        class _Resolving(_AgencyStore):
+            def state_store_for_client(self, slug: str) -> FilesystemStateStore:
+                return FilesystemStateStore(tmp_path / slug)
+
+        reset_runtime_context()
+        ctx = dataclasses.replace(
+            default_runtime_context(workspace=tmp_path),
+            state_store=_Resolving(tmp_path),
+        )
+        monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
+        try:
+            path = strategy_path_for_client("acme")
+            assert path == tmp_path / "acme" / "STRATEGY.md"
+            write_currency(path, "EUR")
+            assert strategy_path_for_client(None) == tmp_path / "STRATEGY.md"
+        finally:
+            reset_runtime_context()
+        assert "- currency: EUR" in path.read_text(encoding="utf-8")
+        # The operator's own workspace is not what got written.
+        assert not (tmp_path / "STRATEGY.md").exists()

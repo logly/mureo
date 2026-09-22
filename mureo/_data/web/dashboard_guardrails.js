@@ -15,6 +15,15 @@
 // second one is a line that is in the document and being ignored, and the
 // result row says so rather than quietly showing the first option.
 //
+// One workspace, one file. The card reads and writes the STRATEGY.md of
+// the workspace the page is about and knows nothing about clients (#790):
+// a backend with a client roster is served no card at all — the markup is
+// cut server-side (`mureo/web/app_html.py`), because there the currency is
+// a per-client setting and this card would write the operator's own
+// ambient workspace, which is no client's file. So the render and the wire
+// below are guarded on the card being PRESENT: on a page served without
+// it this module does nothing whatsoever — no fetch, no listener.
+//
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
 // `window.MUREO_DASHBOARD_GUARDRAILS`. Loads AFTER dashboard_workspace.js
 // and BEFORE dashboard.js.
@@ -23,7 +32,6 @@
   "use strict";
 
   const CURRENCY_ENDPOINT = "/api/strategy/currency";
-  const CLIENTS_ENDPOINT = "/api/reports/clients";
   // Meta's offset for a zero-decimal currency: its minor unit IS its
   // currency unit, so nothing is converted and the label says so.
   const WHOLE_UNITS = 1;
@@ -54,57 +62,6 @@
     return await res.json();
   }
 
-  // ----- the client picker (Agency seam; absent on a single workspace) ---
-
-  function clientRowVisible() {
-    const row = node("[data-guardrails-client-row]");
-    return Boolean(row) && !row.hidden;
-  }
-
-  function selectedClient() {
-    if (!clientRowVisible()) return null;
-    const select = node("[data-guardrails-client]");
-    return (select && select.value) || null;
-  }
-
-  function fillClients(clients) {
-    const row = node("[data-guardrails-client-row]");
-    const select = node("[data-guardrails-client]");
-    if (!row || !select) return;
-    if (!Array.isArray(clients) || clients.length < 2) {
-      row.hidden = true;
-      return;
-    }
-    // Keep the operator where they were across a re-render; a client that
-    // has gone from the roster falls back to the first non-archived one.
-    const previous = select.value;
-    const slugs = clients.map(function (c) {
-      return c.slug;
-    });
-    clearOptions(select);
-    clients.forEach(function (c) {
-      addOption(select, c.slug, c.name || c.slug);
-    });
-    const firstOpen = clients.filter(function (c) {
-      return !c.archived;
-    })[0];
-    select.value =
-      slugs.indexOf(previous) === -1
-        ? (firstOpen || clients[0]).slug
-        : previous;
-    row.hidden = false;
-  }
-
-  async function loadClients() {
-    let body;
-    try {
-      body = await fetchJson(CLIENTS_ENDPOINT);
-    } catch (_err) {
-      body = null;
-    }
-    fillClients(body && body.clients);
-  }
-
   // ----- the currency select ------------------------------------------
 
   function optionLabel(option) {
@@ -132,20 +89,14 @@
       : "";
   }
 
-  function currencyUrl() {
-    const client = selectedClient();
-    return client
-      ? CURRENCY_ENDPOINT + "?client=" + encodeURIComponent(client)
-      : CURRENCY_ENDPOINT;
-  }
-
   async function renderGuardrails() {
+    // Absent on a multi-client backend, which is served no card at all:
+    // nothing to render, and no STRATEGY.md of anyone's to read.
     const select = node("[data-guardrails-currency]");
     if (!select) return;
-    await loadClients();
     let body;
     try {
-      body = await fetchJson(currencyUrl());
+      body = await fetchJson(CURRENCY_ENDPOINT);
     } catch (_err) {
       body = null;
     }
@@ -174,10 +125,7 @@
     button.disabled = true;
     let res;
     try {
-      res = await MUREO.postJson(CURRENCY_ENDPOINT, {
-        currency: code,
-        client: selectedClient(),
-      });
+      res = await MUREO.postJson(CURRENCY_ENDPOINT, { currency: code });
     } catch (_err) {
       res = null;
     } finally {
@@ -200,12 +148,6 @@
   }
 
   function wireGuardrails() {
-    const client = node("[data-guardrails-client]");
-    if (client) {
-      client.addEventListener("change", function () {
-        renderGuardrails();
-      });
-    }
     const save = node("[data-guardrails-save]");
     if (save) {
       save.addEventListener("click", function () {
