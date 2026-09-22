@@ -44,6 +44,44 @@ class TestMask:
         assert masked["campaign_id"] == "123"
         assert masked["name"] == "ok"
 
+    @pytest.mark.parametrize(
+        "key",
+        [
+            # The field name in a Google service-account JSON; the value is
+            # a PEM private key. No root matched it — ``api[_-]?key`` needs
+            # the literal ``api``.
+            "private_key",
+            "privateKey",
+            "private-key",
+            # ``passwd`` was a root, ``pwd`` is not a substring of it.
+            "pwd",
+            "signature",
+        ],
+    )
+    def test_remaining_credential_key_names_are_redacted(self, key: str) -> None:
+        """#779 — three spellings the KEY path did not recognise."""
+        assert _mask({key: "SENSITIVE_VALUE_HERE"})[key] == "***"
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            # ``_SENSITIVE_KEY`` matches as a SUBSTRING, so ``sig`` as a root
+            # would collapse all three of these — value and all.
+            "design",
+            "assign",
+            "signal",
+            # ``key`` alone would take these, for the same reason.
+            "keyword",
+            "monkey",
+            # Ordinary arguments, pinned so the wider root list cannot start
+            # swallowing the trail it exists to record.
+            "campaign_id",
+            "final_url",
+        ],
+    )
+    def test_ordinary_argument_names_are_not_redacted(self, key: str) -> None:
+        assert _mask({key: "ordinary-value"})[key] == "ordinary-value"
+
     def test_long_string_truncated(self) -> None:
         out = _mask("x" * 1000)
         assert out.endswith("…<truncated>")

@@ -58,6 +58,15 @@
   client's self-declared `clientInfo` — unbounded external input on an
   append-only, line-oriented file. An unreported client still records as
   `null`.
+- **An argument named `private_key` was journalled in cleartext** (#779).
+  The key-name masker matches as a substring, which hid the gap: `app_secret`
+  and even `appsecret_proof` were covered all along via `secret`, but
+  `private_key` matched nothing — `api_key` needs the literal `api`. That is
+  the field name in a Google service-account JSON and its value is a PEM
+  private key. `private_key` / `privateKey`, `pwd` (not a substring of
+  `passwd`) and `signature` now mask like every other credential field.
+  `sig` is deliberately not a root: substring matching would collapse
+  `design`, `assign` and `signal` to `***`, value and all.
 - **The scrubber's key list now matches the one the argument masker uses**
   (#779). The KEY path masks an argument whose name merely *contains*
   `token` / `secret` / `password` / `credential` / `cookie`; the VALUE path

@@ -66,8 +66,27 @@ _TRUNC = "…<truncated>"
 #: that happily matches the part inside the window.
 SCRUB_WINDOW = _MAX_STR + 64
 
+#: Argument KEY names whose value is replaced with ``"***"`` unread. Matched
+#: as a SUBSTRING, so ``client_secret``, ``app_secret`` and ``appsecret_proof``
+#: all land on ``secret`` and no prefix needs listing.
+#:
+#: ``private[_-]?key``, ``pwd`` and ``signature`` joined for #779. Substring
+#: matching hid the gap: ``secret_key`` looked covered by a root list that
+#: does not contain ``key``, and it is — via ``secret`` — but
+#: ``private_key`` has no such luck, because ``api[_-]?key`` needs the
+#: literal ``api``. That is the field name in a Google service-account JSON
+#: and its value is a PEM private key, so it was landing in the journal in
+#: cleartext. ``pwd`` is not a substring of ``passwd``. The ``[_-]?`` on
+#: ``private[_-]?key`` is the #528 rule: ``privateKey`` is how the same
+#: field is spelled one surface over.
+#:
+#: ``sig`` is deliberately NOT a root. A substring match would take
+#: ``design``, ``assign`` and ``signal`` with it and collapse three ordinary
+#: arguments to ``"***"`` — the whole value, unread. ``signature`` in full
+#: costs nothing and catches the field that matters.
 _SENSITIVE_KEY = re.compile(
-    r"(token|secret|password|passwd|credential|api[_-]?key|authorization"
+    r"(token|secret|password|passwd|pwd|credential|api[_-]?key"
+    r"|private[_-]?key|signature|authorization"
     r"|access[_-]?token|refresh[_-]?token|client[_-]?secret|bearer|cookie)",
     re.IGNORECASE,
 )

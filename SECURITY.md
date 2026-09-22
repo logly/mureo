@@ -283,10 +283,16 @@ appear in tool error messages.
 `JOURNAL.jsonl` (`mureo/mcp/journal.py`). It is created `0600`
 (owner-only), its arguments are masked and its failure reasons scrubbed
 with the **same** masker and scrubber as the plugin audit log above, and
-it never stores result bodies or credentials. The masking is not by key
-name alone: a value under a secret-shaped key (`api_key`, `access_token`,
-…) becomes `***`, and every string value that survives is then run through
-the scrubber as well.
+it never stores result bodies or credentials.
+
+Masking happens in two stages, and the first is the stronger one. An
+argument whose **key name contains** `token`, `secret`, `password`,
+`passwd`, `pwd`, `credential`, `api_key`, `private_key`, `signature`,
+`authorization`, `bearer` or `cookie` becomes `***` with its value never
+read at all — contains, not equals, so `client_secret`, `app_secret`,
+`appsecret_proof` and `privateKey` are all covered without listing any
+prefix. Every string value that survives that first stage is then run
+through the scrubber.
 
 **The scrubber recognises shapes; it does not detect secrets.** It redacts
 a value when the text takes a form it knows:
