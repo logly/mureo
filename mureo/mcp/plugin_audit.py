@@ -22,6 +22,13 @@ Design:
   an ordinary free-text argument does not survive either (#779); and
   over-long strings are truncated so a plugin cannot bloat the log with
   a payload dump.
+- **Every FIELD is bounded; the LINE is not.** Each string is capped, a
+  list keeps 50 items and recursion stops at depth 4, but the number of
+  argument KEYS is not capped: 20,000 ordinary arguments still write a
+  ~10 MB line (measured). Say "field", not "line", when describing this —
+  an audit trail that overstates its own limits is the kind of claim an
+  operator plans capacity around. Capping the key count would change
+  recorded behaviour and belongs in its own issue.
 """
 
 from __future__ import annotations
@@ -242,7 +249,7 @@ def record_plugin_call(
     try:
         rec = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            # Capped like every other field: no part of a line is unbounded.
+            # Every FIELD is capped; the LINE is not (see module docstring).
             "tool": tool[:_MAX_STR],
             "source": (source or "<unknown>")[:_MAX_STR],
             "ok": ok,

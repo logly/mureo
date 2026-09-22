@@ -57,7 +57,10 @@
   `JOURNAL.jsonl` and `plugin_audit.jsonl` (#779). `client` is the MCP
   client's self-declared `clientInfo` — unbounded external input on an
   append-only, line-oriented file. An unreported client still records as
-  `null`.
+  `null`. This bounds every *field*, not the *line*: the number of argument
+  keys is still uncapped, so 20,000 ordinary arguments write a ~10 MB line
+  as they did before. Capping the key count changes what is recorded and is
+  left to its own change.
 - **An argument named `private_key` was journalled in cleartext** (#779).
   The key-name masker matches as a substring, which hid the gap: `app_secret`
   and even `appsecret_proof` were covered all along via `secret`, but
