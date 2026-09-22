@@ -7,7 +7,8 @@ POST routes are gated by the Host-header check + CSRF token.
 
 Routes
 ------
-``GET  /``                       → ``app.html``
+``GET  /``                       → ``app.html`` (minus the Guardrails card on
+                                   a multi-client backend — see app_html.py)
 ``GET  /static/<file>``          → bundled ``mureo/_data/web/<file>``
 ``GET  /api/status``             → status_collector snapshot
 ``GET  /api/csrf``               → ``{"csrf_token": "..."}``
@@ -99,6 +100,7 @@ from mureo.web.advisors import (
     list_advisors,
     remove_advisor,
 )
+from mureo.web.app_html import AppHtmlError, render_app_html
 from mureo.web.byod_actions import (
     byod_clear,
     byod_import,
@@ -831,6 +833,15 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         body = _resolve_static_body(self.wizard, "app.html")
         if body is None:
             send_error_json(self, 500, "missing_app_html")
+            return
+        try:
+            # The one place the document is not served verbatim: a
+            # multi-client backend is sent no Guardrails card at all
+            # (#790 — see mureo/web/app_html.py for why it is cut here
+            # rather than hidden in the browser).
+            body = render_app_html(body)
+        except AppHtmlError as exc:
+            send_error_json(self, 500, exc.code)
             return
         send_bytes(self, body, content_type=_static_content_type("app.html"))
 

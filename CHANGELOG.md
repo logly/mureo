@@ -1,5 +1,27 @@
 ## [Unreleased]
 
+### Changed
+
+- **The Guardrails card is the active workspace's, and no longer offers a
+  client picker** (#790). The card added in #786 carried a `<select>` of
+  clients above the currency dropdown on a backend that reported two or
+  more, and set one client's STRATEGY.md at a time. That was the wrong
+  shape at both ends. A single-workspace install has exactly one
+  STRATEGY.md, so the picker, the `/api/reports/clients` fetch and the
+  per-client query parameter existed for a case it never has; and where
+  there IS a roster, one dropdown reads as "this setting has one value"
+  while silently belonging to whichever client it happens to be on. The
+  card now reads and writes the active workspace's file and nothing else,
+  and a backend that declares a client roster is served no card at all —
+  the markup is cut out of `app.html` before the response leaves the
+  server (new `mureo/web/app_html.py`), so a script that fails to load
+  cannot leave a live control on screen writing the operator's own ambient
+  workspace, which is no client's file. Per-client currency belongs beside
+  the other per-client settings, on the client's own edit form. The
+  `GET` / `POST /api/strategy/currency` routes are unchanged and still
+  honour `client=`: that is the seam the multi-client layer resolves each
+  client's own STRATEGY.md through.
+
 ## [0.21.1] - 2026-09-21
 
 ### Added

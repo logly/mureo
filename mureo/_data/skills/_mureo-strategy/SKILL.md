@@ -236,8 +236,10 @@ keys (all optional):
   is ignored with a warning (and the caps fall back to that minor-unit
   behaviour); Google amounts are never affected by it. The code can also be
   picked from a dropdown in the **Advanced** section of `mureo configure`
-  (the **Guardrails** card), which upserts this one bullet and leaves the
-  rest of STRATEGY.md untouched.
+  (the **Guardrails** card), which upserts this one bullet in the **active
+  workspace's** STRATEGY.md and leaves the rest of it untouched. A backend
+  that keeps a client roster is served no such card: the currency is a
+  per-client setting there, on the client's own edit form.
 - `max_daily_budget_per_campaign` — a budget mutation proposing more than this
   (per campaign) is **refused**. Given in **account-currency units**: Google
   Ads micros are converted (÷1e6), and Meta's minor units are converted
