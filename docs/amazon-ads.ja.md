@@ -218,7 +218,13 @@ API error: ***: Multi marketplace query requests only support query by primary r
   （`API error: Amazon returned no error message; raw body: ...`）。
   `{"code":"***"}` だけを渡して判断材料ゼロにはしません。極端に長い
   本文は `…<truncated>` を付けて切り詰め、エージェントの文脈を
-  埋め尽くさないようにしています。
+  埋め尽くさないようにしています。16000 文字を超える本文は、伏字処理を
+  かける**前**に切ります（伏字処理の所要時間は入力長に比例し、ここは
+  ディスパッチ経路だからです）。切られた本文は多くの場合 JSON として
+  解析できなくなるため、その断片を Amazon 自身の文言のように渡すのでは
+  なく `API error: Amazon returned an oversized error body; scrubbed
+  prefix: …` として返します。これまで `<code>: <message>` の形に
+  整形できていた本文は、これまでどおり整形されます。
 - **判定には MCP プロトコルの `isError` フラグを使います**（応答本文の
   形からの推測ではありません）。Amazon のホスト型エンドポイントは失敗時
   に `isError` を立てます。実アカウントで実測して確認済み（2026-08-05）:

@@ -220,7 +220,13 @@ so:
   (`API error: Amazon returned no error message; raw body: ...`) instead
   of handing over an opaque `{"code":"***"}`. Very long bodies are
   truncated with a `…<truncated>` marker so a runaway response cannot
-  flood the agent's context.
+  flood the agent's context. Past 16000 characters the body is cut
+  *before* the redactor reads it, because redaction costs time linear in
+  its input and this runs on the dispatch path. A cut body usually stops
+  parsing, so rather than pass the fragment off as Amazon's own wording
+  it arrives as `API error: Amazon returned an oversized error body;
+  scrubbed prefix: …`. Anything that flattened into `<code>: <message>`
+  before still does.
 - **The signal is the MCP protocol's own `isError` flag**, not a guess
   about what the response body looks like. Amazon's hosted endpoint sets
   `isError` on a failed call — verified live against a real account

@@ -101,6 +101,30 @@ _NO_MESSAGE_TEXT = "Amazon returned no error message; raw body:"
 _MAX_FAILURE_TEXT = 4000
 _TRUNCATION_MARKER = "…<truncated>"
 
+#: Cap on the RAW body handed to the redactor, ahead of flattening (#791).
+#:
+#: Deliberately NOT :data:`_MAX_FAILURE_TEXT`. Scrubbing runs BEFORE
+#: :func:`_flatten_for_display` — the ordering is a security property, see
+#: there — so this caps the JSON while 4000 caps the text flattening
+#: renders out of it, and flattening only ever shortens what it parses: the
+#: ``{"code":…,"message":…}`` scaffolding becomes ``code: message`` and a
+#: JSON escape collapses to the single character it names (6:1 for
+#: ``\uXXXX``). Capping the input at the output budget would therefore cut
+#: bodies that had room to spare. 4x is that headroom with margin: the
+#: longest failure observed live is ~150 characters, so 16000 is >100x it,
+#: and the regex work it buys is ~4 ms where a 2 MB body cost ~480 ms.
+#:
+#: No cap can be exact — JSON permits unbounded whitespace between tokens,
+#: so an arbitrarily long body can render into four characters — which is
+#: why the over-cap path announces itself (:data:`_OVERSIZE_BODY_TEXT`)
+#: instead of pretending the number was always enough.
+_SCRUB_INPUT_HEADROOM = 4
+_MAX_SCRUB_INPUT = _MAX_FAILURE_TEXT * _SCRUB_INPUT_HEADROOM
+
+#: Prefix for a body that was cut at :data:`_MAX_SCRUB_INPUT` and no longer
+#: parses. See :func:`_display_text` for why that combination has to speak.
+_OVERSIZE_BODY_TEXT = "Amazon returned an oversized error body; scrubbed prefix:"
+
 
 def _flatten_for_display(scrubbed: str) -> str:
     """PRESENTATION ONLY: ``{"code": X, "message": Y, …}`` ⇒ ``X: Y (…)``.
@@ -164,14 +188,39 @@ def _failure_text(content: list[Any]) -> str:
     Scrubbing happens HERE, at the point the string is taken out of the
     response and before anything reshapes it, so every caller gets a redacted
     string and the redactor still sees the payload in its original form
-    (see :func:`_flatten_for_display`). The result is capped last, so the
-    bound holds for every path through this function.
+    (see :func:`_display_text`). The result is capped last, so the bound
+    holds for every path through this function.
     """
     for block in content:
         text = getattr(block, "text", None)
         if isinstance(text, str) and text.strip():
-            return _bounded(_flatten_for_display(scrub_secrets(text.strip())))
+            return _bounded(_display_text(text.strip()))
     return _NO_FAILURE_TEXT
+
+
+def _display_text(raw: str) -> str:
+    """Amazon's body, scrubbed inside a bounded window, then reshaped.
+
+    Scrub first, flatten second, for the reason :func:`_flatten_for_display`
+    records. What #791 added is the WINDOW: ``scrub_secrets`` slices to
+    :data:`_MAX_SCRUB_INPUT` plus the straddle margin before it scrubs, so a
+    runaway body costs a constant instead of ~480 ms per 2 MB on the MCP
+    dispatch path. A body under the cap comes back exactly as before.
+
+    Over the cap the body is CUT, and a cut JSON body normally stops
+    parsing — which leaves :func:`_flatten_for_display` handing the text
+    straight back. Passing that fragment off as Amazon's own diagnostic is
+    the failure mode this guard exists for, so it is labelled instead. Not
+    every over-cap body is affected: trailing filler cuts away without
+    touching the object, and then the agent gets the flattened form as
+    usual. The test is the SCRUBBED length rather than ``len(raw)`` because
+    redaction can itself push a body over the cap (``pwd=a`` ⇒ ``pwd=***``).
+    """
+    scrubbed = scrub_secrets(raw, cap=_MAX_SCRUB_INPUT)
+    flattened = _flatten_for_display(scrubbed)
+    if flattened != scrubbed or len(scrubbed) < _MAX_SCRUB_INPUT:
+        return flattened
+    return f"{_OVERSIZE_BODY_TEXT} {scrubbed}"
 
 
 def _bounded(text: str) -> str:

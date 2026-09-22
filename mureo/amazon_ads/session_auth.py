@@ -33,37 +33,78 @@ CredsLoader = Callable[[], "AmazonAdsCredentials | None"]
 Refresher = Callable[["AmazonAdsCredentials"], "LwaTokens"]
 TokenSaver = Callable[[str, str | None], None]
 
+#: Cap on the operator-facing error text a failure is reported with (#791).
+#:
+#: 512 — the neighbour it copies is :data:`mureo.mcp.plugin_audit._MAX_STR`,
+#: which already caps the SAME failures for the SAME reader: the configure
+#: wizard scrubs an Amazon authorization or manifest error to ``_MAX_STR``
+#: before it reaches the operator (``mureo/web/handlers.py``, #779), and
+#: :data:`mureo.mcp.journal.MAX_FIELD_CHARS` is the third name for that
+#: number. One operator meets these strings on three surfaces — wizard,
+#: CLI, tool result — and finding one of them cut shorter than the others
+#: would read as a different failure.
+#:
+#: Copied by value rather than imported, because ``_MAX_STR`` is a budget
+#: for a RECORDED string on an append-only file while this is a DISPLAY
+#: budget, and neither this module nor the CLI may import the MCP layer at
+#: module level (see :func:`scrub_secrets`). ``mureo.cli.amazon_cmd``
+#: imports it from HERE rather than declaring a second one: the two
+#: surfaces report the same two failures in nearly the same words, so two
+#: numbers would drift apart with nothing to catch it.
+MAX_ERROR_TEXT = 512
+
 
 class AmazonBridgeError(RuntimeError):
     """Raised by ``handle_mcp_tool`` when the bridge cannot proceed
     (e.g. ``amazon_ads`` credentials are not configured)."""
 
 
-def scrub_secrets(text: str) -> str:
+def scrub_secrets(text: str, *, cap: int) -> str:
     """Redact secret-shaped substrings from an operator-facing error string.
 
-    Delegates to the audit trail's redactor so there is ONE definition of
-    "what a token looks like" across every string mureo shows a human or an
-    agent (the audit log, the CLI, and here).
+    Delegates to the shared redactor so there is ONE definition of "what a
+    token looks like" across every string mureo shows a human or an agent
+    (the audit log, the CLI, and here).
 
-    Imported lazily, and that is load-bearing rather than stylistic:
-    ``mureo.mcp.__init__`` imports ``mureo.mcp.server``, which builds its
-    plugin tool list at import time and reaches the Amazon bridge through
-    ``mureo.amazon_ads.provider``. A module-level ``from mureo.mcp.plugin_audit
-    import _scrub`` therefore re-enters a partially-initialized
-    ``mureo.amazon_ads`` module and collapses plugin discovery to an
-    ImportError — observed, not hypothetical. Resolving it at call time breaks
-    the cycle; by then both modules are fully imported.
+    BOUNDED, not merely cut afterwards (#791): ``scrub_capped`` slices to
+    ``cap`` plus :data:`~mureo.core.scrub.STRADDLE_MARGIN` BEFORE it
+    scrubs, so the work is a constant instead of the size of whatever
+    arrived — a 2 MB failure body used to buy half a second of regex work
+    on the dispatch path to produce a few hundred characters. The margin is
+    what makes the slice safe: a credential that STARTS inside the
+    surviving prefix is still recognised whole.
+
+    ``cap`` is required rather than defaulted because the two callers hold
+    different budgets and a new one has to say which it is: the bridge
+    scrubs a body it is about to reshape and cut again, this module reports
+    one line to an operator (:data:`MAX_ERROR_TEXT`).
+
+    ``PROSE`` mode, passed explicitly: this is exception text — a sentence
+    a human reads — not a tool argument. So the ``code=<authorization
+    code>`` pass must run (an LwA failure can echo the form body it POSTed)
+    and an ambiguous root such as ``password:`` counts with a space-padded
+    colon. See :func:`mureo.core.scrub.scrub_text`.
+
+    Imported at call time. The cycle that once made that load-bearing ran
+    through ``mureo.mcp.plugin_audit``: ``mureo.mcp.__init__`` imports
+    ``mureo.mcp.server``, which builds its plugin tool list at import time
+    and reaches the Amazon bridge through ``mureo.amazon_ads.provider``, so
+    a module-level import re-entered a partially-initialized
+    ``mureo.amazon_ads`` and collapsed plugin discovery to an ImportError —
+    observed, not hypothetical. #758 phase 2 moved the redactor BELOW the
+    MCP layer into ``mureo.core.scrub`` (standard library only), so this
+    line can no longer re-enter anything; what keeps it at call time now is
+    the fail-safe below.
 
     Fail-safe: if the redactor cannot be resolved at all, the text is dropped
     rather than passed through unredacted. An unhelpful message is a much
     smaller problem than a leaked token.
     """
     try:
-        from mureo.mcp.plugin_audit import _scrub
+        from mureo.core.scrub import PROSE, scrub_capped
     except Exception:  # noqa: BLE001 — never leak because an import failed
         return "<error text withheld: redactor unavailable>"
-    return _scrub(text)
+    return scrub_capped(text, cap, mode=PROSE)
 
 
 def runtime_token_saver(access_token: str, refresh_token: str | None) -> None:
@@ -190,7 +231,8 @@ class SessionCredentials:
             tokens = self._refresher(creds)
         except _LwaAuthError as auth_exc:
             raise AmazonBridgeError(
-                f"{auth_failure_prefix}: {scrub_secrets(str(auth_exc))}"
+                f"{auth_failure_prefix}: "
+                f"{scrub_secrets(str(auth_exc), cap=MAX_ERROR_TEXT)}"
             ) from (cause if cause is not None else auth_exc)
         try:
             self._token_saver(tokens.access_token, tokens.refresh_token)
@@ -210,7 +252,8 @@ class SessionCredentials:
             # as those inputs change.
             raise AmazonBridgeError(
                 f"Amazon access token was refreshed but could not be saved to "
-                f"~/.mureo/credentials.json: {scrub_secrets(str(save_exc))}"
+                f"~/.mureo/credentials.json: "
+                f"{scrub_secrets(str(save_exc), cap=MAX_ERROR_TEXT)}"
             ) from (cause if cause is not None else save_exc)
         return dataclasses.replace(
             creds,
@@ -220,6 +263,7 @@ class SessionCredentials:
 
 
 __all__ = [
+    "MAX_ERROR_TEXT",
     "AmazonBridgeError",
     "CredsLoader",
     "Refresher",

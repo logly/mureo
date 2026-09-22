@@ -35,6 +35,7 @@ from mureo.amazon_ads.manifest import (
     manifest_max_age_days,
     manifest_path,
 )
+from mureo.amazon_ads.session_auth import MAX_ERROR_TEXT
 from mureo.auth import (
     AmazonAdsCredentials,
     load_amazon_ads_credentials,
@@ -46,20 +47,36 @@ amazon_app = typer.Typer(name="amazon", help="Amazon Ads official-MCP bridge set
 
 
 def _scrub_secrets(text: str) -> str:
-    """Redact credential material from an error string.
+    """Redact credential material from an error string, within a cap.
 
-    Lazy import of ``mureo.mcp.plugin_audit`` (#486 pattern, guarded by
-    ``tests/test_cli_import_hygiene.py``): that package's ``__init__``
-    imports the MCP server, which collects plugin tools AT IMPORT — and
-    since #516 that collection resolves the active ``RuntimeContext``, so
-    a module-level import here made *every* CLI command (``--help``
-    included) load whatever a registered ``mureo.runtime_context_factory``
-    drags in, ad-platform SDKs and their import-time warnings included.
-    Scrubbing is only ever needed on an error path.
+    BOUNDED (#791): ``scrub_capped`` slices to :data:`MAX_ERROR_TEXT` plus
+    the straddle margin BEFORE it scrubs, so a runaway ``str(exc)`` costs a
+    constant rather than ~250 ms per megabyte to produce a terminal line.
+    The margin is what makes the slice safe — a credential that STARTS
+    inside the surviving prefix is still recognised whole. The cap is the
+    ONE the ``amazon_ads`` seam declares, not a second number: the wizard,
+    this command and the bridge report the same failures to the same
+    operator (see :data:`mureo.amazon_ads.session_auth.MAX_ERROR_TEXT`).
+
+    ``PROSE`` mode, passed explicitly: this is exception text — a sentence
+    an operator reads — not a tool argument, so the ``code=<authorization
+    code>`` pass must run and an ambiguous root such as ``password:``
+    counts with a space-padded colon.
+
+    The import stays at call time (#486 pattern, guarded by
+    ``tests/test_cli_import_hygiene.py``). It used to resolve
+    ``mureo.mcp.plugin_audit``, whose package ``__init__`` imports the MCP
+    server, which collects plugin tools AT IMPORT — and since #516 that
+    collection resolves the active ``RuntimeContext``, so a module-level
+    import here made *every* CLI command (``--help`` included) load
+    whatever a registered ``mureo.runtime_context_factory`` drags in.
+    ``mureo.core.scrub`` is the same redactor below that layer (#758 phase
+    2) and drags in nothing, but it does compile a dozen patterns at
+    import, and scrubbing is only ever needed on an error path.
     """
-    from mureo.mcp.plugin_audit import _scrub
+    from mureo.core.scrub import PROSE, scrub_capped
 
-    return _scrub(text)
+    return scrub_capped(text, MAX_ERROR_TEXT, mode=PROSE)
 
 
 def _echo_manifest_age() -> None:
