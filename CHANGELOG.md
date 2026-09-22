@@ -110,9 +110,11 @@
   dict key (`"password": "…"`). Compound keys (`client_secret`, `api_key`,
   `developer-token`, …) are unchanged in both modes: nobody writes
   `client_secret:` in a headline. Prose scrubbing is byte-for-byte what the
-  rest of this fix produces — verified over all 27,526 distinct string
-  literals in the repository. Against v0.21.1 it redacts more in 71 of
-  them, which is the key coverage above and not the mode split.
+  rest of this fix produces — verified over every distinct string literal
+  in the repository (27,534 of them at this commit; the corpus is the
+  repository's own source, so the figure moves). Against v0.21.1 it
+  redacts more in 72 of them, always more and never less, and that is the
+  key coverage above rather than the mode split.
 - **A `reason` argument was scrubbed by two different rules** (#779). Three
   built-in tools declare a `reason` parameter of their own
   (`mureo_state_action_log_append` and the two `not_collected_set` tools),

@@ -238,9 +238,11 @@ def _mask_mapping(
 
 
 #: Pre-#758 private spellings. Kept as aliases, not as re-implementations:
-#: ``mureo.web.handlers``, ``mureo.amazon_ads.session_auth``,
-#: ``mureo.cli.amazon_cmd`` and ``tests/test_mcp_plugin_audit.py`` import
-#: them, and a second definition is a second answer to "what is a secret".
+#: a second definition is a second answer to "what is a secret".
+#: ``_scrub`` is imported by ``mureo.amazon_ads.session_auth`` and
+#: ``mureo.cli.amazon_cmd``; ``_mask`` only by the tests. (``_MAX_STR``,
+#: which ``mureo.web.handlers`` imports, is the real constant, not an
+#: alias.)
 _mask = mask_arguments
 _scrub = scrub_text
 
