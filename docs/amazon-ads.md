@@ -361,7 +361,10 @@ tokens/secrets never appear in error messages or logs.
 - If `~/.mureo/credentials.json` cannot be written (most often because
   it is malformed — mureo refuses to overwrite a corrupt file and lose
   your other providers' credentials), the call fails with that reason
-  rather than a silent retry loop.
+  rather than a silent retry loop. The reason is redacted and cut to
+  512 characters before it is shown — the same budget the configure
+  wizard applies to the same failures — so a runaway error body never
+  floods a terminal line.
 - `mureo amazon refresh-manifest` mints a token the same way: if no
   `access_token` is stored and `refresh_token` + `client_secret` are,
   it performs one LwA exchange, saves the token, and then generates the

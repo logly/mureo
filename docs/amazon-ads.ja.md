@@ -356,7 +356,9 @@ Amazon の ad は状態が 1 つだけ（`state` は「設定された状態」�
 - `~/.mureo/credentials.json` に書き込めない場合（多くは JSON が
   壊れているケース。他プロバイダの認証情報を失わないよう mureo は
   壊れたファイルを上書きしません）、黙って再試行せずその理由を
-  付けて失敗します。
+  付けて失敗します。その理由文は伏字処理のうえ 512 文字で切ってから
+  表示します（configure ウィザードが同じ失敗に使っているのと同じ
+  上限です）。
 - `mureo amazon refresh-manifest` も同じ方法でトークンを発行します。
   `access_token` が未保存で `refresh_token` ＋ `client_secret` がある
   場合、LwA 交換を 1 回だけ実行してトークンを保存してからマニフェスト
