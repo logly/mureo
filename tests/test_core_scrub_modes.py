@@ -10,6 +10,8 @@ shapes that must not.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from mureo.mcp import plugin_audit
@@ -130,10 +132,45 @@ class TestProseValuedArgumentKeys:
         assert _mask({"final_url": url})["final_url"] == url
 
     def test_a_prose_key_holding_a_container_is_still_recursed(self) -> None:
-        """``reason`` is only prose when it IS a string; a plugin that
-        nests something under that name must not skip masking."""
+        """``reason`` holding a container must not skip masking."""
         out = _mask({"reason": {"api_key": "SHHH", "note": "hi"}})
         assert out["reason"] == {"api_key": "***", "note": "hi"}
+
+    @pytest.mark.parametrize(
+        "wrapped",
+        [
+            {"reason": ["password: hunter2hunter2"]},
+            {"reason": {"detail": "password: hunter2hunter2"}},
+            {"reason": [{"detail": "password: hunter2hunter2"}]},
+            {"entry": {"rationale": ["password: hunter2hunter2"]}},
+        ],
+        ids=["list", "dict", "list-of-dict", "nested-rationale"],
+    )
+    def test_prose_survives_being_wrapped_in_a_container(
+        self, wrapped: dict[str, Any]
+    ) -> None:
+        """A plugin is free to declare ``reason`` as a list or an object.
+
+        Reading the mode off the immediate value's type left the sentence
+        scrubbed as an ARGUMENT once it was wrapped, so a space-padded
+        colon — the one shape ARGUMENT mode deliberately ignores — went
+        through verbatim while the identical text one level up was masked.
+        """
+        assert "hunter2hunter2" not in repr(_mask(wrapped))
+
+    def test_an_ordinary_key_under_a_prose_key_is_prose_too(self) -> None:
+        """The mode is sticky below a prose key, not re-derived per key.
+
+        ``{"reason": {"headline": …}}`` is not ad copy on its way to a
+        platform; it is whatever a plugin packed into its rationale. Prose
+        is the wider reading, so the sticky choice can only redact more.
+        """
+        out = _mask({"reason": {"headline": "The secret: better ROAS"}})
+        assert out["reason"]["headline"] == "The secret: *** ROAS"
+        # ...and the same key outside a rationale still keeps ad copy.
+        assert _mask({"headline": "The secret: better ROAS"}) == {
+            "headline": "The secret: better ROAS"
+        }
 
     def test_a_prose_key_is_still_capped(self) -> None:
         out = _mask({"reason": "y" * 2000})["reason"]

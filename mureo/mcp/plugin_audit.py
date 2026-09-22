@@ -142,7 +142,7 @@ def _audit_path() -> Path:
     return Path.home() / ".mureo" / "plugin_audit.jsonl"
 
 
-def mask_arguments(value: Any, *, _depth: int = 0) -> Any:
+def mask_arguments(value: Any, *, _depth: int = 0, _mode: ScrubMode = ARGUMENT) -> Any:
     """Recursively mask secrets and truncate over-long strings.
 
     Public since #758 for the same reason as :func:`scrub_text`: the
@@ -175,19 +175,28 @@ def mask_arguments(value: Any, *, _depth: int = 0) -> Any:
     ROAS"``, and rewriting either one destroys the record this file exists
     to be. See :func:`~mureo.core.scrub.scrub_text`.
 
-    The exception is :data:`_PROSE_VALUE_KEYS` — a string under ``reason``
-    or ``rationale`` IS a sentence and is scrubbed in ``PROSE`` mode, so
-    that the three built-ins holding their own ``reason`` record it here
-    exactly as ``normalize_reason`` records it in ``STATE.json``.
+    The exception is :data:`_PROSE_VALUE_KEYS` — text under ``reason`` or
+    ``rationale`` IS a sentence and is scrubbed in ``PROSE`` mode, so that
+    the three built-ins holding their own ``reason`` record it here exactly
+    as ``normalize_reason`` records it in ``STATE.json``. ``_mode`` carries
+    that answer down the recursion: everything below a prose key is prose,
+    however a plugin wraps it. A plugin is free to declare ``reason`` as a
+    list or an object — the three built-ins declare it ``"type": "string"``,
+    but nothing constrains a plugin's schema — and reading the mode off the
+    immediate value's type alone would have left
+    ``{"reason": ["password: hunter2hunter2"]}`` as submitted while masking
+    the same sentence one nesting level up.
     """
     if _depth > 4:
         return "<...>"
     if isinstance(value, str):
-        return _mask_string(value, mode=ARGUMENT)
+        return _mask_string(value, mode=_mode)
     if isinstance(value, dict):
-        return _mask_mapping(value, _depth=_depth)
+        return _mask_mapping(value, _depth=_depth, _mode=_mode)
     if isinstance(value, (list, tuple)):
-        return [mask_arguments(v, _depth=_depth + 1) for v in list(value)[:50]]
+        return [
+            mask_arguments(v, _depth=_depth + 1, _mode=_mode) for v in list(value)[:50]
+        ]
     return value
 
 
@@ -204,22 +213,27 @@ def _mask_string(value: str, *, mode: ScrubMode) -> str:
     return scrubbed[: _MAX_STR - len(_TRUNC)] + _TRUNC  # hard cap == _MAX_STR
 
 
-def _mask_mapping(value: dict[Any, Any], *, _depth: int) -> dict[str, Any]:
-    """Mask one mapping level: secret keys, prose keys, then the rest.
+def _mask_mapping(
+    value: dict[Any, Any], *, _depth: int, _mode: ScrubMode
+) -> dict[str, Any]:
+    """Mask one mapping level: secret keys first, then the rest by mode.
 
-    A prose key holding anything other than a string falls through to the
-    ordinary recursion — ``reason`` is prose when it IS a sentence, and a
-    plugin nesting a mapping under that name must not skip masking.
+    A prose key switches the mode for its value and for everything nested
+    under it; masking itself is never skipped. Prose is the wider reading
+    (its separator set is a superset of ``ARGUMENT``'s), so widening below
+    a ``reason`` can only ever redact more, never less.
     """
     out: dict[str, Any] = {}
     for k, v in value.items():
         key = str(k)
         if _SENSITIVE_KEY.search(key):
             out[key] = "***"
-        elif key.lower() in _PROSE_VALUE_KEYS and isinstance(v, str):
-            out[key] = _mask_string(v, mode=PROSE)
+            continue
+        mode = PROSE if key.lower() in _PROSE_VALUE_KEYS else _mode
+        if isinstance(v, str):
+            out[key] = _mask_string(v, mode=mode)
         else:
-            out[key] = mask_arguments(v, _depth=_depth + 1)
+            out[key] = mask_arguments(v, _depth=_depth + 1, _mode=mode)
     return out
 
 
