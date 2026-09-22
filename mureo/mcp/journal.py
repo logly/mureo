@@ -23,7 +23,7 @@ swallowed and logged at WARNING, so a journal problem can never break or
 mask a tool call. The file is created ``0600`` from the first write.
 Masking is not re-implemented here — ``args`` go through
 :func:`mureo.mcp.plugin_audit.mask_arguments` and ``reason`` through
-:func:`mureo.mcp.plugin_audit.scrub_text` — so the journal cannot redact
+:func:`mureo.core.scrub.scrub_capped` — so the journal cannot redact
 less than the audit log does. The RESULT body is never stored, only the
 outcome and a capped reason string.
 
@@ -69,8 +69,9 @@ import mureo
 # entry without importing ``mureo.mcp``. Kept importable from here — this is
 # where every existing caller looks for it.
 from mureo.core.actor import client_info, session_id, set_client_info
+from mureo.core.scrub import scrub_capped
 from mureo.mcp.journal_chain import chain_append
-from mureo.mcp.plugin_audit import mask_arguments, scrub_text
+from mureo.mcp.plugin_audit import mask_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -248,10 +249,13 @@ def build_record(
     # sentence sitting where a parameter belongs. Emitted only when given, so
     # a record without a rationale keeps the shape it had before phase 2.
     if rationale is not None:
-        record["rationale"] = scrub_text(str(rationale))[:MAX_REASON_CHARS]
+        record["rationale"] = scrub_capped(str(rationale), MAX_REASON_CHARS)
     record["outcome"] = outcome
     if outcome != "ok" and reason is not None:
-        record["reason"] = scrub_text(str(reason))[:MAX_REASON_CHARS]
+        # Bounded window, not end to end: an ``invalid_args`` reason is a
+        # jsonschema message, and jsonschema embeds the rejected INSTANCE in
+        # it — the size of this string is the size of the caller's arguments.
+        record["reason"] = scrub_capped(str(reason), MAX_REASON_CHARS)
     record["duration_ms"] = int(duration_ms)
     record["batch_id"] = _open_batch_id()
     if rollback:

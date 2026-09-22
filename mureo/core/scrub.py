@@ -32,7 +32,14 @@ ScrubMode = Literal["prose", "argument"]
 PROSE: ScrubMode = "prose"
 ARGUMENT: ScrubMode = "argument"
 
-__all__ = ["ARGUMENT", "PROSE", "ScrubMode", "scrub_text"]
+__all__ = [
+    "ARGUMENT",
+    "PROSE",
+    "STRADDLE_MARGIN",
+    "ScrubMode",
+    "scrub_capped",
+    "scrub_text",
+]
 
 # Secret-shaped *values* that can appear in a free-text error string
 # (``error`` is not key/value-masked like ``args``). Covers HTTP bearer
@@ -298,3 +305,47 @@ def scrub_text(text: str, *, mode: ScrubMode = PROSE) -> str:
     scrubbed = _PROSE_KEY_VALUE.sub(r"\1***", scrubbed)
     scrubbed = _PROSE_TOKEN_KEY_VALUE.sub(r"\1***", scrubbed)
     return _CODE_KEY_VALUE.sub(r"\1***", scrubbed)
+
+
+#: How far PAST a caller's own length cap the scrubber is allowed to look.
+#:
+#: Every trail that scrubs also caps: the journal cuts a ``reason`` to
+#: ``MAX_REASON_CHARS``, the plugin audit cuts a string to ``_MAX_STR``, the
+#: web handlers cut a detail to the same. Scrubbing the WHOLE input before
+#: cutting is an unbounded O(n) on text nobody upstream bounds — ~250 ms per
+#: megabyte, on the asyncio event loop, for output that was going to be 512
+#: characters either way. So the passes run over ``cap + STRADDLE_MARGIN``
+#: characters and not one more.
+#:
+#: The margin exists for the credential that STRADDLES the cut. A match has
+#: to START before the cut to leave anything behind, and the longest shape
+#: the scrubber must SEE to recognise one is ``Basic `` plus its
+#: 16-character minimum base64 value — 22 characters. A quoted key is
+#: shorter: ``"developer_token": "`` plus one value character is 21. So any
+#: margin of ~22 already closes it; 64 is that with room for a root added
+#: later, and costs 64 characters of regex work per recorded string.
+#:
+#: Nothing past the window can leak, because nothing past it is returned:
+#: :func:`scrub_capped` slices FIRST. The one shape the margin does not
+#: cover is a separator padded with more whitespace than the margin
+#: (``password`` + 64 spaces + ``: …``), which no leaking surface emits and
+#: which would have to straddle the cut as well.
+STRADDLE_MARGIN = 64
+
+
+def scrub_capped(text: str, cap: int, *, mode: ScrubMode = PROSE) -> str:
+    """Scrub the first ``cap`` characters of ``text`` at a constant cost.
+
+    Equivalent to ``scrub_text(text)[:cap]`` for anything short enough to
+    be recorded whole, but the work does not grow with the input: see
+    :data:`STRADDLE_MARGIN`. Use this at every boundary that records a
+    capped string — a scrubber reading a 2 MB argument to produce 512
+    characters is a denial of service with extra steps.
+
+    The two differ only for an over-long input, and only in WHICH text is
+    kept: this returns the scrubbed first ``cap`` characters, where the
+    unbounded form returns the first ``cap`` characters of the scrubbed
+    whole — which can pull text from far past the cap forward as earlier
+    matches shrink. Neither leaks; this one is simply predictable.
+    """
+    return scrub_text(text[: cap + STRADDLE_MARGIN], mode=mode)[:cap]

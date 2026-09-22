@@ -20,12 +20,13 @@ from typing import Any
 import pytest
 
 import mureo
-from mureo.core import actor
+from mureo.core import actor, scrub
 from mureo.core.runtime_context import (
     RuntimeContext,
     default_runtime_context,
     reset_runtime_context,
 )
+from mureo.core.scrub import STRADDLE_MARGIN
 from mureo.core.state_store import FilesystemStateStore
 from mureo.mcp import journal
 from mureo.mcp.journal_chain import verify_chain
@@ -297,6 +298,34 @@ class TestUnboundedFieldsAreCapped:
         monkeypatch.setattr(actor, "_client", None)
         _record()
         assert _lines(log)[0]["client"] is None
+
+    def test_a_huge_reason_is_capped_without_being_scrubbed_whole(
+        self, log: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#779 review — ``reason`` is the worst of the unbounded paths.
+
+        An ``invalid_args`` reason is a jsonschema message, and jsonschema
+        embeds the rejected INSTANCE in it: a tool called with a megabyte
+        of arguments produced a megabyte of regex work on the event loop
+        for a field that was going to be cut to 512 characters.
+        """
+        seen: list[int] = []
+        real = scrub.scrub_text
+
+        def _spy(text: str, **kwargs: object) -> str:
+            seen.append(len(text))
+            return real(text, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(scrub, "scrub_text", _spy)
+        _record(
+            outcome="invalid_args",
+            reason="api_key=SHHH_SECRET " + "x" * 2_000_000,
+        )
+
+        assert max(seen) == journal.MAX_REASON_CHARS + STRADDLE_MARGIN
+        record = _lines(log)[0]
+        assert "SHHH_SECRET" not in record["reason"]
+        assert len(record["reason"]) == journal.MAX_REASON_CHARS
 
 
 @pytest.mark.unit

@@ -39,7 +39,7 @@ from typing import Any
 # scrub a rationale without importing the MCP layer. It stays importable
 # from here — this is where every existing caller looks for it. The
 # redundant alias is what marks it an EXPLICIT re-export for strict mypy.
-from mureo.core.scrub import ARGUMENT, PROSE, ScrubMode
+from mureo.core.scrub import ARGUMENT, PROSE, STRADDLE_MARGIN, ScrubMode, scrub_capped
 from mureo.core.scrub import scrub_text as scrub_text
 from mureo.fsutil import secure_chmod
 
@@ -57,15 +57,13 @@ _TRUNC = "…<truncated>"
 #: fifty 1 MB arguments, all of it blocking the loop.
 #:
 #: Nothing is lost by the window: the result is truncated to ``_MAX_STR``
-#: anyway, so text past it never reaches the file. The 64 characters of
-#: slack are for a credential that STRADDLES the cut — a match has to start
-#: before the cut to leave anything behind, and 64 more characters is enough
-#: to recognise every shape the scrubber knows (the longest key,
-#: ``developer_token`` plus quoting and separator, is ~20; ``Basic `` plus
-#: its 16-character minimum base64 value is 22). A value longer than that is
-#: still matched, because every pattern's value class is a ``+`` / ``{n,}``
-#: that happily matches the part inside the window.
-SCRUB_WINDOW = _MAX_STR + 64
+#: anyway, so text past it never reaches the file. The slack is for a
+#: credential that STRADDLES the cut and is sized in
+#: :data:`~mureo.core.scrub.STRADDLE_MARGIN`, which every other capped-and-
+#: scrubbed field on these trails uses too. This one cannot simply call
+#: :func:`~mureo.core.scrub.scrub_capped`: an over-long argument keeps a
+#: ``…<truncated>`` marker, so the cut has to happen here.
+SCRUB_WINDOW = _MAX_STR + STRADDLE_MARGIN
 
 #: Argument KEY names whose value is replaced with ``"***"`` unread. Matched
 #: as a SUBSTRING, so ``client_secret``, ``app_secret`` and ``appsecret_proof``
@@ -242,7 +240,7 @@ def record_plugin_call(
         if platform_ok is False:
             rec["platform_ok"] = False
         if error is not None:
-            rec["error"] = scrub_text(error)[:_MAX_STR]
+            rec["error"] = scrub_capped(error, _MAX_STR)
         path = _audit_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(rec, ensure_ascii=False, default=str) + "\n"

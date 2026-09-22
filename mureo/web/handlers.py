@@ -564,7 +564,8 @@ def _generate_amazon_manifest(
     toolless bridge.
     """
     from mureo.amazon_ads import manifest as amazon_manifest
-    from mureo.mcp.plugin_audit import _MAX_STR, _scrub
+    from mureo.core.scrub import scrub_capped
+    from mureo.mcp.plugin_audit import _MAX_STR
 
     out_path = amazon_manifest.manifest_path_for(credentials_path)
     try:
@@ -572,7 +573,7 @@ def _generate_amazon_manifest(
             amazon_manifest.generate_manifest(creds, out_path=out_path)
         )
     except Exception as exc:  # noqa: BLE001 — any transport/auth failure
-        detail = _scrub(f"{type(exc).__name__}: {exc}")[:_MAX_STR]
+        detail = scrub_capped(f"{type(exc).__name__}: {exc}", _MAX_STR)
         logger.warning("Amazon manifest refresh failed: %s", detail)
         return None, detail
     return written, ""
@@ -1890,9 +1891,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         sending the operator to check their client secret.
         """
         from mureo.amazon_ads.lwa import AmazonAuthCodeError
-        from mureo.mcp.plugin_audit import _MAX_STR, _scrub
+        from mureo.core.scrub import scrub_capped
+        from mureo.mcp.plugin_audit import _MAX_STR
 
-        detail = _scrub(str(exc))[:_MAX_STR]
+        detail = scrub_capped(str(exc), _MAX_STR)
         logger.warning("Amazon authorization exchange failed: %s", detail)
         rejected = isinstance(exc, AmazonAuthCodeError)
         send_json(
