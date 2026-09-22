@@ -35,6 +35,8 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from mureo.amazon_ads.lwa import AmazonAuthCodeError, AmazonAuthError, LwaTokens
+from mureo.core import scrub
+from mureo.core.scrub import STRADDLE_MARGIN
 from mureo.mcp.plugin_audit import _MAX_STR
 from mureo.web.server import ConfigureWizard
 
@@ -564,6 +566,32 @@ class TestExchangeRouteFailures:
 
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
         _code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        assert len(body["detail"]) == _MAX_STR
+
+    def test_the_scrubber_does_not_read_the_whole_failure(
+        self, wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#779 review — capping the OUTPUT still read the whole INPUT.
+
+        An LwA failure carries the provider's response body, which this
+        process does not bound.
+        """
+        _write_credentials(wizard, {"client_id": "cid", "client_secret": "s"})
+        seen: list[int] = []
+        real = scrub.scrub_text
+
+        def _spy(text: str, **kwargs: object) -> str:
+            seen.append(len(text))
+            return real(text, **kwargs)  # type: ignore[arg-type]
+
+        def _boom(**_kw: Any) -> LwaTokens:
+            raise AmazonAuthError("x" * 2_000_000)
+
+        monkeypatch.setattr(scrub, "scrub_text", _spy)
+        monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
+        _code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+
+        assert max(seen) == _MAX_STR + STRADDLE_MARGIN
         assert len(body["detail"]) == _MAX_STR
 
     def test_no_secret_reaches_the_response_or_the_log(

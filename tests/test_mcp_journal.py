@@ -20,14 +20,15 @@ from typing import Any
 import pytest
 
 import mureo
-from mureo.core import actor
+from mureo.core import actor, scrub
 from mureo.core.runtime_context import (
     RuntimeContext,
     default_runtime_context,
     reset_runtime_context,
 )
+from mureo.core.scrub import STRADDLE_MARGIN
 from mureo.core.state_store import FilesystemStateStore
-from mureo.mcp import journal
+from mureo.mcp import journal, plugin_audit
 from mureo.mcp.journal_chain import verify_chain
 
 
@@ -197,6 +198,20 @@ class TestMaskingAndScrubbing:
         assert args["api_key"] == "***"
         assert args["cookie"] == "***"
 
+    def test_a_secret_inside_an_argument_value_is_scrubbed(self, log: Path) -> None:
+        """#779 — masking by KEY name left a secret pasted into an ordinary
+        free-text argument verbatim on the line, while the same sentence was
+        scrubbed on its way into ``STATE.json``."""
+        _record(
+            tool="mureo_state_action_log_append",
+            arguments={
+                "entry": {"reason": "rotating after access_token=SHHH_SECRET failed"}
+            },
+        )
+        assert "SHHH_SECRET" not in log.read_text(encoding="utf-8")
+        reason = _lines(log)[0]["args"]["entry"]["reason"]
+        assert reason == "rotating after access_token=*** failed"
+
     def test_long_argument_strings_are_truncated(self, log: Path) -> None:
         _record(arguments={"note": "x" * 2000})
         note = _lines(log)[0]["args"]["note"]
@@ -220,6 +235,114 @@ class TestMaskingAndScrubbing:
     def test_reason_is_capped(self, log: Path) -> None:
         _record(outcome="platform_error", reason="y" * 2000)
         assert len(_lines(log)[0]["reason"]) == 512
+
+    def test_an_argument_url_survives_masking(self, log: Path) -> None:
+        """#779 review — the ``code=`` rule is for error prose, not for the
+        landing page an agent actually submitted."""
+        url = "https://example.com/lp?utm_source=x&promo_code=SUMMER2026&ref=1"
+        _record(tool="google_ads_ad_create", arguments={"final_url": url})
+        assert _lines(log)[0]["args"]["final_url"] == url
+
+    def test_a_reason_owning_tool_scrubs_like_state_json(self, log: Path) -> None:
+        """#779 review 2 — the two stores must not disagree again.
+
+        Three built-ins declare a ``reason`` of their own, so
+        ``split_call_reason`` returns the arguments untouched and the
+        sentence stays inside ``args``. Scrubbing it in ARGUMENT mode there
+        while ``normalize_reason`` scrubs it in PROSE mode on its way to
+        STATE.json is exactly the "two stores, two rules" divergence #779
+        exists to close — reopened by the fix for it.
+        """
+        sentence = "exchanging the grant with code=ANabcdefgh12 failed"
+        _record(
+            tool="mureo_state_action_log_append",
+            arguments={"entry": {"reason": sentence}},
+        )
+        journalled = _lines(log)[0]["args"]["entry"]["reason"]
+
+        assert journalled == actor.normalize_reason(sentence)
+        assert "ANabcdefgh12" not in log.read_text(encoding="utf-8")
+
+    def test_a_rationale_still_loses_an_authorization_code(self, log: Path) -> None:
+        """...while ``rationale`` goes through ``scrub_text`` directly and
+        keeps the rule."""
+        _record(rationale="retrying the exchange with code=ANabcdefgh12")
+        assert "ANabcdefgh12" not in log.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+class TestTheTwoTrailsShareOneBudget:
+    """#779 review — three names, one number, and nothing said so.
+
+    The journal and the plugin audit log record the same calls. A reader
+    comparing them must not find one trail cut shorter than the other, so
+    the three caps are equal ON PURPOSE. They stay three names because
+    they cap three different kinds of field and one may yet need to move
+    alone — this test is what turns that into a decision instead of a
+    drift somebody notices in production.
+    """
+
+    def test_the_journal_and_the_audit_log_cut_at_the_same_length(self) -> None:
+        assert journal.MAX_REASON_CHARS == plugin_audit._MAX_STR
+        assert journal.MAX_FIELD_CHARS == plugin_audit._MAX_STR
+
+
+@pytest.mark.unit
+class TestUnboundedFieldsAreCapped:
+    """A journal line is a line: no single field may be unbounded.
+
+    ``client`` is the strongest case — it is the MCP client's self-declared
+    ``clientInfo``, which :mod:`mureo.core.actor` only strips — but ``tool``
+    and ``source`` arrive from the same dispatch and get the same budget.
+    """
+
+    def test_client_is_capped(self, log: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(actor, "_client", "c" * 5000)
+        _record()
+        assert len(_lines(log)[0]["client"]) == journal.MAX_FIELD_CHARS
+
+    def test_tool_and_source_are_capped(self, log: Path) -> None:
+        _record(tool="t" * 5000, family="plugin", source="s" * 5000)
+        record = _lines(log)[0]
+        assert len(record["tool"]) == journal.MAX_FIELD_CHARS
+        assert len(record["source"]) == journal.MAX_FIELD_CHARS
+
+    def test_an_absent_client_stays_null(
+        self, log: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The cap must not turn ``None`` into ``""`` — "unknown" and
+        "reported nothing" are the same answer and both read as ``null``."""
+        monkeypatch.setattr(actor, "_client", None)
+        _record()
+        assert _lines(log)[0]["client"] is None
+
+    def test_a_huge_reason_is_capped_without_being_scrubbed_whole(
+        self, log: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#779 review — ``reason`` is the worst of the unbounded paths.
+
+        An ``invalid_args`` reason is a jsonschema message, and jsonschema
+        embeds the rejected INSTANCE in it: a tool called with a megabyte
+        of arguments produced a megabyte of regex work on the event loop
+        for a field that was going to be cut to 512 characters.
+        """
+        seen: list[int] = []
+        real = scrub.scrub_text
+
+        def _spy(text: str, **kwargs: object) -> str:
+            seen.append(len(text))
+            return real(text, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(scrub, "scrub_text", _spy)
+        _record(
+            outcome="invalid_args",
+            reason="api_key=SHHH_SECRET " + "x" * 2_000_000,
+        )
+
+        assert max(seen) == journal.MAX_REASON_CHARS + STRADDLE_MARGIN
+        record = _lines(log)[0]
+        assert "SHHH_SECRET" not in record["reason"]
+        assert len(record["reason"]) == journal.MAX_REASON_CHARS
 
 
 @pytest.mark.unit

@@ -1014,7 +1014,7 @@ file answers, and a trail of successes cannot answer it.
 | `family` | `google_ads`, `meta_ads`, `search_console`, `rollback`, `batch`, `change_import`, `analysis`, `mureo_context`, `analytics`, `learning`, `learning_preflight`, `creative_studio`, `plugin`, `unknown` |
 | `source` | Plugin distribution — present only when `family` is `plugin` |
 | `mutating` | Whether the call was classified as a mutation |
-| `args` | The call's arguments, **masked** (secret-shaped keys → `***`, long strings truncated) |
+| `args` | The call's arguments, **masked** (secret-shaped keys → `***`, secret-shaped values inside the remaining strings scrubbed, long strings truncated) |
 | `rationale` | WHY the agent made the call — the `reason` parameter it passed. Scrubbed. Absent when none was given |
 | `outcome` | `ok` / `platform_error` / `exception` / `denied` / `refused` / `invalid_args` |
 | `reason` | Why a non-`ok` outcome happened; scrubbed and capped at 512 chars. Absent for `ok` |
@@ -1054,7 +1054,21 @@ why it was made.
 **What is never written.** Result bodies and credentials. The journal
 stores the masked arguments and the outcome — never what a tool returned,
 and never a token: `args` go through the same masker and `reason` through
-the same scrubber as the plugin audit log.
+the same scrubber as the plugin audit log. Since #779 the masker also runs
+the scrubber over every string VALUE it keeps, so a credential pasted into
+a free-text argument is redacted too, not only one that arrived under a
+secret-shaped key.
+
+An argument value is scrubbed under slightly narrower rules than an error
+message, because it is a parameter and not a sentence: the `code=` rule
+does not run (`…?promo_code=SUMMER2026` in a `final_url` is a landing
+page), and a one-word key such as `secret` or `password` needs an `=` or a
+quoted dict key rather than a space-padded colon (`"The secret: better
+ROAS"` is a headline). Compound keys — `client_secret`, `api_key`,
+`developer-token` — are redacted either way. The exception is a value
+under `reason` or `rationale`, which IS a sentence and is scrubbed exactly
+as `STATE.json` scrubs it, so the two stores never disagree. `SECURITY.md`
+lists the shapes.
 
 **Where the file lives.** Beside `STATE.json` / `STRATEGY.md` when the
 server is bound to a real workspace directory (`<workspace>/JOURNAL.jsonl`),

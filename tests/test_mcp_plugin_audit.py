@@ -2,6 +2,14 @@
 
 Phase 1 of #114: every plugin tool call is recorded to a dedicated
 append-only JSONL log; secrets are masked; auditing never raises.
+
+Scope: the MASKER (`mask_arguments`) and the WRITER
+(`record_plugin_call`). The scrubber underneath them is pinned by its own
+three modules, split out of this one when it passed 800 lines:
+
+- ``tests/test_core_scrub_patterns.py`` — which shapes count as a secret.
+- ``tests/test_core_scrub_modes.py`` — prose rules versus argument rules.
+- ``tests/test_core_scrub_window.py`` — the bounded window and its margin.
 """
 
 from __future__ import annotations
@@ -11,6 +19,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from mureo.core import scrub
+from mureo.core.scrub import STRADDLE_MARGIN
 from mureo.mcp import plugin_audit
 from mureo.mcp.plugin_audit import _mask, record_plugin_call
 
@@ -43,6 +53,44 @@ class TestMask:
         assert masked["campaign_id"] == "123"
         assert masked["name"] == "ok"
 
+    @pytest.mark.parametrize(
+        "key",
+        [
+            # The field name in a Google service-account JSON; the value is
+            # a PEM private key. No root matched it — ``api[_-]?key`` needs
+            # the literal ``api``.
+            "private_key",
+            "privateKey",
+            "private-key",
+            # ``passwd`` was a root, ``pwd`` is not a substring of it.
+            "pwd",
+            "signature",
+        ],
+    )
+    def test_remaining_credential_key_names_are_redacted(self, key: str) -> None:
+        """#779 — three spellings the KEY path did not recognise."""
+        assert _mask({key: "SENSITIVE_VALUE_HERE"})[key] == "***"
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            # ``_SENSITIVE_KEY`` matches as a SUBSTRING, so ``sig`` as a root
+            # would collapse all three of these — value and all.
+            "design",
+            "assign",
+            "signal",
+            # ``key`` alone would take these, for the same reason.
+            "keyword",
+            "monkey",
+            # Ordinary arguments, pinned so the wider root list cannot start
+            # swallowing the trail it exists to record.
+            "campaign_id",
+            "final_url",
+        ],
+    )
+    def test_ordinary_argument_names_are_not_redacted(self, key: str) -> None:
+        assert _mask({key: "ordinary-value"})[key] == "ordinary-value"
+
     def test_long_string_truncated(self) -> None:
         out = _mask("x" * 1000)
         assert out.endswith("…<truncated>")
@@ -62,6 +110,114 @@ class TestMask:
             cur = cur["n"]
         # Does not raise / infinite-recurse; deep levels collapse.
         assert _mask(deep) is not None
+
+
+@pytest.mark.unit
+class TestMaskScrubsStringValues:
+    """#779 — a secret pasted into an ordinary free-text argument.
+
+    Masking by KEY name alone left it verbatim in ``JOURNAL.jsonl`` and in
+    the plugin audit log, while the very same sentence WAS scrubbed on its
+    way into ``STATE.json``: two stores, two rules. Every surviving string
+    now goes through ``scrub_text`` as well.
+    """
+
+    def test_secret_in_a_nested_string_value_is_scrubbed(self) -> None:
+        out = _mask({"entry": {"reason": "rotating after api_key=SHHH_SECRET leaked"}})
+        reason = out["entry"]["reason"]
+        assert "SHHH_SECRET" not in reason
+        # The key and its separator survive, so the record still reads.
+        assert reason == "rotating after api_key=*** leaked"
+
+    def test_secret_in_a_string_inside_a_list_is_scrubbed(self) -> None:
+        out = _mask({"notes": ["harmless", "client_secret=SECRET-CLIENT-VALUE"]})
+        assert out["notes"] == ["harmless", "client_secret=***"]
+
+    def test_bearer_token_in_a_plain_string_value_is_scrubbed(self) -> None:
+        out = _mask({"note": "retrying with Authorization: Bearer Atza|SECRET.abc"})
+        assert "SECRET.abc" not in out["note"]
+        assert out["note"] == "retrying with Authorization: ***"
+
+    def test_a_secret_is_scrubbed_before_the_string_is_truncated(self) -> None:
+        """Order matters — and only ``Basic <base64>`` proves it.
+
+        A secret that STRADDLES the cut is the whole case for paying the
+        scrub cost first. ``api_key=…`` does not make it: its value class
+        happily eats ``…<truncated>``, so truncating first still produces a
+        match. ``Basic``'s value class is base64 only, so a truncated
+        credential is unrecognisable and would be written in cleartext.
+        """
+        out = _mask("x" * 484 + "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==")
+        assert "QWxhZGRpbj" not in out
+        assert out.endswith("***")
+        assert len(out) <= plugin_audit._MAX_STR  # hard cap unchanged
+
+    def test_the_hard_cap_still_applies_after_scrubbing(self) -> None:
+        out = _mask("api_key=SHHH_SECRET " + "x" * 2000)
+        assert "SHHH_SECRET" not in out
+        assert out.startswith("api_key=*** ")
+        assert out.endswith(plugin_audit._TRUNC)
+        assert len(out) == plugin_audit._MAX_STR
+
+    def test_an_argument_url_keeps_its_query_string(self) -> None:
+        """#779 review — ``code=`` is a rule for error PROSE, not arguments.
+
+        ``final_url`` is a real argument of ad creation and of sitelinks, and
+        a query string is full of ordinary ``…_code=`` parameters. Rewriting
+        the landing page an agent submitted defeats the reason the journal
+        exists.
+        """
+        url = "https://example.com/lp?utm_source=x&promo_code=SUMMER2026&ref=1"
+        out = _mask({"final_url": url, "name": "Q4 promo code=BLACKFRIDAY24"})
+        assert out["final_url"] == url
+        assert out["name"] == "Q4 promo code=BLACKFRIDAY24"
+
+    def test_the_code_rule_still_applies_to_free_text(self) -> None:
+        """The exemption is scoped to ``mask_arguments``: a ``reason`` or a
+        ``rationale`` goes through ``scrub_text`` directly and still loses an
+        authorization code."""
+        assert "ANabcdefgh12" not in plugin_audit._scrub("?code=ANabcdefgh12&scope=x")
+
+    def test_the_scrubber_never_sees_more_than_the_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cost per value is a constant, not O(len(value)).
+
+        ``mask_arguments`` runs on the asyncio event loop for every tool
+        call — twice for a plugin call — and MCP puts no bound on argument
+        size. Everything past the window is truncated away regardless.
+        """
+        seen: list[int] = []
+
+        def _spy(text: str, **kwargs: object) -> str:
+            seen.append(len(text))
+            return text
+
+        monkeypatch.setattr(plugin_audit, "scrub_text", _spy)
+        out = _mask("x" * 5_000_000)
+
+        assert seen == [plugin_audit.SCRUB_WINDOW]
+        assert len(out) == plugin_audit._MAX_STR
+
+
+@pytest.mark.unit
+class TestSensitiveKeysShortCircuit:
+    """Step 1 of ``mask_arguments``: a secret-shaped KEY means the value is
+    never inspected at all — not scrubbed, not recursed into, not truncated.
+    That is both the strongest redaction available and the reason a 10 MB
+    blob under ``api_key`` costs nothing."""
+
+    def test_a_huge_value_under_a_sensitive_key_is_not_inspected(self) -> None:
+        assert _mask({"api_key": "s" * 5_000_000}) == {"api_key": "***"}
+
+    def test_a_container_under_a_sensitive_key_is_not_recursed_into(self) -> None:
+        out = _mask(
+            {
+                "credentials": {"nested": "value", "deeper": [1, 2, 3]},
+                "tokens": ["one", "two"],
+            }
+        )
+        assert out == {"credentials": "***", "tokens": "***"}
 
 
 @pytest.mark.unit
@@ -130,6 +286,18 @@ class TestRecordPluginCall:
         assert second["platform_ok"] is False
         assert "FIELD_VALUE_IS_INVALID" in second["error"]
 
+    def test_tool_and_source_are_capped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No field of an append-only line may be unbounded, and ``args``
+        and ``error`` were the only two that were capped."""
+        log = tmp_path / "audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+        record_plugin_call(tool="t" * 5000, arguments={}, source="s" * 5000, ok=True)
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        assert len(rec["tool"]) == plugin_audit._MAX_STR
+        assert len(rec["source"]) == plugin_audit._MAX_STR
+
     def test_never_raises_on_io_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _boom() -> Path:
             raise OSError("disk gone")
@@ -188,102 +356,31 @@ class TestRecordPluginCall:
         assert "code=***" in rec["error"]
         assert "grant_type=authorization_code" in rec["error"]
 
+    def test_a_huge_error_is_not_scrubbed_whole(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#779 review — ``error`` was the one string on this line still
+        read end to end. A plugin raising with a megabyte of payload in
+        the message bought a megabyte of regex work for 512 characters."""
+        log = tmp_path / "audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+        seen: list[int] = []
+        real = scrub.scrub_text
 
-@pytest.mark.unit
-class TestScrubFreeText:
-    """``_scrub`` must redact credential VALUES without eating the
-    diagnostic around them — an over-eager scrubber makes every error
-    unactionable, which is its own kind of failure."""
+        def _spy(text: str, **kwargs: object) -> str:
+            seen.append(len(text))
+            return real(text, **kwargs)  # type: ignore[arg-type]
 
-    @pytest.mark.parametrize(
-        ("text", "leaked"),
-        [
-            ("client_secret=amzn1.oa2-cs.v1.abcdef", "amzn1.oa2-cs.v1.abcdef"),
-            ("client_secret: amzn1.oa2-cs.v1.abcdef", "amzn1.oa2-cs.v1.abcdef"),
-            ("{'client_secret': 'shhhh-value'}", "shhhh-value"),
-            ("refresh_token=Atzr-plain-shaped-value", "Atzr-plain-shaped-value"),
-            ("access_token = plain-shaped-value", "plain-shaped-value"),
-            ("api_key=sk-1234567890", "sk-1234567890"),
-            ("api-key=sk-1234567890", "sk-1234567890"),
-            ("password=hunter2hunter2", "hunter2hunter2"),
-            ("?code=ANabcdefgh12&scope=x", "ANabcdefgh12"),
-            ("{'code': 'ANabcdefgh12'}", "ANabcdefgh12"),
-            ("Authorization: Bearer Atza|abc", "Atza|abc"),
-            # #528 — the rule must not key on the WHOLE key being ``code``:
-            # a differently-named field holding the same material leaks.
-            (
-                '{"authorizationCode": "AQABAAABBBCCCDDDauthcode123456"}',
-                "AQABAAABBBCCCDDDauthcode123456",
-            ),
-            ("authCode=AQABAAABBBCCCDDDauthcode123456", "AQABAAABBBCCCDDD"),
-            ("&oauth_code=AQABAAABBBCCCDDDauthcode123456", "AQABAAABBBCCCDDD"),
-            # #528 — camelCase spellings of EVERY credential family. Amazon's
-            # surface is camelCase throughout (``advertiserAccountId``,
-            # ``adProductFilter``), so a snake_case-only rule leaks in exactly
-            # the payloads this scrubber exists for.
-            (
-                '{"clientSecret": "amzn1.oa2-cs.v1.SUPERSECRETVALUE"}',
-                "amzn1.oa2-cs.v1.SUPERSECRETVALUE",
-            ),
-            ('{"refreshToken": "abcdefgh12345678"}', "abcdefgh12345678"),
-            ('{"accessToken": "abcdefgh12345678"}', "abcdefgh12345678"),
-            ('{"apiKey": "sk-abcdefgh12345678"}', "sk-abcdefgh12345678"),
-            ("clientSecret=amzn1.oa2-cs.v1.SUPERSECRETVALUE", "SUPERSECRETVALUE"),
-            ("refreshToken=Atzr-plain-shaped-value", "Atzr-plain-shaped-value"),
-            ("accessToken: plain-shaped-value", "plain-shaped-value"),
-            # ...and the hyphenated spellings, for the same reason.
-            ("client-secret=amzn1.oa2-cs.v1.SUPERSECRETVALUE", "SUPERSECRETVALUE"),
-            ("refresh-token=Atzr-plain-shaped-value", "Atzr-plain-shaped-value"),
-            # #758 — Google's request metadata spells its credential
-            # ``developer-token``, and a gRPC debug string prints the metadata
-            # verbatim. All three spellings, like every other key family.
-            ("developer-token: abc123XYZ", "abc123XYZ"),
-            ("developer_token=abc123XYZ", "abc123XYZ"),
-            ('{"developerToken": "abc123XYZ"}', "abc123XYZ"),
-            # ``authorization`` as a key. A Bearer value is already caught by
-            # the token pass above; this pins that the key form is masked too.
-            ("authorization: Bearer abc.def", "abc.def"),
-            # A Basic scheme: the key pass masks the scheme word, the value
-            # pass masks the base64 credential that follows it.
-            ("Authorization=Basic dXNlcjpwYXNzd29yZA==", "dXNlcjpwYXNzd29yZA=="),
-            ("HTTP 401 with Basic dXNlcjpwYXNzd29yZA==", "dXNlcjpwYXNzd29yZA=="),
-        ],
-    )
-    def test_credential_values_are_redacted(self, text: str, leaked: str) -> None:
-        scrubbed = plugin_audit._scrub(text)
-        assert leaked not in scrubbed
-        assert "***" in scrubbed
+        monkeypatch.setattr(scrub, "scrub_text", _spy)
+        record_plugin_call(
+            tool="t",
+            arguments={},
+            source="s",
+            ok=False,
+            error="api_key=SHHH_SECRET " + "x" * 2_000_000,
+        )
 
-    def test_a_bearer_token_does_not_swallow_the_closing_quote(self) -> None:
-        """The token pattern must stop at a quote, like the ``Atza|`` ones do.
-
-        ``Bearer\\s+\\S+`` ate the closing ``"`` and everything after it,
-        leaving structurally broken JSON for whoever reads the record. No leak,
-        but a bearer token cannot contain a quote, so narrowing is free.
-        """
-        text = '{"code":"BAD","message":"bad header Bearer sometoken.jwt.here"}'
-        scrubbed = plugin_audit._scrub(text)
-
-        assert "sometoken.jwt.here" not in scrubbed
-        assert json.loads(scrubbed) == {"code": "BAD", "message": "bad header ***"}
-
-    @pytest.mark.parametrize(
-        "text",
-        [
-            # ``code`` is the false-positive minefield: ordinary prose
-            # about HTTP/errno codes must survive intact.
-            "HTTP 400 status code= 400 for the request",
-            "response status_code=400 and code=17",
-            "error code: 12345678 from upstream",
-            "LwA authorization-code exchange failed (HTTP 500, error='server_error')",
-            "cannot exchange: no client_secret in amazon_ads credentials",
-            "Amazon rejected the authorization code (error='invalid_grant'). "
-            "Codes are single-use and expire 5 minutes after consent",
-            # ``Basic`` as a word, not a scheme: short or non-base64 values
-            # after it are prose and must survive.
-            "Basic plan does not include this report",
-            "Basic auth failed for user",
-        ],
-    )
-    def test_ordinary_diagnostics_survive_unchanged(self, text: str) -> None:
-        assert plugin_audit._scrub(text) == text
+        assert max(seen) == plugin_audit._MAX_STR + STRADDLE_MARGIN
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        assert "SHHH_SECRET" not in rec["error"]
+        assert len(rec["error"]) == plugin_audit._MAX_STR

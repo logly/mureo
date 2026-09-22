@@ -11,13 +11,35 @@ updated.
 The rules stay value-only: an HTTP status, an exception type and the
 failing operation all survive, so a scrubbed message is still a usable
 diagnostic.
+
+One pattern set, two modes. Free text and a tool argument need different
+separator rules — ``"The secret: better ROAS"`` is a headline, not a
+credential dump — but they must not become two answers to "what is a
+secret". So the ROOTS are declared once and the MODE picks how strictly a
+key has to be punctuated to count. See :func:`scrub_text`.
 """
 
 from __future__ import annotations
 
 import re
+from typing import Literal
 
-__all__ = ["scrub_text"]
+#: What the text being scrubbed IS. Not a style preference — the two kinds
+#: leak differently and read differently, and :func:`scrub_text` refuses to
+#: guess which one a call site holds.
+ScrubMode = Literal["prose", "argument"]
+
+PROSE: ScrubMode = "prose"
+ARGUMENT: ScrubMode = "argument"
+
+__all__ = [
+    "ARGUMENT",
+    "PROSE",
+    "STRADDLE_MARGIN",
+    "ScrubMode",
+    "scrub_capped",
+    "scrub_text",
+]
 
 # Secret-shaped *values* that can appear in a free-text error string
 # (``error`` is not key/value-masked like ``args``). Covers HTTP bearer
@@ -67,11 +89,127 @@ _SECRET_VALUE = re.compile(
 # Google's request metadata — which a gRPC debug string prints verbatim —
 # spells the credential ``developer-token`` and the header ``authorization``.
 # ``authorization`` carries no separator of its own, so it is listed bare.
-_SECRET_KEY_VALUE = re.compile(
-    r"((?:client[_-]?secret|refresh[_-]?token|access[_-]?token"
-    r"|developer[_-]?token|api[_-]?key|password|authorization)"
-    r"['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]+",
-    re.IGNORECASE,
+#
+# The roots below are the ones ``mureo.mcp.plugin_audit._SENSITIVE_KEY``
+# already masks an argument KEY for (#779). Until then this pattern knew
+# seven EXACT spellings while the key path matched those words as a
+# SUBSTRING, so the identical credential was redacted when it arrived as an
+# argument key and written in cleartext when it arrived inside a string —
+# ``app_secret`` most of all, which is mureo's own Meta credential field
+# (``mureo/auth.py``).
+#
+# A root matches the END of the key, not the whole of it; the prefix is
+# never part of the match, so ``app_secret=…`` becomes ``app_secret=***``
+# and ``appSecret`` / ``authToken`` / ``privateKey`` are caught by the same
+# ``[_-]?`` treatment every root already had. This is the technique
+# ``_CODE_KEY_VALUE`` below documents, and it is chosen over a
+# ``[\w-]*secret`` prefix wildcard for the reason recorded there: the
+# wildcard backtracks quadratically over a long non-matching string.
+#
+# ``key`` is deliberately NOT a root — it would eat ``monkey=``,
+# ``turkey=`` and ``keyword=`` — so each credential-bearing ``…key`` tail
+# is spelled out instead (``aws_secret_access_key`` lands on
+# ``access[_-]?key``). ``sig`` is not a root either: it would eat
+# ``design=``. ``signature`` is safe and is listed in full.
+# A COMPOUND root cannot occur in an English sentence. Nobody writes
+# "client_secret:" or "developer-token:" in a headline, so these keep the
+# permissive separator: an equals sign, a colon, with or without spaces and
+# quotes, whichever shape the leaking surface happened to use.
+#
+# ``client[_-]?secret`` is listed even though the bare ``secret`` root
+# already covers it: without it the compound would inherit the AMBIGUOUS
+# separator and ``client_secret: amzn1.oa2-cs.v1.…`` — the LwA form-body
+# echo this scrubber was originally written for — would stop matching in
+# ``argument`` mode.
+_UNAMBIGUOUS_KEY_ROOTS = (
+    "client[_-]?secret",
+    "secret[_-]?key",
+    "private[_-]?key",
+    "access[_-]?key",
+    "api[_-]?key",
+    "access[_-]?token",
+    "refresh[_-]?token",
+    "developer[_-]?token",
+)
+
+# A BARE root is also an ordinary English word, and ``Password:`` starts a
+# novel's title as readily as a credential dump. In an error string that is
+# a legibility cost worth paying; in a tool ARGUMENT it destroys the record,
+# because ``headline`` / ``description`` / ``primary_text`` / campaign
+# ``name`` are the most-written arguments in this product and a colon is how
+# a sentence is punctuated. See :data:`_ARGUMENT_SEPARATOR`.
+_AMBIGUOUS_KEY_ROOTS = (
+    "secret",
+    "password",
+    "passwd",
+    "pwd",
+    "credentials?",
+    "authorization",
+    "bearer",
+    "cookie",
+    "signature",
+)
+
+# ``token`` is ambiguous AND names a quantity ("token limit: 128000",
+# "token: 5"), so it is the one root that also carries a minimum value
+# length, exactly as ``_CODE_KEY_VALUE`` does and for the same reason: a
+# real token is a long opaque string, a count is short. ``max_tokens=4096``
+# never matches at all — a root has to sit at the END of the key, and there
+# the ``s`` is in the way. The three ``…_token`` compounds above keep their
+# unrestricted match, so this narrows nothing #528 and #758 covered: the
+# leftmost match wins and theirs starts earlier.
+_MIN_TOKEN_VALUE_LEN = 8
+
+# Everything up to the first character that cannot be part of a credential.
+_VALUE_CHAR = r"[^\s,;&'\"}\])]"
+
+#: Prose separator: ``k=v``, ``k = v``, ``k: v``, ``'k': 'v'``. The optional
+#: quotes catch the dict/JSON rendering an exception ``repr`` produces as
+#: well as the bare form-encoded one.
+_PROSE_SEPARATOR = r"['\"]?\s*[:=]\s*['\"]?"
+
+#: Argument separator for an ambiguous root: the shape ``_CODE_KEY_VALUE``
+#: already established — an ``=`` with NO space before it (the query-string
+#: and form-body shape a credential actually leaks in), or the QUOTED
+#: dict-key form. A space-padded colon is English punctuation, so it is
+#: excluded. Every machine-generated leak still matches; a sentence does
+#: not.
+_ARGUMENT_SEPARATOR = r"(?:=['\"]?|['\"]\s*:\s*['\"])"
+
+
+def _key_value_rule(
+    roots: tuple[str, ...], separator: str, min_value_len: int = 1
+) -> re.Pattern[str]:
+    """Compile one ``key<separator>value`` redaction rule.
+
+    The KEY and separator are kept (group 1) so the diagnostic still reads
+    ``client_secret=***`` rather than losing what failed. A root matches the
+    END of the key and the prefix is never consumed, which is what makes
+    ``app_secret`` and ``appSecret`` fall out of a root spelled ``secret``
+    — and why no ``[\\w-]*secret`` prefix wildcard is needed. That form
+    backtracks quadratically on a long non-matching string, and this
+    scrubber runs on attacker-influenceable text.
+    """
+    quantifier = "+" if min_value_len <= 1 else f"{{{min_value_len},}}"
+    return re.compile(
+        "((?:" + "|".join(roots) + ")" + separator + ")" + _VALUE_CHAR + quantifier,
+        re.IGNORECASE,
+    )
+
+
+_ALL_KEY_ROOTS = _UNAMBIGUOUS_KEY_ROOTS + _AMBIGUOUS_KEY_ROOTS
+
+_PROSE_KEY_VALUE = _key_value_rule(_ALL_KEY_ROOTS, _PROSE_SEPARATOR)
+_PROSE_TOKEN_KEY_VALUE = _key_value_rule(
+    ("token",), _PROSE_SEPARATOR, _MIN_TOKEN_VALUE_LEN
+)
+
+_ARGUMENT_KEY_VALUE = _key_value_rule(_UNAMBIGUOUS_KEY_ROOTS, _PROSE_SEPARATOR)
+_ARGUMENT_AMBIGUOUS_KEY_VALUE = _key_value_rule(
+    _AMBIGUOUS_KEY_ROOTS, _ARGUMENT_SEPARATOR
+)
+_ARGUMENT_TOKEN_KEY_VALUE = _key_value_rule(
+    ("token",), _ARGUMENT_SEPARATOR, _MIN_TOKEN_VALUE_LEN
 )
 
 # ``code`` on its own is far too common in ordinary error prose ("status
@@ -103,6 +241,17 @@ _SECRET_KEY_VALUE = re.compile(
 # Not covered, deliberately: a bare NUMERIC code is never masked (an LwA
 # authorization code is a long alphanumeric string, never an integer), so the
 # asymmetry with string codes is a legibility quirk, not a leak.
+#
+# PROSE ONLY — this rule does not run in ``argument`` mode. It was written
+# for ERROR PROSE, where ``code=`` with no space before the ``=`` really is
+# the query-string shape an authorization code leaks in. In a TOOL ARGUMENT
+# that same shape is overwhelmingly an ordinary URL parameter: ``final_url``
+# is a real argument of ad creation and of sitelinks, and
+# ``…?promo_code=SUMMER2026`` is a landing page, not a credential. This
+# comment already records that ``code`` is "far too common in ordinary error
+# prose"; inside a query string it is commoner still, so dropping the rule
+# where the text is known to be a URL-bearing argument is the rule's own
+# intent applied one step further — not a relaxation of it.
 _MIN_CODE_VALUE_LEN = 8
 _CODE_KEY_VALUE = re.compile(
     r"((?:code=['\"]?|code['\"]\s*:\s*['\"]))[^\s,;&'\"}\])]{"
@@ -112,20 +261,91 @@ _CODE_KEY_VALUE = re.compile(
 )
 
 
-def scrub_text(text: str) -> str:
-    """Redact secret-shaped substrings from a free-text error string.
+def scrub_text(text: str, *, mode: ScrubMode = PROSE) -> str:
+    """Redact secret-shaped substrings from a string.
 
-    Three passes, all value-only: token prefixes (``Bearer …``,
-    ``Atza|…``, ``Atzr|…``), ``key=value`` credential pairs, and the
-    narrowly-anchored ``code=<authorization code>``. Everything else —
-    HTTP status, exception type, the failing operation — survives, so a
-    scrubbed message is still a usable diagnostic.
+    All passes are value-only: an HTTP status, an exception type and the
+    failing operation survive, so a scrubbed message is still a usable
+    diagnostic. Applied at ONE boundary per trail, so no two of them can
+    redact differently.
 
-    Applied at ONE boundary per trail, so no two of them can redact
-    differently: the plugin audit record, the journal line, and — since
-    #758 phase 2 — ``normalize_reason``, which every ``action_log``
-    rationale passes through before it reaches STATE.json.
+    ``mode`` says what the text IS, because the two kinds need different
+    rules and guessing per call site is how they drift apart:
+
+    ``PROSE`` (the default)
+        An error message, a ``reason``, a ``rationale``, a platform's
+        error body. Four passes: token prefixes (``Bearer …``, ``Atza|…``,
+        ``Atzr|…``), ``key: value`` credential pairs on every root, the
+        same for a ``token`` key with a long enough value, and the
+        narrowly-anchored ``code=<authorization code>``. This is the mode
+        ``normalize_reason`` uses, so an ``action_log`` reason is scrubbed
+        identically on its way to STATE.json and to the journal.
+
+    ``ARGUMENT``
+        The value of a tool argument. Two differences, both because the
+        text is a parameter rather than a sentence. The ``code=`` pass
+        does not run — ``…?promo_code=…`` in a ``final_url`` is a landing
+        page, and a journal that rewrites the URL an agent submitted
+        cannot answer the question it exists for. And an AMBIGUOUS root
+        (``secret``, ``password``, ``cookie``, ``signature``, bare
+        ``token``, …) needs an ``=`` or a quoted dict key rather than a
+        space-padded colon, because ``"The secret: better ROAS"`` is a
+        headline. Compound roots (``client_secret``, ``developer-token``)
+        keep the permissive separator in both modes; they do not occur in
+        an English sentence.
+
+    An unrecognised ``mode`` is treated as ``PROSE``. Prose is the wider
+    of the two, so the fail-safe direction is to over-mask.
     """
     scrubbed = _SECRET_VALUE.sub("***", text)
-    scrubbed = _SECRET_KEY_VALUE.sub(r"\1***", scrubbed)
+    if mode == ARGUMENT:
+        scrubbed = _ARGUMENT_KEY_VALUE.sub(r"\1***", scrubbed)
+        scrubbed = _ARGUMENT_AMBIGUOUS_KEY_VALUE.sub(r"\1***", scrubbed)
+        return _ARGUMENT_TOKEN_KEY_VALUE.sub(r"\1***", scrubbed)
+    scrubbed = _PROSE_KEY_VALUE.sub(r"\1***", scrubbed)
+    scrubbed = _PROSE_TOKEN_KEY_VALUE.sub(r"\1***", scrubbed)
     return _CODE_KEY_VALUE.sub(r"\1***", scrubbed)
+
+
+#: How far PAST a caller's own length cap the scrubber is allowed to look.
+#:
+#: Every trail that scrubs also caps: the journal cuts a ``reason`` to
+#: ``MAX_REASON_CHARS``, the plugin audit cuts a string to ``_MAX_STR``, the
+#: web handlers cut a detail to the same. Scrubbing the WHOLE input before
+#: cutting is an unbounded O(n) on text nobody upstream bounds — ~250 ms per
+#: megabyte, on the asyncio event loop, for output that was going to be 512
+#: characters either way. So the passes run over ``cap + STRADDLE_MARGIN``
+#: characters and not one more.
+#:
+#: The margin exists for the credential that STRADDLES the cut. A match has
+#: to START before the cut to leave anything behind, and the longest shape
+#: the scrubber must SEE to recognise one is ``Basic `` plus its
+#: 16-character minimum base64 value — 22 characters. A quoted key is
+#: shorter: ``"developer_token": "`` plus one value character is 21. So any
+#: margin of ~22 already closes it; 64 is that with room for a root added
+#: later, and costs 64 characters of regex work per recorded string.
+#:
+#: Nothing past the window can leak, because nothing past it is returned:
+#: :func:`scrub_capped` slices FIRST. The one shape the margin does not
+#: cover is a separator padded with more whitespace than the margin
+#: (``password`` + 64 spaces + ``: …``), which no leaking surface emits and
+#: which would have to straddle the cut as well.
+STRADDLE_MARGIN = 64
+
+
+def scrub_capped(text: str, cap: int, *, mode: ScrubMode = PROSE) -> str:
+    """Scrub the first ``cap`` characters of ``text`` at a constant cost.
+
+    Equivalent to ``scrub_text(text)[:cap]`` for anything short enough to
+    be recorded whole, but the work does not grow with the input: see
+    :data:`STRADDLE_MARGIN`. Use this at every boundary that records a
+    capped string — a scrubber reading a 2 MB argument to produce 512
+    characters is a denial of service with extra steps.
+
+    The two differ only for an over-long input, and only in WHICH text is
+    kept: this returns the scrubbed first ``cap`` characters, where the
+    unbounded form returns the first ``cap`` characters of the scrubbed
+    whole — which can pull text from far past the cap forward as earlier
+    matches shrink. Neither leaks; this one is simply predictable.
+    """
+    return scrub_text(text[: cap + STRADDLE_MARGIN], mode=mode)[:cap]

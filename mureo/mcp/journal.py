@@ -23,7 +23,7 @@ swallowed and logged at WARNING, so a journal problem can never break or
 mask a tool call. The file is created ``0600`` from the first write.
 Masking is not re-implemented here — ``args`` go through
 :func:`mureo.mcp.plugin_audit.mask_arguments` and ``reason`` through
-:func:`mureo.mcp.plugin_audit.scrub_text` — so the journal cannot redact
+:func:`mureo.core.scrub.scrub_capped` — so the journal cannot redact
 less than the audit log does. The RESULT body is never stored, only the
 outcome and a capped reason string.
 
@@ -69,8 +69,9 @@ import mureo
 # entry without importing ``mureo.mcp``. Kept importable from here — this is
 # where every existing caller looks for it.
 from mureo.core.actor import client_info, session_id, set_client_info
+from mureo.core.scrub import scrub_capped
 from mureo.mcp.journal_chain import chain_append
-from mureo.mcp.plugin_audit import mask_arguments, scrub_text
+from mureo.mcp.plugin_audit import mask_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,26 @@ WORKSPACE_MARKERS = ("STATE.json", "STRATEGY.md")
 #: losing its tail. Not to be confused with
 #: :data:`mureo.core.actor.ACTION_REASON_MAX_CHARS`, which is a write rule
 #: on a value the CALLER supplies and refuses an over-long one outright.
+#:
+#: "The audit log's budget" is literal: this is
+#: :data:`mureo.mcp.plugin_audit._MAX_STR`, and the two trails record the
+#: same calls, so a reader comparing them must not find one cut shorter
+#: than the other. Kept as separate names because they cap different KINDS
+#: of field and one may yet need to move alone; the equality is pinned in
+#: ``tests/test_mcp_journal.py`` so that has to be a decision, not a drift.
 MAX_REASON_CHARS = 512
+
+#: Hard cap on the short identity fields — ``client``, ``tool``, ``source``.
+#: ``client`` is the case that forces it: it is the MCP client's own
+#: ``clientInfo``, which :func:`mureo.core.actor.set_client_info` only
+#: strips, so it is unbounded external input landing on a line-oriented,
+#: append-only file. ``tool`` and ``source`` arrive from the same dispatch
+#: and get the same budget. Separate from :data:`MAX_REASON_CHARS` and from
+#: :data:`mureo.mcp.plugin_audit._MAX_STR` because they are identifiers
+#: rather than prose, even though all three numbers match — see
+#: :data:`MAX_REASON_CHARS` for why that sameness is deliberate and where
+#: it is pinned.
+MAX_FIELD_CHARS = 512
 
 
 def _state_path() -> Path | None:
@@ -217,18 +237,21 @@ def build_record(
     rollback: bool = False,
 ) -> dict[str, Any]:
     """Assemble one journal record. Key order is part of the format."""
+    client = client_info()
     record: dict[str, Any] = {
         "v": RECORD_VERSION,
         "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "session": session_id(),
-        "client": client_info(),
+        # Capped, not defaulted: an unreported client stays ``null``, which
+        # is the honest answer and is what every reader already handles.
+        "client": None if client is None else client[:MAX_FIELD_CHARS],
         "mureo": mureo.__version__,
         "workspace_id": _workspace_id(),
-        "tool": tool,
+        "tool": tool[:MAX_FIELD_CHARS],
         "family": family,
     }
     if source is not None:
-        record["source"] = source or "<unknown>"
+        record["source"] = (source or "<unknown>")[:MAX_FIELD_CHARS]
     record["mutating"] = bool(mutating)
     record["args"] = mask_arguments(arguments if isinstance(arguments, dict) else {})
     # Beside ``args``, never inside it: ``args`` is what the agent asked the
@@ -236,10 +259,13 @@ def build_record(
     # sentence sitting where a parameter belongs. Emitted only when given, so
     # a record without a rationale keeps the shape it had before phase 2.
     if rationale is not None:
-        record["rationale"] = scrub_text(str(rationale))[:MAX_REASON_CHARS]
+        record["rationale"] = scrub_capped(str(rationale), MAX_REASON_CHARS)
     record["outcome"] = outcome
     if outcome != "ok" and reason is not None:
-        record["reason"] = scrub_text(str(reason))[:MAX_REASON_CHARS]
+        # Bounded window, not end to end: an ``invalid_args`` reason is a
+        # jsonschema message, and jsonschema embeds the rejected INSTANCE in
+        # it — the size of this string is the size of the caller's arguments.
+        record["reason"] = scrub_capped(str(reason), MAX_REASON_CHARS)
     record["duration_ms"] = int(duration_ms)
     record["batch_id"] = _open_batch_id()
     if rollback:
@@ -295,6 +321,7 @@ def record_call(
 
 __all__ = [
     "JOURNAL_FILENAME",
+    "MAX_FIELD_CHARS",
     "MAX_REASON_CHARS",
     "OPT_OUT_ENV_VAR",
     "RECORD_VERSION",

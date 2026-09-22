@@ -17,8 +17,18 @@ Design:
   tool call: any I/O / serialization failure is swallowed (logged at
   WARNING) so the plugin result still flows.
 - **Secret-masked.** Argument values under sensitivity-suggesting keys
-  are replaced with ``"***"``; over-long strings are truncated so a
-  plugin cannot bloat the log with a payload dump.
+  are replaced with ``"***"``; every surviving string value is then run
+  through :func:`~mureo.core.scrub.scrub_text`, so a secret pasted into
+  an ordinary free-text argument does not survive either (#779); and
+  over-long strings are truncated so a plugin cannot bloat the log with
+  a payload dump.
+- **Every FIELD is bounded; the LINE is not.** Each string is capped, a
+  list keeps 50 items and recursion stops at depth 4, but the number of
+  argument KEYS is not capped: 20,000 ordinary arguments still write a
+  ~10 MB line (measured). Say "field", not "line", when describing this —
+  an audit trail that overstates its own limits is the kind of claim an
+  operator plans capacity around. Capping the key count would change
+  recorded behaviour and belongs in its own issue.
 """
 
 from __future__ import annotations
@@ -36,18 +46,95 @@ from typing import Any
 # scrub a rationale without importing the MCP layer. It stays importable
 # from here — this is where every existing caller looks for it. The
 # redundant alias is what marks it an EXPLICIT re-export for strict mypy.
+from mureo.core.scrub import ARGUMENT, PROSE, STRADDLE_MARGIN, ScrubMode, scrub_capped
 from mureo.core.scrub import scrub_text as scrub_text
 from mureo.fsutil import secure_chmod
 
 logger = logging.getLogger(__name__)
 
+#: Hard cap on any one recorded string — an argument value, an ``error``,
+#: a wizard ``detail``. A diagnostic, not a payload dump.
+#:
+#: The SAME budget as :data:`mureo.mcp.journal.MAX_FIELD_CHARS` and
+#: :data:`mureo.mcp.journal.MAX_REASON_CHARS`, deliberately: the journal
+#: and this log record the same calls, and a reader comparing the two must
+#: not find one of them cut shorter than the other. They are three names
+#: rather than one because they cap three different KINDS of field —
+#: a value here, an identifier and a sentence there — and one of them may
+#: yet need to move alone. ``tests/test_mcp_journal.py`` pins the equality
+#: so moving one silently is not an option; move all three or say why.
 _MAX_STR = 512
 _TRUNC = "…<truncated>"
+
+#: How much of a string value the scrubber is allowed to look at.
+#:
+#: Masking runs on the asyncio event loop for EVERY tool call — twice for a
+#: plugin call, since ``record_plugin_call`` runs inside ``journal_call`` —
+#: and nothing upstream bounds the size of an MCP argument. Scrubbing the
+#: whole value made that an unbounded O(n): ~250 ms per megabyte, 12 s for
+#: fifty 1 MB arguments, all of it blocking the loop.
+#:
+#: Nothing is lost by the window: the result is truncated to ``_MAX_STR``
+#: anyway, so text past it never reaches the file. The slack is for a
+#: credential that STRADDLES the cut and is sized in
+#: :data:`~mureo.core.scrub.STRADDLE_MARGIN`, which every other capped-and-
+#: scrubbed field on these trails uses too. This one cannot simply call
+#: :func:`~mureo.core.scrub.scrub_capped`: an over-long argument keeps a
+#: ``…<truncated>`` marker, so the cut has to happen here.
+SCRUB_WINDOW = _MAX_STR + STRADDLE_MARGIN
+
+#: Argument KEY names whose value is replaced with ``"***"`` unread. Matched
+#: as a SUBSTRING, so ``client_secret``, ``app_secret`` and ``appsecret_proof``
+#: all land on ``secret`` and no prefix needs listing.
+#:
+#: ``private[_-]?key``, ``pwd`` and ``signature`` joined for #779. Substring
+#: matching hid the gap: ``secret_key`` looked covered by a root list that
+#: does not contain ``key``, and it is — via ``secret`` — but
+#: ``private_key`` has no such luck, because ``api[_-]?key`` needs the
+#: literal ``api``. That is the field name in a Google service-account JSON
+#: and its value is a PEM private key, so it was landing in the journal in
+#: cleartext. ``pwd`` is not a substring of ``passwd``. The ``[_-]?`` on
+#: ``private[_-]?key`` is the #528 rule: ``privateKey`` is how the same
+#: field is spelled one surface over.
+#:
+#: ``sig`` is deliberately NOT a root. A substring match would take
+#: ``design``, ``assign`` and ``signal`` with it and collapse three ordinary
+#: arguments to ``"***"`` — the whole value, unread. ``signature`` in full
+#: costs nothing and catches the field that matters.
+#:
+#: ``signature`` is the one root here that a future tool could legitimately
+#: take as an ORDINARY argument — a filter on a creative's signature, say.
+#: It would be recorded as ``"***"`` with no warning and no way for the
+#: operator to tell a masked value from a missing one. If that tool is ever
+#: written, this list needs an exception for it; the key path deliberately
+#: has no value-shape check to fall back on.
 _SENSITIVE_KEY = re.compile(
-    r"(token|secret|password|passwd|credential|api[_-]?key|authorization"
+    r"(token|secret|password|passwd|pwd|credential|api[_-]?key"
+    r"|private[_-]?key|signature|authorization"
     r"|access[_-]?token|refresh[_-]?token|client[_-]?secret|bearer|cookie)",
     re.IGNORECASE,
 )
+
+
+#: Argument keys whose value is a SENTENCE, not a parameter — scrubbed in
+#: PROSE mode even though everything around them is an argument.
+#:
+#: :func:`~mureo.core.scrub.scrub_text` keys its rules on what the text IS,
+#: so something has to say so, and the key name is the only signal
+#: available at this depth. Matched exactly (case-insensitively): a key
+#: merely CONTAINING ``reason`` is some other parameter.
+#:
+#: Without this the fix for #779 reopened the divergence #779 exists to
+#: close. ``mureo.mcp._reason_param.split_call_reason`` returns the
+#: arguments UNTOUCHED for a tool that declares a ``reason`` of its own —
+#: ``mureo_state_action_log_append``,
+#: ``mureo_state_platform_not_collected_set`` and
+#: ``mureo_state_workspace_not_collected_set`` — so that sentence never
+#: becomes a rationale and stays inside ``args``. It would then be scrubbed
+#: by ARGUMENT rules here and by PROSE rules in
+#: :func:`mureo.core.actor.normalize_reason` on its way to STATE.json: one
+#: sentence, two stores, two answers.
+_PROSE_VALUE_KEYS = frozenset({"reason", "rationale"})
 
 
 def _audit_path() -> Path:
@@ -55,38 +142,107 @@ def _audit_path() -> Path:
     return Path.home() / ".mureo" / "plugin_audit.jsonl"
 
 
-def mask_arguments(value: Any, *, _depth: int = 0) -> Any:
+def mask_arguments(value: Any, *, _depth: int = 0, _mode: ScrubMode = ARGUMENT) -> Any:
     """Recursively mask secrets and truncate over-long strings.
 
     Public since #758 for the same reason as :func:`scrub_text`: the
     dispatcher journal masks its ``args`` with this exact function, so the
     two trails cannot drift apart on what counts as a secret.
+
+    Three steps, in this order:
+
+    1. KEY masking — a sensitivity-suggesting key yields ``"***"`` and its
+       value is never inspected at all.
+    2. :func:`scrub_text` over the first :data:`SCRUB_WINDOW` characters of
+       every surviving string VALUE (#779). Masking by key name alone let a
+       secret pasted into an ordinary free-text argument through verbatim,
+       while the same sentence WAS scrubbed on its way into ``STATE.json``
+       — two stores, two rules.
+    3. Truncation to :data:`_MAX_STR`.
+
+    Scrubbing before truncating is deliberate, and ``Basic <base64>`` is
+    the shape that makes it so: its value class is base64 only, so a
+    credential cut by the truncation marker is unrecognisable and would be
+    written in cleartext. (``api_key=…`` would survive either order — its
+    value class matches ``…<truncated>`` too.) The hard cap is unchanged —
+    the result is never longer than ``_MAX_STR``.
+
+    Strings are scrubbed in ``ARGUMENT`` mode: the ``code=`` pass does not
+    run, and an ambiguous root needs an ``=`` or a quoted dict key rather
+    than a space-padded colon. Both differences exist because an argument
+    is a parameter, not a sentence — ``final_url`` carries
+    ``…?promo_code=…`` and ``headline`` carries ``"The secret: better
+    ROAS"``, and rewriting either one destroys the record this file exists
+    to be. See :func:`~mureo.core.scrub.scrub_text`.
+
+    The exception is :data:`_PROSE_VALUE_KEYS` — text under ``reason`` or
+    ``rationale`` IS a sentence and is scrubbed in ``PROSE`` mode, so that
+    the three built-ins holding their own ``reason`` record it here exactly
+    as ``normalize_reason`` records it in ``STATE.json``. ``_mode`` carries
+    that answer down the recursion: everything below a prose key is prose,
+    however a plugin wraps it. A plugin is free to declare ``reason`` as a
+    list or an object — the three built-ins declare it ``"type": "string"``,
+    but nothing constrains a plugin's schema — and reading the mode off the
+    immediate value's type alone would have left
+    ``{"reason": ["password: hunter2hunter2"]}`` as submitted while masking
+    the same sentence one nesting level up.
     """
     if _depth > 4:
         return "<...>"
     if isinstance(value, str):
-        if len(value) <= _MAX_STR:
-            return value
-        return value[: _MAX_STR - len(_TRUNC)] + _TRUNC  # hard cap == _MAX_STR
+        return _mask_string(value, mode=_mode)
     if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        for k, v in value.items():
-            key = str(k)
-            out[key] = (
-                "***"
-                if _SENSITIVE_KEY.search(key)
-                else mask_arguments(v, _depth=_depth + 1)
-            )
-        return out
+        return _mask_mapping(value, _depth=_depth, _mode=_mode)
     if isinstance(value, (list, tuple)):
-        return [mask_arguments(v, _depth=_depth + 1) for v in list(value)[:50]]
+        return [
+            mask_arguments(v, _depth=_depth + 1, _mode=_mode) for v in list(value)[:50]
+        ]
     return value
 
 
+def _mask_string(value: str, *, mode: ScrubMode) -> str:
+    """Scrub one string value inside the window, then truncate it.
+
+    The window keeps the cost per value constant; the result is never
+    longer than :data:`_MAX_STR`. ``mode`` is the caller's answer to "is
+    this a parameter or a sentence" — see :func:`_mask_mapping`.
+    """
+    scrubbed = scrub_text(value[:SCRUB_WINDOW], mode=mode)
+    if len(value) <= SCRUB_WINDOW and len(scrubbed) <= _MAX_STR:
+        return scrubbed
+    return scrubbed[: _MAX_STR - len(_TRUNC)] + _TRUNC  # hard cap == _MAX_STR
+
+
+def _mask_mapping(
+    value: dict[Any, Any], *, _depth: int, _mode: ScrubMode
+) -> dict[str, Any]:
+    """Mask one mapping level: secret keys first, then the rest by mode.
+
+    A prose key switches the mode for its value and for everything nested
+    under it; masking itself is never skipped. Prose is the wider reading
+    (its separator set is a superset of ``ARGUMENT``'s), so widening below
+    a ``reason`` can only ever redact more, never less.
+    """
+    out: dict[str, Any] = {}
+    for k, v in value.items():
+        key = str(k)
+        if _SENSITIVE_KEY.search(key):
+            out[key] = "***"
+            continue
+        mode = PROSE if key.lower() in _PROSE_VALUE_KEYS else _mode
+        if isinstance(v, str):
+            out[key] = _mask_string(v, mode=mode)
+        else:
+            out[key] = mask_arguments(v, _depth=_depth + 1, _mode=mode)
+    return out
+
+
 #: Pre-#758 private spellings. Kept as aliases, not as re-implementations:
-#: ``mureo.web.handlers``, ``mureo.amazon_ads.session_auth``,
-#: ``mureo.cli.amazon_cmd`` and ``tests/test_mcp_plugin_audit.py`` import
-#: them, and a second definition is a second answer to "what is a secret".
+#: a second definition is a second answer to "what is a secret".
+#: ``_scrub`` is imported by ``mureo.amazon_ads.session_auth`` and
+#: ``mureo.cli.amazon_cmd``; ``_mask`` only by the tests. (``_MAX_STR``,
+#: which ``mureo.web.handlers`` imports, is the real constant, not an
+#: alias.)
 _mask = mask_arguments
 _scrub = scrub_text
 
@@ -116,15 +272,16 @@ def record_plugin_call(
     try:
         rec = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "tool": tool,
-            "source": source or "<unknown>",
+            # Every FIELD is capped; the LINE is not (see module docstring).
+            "tool": tool[:_MAX_STR],
+            "source": (source or "<unknown>")[:_MAX_STR],
             "ok": ok,
             "args": mask_arguments(arguments if isinstance(arguments, dict) else {}),
         }
         if platform_ok is False:
             rec["platform_ok"] = False
         if error is not None:
-            rec["error"] = scrub_text(error)[:_MAX_STR]
+            rec["error"] = scrub_capped(error, _MAX_STR)
         path = _audit_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(rec, ensure_ascii=False, default=str) + "\n"

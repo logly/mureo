@@ -22,6 +22,121 @@
   honour `client=`: that is the seam the multi-client layer resolves each
   client's own STRATEGY.md through.
 
+### Fixed
+
+- **A secret pasted into an ordinary tool argument was written verbatim to
+  `JOURNAL.jsonl` and `plugin_audit.jsonl`** (#779). `mask_arguments` masked
+  by KEY name only: `api_key` as a *key* became `***`, but the same
+  credential sitting inside a free-text *value* — an `action_log` entry's
+  `reason`, a note, an item in a list — survived intact in both trails,
+  while that very sentence WAS scrubbed on its way into `STATE.json`. Two
+  stores, two rules. Every surviving string value now goes through the
+  shared `scrub_text` as well, **before** it is truncated: `Basic <base64>`
+  matches only base64, so a credential cut by the truncation marker would be
+  unrecognisable and written in cleartext. Key masking, the 512-character
+  cap, the list cap and the depth guard are unchanged. Note for
+  callers of the public `mask_arguments`: a **top-level bare string** used
+  to pass through untouched and is now scrubbed like any nested one.
+- **The `code=` rule no longer fires on tool arguments** (#779). It was
+  written for error prose, where `code=` with no space is the query-string
+  shape an authorization code leaks in; applied to arguments it rewrote the
+  landing page an agent actually submitted
+  (`…?promo_code=SUMMER2026` → `…?promo_code=***` in a `final_url`). The
+  rule is unchanged everywhere it was meant to apply — `reason`,
+  `rationale`, decision records and every scrubbed error string still lose
+  an authorization code, including a `reason` that arrives as a tool
+  argument.
+- **Scrubbing is bounded** (#779). Every recorded string is cut to 512
+  characters, but the scrubber used to read all of it first: ~250 ms per
+  megabyte, on the event loop for arguments and on the request thread for
+  the configure wizard, for output that was 512 characters either way. It
+  now reads 512 + `STRADDLE_MARGIN` (64) characters and no more — 2 MB
+  drops from ~500 ms to ~0.15 ms. The margin is what makes the window safe
+  rather than merely cheap: a credential only leaves something behind if it
+  STARTS before the cut, and the longest shape the scrubber must see to
+  recognise one is `Basic ` plus its 16-character minimum value. Applies to
+  argument values, to a journal `reason` / `rationale`, to a plugin
+  `error`, and to the wizard's Amazon failure `detail`. A journal `reason`
+  is the case that forced it: an `invalid_args` reason is a jsonschema
+  message, and jsonschema embeds the rejected instance in it, so that
+  string was as long as the arguments the caller sent.
+- **`client`, `tool` and `source` are capped at 512 characters** in
+  `JOURNAL.jsonl` and `plugin_audit.jsonl` (#779). `client` is the MCP
+  client's self-declared `clientInfo` — unbounded external input on an
+  append-only, line-oriented file. An unreported client still records as
+  `null`. This bounds every *field*, not the *line*: the number of argument
+  keys is still uncapped, so 20,000 ordinary arguments write a ~10 MB line
+  as they did before. Capping the key count changes what is recorded and is
+  left to its own change.
+- **An argument named `private_key` was journalled in cleartext** (#779).
+  The key-name masker matches as a substring, which hid the gap: `app_secret`
+  and even `appsecret_proof` were covered all along via `secret`, but
+  `private_key` matched nothing — `api_key` needs the literal `api`. That is
+  the field name in a Google service-account JSON and its value is a PEM
+  private key. `private_key` / `privateKey`, `pwd` (not a substring of
+  `passwd`) and `signature` now mask like every other credential field.
+  `sig` is deliberately not a root: substring matching would collapse
+  `design`, `assign` and `signal` to `***`, value and all.
+- **The scrubber's key list now matches the one the argument masker uses**
+  (#779). The KEY path masks an argument whose name merely *contains*
+  `token` / `secret` / `password` / `credential` / `cookie`; the VALUE path
+  knew seven exact spellings, so the identical credential was redacted as an
+  argument key and written in cleartext inside a string. `app_secret` —
+  mureo's own Meta credential field — `appSecret`, `secret_key`,
+  `private_key`, `auth_token`, `authToken`, `id_token`, a bare `token=`,
+  `passwd`, `pwd`, `credential(s)`, `signature`, `aws_secret_access_key`,
+  `bearer` and `Set-Cookie:` all leaked; they no longer do. A root matches
+  the END of a key and never consumes the prefix, so `app_secret=…` still
+  reads `app_secret=***`. `key` is deliberately not a root (`monkey=`,
+  `keyword=`) and neither is `sig` (`design=`); bare `token` carries a
+  minimum value length so `token limit: 128000` and `max_tokens=4096`
+  survive. Expect more over-masking in free text — a long `nextPageToken`
+  or a prose `credentials: …` now becomes `***`. That is the trade this
+  scrubber is declared to make: over-masking costs legibility, under-masking
+  costs a credential. Inside a tool ARGUMENT the one-word keys need machine
+  punctuation (see the next entry), so a space-padded `Set-Cookie: sid=…`
+  is redacted in an error message but not in an argument value; an argument
+  *named* `cookie` is still `***` from the key path alone.
+- **The scrubber no longer rewrites ad copy** (#779). Adding those one-word
+  keys made `secret`, `password`, `signature` and the rest fire on a
+  space-padded colon, and a colon is how a sentence is punctuated:
+  `headline`, `description`, `primary_text` and campaign `name` are the
+  most-written arguments in this product. `"The secret: better ROAS"` was
+  recorded as `"The secret: ***"`, `"Password: A Novel"` as `"Password:
+  ***"`, and the journal stopped being able to answer what the agent
+  submitted. `scrub_text` now takes an explicit `mode` — `PROSE` for an
+  error message, a `reason` or a rationale, `ARGUMENT` for a tool argument
+  value — and in `ARGUMENT` mode a one-word key needs an `=` or a quoted
+  dict key (`"password": "…"`). Compound keys (`client_secret`, `api_key`,
+  `developer-token`, …) are unchanged in both modes: nobody writes
+  `client_secret:` in a headline. Prose scrubbing is byte-for-byte what the
+  rest of this fix produces — verified over every distinct string literal
+  in the repository (27,534 of them at this commit; the corpus is the
+  repository's own source, so the figure moves). Against v0.21.1 it
+  redacts more in 72 of them, always more and never less, and that is the
+  key coverage above rather than the mode split.
+- **A `reason` argument was scrubbed by two different rules** (#779). Three
+  built-in tools declare a `reason` parameter of their own
+  (`mureo_state_action_log_append` and the two `not_collected_set` tools),
+  and for those the sentence stays in `args` instead of becoming the
+  journal's rationale. It was therefore scrubbed as an ARGUMENT on the
+  journal line and as PROSE on its way into `STATE.json` — the same
+  sentence, two stores, two answers, which is the divergence this issue
+  exists to close. `mask_arguments` now scrubs text under `reason` or
+  `rationale` as prose, whatever tool it came from, including a plugin's,
+  and the mode carries down the recursion. A plugin is free to declare
+  `reason` as a list or an object, and reading the mode off the immediate
+  value's type left `{"reason": ["password: hunter2hunter2"]}` recorded as
+  submitted while the identical sentence one level up was masked.
+- **`SECURITY.md` overstated the scrubber's guarantee** (#779). It said a
+  credential pasted into an ordinary free-text argument "is redacted", full
+  stop. It is redacted when it takes a shape the scrubber recognises; a
+  credential in prose with no recognisable key and no prefix ("the api key
+  is …") is not detected. The section now says so, and also documents what
+  it never had: the prose/argument split, the `code=` rule, and the
+  16-character minimum on a `Basic` value. A reader has to be able to
+  predict what their own `JOURNAL.jsonl` will contain.
+
 ## [0.21.1] - 2026-09-21
 
 ### Added
