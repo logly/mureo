@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from mureo.amazon_ads import bridge
+from mureo.amazon_ads import failure_text
 from mureo.amazon_ads.lwa import AmazonAuthError, LwaTokens
 from mureo.amazon_ads.session_auth import (
     MAX_ERROR_TEXT,
@@ -59,9 +59,9 @@ class TestTheBridgeFailureBody:
     """Site 1 — ``_failure_text``, on the MCP dispatch path."""
 
     def test_a_credential_straddling_the_scrub_cap_is_masked(self) -> None:
-        out = bridge._display_text(_straddling(bridge._MAX_SCRUB_INPUT))
+        out = failure_text._display_text(_straddling(failure_text._MAX_SCRUB_INPUT))
         assert "QWxhZGRpbj" not in out
-        assert out == _masked(bridge._MAX_SCRUB_INPUT)
+        assert out == _masked(failure_text._MAX_SCRUB_INPUT)
 
     def test_it_never_scrubs_more_than_the_cap_plus_the_margin(
         self, monkeypatch: pytest.MonkeyPatch
@@ -74,9 +74,9 @@ class TestTheBridgeFailureBody:
             return text
 
         monkeypatch.setattr(scrub, "scrub_text", _spy)
-        bridge._display_text('{"code":"BAD","message":"%s"}' % ("x" * 2_000_000))
+        failure_text._display_text('{"code":"BAD","message":"%s"}' % ("x" * 2_000_000))
 
-        assert seen == [bridge._MAX_SCRUB_INPUT + STRADDLE_MARGIN]
+        assert seen == [failure_text._MAX_SCRUB_INPUT + STRADDLE_MARGIN]
 
     def test_an_oversized_body_says_so_instead_of_passing_off_a_fragment(
         self,
@@ -88,20 +88,25 @@ class TestTheBridgeFailureBody:
         test-green regression #791 was opened about; saying what happened
         is the honest answer.
         """
-        out = bridge._display_text('{"code":"BAD","message":"%s"}' % ("x" * 2_000_000))
-        assert out.startswith(bridge._OVERSIZE_BODY_TEXT)
-        assert len(out) == len(bridge._OVERSIZE_BODY_TEXT) + 1 + bridge._MAX_SCRUB_INPUT
+        out = failure_text._display_text(
+            '{"code":"BAD","message":"%s"}' % ("x" * 2_000_000)
+        )
+        assert out.startswith(failure_text._OVERSIZE_BODY_TEXT)
+        assert (
+            len(out)
+            == len(failure_text._OVERSIZE_BODY_TEXT) + 1 + failure_text._MAX_SCRUB_INPUT
+        )
 
     def test_a_body_over_the_cap_that_still_parses_is_still_flattened(self) -> None:
         """Over the cap is not the same as unparseable — trailing filler
         cuts away without touching the object, and then the agent gets the
         flattened form exactly as it does for a small body."""
-        out = bridge._display_text('{"code":"BAD","message":"m"}' + " " * 20_000)
+        out = failure_text._display_text('{"code":"BAD","message":"m"}' + " " * 20_000)
         assert out == "BAD: m"
 
     def test_a_short_body_is_untouched_by_the_cap(self) -> None:
         body = '{"code":"BAD","message":"rejected"}'
-        assert bridge._display_text(body) == "BAD: rejected"
+        assert failure_text._display_text(body) == "BAD: rejected"
 
 
 @pytest.mark.unit

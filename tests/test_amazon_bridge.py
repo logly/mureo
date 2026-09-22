@@ -822,7 +822,7 @@ class TestFailureEnvelopeNormalization:
         flatten, and that case has to announce itself rather than pass a
         fragment off as Amazon's diagnostic.
         """
-        from mureo.amazon_ads.bridge import _MAX_FAILURE_TEXT, _OVERSIZE_BODY_TEXT
+        from mureo.amazon_ads.failure_text import _MAX_FAILURE_TEXT, _OVERSIZE_BODY_TEXT
 
         huge_message = self._call(
             tmp_path,
@@ -855,7 +855,7 @@ class TestFailureEnvelopeNormalization:
         the shape is asserted here, on a body long enough to be truncated
         and short enough that the scrub cap must not have touched it.
         """
-        from mureo.amazon_ads.bridge import _MAX_FAILURE_TEXT, _TRUNCATION_MARKER
+        from mureo.amazon_ads.failure_text import _MAX_FAILURE_TEXT, _TRUNCATION_MARKER
 
         out = self._call(
             tmp_path,
