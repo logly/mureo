@@ -18,6 +18,7 @@ Four layers, in the order a change breaks them:
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import threading
@@ -344,16 +345,15 @@ def agency_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
     reset_runtime_context()
 
 
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    """Start a ConfigureWizard bound to 127.0.0.1:0."""
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
+@contextlib.contextmanager
+def _running_wizard(
+    home: Path, static_dir: Path | None = None
+) -> Iterator[ConfigureWizard]:
+    """A ConfigureWizard bound to 127.0.0.1:0, shut down on the way out."""
+    (home / ".claude" / "commands").mkdir(parents=True)
     (home / ".mureo").mkdir()
 
-    wiz = ConfigureWizard(home=home)
+    wiz = ConfigureWizard(home=home, static_dir=static_dir)
     thread = threading.Thread(target=wiz.serve, daemon=True)
     thread.start()
     wiz.wait_until_ready(timeout=5.0)
@@ -362,6 +362,38 @@ def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
     finally:
         wiz.shutdown()
         thread.join(timeout=2.0)
+
+
+@pytest.fixture
+def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
+    with _running_wizard(tmp_path / "home") as wiz:
+        yield wiz
+
+
+@pytest.fixture
+def wizard_without_card_markers(tmp_path: Path) -> Iterator[ConfigureWizard]:
+    """A wizard serving an ``app.html`` that lost its card markers.
+
+    Served out of a temp static dir, so the packaged asset is never
+    written to. This is the packaging defect the 500 exists for.
+    """
+    from pathlib import Path
+
+    from mureo.web.app_html import GUARDRAILS_CARD_END, GUARDRAILS_CARD_START
+
+    packaged = (
+        Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web" / "app.html"
+    )
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    broken = (
+        packaged.read_text(encoding="utf-8")
+        .replace(GUARDRAILS_CARD_START, "")
+        .replace(GUARDRAILS_CARD_END, "")
+    )
+    (static_dir / "app.html").write_text(broken, encoding="utf-8")
+    with _running_wizard(tmp_path / "broken-home", static_dir=static_dir) as wiz:
+        yield wiz
 
 
 def _url(wiz: ConfigureWizard, path: str) -> str:
@@ -510,6 +542,30 @@ class TestGuardrailsCardVisibility:
         # configure UI, are untouched.
         assert "data-dashboard-advisors" in html
         assert 'data-dashboard-group="demo"' in html
+
+    def test_a_page_that_cannot_be_cut_is_refused_not_served(
+        self, wizard_without_card_markers: ConfigureWizard, agency_workspace: Path
+    ) -> None:
+        """The 500 the strip's loudness is worth having.
+
+        Without this route wiring a marker defect would be a traceback at
+        best and a page WITH the card at worst — served to exactly the
+        backend the omission protects.
+        """
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            _get_text(wizard_without_card_markers, "/")
+        assert excinfo.value.code == 500
+        body = json.loads(excinfo.value.read())
+        assert body["error"] == "guardrails_card_markers_missing"
+
+    def test_a_single_workspace_never_reaches_that_refusal(
+        self, wizard_without_card_markers: ConfigureWizard, workspace: Path
+    ) -> None:
+        """Nothing is cut where there is no roster, so the same damaged
+        document still serves — the refusal is scoped to the one backend
+        that needs the card gone."""
+        html = _get_text(wizard_without_card_markers, "/")
+        assert "data-dashboard-guardrails" in html
 
 
 # ---------------------------------------------------------------------------

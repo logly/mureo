@@ -69,23 +69,52 @@ class AppHtmlError(Exception):
 def strip_guardrails_card(html: str) -> str:
     """``html`` without the Guardrails card.
 
-    Raises :class:`AppHtmlError` when the markers are not both there, in
-    order. That is deliberately loud: the alternative to a cut that cannot
-    find its card is a page that still HAS the card, served to the one
-    backend the omission exists to protect. A packaging defect is a 500;
-    a live control writing the wrong STRATEGY.md is not.
+    Raises :class:`AppHtmlError` unless the markers delimit exactly one
+    span. That is deliberately loud: the alternative to a cut that cannot
+    unambiguously find its card is a page that still HAS the card — or
+    half of one — served to the one backend the omission exists to
+    protect. A packaging defect is a 500; a live control writing the
+    wrong STRATEGY.md is not.
     """
+    start, end = _card_span(html)
+    return html[: _line_start(html, start)] + html[_after_line(html, end) :]
+
+
+def _card_span(html: str) -> tuple[int, int]:
+    """Where the card starts and ends, or raise.
+
+    Two failures, two codes, because they are fixed differently:
+    ``guardrails_card_markers_missing`` means a marker has to be put back,
+    ``guardrails_card_markers_ambiguous`` means the markers are there but
+    do not fence one region — duplicated, or in the wrong order.
+
+    Counting is the point. ``find`` alone answers "where is the first
+    one", which happily cuts from the first start to the first end: a
+    duplicated start would swallow a neighbouring card as if it were this
+    one's content, and a duplicated end would leave a stray marker comment
+    in the served document. Neither is a cut anybody asked for.
+    """
+    starts = html.count(GUARDRAILS_CARD_START)
+    ends = html.count(GUARDRAILS_CARD_END)
     start = html.find(GUARDRAILS_CARD_START)
     end = html.find(GUARDRAILS_CARD_END)
-    if start == -1 or end < start:
-        logger.error(
-            "app.html is missing the %r / %r markers; the Guardrails card "
-            "cannot be omitted for a multi-client backend",
-            GUARDRAILS_CARD_START,
-            GUARDRAILS_CARD_END,
-        )
-        raise AppHtmlError("guardrails_card_markers_missing")
-    return html[: _line_start(html, start)] + html[_after_line(html, end) :]
+    if starts == 0 or ends == 0:
+        code = "guardrails_card_markers_missing"
+    elif starts > 1 or ends > 1 or end < start:
+        code = "guardrails_card_markers_ambiguous"
+    else:
+        return start, end
+    logger.error(
+        "app.html does not fence the Guardrails card with exactly one "
+        "%r ... %r pair (%d / %d found, %s); the card cannot be omitted "
+        "for a multi-client backend",
+        GUARDRAILS_CARD_START,
+        GUARDRAILS_CARD_END,
+        starts,
+        ends,
+        code,
+    )
+    raise AppHtmlError(code)
 
 
 def _line_start(html: str, index: int) -> int:

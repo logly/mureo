@@ -210,3 +210,53 @@ class TestGuardrailsCardOmission:
         with pytest.raises(AppHtmlError) as excinfo:
             strip_guardrails_card("<html><body>no card here</body></html>")
         assert excinfo.value.code == "guardrails_card_markers_missing"
+
+    def test_a_second_start_marker_is_refused_not_guessed_at(self) -> None:
+        """Cutting to the FIRST end would swallow whatever sits between the
+        two starts — a neighbouring card eaten as if it were this one."""
+        from mureo.web.app_html import (
+            GUARDRAILS_CARD_START,
+            AppHtmlError,
+            strip_guardrails_card,
+        )
+
+        doubled = _read("app.html").replace(
+            GUARDRAILS_CARD_START,
+            f"{GUARDRAILS_CARD_START}\n<div data-other-card></div>\n"
+            f"{GUARDRAILS_CARD_START}",
+            1,
+        )
+        with pytest.raises(AppHtmlError) as excinfo:
+            strip_guardrails_card(doubled)
+        assert excinfo.value.code == "guardrails_card_markers_ambiguous"
+
+    def test_a_second_end_marker_is_refused_not_guessed_at(self) -> None:
+        """Cutting to the first end would leave the stray end-marker comment
+        behind in the document the operator is served."""
+        from mureo.web.app_html import (
+            GUARDRAILS_CARD_END,
+            AppHtmlError,
+            strip_guardrails_card,
+        )
+
+        doubled = _read("app.html").replace(
+            GUARDRAILS_CARD_END,
+            f"{GUARDRAILS_CARD_END}\n{GUARDRAILS_CARD_END}",
+            1,
+        )
+        with pytest.raises(AppHtmlError) as excinfo:
+            strip_guardrails_card(doubled)
+        assert excinfo.value.code == "guardrails_card_markers_ambiguous"
+
+    def test_markers_in_the_wrong_order_are_refused(self) -> None:
+        from mureo.web.app_html import (
+            GUARDRAILS_CARD_END,
+            GUARDRAILS_CARD_START,
+            AppHtmlError,
+            strip_guardrails_card,
+        )
+
+        reversed_pair = f"<html>{GUARDRAILS_CARD_END}card{GUARDRAILS_CARD_START}</html>"
+        with pytest.raises(AppHtmlError) as excinfo:
+            strip_guardrails_card(reversed_pair)
+        assert excinfo.value.code == "guardrails_card_markers_ambiguous"
