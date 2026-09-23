@@ -815,8 +815,14 @@ class TestFailureEnvelopeNormalization:
         """An unbounded body must not dump megabytes into the agent's context.
 
         The audit line has always been capped; the agent-facing text was not.
+
+        Length alone does not say what the agent GOT, so the shape is
+        pinned too (#791): past the scrub cap the body is cut before the
+        redactor reads it, which leaves a JSON fragment nothing can
+        flatten, and that case has to announce itself rather than pass a
+        fragment off as Amazon's diagnostic.
         """
-        from mureo.amazon_ads.bridge import _MAX_FAILURE_TEXT
+        from mureo.amazon_ads.failure_text import _MAX_FAILURE_TEXT, _OVERSIZE_BODY_TEXT
 
         huge_message = self._call(
             tmp_path,
@@ -825,6 +831,7 @@ class TestFailureEnvelopeNormalization:
         )
         assert len(huge_message[0].text) < _MAX_FAILURE_TEXT + 100
         assert "truncated" in huge_message[0].text
+        assert huge_message[0].text.startswith(f"API error: {_OVERSIZE_BODY_TEXT}")
 
         extras = ",".join(f'"k{i}":"v{i}"' for i in range(50_000))
         huge_extras = self._call(
@@ -834,6 +841,34 @@ class TestFailureEnvelopeNormalization:
         )
         assert len(huge_extras[0].text) < _MAX_FAILURE_TEXT + 100
         assert "truncated" in huge_extras[0].text
+        assert huge_extras[0].text.startswith(f"API error: {_OVERSIZE_BODY_TEXT}")
+
+    def test_a_long_body_under_the_scrub_cap_is_still_flattened(
+        self, tmp_path: Path
+    ) -> None:
+        """The regression a length-only assertion would not have caught.
+
+        Bounding the redactor means slicing the RAW body, and slicing it
+        at the OUTPUT cap would make every long failure arrive as
+        truncated JSON instead of ``API error: BAD: …`` — with
+        ``len < 4100`` and ``"truncated" in text`` both still green. So
+        the shape is asserted here, on a body long enough to be truncated
+        and short enough that the scrub cap must not have touched it.
+        """
+        from mureo.amazon_ads.failure_text import _MAX_FAILURE_TEXT, _TRUNCATION_MARKER
+
+        out = self._call(
+            tmp_path,
+            self._text('{"code":"BAD","message":"%s"}' % ("x" * 10_000)),
+            is_error=True,
+        )
+        text = out[0].text
+        assert text.startswith("API error: BAD: xxxx")  # flattened, not raw JSON
+        assert '{"code"' not in text
+        assert text.endswith(_TRUNCATION_MARKER)
+        assert len(text) == len("API error: ") + _MAX_FAILURE_TEXT + len(
+            _TRUNCATION_MARKER
+        )
 
     def test_unrecognised_keys_are_kept_in_the_display_text(
         self, tmp_path: Path

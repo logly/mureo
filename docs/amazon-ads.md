@@ -220,7 +220,13 @@ so:
   (`API error: Amazon returned no error message; raw body: ...`) instead
   of handing over an opaque `{"code":"***"}`. Very long bodies are
   truncated with a `…<truncated>` marker so a runaway response cannot
-  flood the agent's context.
+  flood the agent's context. Past 16000 characters the body is cut
+  *before* the redactor reads it, because redaction costs time linear in
+  its input and this runs on the dispatch path. A cut body usually stops
+  parsing, so rather than pass the fragment off as Amazon's own wording
+  it arrives as `API error: Amazon returned an oversized error body;
+  scrubbed prefix: …`. Anything that flattened into `<code>: <message>`
+  before still does.
 - **The signal is the MCP protocol's own `isError` flag**, not a guess
   about what the response body looks like. Amazon's hosted endpoint sets
   `isError` on a failed call — verified live against a real account
@@ -355,7 +361,10 @@ tokens/secrets never appear in error messages or logs.
 - If `~/.mureo/credentials.json` cannot be written (most often because
   it is malformed — mureo refuses to overwrite a corrupt file and lose
   your other providers' credentials), the call fails with that reason
-  rather than a silent retry loop.
+  rather than a silent retry loop. The reason is redacted and cut to
+  512 characters before it is shown — the same budget the configure
+  wizard applies to the same failures — so a runaway error body never
+  floods a terminal line.
 - `mureo amazon refresh-manifest` mints a token the same way: if no
   `access_token` is stored and `refresh_token` + `client_secret` are,
   it performs one LwA exchange, saves the token, and then generates the

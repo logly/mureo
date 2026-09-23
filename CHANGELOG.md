@@ -136,6 +136,22 @@
   it never had: the prose/argument split, the `code=` rule, and the
   16-character minimum on a `Basic` value. A reader has to be able to
   predict what their own `JOURNAL.jsonl` will contain.
+- **The three Amazon error paths scrub a bounded prefix too** (#791). #779
+  bounded four call sites and missed these: the failure body the bridge hands
+  the agent — on the MCP dispatch path, where a 2 MB body cost ~480 ms of
+  regex work and now costs ~4 ms — and the `str(exc)` reported by the session
+  credential seam and by `mureo amazon refresh-manifest`. The two error-text
+  paths are cut to 512 characters, the budget the configure wizard already
+  applies to the very same failures. The bridge's is different in kind: its
+  redactor must run *before* the body is flattened into
+  `API error: <code>: <message>`, because flattening deletes the `"code":`
+  anchor the authorization-code rule keys on — so the cap lands on the raw
+  JSON, at 16000 characters, 4x the 4000-character budget of the text
+  flattening renders out of it (flattening only ever shortens). Every body
+  that flattened before still flattens. One past the cap is cut before it can
+  be parsed, and instead of passing that fragment off as Amazon's own wording
+  it now arrives as `Amazon returned an oversized error body; scrubbed
+  prefix: …`.
 
 ## [0.21.1] - 2026-09-21
 
