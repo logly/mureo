@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.21.2] - 2026-09-23
+
 ### Changed
 
 - **The Guardrails card is the active workspace's, and no longer offers a
