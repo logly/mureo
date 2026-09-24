@@ -856,6 +856,22 @@ could not be collected 2d ago: … The figures shown are the last ones
 collected — they are not wrong, they are older."* It renders directly under
 the stale note it explains, and above the repair hint.
 
+**The account id may be what could not be resolved** (#794). A platform that
+authenticated but exposed no ad account — or has no customer id configured —
+fails *because* there is no id to name, so this one writer accepts `""` /
+`None` / whitespace for `account_id` and stores the empty id mureo reads as
+*unknown* everywhere. Two platforms that both failed that way stay two
+entries: an unknown id joins nothing, including another unknown id. Inventing
+a placeholder instead (`"unknown"` on both Google Ads and Meta Ads, the
+observed case) makes them read as **one** ad account under two keys, and the
+reporting view then withholds the client total rather than showing the
+inflated one. An unknown id is never written over an id the entry already
+holds — a platform that failed today still describes the account it described
+yesterday, and blanking it would break the per-account conversion override
+and the duplicate join for an entry that was fine. Every other platform
+writer still requires a real id: a platform whose figures you *did* collect
+knows which account they came from.
+
 **Whoever collects clears it.** Set it with
 `set_platform_not_collected(path, platform, account_id, reason=...)` (or the
 `mureo_state_platform_not_collected_set` tool) when a collection fails, and
@@ -901,9 +917,9 @@ false statement one field over.
 
 `platforms[<p>].not_collected` answers *"why did THIS platform's figures not
 move"*. It cannot answer *"why is there nothing here at all"* — because
-`set_platform_not_collected` requires a platform key and an `account_id`, and
-those are precisely what a collection that died before reaching any platform
-failed to resolve. Requiring them to record that resolving them failed is
+`set_platform_not_collected` requires a platform key, and that is precisely
+what a collection that died before reaching any platform failed to resolve.
+Requiring it to record that resolving it failed is
 circular; writing the note onto every existing entry says something else
 ("Meta failed, and Google failed, and…"); and a workspace that has **never**
 been collected — the case where the record matters most — has no entry to

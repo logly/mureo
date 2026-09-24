@@ -70,7 +70,11 @@ from mureo.context.models import (
     PlatformState,
     StateDocument,
 )
-from mureo.context.platform_accounts import account_ids_match, normalize_account_id
+from mureo.context.platform_accounts import (
+    UNKNOWN_ACCOUNT_ID,
+    account_ids_match,
+    normalize_account_id,
+)
 from mureo.context.platform_guards import (
     guard_platform_entry_write,
     warn_on_duplicate_accounts,
@@ -1024,10 +1028,40 @@ def set_platform_daily(
     return _locked_state_mutation(path, _build)
 
 
+def _account_id_for_not_collected(
+    platforms: dict[str, PlatformState], platform: str, account_id: str | None
+) -> str:
+    """The ``account_id`` a ``not_collected`` write should land on (#794).
+
+    A collection can fail BECAUSE no account could be resolved — Google Ads
+    authenticated with zero accessible accounts, no customer id configured —
+    and the caller then has no legal value to pass. ``None``, ``""`` and a
+    whitespace-only string all state that same absence, and all fold to
+    :data:`~mureo.context.platform_accounts.UNKNOWN_ACCOUNT_ID`, the one
+    spelling the join understands: it matches nothing, including another
+    unknown id, so two platforms that both failed this way stay two entries.
+    Inventing a placeholder instead — the observed ``"unknown"`` on both
+    Google Ads and Meta Ads — is what made the reports view read them as one
+    duplicated ad account (#793).
+
+    **An unknown id never overwrites a KNOWN stored one.** The entry for a
+    platform that failed today still describes the ad account it described
+    yesterday; blanking it would break the per-account conversion override
+    and the duplicate join for an entry that was fine. A known id is written
+    verbatim — the caller's own spelling — exactly as before.
+    """
+    if account_id is not None and normalize_account_id(account_id):
+        return account_id
+    existing = platforms.get(platform)
+    if existing is not None and normalize_account_id(existing.account_id):
+        return existing.account_id
+    return UNKNOWN_ACCOUNT_ID
+
+
 def set_platform_not_collected(
     path: Path,
     platform: str,
-    account_id: str,
+    account_id: str | None,
     *,
     reason: str | None,
 ) -> StateDocument:
@@ -1074,11 +1108,19 @@ def set_platform_not_collected(
     first collection is precisely the one an operator cannot otherwise
     diagnose. The write is atomic, under the state lock.
 
+    **The account id may itself be what the collection could not resolve.**
+    ``None`` / ``""`` / whitespace say so, and are stored as
+    :data:`~mureo.context.platform_accounts.UNKNOWN_ACCOUNT_ID` rather than
+    refused — see :func:`_account_id_for_not_collected`, which also explains
+    why an unknown id is never written over a known stored one (#794).
+
     Args:
         path: STATE.json location.
         platform: Platform key (``"google_ads"`` / ``"meta_ads"`` /
             ``"plugin:<dist>:<provider>"`` / …) — the ``platforms`` dict key.
-        account_id: The platform account id, always written onto the entry.
+        account_id: The platform account id, written onto the entry. ``None``
+            / ``""`` / whitespace state that the collection could not resolve
+            one; a known id already stored on the entry then stays.
         reason: What happened, in words an operator can act on (an expired
             token, a permissions error, a collector that did not run).
             Truncated to :data:`~mureo.context.models.NOT_COLLECTED_REASON_MAX_CHARS`
@@ -1099,7 +1141,11 @@ def set_platform_not_collected(
 
     def _build(doc: StateDocument) -> StateDocument:
         platforms = dict(doc.platforms) if doc.platforms else {}
-        guard_platform_entry_write(platforms, platform, account_id)
+        # Resolved BEFORE the guard, because what the guard has to judge is
+        # the id this call will actually store — not the absence a caller who
+        # could not resolve one sent in its place.
+        resolved = _account_id_for_not_collected(platforms, platform, account_id)
+        guard_platform_entry_write(platforms, platform, resolved)
         note = (
             {
                 "attempted_at": _now_iso(),
@@ -1111,8 +1157,8 @@ def set_platform_not_collected(
         # Campaigns, rollups and the conversion override have no input on this
         # call and are carried over by ``replace``: it declares one fact.
         platforms[platform] = replace(
-            _platform_base(platforms, platform, account_id),
-            account_id=account_id,
+            _platform_base(platforms, platform, resolved),
+            account_id=resolved,
             not_collected=note,
         )
         return replace(doc, platforms=platforms)
