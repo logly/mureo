@@ -1888,10 +1888,11 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 /* One line, always. Since #798 this states two facts — the day the figures
    run to and the time they were written — in a card track whose content box
    is ~204px at the narrowest layout. Wrapping it would make every card in
-   the grid taller than the height model in tests/js/reports_index_height.js
-   assumes, and it is the client name below that pays for it (see
-   .reports-client-card-name). So the rare longest wording is clipped, not
-   folded; the same choice .reports-triage-summary already makes. */
+   the grid taller than the height model in
+   tests/js/reports_index_height.test.js assumes, and it is the client name
+   below that pays for it (see .reports-client-card-name). So the rare
+   longest wording is clipped, not folded; the same choice
+   .reports-triage-summary already makes. */
 .reports-client-card-fresh {
   font-size: var(--type-caption-size);
   color: var(--muted);

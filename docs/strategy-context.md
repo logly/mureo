@@ -771,10 +771,22 @@ zero.
 
 #### Per-platform freshness
 
-`fetched_at` (the metric-vocabulary key, see *Performance Metrics* in
-`skills/_mureo-strategy/SKILL.md`) is what the dashboard reads to say how old
-each platform's numbers are. It is judged against the window the figure
-covers: a rollup is **stale** once it is older than that window's own length
+Two metric-vocabulary keys carry this (see *Performance Metrics* in
+`skills/_mureo-strategy/SKILL.md`), and they are not the same fact:
+`period_end` is the last calendar date the figures **cover** (`YYYY-MM-DD`,
+in the ad account's own timezone) and `fetched_at` is when the rollup was
+**written**. The dashboard states both, and takes the staleness verdict on
+`period_end` when the rollup states one, falling back to `fetched_at` when it
+does not. The write time was only ever a proxy: `/daily-check`'s rollup step
+is best-effort and conditional, so a run can persist its report and its
+display — and say it did — while leaving `platforms[].periods` untouched, and
+the card then reads *"Updated 14 hours ago"* over the day before yesterday's
+numbers with nothing to contradict it. `period_end` is the writer's to
+supply; the server will not derive it, because it does not reliably know the
+account's timezone and a coverage date off by one day is worse than none.
+It is judged against the window the figure
+covers: a rollup is **stale** once it runs to a day (or, with no coverage
+date, was written at a time) older than that window's own length
 plus one day of grace — `YESTERDAY` after 2 days, `LAST_7_DAYS` after 8,
 `LAST_30_DAYS` after 31. The window's length is the threshold because past it
 the stored figure no longer overlaps the window its label claims (a
@@ -819,7 +831,13 @@ if any of them is. When some contributor has no usable `fetched_at` the card
 cannot honestly quote an age, so it says *"update time unknown"*; if it also
 knows one contributor is genuinely stale it says *"stale — some update times
 unknown"* instead, because a fresh sibling must never hide a stale one and the
-label has to match the marker.
+label has to match the marker. The covered date is aggregated the same way and
+separately — the **earliest** among the contributors, and none at all when one
+of them states none — so a well-covered platform can no more vouch for a
+thinly-covered sibling than a freshly-written one can for a stale one. Where
+it is known the card and the per-platform rows name it beside the update time
+(*"To 2026-09-22, updated 14h ago"*); where it is not, the line reads exactly
+as it always did.
 
 This is per platform and **cannot** come from the document-level
 `last_synced_at`, which is re-stamped on any platform write: refreshing one

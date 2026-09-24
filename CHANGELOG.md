@@ -62,6 +62,44 @@
   (before, it was refused as a re-point) — the same repair path an empty
   id takes, which makes the duplicate visible to the join and to
   `mureo repair platform-key`. `""` remains the spelling to write.
+- **A report card said when it was last written, and an operator read it as
+  how old the numbers are** (#798). The three KPI cells and the "Updated N
+  hours ago" line under them both come from one rollup,
+  `platforms[<key>].periods[<window>]`, and `fetched_at` is stamped at WRITE
+  time. `/daily-check`'s rollup step is best-effort and conditional — it
+  writes only the windows a run already gathered, must not fire an extra API
+  call to fill one, and in incremental mode may hold no `YESTERDAY` window at
+  all — so a run could persist its report and its display, **report that it
+  had**, and leave the card untouched. Nothing on the card contradicted it:
+  the label read "Updated 14 hours ago" over figures covering the day before
+  yesterday, and a `YESTERDAY` rollup is not even called stale until two days
+  after it was written. Nothing stored anywhere said which calendar dates a
+  rollup covered — `period` is the window token and `fetched_at` is the write
+  time, and neither answers it. A rollup may now carry `period_end`, the last
+  calendar date its figures cover (`YYYY-MM-DD`), beside `fetched_at`;
+  staleness is judged on THAT when it is present and parseable, and on the
+  write time only when it is not. Both are reported either way — they are
+  different facts, and this is the defect that follows from treating them as
+  one. **The server does not derive it**: "yesterday" is yesterday in the ad
+  account's own timezone, which mureo does not reliably know, and a coverage
+  date silently off by one is worse than none, so the writer supplies it —
+  `/daily-check` step 13 and the `mureo_state_platform_metrics_set` schema now
+  say so. An unparseable value is kept verbatim and decides nothing, exactly
+  as an unparseable `fetched_at` already is.
+- **On screen** (#798): where a rollup states its coverage, the client card's
+  freshness line and the per-platform rows now name the day the figures run to
+  beside the update time — *"To 2026-09-22, updated 14h ago"* (*"Stale
+  2026-09-22, updated 14h ago"* when mureo will not vouch for them), and
+  `{date}まで・{ago}更新` in Japanese. Where no coverage is stated the line
+  reads exactly as it did. The line is now clipped rather than wrapped: it
+  carries two facts in a card track ~204px wide, and wrapping it makes every
+  card in the grid taller and breaks the client name below it.
+- **A skipped rollup step is no longer silent** (#798). `/daily-check` step 13
+  must now name which windows it persisted and which it did not, per platform
+  — `windows_not_persisted_for_<platform>`, the notation step 4 already uses
+  for `analytics_not_available_for_<platform>`. A run that wrote the report
+  and the display and said so read as a complete run whether or not the cards
+  moved, which is what made this easy to miss for days at a time.
 
 ## [0.21.2] - 2026-09-23
 
