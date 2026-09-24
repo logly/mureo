@@ -1885,10 +1885,21 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   overflow-wrap: anywhere;
 }
 
+/* One line, always. Since #798 this states two facts — the day the figures
+   run to and the time they were written — in a card track whose content box
+   is ~204px at the narrowest layout, directly under the head that holds
+   the client name. Wrapping it would make every card in the grid taller
+   than the height model in tests/js/reports_index_height.test.js assumes.
+   So the rare longest wording is clipped, not folded — the full line is the
+   element's title — the same choice .reports-triage-summary already
+   makes. */
 .reports-client-card-fresh {
   font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Stale per-platform figures (#535): the aggregate is only as current as its
@@ -3271,14 +3282,20 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--muted);
 }
 
+/* Two stacked lines: the campaign count, then this platform's freshness.
+   Since #798 the freshness line carries two facts — the day the figures run
+   to and the update time — and beside the count, in a ~228px card at
+   1440px, it had ~115-150px and lost the update time to the ellipsis
+   ("Stale 2026-09-20, up…"). On its own row it has the whole card width, so
+   nothing is clipped in practice. */
 .report-card-foot {
   margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid var(--hairline);
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
 }
 
 .report-card-count {
@@ -3288,12 +3305,17 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 }
 
 /* Per-platform freshness (#535) — this platform's own fetched_at, never the
-   document-level last_synced_at. */
+   document-level last_synced_at. One line, always (#798): it has its own
+   row in the footer, so the clip below is a last resort for an unusually
+   long wording, not the normal case; the full line is the element's title. */
 .report-card-fresh {
   font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .report-card-fresh.is-stale {

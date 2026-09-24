@@ -31,6 +31,7 @@
         "dashboard_reports_state.js BEFORE dashboard_reports_report.js"
     );
   }
+  const REPORTS_LOGIC = REPORTS_SHARED.REPORTS_LOGIC;
   const relativeAge = REPORTS_SHARED.relativeAge;
   const reportsPlatformLabels = REPORTS_SHARED.reportsPlatformLabels;
   const reportsConflictText = REPORTS_SHARED.reportsConflictText;
@@ -95,21 +96,36 @@
   // because both the client card and the platform card render the line.
   const STALE_FIGURE_SEPARATOR = " · ";
 
-  // The withheld figures restated as what they ARE — numbers collected at
-  // `fetchedAt`, not the selected window's answer (#638). Nothing is hidden;
-  // only the claim changes. An age mureo cannot quote is said to be unknown
-  // rather than guessed at.
-  function buildStaleFiguresElement(className, fetchedAt, figuresText) {
+  // The withheld figures restated as what they ARE, not the selected
+  // window's answer (#638). Nothing is hidden; only the claim changes.
+  // `stated` is `{judged_on, period_end, fetched_at}` — a platform's
+  // freshness block or a card's restated figures — and the sentence names
+  // the covered day when the verdict was taken on it (#798), the collection
+  // time otherwise; reports_logic.js picks which. An age mureo cannot quote
+  // is said to be unknown rather than guessed at.
+  function buildStaleFiguresElement(className, stated, figuresText) {
     const el = document.createElement("p");
     el.className = className;
-    const age = fetchedAt ? relativeAge(fetchedAt) : null;
-    el.textContent = MUREO.t(
-      age
-        ? "dashboard.reports_stale_last_collected"
-        : "dashboard.reports_stale_last_collected_unknown",
-      { ago: age, figures: figuresText }
-    );
+    el.textContent = REPORTS_LOGIC.reportsStaleFiguresText(stated, figuresText);
     return el;
+  }
+
+  // Why a stale platform's figures are not shown as the window's result.
+  // Judged on the covered day, the note says the figures RUN TO a day before
+  // the window (#798) — "collected before the window" was false of figures
+  // written fourteen hours ago. Judged on the write time, it reads as before.
+  function buildStaleWithheldNote(freshness) {
+    const basis = REPORTS_LOGIC.reportsStaleBasis(freshness);
+    const covered =
+      !!basis && basis.kind === REPORTS_LOGIC.REPORTS_STALE_BASIS_PERIOD_END;
+    const note = document.createElement("p");
+    note.className = "report-card-stale";
+    note.textContent = MUREO.t(
+      covered
+        ? "dashboard.reports_stale_kpis_withheld_covered"
+        : "dashboard.reports_stale_kpis_withheld"
+    );
+    return note;
   }
 
   // One platform's own rollup as a single labelled line, in the same order
@@ -448,14 +464,11 @@
     card.appendChild(headline);
 
     if (rowStale) {
-      const note = document.createElement("p");
-      note.className = "report-card-stale";
-      note.textContent = MUREO.t("dashboard.reports_stale_kpis_withheld");
-      card.appendChild(note);
+      card.appendChild(buildStaleWithheldNote(platform.freshness));
       card.appendChild(
         buildStaleFiguresElement(
           "report-card-stale-figures",
-          platform.freshness.fetched_at,
+          platform.freshness,
           staleTotalsFiguresText(totals)
         )
       );
@@ -500,12 +513,14 @@
     // Anything the platform stated that the canonical vocabulary has no slot
     // for, behind a disclosure. Rendered only when there IS something: a
     // "Show all metrics" control that opens onto nothing is worse than no
-    // control. `period` and `fetched_at` are excluded — they are the window
-    // and the timestamp, both already on the card, and neither is a metric.
+    // control. The non-metric keys (REPORTS_NON_METRIC_TOTALS_KEYS: the
+    // window, the write time and the covered date) are excluded — each is
+    // already on the card, and none is a metric.
     const extra = document.createElement("dl");
     extra.className = "report-card-kpis";
     Object.keys(totals).forEach(function (key) {
-      if (key === "spend" || key === "period" || key === "fetched_at") return;
+      if (key === "spend") return;
+      if (REPORTS_LOGIC.REPORTS_NON_METRIC_TOTALS_KEYS.indexOf(key) !== -1) return;
       if (REPORTS_KPI_LABELS[key] || totals[key] == null) return;
       const term = document.createElement("dt");
       term.textContent = key;
@@ -536,7 +551,8 @@
     return card;
   }
 
-  // Card footer: campaign count + THIS platform's own freshness (#535).
+  // Card footer: campaign count, then THIS platform's own freshness (#535)
+  // on its own row (#798 — the stacking is app.css's .report-card-foot).
   function buildReportCardFoot(platform) {
     const foot = document.createElement("footer");
     foot.className = "report-card-foot";
@@ -552,6 +568,9 @@
     const freshEl = document.createElement("span");
     freshEl.className = "report-card-fresh" + (fresh.stale ? " is-stale" : "");
     freshEl.textContent = fresh.text;
+    // Clipped rather than wrapped if it ever outgrows its row (#798), so
+    // the whole of it is kept where a pointer can still read it.
+    freshEl.title = fresh.text;
     foot.appendChild(freshEl);
     return foot;
   }

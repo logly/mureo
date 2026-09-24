@@ -287,29 +287,23 @@
     return row;
   }
 
-  // The oldest `fetched_at` among the rows mureo has judged stale, or null.
+  // What a stale client's withheld figures are stated against (#798):
+  // `{judged_on, period_end, fetched_at}` from reports_logic.js, over every
+  // row mureo has judged stale.
   //
   // Taken from the stale rows themselves rather than from
   // `aggregateClientKpis().staleFigures`, which is deliberately null when
   // the sum is ALSO double-counted (that figure is wrong at every age, so
   // the card must not restate it). The age is not the figure, and a client
   // that is both must still be able to say how old its numbers are.
-  // Null when no stale row carries a readable timestamp — mureo then says
-  // the age is unknown rather than inventing one.
-  function oldestStaleFetchedAt(summary) {
+  // `fetched_at` is the oldest readable write time among those rows, or null
+  // — mureo then says the age is unknown rather than inventing one — and
+  // `period_end` is the earliest covered day when every one of them was
+  // judged on its covered day, null otherwise.
+  function staleFactsFor(summary) {
     const rows = summary && Array.isArray(summary.platforms) ? summary.platforms : [];
-    let oldest = null;
-    let oldestMs = Infinity;
-    rows.forEach(function (row) {
-      if (!logic().reportsRowIsStale(row)) return;
-      const at = row.freshness.fetched_at;
-      const ms = Date.parse(at);
-      if (!Number.isNaN(ms) && ms < oldestMs) {
-        oldestMs = ms;
-        oldest = at;
-      }
-    });
-    return oldest;
+    const facts = logic().reportsAggregateStaleFacts(rows);
+    return facts || { judged_on: null, period_end: null, fetched_at: null };
   }
 
   // The server's count of logged changes past their review date, or null.
@@ -366,11 +360,9 @@
       });
     }
     if (kpis.stale) {
-      items.push(
-        item("totals_stale", client, index, {
-          fetched_at: oldestStaleFetchedAt(summary),
-        })
-      );
+      // `fetched_at` stays where it always was; `period_end` and
+      // `judged_on` sit beside it (#798), so the payload only grows.
+      items.push(item("totals_stale", client, index, staleFactsFor(summary)));
     }
 
     // What the ANALYSIS said (#699). Every other finding here is about
@@ -520,13 +512,7 @@
           keys: row.keys,
         });
       case "totals_stale":
-        // An age mureo cannot quote is said to be unquotable rather than
-        // left blank: a dangling "collected " reads as a claim about now.
-        return row.fetched_at
-          ? MUREO.t("dashboard.reports_triage_stale", {
-              ago: L.relativeAge(row.fetched_at),
-            })
-          : MUREO.t("dashboard.reports_triage_stale_undated");
+        return triageStaleText(row, L);
       case "not_collected":
         return MUREO.t("dashboard.reports_triage_not_collected", {
           platform: (row.note && (row.note.label || row.note.key)) || "",
@@ -552,6 +538,23 @@
       default:
         return "";
     }
+  }
+
+  // The totals_stale sentence. Judged on the covered day, it names that day
+  // (#798): the card's own freshness line does, and "collected 14h ago"
+  // beside "Stale 2026-09-20" contradicts it. Otherwise, exactly as before —
+  // and an age mureo cannot quote is said to be unquotable rather than left
+  // blank: a dangling "collected " reads as a claim about now.
+  function triageStaleText(row, L) {
+    const basis = L.reportsStaleBasis(row);
+    if (basis && basis.kind === L.REPORTS_STALE_BASIS_PERIOD_END) {
+      return MUREO.t("dashboard.reports_triage_stale_covered", { date: basis.date });
+    }
+    return row.fetched_at
+      ? MUREO.t("dashboard.reports_triage_stale", {
+          ago: L.relativeAge(row.fetched_at),
+        })
+      : MUREO.t("dashboard.reports_triage_stale_undated");
   }
 
   // How this finding reads on the card: "attention" or "watch".
@@ -630,14 +633,24 @@
   // let happen. "Figures 29 days old" is not a warning; it is what the dash
   // means.
   //
-  // The stale badge carries the age for exactly that reason. Where mureo
-  // cannot quote an age it falls back to the plain tag rather than inventing
-  // one, the same position triageItemText takes.
+  // The stale badge carries the age for exactly that reason — or, when the
+  // verdict was taken on the covered day, that day (#798), which is what the
+  // freshness line on the same card names. Where mureo can quote neither it
+  // falls back to the plain tag rather than inventing one, the same position
+  // triageItemText takes.
   function triageItemBadge(row) {
     const kind = row && typeof row === "object" ? row.kind : null;
-    if (kind === "totals_stale" && row.fetched_at) {
+    if (kind !== "totals_stale") return triageItemTag(row);
+    const L = logic();
+    const basis = L.reportsStaleBasis(row);
+    if (basis && basis.kind === L.REPORTS_STALE_BASIS_PERIOD_END) {
+      return MUREO.t("dashboard.reports_triage_tag_stale_covered", {
+        date: basis.date,
+      });
+    }
+    if (row.fetched_at) {
       return MUREO.t("dashboard.reports_triage_tag_stale_aged", {
-        ago: logic().relativeAge(row.fetched_at),
+        ago: L.relativeAge(row.fetched_at),
       });
     }
     return triageItemTag(row);

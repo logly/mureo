@@ -92,7 +92,10 @@ _PERIOD_BUCKET_PROPERTY = {
     "type": "object",
     "description": (
         "Totals-shaped rollup for this window (spend, impressions, clicks, "
-        "conversions, cpa, ctr, result_indicator, fetched_at)."
+        "conversions, cpa, ctr, result_indicator, fetched_at, period_end). "
+        "``period_end`` is the last calendar date THESE figures cover "
+        "(YYYY-MM-DD, the ad account's own timezone) — state it per window, "
+        "never copied from another one."
     ),
 }
 
@@ -963,6 +966,15 @@ TOOLS: list[Tool] = [
             "stamped with the write time, so the dashboard can state an age "
             'instead of "update time unknown"; pass your own only when the '
             "figures were pulled at some other time (a historical window). "
+            "**Also pass ``period_end`` on every rollup** (YYYY-MM-DD): the "
+            "last calendar date those figures cover, in the ad account's own "
+            "timezone. It is NOT the same fact as ``fetched_at``, and the "
+            "server cannot derive it — the account's timezone is not "
+            "something this process reliably knows, and a coverage date off "
+            "by one day is worse than none. A rollup written without it is "
+            "judged stale on its write time alone, which is how a card comes "
+            'to read "Updated 14 hours ago" over figures from two days '
+            "earlier. "
             "Campaigns and every other "
             "platform are preserved. ``account_id`` is required and always "
             "written onto the entry. **If this platform carries a "
@@ -1013,11 +1025,15 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Single-rollup totals for the most recent window "
                         "(spend, impressions, clicks, conversions, cpa, ctr, "
-                        "result_indicator, period, fetched_at). Omit to "
-                        "preserve the existing value. ``fetched_at`` (ISO "
-                        "8601) is stamped with the write time when you leave "
-                        "it out — or send it null/blank; supply a real one "
-                        "only for figures pulled at some other time."
+                        "result_indicator, period, fetched_at, period_end). "
+                        "Omit to preserve the existing value. ``fetched_at`` "
+                        "(ISO 8601) is stamped with the write time when you "
+                        "leave it out — or send it null/blank; supply a real "
+                        "one only for figures pulled at some other time. "
+                        "``period_end`` (YYYY-MM-DD) is the last calendar "
+                        "date these figures COVER, which is a different fact "
+                        "from when they were written and is never derived "
+                        "for you — see the tool description."
                     ),
                 },
                 "metrics_period": {
@@ -1045,7 +1061,10 @@ TOOLS: list[Tool] = [
                         "existing map. Omit to preserve the existing map. "
                         "Each bucket you pass without a ``fetched_at`` is "
                         "stamped with the write time; a bucket this call "
-                        "merely preserves is never re-stamped."
+                        "merely preserves is never re-stamped. State each "
+                        "bucket's own ``period_end`` — the windows end on "
+                        "different days and one date copied across them "
+                        "mislabels the rest."
                     ),
                 },
                 "path": _PATH_PROPERTY,

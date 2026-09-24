@@ -334,6 +334,19 @@ test.describe("the Reports index fits a screen an operator can read", function (
     portfolioStripHeight() +
     alertPanelHeight(shown, ALERT_KINDS > shown);
 
+  test.it("holds the card's freshness line to exactly one line", function () {
+    // The model above counts `.reports-client-card-fresh` ONCE. Since #798
+    // that line carries two facts — the day the figures run to and the time
+    // they were written — and the narrowest card track is ~204px of content,
+    // so it is the line most likely to wrap and silently make every card
+    // taller than this estimate. Clipped, never wrapped: the stylesheet has
+    // to say so.
+    const decl = rule(".reports-client-card-fresh");
+    assert.equal(decl["white-space"], "nowrap");
+    assert.equal(decl["text-overflow"], "ellipsis");
+    assert.equal(decl.overflow, "hidden");
+  });
+
   test.it("keeps the strip and the open alert list inside one screen", function () {
     assert.ok(
       top <= TOP_BUDGET,

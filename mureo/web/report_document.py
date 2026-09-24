@@ -19,7 +19,13 @@ alone:
     and :data:`CONFLICT_UNRECOGNIZED_KEY`.
   - **Is this figure still worth showing?** Freshness (#535) against the
     window the figure claims to cover, plus the grace that keeps one missed
-    sync from painting a healthy account red.
+    sync from painting a healthy account red — and, where the rollup states
+    the last day its figures cover, judged on THAT rather than on the write
+    time (#798). That section is :mod:`mureo.web.report_freshness`, lifted
+    out when this file reached the 800-line budget. Only ``_parse_timestamp``
+    is imported back, because the not-collected retirement below uses it;
+    ``_platform_freshness`` and ``_PERIOD_LENGTH_DAYS`` are re-exported from
+    :mod:`mureo.web.reports`, not from here.
   - **Which windows does this document actually carry**, and which of them are
     outside the canonical vocabulary.
   - **Why did the figures not move?** The stored ``not_collected`` note (#638),
@@ -33,17 +39,19 @@ Not one figure is computed here that the document does not already state, and
 nothing in this module mutates anything — it is read-only, exactly as
 ``reports.py`` is.
 
-The only sibling this module reads is :mod:`mureo.web.report_labels`, and only
+The siblings this module reads are :mod:`mureo.web.report_labels` — only
 because :data:`CONFLICT_UNRECOGNIZED_KEY` is *defined* as "the key the display
-resolver could make nothing of". Deciding recognisability a second time here
-is how this layer and the grid it describes would start disagreeing.
+resolver could make nothing of", and deciding recognisability a second time
+here is how this layer and the grid it describes would start disagreeing —
+and :mod:`mureo.web.report_freshness`, which is this module's own freshness
+section moved out rather than a new layer.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 # The stored shapes' own bounds, so the read side and the write helpers agree
@@ -63,6 +71,14 @@ from mureo.core.metrics_windows import (
     CANONICAL_METRICS_WINDOWS,
     is_canonical_metrics_window,
 )
+
+# The freshness section (#798), lifted out of this module when it reached the
+# 800-line budget. Only the timestamp reader is needed HERE — the
+# ``not_collected`` retirement rules below compare against the same parsed
+# ``fetched_at`` the staleness verdict is taken on, and answering "is this a
+# time at all" twice is how two surfaces start disagreeing. The rest of the
+# section is imported by ``mureo.web.reports`` from its own module.
+from mureo.web.report_freshness import _parse_timestamp
 from mureo.web.report_labels import platform_display_name
 
 if TYPE_CHECKING:
@@ -125,6 +141,13 @@ which costs more than the finding is worth.
 # summary copies only these keys so a future stray/secret-shaped key written
 # into ``totals`` can never reach the dashboard. ``result_indicator`` is
 # Meta-only but harmless to allow for every platform.
+#
+# Three of them are not metrics at all but statements ABOUT the metrics:
+# ``period`` (the window token), ``fetched_at`` (when the rollup was written)
+# and ``period_end`` (the last calendar date it covers, #798). The last two
+# are separate facts and neither is derivable from the other — that they were
+# treated as one is #798 — so both travel, and both are excluded from the
+# numeric delta set below.
 _CANONICAL_TOTAL_KEYS: tuple[str, ...] = (
     "spend",
     "impressions",
@@ -135,6 +158,7 @@ _CANONICAL_TOTAL_KEYS: tuple[str, ...] = (
     "result_indicator",
     "period",
     "fetched_at",
+    "period_end",
 )
 
 # Canonical period tokens in dashboard-toggle order. The default view is the
@@ -149,11 +173,6 @@ _CANONICAL_TOTAL_KEYS: tuple[str, ...] = (
 # ``mureo.web``. Two copies would be free to drift, and the drift is the bug
 # — a writer accepting a window nothing here reads.
 _PERIOD_ORDER: tuple[str, ...] = tuple(CANONICAL_METRICS_WINDOWS)
-
-# Canonical window → the length of that window in days. The stale threshold
-# is derived from this rather than written down as a per-window magic number,
-# so the rationale below is the only thing to check when a window is added.
-_PERIOD_LENGTH_DAYS: dict[str, int] = dict(CANONICAL_METRICS_WINDOWS)
 
 _DAILY_SERIES_DAYS = 7
 """How many days of ``daily`` history a platform row carries (#690).
@@ -170,32 +189,15 @@ _DAILY_DATE_KEY_RE = re.compile(DAILY_DATE_KEY_PATTERN)
 _DAILY_DELTA_KEYS: tuple[str, ...] = tuple(
     key
     for key in _CANONICAL_TOTAL_KEYS
-    if key not in {"result_indicator", "period", "fetched_at"}
+    if key not in {"result_indicator", "period", "fetched_at", "period_end"}
 )
 """The canonical keys a day-over-day delta is computed for.
 
 Derived from :data:`_CANONICAL_TOTAL_KEYS` rather than written out again, so
 a metric added to the vocabulary is deltaed without a second list being
-remembered. The three excluded keys are the non-numeric ones — subtracting
-two ``fetched_at`` strings, or two ``result_indicator`` labels, is not a
-change in performance.
-"""
-
-_STALE_GRACE_DAYS = 1
-"""Slack added to a window's own length before its figure is called stale.
-
-Absorbs one missed daily sync run and the platforms' own reporting lag
-(conversions backfill for a day or two is normal), so a single hiccup does
-not paint a healthy account red.
-"""
-
-_STALE_AFTER_DAYS_DEFAULT = max(_PERIOD_LENGTH_DAYS.values()) + _STALE_GRACE_DAYS
-"""Threshold for a window whose length mureo does not know.
-
-The most forgiving known threshold, not the strictest: a window we cannot
-reason about must not be flagged on a guess. Crying wolf on figures mureo
-cannot judge would teach operators to ignore the marker, which costs more
-than the occasional missed stale entry.
+remembered. The four excluded keys are the non-numeric ones — subtracting
+two ``fetched_at`` strings, two ``period_end`` dates, or two
+``result_indicator`` labels, is not a change in performance.
 """
 
 
@@ -306,104 +308,6 @@ def _build_platform_conflicts(doc: StateDocument | None) -> list[dict[str, Any]]
         if platform_display_name(key) == key
     )
     return rows
-
-
-# ---------------------------------------------------------------------------
-# Per-platform freshness (#535)
-# ---------------------------------------------------------------------------
-
-
-def _platform_freshness(
-    totals: dict[str, Any] | None, metrics_period: str | None
-) -> dict[str, Any]:
-    """How old THIS platform's figures are — ``{fetched_at, stale,
-    stale_after_days}``.
-
-    ``fetched_at`` is the optional, writer-stamped time the numbers were
-    pulled (canonical vocabulary; see ``_mureo-strategy`` → *Performance
-    Metrics*). It is read off the rollup actually being rendered, so a
-    period-toggled view reports the freshness of the window on screen, and it
-    is relayed **verbatim** — including a value that is not a timestamp at
-    all. ``stale`` is the authoritative "could this be interpreted?" answer;
-    blanking an uninterpretable string would throw away the only clue an
-    operator has for finding the writer that produced it, and this module
-    reports what the document says rather than silently normalising it.
-    Consumers must therefore treat ``fetched_at`` as an opaque string unless
-    ``stale`` is not ``None``.
-
-    ``stale`` is deliberately three-valued. ``None`` means **unknown** —
-    ``fetched_at`` was absent or unparseable — and that is a real state, not
-    an error: the field is optional and writer-dependent, so claiming either
-    "fresh" or "stale" would assert something mureo cannot back. Callers
-    render it as its own thing.
-
-    Why this exists at all: the only freshness the dashboard used to show was
-    the document-level ``last_synced_at``, which the state layer re-stamps on
-    ANY platform write — so refreshing one platform made every other
-    platform's months-old numbers read as just-synced (#535). That timestamp
-    is still correct about what it means; it just cannot answer this
-    question.
-    """
-    stale_after = _stale_after_days(metrics_period)
-    fetched_raw = totals.get("fetched_at") if totals else None
-    fetched_at = fetched_raw if isinstance(fetched_raw, str) and fetched_raw else None
-    parsed = _parse_timestamp(fetched_at)
-    stale = (
-        None
-        if parsed is None
-        else parsed < datetime.now(timezone.utc) - timedelta(days=stale_after)
-    )
-    return {
-        "fetched_at": fetched_at,
-        "stale": stale,
-        "stale_after_days": stale_after,
-    }
-
-
-def _stale_after_days(metrics_period: str | None) -> int:
-    """Age at which a figure covering ``metrics_period`` is called stale.
-
-    **The window's own length, plus one grace day.** A figure fetched longer
-    ago than the window it summarises no longer overlaps that window at all:
-    a ``LAST_30_DAYS`` rollup pulled 31 days ago describes days -31 to -61,
-    while today's ``LAST_30_DAYS`` is days 0 to -30 — not one shared day. So
-    the figure is not "a bit old", it is about a different period than the
-    label claims. :data:`_STALE_GRACE_DAYS` then absorbs one missed daily
-    sync and platform reporting lag.
-
-    That is why a ``YESTERDAY`` figure (stale after 2 days) and a
-    ``LAST_30_DAYS`` figure (stale after 31) are judged so differently: they
-    are not the same claim aging at the same rate.
-
-    An unrecognised window falls back to :data:`_STALE_AFTER_DAYS_DEFAULT`.
-    """
-    if metrics_period is None:
-        return _STALE_AFTER_DAYS_DEFAULT
-    length = _PERIOD_LENGTH_DAYS.get(metrics_period)
-    if length is None:
-        return _STALE_AFTER_DAYS_DEFAULT
-    return length + _STALE_GRACE_DAYS
-
-
-def _parse_timestamp(value: str | None) -> datetime | None:
-    """Parse an ISO-8601 ``fetched_at``, or ``None`` if it is not one.
-
-    Tolerates a trailing ``Z`` (Python < 3.11 ``fromisoformat`` does not) and
-    treats a naive timestamp as UTC — writers are inconsistent about the
-    offset and refusing one would report a real timestamp as unknown.
-    A value that is not a timestamp at all yields ``None`` (unknown) rather
-    than a guess, and never an exception out of this read-only view.
-    """
-    if not value:
-        return None
-    text = value.strip()
-    if text.endswith(("Z", "z")):
-        text = f"{text[:-1]}+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
 def _period_totals(state: PlatformState, period: str) -> dict[str, Any] | None:
@@ -613,7 +517,8 @@ def _platform_not_collected(state: PlatformState) -> dict[str, Any] | None:
     - **Retirement must be PROVED.** An unparseable ``fetched_at`` or a note
       with no ``attempted_at`` (mureo's own writer always stamps one) leaves
       the question open, and open is not retired — the same position
-      :func:`_platform_freshness` takes on a value it cannot interpret.
+      :func:`mureo.web.report_freshness._platform_freshness` takes on a value
+      it cannot interpret.
     """
     note = _safe_not_collected(state.not_collected)
     if note is None:

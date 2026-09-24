@@ -378,6 +378,8 @@
     fresh.className =
       "reports-client-card-fresh" + (cardFresh.stale ? " is-stale" : "");
     fresh.textContent = cardFresh.text;
+    // Clipped, not wrapped (#798): the full line stays readable on hover.
+    fresh.title = cardFresh.text;
     card.appendChild(head);
     // Freshness on its own line, under the name: in the head it competed
     // with the name and the status pill for a 230px row, and the casualty
@@ -447,7 +449,7 @@
       card.appendChild(
         buildStaleFiguresElement(
           "reports-client-card-stale-figures",
-          kpis.staleFigures.fetched_at,
+          kpis.staleFigures,
           staleAggregateFiguresText(kpis.staleFigures)
         )
       );

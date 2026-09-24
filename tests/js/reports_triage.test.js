@@ -1535,3 +1535,136 @@ test.describe("only a graded flag files work", function () {
     assert.equal(print({ spend: 1000 }), print({ spend: 2000 }));
   });
 });
+
+// ---------------------------------------------------------------------
+// A stale finding speaks about the fact the verdict was taken on (#798)
+// ---------------------------------------------------------------------
+//
+// The card's freshness line names the day the figures run to when the server
+// judged on it. The chip and the alert row sit on the same card and in the
+// list above it; if they still quote the write time, one card says "Stale
+// 2026-09-20" and "Figures 14h ago old" at once.
+
+test.describe("a stale finding names the day its figures run to", function () {
+  const HOUR = 60 * 60 * 1000;
+
+  /** A stale row judged on coverage (`period_end`) or on the write time. */
+  function staleRow(key, judgedOn, periodEnd, fetchedAt) {
+    return {
+      key: key,
+      display_name: key,
+      totals: { spend: 1000, conversions: 10 },
+      metrics_period: "YESTERDAY",
+      freshness: {
+        fetched_at: fetchedAt,
+        period_end: periodEnd,
+        judged_on: judgedOn,
+        stale: true,
+        stale_after_days: 2,
+      },
+      not_collected: null,
+    };
+  }
+
+  function summaryOf(rows) {
+    const s = healthySummary();
+    s.platforms = rows;
+    return s;
+  }
+
+  const written = new Date(Date.now() - 14 * HOUR).toISOString();
+
+  test.it("carries both facts and the verdict's basis on the row", function () {
+    const built = triage.buildReportsTriage(
+      [client("a")],
+      [summaryOf([staleRow("google_ads", "period_end", "2026-09-20", written)])]
+    );
+    const row = built.items[0];
+    assert.equal(row.kind, "totals_stale");
+    assert.equal(row.fetched_at, written);
+    assert.equal(row.period_end, "2026-09-20");
+    assert.equal(row.judged_on, "period_end");
+  });
+
+  test.it("says the figures run to that day, in the list and on the chip", function () {
+    const built = triage.buildReportsTriage(
+      [client("a")],
+      [summaryOf([staleRow("google_ads", "period_end", "2026-09-20", written)])]
+    );
+    const text = triage.triageItemText(built.items[0]);
+    assert.equal(text, "dashboard.reports_triage_stale_covered");
+    assert.equal(calls[calls.length - 1].params.date, "2026-09-20");
+
+    const badge = triage.triageClientBadges(built, 0)[0];
+    assert.equal(badge.text, "dashboard.reports_triage_tag_stale_covered");
+    assert.equal(calls[calls.length - 1].params.date, "2026-09-20");
+  });
+
+  test.it("names the EARLIEST day when several rows were judged on coverage", function () {
+    const built = triage.buildReportsTriage(
+      [client("a")],
+      [
+        summaryOf([
+          staleRow("google_ads", "period_end", "2026-09-20", written),
+          staleRow("meta_ads", "period_end", "2026-09-17", written),
+        ]),
+      ]
+    );
+    triage.triageItemText(built.items[0]);
+    assert.equal(calls[calls.length - 1].params.date, "2026-09-17");
+  });
+
+  test.it("reads exactly as before when the verdict was taken on the write time", function () {
+    const built = triage.buildReportsTriage(
+      [client("a")],
+      [summaryOf([staleRow("google_ads", "fetched_at", null, ago(11))])]
+    );
+    assert.equal(built.items[0].judged_on, "fetched_at");
+    assert.equal(built.items[0].period_end, null);
+    assert.equal(
+      triage.triageItemText(built.items[0]),
+      "dashboard.reports_triage_stale"
+    );
+    assert.equal(
+      triage.triageClientBadges(built, 0)[0].text,
+      "dashboard.reports_triage_tag_stale_aged"
+    );
+  });
+
+  test.it("falls back to the write time when only some rows were judged on coverage", function () {
+    // One stale contributor has no coverage date the server could use, so no
+    // single day describes the withheld figures. The write time still does.
+    const built = triage.buildReportsTriage(
+      [client("a")],
+      [
+        summaryOf([
+          staleRow("google_ads", "period_end", "2026-09-20", written),
+          staleRow("meta_ads", "fetched_at", null, ago(11)),
+        ]),
+      ]
+    );
+    assert.equal(built.items[0].judged_on, "fetched_at");
+    assert.equal(
+      triage.triageItemText(built.items[0]),
+      "dashboard.reports_triage_stale"
+    );
+    assert.equal(
+      triage.triageClientBadges(built, 0)[0].text,
+      "dashboard.reports_triage_tag_stale_aged"
+    );
+  });
+
+  test.it("ships every new wording in both locales", function () {
+    const fs = require("node:fs");
+    const data = JSON.parse(fs.readFileSync(path.join(WEB, "i18n.json"), "utf-8"));
+    for (const key of [
+      "dashboard.reports_triage_stale_covered",
+      "dashboard.reports_triage_tag_stale_covered",
+    ]) {
+      for (const locale of ["en", "ja"]) {
+        assert.ok(data[locale][key], key + " missing from " + locale);
+        assert.ok(data[locale][key].indexOf("{date}") !== -1, key + " " + locale);
+      }
+    }
+  });
+});

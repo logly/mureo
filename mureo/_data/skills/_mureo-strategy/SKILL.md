@@ -494,7 +494,8 @@ these exact keys (lowercase); omit a key when the platform does not provide it.
 | `ctr` | number | Click-through rate as a ratio (e.g. `0.024`), not a percent string |
 | `result_indicator` | string | **Meta only** — what a "result/conversion" counts (e.g. `link_click` vs `offsite_conversion.fb_pixel_lead`) |
 | `period` | string | Window the numbers cover, e.g. `LAST_30_DAYS` |
-| `fetched_at` | string | ISO 8601 time the numbers were pulled (freshness) |
+| `fetched_at` | string | ISO 8601 time the numbers were **written** (freshness) |
+| `period_end` | string | `YYYY-MM-DD`, the last calendar date the numbers **cover**, in the ad account's own timezone |
 
 **CV-definition rule (Meta):** never aggregate conversions/CPA across campaigns
 with **different** `result_indicator` values — `link_click`-optimized totals and
@@ -505,11 +506,20 @@ Platform-level: `platforms[<p>].totals` holds the same keys summed for that
 platform (respecting the `result_indicator` grouping for Meta), and
 `platforms[<p>].metrics_period` records the window the totals cover.
 
-**`fetched_at` is what the dashboard's staleness marker reads — set it on
-every rollup you write**, including each `periods[<window>]` bucket. The
-reporting view judges a figure against the window it covers: stale once it is
-older than that window's own length plus one day of grace, i.e. the point at
-which the stored numbers no longer overlap the window their label claims
+**`period_end` and `fetched_at` are different facts — set both on every
+rollup you write**, including each `periods[<window>]` bucket. `period_end`
+says which day the figures run to; `fetched_at` says when they were written.
+The dashboard's staleness marker prefers the first and falls back to the
+second, and it states both on screen: a card judged on the write time alone
+reads *"Updated 14 hours ago"* over figures from two days earlier whenever a
+run persists its report without re-collecting a window, which is exactly how
+a stale card goes unnoticed. `fetched_at` the server can stamp for you;
+`period_end` it cannot — "yesterday" depends on the ad account's timezone,
+which the server does not reliably know, and a date off by one is worse than
+none. The reporting view judges a figure against the window it covers: stale
+once the day it runs to (or, failing that, the time it was written) is older
+than that window's own length plus one day of grace, i.e. the point at which
+the stored numbers no longer overlap the window their label claims
 (`YESTERDAY` after 2 days, `LAST_7_DAYS` after 8, `LAST_30_DAYS` after 31).
 A **stale** rollup is no longer rendered as the selected window's answer: the
 headline figures read `—` and the stored numbers are restated below with
