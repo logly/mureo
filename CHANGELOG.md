@@ -120,6 +120,11 @@
   `mureo/google_ads/_analysis_search_terms.py` and the branch of
   `suggest_negative_keywords` that forwarded to them are removed; its output
   is unchanged (the branch never added anything).
+- **Private helpers nothing called** (post-v0.21.2 audit):
+  `_resolve_budget_amount_micros` (`mureo/google_ads/client.py`),
+  `get_search_console_client` (`mureo/mcp/_client_factory.py`),
+  `parse_form_body` (`mureo/web/_helpers.py`), and `KNOWN_PARTS` /
+  `SetupParts.all_installed` (`mureo/web/setup_state.py`).
 - **Functions and methods that only the test suite called.** Nothing in
   mureo, its skills or its extensions reached them:
   `ByodMetaAdsClient.get_metrics_daily` / `get_ad_set_insights_daily` /

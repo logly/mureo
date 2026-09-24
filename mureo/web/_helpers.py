@@ -13,7 +13,6 @@ import contextlib
 import json
 import logging
 import secrets as _secrets
-import urllib.parse
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
@@ -117,18 +116,6 @@ def parse_json_body(body: bytes) -> dict[str, Any] | None:
     if not isinstance(parsed, dict):
         return None
     return parsed
-
-
-def parse_form_body(body: bytes) -> dict[str, str] | None:
-    """Parse application/x-www-form-urlencoded body to flat dict."""
-    if not body:
-        return {}
-    try:
-        decoded = body.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    parsed = urllib.parse.parse_qs(decoded, keep_blank_values=True)
-    return {k: v[0] for k, v in parsed.items() if v}
 
 
 SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
