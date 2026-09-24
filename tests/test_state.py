@@ -2390,6 +2390,16 @@ class TestConversionActionTypesOverride:
         assert load_conversion_action_types("act_1", path=p) is None
         assert load_conversion_action_types("act_2", path=p) is None
 
+    def test_a_placeholder_account_id_never_matches(self, tmp_path: Path) -> None:
+        """#793 — an override keyed on a placeholder names no account, so it
+        must not be handed to a caller that asks with the same placeholder."""
+        from mureo.context.state import load_conversion_action_types
+
+        p = self._state_with_override(tmp_path, account_id="unknown")
+        assert load_conversion_action_types("unknown", path=p) is None
+        assert load_conversion_action_types("act_unknown", path=p) is None
+        assert load_conversion_action_types("act_1", path=p) is None
+
     def test_missing_stored_account_id_never_matches(self, tmp_path: Path) -> None:
         """#536 — the tolerant read path synthesizes ``""`` for a missing
         ``account_id``, which must be "unknown", never a join key."""
@@ -2556,6 +2566,26 @@ class TestDuplicateAccountEntryGuard:
         )
         doc = set_platform_metrics(path, "meta_ads", "", totals={"spend": 1.0})
         assert set(doc.platforms) == {"legacy", "meta_ads"}
+
+    def test_a_placeholder_account_id_never_joins(self, tmp_path: Path) -> None:
+        """#793 — ``"unknown"`` is a placeholder, not an ad account.
+
+        A second platform recording the same placeholder is not a second key
+        for one account, so the create-time guard must not refuse it.
+        """
+        path = self._seed(tmp_path, "google_ads", "unknown")
+        doc = set_platform_metrics(path, "meta_ads", "unknown", totals={"spend": 2.0})
+        assert set(doc.platforms) == {"google_ads", "meta_ads"}
+
+    def test_a_real_id_is_still_refused_beside_a_placeholder(
+        self, tmp_path: Path
+    ) -> None:
+        path = self._seed(tmp_path, "google_ads", "unknown")
+        set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 2.0})
+        with pytest.raises(ValueError, match="already stored under"):
+            set_platform_metrics(
+                path, "plugin:mureo-logly-bridge", "1", totals={"spend": 3.0}
+            )
 
     def test_upsert_campaign_shares_the_guard(self, tmp_path: Path) -> None:
         """Same key-only get-then-overwrite shape, same ingress."""
@@ -2724,6 +2754,37 @@ class TestDuplicateAccountEntryGuard:
 
         (group,) = duplicate_account_entries(doc.platforms)
         assert group.platform_keys == ("google_ads", "legacy")
+
+    def test_stamping_an_id_onto_a_placeholder_entry_is_the_same_repair_path(
+        self, tmp_path: Path
+    ) -> None:
+        """#793 — a stored placeholder is an unknown entry, so branch (3).
+
+        Before the fold, ``"unknown"`` was read as an id, so writing ``"5"``
+        onto it while ``meta_ads`` held ``act_5`` was refused as a re-point.
+        It now takes the idless-entry path above: the entry claimed no
+        account, stamping one on cannot create a real-world duplicate, and
+        allowing it is what makes an existing one visible to the join.
+        """
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "google_ads": {"account_id": "unknown"},
+                        "meta_ads": {"account_id": "act_5"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        doc = set_platform_metrics(path, "google_ads", "5", totals={"spend": 1.0})
+        assert doc.platforms["google_ads"].account_id == "5"
+        from mureo.context.platform_accounts import duplicate_account_entries
+
+        (group,) = duplicate_account_entries(doc.platforms)
+        assert group.platform_keys == ("google_ads", "meta_ads")
 
     def test_upsert_campaign_rejects_a_repoint(self, tmp_path: Path) -> None:
         path = tmp_path / "STATE.json"

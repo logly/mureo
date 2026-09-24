@@ -69,6 +69,10 @@ from mureo.context.models import (
     StateDocument,
 )
 from mureo.context.observations import closed_observation_indices
+from mureo.context.platform_accounts import (
+    UNKNOWN_ACCOUNT_ID,
+    normalize_account_id,
+)
 from mureo.context.state import (
     append_action_log,
     read_state_file,
@@ -389,6 +393,30 @@ async def handle_state_action_log_append(
     return _json_result(_state_to_dict(doc))
 
 
+def _require_known_account_id(arguments: dict[str, Any]) -> Any:
+    """The ``account_id`` of a writer that carries collected figures (#793).
+
+    ``_require`` refuses only a missing or empty id. A placeholder spelling
+    (``"unknown"``, ``"n/a"``, … — ``PLACEHOLDER_ACCOUNT_IDS``) passes it, yet
+    reads as *unknown* everywhere since #793: written onto a known entry it
+    blanks the id and the operator's per-account override silently stops
+    applying; as a conversion override it is keyed on an id nothing can
+    match. A platform whose figures WERE collected knows its account, so the
+    refusal is right here. Only ``mureo_state_platform_not_collected_set``
+    takes an unknown id, on purpose (#794).
+    """
+    account_id = _require(arguments, "account_id")
+    if normalize_account_id(account_id) == UNKNOWN_ACCOUNT_ID:
+        raise ValueError(
+            f"account_id {account_id!r} is a placeholder, which mureo reads as "
+            "an unknown account. A platform whose figures were collected "
+            "knows its account, so pass the real account id. If the "
+            "collection could not resolve one, record that with "
+            "mureo_state_platform_not_collected_set instead."
+        )
+    return account_id
+
+
 def _parse_ads_argument(raw: Any) -> tuple[AdState, ...] | None:
     """Build the ad-level state from an upsert payload (#468).
 
@@ -437,7 +465,7 @@ async def handle_state_upsert_campaign(
     # without it a per-account override is silently dropped and the
     # client renders as inactive.
     platform = _require(raw, "platform")
-    account_id = _require(raw, "account_id")
+    account_id = _require_known_account_id(raw)
     device_targeting = (
         tuple(raw["device_targeting"]) if raw.get("device_targeting") else None
     )
@@ -532,7 +560,7 @@ async def handle_state_platform_metrics_set(
     # Platform context is required so the v2 ``platforms`` entry (the shape the
     # dashboard reads) always carries the account id, mirroring upsert_campaign.
     platform = _require(arguments, "platform")
-    account_id = _require(arguments, "account_id")
+    account_id = _require_known_account_id(arguments)
     totals = arguments.get("totals")
     metrics_period = arguments.get("metrics_period")
     periods = arguments.get("periods")
@@ -599,7 +627,7 @@ async def handle_state_platform_daily_set(
     half-checked here.
     """
     platform = _require(arguments, "platform")
-    account_id = _require(arguments, "account_id")
+    account_id = _require_known_account_id(arguments)
     days = _require(arguments, "days")
     # Shape-checked before it reaches the file, as the metrics handler checks
     # its ``periods`` buckets: a number or a string where a rollup belongs is
@@ -696,7 +724,7 @@ async def handle_state_set_conversion_events(
 ) -> list[TextContent]:
     """Set/clear an account's operator conversion override (#342)."""
     platform = _require(arguments, "platform")
-    account_id = _require(arguments, "account_id")
+    account_id = _require_known_account_id(arguments)
     raw = arguments.get("conversion_action_types")
     if raw is not None and not isinstance(raw, list):
         raise ValueError("conversion_action_types must be a list of strings")

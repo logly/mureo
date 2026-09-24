@@ -841,6 +841,31 @@ class TestAnUnresolvableAccountId:
         set_platform_not_collected(path, _OTHER_PLATFORM, "", reason=_UNRESOLVABLE)
         assert duplicate_account_entries(read_state_file(path).platforms) == ()
 
+    def test_a_placeholder_id_is_recorded_as_unknown_on_a_second_platform(
+        self, tmp_path: Path
+    ) -> None:
+        """#793 — the placeholder an agent already writes. ``"unknown"`` is
+        folded to unknown, so the second platform's record is not refused as
+        a second key for one account, and what lands is the one spelling the
+        join understands rather than the placeholder."""
+        path = tmp_path / "STATE.json"
+        set_platform_not_collected(path, _PLATFORM, "unknown", reason=_UNRESOLVABLE)
+        set_platform_not_collected(
+            path, _OTHER_PLATFORM, "unknown", reason=_UNRESOLVABLE
+        )
+        doc = read_state_file(path)
+        assert doc.platforms is not None
+        assert doc.platforms[_PLATFORM].account_id == ""
+        assert doc.platforms[_OTHER_PLATFORM].account_id == ""
+
+    def test_a_placeholder_id_never_overwrites_a_known_one(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "STATE.json"
+        set_platform_not_collected(path, _PLATFORM, _ACCOUNT, reason=_REASON)
+        set_platform_not_collected(path, _PLATFORM, "n/a", reason=_UNRESOLVABLE)
+        assert _entry(path).account_id == _ACCOUNT
+
     def test_a_known_id_still_behaves_exactly_as_before(self, tmp_path: Path) -> None:
         """Regression pin for the unchanged half: a known id is written onto
         the entry verbatim, and a SECOND key for that same account is still
@@ -993,13 +1018,60 @@ class TestTheUnresolvableAccountIdSchema:
     def test_the_sibling_writers_still_demand_a_real_account_id(self) -> None:
         """Scoped to the not_collected tool ON PURPOSE. A platform whose
         numbers you DID collect knows which account they came from, so
-        relaxing these would drop a constraint that is still true."""
+        relaxing these would drop a constraint that is still true. Since #793
+        they also say, where the writing agent reads it, that a placeholder
+        is refused."""
         from mureo.mcp.tools_mureo_context import TOOLS
 
         for name in (
             "mureo_state_platform_metrics_set",
             "mureo_state_platform_daily_set",
             "mureo_state_set_conversion_events",
+            "mureo_state_upsert_campaign",
         ):
             (tool,) = [t for t in TOOLS if t.name == name]
-            assert tool.inputSchema["properties"]["account_id"]["minLength"] == 1
+            props = tool.inputSchema["properties"]
+            if "campaign" in props:  # upsert_campaign nests its fields
+                props = props["campaign"]["properties"]
+            assert props["account_id"]["minLength"] == 1
+            description = props["account_id"]["description"]
+            assert "placeholder" in description
+            assert "refused" in description
+
+    @pytest.mark.parametrize("placeholder", ("unknown", "act_N/A"))
+    async def test_the_sibling_writers_refuse_a_placeholder_the_not_collected_tool_takes(
+        self,
+        placeholder: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """#793 — the same value, both paths, through the real dispatcher.
+        ``not_collected`` stores it as unknown (#794); a writer that carries
+        collected figures refuses it before anything is written."""
+        from mureo.core.runtime_context import reset_runtime_context
+        from mureo.mcp.server import handle_call_tool
+
+        reset_runtime_context()
+        monkeypatch.chdir(tmp_path)
+        try:
+            with pytest.raises(ValueError, match="not_collected_set"):
+                await handle_call_tool(
+                    "mureo_state_platform_metrics_set",
+                    {
+                        "platform": _PLATFORM,
+                        "account_id": placeholder,
+                        "totals": {"spend": 1.0},
+                    },
+                )
+            assert not (tmp_path / "STATE.json").exists()
+            await handle_call_tool(
+                "mureo_state_platform_not_collected_set",
+                {
+                    "platform": _PLATFORM,
+                    "account_id": placeholder,
+                    "reason": _UNRESOLVABLE,
+                },
+            )
+            assert _entry(tmp_path / "STATE.json").account_id == ""
+        finally:
+            reset_runtime_context()

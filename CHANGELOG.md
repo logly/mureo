@@ -29,6 +29,40 @@
   step 13 and the `_mureo-strategy` / `_mureo-shared` skills now say what to
   pass, and say not to invent a placeholder.
 
+- **A placeholder account id no longer joins two platform entries into one
+  ad account** (#793). #794 stops new placeholders from being written; this
+  covers the documents that already carry one. The account join folded only
+  a missing, empty or whitespace-only `account_id` to *unknown*, so two
+  entries an agent had stamped `"unknown"` — Google Ads and Meta Ads, both
+  recorded as not collected — were read as one ad account under two keys.
+  The Reports client list withheld that client's totals, and the repair hint
+  on screen (`mureo repair platform-key --key <key> --drop-duplicate`) told
+  the operator to delete a platform entry that was never a duplicate. These
+  ids are now read as *unknown*, compared case-insensitively after trimming
+  and after the `act_` prefix is stripped (`act_unknown` included):
+  `unknown`, `none`, `null`, `n/a`, `undefined`, `tbd`. Nothing else is:
+  `na`, `-` and every other value stay ids, because a plugin platform may
+  issue a short or punctuated id and folding a real one would silently join
+  or split genuinely different accounts. There is no migration: a stored
+  placeholder stays in the file and now reads the same as `""` — it joins
+  no other entry (so no duplicate finding, no withheld total, no
+  `--drop-duplicate` hint, and `--drop-duplicate` finds no duplicate to
+  remove), it never matches a per-account conversion override, and an
+  unrecognised key holding it says its ad account is unknown. Writing one
+  through `mureo_state_platform_not_collected_set` stores `""`, and never
+  over an id the entry already holds. The four writers that carry collected
+  figures — `mureo_state_platform_metrics_set`,
+  `mureo_state_upsert_campaign`, `mureo_state_platform_daily_set` and
+  `mureo_state_set_conversion_events` — now refuse a placeholder outright,
+  naming it and pointing to `mureo_state_platform_not_collected_set`,
+  instead of blanking a known entry's id or storing a conversion override
+  that can never match. One write-guard shift follows from the fold: an
+  entry holding a placeholder is an unknown entry, so stamping a real id
+  onto it is now allowed even when another key already holds that id
+  (before, it was refused as a re-point) — the same repair path an empty
+  id takes, which makes the duplicate visible to the join and to
+  `mureo repair platform-key`. `""` remains the spelling to write.
+
 ## [0.21.2] - 2026-09-23
 
 ### Changed

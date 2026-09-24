@@ -14,6 +14,7 @@ import pytest
 
 from mureo.context.models import PlatformState
 from mureo.context.platform_accounts import (
+    PLACEHOLDER_ACCOUNT_IDS,
     DuplicateAccountEntry,
     account_ids_match,
     duplicate_account_entries,
@@ -180,3 +181,74 @@ def test_the_id_body_stays_case_sensitive() -> None:
     join two genuinely different accounts."""
     assert normalize_account_id("AbC") == "AbC"
     assert not account_ids_match("AbC", "abc")
+
+
+# ---------------------------------------------------------------------------
+# Placeholder spellings of "unknown" (#793)
+# ---------------------------------------------------------------------------
+
+_PLACEHOLDERS = ("unknown", "none", "null", "n/a", "undefined", "tbd")
+
+
+def test_the_placeholder_set_is_exactly_the_decided_one() -> None:
+    """Pinned verbatim: widening it is a behaviour change for every document
+    that carries one of the new spellings, and the CHANGELOG states this list
+    so an operator can predict what their document will do."""
+    assert frozenset(_PLACEHOLDERS) == PLACEHOLDER_ACCOUNT_IDS
+
+
+@pytest.mark.parametrize("placeholder", _PLACEHOLDERS)
+def test_a_placeholder_folds_to_unknown(placeholder: str) -> None:
+    assert normalize_account_id(placeholder) == ""
+    assert normalize_account_id(placeholder.upper()) == ""
+    assert normalize_account_id(placeholder.capitalize()) == ""
+    assert normalize_account_id(f"  {placeholder}\t") == ""
+
+
+@pytest.mark.parametrize("placeholder", _PLACEHOLDERS)
+def test_a_placeholder_behind_the_act_prefix_is_still_unknown(
+    placeholder: str,
+) -> None:
+    """``act_unknown`` names no more of an account than ``unknown`` does."""
+    assert normalize_account_id(f"act_{placeholder}") == ""
+    assert normalize_account_id(f" ACT_{placeholder.upper()} ") == ""
+
+
+@pytest.mark.parametrize("real_id", ["na", "NA", "-", "12345", "act_12345"])
+def test_short_or_punctuated_ids_are_not_folded(real_id: str) -> None:
+    """Deliberately excluded: a plugin platform may use a short alphanumeric
+    or punctuation-bearing id, and folding a real one would silently join or
+    split genuinely different accounts."""
+    assert normalize_account_id(real_id) != ""
+
+
+def test_only_an_exact_placeholder_folds() -> None:
+    """A real id that merely CONTAINS a placeholder word is still an id."""
+    assert normalize_account_id("unknown-1") == "unknown-1"
+    assert normalize_account_id("tbd2026") == "tbd2026"
+    assert normalize_account_id("none_ads") == "none_ads"
+
+
+def test_a_placeholder_never_matches_including_another_placeholder() -> None:
+    assert not account_ids_match("unknown", "unknown")
+    assert not account_ids_match("unknown", "UNKNOWN")
+    assert not account_ids_match("n/a", "")
+    assert not account_ids_match("act_unknown", "unknown")
+
+
+def test_two_entries_holding_a_placeholder_are_not_a_duplicate() -> None:
+    """The field report: Google Ads and Meta Ads both recorded as not
+    collected, each carrying ``"unknown"``. Two different platforms, neither
+    with a resolvable account — not one account under two keys."""
+    platforms = _platforms(google_ads="unknown", meta_ads="unknown")
+    platforms["plugin:acme-ads"] = PlatformState(account_id="N/A")
+    assert duplicate_account_entries(platforms) == ()
+    assert platform_keys_for_account(platforms, "unknown") == ()
+
+
+def test_the_same_real_id_is_still_a_duplicate_beside_placeholders() -> None:
+    platforms = _platforms(
+        google_ads="unknown", meta_ads="act_7", other="7", ga4="unknown"
+    )
+    (group,) = duplicate_account_entries(platforms)
+    assert group.platform_keys == ("meta_ads", "other")

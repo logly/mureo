@@ -34,7 +34,7 @@ Deliberately dependency-free — stdlib plus the frozen ``PlatformState`` model
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -44,12 +44,44 @@ if TYPE_CHECKING:
 UNKNOWN_ACCOUNT_ID = ""
 """The one spelling of *this entry does not say which ad account it describes*.
 
-:func:`normalize_account_id` folds ``None``, ``""`` and whitespace to it, and
-:func:`account_ids_match` never matches it — including against another unknown
-id. Named so that a writer recording "the collection could not resolve an
-account" (#794) stores the value the join actually understands, instead of a
-placeholder like ``"unknown"`` that joins every such entry into one bogus ad
-account (#793).
+:func:`normalize_account_id` folds ``None``, ``""``, whitespace and the
+:data:`PLACEHOLDER_ACCOUNT_IDS` spellings to it, and :func:`account_ids_match`
+never matches it — including against another unknown id. Named so that a
+writer recording "the collection could not resolve an account" (#794) stores
+the value the join actually understands, instead of a placeholder like
+``"unknown"`` that joins every such entry into one bogus ad account (#793).
+"""
+
+PLACEHOLDER_ACCOUNT_IDS: Final[frozenset[str]] = frozenset(
+    {
+        # Each is a word an LLM writes when told it must fill a required
+        # string and it has no id to give. The observed case (#793) was
+        # "unknown" on both Google Ads and Meta Ads; the rest are the same
+        # answer in the other spellings of "no value" it reaches for.
+        "unknown",
+        "none",  # Python's None, stringified or typed out
+        "null",  # JSON's null, sent as a string
+        "n/a",
+        "undefined",  # JavaScript's undefined, sent as a string
+        "tbd",
+    }
+)
+"""Account ids that say *unknown* in words, folded to :data:`UNKNOWN_ACCOUNT_ID`.
+
+Compared case-insensitively, after trimming and the ``act_`` prefix strip —
+``act_unknown`` names no more of an account than ``unknown`` does. The fold
+exists for documents that ALREADY carry one: two entries sharing a placeholder
+were read as one ad account under two keys, the reports view withheld the
+client's totals, and the repair it suggested deleted an entry that was never a
+duplicate (#793). ``""`` remains the spelling to WRITE; this set is what mureo
+refuses to read as an id, not a list of alternatives.
+
+Deliberately short. ``na`` and ``-`` are NOT in it: a plugin platform may use a
+short alphanumeric or punctuation-bearing id, and folding a real id to unknown
+would silently join or split genuinely different accounts — the exact failure
+this module exists to prevent. A missed placeholder costs a withheld total an
+operator can repair; a wrong fold costs a real account its identity with no
+signal at all, so every addition has to be a word no platform issues as an id.
 """
 
 ACCOUNT_ID_PREFIX = "act_"
@@ -86,6 +118,14 @@ def normalize_account_id(account_id: object) -> str:
     :func:`account_ids_match` treats as matching nothing at all — including
     another unknown id.
 
+    Placeholder: an id that is one of :data:`PLACEHOLDER_ACCOUNT_IDS`
+    (``unknown``, ``n/a``, …), compared case-insensitively after the trim and
+    the prefix strip, folds to ``""`` too. A writer that had no id and was
+    told it must send a string wrote one of these, and read as a value it
+    joined every entry carrying it into one bogus ad account (#793) — the same
+    failure ``None`` is guarded against below. The set is kept short on
+    purpose; its docstring says why ``na`` and ``-`` are not in it.
+
     Case: the **prefix** folds case-insensitively (``ACT_1`` == ``act_1`` ==
     ``1``), the rest of the id does **not** (``AbC`` != ``abc``). Real ad
     account ids are numeric so this is nearly moot, but a plugin platform may
@@ -108,7 +148,9 @@ def normalize_account_id(account_id: object) -> str:
     text = account_id if isinstance(account_id, str) else str(account_id)
     text = text.strip()
     if text[: len(ACCOUNT_ID_PREFIX)].lower() == ACCOUNT_ID_PREFIX:
-        return text[len(ACCOUNT_ID_PREFIX) :]
+        text = text[len(ACCOUNT_ID_PREFIX) :]
+    if text.lower() in PLACEHOLDER_ACCOUNT_IDS:
+        return UNKNOWN_ACCOUNT_ID
     return text
 
 
@@ -177,6 +219,7 @@ def duplicate_account_entries(
 
 __all__ = [
     "ACCOUNT_ID_PREFIX",
+    "PLACEHOLDER_ACCOUNT_IDS",
     "UNKNOWN_ACCOUNT_ID",
     "DuplicateAccountEntry",
     "account_ids_match",
