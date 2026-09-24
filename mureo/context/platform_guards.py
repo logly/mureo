@@ -101,10 +101,13 @@ other way — flagging every plugin entry the guard had just accepted.
 One corner this does **not** defend: writing an explicit ``account_id=""``
 onto an entry that holds a known id silently reverts that entry to "unknown",
 because ``""`` is by contract free rather than taken. The MCP surface blocks
-it (schema ``minLength`` plus the handler's own check), so a caller reaching
-these functions from **outside** that gate — anything assembling
-``PlatformState`` from loosely-typed sources — must pass the entry's existing
-id, never ``""`` to mean "leave it alone".
+it for every writer but one (schema ``minLength`` plus the handler's own
+check); ``set_platform_not_collected`` accepts ``""`` on purpose (#794) and
+defends the corner itself, resolving a blank to the entry's known id BEFORE
+it calls this guard (see ``_account_id_for_not_collected`` in ``state``). A
+caller reaching these functions from **outside** either gate — anything
+assembling ``PlatformState`` from loosely-typed sources — must pass the
+entry's existing id, never ``""`` to mean "leave it alone".
 """
 
 from __future__ import annotations
