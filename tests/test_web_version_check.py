@@ -41,8 +41,8 @@ _COLD_CACHE: dict[str, Any] = {
 def _clean_update_cache(monkeypatch: pytest.MonkeyPatch) -> Any:
     """Each case starts with a cold module-level cache and no poller.
 
-    ``monkeypatch`` restores the cache globals on teardown, so no case
-    leaks its cached state into the next one.
+    The setup reset is what isolates the cases: every case begins from the
+    cold values regardless of what the previous one left behind.
     """
 
     stop_periodic_update_check()

@@ -678,7 +678,7 @@ def test_byod_meta_get_performance_report_exposes_result_indicator(tmp_path, fak
     assert by_id["camp_none"]["result_indicator"] == "", by_id["camp_none"]
 
 
-def test_byod_meta_client_phase3_readers(tmp_path, fake_home):
+def test_byod_meta_client_breakdown_report(tmp_path, fake_home):
     """ByodMetaAdsClient exposes the imported demographics CSV through
     get_breakdown_report, mirroring the Live API method shape.
     """
@@ -714,30 +714,11 @@ def test_byod_meta_client_phase3_readers(tmp_path, fake_home):
             "Clicks (all)",
             "Amount spent (JPY)",
             "Results",
-            "Image URL",
-            "Headline",
         ]
     )
-    sheet.append(
-        [
-            d1,
-            "Brand",
-            "Tokyo",
-            "Video A",
-            "All",
-            1000,
-            400,
-            50,
-            "1500",
-            5,
-            "https://ex.com/a.jpg",
-            "Try us",
-        ]
-    )
-    sheet.append(
-        [d2, "Brand", "Tokyo", "Video A", "All", 800, 320, 40, "1200", 3, "", ""]
-    )
-    sheet.append([d1, "Brand", "All", "All", "18-24", 600, 200, 30, "900", 2, "", ""])
+    sheet.append([d1, "Brand", "Tokyo", "Video A", "All", 1000, 400, 50, "1500", 5])
+    sheet.append([d2, "Brand", "Tokyo", "Video A", "All", 800, 320, 40, "1200", 3])
+    sheet.append([d1, "Brand", "All", "All", "18-24", 600, 200, 30, "900", 2])
     src = tmp_path / "test.xlsx"
     wb.save(src)
     import_bundle(src)

@@ -309,8 +309,11 @@ When the Meta export includes delivery or demographic breakdowns
 (the Step 2b *Placement / Platform / Device platform* and age/gender
 rows), the adapter additionally writes `ad_set_metrics_daily.csv`,
 `ad_metrics_daily.csv`, `demographics_daily.csv`, and `creatives.csv`
-alongside the four core files, for per-ad-set / per-ad / per-demographic
-drill-down and creative metadata.
+alongside the four core files. `demographics_daily.csv` backs the
+per-demographic breakdown report, and `creatives.csv` carries the
+creative metadata the `/creative-refresh` skill reads.
+`ad_set_metrics_daily.csv` and `ad_metrics_daily.csv` are written for
+completeness only: no mureo tool reads them today.
 
 ---
 
