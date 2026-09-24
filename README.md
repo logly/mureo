@@ -279,7 +279,7 @@ Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distin
 | Performance Max asset-group copy | Read an asset group's headlines / long headlines / descriptions and swap one. Text only — the image, video and logo assets of an asset group are neither readable per asset group nor writable, so mureo drafts those for you to paste in and says so before you accept |
 | Landing page analysis | HTML parsing with SSRF protection, CTA/feature/price detection, industry estimation |
 | Creative research | Aggregates LP + existing ads + search terms + keyword suggestions into a unified research package |
-| Message match evaluation | Ad copy <-> landing page alignment scoring (screenshot capture via Playwright) |
+| Message match evaluation | Captures a landing-page screenshot (Playwright, SSRF-guarded) for the agent to compare against the ad copy; mureo does no scoring itself |
 
 **Monitoring & Goals**
 

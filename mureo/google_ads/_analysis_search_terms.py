@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from mureo.google_ads._analysis_constants import (
@@ -13,8 +12,6 @@ from mureo.google_ads._analysis_constants import (
 
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
-
-logger = logging.getLogger(__name__)
 
 
 def _is_informational_term(term_text: str) -> bool:
