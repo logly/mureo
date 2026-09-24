@@ -361,7 +361,11 @@ def _has_installed_guard(config: Path) -> bool:
     must not count as "installed", because the refresh below would then
     re-append a guard the user deliberately removed. Checks the nested
     ``hooks.PreToolUse`` list (Claude settings.json / current Codex
-    hooks.json) and the legacy Codex top-level ``PreToolUse`` list.
+    hooks.json). The top-level ``PreToolUse`` list a pre-#393 mureo wrote
+    to Codex hooks.json counts only while the nested key has never been
+    written: that is how such an install gets a working nested guard on
+    upgrade, and once the nested list exists (even emptied by a remove)
+    the stranded list no longer brings the guard back.
     Unreadable or malformed files count as "not installed" — the refresh
     then skips them instead of poking an installer at a file it would
     refuse anyway.
@@ -378,7 +382,8 @@ def _has_installed_guard(config: Path) -> bool:
     hooks = data.get("hooks")
     if isinstance(hooks, dict) and isinstance(hooks.get("PreToolUse"), list):
         candidates.extend(hooks["PreToolUse"])
-    if isinstance(data.get("PreToolUse"), list):
+    nested_written = isinstance(hooks, dict) and "PreToolUse" in hooks
+    if isinstance(data.get("PreToolUse"), list) and not nested_written:
         candidates.extend(data["PreToolUse"])
     return any(is_guard_entry(entry) for entry in candidates)
 

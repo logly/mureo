@@ -378,9 +378,8 @@ def setup_codex(
 
     Runs the full setup flow (MCP + credential guard + workflow command
     skills + shared skills) in ``~/.codex/``. Mirrors the Claude Code
-    setup layer-for-layer, except that workflow commands are installed
-    as Codex skills (invoked with ``$<command>`` or via ``/skills``)
-    because Codex CLI 0.117.0+ no longer surfaces ``~/.codex/prompts/``.
+    setup layer-for-layer; workflow commands are installed as Codex
+    skills (invoked with ``$<command>`` or via ``/skills``).
     """
     import asyncio
 

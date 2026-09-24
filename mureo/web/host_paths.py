@@ -16,7 +16,6 @@ class HostPaths:
     host: str
     settings_path: Path
     skills_dir: Path
-    commands_dir: Path
     credentials_path: Path
     # File the host actually reads MCP servers from. For Claude Code this
     # is ``~/.claude.json`` (user scope, managed by ``claude mcp``) — NOT
@@ -31,7 +30,6 @@ def _claude_code_paths(home: Path) -> HostPaths:
         host="claude-code",
         settings_path=home / ".claude" / "settings.json",
         skills_dir=home / ".claude" / "skills",
-        commands_dir=home / ".claude" / "commands",
         credentials_path=home / ".mureo" / "credentials.json",
         mcp_registry_path=home / ".claude.json",
     )
@@ -73,7 +71,6 @@ def _claude_desktop_paths(home: Path) -> HostPaths:
         host="claude-desktop",
         settings_path=desktop_config,
         skills_dir=home / ".claude" / "skills",
-        commands_dir=home / ".claude" / "commands",
         credentials_path=home / ".mureo" / "credentials.json",
         # Desktop reads MCP from the same claude_desktop_config.json.
         mcp_registry_path=desktop_config,
@@ -87,16 +84,14 @@ def _codex_paths(home: Path) -> HostPaths:
     by :mod:`mureo.web.codex_mcp`) — so ``settings_path`` and
     ``mcp_registry_path`` are the SAME file, unlike the Claude hosts. Skills
     live under ``~/.codex/skills`` (Codex's own skill dir, not the shared
-    ``~/.claude/skills``); ``commands_dir`` is carried for signature
-    symmetry only (Codex surfaces workflows as skills, not commands).
-    ``credentials.json`` is the shared ``~/.mureo`` store.
+    ``~/.claude/skills``). ``credentials.json`` is the shared ``~/.mureo``
+    store.
     """
     config = home / ".codex" / "config.toml"
     return HostPaths(
         host="codex",
         settings_path=config,
         skills_dir=home / ".codex" / "skills",
-        commands_dir=home / ".codex" / "commands",
         credentials_path=home / ".mureo" / "credentials.json",
         mcp_registry_path=config,
     )

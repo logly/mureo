@@ -1,16 +1,8 @@
 // landing.js — Welcome (pre-wizard) section.
-// Single CTA: "Start setup" button. Conditionally shows the legacy-
-// commands cleanup notice if /api/status reports any legacy file
-// present. Also handles the cleanup POST.
+// Single CTA: "Start setup" button.
 
 (function () {
   "use strict";
-
-  function applyLegacyNoticeVisibility(status) {
-    const notice = document.querySelector("[data-landing-legacy-notice]");
-    if (!notice) return;
-    notice.hidden = !(status && status.legacy_commands_present);
-  }
 
   function showLandingIfFirstTime(status) {
     const landing = document.querySelector("[data-landing]");
@@ -47,29 +39,10 @@
     });
   }
 
-  function wireLegacyRemoveButton() {
-    const btn = document.querySelector("[data-landing-legacy-remove]");
-    if (!btn) return;
-    btn.addEventListener("click", async function () {
-      const confirmed = await MUREO.confirmAction(MUREO.t("landing.legacy_confirm"));
-      if (!confirmed) return;
-      const res = await MUREO.postJson("/api/legacy/cleanup", {});
-      if (res.ok) {
-        MUREO.toast(MUREO.t("landing.legacy_removed_toast"));
-        const notice = document.querySelector("[data-landing-legacy-notice]");
-        if (notice) notice.hidden = true;
-      } else {
-        MUREO.toast(MUREO.t("landing.legacy_remove_failed"));
-      }
-    });
-  }
-
   function onReady(evt) {
     const status = evt.detail && evt.detail.state ? evt.detail.state.status : null;
-    applyLegacyNoticeVisibility(status);
     showLandingIfFirstTime(status);
     wireStartButton();
-    wireLegacyRemoveButton();
   }
 
   document.addEventListener("mureo:ready", onReady);

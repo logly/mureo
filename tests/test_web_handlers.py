@@ -3,7 +3,7 @@
 These tests boot a real ``ConfigureWizard`` on 127.0.0.1:0 in a daemon
 thread and exercise every route via ``urllib.request``. Heavy
 dependencies (OAuth bridge, install_basic_setup, install_provider,
-remove_provider, env_var writer, legacy_commands) are patched so the
+remove_provider, env_var writer) are patched so the
 test never makes outbound calls or mutates the real filesystem.
 """
 
@@ -217,7 +217,6 @@ class TestServeStatus:
             "setup_parts",
             "providers_installed",
             "credentials_present",
-            "legacy_commands_present",
         ):
             assert key in body
 
@@ -1150,27 +1149,6 @@ class TestPostShutdown:
                 csrf=False,
             )
         assert exc.value.code == 403
-
-
-@pytest.mark.unit
-class TestPostLegacyCleanup:
-    def test_returns_removed_list(self, wizard: ConfigureWizard) -> None:
-        with patch(
-            "mureo.web.handlers.remove_legacy_commands",
-            return_value=["onboard.md"],
-        ) as mock_remove:
-            resp = _post(wizard, "/api/legacy/cleanup", {})
-        body = json.loads(resp.read().decode("utf-8"))
-        assert body == {"removed": ["onboard.md"]}
-        mock_remove.assert_called_once()
-
-    def test_returns_empty_when_nothing_to_remove(
-        self, wizard: ConfigureWizard
-    ) -> None:
-        with patch("mureo.web.handlers.remove_legacy_commands", return_value=[]):
-            resp = _post(wizard, "/api/legacy/cleanup", {})
-        body = json.loads(resp.read().decode("utf-8"))
-        assert body == {"removed": []}
 
 
 @pytest.mark.unit
@@ -2206,7 +2184,6 @@ class TestPostSetupBasicClear:
             "mureo_mcp": {"status": "ok"},
             "auth_hook": {"status": "noop"},
             "skills": {"status": "ok"},
-            "legacy_commands": ["onboard.md"],
             "providers": {"google-ads-official": {"status": "ok"}},
         }
         with patch(
@@ -2226,7 +2203,6 @@ class TestPostSetupBasicClear:
             "mureo_mcp": {"status": "error", "detail": "OSError"},
             "auth_hook": {"status": "ok"},
             "skills": {"status": "ok"},
-            "legacy_commands": [],
         }
         with patch("mureo.web.handlers.clear_all_setup", return_value=envelope):
             resp = _post(wizard, self.ROUTE, {})

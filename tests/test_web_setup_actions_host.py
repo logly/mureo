@@ -446,14 +446,10 @@ class TestClearAllSetupHost:
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
             ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
-            ),
         ):
             result = setup_actions.clear_all_setup(home=tmp_path)
 
-        for key in ("mureo_mcp", "auth_hook", "skills", "legacy_commands", "providers"):
+        for key in ("mureo_mcp", "auth_hook", "skills", "providers"):
             assert key in result
         mock_mcp.assert_called_once()
         mock_hook.assert_called_once()
@@ -477,10 +473,6 @@ class TestClearAllSetupHost:
             patch(
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
-            ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
             ),
         ):
             setup_actions.clear_all_setup(home=tmp_path, host="claude-desktop")
@@ -510,10 +502,6 @@ class TestClearAllSetupHost:
             patch(
                 "mureo.web.setup_actions.remove_skills",
                 return_value=(0, tmp_path / ".claude" / "skills"),
-            ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
             ),
         ):
             envelope = setup_actions.clear_all_setup(
@@ -546,10 +534,6 @@ class TestClearAllSetupHost:
             patch(
                 "mureo.web.setup_actions.remove_skills",
                 return_value=(0, tmp_path / ".claude" / "skills"),
-            ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
             ),
         ):
             setup_actions.clear_all_setup(home=tmp_path, host="claude-desktop")
@@ -601,10 +585,6 @@ class TestHostParamSignatures:
             patch(
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="noop"),
-            ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
             ),
         ):
             result = setup_actions.clear_all_setup(home=tmp_path, host="claude-code")

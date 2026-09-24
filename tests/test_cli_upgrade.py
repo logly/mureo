@@ -623,16 +623,19 @@ def test_refresh_credential_guard_upgrades_stale_claude_hooks(
 def test_refresh_credential_guard_upgrades_stale_codex_hooks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Tagged hooks in ~/.codex/hooks.json are upgraded too, including the
-    legacy top-level schema migration."""
+    """A pre-#393 ~/.codex/hooks.json (tagged hooks only in the top-level
+    list Codex never loads) gains the current guard in the nested
+    ``hooks.PreToolUse`` list on upgrade; the stranded top-level list is
+    left exactly as it was."""
     import json
 
     from mureo.cli import upgrade_cmd
 
+    stale_top_level = _STALE_GUARD_SETTINGS["hooks"]["PreToolUse"]
     hooks_file = tmp_path / ".codex" / "hooks.json"
     hooks_file.parent.mkdir(parents=True)
     hooks_file.write_text(
-        json.dumps({"PreToolUse": _STALE_GUARD_SETTINGS["hooks"]["PreToolUse"]}),
+        json.dumps({"PreToolUse": stale_top_level}),
         encoding="utf-8",
     )
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
@@ -640,12 +643,46 @@ def test_refresh_credential_guard_upgrades_stale_codex_hooks(
     upgrade_cmd._refresh_credential_guard()
 
     data = json.loads(hooks_file.read_text(encoding="utf-8"))
-    flat = json.dumps(data)
-    assert "sys.exit(1)" not in flat
-    assert "permissionDecision" in flat
-    # Migrated to the nested schema Codex actually loads.
-    assert "PreToolUse" not in data
-    assert data["hooks"]["PreToolUse"]
+    # The stranded top-level list is untouched (inert: Codex never loads it).
+    assert json.dumps(data["PreToolUse"]) == json.dumps(stale_top_level)
+    # The nested list Codex loads now carries the current guard.
+    nested = json.dumps(data["hooks"]["PreToolUse"])
+    assert nested.count("[mureo-credential-guard]") == 2
+    assert "permissionDecision" in nested
+    assert "sys.exit(1)" not in nested
+
+
+def test_refresh_credential_guard_respects_removal_after_stranded_upgrade(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Once the nested list exists, a stranded pre-#393 top-level list no
+    longer counts as "installed": after the user removes the guard (nested
+    list emptied), a later upgrade must not reinstall it."""
+    import json
+
+    from mureo.cli import upgrade_cmd
+    from mureo.cli.setup_codex import remove_codex_credential_guard
+
+    stale_top_level = _STALE_GUARD_SETTINGS["hooks"]["PreToolUse"]
+    hooks_file = tmp_path / ".codex" / "hooks.json"
+    hooks_file.parent.mkdir(parents=True)
+    hooks_file.write_text(json.dumps({"PreToolUse": stale_top_level}), "utf-8")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._refresh_credential_guard()
+    data = json.loads(hooks_file.read_text(encoding="utf-8"))
+    assert json.dumps(data["hooks"]["PreToolUse"]).count("[mureo-credential-guard]")
+
+    assert remove_codex_credential_guard() == hooks_file
+    after_remove = hooks_file.read_text(encoding="utf-8")
+    assert json.loads(after_remove)["hooks"]["PreToolUse"] == []
+
+    upgrade_cmd._refresh_credential_guard()
+
+    assert hooks_file.read_text(encoding="utf-8") == after_remove
+    data = json.loads(after_remove)
+    assert data["hooks"]["PreToolUse"] == []
+    assert json.dumps(data["PreToolUse"]) == json.dumps(stale_top_level)
 
 
 def test_refresh_credential_guard_never_force_installs(

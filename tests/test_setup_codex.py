@@ -96,10 +96,8 @@ class TestInstallCodexCredentialGuard:
     """PreToolUse hook in ~/.codex/hooks.json blocks credential reads.
 
     Codex reads hooks from the nested ``{"hooks": {"PreToolUse": [...]}}``
-    shape (same as Claude's settings.json).  Earlier mureo versions wrote a
-    top-level ``PreToolUse`` list that Codex never loads, so the install
-    must both target the nested location and migrate its own stale entries
-    out of the legacy one (#393).
+    shape (same as Claude's settings.json), so that is where the install
+    writes.
     """
 
     def test_creates_hooks_json_when_missing(self, home: Path) -> None:
@@ -108,7 +106,7 @@ class TestInstallCodexCredentialGuard:
         hooks_file = home / ".codex" / "hooks.json"
         assert hooks_file.exists()
         data = json.loads(hooks_file.read_text(encoding="utf-8"))
-        # Nested shape only — the legacy top-level list is never created.
+        # Nested shape only — no top-level list is created.
         assert "PreToolUse" not in data
         pre = data["hooks"]["PreToolUse"]
         assert len(pre) >= 1
@@ -142,50 +140,6 @@ class TestInstallCodexCredentialGuard:
         flat = json.dumps(data)
         assert "existing guard" in flat
         assert "[mureo-credential-guard]" in flat
-
-    def test_migrates_legacy_top_level_entries(self, home: Path) -> None:
-        """Stale tagged entries under the legacy top-level ``PreToolUse``
-        move to the nested location; foreign legacy entries stay put."""
-        hooks_file = home / ".codex" / "hooks.json"
-        hooks_file.parent.mkdir(parents=True)
-        foreign = {
-            "matcher": "Bash",
-            "hooks": [{"type": "command", "command": "echo mine"}],
-        }
-        stale = {
-            "matcher": "Read",
-            "hooks": [{"type": "command", "command": _STALE_GUARD_CMD}],
-        }
-        hooks_file.write_text(
-            json.dumps({"PreToolUse": [foreign, stale]}), encoding="utf-8"
-        )
-
-        result = install_codex_credential_guard()
-
-        assert result is not None
-        data = json.loads(hooks_file.read_text(encoding="utf-8"))
-        # Foreign legacy entry untouched, stale mureo entry migrated out.
-        assert data["PreToolUse"] == [foreign]
-        flat = json.dumps(data["hooks"]["PreToolUse"])
-        assert flat.count("[mureo-credential-guard]") == 2
-        assert "sys.exit(1)" not in flat
-
-    def test_migrates_legacy_when_only_tagged(self, home: Path) -> None:
-        """A legacy list holding only mureo entries is dropped entirely."""
-        hooks_file = home / ".codex" / "hooks.json"
-        hooks_file.parent.mkdir(parents=True)
-        stale = {
-            "matcher": "Bash",
-            "hooks": [{"type": "command", "command": _STALE_GUARD_CMD}],
-        }
-        hooks_file.write_text(json.dumps({"PreToolUse": [stale]}), encoding="utf-8")
-
-        result = install_codex_credential_guard()
-
-        assert result is not None
-        data = json.loads(hooks_file.read_text(encoding="utf-8"))
-        assert "PreToolUse" not in data
-        assert json.dumps(data["hooks"]).count("[mureo-credential-guard]") == 2
 
     def test_upgrades_stale_nested_entries(self, home: Path) -> None:
         """Tagged nested entries from an older mureo are replaced, not kept."""
@@ -248,18 +202,6 @@ class TestInstallCodexCredentialGuard:
         # Corrupt content left intact for the operator to inspect.
         assert hooks_file.read_text(encoding="utf-8") == "{not valid json"
 
-    def test_legacy_pretooluse_wrong_type_refused(self, home: Path) -> None:
-        """Legacy top-level PreToolUse must be a list; a dict is refused."""
-        hooks_file = home / ".codex" / "hooks.json"
-        hooks_file.parent.mkdir(parents=True)
-        hooks_file.write_text(
-            json.dumps({"PreToolUse": {"matcher": "Bash"}}),
-            encoding="utf-8",
-        )
-
-        result = install_codex_credential_guard()
-        assert result is None
-
     def test_nested_pretooluse_wrong_type_refused(self, home: Path) -> None:
         """Nested hooks.PreToolUse must be a list; a dict is refused."""
         hooks_file = home / ".codex" / "hooks.json"
@@ -271,6 +213,65 @@ class TestInstallCodexCredentialGuard:
 
         result = install_codex_credential_guard()
         assert result is None
+
+    def test_stranded_top_level_list_left_untouched(self, home: Path) -> None:
+        """A top-level ``PreToolUse`` list written by a pre-#393 mureo is
+        inert (Codex never loads it): install and remove both work only on
+        the nested list and leave it exactly as it was."""
+        from mureo.cli.setup_codex import remove_codex_credential_guard
+
+        hooks_file = home / ".codex" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        foreign = {
+            "matcher": "Bash",
+            "hooks": [{"type": "command", "command": "echo mine"}],
+        }
+        stale = {
+            "matcher": "Read",
+            "hooks": [{"type": "command", "command": _STALE_GUARD_CMD}],
+        }
+        hooks_file.write_text(
+            json.dumps({"PreToolUse": [foreign, stale]}), encoding="utf-8"
+        )
+
+        assert install_codex_credential_guard() == hooks_file
+        data = json.loads(hooks_file.read_text(encoding="utf-8"))
+        assert data["PreToolUse"] == [foreign, stale]
+        assert len(data["hooks"]["PreToolUse"]) == 2
+        nested = json.dumps(data["hooks"]["PreToolUse"])
+        assert nested.count("[mureo-credential-guard]") == 2
+        # Already current: the stranded list does not make install rewrite.
+        assert install_codex_credential_guard() is None
+
+        assert remove_codex_credential_guard() == hooks_file
+        data = json.loads(hooks_file.read_text(encoding="utf-8"))
+        assert data["PreToolUse"] == [foreign, stale]
+        assert data["hooks"]["PreToolUse"] == []
+
+    def test_non_list_top_level_pretooluse_kept(self, home: Path) -> None:
+        """A non-list top-level ``PreToolUse`` is not mureo's concern: the
+        guard is installed in the nested list and the value is kept."""
+        hooks_file = home / ".codex" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        hooks_file.write_text(
+            json.dumps({"PreToolUse": {"matcher": "Bash"}}), encoding="utf-8"
+        )
+
+        assert install_codex_credential_guard() == hooks_file
+        data = json.loads(hooks_file.read_text(encoding="utf-8"))
+        assert data["PreToolUse"] == {"matcher": "Bash"}
+        nested = json.dumps(data["hooks"]["PreToolUse"])
+        assert nested.count("[mureo-credential-guard]") == 2
+
+    def test_hooks_wrong_type_refused(self, home: Path) -> None:
+        """``hooks`` must be an object; a list is refused, file unchanged."""
+        hooks_file = home / ".codex" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        original = json.dumps({"hooks": []})
+        hooks_file.write_text(original, encoding="utf-8")
+
+        assert install_codex_credential_guard() is None
+        assert hooks_file.read_text(encoding="utf-8") == original
 
 
 class TestInstallCodexSkills:
@@ -388,23 +389,6 @@ class TestRemoveCredentialGuard:
             for h in e.get("hooks", [])
         ]
         assert remaining == ["echo hi"]  # only the user's hook kept
-        assert "mureo-credential-guard" not in json.dumps(data)
-
-    def test_removes_legacy_top_level_tagged_entries(self, home: Path) -> None:
-        """Entries an older mureo wrote to the legacy top-level list are
-        removed too (they carry the same tag)."""
-        from mureo.cli.setup_codex import remove_codex_credential_guard
-
-        hooks_file = home / ".codex" / "hooks.json"
-        hooks_file.parent.mkdir(parents=True)
-        stale = {
-            "matcher": "Bash",
-            "hooks": [{"type": "command", "command": _STALE_GUARD_CMD}],
-        }
-        hooks_file.write_text(json.dumps({"PreToolUse": [stale]}), encoding="utf-8")
-
-        assert remove_codex_credential_guard() == hooks_file
-        data = json.loads(hooks_file.read_text(encoding="utf-8"))
         assert "mureo-credential-guard" not in json.dumps(data)
 
     def test_idempotent_when_absent(self, home: Path) -> None:

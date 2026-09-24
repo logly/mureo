@@ -501,38 +501,6 @@ a {
   }
 }
 
-.landing-legacy-notice {
-  margin-top: 24px;
-  background: var(--status-watch-bg);
-  border: 1px solid var(--status-watch-line);
-  border-radius: var(--r-md);
-  padding: 18px 20px;
-  text-align: left;
-}
-
-.landing-legacy-notice h2 {
-  font-size: var(--type-body-size);
-  margin: 0 0 6px;
-}
-
-.landing-legacy-notice p {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: var(--type-body-size);
-}
-
-.landing-legacy-notice button {
-  margin-top: 12px;
-  padding: 8px 16px;
-  background: var(--danger);
-  color: #fff;
-  border: 0;
-  border-radius: var(--r-sm);
-  font: inherit;
-  font-size: var(--type-body-size);
-  cursor: pointer;
-}
-
 /* ---- wizard --------------------------------------------------------- */
 .wizard {
   padding: clamp(28px, 5vw, 44px);

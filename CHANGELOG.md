@@ -156,6 +156,28 @@
   #308; and `dashboard.reports_latest_title` and the
   `.report-latest-period` rule, orphaned by #695. No rendered element used
   them, so nothing on screen changes.
+- **The configure UI's cleanup of pre-skills slash commands** (post-v0.21.2
+  audit). Workflow commands became skills in #77 (May 2026); the landing
+  notice that offered to delete the old `~/.claude/commands/*.md` files, its
+  `POST /api/legacy/cleanup` route, the `legacy_commands_present` field of
+  `/api/status` and the `legacy_commands` step of "Clear all" are removed,
+  as are `HostPaths.commands_dir` and the `commands_path` argument of
+  `ConfigureWizard` / `run_configure_wizard`, which only fed that cleanup.
+  The notice only appeared while those files existed, so a current install
+  sees no change. If you upgraded from a pre-May-2026 install and still have
+  them, delete them from `~/.claude/commands/` by hand: `onboard.md`,
+  `daily-check.md`, `rescue.md`, `search-term-cleanup.md`,
+  `creative-refresh.md`, `budget-rebalance.md`, `competitive-scan.md`,
+  `goal-review.md`, `weekly-report.md`, `sync-state.md`, `learn.md`.
+- **The Codex `hooks.json` top-level `PreToolUse` migration** (post-v0.21.2
+  audit). `mureo setup codex` and the credential-guard remove path now read
+  and write only the nested `hooks.PreToolUse` list Codex loads; they no
+  longer move mureo's entries out of the top-level list mureo wrote before
+  #393. A top-level list left by such a version is not touched (Codex never
+  loads it, so it is inert) and can be deleted by hand. `mureo upgrade`
+  still installs the current guard in the nested list when it finds
+  mureo's tagged entries only in that top-level list and no nested list
+  exists yet; once the guard is removed, an upgrade does not bring it back.
 
 ## [0.21.2] - 2026-09-23
 

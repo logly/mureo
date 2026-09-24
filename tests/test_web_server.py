@@ -58,7 +58,6 @@ class TestConfigureWizardInit:
         wiz = ConfigureWizard(home=home_dir)
         assert isinstance(wiz.host_paths, HostPaths)
         assert wiz.host_paths.host == "claude-code"
-        assert wiz.host_paths.commands_dir == home_dir / ".claude" / "commands"
 
     def test_static_dir_default_resolves(self, home_dir: Path) -> None:
         wiz = ConfigureWizard(home=home_dir)
@@ -71,15 +70,6 @@ class TestConfigureWizardInit:
         custom.mkdir()
         wiz = ConfigureWizard(home=home_dir, static_dir=custom)
         assert wiz.static_dir == custom
-
-    def test_commands_path_override_replaces_default(
-        self, home_dir: Path, tmp_path: Path
-    ) -> None:
-        override = tmp_path / "alt_cmds"
-        override.mkdir()
-        wiz = ConfigureWizard(home=home_dir, commands_path=override)
-        assert wiz.commands_path == override
-        assert wiz.host_paths.commands_dir == override
 
 
 @pytest.mark.unit
@@ -119,15 +109,6 @@ class TestConfigureWizardSetHost:
             / "claude_desktop_config.json"
         )
         assert wiz.host_paths.settings_path == expected
-
-    def test_set_host_keeps_commands_override(
-        self, home_dir: Path, tmp_path: Path
-    ) -> None:
-        override = tmp_path / "cmds"
-        override.mkdir()
-        wiz = ConfigureWizard(home=home_dir, commands_path=override)
-        wiz.set_host("claude-desktop")
-        assert wiz.host_paths.commands_dir == override
 
     def test_set_host_ignores_unknown_host(self, home_dir: Path) -> None:
         wiz = ConfigureWizard(home=home_dir)
@@ -255,31 +236,6 @@ class TestRunConfigureWizardCli:
                 open_browser=True,
                 timeout_seconds=0.5,
             )
-
-    def test_commands_path_override_propagated(
-        self, home_dir: Path, tmp_path: Path
-    ) -> None:
-        override = tmp_path / "cmds"
-        override.mkdir()
-        captured: dict[str, ConfigureWizard] = {}
-        real_ctor = ConfigureWizard
-
-        def _spy(**kwargs: object) -> ConfigureWizard:
-            wiz = real_ctor(**kwargs)  # type: ignore[arg-type]
-            captured["wiz"] = wiz
-            return wiz
-
-        with (
-            patch("mureo.web.server.webbrowser.open"),
-            patch("mureo.web.server.ConfigureWizard", side_effect=_spy),
-        ):
-            run_configure_wizard(
-                home=home_dir,
-                open_browser=False,
-                timeout_seconds=0.3,
-                commands_path=override,
-            )
-        assert captured["wiz"].commands_path == override
 
 
 @pytest.mark.unit

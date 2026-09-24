@@ -37,26 +37,23 @@ class TestHostPathsDataclass:
             host="claude-code",
             settings_path=Path("/x/s"),
             skills_dir=Path("/x/k"),
-            commands_dir=Path("/x/c"),
             credentials_path=Path("/x/cr"),
             mcp_registry_path=Path("/x/m"),
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             paths.host = "claude-desktop"  # type: ignore[misc]
 
-    def test_holds_all_six_fields(self) -> None:
+    def test_holds_all_five_fields(self) -> None:
         paths = HostPaths(
             host="claude-code",
             settings_path=Path("/x/s.json"),
             skills_dir=Path("/x/sk"),
-            commands_dir=Path("/x/cmd"),
             credentials_path=Path("/x/cr.json"),
             mcp_registry_path=Path("/x/m.json"),
         )
         assert paths.host == "claude-code"
         assert paths.settings_path == Path("/x/s.json")
         assert paths.skills_dir == Path("/x/sk")
-        assert paths.commands_dir == Path("/x/cmd")
         assert paths.credentials_path == Path("/x/cr.json")
         assert paths.mcp_registry_path == Path("/x/m.json")
 
@@ -68,7 +65,6 @@ class TestGetHostPathsClaudeCode:
         assert paths.host == "claude-code"
         assert paths.settings_path == tmp_path / ".claude" / "settings.json"
         assert paths.skills_dir == tmp_path / ".claude" / "skills"
-        assert paths.commands_dir == tmp_path / ".claude" / "commands"
         assert paths.credentials_path == tmp_path / ".mureo" / "credentials.json"
         # MCP discovery file is ~/.claude.json (user scope), NOT
         # ~/.claude/settings.json — the crux of the registration fix.
@@ -94,13 +90,10 @@ class TestGetHostPathsClaudeDesktopMacOS:
         )
         assert paths.settings_path == expected
 
-    def test_macos_shares_skills_and_commands_dirs_with_claude_code(
-        self, tmp_path: Path
-    ) -> None:
+    def test_macos_shares_skills_dir_with_claude_code(self, tmp_path: Path) -> None:
         with patch("mureo.web.host_paths.platform.system", return_value="Darwin"):
             paths = get_host_paths("claude-desktop", home=tmp_path)
         assert paths.skills_dir == tmp_path / ".claude" / "skills"
-        assert paths.commands_dir == tmp_path / ".claude" / "commands"
         # Desktop reads MCP from the same claude_desktop_config.json.
         assert paths.mcp_registry_path == paths.settings_path
 
@@ -117,13 +110,10 @@ class TestGetHostPathsClaudeDesktopWindows:
         # Desktop reads MCP from the same claude_desktop_config.json.
         assert paths.mcp_registry_path == expected
 
-    def test_windows_shares_skills_and_commands_with_claude_code(
-        self, tmp_path: Path
-    ) -> None:
+    def test_windows_shares_skills_dir_with_claude_code(self, tmp_path: Path) -> None:
         with patch("mureo.web.host_paths.platform.system", return_value="Windows"):
             paths = get_host_paths("claude-desktop", home=tmp_path)
         assert paths.skills_dir == tmp_path / ".claude" / "skills"
-        assert paths.commands_dir == tmp_path / ".claude" / "commands"
 
 
 @pytest.mark.unit
@@ -146,7 +136,6 @@ class TestGetHostPathsCodex:
         assert paths.settings_path == config
         assert paths.mcp_registry_path == config
         assert paths.skills_dir == tmp_path / ".codex" / "skills"
-        assert paths.commands_dir == tmp_path / ".codex" / "commands"
         # Credentials stay in the mureo-owned store, not under ~/.codex.
         assert paths.credentials_path == tmp_path / ".mureo" / "credentials.json"
 
