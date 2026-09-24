@@ -156,6 +156,17 @@
   #308; and `dashboard.reports_latest_title` and the
   `.report-latest-period` rule, orphaned by #695. No rendered element used
   them, so nothing on screen changes.
+- **The configure UI's cleanup of pre-skills slash commands** (post-v0.21.2
+  audit). Workflow commands became skills in #77 (May 2026); the landing
+  notice that offered to delete the old `~/.claude/commands/*.md` files, its
+  `POST /api/legacy/cleanup` route, the `legacy_commands_present` field of
+  `/api/status` and the `legacy_commands` step of "Clear all" are removed.
+  The notice only appeared while those files existed, so a current install
+  sees no change. If you upgraded from a pre-May-2026 install and still have
+  them, delete them from `~/.claude/commands/` by hand: `onboard.md`,
+  `daily-check.md`, `rescue.md`, `search-term-cleanup.md`,
+  `creative-refresh.md`, `budget-rebalance.md`, `competitive-scan.md`,
+  `goal-review.md`, `weekly-report.md`, `sync-state.md`, `learn.md`.
 
 ## [0.21.2] - 2026-09-23
 

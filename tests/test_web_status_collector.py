@@ -379,7 +379,6 @@ class TestStatusSnapshotShape:
             "credentials_present",
             "credentials_oauth",
             "env_vars",
-            "legacy_commands_present",
         ):
             assert key in payload
 

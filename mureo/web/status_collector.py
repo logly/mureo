@@ -141,7 +141,6 @@ class StatusSnapshot:
     credentials_present: dict[str, bool]
     credentials_oauth: dict[str, bool]
     env_vars: dict[str, dict[str, Any]]
-    legacy_commands_present: bool
     # Per-platform: True ⇔ mcpServers.mureo.env.MUREO_DISABLE_<P> == "1"
     # (mureo-native tools for that platform are stepped aside so the
     # official MCP is the single source). Drives the dashboard toggle.
@@ -189,7 +188,6 @@ class StatusSnapshot:
             "credentials_present": dict(self.credentials_present),
             "credentials_oauth": dict(self.credentials_oauth),
             "env_vars": {k: dict(v) for k, v in self.env_vars.items()},
-            "legacy_commands_present": self.legacy_commands_present,
             "mureo_disable": dict(self.mureo_disable),
             "multi_account_auth": self.multi_account_auth,
             "amazon_manifest": dict(self.amazon_manifest),
@@ -493,13 +491,6 @@ def _detect_credentials_oauth(credentials_path: Path) -> dict[str, bool]:
     }
 
 
-def _detect_legacy_commands(commands_dir: Path) -> bool:
-    """Return True iff any known-legacy slash command file exists."""
-    from mureo.web.legacy_commands import detect_legacy_commands
-
-    return bool(detect_legacy_commands(commands_dir))
-
-
 def _read_skill_version(skill_md: Path) -> str | None:
     """Return the mureo version a ``SKILL.md`` records about itself.
 
@@ -730,7 +721,6 @@ def collect_status(
     creds = _detect_credentials_present(resolved.credentials_path)
     creds_oauth = _detect_credentials_oauth(resolved.credentials_path)
     env_vars = _collect_env_vars(resolved.credentials_path)
-    legacy = _detect_legacy_commands(resolved.commands_dir)
     mureo_disable = _detect_mureo_disable(resolved.mcp_registry_path)
     amazon_manifest = _detect_amazon_manifest(resolved.credentials_path)
     amazon_token = _detect_amazon_token(resolved.credentials_path)
@@ -742,7 +732,6 @@ def collect_status(
         credentials_present=creds,
         credentials_oauth=creds_oauth,
         env_vars=env_vars,
-        legacy_commands_present=legacy,
         mureo_disable=mureo_disable,
         multi_account_auth=multi_account_auth,
         amazon_manifest=amazon_manifest,

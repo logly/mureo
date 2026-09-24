@@ -51,7 +51,6 @@ from mureo.web.desktop_mcp import (
     set_mureo_disable_env_desktop,
     unset_mureo_disable_env_desktop,
 )
-from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.setup_state import PART_HOOK, PART_MCP, PART_SKILLS
 
 logger = logging.getLogger(__name__)
@@ -1288,7 +1287,7 @@ def clear_all_setup(home: Path | None = None, host: str = _HOST_CODE) -> dict[st
     """Run every uninstall step regardless of prior failures.
 
     Envelope keys: ``mureo_mcp``, ``auth_hook``, ``skills``,
-    ``legacy_commands``, ``providers``. ``host`` is forwarded to the
+    ``providers``. ``host`` is forwarded to the
     mcp + hook removers so Desktop uninstall is symmetric. Per CTO
     decision #3, this function MUST NOT touch
     ``~/.mureo/credentials.json`` (credential removal is a separate
@@ -1300,18 +1299,6 @@ def clear_all_setup(home: Path | None = None, host: str = _HOST_CODE) -> dict[st
     # Forward host: codex skills live in ~/.codex/skills, not ~/.claude/skills,
     # so bulk-clear must target the right directory (install already does).
     envelope["skills"] = _safe_step(remove_workflow_skills, home=home, host=host)
-
-    commands_dir = (home or Path.home()) / ".claude" / "commands"
-    try:
-        legacy_removed = remove_legacy_commands(commands_dir)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("clear_all_setup legacy_commands step failed")
-        envelope["legacy_commands"] = {
-            "status": "error",
-            "detail": type(exc).__name__,
-        }
-    else:
-        envelope["legacy_commands"] = legacy_removed
 
     providers_envelope: dict[str, Any] = {}
     for provider_id in _installed_official_providers(home, host):

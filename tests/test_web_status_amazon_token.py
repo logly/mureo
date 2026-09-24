@@ -151,7 +151,6 @@ class TestSnapshotCarriesTheRow:
             credentials_present={},
             credentials_oauth={},
             env_vars={},
-            legacy_commands_present=False,
             mureo_disable={},
         )
         assert snapshot.as_dict()["amazon_token"] == {}

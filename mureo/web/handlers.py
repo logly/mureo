@@ -2,7 +2,7 @@
 
 A thin layer over ``http.server.BaseHTTPRequestHandler`` that delegates
 each route to one of the small helper modules (status_collector,
-setup_actions, env_var_writer, oauth_bridge, legacy_commands). All
+setup_actions, env_var_writer, oauth_bridge). All
 POST routes are gated by the Host-header check + CSRF token.
 
 Routes
@@ -35,7 +35,6 @@ Routes
 ``POST /api/amazon/oauth/authorize-url`` → build the LwA consent URL
 ``POST /api/amazon/oauth/exchange`` → trade a pasted code for LwA tokens
 ``POST /api/oauth/<p>/start``    → spawn WebAuthWizard, return consent URL
-``POST /api/legacy/cleanup``     → delete legacy slash commands
 ``GET  /api/demo/scenarios``     → list registered demo scenarios
 ``POST /api/demo/init``          → scaffold a demo workspace
 ``GET  /api/byod/status``        → per-platform byod/live status
@@ -121,7 +120,6 @@ from mureo.web.extensions import (
     SUBPATH_PATTERN,
 )
 from mureo.web.instance import PING_APP_NAME
-from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.native_picker import pick_directory, pick_file
 from mureo.web.plugin_credentials import (
     AccountListingError,
@@ -1911,10 +1909,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             status=400 if rejected else 502,
         )
 
-    def _post_legacy_cleanup(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        removed = remove_legacy_commands(self.wizard.host_paths.commands_dir)
-        send_json(self, {"removed": removed})
-
     def _post_demo_init(self, payload: dict[str, Any]) -> None:
         target = str(payload.get("target", "")).strip()
         if not target:
@@ -2294,7 +2288,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/amazon/refresh-manifest": _post_amazon_refresh_manifest,
         "/api/amazon/oauth/authorize-url": _post_amazon_oauth_authorize_url,
         "/api/amazon/oauth/exchange": _post_amazon_oauth_exchange,
-        "/api/legacy/cleanup": _post_legacy_cleanup,
         "/api/demo/init": _post_demo_init,
         "/api/byod/import": _post_byod_import,
         "/api/byod/remove": _post_byod_remove,

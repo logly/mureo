@@ -10,8 +10,7 @@ Pins the symmetric uninstall wrappers added per planner HANDOFF
 None of them records anything: the dashboard detects each part on disk on
 every status read (#423), so there is no flag to keep in sync.
 - ``clear_all_setup(home)``      → orchestrates the 4 individual removes
-                                   + ``remove_legacy_commands`` + iterates
-                                   ``mcpServers`` for installed official
+                                   + iterates ``mcpServers`` for installed official
                                    providers. Fail-safe: partial failure
                                    does NOT abort the chain. Per CTO
                                    decision #3, does NOT touch
@@ -217,7 +216,7 @@ class TestRemoveWorkflowSkills:
 class TestClearAllSetup:
     def test_runs_all_individual_remove_steps(self, tmp_path: Path) -> None:
         """``clear_all_setup`` invokes mureo MCP + hook + skills wrappers
-        (plus legacy commands + provider iteration). Acceptance criteria
+        (plus provider iteration). Acceptance criteria
         L132-L134."""
         from mureo.web import setup_actions
 
@@ -234,10 +233,6 @@ class TestClearAllSetup:
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
             ) as mock_skills,
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=["onboard.md"],
-            ),
         ):
             result = setup_actions.clear_all_setup(home=tmp_path)
 
@@ -248,7 +243,7 @@ class TestClearAllSetup:
 
     def test_returns_envelope_with_per_step_status(self, tmp_path: Path) -> None:
         """The returned dict carries one entry per step (mcp / hook /
-        skills / legacy / providers). Acceptance criteria L132-L134."""
+        skills / providers). Acceptance criteria L132-L134."""
         from mureo.web import setup_actions
 
         with (
@@ -264,15 +259,11 @@ class TestClearAllSetup:
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
             ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
-            ),
         ):
             result = setup_actions.clear_all_setup(home=tmp_path)
 
         # The envelope's keys cover every step the bulk action ran.
-        for key in ("mureo_mcp", "auth_hook", "skills", "legacy_commands"):
+        for key in ("mureo_mcp", "auth_hook", "skills", "providers"):
             assert key in result, f"missing step {key!r} in clear_all envelope"
 
     def test_partial_failure_does_not_abort_chain(self, tmp_path: Path) -> None:
@@ -294,10 +285,6 @@ class TestClearAllSetup:
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
             ) as mock_skills,
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
-            ) as mock_legacy,
         ):
             result = setup_actions.clear_all_setup(home=tmp_path)
 
@@ -306,7 +293,6 @@ class TestClearAllSetup:
         # … but step 2..N all ran.
         mock_hook.assert_called_once()
         mock_skills.assert_called_once()
-        mock_legacy.assert_called_once()
 
     def test_uncaught_exception_in_step_is_isolated(self, tmp_path: Path) -> None:
         """If a wrapper itself raises (not returning an ActionResult),
@@ -327,10 +313,6 @@ class TestClearAllSetup:
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
             ) as mock_skills,
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
-            ),
         ):
             result = setup_actions.clear_all_setup(home=tmp_path)
 
@@ -379,10 +361,6 @@ class TestClearAllSetup:
                 return_value=ActionResult(status="ok"),
             ),
             patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
-            ),
-            patch(
                 "mureo.web.setup_actions.remove_provider",
                 return_value=ActionResult(status="ok"),
             ) as mock_remove_provider,
@@ -424,10 +402,6 @@ class TestClearAllSetup:
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
             ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
-            ),
         ):
             setup_actions.clear_all_setup(home=tmp_path)
 
@@ -453,17 +427,13 @@ class TestClearAllSetup:
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
             ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=["onboard.md"],
-            ),
         ):
             result = setup_actions.clear_all_setup(home=tmp_path)
 
         for value in result.values():
-            # Each entry is either a dict (ActionResult.as_dict()) or a
-            # list / plain dict envelope for legacy / providers.
-            assert isinstance(value, (dict, list))
+            # Each entry is either a dict (ActionResult.as_dict()) or the
+            # plain dict envelope for providers.
+            assert isinstance(value, dict)
         # mureo_mcp specifically is the as_dict shape.
         assert result["mureo_mcp"]["status"] == "ok"
 
@@ -483,10 +453,6 @@ class TestClearAllSetup:
             patch(
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="noop"),
-            ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
             ),
         ):
             result = setup_actions.clear_all_setup(home=None)
@@ -511,10 +477,6 @@ class TestClearAllSetup:
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="ok"),
             ) as mock_skills,
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
-            ),
         ):
             setup_actions.clear_all_setup(home=tmp_path)
 
@@ -591,10 +553,6 @@ class TestRemoveActionsSignatures:
             patch(
                 "mureo.web.setup_actions.remove_workflow_skills",
                 return_value=ActionResult(status="noop"),
-            ),
-            patch(
-                "mureo.web.setup_actions.remove_legacy_commands",
-                return_value=[],
             ),
         ):
             result = setup_actions.clear_all_setup(home=None)
