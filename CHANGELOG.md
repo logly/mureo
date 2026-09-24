@@ -130,6 +130,12 @@
   them since the atomic-JSON helpers moved to `mureo/core/atomic_json.py`
   (#500); import `load_existing_json` / `atomic_write_json` from there.
   `ConfigWriteError` is still importable from `config_writer`.
+- **`google_ads_search_terms_review` no longer returns the always-empty
+  `intent_analysis` field** (post-v0.21.2 audit), whose note claimed an
+  analysis mureo never runs. `_apply_intent_analysis` and the
+  `use_intent_analysis` parameter of `review_search_terms` /
+  `suggest_negative_keywords` (`mureo/google_ads/_analysis_search_terms.py`)
+  are removed; the MCP tools never exposed that parameter.
 - **Functions and methods that only the test suite called.** Nothing in
   mureo, its skills or its extensions reached them:
   `ByodMetaAdsClient.get_metrics_daily` / `get_ad_set_insights_daily` /

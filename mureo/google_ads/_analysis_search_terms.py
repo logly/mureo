@@ -275,7 +275,6 @@ class _SearchTermsAnalysisMixin:
         campaign_id: str,
         period: str = "LAST_30_DAYS",
         target_cpa: float | None = None,
-        use_intent_analysis: bool = True,
         ad_group_id: str | None = None,
         **_kwargs: Any,
     ) -> dict[str, Any]:
@@ -415,7 +414,6 @@ class _SearchTermsAnalysisMixin:
         campaign_id: str,
         period: str = "LAST_7_DAYS",
         target_cpa: float | None = None,
-        use_intent_analysis: bool = True,
         ad_group_id: str | None = None,
     ) -> dict[str, Any]:
         """Review search terms with multi-stage rules and suggest add/exclude candidates."""
@@ -463,23 +461,6 @@ class _SearchTermsAnalysisMixin:
         exclude_candidates.sort(key=lambda x: x["score"], reverse=True)
         watch_candidates.sort(key=lambda x: x["score"], reverse=True)
 
-        # Intent analysis (optional)
-        intent_summary: dict[str, Any] | None = None
-        if use_intent_analysis:
-            logger.info(
-                "review_search_terms: intent analysis start campaign_id=%s", campaign_id
-            )
-            intent_summary = await self._apply_intent_analysis(
-                campaign_id=campaign_id,
-                add_candidates=add_candidates,
-                exclude_candidates=exclude_candidates,
-                watch_candidates=watch_candidates,
-                keyword_texts=keyword_texts,
-            )
-            logger.info(
-                "review_search_terms: intent analysis done campaign_id=%s", campaign_id
-            )
-
         result: dict[str, Any] = {
             "campaign_id": campaign_id,
             "ad_group_id": ad_group_id,
@@ -496,8 +477,6 @@ class _SearchTermsAnalysisMixin:
                 "watch_count": len(watch_candidates),
             },
         }
-        if intent_summary is not None:
-            result["intent_analysis"] = intent_summary
         return result
 
     def _classify_search_term(
@@ -635,26 +614,3 @@ class _SearchTermsAnalysisMixin:
             self._route_by_newness(
                 entry, term_text, is_new, exclude_candidates, watch_candidates
             )
-
-    # =================================================================
-    # Intent-based search term analysis (placeholder)
-    # =================================================================
-
-    async def _apply_intent_analysis(
-        self,
-        campaign_id: str,
-        add_candidates: list[dict[str, Any]],
-        exclude_candidates: list[dict[str, Any]],
-        watch_candidates: list[dict[str, Any]],
-        keyword_texts: set[str],
-    ) -> dict[str, Any]:
-        """Return an empty intent-analysis summary.
-
-        No intent classifier ships with mureo, so this reports zero classified
-        terms and no adjustments; the rule-based candidates are left as-is.
-        """
-        return {
-            "classified_count": 0,
-            "adjustments": [],
-            "note": "LLM intent analysis is performed on the Managed side",
-        }
