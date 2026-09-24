@@ -404,29 +404,6 @@ class _SearchTermsAnalysisMixin:
             "insights": insights,
         }
 
-        # Intent analysis (optional)
-        if use_intent_analysis:
-            logger.info(
-                "suggest_negative_keywords: intent analysis start campaign_id=%s",
-                campaign_id,
-            )
-            intent_additions = await self._suggest_by_intent(
-                campaign_id=campaign_id,
-                search_terms=search_terms,
-                existing_suggestions=suggestions,
-                existing_neg_texts=existing_neg_texts,
-            )
-            logger.info(
-                "suggest_negative_keywords: intent analysis done campaign_id=%s",
-                campaign_id,
-            )
-            if intent_additions:
-                result["intent_based_suggestions"] = intent_additions
-                insights.append(
-                    f"Intent analysis detected {len(intent_additions)} additional "
-                    "exclusion candidates"
-                )
-
         return result
 
     # =================================================================
@@ -660,7 +637,7 @@ class _SearchTermsAnalysisMixin:
             )
 
     # =================================================================
-    # Intent-based search term analysis (LLM helper/stub)
+    # Intent-based search term analysis (placeholder)
     # =================================================================
 
     async def _apply_intent_analysis(
@@ -671,23 +648,13 @@ class _SearchTermsAnalysisMixin:
         watch_candidates: list[dict[str, Any]],
         keyword_texts: set[str],
     ) -> dict[str, Any]:
-        """Stub for LLM intent analysis. LLM dependency removed in mureo-core."""
+        """Return an empty intent-analysis summary.
+
+        No intent classifier ships with mureo, so this reports zero classified
+        terms and no adjustments; the rule-based candidates are left as-is.
+        """
         return {
             "classified_count": 0,
             "adjustments": [],
             "note": "LLM intent analysis is performed on the Managed side",
         }
-
-    async def _suggest_by_intent(
-        self,
-        campaign_id: str,
-        search_terms: list[dict[str, Any]],
-        existing_suggestions: list[dict[str, Any]],
-        existing_neg_texts: set[str],
-    ) -> list[dict[str, Any]]:
-        """Stub for additional suggestions via LLM intent analysis."""
-        return []
-
-    async def _get_strategic_context_for_intent(self, campaign_id: str) -> str | None:
-        """Stub for strategic context retrieval."""
-        return None

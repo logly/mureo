@@ -111,6 +111,15 @@
 
 ### Removed
 
+- **Unused prompt-building helpers from an earlier LLM design** (post-v0.21.2
+  audit). `mureo/google_ads/_intent_classifier.py` and
+  `mureo/google_ads/_rsa_insights.py` are gone, as is `MessageMatchEvaluator`
+  (with `MessageMatchResult`) from `mureo/google_ads/_message_match.py`, which
+  now holds only `LPScreenshotter`. The always-empty `_suggest_by_intent` /
+  `_get_strategic_context_for_intent` stubs in
+  `mureo/google_ads/_analysis_search_terms.py` and the branch of
+  `suggest_negative_keywords` that forwarded to them are removed; its output
+  is unchanged (the branch never added anything).
 - **Functions and methods that only the test suite called.** Nothing in
   mureo, its skills or its extensions reached them:
   `ByodMetaAdsClient.get_metrics_daily` / `get_ad_set_insights_daily` /

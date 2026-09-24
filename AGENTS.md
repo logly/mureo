@@ -52,9 +52,7 @@ mureo/
 │   ├── _media.py        # MediaMixin (image asset upload)
 │   ├── _rsa_validator.py     # RSA ad text validator
 │   ├── _rda_validator.py     # RDA input validator (display ads)
-│   ├── _rsa_insights.py      # RSA asset performance insights
-│   ├── _intent_classifier.py # Search term intent classification
-│   ├── _message_match.py     # Message match evaluator
+│   ├── _message_match.py     # LP screenshot capture (Playwright, SSRF-guarded)
 │   ├── _gaql_validator.py    # GAQL input validators (ASCII-only ID/date whitelists — see below)
 │   └── accounts.py           # Accessible-customer / account listing
 ├── meta_ads/            # Meta Ads API client (Mixin composition)

@@ -1,21 +1,16 @@
-"""Multimodal message match evaluation.
+"""Landing-page screenshot capture via Playwright.
 
-Provides screenshot capture functionality via Playwright.
-LLM dependency is removed in mureo-core; no Vision LLM evaluation is performed here.
-Message match evaluation via LLM should be done on the Managed side.
+``LPScreenshotter`` renders a landing page to a PNG so the agent can compare
+ad copy against what the page actually shows. Every navigation, including
+redirect hops, is re-checked against the canonical SSRF guard.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
-import logging
-from dataclasses import dataclass
 from typing import Protocol
 
 from mureo.core.url_guard import UnsafeUrlError, validate_public_url
-
-logger = logging.getLogger(__name__)
 
 _SCREENSHOT_TIMEOUT_MS = 30_000
 _VIEWPORT_WIDTH = 1280
@@ -40,21 +35,6 @@ class _NavigationRoute(Protocol):
     async def abort(self) -> None: ...
 
     async def continue_(self) -> None: ...
-
-
-@dataclass(frozen=True)
-class MessageMatchResult:
-    """Message match evaluation result."""
-
-    url: str
-    overall_score: int  # 1-10
-    headline_match: int  # 1-10
-    description_match: int  # 1-10
-    cta_match: int  # 1-10
-    strengths: tuple[str, ...]
-    weaknesses: tuple[str, ...]
-    suggestions: tuple[str, ...]
-    error: str | None = None
 
 
 class LPScreenshotter:
@@ -138,112 +118,3 @@ class LPScreenshotter:
                 return screenshot  # type: ignore[no-any-return, unused-ignore]
             finally:
                 await browser.close()
-
-
-class MessageMatchEvaluator:
-    """Ad copy and LP message match evaluation.
-
-    LLM dependency is removed in mureo-core; no Vision LLM evaluation is performed.
-    Handles prompt generation and response parsing only.
-    LLM evaluation should be done on the Managed side.
-    """
-
-    # Japanese-language LLM prompt template. mureo's message-match
-    # evaluator operates on Japanese ad copy and Japanese landing pages,
-    # and the LLM is instructed to reason and respond in Japanese;
-    # translating the prompt would change evaluation behavior and break
-    # the JSON-schema parser below.
-    _EVAL_PROMPT = """\
-あなたは広告文とランディングページの「メッセージマッチ」を評価する専門家です。
-
-以下の広告文がLPのスクリーンショット画像と一致しているかを評価してください。
-{strategic_context_section}
-## 広告文
-### 見出し
-{headlines}
-
-### 説明文
-{descriptions}
-
-## 評価基準
-1. **headline_match** (1-10): 広告見出しとLP上のメインメッセージの一致度
-2. **description_match** (1-10): 広告説明文とLPコンテンツの一致度
-3. **cta_match** (1-10): 広告のCTA（行動喚起）とLP上のCTAの一致度
-4. **overall_score** (1-10): 総合的なメッセージマッチ度
-
-## 出力フォーマット（JSON）
-```json
-{{
-    "overall_score": 7,
-    "headline_match": 8,
-    "description_match": 6,
-    "cta_match": 7,
-    "strengths": ["LP上の主要見出しと広告見出しが一致している"],
-    "weaknesses": ["広告で訴求している価格情報がLP上で目立たない"],
-    "suggestions": ["LPのファーストビューに広告と同じ価格訴求を追加する"]
-}}
-```
-
-JSON のみを出力してください。"""
-
-    def build_prompt(
-        self,
-        headlines: list[str],
-        descriptions: list[str],
-        strategic_context: str | None = None,
-    ) -> str:
-        """Generate prompt for LLM evaluation.
-
-        The actual LLM call is performed on the Managed side.
-        """
-        ctx_section = ""
-        if strategic_context:
-            ctx_section = (
-                "\n## 戦略コンテキスト\n"
-                "以下のペルソナ・USP・ターゲット情報を踏まえて、"
-                "広告文がターゲットに適切なメッセージを伝えているかも評価してください。\n\n"
-                f"{strategic_context}\n"
-            )
-
-        return self._EVAL_PROMPT.format(
-            headlines="\n".join(f"- {h}" for h in headlines),
-            descriptions="\n".join(f"- {d}" for d in descriptions),
-            strategic_context_section=ctx_section,
-        )
-
-    @staticmethod
-    def parse_response(content: str) -> MessageMatchResult:
-        """Parse LLM response."""
-        # Extract the JSON block from the LLM response.
-        text = content.strip()
-        if "```json" in text:
-            text = text.split("```json", 1)[1].split("```", 1)[0].strip()
-        elif "```" in text:
-            text = text.split("```", 1)[1].split("```", 1)[0].strip()
-
-        try:
-            data = json.loads(text)
-        except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning("Failed to parse message match evaluation JSON: %s", exc)
-            return MessageMatchResult(
-                url="",
-                overall_score=0,
-                headline_match=0,
-                description_match=0,
-                cta_match=0,
-                strengths=(),
-                weaknesses=(),
-                suggestions=(),
-                error=f"Failed to parse evaluation result: {exc}",
-            )
-
-        return MessageMatchResult(
-            url="",
-            overall_score=int(data.get("overall_score", 0)),
-            headline_match=int(data.get("headline_match", 0)),
-            description_match=int(data.get("description_match", 0)),
-            cta_match=int(data.get("cta_match", 0)),
-            strengths=tuple(data.get("strengths", [])),
-            weaknesses=tuple(data.get("weaknesses", [])),
-            suggestions=tuple(data.get("suggestions", [])),
-        )
