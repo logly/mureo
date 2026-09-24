@@ -162,19 +162,12 @@ class TestAtomicWriteJson:
         assert list(path.parent.glob("*.tmp*")) == []
 
 
-class TestConfigWriterAliasesAreTheSameObjects:
-    """``config_writer`` keeps its old import surface after the move.
+class TestConfigWriterReExportsConfigWriteError:
+    """``config_writer`` still exposes ``ConfigWriteError`` after the move.
 
-    Existing importers — and tests that monkeypatch the private names —
-    must keep resolving to the objects that now live in
-    :mod:`mureo.core.atomic_json`, not to stale copies.
+    Existing importers must keep resolving to the class that now lives in
+    :mod:`mureo.core.atomic_json`, not to a stale copy.
     """
-
-    def test_private_aliases_resolve_to_the_public_functions(self) -> None:
-        from mureo.providers import config_writer
-
-        assert config_writer._load_existing is load_existing_json
-        assert config_writer._atomic_write_json is atomic_write_json
 
     def test_config_write_error_is_the_same_class(self) -> None:
         from mureo.providers import config_writer

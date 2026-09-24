@@ -125,6 +125,11 @@
   `get_search_console_client` (`mureo/mcp/_client_factory.py`),
   `parse_form_body` (`mureo/web/_helpers.py`), and `KNOWN_PARTS` /
   `SetupParts.all_installed` (`mureo/web/setup_state.py`).
+- **Deprecated `_load_existing` / `_atomic_write_json` aliases** in
+  `mureo/providers/config_writer.py` (post-v0.21.2 audit). Nothing imported
+  them since the atomic-JSON helpers moved to `mureo/core/atomic_json.py`
+  (#500); import `load_existing_json` / `atomic_write_json` from there.
+  `ConfigWriteError` is still importable from `config_writer`.
 - **Functions and methods that only the test suite called.** Nothing in
   mureo, its skills or its extensions reached them:
   `ByodMetaAdsClient.get_metrics_daily` / `get_ad_set_insights_daily` /
