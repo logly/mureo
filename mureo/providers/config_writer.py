@@ -52,19 +52,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# DEPRECATED aliases — the atomic-JSON trio moved to
-# :mod:`mureo.core.atomic_json` (#500). New code imports it from there;
-# these names preserve IMPORT compatibility only (``from
-# mureo.providers.config_writer import _load_existing`` still resolves to
-# the same object). They are NOT a monkeypatch seam: this module's own
-# functions call ``load_existing_json`` / ``atomic_write_json`` directly,
-# so patching these aliases has no effect on behaviour — patch
-# ``mureo.core.atomic_json`` instead. ``ConfigWriteError`` is re-exported
-# by the import above.
-_load_existing = load_existing_json
-_atomic_write_json = atomic_write_json
-
-
 @dataclass(frozen=True)
 class AddResult:
     """Outcome of an ``add_provider_to_claude_settings`` call."""

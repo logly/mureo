@@ -48,14 +48,3 @@ def get_meta_ads_client(
     from mureo.auth import create_meta_ads_client as _real
 
     return _real(creds, account_id, throttler=throttler)
-
-
-def get_search_console_client(creds: Any, throttler: Any | None = None) -> Any:
-    """Return a Search Console client (Live API only).
-
-    BYOD path was removed in Phase 1 of the BYOD redesign; SC is reached
-    only via the existing OAuth credentials.
-    """
-    from mureo.auth import create_search_console_client as _real
-
-    return _real(creds, throttler=throttler)

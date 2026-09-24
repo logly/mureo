@@ -12,10 +12,13 @@ impractical, so these tests exercise the guard decision logic directly with fake
 ``Route``/``Request`` objects and confirm the initial-URL guard rejects internal
 targets before any browser is launched. The behaviour of ``page.route`` invoking
 the handler for redirect hops is a Playwright API contract not re-verified here.
+The file also covers ``capture``'s two early failure paths: a URL rejected by
+``LPAnalyzer._validate_url`` and a missing Playwright install.
 """
 
 from __future__ import annotations
 
+import builtins
 from unittest.mock import patch
 
 import pytest
@@ -118,3 +121,38 @@ class TestCaptureInitialUrlGuard:
         screenshotter = LPScreenshotter()
         with pytest.raises(ValueError, match="(?i)internal network"):
             await screenshotter.capture("http://169.254.169.254/latest/meta-data/")
+
+
+@pytest.mark.unit
+class TestCaptureFailurePaths:
+    @pytest.mark.asyncio
+    async def test_url_rejected_by_validator_propagates(self) -> None:
+        """A URL refused by LPAnalyzer._validate_url surfaces its ValueError."""
+        screenshotter = LPScreenshotter()
+
+        with (
+            patch(
+                "mureo.analysis.lp_analyzer.LPAnalyzer._validate_url",
+                side_effect=ValueError("Invalid URL"),
+            ),
+            pytest.raises(ValueError, match="Invalid URL"),
+        ):
+            await screenshotter.capture("http://127.0.0.1/internal")
+
+    @pytest.mark.asyncio
+    async def test_missing_playwright_raises_runtime_error(self) -> None:
+        """Raises RuntimeError when playwright is not installed."""
+        screenshotter = LPScreenshotter()
+        real_import = builtins.__import__
+
+        def _mock_import(name: str, *args: object, **kwargs: object) -> object:
+            if "playwright" in name:
+                raise ImportError("No module named 'playwright'")
+            return real_import(name, *args, **kwargs)
+
+        with (
+            patch("mureo.analysis.lp_analyzer.LPAnalyzer._validate_url"),
+            patch("builtins.__import__", side_effect=_mock_import),
+            pytest.raises(RuntimeError, match="Playwright"),
+        ):
+            await screenshotter.capture("https://example.com")

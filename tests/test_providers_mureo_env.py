@@ -13,9 +13,9 @@ The module under test is expected to live at
 - ``SetEnvResult`` / ``UnsetEnvResult`` frozen dataclasses
 - ``_PLATFORM_TO_ENV_VAR`` module-private mapping (catalog-controlled keys)
 
-External calls are mocked at the
-``mureo.providers.config_writer.os.replace`` boundary (since the new module
-reuses ``_atomic_write_json`` from ``config_writer``). See planner HANDOFF
+External calls are mocked at the ``mureo.core.atomic_json.os.replace``
+boundary, since the module under test writes through the shared atomic
+writer in ``mureo.core.atomic_json``. See planner HANDOFF
 ``feat-providers-cli-phase1.md`` (Disable-mureo Extension section).
 """
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from mureo.google_ads._analysis_constants import (
@@ -13,8 +12,6 @@ from mureo.google_ads._analysis_constants import (
 
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
-
-logger = logging.getLogger(__name__)
 
 
 def _is_informational_term(term_text: str) -> bool:
@@ -275,7 +272,6 @@ class _SearchTermsAnalysisMixin:
         campaign_id: str,
         period: str = "LAST_30_DAYS",
         target_cpa: float | None = None,
-        use_intent_analysis: bool = True,
         ad_group_id: str | None = None,
         **_kwargs: Any,
     ) -> dict[str, Any]:
@@ -404,29 +400,6 @@ class _SearchTermsAnalysisMixin:
             "insights": insights,
         }
 
-        # Intent analysis (optional)
-        if use_intent_analysis:
-            logger.info(
-                "suggest_negative_keywords: intent analysis start campaign_id=%s",
-                campaign_id,
-            )
-            intent_additions = await self._suggest_by_intent(
-                campaign_id=campaign_id,
-                search_terms=search_terms,
-                existing_suggestions=suggestions,
-                existing_neg_texts=existing_neg_texts,
-            )
-            logger.info(
-                "suggest_negative_keywords: intent analysis done campaign_id=%s",
-                campaign_id,
-            )
-            if intent_additions:
-                result["intent_based_suggestions"] = intent_additions
-                insights.append(
-                    f"Intent analysis detected {len(intent_additions)} additional "
-                    "exclusion candidates"
-                )
-
         return result
 
     # =================================================================
@@ -438,7 +411,6 @@ class _SearchTermsAnalysisMixin:
         campaign_id: str,
         period: str = "LAST_7_DAYS",
         target_cpa: float | None = None,
-        use_intent_analysis: bool = True,
         ad_group_id: str | None = None,
     ) -> dict[str, Any]:
         """Review search terms with multi-stage rules and suggest add/exclude candidates."""
@@ -486,23 +458,6 @@ class _SearchTermsAnalysisMixin:
         exclude_candidates.sort(key=lambda x: x["score"], reverse=True)
         watch_candidates.sort(key=lambda x: x["score"], reverse=True)
 
-        # Intent analysis (optional)
-        intent_summary: dict[str, Any] | None = None
-        if use_intent_analysis:
-            logger.info(
-                "review_search_terms: intent analysis start campaign_id=%s", campaign_id
-            )
-            intent_summary = await self._apply_intent_analysis(
-                campaign_id=campaign_id,
-                add_candidates=add_candidates,
-                exclude_candidates=exclude_candidates,
-                watch_candidates=watch_candidates,
-                keyword_texts=keyword_texts,
-            )
-            logger.info(
-                "review_search_terms: intent analysis done campaign_id=%s", campaign_id
-            )
-
         result: dict[str, Any] = {
             "campaign_id": campaign_id,
             "ad_group_id": ad_group_id,
@@ -519,8 +474,6 @@ class _SearchTermsAnalysisMixin:
                 "watch_count": len(watch_candidates),
             },
         }
-        if intent_summary is not None:
-            result["intent_analysis"] = intent_summary
         return result
 
     def _classify_search_term(
@@ -658,36 +611,3 @@ class _SearchTermsAnalysisMixin:
             self._route_by_newness(
                 entry, term_text, is_new, exclude_candidates, watch_candidates
             )
-
-    # =================================================================
-    # Intent-based search term analysis (LLM helper/stub)
-    # =================================================================
-
-    async def _apply_intent_analysis(
-        self,
-        campaign_id: str,
-        add_candidates: list[dict[str, Any]],
-        exclude_candidates: list[dict[str, Any]],
-        watch_candidates: list[dict[str, Any]],
-        keyword_texts: set[str],
-    ) -> dict[str, Any]:
-        """Stub for LLM intent analysis. LLM dependency removed in mureo-core."""
-        return {
-            "classified_count": 0,
-            "adjustments": [],
-            "note": "LLM intent analysis is performed on the Managed side",
-        }
-
-    async def _suggest_by_intent(
-        self,
-        campaign_id: str,
-        search_terms: list[dict[str, Any]],
-        existing_suggestions: list[dict[str, Any]],
-        existing_neg_texts: set[str],
-    ) -> list[dict[str, Any]]:
-        """Stub for additional suggestions via LLM intent analysis."""
-        return []
-
-    async def _get_strategic_context_for_intent(self, campaign_id: str) -> str | None:
-        """Stub for strategic context retrieval."""
-        return None

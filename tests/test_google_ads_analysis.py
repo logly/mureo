@@ -702,9 +702,7 @@ class TestSearchTermsAnalysisMixin:
         client.get_search_terms_report.side_effect = [terms_current, terms_prev]
         client.list_negative_keywords.return_value = []
 
-        result = await client.suggest_negative_keywords(
-            "123", use_intent_analysis=False
-        )
+        result = await client.suggest_negative_keywords("123")
         assert result["target_cpa"] == 3000.0
         assert result["target_cpa_source"] == "bidding_strategy"
         # expensive term: cost 5000 > 3000*1.5=4500 → exclusion candidate
@@ -733,9 +731,7 @@ class TestSearchTermsAnalysisMixin:
             terms,  # previous period (identical → treated as existing terms)
         ]
         client.list_negative_keywords.return_value = []
-        result = await client.suggest_negative_keywords(
-            "123", use_intent_analysis=False
-        )
+        result = await client.suggest_negative_keywords("123")
         assert len(result["suggestions"]) >= 1
         assert result["suggestions"][0]["recommended_match_type"] == "PHRASE"
 
@@ -783,9 +779,10 @@ class TestSearchTermsAnalysisMixin:
         client.list_keywords.return_value = []
         client.list_negative_keywords.return_value = []
 
-        result = await client.review_search_terms("123", use_intent_analysis=False)
+        result = await client.review_search_terms("123")
         assert result["summary"]["add_count"] >= 1
         assert result["summary"]["exclude_count"] >= 1
+        assert "intent_analysis" not in result
 
     @pytest.mark.unit
     def test_classify_search_term_rule1_add(self) -> None:

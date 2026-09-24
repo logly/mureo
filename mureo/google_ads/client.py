@@ -166,19 +166,6 @@ def _resolve_amount_micros(
     return amount_micros
 
 
-def _resolve_budget_amount_micros(params: dict[str, Any]) -> int:
-    """Resolve/validate the required daily budget amount (legacy signature)."""
-    resolved = _resolve_amount_micros(
-        params,
-        amount_key="amount",
-        micros_key="amount_micros",
-        label="Daily budget",
-        required=True,
-    )
-    assert resolved is not None  # required=True never returns None
-    return resolved
-
-
 def _resolve_total_amount_micros(params: dict[str, Any]) -> int | None:
     """Resolve/validate the optional total (CUSTOM_PERIOD) budget amount."""
     return _resolve_amount_micros(

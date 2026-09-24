@@ -350,7 +350,7 @@ class TestSaveAmazonAccessToken:
     ) -> None:
         """A slightly-corrupt credentials.json must NOT be overwritten.
 
-        Same contract as ``_save_meta_token``: ``_load_existing`` raises
+        Same contract as ``_save_meta_token``: ``load_existing_json`` raises
         ``ConfigWriteError`` rather than resetting to ``{}``, which would
         silently erase every other provider's section.
         """

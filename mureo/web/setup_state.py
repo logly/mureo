@@ -25,12 +25,10 @@ PART_MCP = "mureo_mcp"
 PART_HOOK = "auth_hook"
 PART_SKILLS = "skills"
 
-KNOWN_PARTS: tuple[str, ...] = (PART_MCP, PART_HOOK, PART_SKILLS)
-
 # #728 — the skills row carries three extra facts beyond its boolean: which
 # of the three states it is in, which mureo this package ships skills for,
 # and which mureo the deployed copies actually came from. Not parts: nothing
-# installs or removes them, and ``KNOWN_PARTS`` stays the installable three.
+# installs or removes them, so the installable parts stay the three above.
 FIELD_SKILLS_STATE = "skills_state"
 FIELD_SKILLS_EXPECTED_VERSION = "skills_expected_version"
 FIELD_SKILLS_INSTALLED_VERSION = "skills_installed_version"
@@ -62,6 +60,3 @@ class SetupParts:
             FIELD_SKILLS_EXPECTED_VERSION: self.skills_expected_version,
             FIELD_SKILLS_INSTALLED_VERSION: self.skills_installed_version,
         }
-
-    def all_installed(self) -> bool:
-        return self.mureo_mcp and self.auth_hook and self.skills

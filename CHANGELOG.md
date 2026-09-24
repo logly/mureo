@@ -111,6 +111,31 @@
 
 ### Removed
 
+- **Unused prompt-building helpers from an earlier LLM design** (post-v0.21.2
+  audit). `mureo/google_ads/_intent_classifier.py` and
+  `mureo/google_ads/_rsa_insights.py` are gone, as is `MessageMatchEvaluator`
+  (with `MessageMatchResult`) from `mureo/google_ads/_message_match.py`, which
+  now holds only `LPScreenshotter`. The always-empty `_suggest_by_intent` /
+  `_get_strategic_context_for_intent` stubs in
+  `mureo/google_ads/_analysis_search_terms.py` and the branch of
+  `suggest_negative_keywords` that forwarded to them are removed; its output
+  is unchanged (the branch never added anything).
+- **Private helpers nothing called** (post-v0.21.2 audit):
+  `_resolve_budget_amount_micros` (`mureo/google_ads/client.py`),
+  `get_search_console_client` (`mureo/mcp/_client_factory.py`),
+  `parse_form_body` (`mureo/web/_helpers.py`), and `KNOWN_PARTS` /
+  `SetupParts.all_installed` (`mureo/web/setup_state.py`).
+- **Deprecated `_load_existing` / `_atomic_write_json` aliases** in
+  `mureo/providers/config_writer.py` (post-v0.21.2 audit). Nothing imported
+  them since the atomic-JSON helpers moved to `mureo/core/atomic_json.py`
+  (#500); import `load_existing_json` / `atomic_write_json` from there.
+  `ConfigWriteError` is still importable from `config_writer`.
+- **`google_ads_search_terms_review` no longer returns the always-empty
+  `intent_analysis` field** (post-v0.21.2 audit), whose note claimed an
+  analysis mureo never runs. `_apply_intent_analysis` and the
+  `use_intent_analysis` parameter of `review_search_terms` /
+  `suggest_negative_keywords` (`mureo/google_ads/_analysis_search_terms.py`)
+  are removed; the MCP tools never exposed that parameter.
 - **Functions and methods that only the test suite called.** Nothing in
   mureo, its skills or its extensions reached them:
   `ByodMetaAdsClient.get_metrics_daily` / `get_ad_set_insights_daily` /
