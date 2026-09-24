@@ -805,6 +805,85 @@ def _both_keys_resolve_state(path: Path) -> None:
     )
 
 
+class TestAPlaceholderIdIsNotADuplicate:
+    """#793 — two platforms that both carry ``"unknown"`` are not one ad
+    account under two keys, so the command must not hand the operator the
+    ``--drop-duplicate`` instruction for them, and must not drop either entry
+    if the operator runs it anyway."""
+
+    def _state(self, path: Path) -> None:
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "google_ads": {"account_id": "unknown"},
+                    "meta_ads": {"account_id": "unknown"},
+                },
+            },
+        )
+
+    def test_no_undecidable_group_and_no_drop_duplicate_hint(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.cli._repair_preview import undecidable_groups
+        from mureo.context.state import read_state_file
+
+        state = tmp_path / "STATE.json"
+        self._state(state)
+        assert undecidable_groups(read_state_file(state)) == ()
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        assert "--drop-duplicate" not in result.output
+
+    def test_naming_one_entry_drops_nothing(self, tmp_path: Path) -> None:
+        state = tmp_path / "STATE.json"
+        self._state(state)
+        before = state.read_bytes()
+
+        result = _run(
+            "--state-file",
+            str(state),
+            "--key",
+            "meta_ads",
+            "--drop-duplicate",
+            "--apply",
+            "-y",
+        )
+
+        assert state.read_bytes() == before
+        assert "Removed the" not in result.output
+
+
+class TestAPlaceholderIdPrintsAsNoneRecorded:
+    """#793 — the preview agrees with the dashboard's ``account_known``: an
+    entry holding a placeholder names no ad account, so the CLI must not
+    print the placeholder as if it were one."""
+
+    def test_a_placeholder_prints_as_none_recorded(self, tmp_path: Path) -> None:
+        state = tmp_path / "STATE.json"
+        _write(
+            state,
+            {
+                "version": "2",
+                "platforms": {
+                    "logly_ads": {
+                        "account_id": "tbd",
+                        "totals": {"spend": 1.0},
+                    },
+                },
+            },
+        )
+
+        result = _run("--state-file", str(state))
+
+        assert result.exit_code == 0, result.output
+        assert "ad account:  (none recorded)" in result.output
+        assert "ad account:  tbd" not in result.output
+
+
 class TestChoosingWhichDuplicateToDrop:
     """``--drop-duplicate`` is how an operator records a decision (#636).
 

@@ -1267,6 +1267,37 @@ class TestAnExplicitlyChosenDuplicate:
         )
         assert path.read_bytes() == before
 
+    def test_a_placeholder_id_shared_with_another_key_is_not_a_duplicate(
+        self, tmp_path: Path
+    ) -> None:
+        """#793 — two platforms that both carry ``"unknown"`` name no ad
+        account, so the document does not show either to be a duplicate. The
+        operator who followed the old hint and named one must lose nothing."""
+        path = tmp_path / "STATE.json"
+        _write(
+            path,
+            {
+                "version": "2",
+                "platforms": {
+                    "google_ads": {"account_id": "unknown"},
+                    "meta_ads": {"account_id": "unknown"},
+                },
+            },
+        )
+        before = path.read_bytes()
+
+        plan = plan_platform_keys(
+            read_state_file(path),
+            keys=("meta_ads",),
+            drop_duplicates=("meta_ads",),
+        )
+
+        assert plan.repairs == ()
+        (finding,) = plan.kept
+        assert finding.entry.key == "meta_ads"
+        assert finding.reason == KEEP_NOT_A_DUPLICATE
+        assert path.read_bytes() == before
+
     def test_an_entry_carrying_a_conversion_override_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -1035,9 +1035,11 @@ def _account_id_for_not_collected(
 
     A collection can fail BECAUSE no account could be resolved — Google Ads
     authenticated with zero accessible accounts, no customer id configured —
-    and the caller then has no legal value to pass. ``None``, ``""`` and a
-    whitespace-only string all state that same absence, and all fold to
-    :data:`~mureo.context.platform_accounts.UNKNOWN_ACCOUNT_ID`, the one
+    and the caller then has no legal value to pass. ``None``, ``""``, a
+    whitespace-only string and a placeholder spelling
+    (:data:`~mureo.context.platform_accounts.PLACEHOLDER_ACCOUNT_IDS`, #793)
+    all state that same absence, and all fold to — and are stored as —
+    :data:`~mureo.context.platform_accounts.UNKNOWN_ACCOUNT_ID` (``""``), the one
     spelling the join understands: it matches nothing, including another
     unknown id, so two platforms that both failed this way stay two entries.
     Inventing a placeholder instead — the observed ``"unknown"`` on both
@@ -1109,9 +1111,11 @@ def set_platform_not_collected(
     diagnose. The write is atomic, under the state lock.
 
     **The account id may itself be what the collection could not resolve.**
-    ``None`` / ``""`` / whitespace say so, and are stored as
-    :data:`~mureo.context.platform_accounts.UNKNOWN_ACCOUNT_ID` rather than
-    refused — see :func:`_account_id_for_not_collected`, which also explains
+    ``None`` / ``""`` / whitespace / a placeholder spelling
+    (:data:`~mureo.context.platform_accounts.PLACEHOLDER_ACCOUNT_IDS`, #793)
+    say so, and are stored as
+    :data:`~mureo.context.platform_accounts.UNKNOWN_ACCOUNT_ID` (``""``) rather
+    than refused — see :func:`_account_id_for_not_collected`, which also explains
     why an unknown id is never written over a known stored one (#794).
 
     Args:
@@ -1119,8 +1123,9 @@ def set_platform_not_collected(
         platform: Platform key (``"google_ads"`` / ``"meta_ads"`` /
             ``"plugin:<dist>:<provider>"`` / …) — the ``platforms`` dict key.
         account_id: The platform account id, written onto the entry. ``None``
-            / ``""`` / whitespace state that the collection could not resolve
-            one; a known id already stored on the entry then stays.
+            / ``""`` / whitespace / a ``PLACEHOLDER_ACCOUNT_IDS`` spelling
+            state that the collection could not resolve one, and are stored
+            as ``""``; a known id already stored on the entry then stays.
         reason: What happened, in words an operator can act on (an expired
             token, a permissions error, a collector that did not run).
             Truncated to :data:`~mureo.context.models.NOT_COLLECTED_REASON_MAX_CHARS`

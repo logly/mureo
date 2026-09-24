@@ -391,7 +391,10 @@ _CAMPAIGN_PROPERTY = {
             "description": (
                 "Platform account id (Google ``customer_id`` / Meta "
                 "``act_*``) written onto the platform entry, and used to "
-                "detect a second entry for the same account."
+                "detect a second entry for the same account. A placeholder "
+                "(``unknown``, ``n/a``, …) is refused: if the collection "
+                "could not resolve an id, use "
+                "mureo_state_platform_not_collected_set."
             ),
         },
         "bidding_strategy_type": {
@@ -999,7 +1002,10 @@ TOOLS: list[Tool] = [
                     "description": (
                         "The platform account id (Google customer_id / Meta "
                         "act_*). Always written onto the platform entry, and "
-                        "used to detect a second entry for the same account."
+                        "used to detect a second entry for the same account. "
+                        "A placeholder (``unknown``, ``n/a``, …) is refused: "
+                        "if the collection could not resolve an id, use "
+                        "mureo_state_platform_not_collected_set."
                     ),
                 },
                 "totals": {
@@ -1101,7 +1107,10 @@ TOOLS: list[Tool] = [
                     "description": (
                         "The platform account id (Google customer_id / Meta "
                         "act_*). Always written onto the platform entry, and "
-                        "used to detect a second entry for the same account."
+                        "used to detect a second entry for the same account. "
+                        "A placeholder (``unknown``, ``n/a``, …) is refused: "
+                        "if the collection could not resolve an id, use "
+                        "mureo_state_platform_not_collected_set."
                     ),
                 },
                 "days": {
@@ -1328,7 +1337,8 @@ TOOLS: list[Tool] = [
                         "The Meta ad account id (``act_*``). Always written "
                         "onto the platform entry, and used to detect a second "
                         "entry for the same account. The override applies "
-                        "ONLY to this account."
+                        "ONLY to this account. A placeholder (``unknown``, "
+                        "``n/a``, …) is refused."
                     ),
                 },
                 "conversion_action_types": {

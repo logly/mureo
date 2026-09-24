@@ -52,7 +52,11 @@ from typing import TYPE_CHECKING
 import typer
 
 from mureo.cli._tty import terminal_safe as _safe
-from mureo.context.platform_accounts import duplicate_account_entries
+from mureo.context.platform_accounts import (
+    UNKNOWN_ACCOUNT_ID,
+    duplicate_account_entries,
+    normalize_account_id,
+)
 from mureo.context.platform_repair import (
     DROP_CHOSEN_DUPLICATE,
     DROP_DUPLICATE,
@@ -93,9 +97,11 @@ def _echo_entry_facts(
     operator reads facts rather than repetition.
     """
     if show_account:
-        typer.echo(
-            f"{indent}ad account:  {_safe(facts.account_id) or '(none recorded)'}"
-        )
+        # Folded the way the join folds it (#793), so a placeholder prints as
+        # the dashboard's ``account_known`` reads it: no ad account at all.
+        known = normalize_account_id(facts.account_id) != UNKNOWN_ACCOUNT_ID
+        shown = _safe(facts.account_id) if known else "(none recorded)"
+        typer.echo(f"{indent}ad account:  {shown}")
     typer.echo(f"{indent}campaigns:   {facts.campaign_count}")
     typer.echo(f"{indent}totals:      {_totals_line(facts)}")
     typer.echo(f"{indent}periods:     {_periods_line(facts)}")

@@ -544,7 +544,10 @@ shows fewer campaigns than you wrote — get these exact names right:
 - **Platform entry** (`platforms[<platform>]`) — required: `account_id` (str;
   use `""` only if genuinely unknown — an empty id is treated as *unknown*
   everywhere, so it never joins with another entry and never matches a
-  per-account override). The MCP write tools read `""` the same way, but
+  per-account override). A placeholder — `unknown`, `none`, `null`, `n/a`,
+  `undefined`, `tbd`, in any case — is read as unknown too, but only so a
+  document that already carries one does not join two entries; `""` is still
+  the one spelling to write. The MCP write tools read `""` the same way, but
   only `mureo_state_platform_not_collected_set` accepts it: a platform whose
   figures you DID collect knows which account they came from, so every other
   one still requires a real id. Plus `campaigns[]` and the rollups the dashboard

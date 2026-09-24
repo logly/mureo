@@ -1051,6 +1051,98 @@ async def test_platform_metrics_set_rejects_malformed_shapes(cwd_to_tmp) -> None
 
 
 # ---------------------------------------------------------------------------
+# A placeholder account id is refused by the writers that need a real one (#793)
+# ---------------------------------------------------------------------------
+
+
+def _writer_arguments(tool_name: str, account_id: str) -> dict:
+    """A minimal valid call to one of the four id-requiring writers."""
+    if tool_name == "mureo_state_upsert_campaign":
+        return {
+            "campaign": {
+                "platform": "google_ads",
+                "account_id": account_id,
+                "campaign_id": "c1",
+                "campaign_name": "Brand",
+                "status": "ENABLED",
+            }
+        }
+    if tool_name == "mureo_state_platform_daily_set":
+        return {
+            "platform": "google_ads",
+            "account_id": account_id,
+            "days": {"2026-01-01": {"spend": 1.0}},
+        }
+    if tool_name == "mureo_state_set_conversion_events":
+        return {
+            "platform": "meta_ads",
+            "account_id": account_id,
+            "conversion_action_types": ["lead"],
+        }
+    return {
+        "platform": "google_ads",
+        "account_id": account_id,
+        "totals": {"spend": 1.0},
+    }
+
+
+#: The real id each writer's seeded entry already holds.
+_WRITER_REAL_IDS = {
+    "mureo_state_platform_metrics_set": "123",
+    "mureo_state_upsert_campaign": "123",
+    "mureo_state_platform_daily_set": "123",
+    "mureo_state_set_conversion_events": "act_5",
+}
+
+
+def _seed_known_accounts(root) -> bytes:
+    initial = {
+        "version": "2",
+        "platforms": {
+            "google_ads": {"account_id": "123"},
+            "meta_ads": {"account_id": "act_5"},
+        },
+    }
+    path = root / "STATE.json"
+    path.write_text(json.dumps(initial), encoding="utf-8")
+    return path.read_bytes()
+
+
+@pytest.mark.parametrize("tool_name", sorted(_WRITER_REAL_IDS))
+@pytest.mark.parametrize("placeholder", ["unknown", "act_N/A"])
+async def test_id_requiring_writers_refuse_a_placeholder_account_id(
+    cwd_to_tmp, tool_name: str, placeholder: str
+) -> None:
+    """#793 — a placeholder reads as *unknown*, so writing it through a tool
+    that carries collected figures would blank a known entry's id (and the
+    per-account override stops applying) or store an override that can never
+    match. Refused before any write, naming the value and the tool that
+    records an unresolvable account."""
+    before = _seed_known_accounts(cwd_to_tmp)
+    mod = _import_tools()
+    with pytest.raises(ValueError) as exc:
+        await mod.handle_tool(tool_name, _writer_arguments(tool_name, placeholder))
+    message = str(exc.value)
+    assert placeholder in message
+    assert "unknown" in message
+    assert "mureo_state_platform_not_collected_set" in message
+    assert (cwd_to_tmp / "STATE.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("tool_name", sorted(_WRITER_REAL_IDS))
+async def test_id_requiring_writers_still_take_a_real_account_id(
+    cwd_to_tmp, tool_name: str
+) -> None:
+    _seed_known_accounts(cwd_to_tmp)
+    mod = _import_tools()
+    real_id = _WRITER_REAL_IDS[tool_name]
+    result = await mod.handle_tool(tool_name, _writer_arguments(tool_name, real_id))
+    payload = json.loads(result[0].text)
+    platform = "meta_ads" if real_id.startswith("act_") else "google_ads"
+    assert payload["platforms"][platform]["account_id"] == real_id
+
+
+# ---------------------------------------------------------------------------
 # mureo_state_set_conversion_events (#342)
 # ---------------------------------------------------------------------------
 

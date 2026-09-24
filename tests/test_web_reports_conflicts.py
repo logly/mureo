@@ -383,6 +383,71 @@ def test_an_unrecognised_key_with_no_usable_account_id_says_so(
 
 
 @pytest.mark.unit
+def test_two_platforms_holding_a_placeholder_id_are_not_a_duplicate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#793 — the field shape: Google Ads and Meta Ads both recorded as not
+    collected, each carrying the literal ``"unknown"``.
+
+    No ``duplicate_account`` row may be emitted: that row is what makes the
+    dashboard withhold the client's totals (``reportsHasDoubleCount``) and
+    what switches the card's repair hint to
+    ``mureo repair platform-key --key <key> --drop-duplicate``
+    (``reportsRepairHint`` / the ``totals_double_counted`` triage step) —
+    an instruction to delete a platform entry that was never a duplicate.
+    Both keys are recognisable, so no conflict of any kind is left.
+    """
+    _use_workspace(monkeypatch, tmp_path)
+    note = {"attempted_at": _ago(0.1), "reason": "no accessible ad account"}
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={
+                "google_ads": PlatformState(
+                    account_id="unknown",
+                    totals={"spend": 900.0},
+                    not_collected=note,
+                ),
+                "meta_ads": PlatformState(
+                    account_id="unknown",
+                    totals={"spend": 400.0},
+                    not_collected=note,
+                ),
+            },
+        ),
+    )
+
+    summary = build_report_summary()
+    assert _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT) == []
+    assert summary["platform_conflicts"] == []
+
+
+@pytest.mark.unit
+def test_an_unrecognised_key_holding_a_placeholder_id_says_account_unknown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#793 — ``account_known`` folds the way the join does, so a
+    placeholder renders as "account unknown", never as an identified one."""
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={
+                "ads_key_a": PlatformState(account_id="unknown"),
+                "ads_key_b": PlatformState(account_id="act_N/A"),
+            },
+        ),
+    )
+
+    summary = build_report_summary()
+    assert _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT) == []
+    unknown = _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY)
+    assert [row["account_known"] for row in unknown] == [False, False]
+
+
+@pytest.mark.unit
 def test_more_than_two_keys_for_one_account_are_one_group(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
