@@ -41,6 +41,17 @@ if TYPE_CHECKING:
 
     from mureo.context.models import PlatformState
 
+UNKNOWN_ACCOUNT_ID = ""
+"""The one spelling of *this entry does not say which ad account it describes*.
+
+:func:`normalize_account_id` folds ``None``, ``""`` and whitespace to it, and
+:func:`account_ids_match` never matches it — including against another unknown
+id. Named so that a writer recording "the collection could not resolve an
+account" (#794) stores the value the join actually understands, instead of a
+placeholder like ``"unknown"`` that joins every such entry into one bogus ad
+account (#793).
+"""
+
 ACCOUNT_ID_PREFIX = "act_"
 """Optional prefix Meta ad account ids carry (``act_123`` == ``123``).
 
@@ -93,7 +104,7 @@ def normalize_account_id(account_id: object) -> str:
     id-less entry under a bogus account.
     """
     if account_id is None:
-        return ""
+        return UNKNOWN_ACCOUNT_ID
     text = account_id if isinstance(account_id, str) else str(account_id)
     text = text.strip()
     if text[: len(ACCOUNT_ID_PREFIX)].lower() == ACCOUNT_ID_PREFIX:
@@ -166,6 +177,7 @@ def duplicate_account_entries(
 
 __all__ = [
     "ACCOUNT_ID_PREFIX",
+    "UNKNOWN_ACCOUNT_ID",
     "DuplicateAccountEntry",
     "account_ids_match",
     "duplicate_account_entries",

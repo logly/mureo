@@ -544,7 +544,10 @@ shows fewer campaigns than you wrote — get these exact names right:
 - **Platform entry** (`platforms[<platform>]`) — required: `account_id` (str;
   use `""` only if genuinely unknown — an empty id is treated as *unknown*
   everywhere, so it never joins with another entry and never matches a
-  per-account override). Plus `campaigns[]` and the rollups the dashboard
+  per-account override). The MCP write tools read `""` the same way, but
+  only `mureo_state_platform_not_collected_set` accepts it: a platform whose
+  figures you DID collect knows which account they came from, so every other
+  one still requires a real id. Plus `campaigns[]` and the rollups the dashboard
   actually renders: `totals`, `metrics_period`, `periods[<window>]`.
   **`metrics_period` and every `periods` key must be one of mureo's three
   windows** — `YESTERDAY` / `LAST_7_DAYS` / `LAST_30_DAYS`. The set is closed:

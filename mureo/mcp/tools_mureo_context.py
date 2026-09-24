@@ -1175,8 +1175,12 @@ TOOLS: list[Tool] = [
             "error, API outage) INSTEAD of writing zeros: the stored figures "
             "are left untouched, because they are still the last ones truly "
             "collected — this note says they were not UPDATED, never that "
-            "they are wrong. ``attempted_at`` is stamped by the server — do "
-            "not compute it. **Omit ``reason`` (or send null / blank) to "
+            "they are wrong. **When what failed IS resolving the account — "
+            "no accessible ad account, no customer id configured — send "
+            '``account_id`` as ``""``: that is how mureo spells "unknown", '
+            "and it is the one platform writer that accepts it. Never invent "
+            "a placeholder id.** ``attempted_at`` is stamped by the server — "
+            "do not compute it. **Omit ``reason`` (or send null / blank) to "
             "CLEAR the note, and do that on the very next successful "
             "collection**: nothing else retires it, and a note that outlives "
             "its failure is permanently stale information stated with "
@@ -1200,12 +1204,25 @@ TOOLS: list[Tool] = [
                     ),
                 },
                 "account_id": {
-                    "type": "string",
-                    "minLength": 1,
+                    # No minLength, alone among the platform writers (#794):
+                    # this is the one call a collection that could not resolve
+                    # an account has to be able to make. ``null`` is accepted
+                    # beside ``""`` because they state the same absence, and a
+                    # caller made to guess which one is meant invents a third.
+                    "type": ["string", "null"],
                     "description": (
                         "The platform account id (Google customer_id / Meta "
-                        "act_*). Always written onto the platform entry, and "
-                        "used to detect a second entry for the same account."
+                        "act_*), used to detect a second entry for the same "
+                        'account. Send ``""`` (or null) when THIS is what the '
+                        "collection could not resolve — an account mureo "
+                        "could not name is exactly the failure worth "
+                        'recording, and a made-up id such as "unknown" on '
+                        "two failed platforms reads as ONE ad account held "
+                        "under two keys, which the reporting view then "
+                        "refuses to total. An unknown id is never written "
+                        "over an id the entry already holds: that entry still "
+                        "describes the account it described yesterday. A real "
+                        "id IS written onto the entry, as before."
                     ),
                 },
                 "reason": {

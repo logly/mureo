@@ -631,9 +631,27 @@ async def handle_state_platform_not_collected_set(
     successful-collection half of the contract and it has to be reachable
     from here: a note nothing can retire outlives its failure and becomes
     permanently stale information stated with confidence.
+
+    ``account_id`` is NOT run through ``_require`` here, unlike every sibling
+    writer (#794). A collection can fail precisely BECAUSE no account could
+    be resolved, and refusing the record for the field the failure is about
+    is what drove agents to invent ``"unknown"`` — a placeholder two failed
+    platforms then shared, which the reports view read as one duplicated ad
+    account (#793). Omitted, null and blank all state that absence and all
+    reach :func:`~mureo.context.state.set_platform_not_collected`, which
+    stores the one spelling the account join understands.
     """
     platform = _require(arguments, "platform")
-    account_id = _require(arguments, "account_id")
+    account_id = arguments.get("account_id")
+    # Unknown is sayable; a number or an object is still a caller error. The
+    # declared schema already refuses one, but the handler is reachable
+    # without it (the Python API, a lenient client), and an id the join
+    # cannot read must not land on the entry.
+    if account_id is not None and not isinstance(account_id, str):
+        raise ValueError(
+            'account_id must be a string (send "" when the collection '
+            "could not resolve one)"
+        )
     reason = arguments.get("reason")
     # Type-checked before it reaches the file: an object or a number here is
     # a caller error, not a reason, and storing it would put something

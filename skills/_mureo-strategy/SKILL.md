@@ -541,7 +541,15 @@ refreshed:
 
 Write it with `mureo_state_platform_not_collected_set` (pass `platform`,
 `account_id`, `reason`; `attempted_at` is stamped by the server), or the same
-object on the Code `Write` path. Without it, "not collected" and "collected,
+object on the Code `Write` path. **When resolving the account is what
+failed** — the platform authenticated but exposed no ad account, or none is
+configured — pass `account_id` as `""`. This is the one write tool that
+accepts an unknown id, because it is the only one whose subject can be that
+the id is unknown; an unknown id is stored as `""` and never written over an
+id the entry already holds. **Never invent a placeholder** (`"unknown"`,
+`"none"`, `"n/a"`): two failed platforms carrying the same made-up id read
+as one ad account under two keys, and the reports view withholds the client
+total rather than showing the inflated one. Without it, "not collected" and "collected,
 and the answer was zero" are the same document, and the card cannot tell an ad
 account that stopped delivering from a collector that stopped running.
 

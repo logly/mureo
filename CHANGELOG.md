@@ -1,5 +1,34 @@
 ## [Unreleased]
 
+### Fixed
+
+- **A `not_collected` record no longer demands the account id the failed
+  collection could not resolve** (#794). `mureo_state_platform_not_collected_set`
+  required `account_id` with `minLength: 1`, while the bulk `Write` path the
+  `_mureo-shared` skill documents has always spelled an unknown id `""`. So
+  the right answer depended on which write path the agent took — and on the
+  MCP path, for the one failure whose CAUSE is that no account could be
+  resolved (Google Ads authenticated with zero accessible accounts, no
+  customer id configured), there was no legal value to send. The agent
+  invented one: `account_id: "unknown"` on both Google Ads and Meta Ads,
+  which the reports view then read as ONE ad account held under two keys and
+  withheld the client total over (#793). That tool now accepts `""` / `null`
+  / whitespace, alone among the platform writers — a platform whose figures
+  you DID collect knows which account they came from, so
+  `mureo_state_platform_metrics_set`, `_daily_set` and
+  `mureo_state_set_conversion_events` still require a real id. An unknown id
+  is stored as the empty id mureo reads as *unknown* everywhere (it joins
+  nothing, including another unknown id, so two platforms that both failed
+  this way stay two entries), and it is **never written over an id the entry
+  already holds**: a platform that failed today still describes the ad
+  account it described yesterday, and blanking it would break that entry's
+  per-account conversion override and its place in the duplicate join.
+  `set_platform_not_collected` otherwise behaves exactly as before — the
+  campaigns, rollups and conversion override are carried over, `attempted_at`
+  is server-stamped, and `last_synced_at` is not re-stamped. `daily-check`
+  step 13 and the `_mureo-strategy` / `_mureo-shared` skills now say what to
+  pass, and say not to invent a placeholder.
+
 ## [0.21.2] - 2026-09-23
 
 ### Changed
