@@ -495,19 +495,6 @@ def request_update_refresh() -> dict[str, Any]:
     return get_update_status()
 
 
-def _reset_update_cache() -> None:
-    """Test-only: stop polling and clear cached state between cases."""
-
-    global _cached_result, _cached_at_monotonic, _refresh_in_progress
-    global _refresh_thread
-    stop_periodic_update_check()
-    with _cache_lock:
-        _cached_result = None
-        _cached_at_monotonic = 0.0
-        _refresh_in_progress = False
-        _refresh_thread = None
-
-
 __all__ = [
     "check_for_updates",
     "get_update_status",

@@ -560,11 +560,6 @@ def _shipped_skill_versions() -> dict[str, str | None]:
         return {}
 
 
-def _shipped_skill_names() -> frozenset[str]:
-    """The names of the skills this mureo would install."""
-    return frozenset(_shipped_skill_versions())
-
-
 def _dominant_version(versions: Iterable[str | None]) -> str | None:
     """The one version worth naming in a one-line report.
 

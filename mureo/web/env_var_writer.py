@@ -306,11 +306,6 @@ _REMOVABLE_SECTIONS: frozenset[str] = frozenset(
 )
 
 
-def removable_credential_sections() -> tuple[str, ...]:
-    """Allow-listed mureo-native credential sections (UI/validation)."""
-    return tuple(sorted(_REMOVABLE_SECTIONS))
-
-
 def remove_credential_section(
     section: str,
     *,

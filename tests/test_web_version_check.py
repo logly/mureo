@@ -21,7 +21,6 @@ import pytest
 
 from mureo.web import version_check
 from mureo.web.version_check import (
-    _reset_update_cache,
     check_for_updates,
     get_update_status,
     request_update_refresh,
@@ -29,14 +28,28 @@ from mureo.web.version_check import (
     stop_periodic_update_check,
 )
 
+#: The module-level cache globals and their cold (import-time) values.
+_COLD_CACHE: dict[str, Any] = {
+    "_cached_result": None,
+    "_cached_at_monotonic": 0.0,
+    "_refresh_in_progress": False,
+    "_refresh_thread": None,
+}
+
 
 @pytest.fixture(autouse=True)
-def _clean_update_cache() -> Any:
-    """Each case starts and ends with a cold module-level cache."""
+def _clean_update_cache(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Each case starts with a cold module-level cache and no poller.
 
-    _reset_update_cache()
+    ``monkeypatch`` restores the cache globals on teardown, so no case
+    leaks its cached state into the next one.
+    """
+
+    stop_periodic_update_check()
+    for name, cold in _COLD_CACHE.items():
+        monkeypatch.setattr(version_check, name, cold)
     yield
-    _reset_update_cache()
+    stop_periodic_update_check()
 
 
 def _join_refresh(timeout: float = 5.0) -> None:

@@ -101,14 +101,3 @@ class ConfigureSession:
                 "success": state.success,
                 "error": state.error,
             }
-
-    def get_oauth_status_all(self) -> dict[str, dict[str, Any]]:
-        with self._lock:
-            return {
-                provider: {
-                    "pending": state.pending,
-                    "success": state.success,
-                    "error": state.error,
-                }
-                for provider, state in self.oauth_status.items()
-            }

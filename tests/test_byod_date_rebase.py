@@ -149,22 +149,6 @@ async def test_google_perf_report_non_empty_despite_stale_dates(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_meta_metrics_daily_non_empty_despite_stale_dates(
-    tmp_path: Path,
-) -> None:
-    from mureo.byod.clients import ByodMetaAdsClient
-
-    client = ByodMetaAdsClient(_meta_dir(tmp_path))
-    rows = await client.get_metrics_daily(period="LAST_7_DAYS")
-    assert rows, "stale Meta demo data must still return the last 7 days"
-    # Window must be the dataset's last 7 days, not wall-clock anchored.
-    days = sorted({r["date"] for r in rows})
-    assert days[-1] == _FAR_PAST_END.isoformat()
-    assert len(days) == 7
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
 async def test_meta_get_performance_report_non_empty(tmp_path: Path) -> None:
     from mureo.byod.clients import ByodMetaAdsClient
 

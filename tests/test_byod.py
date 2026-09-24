@@ -120,14 +120,9 @@ def google_ads_xlsx(tmp_path, fake_home):
 
 
 def test_runtime_handles_missing_manifest(fake_home):
-    from mureo.byod.runtime import (
-        byod_active_platforms,
-        byod_has,
-        read_manifest,
-    )
+    from mureo.byod.runtime import byod_has, read_manifest
 
     assert read_manifest() is None
-    assert byod_active_platforms() == []
     assert byod_has("google_ads") is False
 
 
@@ -684,10 +679,8 @@ def test_byod_meta_get_performance_report_exposes_result_indicator(tmp_path, fak
 
 
 def test_byod_meta_client_phase3_readers(tmp_path, fake_home):
-    """ByodMetaAdsClient exposes the Phase 3 CSVs through async
-    readers that mirror the Live API method shapes daily-check expects:
-    get_metrics_daily / get_ad_set_insights_daily / get_ad_insights_daily
-    / get_breakdown_report (demographics) / get_creatives.
+    """ByodMetaAdsClient exposes the imported demographics CSV through
+    get_breakdown_report, mirroring the Live API method shape.
     """
     import asyncio
     from datetime import date, timedelta
@@ -751,22 +744,8 @@ def test_byod_meta_client_phase3_readers(tmp_path, fake_home):
 
     client = ByodMetaAdsClient(byod_data_dir() / "meta_ads")
 
-    metrics = asyncio.run(client.get_metrics_daily())
-    assert any(r["impressions"] == 1000 and r["reach"] == 400 for r in metrics)
-
-    as_metrics = asyncio.run(client.get_ad_set_insights_daily())
-    assert as_metrics
-    assert all("ad_set_id" in r for r in as_metrics)
-
-    ad_metrics = asyncio.run(client.get_ad_insights_daily())
-    assert ad_metrics
-    assert all("ad_id" in r for r in ad_metrics)
-
     demo = asyncio.run(client.get_breakdown_report())
     assert any(r.get("dimension") == "age" and r.get("value") == "18-24" for r in demo)
-
-    creatives = asyncio.run(client.get_creatives())
-    assert any(c["image_url"] == "https://ex.com/a.jpg" for c in creatives)
 
 
 # ---------------------------------------------------------------------------

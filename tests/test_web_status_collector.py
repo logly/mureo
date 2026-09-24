@@ -25,7 +25,6 @@ from mureo.web.status_collector import (
     _detect_workflow_skills,
     _mask_value,
     _read_skill_version,
-    _shipped_skill_names,
     _shipped_skill_versions,
     collect_status,
 )
@@ -919,6 +918,3 @@ class TestStaleSkillsOnTheSnapshot:
         assert parts["skills"] is False
         assert parts["skills_state"] == SKILLS_MISSING
         assert parts["skills_installed_version"] is None
-
-    def test_shipped_skill_names_still_answers_the_names(self) -> None:
-        assert _shipped_skill_names() == frozenset(_shipped_skill_versions())

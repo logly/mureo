@@ -22,43 +22,6 @@ def _seed_state(d) -> None:
 
 
 # ---------------------------------------------------------------------------
-# is_reversible_native_tool
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestIsReversibleNativeTool:
-    @pytest.mark.parametrize(
-        "name",
-        [
-            "meta_ads_campaigns_pause",
-            "meta_ads_campaigns_enable",
-            "meta_ads_ad_sets_pause",
-            "meta_ads_ad_sets_enable",
-            "meta_ads_ads_pause",
-            "meta_ads_ads_enable",
-            "google_ads_campaigns_update_status",
-            "google_ads_ads_update_status",
-        ],
-    )
-    def test_status_toggles_are_reversible(self, name: str) -> None:
-        assert nr.is_reversible_native_tool(name) is True
-
-    @pytest.mark.parametrize(
-        "name",
-        [
-            "meta_ads_campaigns_create",
-            "meta_ads_ad_sets_update",
-            "google_ads_budget_update",
-            "meta_ads_campaigns_get",
-            "google_ads_keywords_add",
-        ],
-    )
-    def test_other_tools_are_not_reversible(self, name: str) -> None:
-        assert nr.is_reversible_native_tool(name) is False
-
-
-# ---------------------------------------------------------------------------
 # build_reversal — Meta (dedicated pause/enable tools)
 # ---------------------------------------------------------------------------
 

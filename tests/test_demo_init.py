@@ -226,14 +226,13 @@ def test_materialize_auto_imports_bundle(tmp_path: Path) -> None:
     Replaces the v1 round-trip test — the round-trip is now exercised
     by materialize itself rather than by a separate import_bundle call.
     """
-    from mureo.byod.runtime import byod_active_platforms
+    from mureo.byod.runtime import byod_has
 
     target = tmp_path / "demo"
     materialize(target)
 
-    active = byod_active_platforms()
-    assert "google_ads" in active
-    assert "meta_ads" in active
+    assert byod_has("google_ads")
+    assert byod_has("meta_ads")
 
 
 def test_materialize_skip_import_leaves_byod_untouched(tmp_path: Path) -> None:
@@ -244,7 +243,7 @@ def test_materialize_skip_import_leaves_byod_untouched(tmp_path: Path) -> None:
     would mislead any skill the user runs before doing the manual
     ``mureo byod import``.
     """
-    from mureo.byod.runtime import byod_active_platforms
+    from mureo.byod.runtime import byod_has
 
     target = tmp_path / "demo"
     materialize(target, skip_import=True)
@@ -253,7 +252,8 @@ def test_materialize_skip_import_leaves_byod_untouched(tmp_path: Path) -> None:
     assert not (
         target / "STATE.json"
     ).exists(), "skip_import must not ship STATE.json — see installer.py docstring"
-    assert byod_active_platforms() == []
+    assert not byod_has("google_ads")
+    assert not byod_has("meta_ads")
 
 
 def test_materialize_idempotent_re_run(tmp_path: Path) -> None:
@@ -264,15 +264,14 @@ def test_materialize_idempotent_re_run(tmp_path: Path) -> None:
     the demo. Real (non-demo) BYOD data still requires --force; that
     is covered by ``test_materialize_refuses_existing_byod_without_force``.
     """
-    from mureo.byod.runtime import byod_active_platforms
+    from mureo.byod.runtime import byod_has
 
     target = tmp_path / "demo"
     materialize(target)
     materialize(target)  # must succeed without --force
 
-    active = byod_active_platforms()
-    assert "google_ads" in active
-    assert "meta_ads" in active
+    assert byod_has("google_ads")
+    assert byod_has("meta_ads")
 
 
 def test_materialize_refuses_existing_byod_without_force(tmp_path: Path) -> None:
@@ -317,14 +316,13 @@ def test_materialize_refuses_existing_byod_without_force(tmp_path: Path) -> None
 
 def test_materialize_force_replaces_existing_byod(tmp_path: Path) -> None:
     """``--force`` clears the BYOD conflict and re-imports cleanly."""
-    from mureo.byod.runtime import byod_active_platforms
+    from mureo.byod.runtime import byod_has
 
     materialize(tmp_path / "first")
     materialize(tmp_path / "second", force=True)
 
-    active = byod_active_platforms()
-    assert "google_ads" in active
-    assert "meta_ads" in active
+    assert byod_has("google_ads")
+    assert byod_has("meta_ads")
 
 
 def test_state_campaign_ids_match_byod_csv(tmp_path: Path) -> None:
@@ -367,13 +365,14 @@ def test_state_campaign_ids_match_byod_csv(tmp_path: Path) -> None:
 
 def test_cli_demo_init_skip_import_flag(tmp_path: Path) -> None:
     """``mureo demo init --skip-import`` works end-to-end via Typer."""
-    from mureo.byod.runtime import byod_active_platforms
+    from mureo.byod.runtime import byod_has
 
     target = tmp_path / "demo"
     result = runner.invoke(app, ["demo", "init", str(target), "--skip-import"])
     assert result.exit_code == 0, result.stdout
     assert (target / "bundle.xlsx").is_file()
-    assert byod_active_platforms() == []
+    assert not byod_has("google_ads")
+    assert not byod_has("meta_ads")
 
 
 # ---------------------------------------------------------------------------
