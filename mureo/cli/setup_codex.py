@@ -159,6 +159,33 @@ def install_codex_mcp_config() -> Path | None:
 # ---------------------------------------------------------------------------
 
 
+def _nested_pre_tool_use(
+    existing: dict[str, Any],
+) -> tuple[dict[str, Any], list[Any]] | None:
+    """Return ``(hooks_obj, hooks_obj["PreToolUse"])`` from a parsed
+    ``hooks.json``, defaulting both to empty when absent.
+
+    ``None`` (after a warning) when either level has the wrong type — the
+    caller then refuses to overwrite the file.
+    """
+    hooks_obj = existing.get("hooks", {})
+    if not isinstance(hooks_obj, dict):
+        logger.warning(
+            "hooks.json 'hooks' is not an object (got %s) — refusing to overwrite",
+            type(hooks_obj).__name__,
+        )
+        return None
+    pre_tool_use = hooks_obj.get("PreToolUse", [])
+    if not isinstance(pre_tool_use, list):
+        logger.warning(
+            "hooks.json 'hooks.PreToolUse' is not a list (got %s) — "
+            "refusing to overwrite",
+            type(pre_tool_use).__name__,
+        )
+        return None
+    return hooks_obj, pre_tool_use
+
+
 def install_codex_credential_guard(hooks_file: Path | None = None) -> Path | None:
     """Install the PreToolUse guard into ``~/.codex/hooks.json``.
 
@@ -185,21 +212,10 @@ def install_codex_credential_guard(hooks_file: Path | None = None) -> Path | Non
             logger.warning("Could not parse %s — refusing to overwrite", hooks_file)
             return None
 
-    hooks_obj = existing.get("hooks", {})
-    if not isinstance(hooks_obj, dict):
-        logger.warning(
-            "hooks.json 'hooks' is not an object (got %s) — refusing to overwrite",
-            type(hooks_obj).__name__,
-        )
+    nested = _nested_pre_tool_use(existing)
+    if nested is None:
         return None
-    pre_tool_use = hooks_obj.get("PreToolUse", [])
-    if not isinstance(pre_tool_use, list):
-        logger.warning(
-            "hooks.json 'hooks.PreToolUse' is not a list (got %s) — "
-            "refusing to overwrite",
-            type(pre_tool_use).__name__,
-        )
-        return None
+    hooks_obj, pre_tool_use = nested
 
     kept = [e for e in pre_tool_use if not credential_guard.is_guard_entry(e)]
     desired = kept + _credential_guard_hooks()

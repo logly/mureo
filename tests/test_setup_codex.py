@@ -214,6 +214,38 @@ class TestInstallCodexCredentialGuard:
         result = install_codex_credential_guard()
         assert result is None
 
+    def test_stranded_top_level_list_left_untouched(self, home: Path) -> None:
+        """A top-level ``PreToolUse`` list written by a pre-#393 mureo is
+        inert (Codex never loads it): install and remove both work only on
+        the nested list and leave it exactly as it was."""
+        from mureo.cli.setup_codex import remove_codex_credential_guard
+
+        hooks_file = home / ".codex" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        foreign = {
+            "matcher": "Bash",
+            "hooks": [{"type": "command", "command": "echo mine"}],
+        }
+        stale = {
+            "matcher": "Read",
+            "hooks": [{"type": "command", "command": _STALE_GUARD_CMD}],
+        }
+        hooks_file.write_text(
+            json.dumps({"PreToolUse": [foreign, stale]}), encoding="utf-8"
+        )
+
+        assert install_codex_credential_guard() == hooks_file
+        data = json.loads(hooks_file.read_text(encoding="utf-8"))
+        assert data["PreToolUse"] == [foreign, stale]
+        assert len(data["hooks"]["PreToolUse"]) == 2
+        # Already current: the stranded list does not make install rewrite.
+        assert install_codex_credential_guard() is None
+
+        assert remove_codex_credential_guard() == hooks_file
+        data = json.loads(hooks_file.read_text(encoding="utf-8"))
+        assert data["PreToolUse"] == [foreign, stale]
+        assert data["hooks"]["PreToolUse"] == []
+
 
 class TestInstallCodexSkills:
     """Skill directories are copied into ~/.codex/skills/.

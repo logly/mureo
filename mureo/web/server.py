@@ -110,7 +110,6 @@ class ConfigureWizard:
         bind_host: str = "127.0.0.1",
         home: Path | None = None,
         static_dir: Path | None = None,
-        commands_path: Path | None = None,
     ) -> None:
         self._bind_host = bind_host
         self.home = home
@@ -118,7 +117,6 @@ class ConfigureWizard:
             static_dir if static_dir is not None else _resolve_static_dir()
         )
         self.session = ConfigureSession()
-        self._commands_path_override = commands_path
         self._host_paths: HostPaths = self._build_host_paths()
         self.oauth_bridge = OAuthBridge()
         # Discover third-party extensions once at wizard construction.
@@ -195,10 +193,6 @@ class ConfigureWizard:
     @property
     def host_paths(self) -> HostPaths:
         return self._host_paths
-
-    @property
-    def commands_path(self) -> Path:
-        return self._host_paths.commands_dir
 
     @property
     def port(self) -> int:
@@ -342,9 +336,9 @@ class ConfigureWizard:
         BEFORE the session host is switched — keeping the potentially slow
         build off the ``_host_lock`` critical section (#407).
 
-        Base resolution plus the commands-path pin plus the credentials
-        override are all applied to a local value; the caller publishes
-        the result in one assignment. The configure server is threaded,
+        Base resolution plus the credentials override are both applied to
+        a local value; the caller publishes the result in one assignment.
+        The configure server is threaded,
         and mutating ``self._host_paths`` step-by-step opened a window in
         which concurrent requests observed the unresolved host-default
         credentials path (#406) — with a slow runtime-context factory the
@@ -353,10 +347,6 @@ class ConfigureWizard:
         paths = get_host_paths(
             host if host is not None else self.session.host, home=self.home
         )
-        if self._commands_path_override is not None:
-            paths = dataclasses.replace(
-                paths, commands_dir=self._commands_path_override
-            )
         return self._with_credentials_override(paths)
 
     def _with_credentials_override(self, paths: HostPaths) -> HostPaths:
@@ -401,7 +391,6 @@ def run_configure_wizard(
     home: Path | None = None,
     open_browser: bool = True,
     timeout_seconds: float | None = 600.0,
-    commands_path: Path | None = None,
     preferred_port: int = 0,
     bind_host: str = "127.0.0.1",
 ) -> bool:
@@ -449,7 +438,7 @@ def run_configure_wizard(
                 webbrowser.open(url)
         return True
 
-    wizard = ConfigureWizard(home=home, commands_path=commands_path)
+    wizard = ConfigureWizard(home=home)
     thread = threading.Thread(
         target=wizard.serve, kwargs={"preferred_port": preferred_port}, daemon=True
     )

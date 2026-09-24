@@ -41,7 +41,6 @@ def _paths(tmp_path: Path) -> HostPaths:
         host="claude-code",
         settings_path=tmp_path / "settings.json",
         skills_dir=tmp_path / "skills",
-        commands_dir=tmp_path / "commands",
         credentials_path=tmp_path / "credentials.json",
         mcp_registry_path=tmp_path / ".claude.json",
     )
