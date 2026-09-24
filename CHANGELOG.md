@@ -176,7 +176,8 @@
   #393. A top-level list left by such a version is not touched (Codex never
   loads it, so it is inert) and can be deleted by hand. `mureo upgrade`
   still installs the current guard in the nested list when it finds
-  mureo's tagged entries only in that top-level list.
+  mureo's tagged entries only in that top-level list and no nested list
+  exists yet; once the guard is removed, an upgrade does not bring it back.
 
 ## [0.21.2] - 2026-09-23
 

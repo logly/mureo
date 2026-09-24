@@ -238,6 +238,8 @@ class TestInstallCodexCredentialGuard:
         data = json.loads(hooks_file.read_text(encoding="utf-8"))
         assert data["PreToolUse"] == [foreign, stale]
         assert len(data["hooks"]["PreToolUse"]) == 2
+        nested = json.dumps(data["hooks"]["PreToolUse"])
+        assert nested.count("[mureo-credential-guard]") == 2
         # Already current: the stranded list does not make install rewrite.
         assert install_codex_credential_guard() is None
 
@@ -245,6 +247,31 @@ class TestInstallCodexCredentialGuard:
         data = json.loads(hooks_file.read_text(encoding="utf-8"))
         assert data["PreToolUse"] == [foreign, stale]
         assert data["hooks"]["PreToolUse"] == []
+
+    def test_non_list_top_level_pretooluse_kept(self, home: Path) -> None:
+        """A non-list top-level ``PreToolUse`` is not mureo's concern: the
+        guard is installed in the nested list and the value is kept."""
+        hooks_file = home / ".codex" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        hooks_file.write_text(
+            json.dumps({"PreToolUse": {"matcher": "Bash"}}), encoding="utf-8"
+        )
+
+        assert install_codex_credential_guard() == hooks_file
+        data = json.loads(hooks_file.read_text(encoding="utf-8"))
+        assert data["PreToolUse"] == {"matcher": "Bash"}
+        nested = json.dumps(data["hooks"]["PreToolUse"])
+        assert nested.count("[mureo-credential-guard]") == 2
+
+    def test_hooks_wrong_type_refused(self, home: Path) -> None:
+        """``hooks`` must be an object; a list is refused, file unchanged."""
+        hooks_file = home / ".codex" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        original = json.dumps({"hooks": []})
+        hooks_file.write_text(original, encoding="utf-8")
+
+        assert install_codex_credential_guard() is None
+        assert hooks_file.read_text(encoding="utf-8") == original
 
 
 class TestInstallCodexSkills:

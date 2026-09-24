@@ -338,11 +338,11 @@ class ConfigureWizard:
 
         Base resolution plus the credentials override are both applied to
         a local value; the caller publishes the result in one assignment.
-        The configure server is threaded,
-        and mutating ``self._host_paths`` step-by-step opened a window in
-        which concurrent requests observed the unresolved host-default
-        credentials path (#406) — with a slow runtime-context factory the
-        window spanned most of a dashboard page load.
+        The configure server is threaded, and mutating ``self._host_paths``
+        step-by-step opened a window in which concurrent requests observed
+        the unresolved host-default credentials path (#406) — with a slow
+        runtime-context factory the window spanned most of a dashboard
+        page load.
         """
         paths = get_host_paths(
             host if host is not None else self.session.host, home=self.home
