@@ -41,7 +41,6 @@ from mureo.meta_ads._period import ResolvedPeriod, previous_period, resolve_peri
 def test_resolve_known_preset_returns_preset(name: str) -> None:
     rp = resolve_period(name)
     assert isinstance(rp, ResolvedPeriod)
-    assert rp.is_preset is True
     assert rp.date_preset == name
     assert rp.time_range is None
 
@@ -49,7 +48,6 @@ def test_resolve_known_preset_returns_preset(name: str) -> None:
 @pytest.mark.unit
 def test_resolve_custom_range_returns_time_range() -> None:
     rp = resolve_period("2026-05-01..2026-05-14")
-    assert rp.is_preset is False
     assert rp.date_preset is None
     assert rp.time_range == ("2026-05-01", "2026-05-14")
 

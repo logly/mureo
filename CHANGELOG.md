@@ -109,6 +109,29 @@
   and the display and said so read as a complete run whether or not the cards
   moved, which is what made this easy to miss for days at a time.
 
+### Removed
+
+- **Functions and methods that only the test suite called.** Nothing in
+  mureo, its skills or its extensions reached them:
+  `ByodMetaAdsClient.get_metrics_daily` / `get_ad_set_insights_daily` /
+  `get_ad_insights_daily` / `get_creatives` (`mureo/byod/_meta_client.py`),
+  `byod_active_platforms` (`mureo/byod/runtime.py`),
+  `is_reversible_native_tool` (`mureo/mcp/native_reversal.py`),
+  `ConfigureSession.get_oauth_status_all` (`mureo/web/session.py`),
+  `removable_credential_sections` (`mureo/web/env_var_writer.py`),
+  `_shipped_skill_names` (`mureo/web/status_collector.py`),
+  `ResolvedPeriod.is_preset` (`mureo/meta_ads/_period.py`) and
+  `_reset_update_cache` (`mureo/web/version_check.py`; its tests now reset
+  the module cache themselves).
+- **Configure-UI strings and styles no screen renders any more** (both
+  locales for the i18n keys): `common.back`, `common.next`, `common.skip`
+  and `auth_wizard.search_console.step1_title`, which nothing has rendered
+  since #99; `dashboard.reports_hint` and the `.dashboard-reports-hint`
+  rule, orphaned by #309; `dashboard.reports_client_label`, orphaned by
+  #308; and `dashboard.reports_latest_title` and the
+  `.report-latest-period` rule, orphaned by #695. No rendered element used
+  them, so nothing on screen changes.
+
 ## [0.21.2] - 2026-09-23
 
 ### Changed

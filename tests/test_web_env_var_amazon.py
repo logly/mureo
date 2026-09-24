@@ -29,7 +29,6 @@ from mureo.core.providers import get_account_credential_fields
 from mureo.web.env_var_writer import (
     allowed_env_var_names,
     get_env_var_target,
-    removable_credential_sections,
     remove_credential_section,
     write_credential_env_var,
 )
@@ -119,9 +118,6 @@ class TestAmazonEnvVarWriteRoundTrip:
 
 @pytest.mark.unit
 class TestAmazonSectionIsRemovable:
-    def test_amazon_ads_is_allow_listed_for_removal(self) -> None:
-        assert "amazon_ads" in removable_credential_sections()
-
     def test_remove_drops_only_the_amazon_section(self, tmp_path: Path) -> None:
         path = tmp_path / "credentials.json"
         path.write_text(

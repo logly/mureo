@@ -172,14 +172,6 @@ def byod_has(platform: str) -> bool:
     return True
 
 
-def byod_active_platforms() -> list[str]:
-    """Return platforms currently in BYOD mode (in canonical order)."""
-    manifest = read_manifest()
-    if manifest is None:
-        return []
-    return [p for p in SUPPORTED_PLATFORMS if p in manifest["platforms"]]
-
-
 def byod_platform_info(platform: str) -> dict[str, Any] | None:
     """Return per-platform manifest entry, or ``None`` if absent."""
     manifest = read_manifest()

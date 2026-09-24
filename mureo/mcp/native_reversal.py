@@ -111,11 +111,6 @@ _META_EXCLUSION_KEYS: tuple[str, ...] = (
 _SUMMARY_KIND = {False: "status change", True: "delivery-surface exclusion"}
 
 
-def is_reversible_native_tool(name: str) -> bool:
-    """True if ``name`` is a native mutation this module can reverse."""
-    return name in _STATUS_TOOLS or name in _EXCLUSION_TOOLS
-
-
 def _platform_of(name: str) -> str | None:
     """Platform key for a recordable native mutation (``None`` if not one)."""
     spec = _STATUS_TOOLS.get(name)

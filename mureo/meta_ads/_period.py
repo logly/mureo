@@ -68,10 +68,6 @@ class ResolvedPeriod:
     time_range: tuple[str, str] | None = None
 
     @property
-    def is_preset(self) -> bool:
-        return self.date_preset is not None
-
-    @property
     def days(self) -> int:
         """Inclusive length of the window in days.
 

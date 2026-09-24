@@ -315,8 +315,11 @@ Meta エクスポートに配信内訳や属性内訳（Step 2b の *配置 /
 プラットフォーム / デバイスプラットフォーム* や 年齢・性別の行）が
 含まれる場合、アダプタは上記のコア 4 本に加えて
 `ad_set_metrics_daily.csv` / `ad_metrics_daily.csv` /
-`demographics_daily.csv` / `creatives.csv` を書き出します（広告セット別
-/ 広告別 / 属性別のドリルダウンとクリエイティブのメタデータ用）。
+`demographics_daily.csv` / `creatives.csv` を書き出します。
+`demographics_daily.csv` は属性別の内訳レポートに、`creatives.csv` は
+`/creative-refresh` スキルが参照するクリエイティブのメタデータに使われます。
+`ad_set_metrics_daily.csv` と `ad_metrics_daily.csv` は網羅のために
+書き出しているだけで、現在これらを読む mureo のツールはありません。
 
 ---
 

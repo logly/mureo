@@ -256,23 +256,6 @@ class TestGetOauthStatus:
         with pytest.raises(ValueError):
             session.get_oauth_status("twitter")
 
-    def test_status_all_returns_every_provider(self) -> None:
-        session = ConfigureSession()
-        out = session.get_oauth_status_all()
-        assert set(out.keys()) == set(OAUTH_PROVIDERS)
-        for entry in out.values():
-            assert set(entry.keys()) == {"pending", "success", "error"}
-
-    def test_status_all_reflects_per_provider_state(self) -> None:
-        session = ConfigureSession()
-        session.mark_oauth_pending("google")
-        session.mark_oauth_complete("meta", success=True)
-        out = session.get_oauth_status_all()
-        assert out["google"]["pending"] is True
-        assert out["google"]["success"] is False
-        assert out["meta"]["pending"] is False
-        assert out["meta"]["success"] is True
-
 
 @pytest.mark.unit
 class TestOauthProviderAllowList:
