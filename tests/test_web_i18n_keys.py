@@ -363,10 +363,9 @@ class TestCreativeStudioDashboardKeysParity:
 @pytest.mark.unit
 class TestReportsDashboardKeysParity:
     """EN/JA parity for the read-only Reports dashboard keys: the nav label,
-    section title + hint, client selector, freshness, KPI labels, the
-    no-metrics/empty states, the latest-report + recent-actions titles, and
-    the relative-age strings (no JS harness — asserted against the bundled
-    i18n.json directly)."""
+    section title, freshness, KPI labels, the no-metrics/empty states, the
+    recent-actions title, and the relative-age strings (no JS harness —
+    asserted against the bundled i18n.json directly)."""
 
     # Distinct EN/JA strings. ``dashboard.reports_kpi_cpa`` ("CPA") and
     # ``dashboard.reports_kpi_ctr`` ("CTR") are intentionally NOT here:
@@ -376,8 +375,6 @@ class TestReportsDashboardKeysParity:
     _KEYS = (
         "dashboard.nav_reports",
         "dashboard.reports_title",
-        "dashboard.reports_hint",
-        "dashboard.reports_client_label",
         "dashboard.reports_period_yesterday",
         "dashboard.reports_period_last_7_days",
         "dashboard.reports_period_last_30_days",
@@ -401,7 +398,6 @@ class TestReportsDashboardKeysParity:
         "dashboard.reports_no_metrics",
         "dashboard.reports_campaign_count",
         "dashboard.reports_back",
-        "dashboard.reports_latest_title",
         "dashboard.reports_generated",
         "dashboard.reports_actions_title",
         "dashboard.reports_observation_due",

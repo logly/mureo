@@ -123,6 +123,13 @@
   `ResolvedPeriod.is_preset` (`mureo/meta_ads/_period.py`) and
   `_reset_update_cache` (`mureo/web/version_check.py`; its tests now reset
   the module cache themselves).
+- **Configure-UI strings and styles no screen renders any more**, left by
+  earlier UI reworks including the Reports one (#686 / #689 / #695): the
+  i18n keys `dashboard.reports_client_label`, `dashboard.reports_hint`,
+  `dashboard.reports_latest_title`, `common.back`, `common.next`,
+  `common.skip` and `auth_wizard.search_console.step1_title` (both locales),
+  and the `.dashboard-reports-hint` and `.report-latest-period` rules in
+  `app.css`. No rendered element used them, so nothing on screen changes.
 
 ## [0.21.2] - 2026-09-23
 

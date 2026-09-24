@@ -1814,12 +1814,6 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   outline-offset: 1px;
 }
 
-.dashboard-reports-hint {
-  margin: 4px 0 0;
-  font-size: var(--type-caption-size);
-  color: var(--muted);
-}
-
 /* Multi-client overview (#307): one selectable card per client, above the
    per-client detail. A single-workspace install shows one card. */
 .dashboard-reports-clients {
@@ -3409,12 +3403,6 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--muted);
-}
-
-.report-latest-period {
-  margin: 0 0 8px;
-  font-size: var(--type-caption-size);
   color: var(--muted);
 }
 
