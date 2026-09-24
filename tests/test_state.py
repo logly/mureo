@@ -2023,7 +2023,7 @@ class TestSetPlatformMetricsFetchedAt:
     ) -> None:
         """The read side deliberately relays an uninterpretable value rather
         than blanking it — it is the only clue to the writer that produced it
-        (see ``mureo.web.report_document._platform_freshness``). Stamping over it here
+        (see ``mureo.web.report_freshness._platform_freshness``). Stamping over it here
         would throw that clue away before it ever reached the document."""
         fp = tmp_path / "STATE.json"
         write_state_file(fp, StateDocument(version="2"))
@@ -2161,6 +2161,136 @@ class TestSetPlatformMetricsFetchedAt:
         )
         assert totals == {"spend": 1.0}
         assert bucket == {"spend": 2.0}
+
+
+class TestSetPlatformMetricsPeriodEnd:
+    """The writer-supplied ``period_end`` (#798).
+
+    The last calendar date a rollup's figures cover, in the ad account's own
+    timezone. Unlike ``fetched_at`` the server does NOT derive it — it has no
+    reliable timezone for the account, and a coverage date silently off by one
+    is worse than no coverage date at all — so it round-trips exactly as the
+    caller wrote it, or is absent.
+    """
+
+    @pytest.mark.unit
+    def test_round_trips_a_supplied_period_end_per_window(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 1.0, "period_end": "2026-09-22"},
+            metrics_period="YESTERDAY",
+            periods={
+                "YESTERDAY": {"spend": 1.0, "period_end": "2026-09-22"},
+                "LAST_30_DAYS": {"spend": 30.0, "period_end": "2026-09-21"},
+            },
+        )
+        ps = doc.platforms["google_ads"]
+        assert ps.totals["period_end"] == "2026-09-22"
+        assert ps.periods["YESTERDAY"]["period_end"] == "2026-09-22"
+        # Each window states its OWN coverage — one is never copied onto
+        # another, which is the mislabelling this field exists to end.
+        assert ps.periods["LAST_30_DAYS"]["period_end"] == "2026-09-21"
+
+    @pytest.mark.unit
+    def test_survives_a_reread_from_disk(self, tmp_path: Path) -> None:
+        """It is stored, not merely returned: the dashboard reads the FILE."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            periods={"YESTERDAY": {"spend": 1.0, "period_end": "2026-09-22"}},
+        )
+        reread = read_state_file(fp)
+        assert (
+            reread.platforms["google_ads"].periods["YESTERDAY"]["period_end"]
+            == "2026-09-22"
+        )
+
+    @pytest.mark.unit
+    def test_the_server_never_derives_one(self, tmp_path: Path) -> None:
+        """A caller that says nothing about coverage gets nothing back.
+
+        Deriving "yesterday" from the write time would need the ad account's
+        timezone, which the server does not reliably have — and a date that is
+        silently off by one is worse than no date, because the read side would
+        then trust it. Contrast ``fetched_at``, which the server CAN answer
+        and does.
+        """
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 1.0},
+            periods={"YESTERDAY": {"spend": 1.0}},
+        )
+        ps = doc.platforms["google_ads"]
+        assert "period_end" not in ps.totals
+        assert "period_end" not in ps.periods["YESTERDAY"]
+        # …and the write time IS stamped, so the two are not confused.
+        assert ps.periods["YESTERDAY"]["fetched_at"] == doc.last_synced_at
+
+    @pytest.mark.unit
+    def test_a_value_that_is_not_a_date_is_stored_verbatim(
+        self, tmp_path: Path
+    ) -> None:
+        """No validation on the way in, exactly as ``fetched_at`` has none:
+        the read side treats an uninterpretable value as unknown and relays
+        it, because it is the only clue to the writer that produced it."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            periods={"YESTERDAY": {"spend": 1.0, "period_end": "yesterday"}},
+        )
+        assert (
+            doc.platforms["google_ads"].periods["YESTERDAY"]["period_end"]
+            == "yesterday"
+        )
+
+    @pytest.mark.unit
+    def test_a_window_a_prior_run_wrote_is_not_disturbed(self, tmp_path: Path) -> None:
+        """The merge-per-window semantics still hold with coverage on board:
+        a later run writing only YESTERDAY leaves the LAST_30_DAYS bucket —
+        figures, write time AND coverage — exactly as it found it."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        first = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            periods={"LAST_30_DAYS": {"spend": 30.0, "period_end": "2026-09-20"}},
+        )
+        kept = dict(first.platforms["google_ads"].periods["LAST_30_DAYS"])
+
+        second = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            periods={"YESTERDAY": {"spend": 1.0, "period_end": "2026-09-22"}},
+        )
+        periods = second.platforms["google_ads"].periods
+        assert periods["LAST_30_DAYS"] == kept
+        assert periods["YESTERDAY"]["period_end"] == "2026-09-22"
+
+    @pytest.mark.unit
+    def test_does_not_mutate_the_callers_bucket(self, tmp_path: Path) -> None:
+        """The stamp is a copy, so the caller's dict keeps exactly the keys it
+        had — including the coverage date it supplied."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        bucket = {"spend": 1.0, "period_end": "2026-09-22"}
+        set_platform_metrics(fp, "google_ads", "act_123", periods={"YESTERDAY": bucket})
+        assert bucket == {"spend": 1.0, "period_end": "2026-09-22"}
 
 
 class TestMutatorsPreserveReports:

@@ -20,7 +20,11 @@ side, which has to handle a document that is ALREADY wrong:
   - no ad account id crosses the wire for any of it;
   - each platform row carries its OWN freshness (``fetched_at``), with a
     stale threshold scaled to the window the figure covers, so refreshing one
-    platform can never make another platform's stale numbers read as fresh.
+    platform can never make another platform's stale numbers read as fresh;
+  - and where the rollup states which calendar day its figures run to
+    (``period_end``, #798), THAT is what the stale verdict is taken on — the
+    write time only ever stood in for it, and a run that re-wrote a window
+    without re-collecting it made two-day-old figures read as fresh.
 """
 
 from __future__ import annotations
@@ -84,6 +88,11 @@ def _pin_installed_platforms(monkeypatch: pytest.MonkeyPatch, *names: str) -> No
 def _ago(days: float) -> str:
     """An ISO-8601 UTC timestamp ``days`` in the past."""
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+
+def _day(days: int) -> str:
+    """The calendar date ``days`` in the past, UTC, as ``YYYY-MM-DD``."""
+    return (datetime.now(timezone.utc).date() - timedelta(days=days)).isoformat()
 
 
 def _conflicts(summary: dict[str, Any], kind: str) -> list[dict[str, Any]]:
@@ -861,3 +870,223 @@ def test_platform_row_keeps_its_five_fields_and_omits_account_id(
         "campaign_count",
     } <= set(row)
     assert "account_id" not in row
+
+
+# ---------------------------------------------------------------------------
+# #798 — what the figures COVER, not only when they were written
+# ---------------------------------------------------------------------------
+
+
+def _one_window(period_end: Any, fetched_at: str) -> StateDocument:
+    """A document with one YESTERDAY rollup, coverage and write time chosen."""
+    bucket: dict[str, Any] = {"spend": 1.0, "fetched_at": fetched_at}
+    if period_end is not None:
+        bucket["period_end"] = period_end
+    return StateDocument(
+        version="2",
+        platforms={
+            "google_ads": PlatformState(account_id="1", periods={"YESTERDAY": bucket})
+        },
+    )
+
+
+@pytest.mark.unit
+def test_a_recently_written_rollup_covering_an_old_day_is_stale(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The reported failure, stated as a test.
+
+    daily-check's step 13 is best-effort and conditional: a run can persist
+    the report and the display, say so, and write no window at all — or
+    re-write one from figures it gathered for a different day. ``fetched_at``
+    is stamped at WRITE time, so the card then says "Updated 14 hours ago"
+    over figures covering the week before. The window's own threshold is
+    unchanged; what changed is which fact it is applied to.
+    """
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, _one_window(_day(9), _ago(0.05)))
+
+    (row,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert row["freshness"]["stale"] is True
+    # Both facts reach the wire, and neither is derived from the other.
+    assert row["freshness"]["period_end"] == _day(9)
+    assert row["freshness"]["fetched_at"] is not None
+    assert row["freshness"]["stale_after_days"] == 2
+
+
+@pytest.mark.unit
+def test_an_old_write_of_figures_covering_a_recent_day_is_not_stale(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The other direction, and the reason this is not merely a stricter
+    rule: a window written long ago from figures that cover yesterday is
+    CURRENT. Judging the write time would red-flag a healthy card."""
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, _one_window(_day(1), _ago(30)))
+
+    (row,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert row["freshness"]["stale"] is False
+    assert row["freshness"]["period_end"] == _day(1)
+
+
+@pytest.mark.unit
+def test_without_a_coverage_date_the_write_time_still_decides(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression pin. ``period_end`` is optional and writer-supplied, so
+    every document written before it existed must be judged exactly as it was
+    — on ``fetched_at``, against the same threshold — and must report
+    ``period_end`` as ``None`` rather than omitting the key."""
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, _one_window(None, _ago(10)))
+
+    (row,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert row["freshness"]["stale"] is True
+    assert row["freshness"]["period_end"] is None
+
+    _write_state(tmp_path, _one_window(None, _ago(0.05)))
+    (fresh,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert fresh["freshness"]["stale"] is False
+    assert fresh["freshness"]["period_end"] is None
+
+
+@pytest.mark.unit
+def test_an_uninterpretable_coverage_date_falls_back_to_the_write_time(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A value that is not a ``YYYY-MM-DD`` date is kept verbatim and
+    answers nothing — exactly the position ``fetched_at`` already takes.
+
+    It is relayed rather than blanked because it is the only clue to the
+    writer that produced it, and it never raises out of a read-only view.
+    The verdict falls back to the write time, which IS interpretable here,
+    rather than going unknown: refusing to judge would throw away an answer
+    mureo has.
+    """
+    _use_workspace(monkeypatch, tmp_path)
+    for junk in ("yesterday", "2026-02-30", "20260922", "", 20260922):
+        _write_state(tmp_path, _one_window(junk, _ago(10)))
+        (row,) = build_report_summary(period="YESTERDAY")["platforms"]
+        assert row["freshness"]["stale"] is True, junk
+        assert row["freshness"]["fetched_at"] is not None, junk
+        expected = junk if isinstance(junk, str) and junk else None
+        assert row["freshness"]["period_end"] == expected, junk
+
+
+@pytest.mark.unit
+def test_a_coverage_date_with_no_usable_write_time_still_decides(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``period_end`` is the answer in its own right, not a tie-breaker on
+    top of ``fetched_at``: a rollup that states what it covers is judged even
+    when nothing states when it was written."""
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, _one_window(_day(9), "last tuesday"))
+
+    (row,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert row["freshness"]["stale"] is True
+    assert row["freshness"]["fetched_at"] == "last tuesday"
+
+
+@pytest.mark.unit
+def test_neither_a_coverage_date_nor_a_write_time_is_unknown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unknown survives as its own state. Nothing about #798 turns "we were
+    not told" into a verdict."""
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, _one_window("not a date", "last tuesday"))
+
+    (row,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert row["freshness"]["stale"] is None
+
+
+@pytest.mark.unit
+def test_the_coverage_threshold_is_the_windows_own_length(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The thresholds are untouched (#535): the window's own length plus one
+    grace day, applied now to the day the figures run to. Nine days back is
+    dead for YESTERDAY and perfectly current for LAST_30_DAYS."""
+    _use_workspace(monkeypatch, tmp_path)
+    bucket = {"spend": 1.0, "fetched_at": _ago(0.05), "period_end": _day(9)}
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={
+                "google_ads": PlatformState(
+                    account_id="1",
+                    periods={"YESTERDAY": dict(bucket), "LAST_30_DAYS": dict(bucket)},
+                )
+            },
+        ),
+    )
+
+    (yesterday,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert yesterday["freshness"]["stale"] is True
+
+    (last30,) = build_report_summary(period="LAST_30_DAYS")["platforms"]
+    assert last30["freshness"]["stale"] is False
+
+
+@pytest.mark.unit
+def test_the_grace_day_applies_to_coverage_too(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A YESTERDAY rollup goes stale after ``1 + 1`` days, so figures running
+    to two days back are still inside the grace and three days back are not.
+    Pinned because the boundary is what an operator sees change colour."""
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, _one_window(_day(2), _ago(0.05)))
+    (inside,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert inside["freshness"]["stale"] is False
+
+    _write_state(tmp_path, _one_window(_day(3), _ago(0.05)))
+    (outside,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert outside["freshness"]["stale"] is True
+
+
+@pytest.mark.unit
+def test_period_end_reaches_the_wire_as_a_canonical_totals_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """It is part of the rollup vocabulary, so it survives the allow-list the
+    summary copies ``totals`` through — a key filtered out there would reach
+    the freshness block and nothing else, and the two would disagree."""
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, _one_window(_day(1), _ago(0.05)))
+
+    (row,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert row["totals"]["period_end"] == _day(1)
+
+
+@pytest.mark.unit
+def test_a_coverage_date_is_not_subtracted_as_a_day_over_day_delta(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``period_end`` is a date, not a figure. It joins ``period`` /
+    ``fetched_at`` / ``result_indicator`` outside the numeric delta set —
+    subtracting two of them is not a change in performance."""
+    _use_workspace(monkeypatch, tmp_path)
+    today = datetime.now(timezone.utc).date()
+    days = {
+        (today - timedelta(days=2)).isoformat(): {
+            "spend": 1.0,
+            "period_end": (today - timedelta(days=2)).isoformat(),
+        },
+        (today - timedelta(days=1)).isoformat(): {
+            "spend": 3.0,
+            "period_end": (today - timedelta(days=1)).isoformat(),
+        },
+    }
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={"google_ads": PlatformState(account_id="1", daily=days)},
+        ),
+    )
+
+    (row,) = build_report_summary()["platforms"]
+    assert row["daily_delta"]["metrics"] == {"spend": 2.0}

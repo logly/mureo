@@ -901,6 +901,34 @@ def test_platform_metrics_schema_documents_tiktok_ads() -> None:
     assert "tiktok_ads" in platform["description"]
 
 
+def test_platform_metrics_schema_documents_period_end() -> None:
+    """#798 — the writing agent reads the schema and nothing else.
+
+    ``period_end`` is the one rollup field the server cannot fill in for the
+    caller (it needs the ad account's own timezone), so a schema that does not
+    name it is a field nobody will ever send. Both places a rollup is
+    described have to say it: the single ``totals`` object and the per-window
+    buckets the dashboard's period toggle reads.
+    """
+    schema = _metrics_schema()
+    assert "period_end" in schema["properties"]["totals"]["description"]
+    buckets = schema["properties"]["periods"]["properties"]
+    assert buckets, "the periods schema names no window"
+    for window, bucket in buckets.items():
+        assert "period_end" in bucket["description"], window
+
+
+def test_platform_metrics_description_says_the_server_cannot_derive_coverage() -> None:
+    """#798 — and it has to say WHY, next to the ``fetched_at`` sentence that
+    promises the server DOES fill that one in. Without the contrast a writer
+    reads "the server stamps the rest" and omits the coverage date."""
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_platform_metrics_set")
+    description = tool.description
+    assert "period_end" in description
+    assert "timezone" in description
+
+
 def test_platform_metrics_schema_constrains_non_empty_strings() -> None:
     """#534 — a bare ``{"type": "string"}`` accepts ``""``. An enum would
     reject a valid ``plugin:<dist>`` key, so the genuinely correct constraint

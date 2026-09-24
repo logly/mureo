@@ -63,6 +63,11 @@ function ago(ms) {
   return new Date(Date.now() - ms).toISOString();
 }
 
+/** The calendar date `n` days back, UTC, as the `period_end` shape. */
+function day(n) {
+  return new Date(Date.now() - n * DAY_MS).toISOString().slice(0, 10);
+}
+
 /** A platform row that contributes totals to the aggregate. */
 function platform(key, totals, freshness) {
   return {
@@ -462,6 +467,93 @@ test.describe("reportsCardFreshness", function () {
     assert.equal(paramsFor("dashboard.reports_platform_updated"), null);
   });
 
+  // ------------------------------------------------------------------
+  // The card's covered date (#798)
+  // ------------------------------------------------------------------
+
+  test.it("takes the OLDEST covered date among the contributors", function () {
+    // Same rule the age already follows: an aggregate only covers as far as
+    // its shortest-covering input. Letting the better-covered platform speak
+    // for the card is how the stale half hides.
+    const fresh = logic.reportsCardFreshness({
+      platforms: [
+        platform("google_ads", { spend: 1 }, {
+          fetched_at: ago(2 * HOUR_MS),
+          period_end: day(1),
+          stale: false,
+        }),
+        platform("meta_ads", { spend: 1 }, {
+          fetched_at: ago(HOUR_MS),
+          period_end: day(4),
+          stale: false,
+        }),
+      ],
+    });
+    assert.equal(fresh.text, "dashboard.reports_platform_covered_updated");
+    assert.equal(
+      paramsFor("dashboard.reports_platform_covered_updated").date,
+      day(4)
+    );
+  });
+
+  test.it("quotes no covered date when one contributor states none", function () {
+    // The position the age already takes on a missing fetched_at: a card
+    // cannot state a coverage its own numbers do not all have, and a
+    // well-covered sibling must not vouch for the one that said nothing.
+    const fresh = logic.reportsCardFreshness({
+      platforms: [
+        platform("google_ads", { spend: 1 }, {
+          fetched_at: ago(2 * HOUR_MS),
+          period_end: day(1),
+          stale: false,
+        }),
+        platform("meta_ads", { spend: 1 }, {
+          fetched_at: ago(HOUR_MS),
+          stale: false,
+        }),
+      ],
+    });
+    assert.equal(fresh.text, "dashboard.reports_platform_updated");
+  });
+
+  test.it("ignores a coverage date on a platform contributing no totals", function () {
+    // An advisory bridge contributes nothing to the sum, so nothing it says
+    // about coverage describes the number on screen.
+    const fresh = logic.reportsCardFreshness({
+      platforms: [
+        platform("google_ads", { spend: 1 }, {
+          fetched_at: ago(2 * HOUR_MS),
+          period_end: day(1),
+          stale: false,
+        }),
+        platform("advisory", null, { fetched_at: ago(HOUR_MS), stale: false }),
+      ],
+    });
+    assert.equal(fresh.text, "dashboard.reports_platform_covered_updated");
+    assert.equal(
+      paramsFor("dashboard.reports_platform_covered_updated").date,
+      day(1)
+    );
+  });
+
+  test.it("carries the covered date into the stale wording", function () {
+    const fresh = logic.reportsCardFreshness({
+      platforms: [
+        platform("google_ads", { spend: 1 }, {
+          fetched_at: ago(2 * HOUR_MS),
+          period_end: day(9),
+          stale: true,
+        }),
+      ],
+    });
+    assert.equal(fresh.text, "dashboard.reports_platform_covered_stale");
+    assert.equal(fresh.stale, true);
+    assert.equal(
+      paramsFor("dashboard.reports_platform_covered_stale").date,
+      day(9)
+    );
+  });
+
   test.it("returns unknown-and-not-stale for a client with no platforms", function () {
     for (const summary of [null, {}, { platforms: [] }, { platforms: "no" }]) {
       const fresh = logic.reportsCardFreshness(summary);
@@ -518,6 +610,63 @@ test.describe("reportsFreshnessLabel", function () {
     const ok = logic.reportsFreshnessLabel({ fetched_at: ago(2 * DAY_MS), stale: false });
     assert.equal(ok.text, "dashboard.reports_platform_updated");
     assert.equal(ok.stale, false);
+  });
+
+  // ------------------------------------------------------------------
+  // What the figures COVER, beside when they were written (#798)
+  // ------------------------------------------------------------------
+
+  test.it("states the covered date beside the update time", function () {
+    // The two facts are DIFFERENT and the line has to carry both: the bug
+    // is a card reading "Updated 14h ago" over figures from two days back.
+    const label = logic.reportsFreshnessLabel({
+      fetched_at: ago(3 * HOUR_MS),
+      period_end: "2026-09-22",
+      stale: false,
+    });
+    assert.equal(label.text, "dashboard.reports_platform_covered_updated");
+    assert.equal(label.stale, false);
+    const params = paramsFor("dashboard.reports_platform_covered_updated");
+    assert.equal(params.date, "2026-09-22");
+    assert.equal(params.ago, "dashboard.reports_age_hours");
+  });
+
+  test.it("keeps the covered date on the stale line too", function () {
+    const label = logic.reportsFreshnessLabel({
+      fetched_at: ago(3 * HOUR_MS),
+      period_end: "2026-09-12",
+      stale: true,
+    });
+    assert.equal(label.text, "dashboard.reports_platform_covered_stale");
+    assert.equal(label.stale, true);
+    assert.equal(
+      paramsFor("dashboard.reports_platform_covered_stale").date,
+      "2026-09-12"
+    );
+  });
+
+  test.it("falls back to the update-time wording when coverage is absent", function () {
+    // The shape every document written before #798 has. Nothing degrades.
+    for (const absent of [undefined, null, "", "   ", 20260922, {}]) {
+      const label = logic.reportsFreshnessLabel({
+        fetched_at: ago(3 * HOUR_MS),
+        period_end: absent,
+        stale: false,
+      });
+      assert.equal(label.text, "dashboard.reports_platform_updated", String(absent));
+    }
+  });
+
+  test.it("still says unknown when the server could not judge the row", function () {
+    // `stale == null` outranks a coverage date: the server owns the verdict,
+    // and a date on the wire is not one.
+    const label = logic.reportsFreshnessLabel({
+      fetched_at: ago(HOUR_MS),
+      period_end: "2026-09-22",
+      stale: null,
+    });
+    assert.equal(label.text, "dashboard.reports_platform_age_unknown");
+    assert.equal(label.stale, false);
   });
 });
 
@@ -787,6 +936,25 @@ test.describe("i18n", function () {
       ],
     });
     logic.reportsCardFreshness({ platforms: [{ key: "b", totals: {}, freshness: null }] });
+    // The coverage wordings (#798), fresh and stale.
+    logic.reportsCardFreshness({
+      platforms: [
+        {
+          key: "a",
+          totals: { spend: 1 },
+          freshness: { fetched_at: ago(DAY_MS), period_end: day(1), stale: false },
+        },
+      ],
+    });
+    logic.reportsCardFreshness({
+      platforms: [
+        {
+          key: "a",
+          totals: { spend: 1 },
+          freshness: { fetched_at: ago(DAY_MS), period_end: day(9), stale: true },
+        },
+      ],
+    });
     logic.relativeAge(ago(1000));
     logic.relativeAge(ago(60 * 1000));
     logic.relativeAge(ago(HOUR_MS));

@@ -665,3 +665,57 @@ class TestGoogleAdsNeedsCredentialsCopyIsCurrent:
                 value = data[locale][key]
                 for phrase in phrases:
                     assert phrase not in value, f"{locale}/{key} still says {phrase!r}"
+
+
+@pytest.mark.unit
+class TestReportsCoveredDateKeysParity:
+    """EN/JA parity for the #798 coverage wordings.
+
+    The card's freshness line used to state one fact — when the rollup was
+    written — and an operator read it as "how old are these numbers". The two
+    new strings state what the figures COVER beside it, in the fresh and the
+    stale case; the three existing states (fresh / stale / unknown) keep their
+    own strings for a rollup that states no coverage.
+    """
+
+    _KEYS = (
+        "dashboard.reports_platform_covered_updated",
+        "dashboard.reports_platform_covered_stale",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], key
+
+    def test_both_placeholders_survive_in_both_locales(self) -> None:
+        """Each string carries BOTH facts: ``{date}`` is what the figures
+        cover and ``{ago}`` is when they were written. A locale that drops one
+        blends the two back together, which is the defect."""
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            for key in self._KEYS:
+                value = data[locale][key]
+                assert "{date}" in value, f"{locale}/{key} states no covered date"
+                assert "{ago}" in value, f"{locale}/{key} states no update time"
+
+    def test_the_stale_wording_says_so_in_words(self) -> None:
+        """Never colour alone: the card turns the line red for a stale row,
+        and the text has to carry the verdict on its own as well."""
+        data = _load_i18n()
+        stale = "dashboard.reports_platform_covered_stale"
+        fresh = "dashboard.reports_platform_covered_updated"
+        for locale in ("en", "ja"):
+            assert data[locale][stale] != data[locale][fresh], locale
+        assert "stale" in data["en"][stale].lower()
+        assert "古い" in data["ja"][stale]
