@@ -5,9 +5,8 @@ Layers installed, mirroring the Claude Code setup:
 1. MCP server config in ``~/.codex/config.toml`` (append-only tagged block)
 2. Credential guard PreToolUse hooks in ``~/.codex/hooks.json``
 3. Workflow commands as Codex skills at ``~/.codex/skills/<command>/SKILL.md``
-   (previously written to ``~/.codex/prompts/*.md`` — deprecated in
-   codex-cli 0.117.0, see openai/codex#15941). Invoked via
-   ``$<command>`` or the ``/skills`` picker.
+   (skills are what current Codex CLI surfaces; it no longer reads custom
+   prompts). Invoked via ``$<command>`` or the ``/skills`` picker.
 4. Shared mureo skills as ``~/.codex/skills/mureo-*/``
 
 Idempotency is enforced via tag markers (``[mureo-mcp-config]`` /
@@ -23,9 +22,8 @@ primary control — real safety comes from filesystem permissions on
 The ``hooks.json`` schema nests the event lists under a top-level
 ``hooks`` key (``{"hooks": {"PreToolUse": [...]}}``), matching the Codex
 CLI hook format documented at https://developers.openai.com/codex/hooks
-(same shape as Claude's settings.json). Earlier mureo versions wrote a
-top-level ``PreToolUse`` list that Codex never loads; install/remove
-migrate mureo's own tagged entries out of that legacy location (#393).
+(same shape as Claude's settings.json). Install and remove touch only that
+nested list; every other key in the file is preserved as-is.
 """
 
 from __future__ import annotations
@@ -165,11 +163,10 @@ def install_codex_credential_guard(hooks_file: Path | None = None) -> Path | Non
     """Install the PreToolUse guard into ``~/.codex/hooks.json``.
 
     Entries land under the nested ``{"hooks": {"PreToolUse": [...]}}``
-    location Codex actually loads. Foreign hook entries are preserved
-    everywhere; mureo's own tagged entries are upgraded in place, including
-    any stranded in the legacy top-level ``PreToolUse`` list an older mureo
-    wrote (#393). Returns the path when the file changed or ``None`` when
-    the guard is already current (or the file could not be parsed).
+    location Codex actually loads. Foreign hook entries are preserved;
+    mureo's own tagged entries are upgraded in place. Returns the path when
+    the file changed or ``None`` when the guard is already current (or the
+    file could not be parsed).
 
     ``hooks_file`` overrides the target (the home-aware configure-UI flow
     passes ``<home>/.codex/hooks.json``); it defaults to the real
@@ -187,23 +184,6 @@ def install_codex_credential_guard(hooks_file: Path | None = None) -> Path | Non
         except (json.JSONDecodeError, OSError):
             logger.warning("Could not parse %s — refusing to overwrite", hooks_file)
             return None
-
-    changed = False
-
-    # Legacy top-level list: strip mureo's own tagged entries (they migrate
-    # to the nested location below); foreign entries stay where they are.
-    legacy = existing.get("PreToolUse")
-    legacy_kept: list[Any] = []
-    if legacy is not None:
-        if not isinstance(legacy, list):
-            logger.warning(
-                "hooks.json 'PreToolUse' is not a list (got %s) — "
-                "refusing to overwrite",
-                type(legacy).__name__,
-            )
-            return None
-        legacy_kept = [e for e in legacy if not credential_guard.is_guard_entry(e)]
-        changed = changed or len(legacy_kept) != len(legacy)
 
     hooks_obj = existing.get("hooks", {})
     if not isinstance(hooks_obj, dict):
@@ -223,16 +203,10 @@ def install_codex_credential_guard(hooks_file: Path | None = None) -> Path | Non
 
     kept = [e for e in pre_tool_use if not credential_guard.is_guard_entry(e)]
     desired = kept + _credential_guard_hooks()
-    changed = changed or desired != pre_tool_use
-    if not changed:
+    if desired == pre_tool_use:
         logger.info("Codex credential guard already installed: %s", hooks_file)
         return None
 
-    if legacy is not None:
-        if legacy_kept:
-            existing["PreToolUse"] = legacy_kept
-        else:
-            existing.pop("PreToolUse", None)
     existing["hooks"] = hooks_obj
     hooks_obj["PreToolUse"] = desired
 
@@ -248,12 +222,11 @@ def remove_codex_credential_guard(hooks_file: Path | None = None) -> Path | None
     """Drop the mureo-tagged PreToolUse hooks from ``~/.codex/hooks.json``.
 
     The inverse of :func:`install_codex_credential_guard`: removes only the
-    entries whose command carries the ``[mureo-credential-guard]`` tag —
-    from both the nested ``hooks.PreToolUse`` location and the legacy
-    top-level list — and preserves every other hook. Returns the path when
-    something was removed, or ``None`` when the file is absent/unparseable
-    or no tagged entry was present (idempotent). ``hooks_file`` mirrors the
-    install override.
+    entries whose command carries the ``[mureo-credential-guard]`` tag from
+    the nested ``hooks.PreToolUse`` list and preserves every other hook.
+    Returns the path when something was removed, or ``None`` when the file
+    is absent/unparseable or no tagged entry was present (idempotent).
+    ``hooks_file`` mirrors the install override.
     """
     if hooks_file is None:
         hooks_file = Path.home() / ".codex" / "hooks.json"
@@ -268,13 +241,6 @@ def remove_codex_credential_guard(hooks_file: Path | None = None) -> Path | None
         return None
 
     changed = False
-
-    legacy = parsed.get("PreToolUse")
-    if isinstance(legacy, list):
-        legacy_kept = [e for e in legacy if not credential_guard.is_guard_entry(e)]
-        if len(legacy_kept) != len(legacy):
-            parsed["PreToolUse"] = legacy_kept
-            changed = True
 
     hooks_obj = parsed.get("hooks")
     if isinstance(hooks_obj, dict):

@@ -627,9 +627,9 @@ def _detect_auth_hook(host: str, settings_path: Path) -> bool:
     does — silently read the operator's real ``~/.codex`` instead.)
 
     Claude Desktop has no ``PreToolUse`` surface, so the installer no-ops there
-    and this is always False. A guard stranded in the *legacy* top-level
-    ``PreToolUse`` list by a much older mureo reads as absent; re-running the
-    install rewrites it into the nested shape, which is the safe direction.
+    and this is always False. A guard stranded in a top-level ``PreToolUse``
+    list by a much older mureo reads as absent (Codex never loads it);
+    re-running the install writes a guard into the nested shape.
     """
     if host == _HOST_DESKTOP:
         return False

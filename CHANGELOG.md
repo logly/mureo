@@ -167,6 +167,12 @@
   `daily-check.md`, `rescue.md`, `search-term-cleanup.md`,
   `creative-refresh.md`, `budget-rebalance.md`, `competitive-scan.md`,
   `goal-review.md`, `weekly-report.md`, `sync-state.md`, `learn.md`.
+- **The Codex `hooks.json` top-level `PreToolUse` migration** (post-v0.21.2
+  audit). `mureo setup codex` and the credential-guard remove path now read
+  and write only the nested `hooks.PreToolUse` list Codex loads; they no
+  longer move mureo's entries out of the top-level list mureo wrote before
+  #393. A top-level list left by such a version is not touched (Codex never
+  loads it, so it is inert) and can be deleted by hand.
 
 ## [0.21.2] - 2026-09-23
 
