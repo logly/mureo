@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.21.3] - 2026-09-25
+
 ### Fixed
 
 - **A `not_collected` record no longer demands the account id the failed
