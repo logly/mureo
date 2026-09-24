@@ -551,7 +551,8 @@
     return card;
   }
 
-  // Card footer: campaign count + THIS platform's own freshness (#535).
+  // Card footer: campaign count, then THIS platform's own freshness (#535)
+  // on its own row (#798 — the stacking is app.css's .report-card-foot).
   function buildReportCardFoot(platform) {
     const foot = document.createElement("footer");
     foot.className = "report-card-foot";
@@ -567,8 +568,8 @@
     const freshEl = document.createElement("span");
     freshEl.className = "report-card-fresh" + (fresh.stale ? " is-stale" : "");
     freshEl.textContent = fresh.text;
-    // The line is clipped rather than wrapped (#798), so the whole of it is
-    // kept where a pointer can still read it.
+    // Clipped rather than wrapped if it ever outgrows its row (#798), so
+    // the whole of it is kept where a pointer can still read it.
     freshEl.title = fresh.text;
     foot.appendChild(freshEl);
     return foot;

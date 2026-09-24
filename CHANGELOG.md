@@ -62,6 +62,7 @@
   (before, it was refused as a re-point) — the same repair path an empty
   id takes, which makes the duplicate visible to the join and to
   `mureo repair platform-key`. `""` remains the spelling to write.
+
 - **A report card said when it was last written, and an operator read it as
   how old the numbers are** (#798). The three KPI cells and the "Updated N
   hours ago" line under them both come from one rollup,
@@ -85,7 +86,9 @@
   date silently off by one is worse than none, so the writer supplies it —
   `/daily-check` step 13 and the `mureo_state_platform_metrics_set` schema now
   say so. An unparseable value is kept verbatim and decides nothing, exactly
-  as an unparseable `fetched_at` already is.
+  as an unparseable `fetched_at` already is. The coverage date is judged
+  against the westernmost calendar date still in progress (UTC-12), not the
+  UTC date, so a missed sync keeps its grace day for accounts west of UTC.
 - **On screen** (#798): where a rollup states its coverage, the client card's
   freshness line and the per-platform rows now name the day the figures run to
   beside the update time — *"To 2026-09-22, updated 14h ago"* (*"Stale

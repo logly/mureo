@@ -347,18 +347,6 @@ test.describe("the Reports index fits a screen an operator can read", function (
     assert.equal(decl.overflow, "hidden");
   });
 
-  test.it("holds the detail card's footer freshness to one line, too", function () {
-    // Same two facts, same reason (#798), in the per-platform card's footer.
-    // It shares the row with the campaign count, and when the two collide
-    // it is the freshness text that is clipped — the count is short and
-    // does not carry the verdict, so it keeps its width.
-    const decl = rule(".report-card-fresh");
-    assert.equal(decl["white-space"], "nowrap");
-    assert.equal(decl["text-overflow"], "ellipsis");
-    assert.equal(decl.overflow, "hidden");
-    assert.equal(rule(".report-card-count")["flex-shrink"], "0");
-  });
-
   test.it("keeps the strip and the open alert list inside one screen", function () {
     assert.ok(
       top <= TOP_BUDGET,

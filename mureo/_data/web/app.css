@@ -3282,36 +3282,37 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--muted);
 }
 
+/* Two stacked lines: the campaign count, then this platform's freshness.
+   Since #798 the freshness line carries two facts — the day the figures run
+   to and the update time — and beside the count, in a ~228px card at
+   1440px, it had ~115-150px and lost the update time to the ellipsis
+   ("Stale 2026-09-20, up…"). On its own row it has the whole card width, so
+   nothing is clipped in practice. */
 .report-card-foot {
   margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid var(--hairline);
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
 }
 
-/* The count keeps its width: when it and the freshness text beside it
-   collide, the freshness text is the one clipped (see .report-card-fresh). */
 .report-card-count {
   font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 
 /* Per-platform freshness (#535) — this platform's own fetched_at, never the
-   document-level last_synced_at. One line, always, for the reason given at
-   .reports-client-card-fresh (#798): it carries the covered day and the
-   update time, and wrapped onto a second line in the card footer. Clipped,
-   with the full line in the element's title. */
+   document-level last_synced_at. One line, always (#798): it has its own
+   row in the footer, so the clip below is a last resort for an unusually
+   long wording, not the normal case; the full line is the element's title. */
 .report-card-fresh {
   font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

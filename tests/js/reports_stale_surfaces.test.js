@@ -19,7 +19,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { loadDashboardPage, settle } = require("./dom_harness.js");
+const { loadDashboardPage, settle, cascade } = require("./dom_harness.js");
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const WRITTEN = new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString();
@@ -142,6 +142,34 @@ test.describe("the detail view's per-platform card", function () {
     assert.ok(fresh);
     assert.ok(fresh.textContent);
     assert.equal(fresh.getAttribute("title"), fresh.textContent);
+  });
+
+  test.it("gives the footer's freshness line its own row, under the count", async function () {
+    // At 1440px the detail card is ~228px of content. Beside the campaign
+    // count the freshness line had ~115-150px of it and clipped the update
+    // time off ("Stale 2026-09-20, up…"). Stacked, it has the whole card
+    // width: the count cannot constrain it because they no longer share a
+    // row. Clipping stays only as a last resort.
+    const page = await openDetail([
+      platform("google_ads", { spend: 84000, period_end: "2026-09-20" }, COVERED_STALE),
+    ]);
+    const foot = page.root.querySelector(".report-card-foot");
+    assert.ok(foot, "no footer");
+    const kids = foot.children.map(function (el) {
+      return el.getAttribute("class");
+    });
+    assert.deepEqual(kids, ["report-card-count", "report-card-fresh is-stale"]);
+    assert.equal(cascade(foot, "display").value, "flex");
+    assert.equal(
+      cascade(foot, "flex-direction").value,
+      "column",
+      "the count and the freshness line share a row again"
+    );
+    const fresh = page.root.querySelector(".report-card-fresh");
+    assert.equal(cascade(fresh, "white-space").value, "nowrap");
+    assert.equal(cascade(fresh, "overflow").value, "hidden");
+    assert.equal(cascade(fresh, "text-overflow").value, "ellipsis");
+    assert.equal(cascade(fresh, "max-width").value, "100%");
   });
 
   test.it("does not list the covered date under All metrics", async function () {
