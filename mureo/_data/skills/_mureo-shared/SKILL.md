@@ -552,6 +552,18 @@ shows fewer campaigns than you wrote — get these exact names right:
   figures you DID collect knows which account they came from, so every other
   one still requires a real id. Plus `campaigns[]` and the rollups the dashboard
   actually renders: `totals`, `metrics_period`, `periods[<window>]`.
+  A rollup carries the canonical metrics (`spend`, `impressions`, `clicks`,
+  `conversions`, `cpa`, `ctr`, the Meta `result_indicator`) plus two
+  statements ABOUT them, which are different facts and never stand in for
+  each other: `fetched_at` (when the rollup was WRITTEN — ISO-8601, stamped
+  for you by the `mureo_state_*` write tools when you omit it) and
+  `period_end` (the last calendar date the figures COVER — `YYYY-MM-DD`, in
+  the ad account's own timezone). `period_end` is optional and **yours to
+  supply**: the server cannot derive it without the account's timezone, and a
+  coverage date off by one day is worse than none. A window written without
+  it is judged stale on its write time alone, which is how a card goes on
+  showing two-day-old numbers under a fresh-looking update time. Each window
+  states its own — never copy one window's date onto another.
   **`metrics_period` and every `periods` key must be one of mureo's three
   windows** — `YESTERDAY` / `LAST_7_DAYS` / `LAST_30_DAYS`. The set is closed:
   any other token is refused rather than stored (and never rounded onto a
@@ -632,7 +644,7 @@ Canonical STATE.json shape (note `campaign_name`, `account_id`, `last_synced_at`
       ],
       "totals": {"spend": 4200.0, "clicks": 310, "conversions": 12},
       "metrics_period": "LAST_30_DAYS",
-      "periods": {"LAST_30_DAYS": {"spend": 4200.0, "clicks": 310, "conversions": 12}}
+      "periods": {"LAST_30_DAYS": {"spend": 4200.0, "clicks": 310, "conversions": 12, "fetched_at": "2026-06-26T10:00:00+09:00", "period_end": "2026-06-25"}}
     }
   }
 }

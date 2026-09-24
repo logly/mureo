@@ -104,11 +104,10 @@ from mureo.web.report_clients import (
 )
 
 # The document layer (#678). Most of these are called below; ``_PERIOD_ORDER``
-# and ``_PERIOD_LENGTH_DAYS`` are re-export only — the window vocabulary moved
-# with the functions that read it, and the suite reads both tables off THIS
-# module. Hence the blanket noqa rather than a per-name one.
+# is re-export only — the window vocabulary moved with the functions that read
+# it, and the suite reads the table off THIS module. Hence the blanket noqa
+# rather than a per-name one.
 from mureo.web.report_document import (  # noqa: F401
-    _PERIOD_LENGTH_DAYS,
     _PERIOD_ORDER,
     CONFLICT_DUPLICATE_ACCOUNT,
     CONFLICT_UNRECOGNIZED_KEY,
@@ -119,11 +118,19 @@ from mureo.web.report_document import (  # noqa: F401
     _display_contract,
     _non_canonical_periods,
     _period_totals,
-    _platform_freshness,
     _platform_not_collected,
     _read_state_safe,
     _safe_totals,
     _workspace_not_collected,
+)
+
+# The freshness layer (#798), which is the document layer's own staleness
+# section moved to its own module when ``report_document`` reached the
+# 800-line budget. ``_PERIOD_LENGTH_DAYS`` is re-export only, for the same
+# reason ``_PERIOD_ORDER`` above is.
+from mureo.web.report_freshness import (  # noqa: F401
+    _PERIOD_LENGTH_DAYS,
+    _platform_freshness,
 )
 
 # The display-name resolver (#678). ``platform_display_name`` is called below

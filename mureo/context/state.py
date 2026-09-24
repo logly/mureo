@@ -312,7 +312,7 @@ def _stamp_fetched_at(rollup: Any, written_at: str) -> Any:
       timestamp at all: a caller writing a historical window is stating
       something the server cannot re-derive, and the read side keeps an
       uninterpretable string on purpose (see
-      :func:`mureo.web.report_document._platform_freshness`) because it is the only
+      :func:`mureo.web.report_freshness._platform_freshness`) because it is the only
       clue to the writer that produced it.
     - **An empty rollup is left empty.** An advisory bridge keeps an entry
       with no figures; a lone ``fetched_at`` would turn "no synced metrics"
@@ -330,6 +330,22 @@ def _stamp_fetched_at(rollup: Any, written_at: str) -> Any:
 
     Anything that is not a dict is passed through untouched — this is a write
     helper, not a validator.
+
+    **Its sibling ``period_end`` is deliberately NOT stamped here (#798).**
+    That field is the last calendar DAY the figures cover, and the server
+    cannot answer it: "yesterday" is yesterday in the ad account's own
+    timezone, which this process does not reliably know — the account's
+    timezone is a platform attribute nothing in STATE.json is required to
+    carry, and the machine's clock is not it. Deriving one anyway would put a
+    date on the operator's card that is silently off by one whenever the
+    account is not in the host's timezone, and a date that is wrong by a day
+    is worse than no date at all, because the read side trusts it and takes
+    the staleness verdict on it
+    (:func:`mureo.web.report_freshness._platform_freshness`). So it travels
+    only when a caller supplies it, exactly as it was supplied — which is the
+    asymmetry with ``fetched_at`` above: the write time is a fact THIS
+    process observes, the coverage date is one only the caller that pulled
+    the figures knows.
     """
     if not isinstance(rollup, dict) or not rollup:
         return rollup

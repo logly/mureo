@@ -153,15 +153,37 @@
     });
   }
 
-  // A row's own freshness as {text, stale}. `stale === null` (fetched_at
-  // absent or unparseable) is its own state — "unknown", not "fresh" —
-  // because fetched_at is optional and writer-dependent.
+  // A row's own freshness as {text, stale}. `stale === null` (neither date
+  // could be interpreted) is its own state — "unknown", not "fresh" —
+  // because both fields are optional and writer-dependent.
+  //
+  // TWO facts, never blended (#798): `period_end` is the last day the
+  // figures COVER and `fetched_at` is when they were written. A card saying
+  // only the second read as the first — "Updated 14h ago" over the day
+  // before yesterday's numbers — which is the whole of #798. So when the
+  // server states a covered date the line names it BESIDE the update time,
+  // and where it does not, the wording is exactly what it was.
+  //
+  // `stale` still comes from the server and outranks both: this picks the
+  // sentence, it does not reach a verdict.
   function reportsFreshnessLabel(freshness) {
     const f = freshness && typeof freshness === "object" ? freshness : null;
     if (!f || !f.fetched_at || f.stale == null) {
       return { text: MUREO.t("dashboard.reports_platform_age_unknown"), stale: false };
     }
     const ago = relativeAge(f.fetched_at);
+    const covered = reportsCoveredDate(f);
+    if (covered) {
+      return {
+        text: MUREO.t(
+          f.stale
+            ? "dashboard.reports_platform_covered_stale"
+            : "dashboard.reports_platform_covered_updated",
+          { date: covered, ago: ago }
+        ),
+        stale: !!f.stale,
+      };
+    }
     return {
       text: MUREO.t(
         f.stale
@@ -171,6 +193,19 @@
       ),
       stale: !!f.stale,
     };
+  }
+
+  // The covered date a freshness block states, or "" when it states none.
+  //
+  // Relayed as the server sent it — no reformatting. The server whitelists
+  // the value but relays an uninterpretable one verbatim (it is the only
+  // clue to the writer that produced it), so the guard here is "is this a
+  // non-blank string at all": anything else is treated as no coverage rather
+  // than printed as one. `String` is never coerced onto a number, because a
+  // bare 20260922 on screen is a date nobody wrote.
+  function reportsCoveredDate(freshness) {
+    const raw = freshness && typeof freshness === "object" ? freshness.period_end : null;
+    return typeof raw === "string" && raw.trim() ? raw.trim() : "";
   }
 
   // Has mureo judged THIS row's figures stale (#638)?
@@ -278,11 +313,20 @@
   // The third is the mixed case: we know something IS stale (a fresh sibling
   // must never hide it) but we cannot honestly quote an age, so the label
   // says exactly that instead of claiming "unknown" in stale-red.
+  //
+  // The covered date (#798) is aggregated the same way and independently:
+  // the EARLIEST one among the contributors, because a sum only covers as
+  // far as its shortest-covering input — and a single contributor that
+  // states none means the card states none, rather than letting a
+  // well-covered sibling vouch for it. That is the position the age already
+  // takes on a missing fetched_at, applied to the other fact.
   function reportsCardFreshness(summary) {
     const platforms =
       summary && Array.isArray(summary.platforms) ? summary.platforms : [];
     let oldest = null;
     let oldestMs = Infinity;
+    let covered = "";
+    let coveredUnknown = false;
     let stale = false;
     let unknown = false;
     platforms.forEach(function (p) {
@@ -293,6 +337,12 @@
         return;
       }
       if (f.stale) stale = true;
+      const day = reportsCoveredDate(f);
+      // String comparison, not Date.parse: YYYY-MM-DD sorts correctly as
+      // text, and a value the server could not interpret must not be turned
+      // into a timestamp here — it is simply not a coverage date.
+      if (!day) coveredUnknown = true;
+      else if (!covered || day < covered) covered = day;
       const ms = Date.parse(f.fetched_at);
       if (!Number.isNaN(ms) && ms < oldestMs) {
         oldestMs = ms;
@@ -311,6 +361,7 @@
     }
     return reportsFreshnessLabel({
       fetched_at: oldest.fetched_at,
+      period_end: coveredUnknown ? null : covered,
       stale: stale,
     });
   }
