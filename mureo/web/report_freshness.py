@@ -76,21 +76,6 @@ JUDGED_ON_FETCHED_AT = "fetched_at"
 second copy of "was the coverage date parseable?" would drift from this one.
 """
 
-_WESTERNMOST_UTC_OFFSET = timedelta(hours=12)
-"""How far behind UTC the westernmost timezone runs (UTC-12).
-
-A ``period_end`` is a calendar date in the ad ACCOUNT's timezone, which this
-process does not know. Judging it against the UTC date would take up to half
-a day of the one-missed-sync grace from every account west of UTC — a US
-Pacific account's figures would turn stale while its own day was still in
-progress. So coverage is judged against the calendar date still in progress
-in the westernmost zone, ``(now - 12h).date()``. An account east of UTC gains
-up to twelve hours of extra grace instead, which is the safe direction: a
-late stale marker costs one day's attention, a false one teaches operators
-to ignore the marker.
-"""
-
-
 # ---------------------------------------------------------------------------
 # Per-platform freshness (#535, #798)
 # ---------------------------------------------------------------------------
@@ -166,15 +151,21 @@ def _is_stale(
 
     The threshold itself is untouched (see :func:`_stale_after_days`) and is
     applied to both the same way: strictly older than ``stale_after`` days,
-    so a figure exactly on the boundary is still inside the grace. The
-    coverage date is compared with the westernmost calendar date still in
-    progress (see :data:`_WESTERNMOST_UTC_OFFSET`), not with UTC's.
+    so a figure exactly on the boundary is still inside the grace.
+
+    The coverage date is in the ad account's timezone, which this process
+    does not know, and it is compared with the UTC calendar date of ``now``.
+    East of UTC a verdict can come late by at most the zone's offset (JST:
+    until 09:00 local); west of UTC figures can be called stale up to the
+    zone's offset early, late in the account's own day, so part of the grace
+    day is lost. Early is the safe direction for #798: stale figures reading
+    fresh is the defect.
     """
     current = now if now is not None else datetime.now(timezone.utc)
     covered = _parse_period_end(period_end)
     if covered is not None:
-        in_progress = (current - _WESTERNMOST_UTC_OFFSET).date()
-        stale = covered < in_progress - timedelta(days=stale_after)
+        today = current.astimezone(timezone.utc).date()
+        stale = covered < today - timedelta(days=stale_after)
         return stale, JUDGED_ON_PERIOD_END
     parsed = _parse_timestamp(fetched_at)
     if parsed is None:

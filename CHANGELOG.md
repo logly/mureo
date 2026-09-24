@@ -87,8 +87,8 @@
   `/daily-check` step 13 and the `mureo_state_platform_metrics_set` schema now
   say so. An unparseable value is kept verbatim and decides nothing, exactly
   as an unparseable `fetched_at` already is. The coverage date is judged
-  against the westernmost calendar date still in progress (UTC-12), not the
-  UTC date, so a missed sync keeps its grace day for accounts west of UTC.
+  against the UTC calendar date, so an account west of UTC can see its figures
+  called stale late in its own day, before its grace day has fully run out.
 - **On screen** (#798): where a rollup states its coverage, the client card's
   freshness line and the per-platform rows now name the day the figures run to
   beside the update time — *"To 2026-09-22, updated 14h ago"* (*"Stale

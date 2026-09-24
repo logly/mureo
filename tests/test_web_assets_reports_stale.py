@@ -184,7 +184,8 @@ def test_the_restated_line_says_the_age_or_says_it_is_unknown() -> None:
     text = _function_body(
         _read("reports_logic.js"), "function reportsStaleFiguresText("
     )
-    assert "relativeAge(s.fetched_at)" in text
+    assert "reportsQuotableAge(s.fetched_at)" in text
+    assert "relativeAge(s.fetched_at)" not in text
     assert "dashboard.reports_stale_last_collected" in text
     assert "dashboard.reports_stale_last_collected_unknown" in text
     # Polarity: the dated string is chosen when there IS an age.

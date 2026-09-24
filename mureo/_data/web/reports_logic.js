@@ -204,10 +204,28 @@
     if (basis.kind === REPORTS_STALE_BASIS_PERIOD_END) {
       return reportsCoveredLabel(basis.date, f.fetched_at, stale);
     }
+    // The server may have judged on a write time the browser cannot parse
+    // (Python reads more shapes than Date.parse): the time is unknown, and
+    // the raw value is never printed.
+    const ago = reportsQuotableAge(basis.at);
+    if (!ago) return reportsAgeUnknownLabel(stale);
     return {
       text: MUREO.t(
         stale ? "dashboard.reports_platform_stale" : "dashboard.reports_platform_updated",
-        { ago: relativeAge(basis.at) }
+        { ago: ago }
+      ),
+      stale: stale,
+    };
+  }
+
+  // A write-time line whose age cannot be quoted. Stale keeps its stale
+  // wording — "unknown" in stale-red would be a lie in both halves.
+  function reportsAgeUnknownLabel(stale) {
+    return {
+      text: MUREO.t(
+        stale
+          ? "dashboard.reports_platform_stale_partial"
+          : "dashboard.reports_platform_age_unknown"
       ),
       stale: stale,
     };
@@ -365,7 +383,9 @@
   //   • some unknown, one is stale   → "Stale — some update times unknown"
   // The third is the mixed case: we know something IS stale (a fresh sibling
   // must never hide it) but we cannot honestly quote an age, so the label
-  // says exactly that instead of claiming "unknown" in stale-red.
+  // says exactly that instead of claiming "unknown" in stale-red. A write
+  // time that is present but unparseable is unknown too: a sibling's age is
+  // never quoted as "the oldest" in its place.
   //
   // The covered date (#798): when EVERY contributor was judged on its
   // covered day, the card states the EARLIEST one — a sum only covers as far
@@ -373,10 +393,16 @@
   // where every contributor's can be quoted. One contributor judged on its
   // write time means no single day describes the card, and it reads exactly
   // as it did before #798.
+  //
+  // A stale card speaks for its STALE contributors (#798), through
+  // reportsAggregateStaleFacts — the resolver the chip, the note under the
+  // cells and the triage row use — so the card tells one story: a fresh
+  // sibling's write time never dates a verdict taken on a covered day.
   function reportsCardFreshness(summary) {
     const platforms =
       summary && Array.isArray(summary.platforms) ? summary.platforms : [];
     const seen = reportsCardFreshnessInputs(platforms);
+    if (seen.stale && !seen.unknown) return reportsCardStaleLabel(platforms);
     if (!seen.unknown && seen.any && seen.allCovered) {
       const quotable = !seen.missingAt && !seen.badAt;
       return reportsCoveredLabel(
@@ -385,17 +411,51 @@
         seen.stale
       );
     }
-    if (seen.unknown || seen.missingAt || !seen.oldestAt) {
-      return {
-        text: MUREO.t(
-          seen.stale
-            ? "dashboard.reports_platform_stale_partial"
-            : "dashboard.reports_platform_age_unknown"
-        ),
-        stale: seen.stale,
-      };
+    if (seen.unknown || seen.missingAt || seen.badAt || !seen.oldestAt) {
+      return reportsAgeUnknownLabel(seen.stale);
     }
     return reportsFreshnessLabel({ fetched_at: seen.oldestAt, stale: seen.stale });
+  }
+
+  // The line of a card with at least one stale contributor and none that
+  // could not be judged. Every stale row judged on its covered day → the
+  // earliest such day, with the oldest usable write time among the stale
+  // rows. Otherwise the verdict stands on a write time, and the age quoted
+  // is the oldest among the stale rows judged on it — never the age of a
+  // row judged on its covered day, which decided nothing about that.
+  function reportsCardStaleLabel(platforms) {
+    const contributors = platforms.filter(function (p) {
+      return p && p.totals && typeof p.totals === "object";
+    });
+    const facts = reportsAggregateStaleFacts(contributors);
+    const basis = reportsStaleBasis(facts);
+    if (basis && basis.kind === REPORTS_STALE_BASIS_PERIOD_END) {
+      return reportsCoveredLabel(basis.date, facts.fetched_at, true);
+    }
+    const at = reportsOldestStaleWriteTime(contributors);
+    if (!at) return reportsAgeUnknownLabel(true);
+    return reportsFreshnessLabel({ fetched_at: at, stale: true });
+  }
+
+  // The oldest `fetched_at` among the stale rows judged on it, or null when
+  // any of them cannot be parsed — an age that is unknown for one of them is
+  // not the oldest, and a sibling's must not stand in for it.
+  function reportsOldestStaleWriteTime(rows) {
+    let oldest = null;
+    let oldestMs = Infinity;
+    let unparseable = false;
+    rows.forEach(function (row) {
+      if (!reportsRowIsStale(row)) return;
+      const basis = reportsStaleBasis(row.freshness);
+      if (!basis || basis.kind !== REPORTS_STALE_BASIS_FETCHED_AT) return;
+      const ms = Date.parse(basis.at);
+      if (Number.isNaN(ms)) unparseable = true;
+      else if (ms < oldestMs) {
+        oldestMs = ms;
+        oldest = basis.at;
+      }
+    });
+    return unparseable ? null : oldest;
   }
 
   // One pass over a card's contributors for reportsCardFreshness: which
@@ -498,7 +558,7 @@
           : { date: basis.date, figures: figuresText }
       );
     }
-    const age = s.fetched_at ? relativeAge(s.fetched_at) : null;
+    const age = reportsQuotableAge(s.fetched_at) || null;
     return MUREO.t(
       age
         ? "dashboard.reports_stale_last_collected"

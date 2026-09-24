@@ -1033,8 +1033,8 @@ def test_the_coverage_threshold_is_the_windows_own_length(
 
 # A fixed instant for the boundary tests, so none of them reads the wall
 # clock: a boundary judged against "now" flips when the suite happens to run
-# either side of a midnight. 13:00 UTC is past the westernmost calendar's
-# rollover, so the day in progress everywhere on Earth is 2026-09-24.
+# either side of a midnight. The UTC calendar date at this instant is
+# 2026-09-24.
 _NOON_AFTER = datetime(2026, 9, 24, 13, 0, tzinfo=timezone.utc)
 
 
@@ -1059,32 +1059,46 @@ def test_the_grace_day_applies_to_coverage_too() -> None:
 
 
 @pytest.mark.unit
-def test_a_pacific_accounts_figures_keep_the_grace_across_utc_midnight() -> None:
-    """The coverage date is in the ad ACCOUNT's timezone; the clock it is
-    judged against must not be UTC's, or an account west of UTC loses most of
-    the one-missed-sync grace the threshold promises.
-
-    00:30 UTC on 2026-09-25 is 17:30 on 2026-09-24 in US Pacific time. That
-    account's yesterday is 2026-09-23 — plainly current — and a rollup that
-    missed ONE daily sync still runs to 2026-09-22, which the grace exists to
-    absorb. Judged on the UTC date (2026-09-25) the second read as stale
-    seven hours before the Pacific day it describes had even ended.
+def test_coverage_is_judged_against_the_utc_calendar_date() -> None:
+    """The coverage date is in the ad ACCOUNT's timezone, which mureo does not
+    know, and it is judged against the UTC calendar date. mureo's accounts are
+    mostly JST, and #798 exists because stale figures read fresh, so the rule
+    errs toward calling figures stale early rather than late.
     """
-    at = datetime(2026, 9, 25, 0, 30, tzinfo=timezone.utc)
-    yesterday = _platform_freshness(_covering("2026-09-23"), "YESTERDAY", now=at)
-    assert yesterday["stale"] is False
-    one_missed = _platform_freshness(_covering("2026-09-22"), "YESTERDAY", now=at)
+    # (a) 10:00 JST on 2026-09-25 is 01:00 UTC on 2026-09-25. Figures running
+    # to 2026-09-23 missed one sync and are inside the grace; to 2026-09-22
+    # they missed two and are stale.
+    jst_morning = datetime(2026, 9, 25, 1, 0, tzinfo=timezone.utc)
+    one_missed = _platform_freshness(
+        _covering("2026-09-23"), "YESTERDAY", now=jst_morning
+    )
     assert one_missed["stale"] is False
+    two_missed = _platform_freshness(
+        _covering("2026-09-22"), "YESTERDAY", now=jst_morning
+    )
+    assert two_missed["stale"] is True
+
+    # (b) 00:30 UTC on 2026-09-25: the UTC date is 2026-09-25. Figures to
+    # 2026-09-23 are two days back — the grace — and 2026-09-22 is stale.
+    # This is the US Pacific evening case (17:30 PDT on 2026-09-24): that
+    # account's own yesterday is 2026-09-23, so 2026-09-22 is only one missed
+    # sync behind, and the date shift has spent part of its grace day.
+    utc_after_midnight = datetime(2026, 9, 25, 0, 30, tzinfo=timezone.utc)
+    grace = _platform_freshness(
+        _covering("2026-09-23"), "YESTERDAY", now=utc_after_midnight
+    )
+    assert grace["stale"] is False
+    shifted = _platform_freshness(
+        _covering("2026-09-22"), "YESTERDAY", now=utc_after_midnight
+    )
+    assert shifted["stale"] is True
 
 
 @pytest.mark.unit
 def test_a_jst_accounts_figures_are_still_judged() -> None:
-    """East of UTC the westernmost calendar only ever ADDS grace, which is
-    the safe direction — but it adds a bounded amount, it does not stop the
-    verdict. 22:00 JST on 2026-09-25 is 13:00 UTC: the westernmost calendar
-    has reached 2026-09-25 too, so figures running to 2026-09-22 (three days
-    before a JST account's today) are stale and 2026-09-23 is inside the
-    grace."""
+    """22:00 JST on 2026-09-25 is 13:00 UTC, and the UTC date is 2026-09-25
+    too, so figures running to 2026-09-22 (three days before a JST account's
+    today) are stale and 2026-09-23 is inside the grace."""
     at = datetime(2026, 9, 25, 13, 0, tzinfo=timezone.utc)
     assert _platform_freshness(_covering("2026-09-22"), "YESTERDAY", now=at)["stale"]
     inside = _platform_freshness(_covering("2026-09-23"), "YESTERDAY", now=at)
@@ -1095,6 +1109,22 @@ def test_a_jst_accounts_figures_are_still_judged() -> None:
     morning = datetime(2026, 9, 24, 23, 30, tzinfo=timezone.utc)
     one_missed = _platform_freshness(_covering("2026-09-23"), "YESTERDAY", now=morning)
     assert one_missed["stale"] is False
+
+
+@pytest.mark.unit
+def test_a_now_in_another_zone_is_read_as_its_utc_instant() -> None:
+    """``now`` is injectable, and an aware instant in any zone is the same
+    instant: 08:00 JST on 2026-09-25 is 23:00 UTC on 2026-09-24, so the UTC
+    date is 2026-09-24 and figures to 2026-09-22 are inside the grace. Reading
+    the calendar date of the JST value (2026-09-25) would call them stale."""
+    jst = timezone(timedelta(hours=9))
+    in_jst = datetime(2026, 9, 25, 8, 0, tzinfo=jst)
+    in_utc = datetime(2026, 9, 24, 23, 0, tzinfo=timezone.utc)
+    for period_end, expected in (("2026-09-22", False), ("2026-09-21", True)):
+        from_jst = _platform_freshness(_covering(period_end), "YESTERDAY", now=in_jst)
+        from_utc = _platform_freshness(_covering(period_end), "YESTERDAY", now=in_utc)
+        assert from_jst["stale"] is expected, period_end
+        assert from_utc["stale"] is expected, period_end
 
 
 @pytest.mark.unit
