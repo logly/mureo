@@ -1887,12 +1887,12 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 /* One line, always. Since #798 this states two facts — the day the figures
    run to and the time they were written — in a card track whose content box
-   is ~204px at the narrowest layout. Wrapping it would make every card in
-   the grid taller than the height model in
-   tests/js/reports_index_height.test.js assumes, and it is the client name
-   below that pays for it (see .reports-client-card-name). So the rare
-   longest wording is clipped, not folded; the same choice
-   .reports-triage-summary already makes. */
+   is ~204px at the narrowest layout, directly under the head that holds
+   the client name. Wrapping it would make every card in the grid taller
+   than the height model in tests/js/reports_index_height.test.js assumes.
+   So the rare longest wording is clipped, not folded — the full line is the
+   element's title — the same choice .reports-triage-summary already
+   makes. */
 .reports-client-card-fresh {
   font-size: var(--type-caption-size);
   color: var(--muted);
@@ -3292,19 +3292,29 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   gap: 8px;
 }
 
+/* The count keeps its width: when it and the freshness text beside it
+   collide, the freshness text is the one clipped (see .report-card-fresh). */
 .report-card-count {
   font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* Per-platform freshness (#535) — this platform's own fetched_at, never the
-   document-level last_synced_at. */
+   document-level last_synced_at. One line, always, for the reason given at
+   .reports-client-card-fresh (#798): it carries the covered day and the
+   update time, and wrapped onto a second line in the card footer. Clipped,
+   with the full line in the element's title. */
 .report-card-fresh {
   font-size: var(--type-caption-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .report-card-fresh.is-stale {

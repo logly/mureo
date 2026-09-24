@@ -69,6 +69,27 @@ than the occasional missed stale entry.
 _PERIOD_END_RE = re.compile(DAILY_DATE_KEY_PATTERN)
 """What a ``period_end`` has to look like before it is read as a date."""
 
+JUDGED_ON_PERIOD_END = "period_end"
+JUDGED_ON_FETCHED_AT = "fetched_at"
+"""Which fact a ``stale`` verdict was taken on — the freshness block's
+``judged_on``. Stated by the server so the screen never re-derives it: a
+second copy of "was the coverage date parseable?" would drift from this one.
+"""
+
+_WESTERNMOST_UTC_OFFSET = timedelta(hours=12)
+"""How far behind UTC the westernmost timezone runs (UTC-12).
+
+A ``period_end`` is a calendar date in the ad ACCOUNT's timezone, which this
+process does not know. Judging it against the UTC date would take up to half
+a day of the one-missed-sync grace from every account west of UTC — a US
+Pacific account's figures would turn stale while its own day was still in
+progress. So coverage is judged against the calendar date still in progress
+in the westernmost zone, ``(now - 12h).date()``. An account east of UTC gains
+up to twelve hours of extra grace instead, which is the safe direction: a
+late stale marker costs one day's attention, a false one teaches operators
+to ignore the marker.
+"""
+
 
 # ---------------------------------------------------------------------------
 # Per-platform freshness (#535, #798)
@@ -76,80 +97,89 @@ _PERIOD_END_RE = re.compile(DAILY_DATE_KEY_PATTERN)
 
 
 def _platform_freshness(
-    totals: dict[str, Any] | None, metrics_period: str | None
+    totals: dict[str, Any] | None,
+    metrics_period: str | None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """How old THIS platform's figures are — ``{fetched_at, period_end,
-    stale, stale_after_days}``.
+    stale, judged_on, stale_after_days}``.
 
-    ``fetched_at`` is the optional, writer-stamped time the numbers were
-    pulled (canonical vocabulary; see ``_mureo-strategy`` → *Performance
-    Metrics*). It is read off the rollup actually being rendered, so a
-    period-toggled view reports the freshness of the window on screen, and it
-    is relayed **verbatim** — including a value that is not a timestamp at
-    all. ``stale`` is the authoritative "could this be interpreted?" answer;
-    blanking an uninterpretable string would throw away the only clue an
-    operator has for finding the writer that produced it, and this module
-    reports what the document says rather than silently normalising it.
-    Consumers must therefore treat ``fetched_at`` as an opaque string unless
-    ``stale`` is not ``None``.
+    ``fetched_at`` is when the numbers were WRITTEN and ``period_end`` the
+    last calendar date they COVER (#798) — different facts, both optional and
+    writer-supplied, both read off the rollup actually being rendered (so a
+    period-toggled view reports the window on screen) and both relayed
+    **verbatim**, including a value that is not a timestamp or a date at all:
+    blanking it would throw away the only clue to the writer that produced
+    it. Consumers treat either as an opaque string unless ``judged_on`` names
+    it.
 
-    ``period_end`` is the last calendar date the figures COVER (#798),
-    relayed by exactly the same rule: verbatim, including a value that is not
-    a date. It is the fact staleness is really asking about — the write time
-    was only ever a proxy — so when it is present AND parseable it is what
-    the verdict is taken on. Both are reported either way: they answer
-    different questions ("what day is this?" and "when was this last
-    written?") and showing one in place of the other is the defect.
+    ``stale`` is taken on the coverage date when it is present and parseable
+    — it is the fact staleness is really asking about; the write time was
+    only ever a proxy — and on ``fetched_at`` otherwise. ``judged_on`` says
+    which (:data:`JUDGED_ON_PERIOD_END` / :data:`JUDGED_ON_FETCHED_AT`).
 
-    ``stale`` is deliberately three-valued. ``None`` means **unknown** —
-    neither date could be interpreted — and that is a real state, not an
-    error: both fields are optional and writer-dependent, so claiming either
-    "fresh" or "stale" would assert something mureo cannot back. Callers
-    render it as its own thing.
+    ``stale`` is deliberately three-valued, and ``judged_on`` is ``None``
+    exactly when it is. ``None`` means **unknown** — neither date could be
+    interpreted — which is a real state, not an error; claiming "fresh" or
+    "stale" would assert something mureo cannot back.
 
-    Why this exists at all: the only freshness the dashboard used to show was
-    the document-level ``last_synced_at``, which the state layer re-stamps on
-    ANY platform write — so refreshing one platform made every other
-    platform's months-old numbers read as just-synced (#535). That timestamp
-    is still correct about what it means; it just cannot answer this
-    question.
+    Why this exists at all: the document-level ``last_synced_at`` is
+    re-stamped on ANY platform write, so refreshing one platform made every
+    other platform's months-old numbers read as just-synced (#535).
+
+    ``now`` is injectable for tests; it defaults to the current UTC instant.
     """
     stale_after = _stale_after_days(metrics_period)
-    fetched_raw = totals.get("fetched_at") if totals else None
-    fetched_at = fetched_raw if isinstance(fetched_raw, str) and fetched_raw else None
-    covers_raw = totals.get("period_end") if totals else None
-    period_end = covers_raw if isinstance(covers_raw, str) and covers_raw else None
+    fetched_at = _relayed_string(totals, "fetched_at")
+    period_end = _relayed_string(totals, "period_end")
+    stale, judged_on = _is_stale(fetched_at, period_end, stale_after, now)
     return {
         "fetched_at": fetched_at,
         "period_end": period_end,
-        "stale": _is_stale(fetched_at, period_end, stale_after),
+        "stale": stale,
+        "judged_on": judged_on,
         "stale_after_days": stale_after,
     }
 
 
-def _is_stale(
-    fetched_at: str | None, period_end: str | None, stale_after: int
-) -> bool | None:
-    """Are figures covering ``period_end``, written at ``fetched_at``, stale?
+def _relayed_string(totals: dict[str, Any] | None, key: str) -> str | None:
+    """``totals[key]`` when it is a non-empty string, else ``None``."""
+    raw = totals.get(key) if totals else None
+    return raw if isinstance(raw, str) and raw else None
 
-    Coverage first, write time second, ``None`` (unknown) when neither can be
-    interpreted. The precedence is the whole of #798: the question is "do
-    these numbers still describe the window on screen", and only the coverage
-    date answers it directly — a rollup re-written today from figures that
-    cover last week is not fresh, and one written a fortnight ago from
-    figures that cover yesterday is not stale.
+
+def _is_stale(
+    fetched_at: str | None,
+    period_end: str | None,
+    stale_after: int,
+    now: datetime | None = None,
+) -> tuple[bool | None, str | None]:
+    """Are figures covering ``period_end``, written at ``fetched_at``, stale
+    — and which of the two decided? ``(stale, judged_on)``.
+
+    Coverage first, write time second, ``(None, None)`` (unknown) when
+    neither can be interpreted. The precedence is the whole of #798: the
+    question is "do these numbers still describe the window on screen", and
+    only the coverage date answers it directly — a rollup re-written today
+    from figures that cover last week is not fresh, and one written a
+    fortnight ago from figures that cover yesterday is not stale.
 
     The threshold itself is untouched (see :func:`_stale_after_days`) and is
     applied to both the same way: strictly older than ``stale_after`` days,
-    so a figure exactly on the boundary is still inside the grace.
+    so a figure exactly on the boundary is still inside the grace. The
+    coverage date is compared with the westernmost calendar date still in
+    progress (see :data:`_WESTERNMOST_UTC_OFFSET`), not with UTC's.
     """
+    current = now if now is not None else datetime.now(timezone.utc)
     covered = _parse_period_end(period_end)
     if covered is not None:
-        return covered < datetime.now(timezone.utc).date() - timedelta(days=stale_after)
+        in_progress = (current - _WESTERNMOST_UTC_OFFSET).date()
+        stale = covered < in_progress - timedelta(days=stale_after)
+        return stale, JUDGED_ON_PERIOD_END
     parsed = _parse_timestamp(fetched_at)
     if parsed is None:
-        return None
-    return parsed < datetime.now(timezone.utc) - timedelta(days=stale_after)
+        return None, None
+    return parsed < current - timedelta(days=stale_after), JUDGED_ON_FETCHED_AT
 
 
 def _stale_after_days(metrics_period: str | None) -> int:

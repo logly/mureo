@@ -43,6 +43,7 @@ from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
 )
+from mureo.web.report_freshness import _platform_freshness
 from mureo.web.reports import (
     CONFLICT_DUPLICATE_ACCOUNT,
     CONFLICT_UNRECOGNIZED_KEY,
@@ -1030,21 +1031,120 @@ def test_the_coverage_threshold_is_the_windows_own_length(
     assert last30["freshness"]["stale"] is False
 
 
+# A fixed instant for the boundary tests, so none of them reads the wall
+# clock: a boundary judged against "now" flips when the suite happens to run
+# either side of a midnight. 13:00 UTC is past the westernmost calendar's
+# rollover, so the day in progress everywhere on Earth is 2026-09-24.
+_NOON_AFTER = datetime(2026, 9, 24, 13, 0, tzinfo=timezone.utc)
+
+
+def _covering(period_end: str, fetched_at: str | None = None) -> dict[str, Any]:
+    """One rollup's totals: a coverage date and (optionally) a write time."""
+    totals: dict[str, Any] = {"spend": 1.0, "period_end": period_end}
+    if fetched_at is not None:
+        totals["fetched_at"] = fetched_at
+    return totals
+
+
 @pytest.mark.unit
-def test_the_grace_day_applies_to_coverage_too(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_the_grace_day_applies_to_coverage_too() -> None:
     """A YESTERDAY rollup goes stale after ``1 + 1`` days, so figures running
     to two days back are still inside the grace and three days back are not.
     Pinned because the boundary is what an operator sees change colour."""
-    _use_workspace(monkeypatch, tmp_path)
-    _write_state(tmp_path, _one_window(_day(2), _ago(0.05)))
-    (inside,) = build_report_summary(period="YESTERDAY")["platforms"]
-    assert inside["freshness"]["stale"] is False
+    inside = _platform_freshness(_covering("2026-09-22"), "YESTERDAY", now=_NOON_AFTER)
+    assert inside["stale"] is False
 
-    _write_state(tmp_path, _one_window(_day(3), _ago(0.05)))
-    (outside,) = build_report_summary(period="YESTERDAY")["platforms"]
-    assert outside["freshness"]["stale"] is True
+    outside = _platform_freshness(_covering("2026-09-21"), "YESTERDAY", now=_NOON_AFTER)
+    assert outside["stale"] is True
+
+
+@pytest.mark.unit
+def test_a_pacific_accounts_figures_keep_the_grace_across_utc_midnight() -> None:
+    """The coverage date is in the ad ACCOUNT's timezone; the clock it is
+    judged against must not be UTC's, or an account west of UTC loses most of
+    the one-missed-sync grace the threshold promises.
+
+    00:30 UTC on 2026-09-25 is 17:30 on 2026-09-24 in US Pacific time. That
+    account's yesterday is 2026-09-23 — plainly current — and a rollup that
+    missed ONE daily sync still runs to 2026-09-22, which the grace exists to
+    absorb. Judged on the UTC date (2026-09-25) the second read as stale
+    seven hours before the Pacific day it describes had even ended.
+    """
+    at = datetime(2026, 9, 25, 0, 30, tzinfo=timezone.utc)
+    yesterday = _platform_freshness(_covering("2026-09-23"), "YESTERDAY", now=at)
+    assert yesterday["stale"] is False
+    one_missed = _platform_freshness(_covering("2026-09-22"), "YESTERDAY", now=at)
+    assert one_missed["stale"] is False
+
+
+@pytest.mark.unit
+def test_a_jst_accounts_figures_are_still_judged() -> None:
+    """East of UTC the westernmost calendar only ever ADDS grace, which is
+    the safe direction — but it adds a bounded amount, it does not stop the
+    verdict. 22:00 JST on 2026-09-25 is 13:00 UTC: the westernmost calendar
+    has reached 2026-09-25 too, so figures running to 2026-09-22 (three days
+    before a JST account's today) are stale and 2026-09-23 is inside the
+    grace."""
+    at = datetime(2026, 9, 25, 13, 0, tzinfo=timezone.utc)
+    assert _platform_freshness(_covering("2026-09-22"), "YESTERDAY", now=at)["stale"]
+    inside = _platform_freshness(_covering("2026-09-23"), "YESTERDAY", now=at)
+    assert inside["stale"] is False
+
+    # Early morning JST (08:30 on 2026-09-25 = 23:30 UTC on 2026-09-24): a
+    # rollup one missed sync behind is not stale.
+    morning = datetime(2026, 9, 24, 23, 30, tzinfo=timezone.utc)
+    one_missed = _platform_freshness(_covering("2026-09-23"), "YESTERDAY", now=morning)
+    assert one_missed["stale"] is False
+
+
+@pytest.mark.unit
+def test_the_freshness_block_says_which_fact_decided() -> None:
+    """``judged_on`` is the server's own statement of which date the verdict
+    was taken on, so the screen never has to re-derive "was the coverage date
+    parseable?" — a second copy of that rule would drift from this one.
+
+    Three cases, and ``None`` exactly when ``stale`` is ``None``.
+    """
+    written = (_NOON_AFTER - timedelta(hours=14)).isoformat()
+
+    covered = _platform_freshness(
+        _covering("2026-09-23", written), "YESTERDAY", now=_NOON_AFTER
+    )
+    assert covered["judged_on"] == "period_end"
+    assert covered["stale"] is False
+
+    for junk in (None, "yesterday", "2026-02-30", "20260923"):
+        totals: dict[str, Any] = {"spend": 1.0, "fetched_at": written}
+        if junk is not None:
+            totals["period_end"] = junk
+        fallback = _platform_freshness(totals, "YESTERDAY", now=_NOON_AFTER)
+        assert fallback["judged_on"] == "fetched_at", junk
+        assert fallback["stale"] is False, junk
+
+    for totals in (
+        {"spend": 1.0},
+        {"spend": 1.0, "period_end": "soon", "fetched_at": "last tuesday"},
+        None,
+    ):
+        unknown = _platform_freshness(totals, "YESTERDAY", now=_NOON_AFTER)
+        assert unknown["judged_on"] is None, totals
+        assert unknown["stale"] is None, totals
+
+
+@pytest.mark.unit
+def test_judged_on_reaches_the_wire(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The summary relays the block as built — the screen reads ``judged_on``
+    off the platform row, so it has to survive to the payload."""
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, _one_window(_day(9), _ago(0.05)))
+    (row,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert row["freshness"]["judged_on"] == "period_end"
+
+    _write_state(tmp_path, _one_window(None, _ago(0.05)))
+    (legacy,) = build_report_summary(period="YESTERDAY")["platforms"]
+    assert legacy["freshness"]["judged_on"] == "fetched_at"
 
 
 @pytest.mark.unit

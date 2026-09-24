@@ -22,8 +22,10 @@ alone:
     sync from painting a healthy account red — and, where the rollup states
     the last day its figures cover, judged on THAT rather than on the write
     time (#798). That section is :mod:`mureo.web.report_freshness`, lifted
-    out when this file reached the 800-line budget and re-exported from here
-    so every existing importer keeps resolving.
+    out when this file reached the 800-line budget. Only ``_parse_timestamp``
+    is imported back, because the not-collected retirement below uses it;
+    ``_platform_freshness`` and ``_PERIOD_LENGTH_DAYS`` are re-exported from
+    :mod:`mureo.web.reports`, not from here.
   - **Which windows does this document actually carry**, and which of them are
     outside the canonical vocabulary.
   - **Why did the figures not move?** The stored ``not_collected`` note (#638),
@@ -515,7 +517,8 @@ def _platform_not_collected(state: PlatformState) -> dict[str, Any] | None:
     - **Retirement must be PROVED.** An unparseable ``fetched_at`` or a note
       with no ``attempted_at`` (mureo's own writer always stamps one) leaves
       the question open, and open is not retired — the same position
-      :func:`_platform_freshness` takes on a value it cannot interpret.
+      :func:`mureo.web.report_freshness._platform_freshness` takes on a value
+      it cannot interpret.
     """
     note = _safe_not_collected(state.not_collected)
     if note is None:

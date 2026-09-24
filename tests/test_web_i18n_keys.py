@@ -719,3 +719,71 @@ class TestReportsCoveredDateKeysParity:
             assert data[locale][stale] != data[locale][fresh], locale
         assert "stale" in data["en"][stale].lower()
         assert "古い" in data["ja"][stale]
+
+
+@pytest.mark.unit
+class TestReportsStaleBasisKeysParity:
+    """EN/JA parity for the #798 follow-up: every stale surface names the
+    fact the verdict was taken on.
+
+    The freshness line already named the covered day; the chip, the alert
+    row, the restated-figures note and the detail view's withheld note still
+    reasoned from the write time, so one card contradicted itself. Each gets
+    a coverage variant beside the existing wording, which stays for a verdict
+    taken on the write time. Placeholders are pinned per key: a locale that
+    drops ``{date}`` puts the write-time claim back.
+    """
+
+    _PLACEHOLDERS: dict[str, tuple[str, ...]] = {
+        "dashboard.reports_platform_covered_age_unknown": ("{date}",),
+        "dashboard.reports_platform_covered_stale_age_unknown": ("{date}",),
+        "dashboard.reports_triage_tag_stale_covered": ("{date}",),
+        "dashboard.reports_triage_stale_covered": ("{date}",),
+        "dashboard.reports_stale_figures_to": ("{date}", "{ago}", "{figures}"),
+        "dashboard.reports_stale_figures_to_unknown": ("{date}", "{figures}"),
+        "dashboard.reports_stale_kpis_withheld_covered": (),
+    }
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._PLACEHOLDERS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._PLACEHOLDERS:
+            assert data["en"][key] != data["ja"][key], key
+
+    def test_placeholders_survive_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            for key, placeholders in self._PLACEHOLDERS.items():
+                for placeholder in placeholders:
+                    assert (
+                        placeholder in data[locale][key]
+                    ), f"{locale}/{key} lost {placeholder}"
+
+    def test_the_stale_line_with_no_update_time_says_stale_in_words(self) -> None:
+        data = _load_i18n()
+        key = "dashboard.reports_platform_covered_stale_age_unknown"
+        assert "stale" in data["en"][key].lower()
+        assert "古い" in data["ja"][key]
+
+    def test_the_existing_write_time_wordings_are_untouched(self) -> None:
+        """The write-time case must read exactly as it did."""
+        data = _load_i18n()
+        assert data["en"]["dashboard.reports_stale_kpis_withheld"].startswith(
+            "These figures were collected before the window shown"
+        )
+        assert (
+            data["en"]["dashboard.reports_triage_tag_stale_aged"] == "Figures {ago} old"
+        )
+        assert (
+            data["en"]["dashboard.reports_stale_last_collected"]
+            == "Last collected {ago}: {figures}"
+        )

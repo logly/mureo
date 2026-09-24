@@ -173,14 +173,22 @@ def test_the_stale_figures_are_restated_below_the_cells_not_inside_them() -> Non
 def test_the_restated_line_says_the_age_or_says_it_is_unknown() -> None:
     """The line's whole job is to date the figures. An age mureo cannot
     quote is stated as unknown rather than left blank — a dangling "Last
-    collected : 25,862" would read as a claim about now."""
+    collected : 25,862" would read as a claim about now.
+
+    Since #798 the sentence is chosen in reports_logic.js, beside the resolver
+    that says which fact the verdict was taken on; the element only sets it.
+    """
     js = _read("dashboard_reports_report.js")
     helper = _function_body(js, "function buildStaleFiguresElement(")
-    assert "relativeAge(fetchedAt)" in helper
-    assert "dashboard.reports_stale_last_collected" in helper
-    assert "dashboard.reports_stale_last_collected_unknown" in helper
+    assert "REPORTS_LOGIC.reportsStaleFiguresText(" in helper
+    text = _function_body(
+        _read("reports_logic.js"), "function reportsStaleFiguresText("
+    )
+    assert "relativeAge(s.fetched_at)" in text
+    assert "dashboard.reports_stale_last_collected" in text
+    assert "dashboard.reports_stale_last_collected_unknown" in text
     # Polarity: the dated string is chosen when there IS an age.
-    assert "age\n        ? " in helper or "age ? " in helper, helper[:400]
+    assert "age\n        ? " in text or "age ? " in text, text[:400]
 
 
 @pytest.mark.unit
@@ -230,7 +238,7 @@ def test_the_restated_figures_reach_the_dom_as_text() -> None:
     same way every other operator-visible string here is."""
     js = _read("dashboard_reports_report.js")
     helper = _function_body(js, "function buildStaleFiguresElement(")
-    assert "el.textContent = MUREO.t(" in helper
+    assert "el.textContent = REPORTS_LOGIC.reportsStaleFiguresText(" in helper
     for name in _REPORTS_ASSETS:
         assert ".innerHTML" not in _read(name).replace("// innerHTML", ""), name
 

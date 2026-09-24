@@ -33,6 +33,24 @@
   const REPORTS_CONFLICT_DUPLICATE_ACCOUNT = "duplicate_account";
   const REPORTS_CONFLICT_UNRECOGNIZED_KEY = "unrecognized_key";
 
+  // Which fact a stale verdict was taken on (#798): the freshness block's
+  // `judged_on`, named once here for every surface that reads it. The SERVER
+  // decides it (mureo/web/report_freshness.py) and the screen never
+  // re-derives it — a second copy of "was the coverage date parseable?"
+  // would drift from the one that actually reached the verdict.
+  const REPORTS_STALE_BASIS_PERIOD_END = "period_end";
+  const REPORTS_STALE_BASIS_FETCHED_AT = "fetched_at";
+
+  // The rollup totals keys that are NOT metrics: the window, the write time
+  // and the covered date (#798). Anything that lists a rollup's figures
+  // skips these — a date rendered as a metric reads as a number nobody
+  // measured.
+  const REPORTS_NON_METRIC_TOTALS_KEYS = Object.freeze([
+    "period",
+    "fetched_at",
+    "period_end",
+  ]);
+
   // Humanize an ISO-8601 timestamp into a coarse "N ago" string. Falls
   // back to the raw string if it cannot be parsed (never throws).
   function relativeAge(iso) {
@@ -47,6 +65,15 @@
     if (hours < 24) return MUREO.t("dashboard.reports_age_hours", { n: hours });
     const days = Math.floor(hours / 24);
     return MUREO.t("dashboard.reports_age_days", { n: days });
+  }
+
+  // An age for `iso`, or "" when it is not a timestamp. Unlike relativeAge
+  // this never falls back to the raw string: a line that already names the
+  // covered date says the update time is unknown rather than printing
+  // whatever the writer put in `fetched_at` (#798).
+  function reportsQuotableAge(iso) {
+    if (typeof iso !== "string" || !iso) return "";
+    return Number.isNaN(Date.parse(iso)) ? "" : relativeAge(iso);
   }
 
   // ------------------------------------------------------------------
@@ -161,51 +188,77 @@
   // figures COVER and `fetched_at` is when they were written. A card saying
   // only the second read as the first — "Updated 14h ago" over the day
   // before yesterday's numbers — which is the whole of #798. So when the
-  // server states a covered date the line names it BESIDE the update time,
-  // and where it does not, the wording is exactly what it was.
+  // server judged the row on its covered date the line names it, beside the
+  // update time where that can be quoted; when it judged on the write time
+  // the wording is exactly what it was.
   //
   // `stale` still comes from the server and outranks both: this picks the
   // sentence, it does not reach a verdict.
   function reportsFreshnessLabel(freshness) {
     const f = freshness && typeof freshness === "object" ? freshness : null;
-    if (!f || !f.fetched_at || f.stale == null) {
+    const basis = f && f.stale != null ? reportsStaleBasis(f) : null;
+    if (!basis) {
       return { text: MUREO.t("dashboard.reports_platform_age_unknown"), stale: false };
     }
-    const ago = relativeAge(f.fetched_at);
-    const covered = reportsCoveredDate(f);
-    if (covered) {
-      return {
-        text: MUREO.t(
-          f.stale
-            ? "dashboard.reports_platform_covered_stale"
-            : "dashboard.reports_platform_covered_updated",
-          { date: covered, ago: ago }
-        ),
-        stale: !!f.stale,
-      };
+    const stale = !!f.stale;
+    if (basis.kind === REPORTS_STALE_BASIS_PERIOD_END) {
+      return reportsCoveredLabel(basis.date, f.fetched_at, stale);
     }
     return {
       text: MUREO.t(
-        f.stale
-          ? "dashboard.reports_platform_stale"
-          : "dashboard.reports_platform_updated",
-        { ago: ago }
+        stale ? "dashboard.reports_platform_stale" : "dashboard.reports_platform_updated",
+        { ago: relativeAge(basis.at) }
       ),
-      stale: !!f.stale,
+      stale: stale,
     };
   }
 
-  // The covered date a freshness block states, or "" when it states none.
+  // The line for figures judged on their covered date. The date alone
+  // decided the verdict, so it is stated whether or not the write time can
+  // be quoted — a missing or unparseable `fetched_at` makes the update time
+  // "unknown", never the whole line, and never a raw string on screen.
+  function reportsCoveredLabel(date, fetchedAt, stale) {
+    const ago = reportsQuotableAge(fetchedAt);
+    let key;
+    if (ago) {
+      key = stale
+        ? "dashboard.reports_platform_covered_stale"
+        : "dashboard.reports_platform_covered_updated";
+    } else {
+      key = stale
+        ? "dashboard.reports_platform_covered_stale_age_unknown"
+        : "dashboard.reports_platform_covered_age_unknown";
+    }
+    return {
+      text: MUREO.t(key, ago ? { date: date, ago: ago } : { date: date }),
+      stale: stale,
+    };
+  }
+
+  // Which fact a verdict was taken on, and its value (#798):
+  //   { kind: REPORTS_STALE_BASIS_PERIOD_END, date }  — the covered day
+  //   { kind: REPORTS_STALE_BASIS_FETCHED_AT, at }    — the write time
+  //   null                                            — neither is usable
   //
-  // Relayed as the server sent it — no reformatting. The server whitelists
-  // the value but relays an uninterpretable one verbatim (it is the only
-  // clue to the writer that produced it), so the guard here is "is this a
-  // non-blank string at all": anything else is treated as no coverage rather
-  // than printed as one. `String` is never coerced onto a number, because a
-  // bare 20260922 on screen is a date nobody wrote.
-  function reportsCoveredDate(freshness) {
-    const raw = freshness && typeof freshness === "object" ? freshness.period_end : null;
-    return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+  // Reads anything carrying `{judged_on, period_end, fetched_at}`: a
+  // platform's freshness block, a triage row, a card's restated figures.
+  // Only `judged_on` selects the coverage date — the server relays an
+  // uninterpretable `period_end` verbatim and `judged_on` is how it says the
+  // value decided nothing — so the date is returned exactly as sent, never
+  // trimmed or reformatted into one nobody wrote. A payload with no
+  // `judged_on` (an older daemon) is read the way it always was: on
+  // `fetched_at`.
+  function reportsStaleBasis(stated) {
+    const s = stated && typeof stated === "object" ? stated : null;
+    if (!s) return null;
+    if (s.judged_on === REPORTS_STALE_BASIS_PERIOD_END) {
+      return typeof s.period_end === "string" && s.period_end
+        ? { kind: REPORTS_STALE_BASIS_PERIOD_END, date: s.period_end }
+        : null;
+    }
+    return typeof s.fetched_at === "string" && s.fetched_at
+      ? { kind: REPORTS_STALE_BASIS_FETCHED_AT, at: s.fetched_at }
+      : null;
   }
 
   // Has mureo judged THIS row's figures stale (#638)?
@@ -314,56 +367,144 @@
   // must never hide it) but we cannot honestly quote an age, so the label
   // says exactly that instead of claiming "unknown" in stale-red.
   //
-  // The covered date (#798) is aggregated the same way and independently:
-  // the EARLIEST one among the contributors, because a sum only covers as
-  // far as its shortest-covering input — and a single contributor that
-  // states none means the card states none, rather than letting a
-  // well-covered sibling vouch for it. That is the position the age already
-  // takes on a missing fetched_at, applied to the other fact.
+  // The covered date (#798): when EVERY contributor was judged on its
+  // covered day, the card states the EARLIEST one — a sum only covers as far
+  // as its shortest-covering input — with the oldest update time beside it
+  // where every contributor's can be quoted. One contributor judged on its
+  // write time means no single day describes the card, and it reads exactly
+  // as it did before #798.
   function reportsCardFreshness(summary) {
     const platforms =
       summary && Array.isArray(summary.platforms) ? summary.platforms : [];
-    let oldest = null;
-    let oldestMs = Infinity;
-    let covered = "";
-    let coveredUnknown = false;
-    let stale = false;
-    let unknown = false;
-    platforms.forEach(function (p) {
-      if (!p || !p.totals || typeof p.totals !== "object") return;
-      const f = p.freshness && typeof p.freshness === "object" ? p.freshness : null;
-      if (!f || !f.fetched_at || f.stale == null) {
-        unknown = true;
-        return;
-      }
-      if (f.stale) stale = true;
-      const day = reportsCoveredDate(f);
-      // String comparison, not Date.parse: YYYY-MM-DD sorts correctly as
-      // text, and a value the server could not interpret must not be turned
-      // into a timestamp here — it is simply not a coverage date.
-      if (!day) coveredUnknown = true;
-      else if (!covered || day < covered) covered = day;
-      const ms = Date.parse(f.fetched_at);
-      if (!Number.isNaN(ms) && ms < oldestMs) {
-        oldestMs = ms;
-        oldest = f;
-      }
-    });
-    if (unknown || !oldest) {
+    const seen = reportsCardFreshnessInputs(platforms);
+    if (!seen.unknown && seen.any && seen.allCovered) {
+      const quotable = !seen.missingAt && !seen.badAt;
+      return reportsCoveredLabel(
+        seen.covered,
+        quotable ? seen.oldestAt : null,
+        seen.stale
+      );
+    }
+    if (seen.unknown || seen.missingAt || !seen.oldestAt) {
       return {
         text: MUREO.t(
-          stale
+          seen.stale
             ? "dashboard.reports_platform_stale_partial"
             : "dashboard.reports_platform_age_unknown"
         ),
-        stale: stale,
+        stale: seen.stale,
       };
     }
-    return reportsFreshnessLabel({
-      fetched_at: oldest.fetched_at,
-      period_end: coveredUnknown ? null : covered,
-      stale: stale,
+    return reportsFreshnessLabel({ fetched_at: seen.oldestAt, stale: seen.stale });
+  }
+
+  // One pass over a card's contributors for reportsCardFreshness: which
+  // could not be judged at all, whether every one was judged on its covered
+  // day (and the earliest such day), and the oldest parseable write time —
+  // plus whether any write time was missing (`missingAt`) or present but
+  // unparseable (`badAt`), which the two wordings treat differently.
+  function reportsCardFreshnessInputs(platforms) {
+    const seen = {
+      any: false, unknown: false, stale: false, allCovered: true, covered: "",
+      oldestAt: null, missingAt: false, badAt: false,
+    };
+    let oldestMs = Infinity;
+    platforms.forEach(function (p) {
+      if (!p || !p.totals || typeof p.totals !== "object") return;
+      const f = p.freshness && typeof p.freshness === "object" ? p.freshness : null;
+      const basis = f && f.stale != null ? reportsStaleBasis(f) : null;
+      if (!basis) {
+        seen.unknown = true;
+        return;
+      }
+      seen.any = true;
+      if (f.stale) seen.stale = true;
+      // String comparison: the server only judges on a date it parsed as
+      // YYYY-MM-DD, and that shape sorts correctly as text.
+      if (basis.kind !== REPORTS_STALE_BASIS_PERIOD_END) seen.allCovered = false;
+      else if (!seen.covered || basis.date < seen.covered) seen.covered = basis.date;
+      if (typeof f.fetched_at !== "string" || !f.fetched_at) {
+        seen.missingAt = true;
+        return;
+      }
+      const ms = Date.parse(f.fetched_at);
+      if (Number.isNaN(ms)) seen.badAt = true;
+      else if (ms < oldestMs) {
+        oldestMs = ms;
+        seen.oldestAt = f.fetched_at;
+      }
     });
+    return seen;
+  }
+
+  // What a client's WITHHELD figures are stated against (#798), as
+  // `{judged_on, period_end, fetched_at}` — the same shape a freshness block
+  // carries, so reportsStaleBasis reads it too — or null when no row is
+  // stale. Only stale rows count: they are the reason the figures are
+  // withheld, and a fresh sibling says nothing about them.
+  //
+  // The EARLIEST covered day when every stale row was judged on its covered
+  // day; otherwise the verdict stands on a write time somewhere, and the
+  // oldest write time is what is quoted, exactly as before #798.
+  // `fetched_at` is the oldest parseable write time among the stale rows in
+  // both cases (null when none is), because the note under the cells quotes
+  // when the figures were collected either way.
+  function reportsAggregateStaleFacts(rows) {
+    let any = false;
+    let allCovered = true;
+    let covered = "";
+    let oldest = null;
+    let oldestMs = Infinity;
+    (Array.isArray(rows) ? rows : []).forEach(function (row) {
+      if (!reportsRowIsStale(row)) return;
+      any = true;
+      const f = row.freshness;
+      const basis = reportsStaleBasis(f);
+      if (!basis || basis.kind !== REPORTS_STALE_BASIS_PERIOD_END) allCovered = false;
+      else if (!covered || basis.date < covered) covered = basis.date;
+      const ms = typeof f.fetched_at === "string" ? Date.parse(f.fetched_at) : NaN;
+      if (!Number.isNaN(ms) && ms < oldestMs) {
+        oldestMs = ms;
+        oldest = f.fetched_at;
+      }
+    });
+    if (!any) return null;
+    return {
+      judged_on: allCovered ? REPORTS_STALE_BASIS_PERIOD_END : REPORTS_STALE_BASIS_FETCHED_AT,
+      period_end: allCovered ? covered : null,
+      fetched_at: oldest,
+    };
+  }
+
+  // The withheld figures restated as what they ARE (#638), as one sentence.
+  // `stated` is `{judged_on, period_end, fetched_at}` — a platform's
+  // freshness block or a card's restated figures.
+  //
+  // Judged on the covered day, the sentence names that day and says when the
+  // figures were collected, or that the collection time is unknown (#798).
+  // Judged on the write time, it reads exactly as before: "Last collected
+  // N ago", or unknown when no time can be quoted.
+  function reportsStaleFiguresText(stated, figuresText) {
+    const s = stated && typeof stated === "object" ? stated : {};
+    const basis = reportsStaleBasis(s);
+    if (basis && basis.kind === REPORTS_STALE_BASIS_PERIOD_END) {
+      const ago = reportsQuotableAge(s.fetched_at);
+      return MUREO.t(
+        ago
+          ? "dashboard.reports_stale_figures_to"
+          : "dashboard.reports_stale_figures_to_unknown",
+        ago
+          ? { date: basis.date, ago: ago, figures: figuresText }
+          : { date: basis.date, figures: figuresText }
+      );
+    }
+    const age = s.fetched_at ? relativeAge(s.fetched_at) : null;
+    return MUREO.t(
+      age
+        ? "dashboard.reports_stale_last_collected"
+        : "dashboard.reports_stale_last_collected_unknown",
+      { ago: age, figures: figuresText }
+    );
   }
 
   // Sum a client's headline KPIs across its platforms. null when absent so a
@@ -393,8 +534,9 @@
   // sibling cannot vouch for the part that is out of date.
   //
   // Nothing is hidden. `staleFigures` carries the very same numbers plus the
-  // oldest stale contributor's `fetched_at`, so the card can restate them as
-  // what they ARE ("11d ago: 25,862") instead of what they are not. It is
+  // oldest stale contributor's `fetched_at` (and, since #798, the covered
+  // day the verdict was taken on), so the card can restate them as what they
+  // ARE ("11d ago: 25,862") instead of what they are not. It is
   // `null` when the sum is double-counted as well: that figure is wrong at
   // every age, and restating it under a softer label would put it back on
   // the card.
@@ -414,8 +556,7 @@
     let hasClicks = false;
     let hasImpressions = false;
     let stale = false;
-    let staleSince = null;
-    let staleSinceMs = Infinity;
+    const staleRows = [];
     platforms.forEach(function (p) {
       const t = p && typeof p.totals === "object" ? p.totals : null;
       if (!t) return;
@@ -439,12 +580,9 @@
       // bridge adds nothing to the sum, so its age says nothing about it.
       if (!reportsRowIsStale(p)) return;
       stale = true;
-      const ms = Date.parse(p.freshness.fetched_at);
-      if (!Number.isNaN(ms) && ms < staleSinceMs) {
-        staleSinceMs = ms;
-        staleSince = p.freshness.fetched_at;
-      }
+      staleRows.push(p);
     });
+    const facts = reportsAggregateStaleFacts(staleRows);
     const doubleCounted = reportsHasDoubleCount(summary);
     const withheld = doubleCounted || stale;
     const restate = stale && !doubleCounted && (hasSpend || hasConv);
@@ -469,7 +607,11 @@
             cpa: hasSpend && hasConv && conv > 0 ? spend / conv : null,
             // `null` when no contributor carried a usable timestamp: mureo
             // says the age is unknown rather than inventing one.
-            fetched_at: staleSince,
+            fetched_at: facts ? facts.fetched_at : null,
+            // What the verdict was taken on (#798), so the note under the
+            // cells can name the covered day — see reportsAggregateStaleFacts.
+            period_end: facts ? facts.period_end : null,
+            judged_on: facts ? facts.judged_on : null,
           }
         : null,
     };
@@ -478,7 +620,11 @@
   const api = {
     REPORTS_CONFLICT_DUPLICATE_ACCOUNT: REPORTS_CONFLICT_DUPLICATE_ACCOUNT,
     REPORTS_CONFLICT_UNRECOGNIZED_KEY: REPORTS_CONFLICT_UNRECOGNIZED_KEY,
+    REPORTS_STALE_BASIS_PERIOD_END: REPORTS_STALE_BASIS_PERIOD_END,
+    REPORTS_STALE_BASIS_FETCHED_AT: REPORTS_STALE_BASIS_FETCHED_AT,
+    REPORTS_NON_METRIC_TOTALS_KEYS: REPORTS_NON_METRIC_TOTALS_KEYS,
     relativeAge: relativeAge,
+    reportsQuotableAge: reportsQuotableAge,
     reportsConflictsOfKind: reportsConflictsOfKind,
     reportsHasDoubleCount: reportsHasDoubleCount,
     reportsPlatformLabels: reportsPlatformLabels,
@@ -487,6 +633,9 @@
     reportsRepairHint: reportsRepairHint,
     reportsConflictsForKey: reportsConflictsForKey,
     reportsFreshnessLabel: reportsFreshnessLabel,
+    reportsStaleBasis: reportsStaleBasis,
+    reportsAggregateStaleFacts: reportsAggregateStaleFacts,
+    reportsStaleFiguresText: reportsStaleFiguresText,
     reportsRowIsStale: reportsRowIsStale,
     reportsNotCollectedNote: reportsNotCollectedNote,
     reportsNotCollectedNotes: reportsNotCollectedNotes,

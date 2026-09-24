@@ -93,7 +93,12 @@
   `{date}まで・{ago}更新` in Japanese. Where no coverage is stated the line
   reads exactly as it did. The line is now clipped rather than wrapped: it
   carries two facts in a card track ~204px wide, and wrapping it makes every
-  card in the grid taller and breaks the client name below it.
+  card in the grid taller; the full line is the element's tooltip. The card's
+  stale chip, the restated figures under its cells, the alert row above the
+  grid and the detail view's withheld-figures note now name that same covered
+  date — *"Figures stop at 2026-09-20"*, *"Figures to 2026-09-20, collected
+  14h ago: …"* — whenever the server judged the figures on it, instead of
+  quoting the write time beside a line that says the opposite.
 - **A skipped rollup step is no longer silent** (#798). `/daily-check` step 13
   must now name which windows it persisted and which it did not, per platform
   — `windows_not_persisted_for_<platform>`, the notation step 4 already uses

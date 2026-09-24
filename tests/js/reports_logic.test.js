@@ -480,11 +480,13 @@ test.describe("reportsCardFreshness", function () {
         platform("google_ads", { spend: 1 }, {
           fetched_at: ago(2 * HOUR_MS),
           period_end: day(1),
+          judged_on: "period_end",
           stale: false,
         }),
         platform("meta_ads", { spend: 1 }, {
           fetched_at: ago(HOUR_MS),
           period_end: day(4),
+          judged_on: "period_end",
           stale: false,
         }),
       ],
@@ -505,6 +507,7 @@ test.describe("reportsCardFreshness", function () {
         platform("google_ads", { spend: 1 }, {
           fetched_at: ago(2 * HOUR_MS),
           period_end: day(1),
+          judged_on: "period_end",
           stale: false,
         }),
         platform("meta_ads", { spend: 1 }, {
@@ -524,6 +527,7 @@ test.describe("reportsCardFreshness", function () {
         platform("google_ads", { spend: 1 }, {
           fetched_at: ago(2 * HOUR_MS),
           period_end: day(1),
+          judged_on: "period_end",
           stale: false,
         }),
         platform("advisory", null, { fetched_at: ago(HOUR_MS), stale: false }),
@@ -542,6 +546,7 @@ test.describe("reportsCardFreshness", function () {
         platform("google_ads", { spend: 1 }, {
           fetched_at: ago(2 * HOUR_MS),
           period_end: day(9),
+          judged_on: "period_end",
           stale: true,
         }),
       ],
@@ -622,6 +627,7 @@ test.describe("reportsFreshnessLabel", function () {
     const label = logic.reportsFreshnessLabel({
       fetched_at: ago(3 * HOUR_MS),
       period_end: "2026-09-22",
+      judged_on: "period_end",
       stale: false,
     });
     assert.equal(label.text, "dashboard.reports_platform_covered_updated");
@@ -635,6 +641,7 @@ test.describe("reportsFreshnessLabel", function () {
     const label = logic.reportsFreshnessLabel({
       fetched_at: ago(3 * HOUR_MS),
       period_end: "2026-09-12",
+      judged_on: "period_end",
       stale: true,
     });
     assert.equal(label.text, "dashboard.reports_platform_covered_stale");
@@ -942,7 +949,7 @@ test.describe("i18n", function () {
         {
           key: "a",
           totals: { spend: 1 },
-          freshness: { fetched_at: ago(DAY_MS), period_end: day(1), stale: false },
+          freshness: { fetched_at: ago(DAY_MS), period_end: day(1), judged_on: "period_end", stale: false },
         },
       ],
     });
@@ -951,7 +958,7 @@ test.describe("i18n", function () {
         {
           key: "a",
           totals: { spend: 1 },
-          freshness: { fetched_at: ago(DAY_MS), period_end: day(9), stale: true },
+          freshness: { fetched_at: ago(DAY_MS), period_end: day(9), judged_on: "period_end", stale: true },
         },
       ],
     });
@@ -1023,5 +1030,304 @@ test.describe("aggregateClientKpis: the client's click-through rate", function (
     });
     assert.equal(doubled.spend, null);
     assert.equal(doubled.ctr, null, "a double-counted client still stated a CTR");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Every stale surface speaks about the fact the verdict was taken on (#798)
+// ---------------------------------------------------------------------------
+//
+// The server says which fact decided (`judged_on`), and the screen reads it
+// rather than re-deriving it. A card that says "Stale 2026-09-20" on its
+// freshness line and "Figures 14h ago old" on its chip is contradicting
+// itself; these pin the one resolver every surface goes through.
+
+const COVERED = "period_end";
+const WRITTEN = "fetched_at";
+
+test.describe("reportsStaleBasis", function () {
+  test.it("names the kinds once, as the server does", function () {
+    assert.equal(logic.REPORTS_STALE_BASIS_PERIOD_END, COVERED);
+    assert.equal(logic.REPORTS_STALE_BASIS_FETCHED_AT, WRITTEN);
+  });
+
+  test.it("gives the covered date when the verdict was taken on it", function () {
+    assert.deepEqual(
+      logic.reportsStaleBasis({
+        fetched_at: ago(HOUR_MS),
+        period_end: "2026-09-20",
+        judged_on: COVERED,
+        stale: true,
+      }),
+      { kind: COVERED, date: "2026-09-20" }
+    );
+  });
+
+  test.it("gives the write time when the verdict was taken on it", function () {
+    const at = ago(HOUR_MS);
+    assert.deepEqual(
+      logic.reportsStaleBasis({
+        fetched_at: at,
+        period_end: "2026-02-30",
+        judged_on: WRITTEN,
+        stale: false,
+      }),
+      { kind: WRITTEN, at: at }
+    );
+  });
+
+  test.it("reads a payload that predates judged_on as write-time", function () {
+    // An older daemon, or any fixture written before #798: today's rule.
+    const at = ago(HOUR_MS);
+    assert.deepEqual(logic.reportsStaleBasis({ fetched_at: at, stale: true }), {
+      kind: WRITTEN,
+      at: at,
+    });
+  });
+
+  test.it("is null when there is nothing to speak about", function () {
+    for (const junk of [
+      null,
+      undefined,
+      "x",
+      {},
+      { judged_on: COVERED, period_end: null, stale: true },
+      { judged_on: COVERED, period_end: 20260920, stale: true },
+      { judged_on: WRITTEN, fetched_at: null, stale: true },
+    ]) {
+      assert.equal(logic.reportsStaleBasis(junk), null, JSON.stringify(junk));
+    }
+  });
+});
+
+test.describe("reportsFreshnessLabel — judged on coverage (#798)", function () {
+  test.it("never shows a coverage date the server did not judge on", function () {
+    // An unparseable `period_end` is relayed verbatim and decides nothing,
+    // so it must not be printed as if it were a date.
+    const label = logic.reportsFreshnessLabel({
+      fetched_at: ago(3 * HOUR_MS),
+      period_end: "2026-02-30",
+      judged_on: WRITTEN,
+      stale: false,
+    });
+    assert.equal(label.text, "dashboard.reports_platform_updated");
+  });
+
+  for (const stale of [false, true]) {
+    const key = stale
+      ? "dashboard.reports_platform_covered_stale_age_unknown"
+      : "dashboard.reports_platform_covered_age_unknown";
+
+    test.it(
+      "states the covered date with no write time (stale=" + stale + ")",
+      function () {
+        const label = logic.reportsFreshnessLabel({
+          fetched_at: null,
+          period_end: "2026-09-20",
+          judged_on: COVERED,
+          stale: stale,
+        });
+        assert.equal(label.text, key);
+        assert.equal(label.stale, stale);
+        assert.equal(paramsFor(key).date, "2026-09-20");
+      }
+    );
+
+    test.it(
+      "never prints an unparseable write time raw (stale=" + stale + ")",
+      function () {
+        const label = logic.reportsFreshnessLabel({
+          fetched_at: "last tuesday",
+          period_end: "2026-09-20",
+          judged_on: COVERED,
+          stale: stale,
+        });
+        assert.equal(label.text, key);
+        assert.equal(label.stale, stale);
+        for (const call of calls) {
+          for (const v of Object.values(call.params)) {
+            assert.notEqual(v, "last tuesday", call.key + " quoted the raw value");
+          }
+        }
+      }
+    );
+  }
+
+  test.it("keeps a covered-stale card stale when its write time is unknown", function () {
+    // Before: the card fell to "Update time unknown" in normal styling while
+    // the server had withheld its figures as stale.
+    const fresh = logic.reportsCardFreshness({
+      platforms: [
+        platform("google_ads", { spend: 1 }, {
+          fetched_at: null,
+          period_end: "2026-09-20",
+          judged_on: COVERED,
+          stale: true,
+        }),
+      ],
+    });
+    assert.equal(fresh.text, "dashboard.reports_platform_covered_stale_age_unknown");
+    assert.equal(fresh.stale, true);
+  });
+});
+
+test.describe("reportsAggregateStaleFacts", function () {
+  test.it("takes the EARLIEST covered date when every stale row was judged on it", function () {
+    const older = ago(20 * HOUR_MS);
+    const facts = logic.reportsAggregateStaleFacts([
+      platform("google_ads", { spend: 1 }, {
+        fetched_at: ago(HOUR_MS),
+        period_end: "2026-09-20",
+        judged_on: COVERED,
+        stale: true,
+      }),
+      platform("meta_ads", { spend: 1 }, {
+        fetched_at: older,
+        period_end: "2026-09-18",
+        judged_on: COVERED,
+        stale: true,
+      }),
+      // Fresh rows say nothing about the withheld figures.
+      platform("x", { spend: 1 }, {
+        fetched_at: ago(HOUR_MS),
+        period_end: "2026-09-01",
+        judged_on: COVERED,
+        stale: false,
+      }),
+    ]);
+    assert.deepEqual(facts, {
+      judged_on: COVERED,
+      period_end: "2026-09-18",
+      fetched_at: older,
+    });
+  });
+
+  test.it("falls back to the oldest write time when one stale row was not", function () {
+    const older = ago(3 * DAY_MS);
+    const facts = logic.reportsAggregateStaleFacts([
+      platform("google_ads", { spend: 1 }, {
+        fetched_at: ago(HOUR_MS),
+        period_end: "2026-09-20",
+        judged_on: COVERED,
+        stale: true,
+      }),
+      platform("meta_ads", { spend: 1 }, {
+        fetched_at: older,
+        period_end: null,
+        judged_on: WRITTEN,
+        stale: true,
+      }),
+    ]);
+    assert.deepEqual(facts, { judged_on: WRITTEN, period_end: null, fetched_at: older });
+  });
+
+  test.it("is null when nothing is stale", function () {
+    assert.equal(logic.reportsAggregateStaleFacts([]), null);
+    assert.equal(logic.reportsAggregateStaleFacts(null), null);
+    assert.equal(
+      logic.reportsAggregateStaleFacts([
+        platform("a", { spend: 1 }, { fetched_at: ago(HOUR_MS), stale: false }),
+      ]),
+      null
+    );
+  });
+
+  test.it("rides on the restated figures, so the card note can name the date", function () {
+    const kpis = logic.aggregateClientKpis({
+      platforms: [
+        platform("google_ads", { spend: 84000 }, {
+          fetched_at: ago(14 * HOUR_MS),
+          period_end: "2026-09-20",
+          judged_on: COVERED,
+          stale: true,
+        }),
+      ],
+    });
+    assert.equal(kpis.staleFigures.judged_on, COVERED);
+    assert.equal(kpis.staleFigures.period_end, "2026-09-20");
+    assert.equal(typeof kpis.staleFigures.fetched_at, "string");
+  });
+});
+
+test.describe("reportsStaleFiguresText", function () {
+  test.it("names the day the figures run to, and when they were collected", function () {
+    logic.reportsStaleFiguresText(
+      { judged_on: COVERED, period_end: "2026-09-20", fetched_at: ago(14 * HOUR_MS) },
+      "Spend 1"
+    );
+    const params = paramsFor("dashboard.reports_stale_figures_to");
+    assert.equal(params.date, "2026-09-20");
+    assert.equal(params.ago, "dashboard.reports_age_hours");
+    assert.equal(params.figures, "Spend 1");
+  });
+
+  test.it("says the collection time is unknown rather than inventing one", function () {
+    for (const at of [null, "last tuesday"]) {
+      calls.length = 0;
+      const text = logic.reportsStaleFiguresText(
+        { judged_on: COVERED, period_end: "2026-09-20", fetched_at: at },
+        "Spend 1"
+      );
+      assert.equal(text, "dashboard.reports_stale_figures_to_unknown", String(at));
+      assert.equal(paramsFor(text).date, "2026-09-20");
+    }
+  });
+
+  test.it("reads exactly as before when the verdict was taken on the write time", function () {
+    const text = logic.reportsStaleFiguresText(
+      { judged_on: WRITTEN, period_end: null, fetched_at: ago(11 * DAY_MS) },
+      "Spend 1"
+    );
+    assert.equal(text, "dashboard.reports_stale_last_collected");
+    assert.equal(
+      logic.reportsStaleFiguresText({ fetched_at: null }, "Spend 1"),
+      "dashboard.reports_stale_last_collected_unknown"
+    );
+    // The pre-#798 caller shape: a bare fetched_at on an older payload.
+    assert.equal(
+      logic.reportsStaleFiguresText({ fetched_at: ago(DAY_MS) }, "Spend 1"),
+      "dashboard.reports_stale_last_collected"
+    );
+  });
+});
+
+test.describe("the totals keys that are not metrics", function () {
+  test.it("names the window, the write time and the covered date", function () {
+    // Every other totals key renders as a metric in the detail view's
+    // "All metrics" disclosure, so a date left off this list shows up there
+    // as `period_end 2026-09-22`.
+    const keys = logic.REPORTS_NON_METRIC_TOTALS_KEYS;
+    assert.ok(Array.isArray(keys));
+    for (const k of ["period", "fetched_at", "period_end"]) {
+      assert.ok(keys.indexOf(k) !== -1, k);
+    }
+  });
+});
+
+test.describe("i18n — the #798 stale wordings", function () {
+  test.it("only selects keys that ship in both locales", function () {
+    const data = JSON.parse(fs.readFileSync(path.join(WEB, "i18n.json"), "utf-8"));
+    for (const stale of [true, false]) {
+      logic.reportsFreshnessLabel({
+        period_end: "2026-09-20",
+        judged_on: COVERED,
+        fetched_at: null,
+        stale: stale,
+      });
+    }
+    logic.reportsStaleFiguresText(
+      { judged_on: COVERED, period_end: "2026-09-20", fetched_at: ago(HOUR_MS) },
+      ""
+    );
+    logic.reportsStaleFiguresText({ judged_on: COVERED, period_end: "2026-09-20" }, "");
+    assert.ok(calls.length >= 4);
+    for (const call of calls) {
+      for (const locale of ["en", "ja"]) {
+        assert.ok(
+          data[locale] && data[locale][call.key],
+          `${call.key} missing from i18n.json[${locale}]`
+        );
+      }
+    }
   });
 });
