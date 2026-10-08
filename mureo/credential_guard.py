@@ -225,6 +225,24 @@ Two guards are installed:
     flag resets at the end of the span, so a ``%`` in one argument cannot
     animate the metacharacters of a later one — ``echo "100%" ; sed
     's/.*//'`` is still allowed.
+  - from an unquoted ``<<`` to the end of the command, quoting is not
+    resolved at all.  Bash resolves none in the body of a here-document: a
+    ``'`` or ``"`` there is ordinary body text, so a body containing an
+    apostrophe does not open a quoted span, and the text after the body is
+    read exactly as unquoted as it is.  The latch is one-way and does not
+    look for the delimiter, deliberately.  Erring *long* means the guard
+    declines to resolve quoting somewhere bash would have, which can only
+    leave more text visible to the rules; erring short means resolving
+    quoting bash does not resolve, and the body of a here-document is
+    precisely where unbalanced quotes are ordinary.  A here-string
+    (``<<<``), a ``<<`` inside a comment and a left shift inside ``$(( ))``
+    all match it, and that is intended: what they lose is quote resolution,
+    and losing it is the safe direction.  One transition survives inside
+    the latch — a backslash still escapes the character after it, so a line
+    continuation is still removed as a pair.  Bash removes it in an
+    unquoted body, and in a quoted one the pair reaches whatever program
+    consumes the body, which removes it then; either way the two characters
+    are not part of a name.
 
   An *expansion* is one indivisible token, and the fold treats it as one.
   ``$( ... )``, ``${ ... }``, ``$(( ... ))``, a backtick pair and
@@ -321,6 +339,20 @@ Two guards are installed:
     tell them apart without deciding the extent it just failed to decide.  A
     *closing* brace with nothing to close is not refused — ``echo a}b`` is
     allowed — because a stray closer hides nothing;
+  - after an unquoted ``<<``, whatever a quote used to neutralise is live.
+    An unmatched ``(`` or ``{`` in a body is structure the span fold cannot
+    pair up, so ``print("{")`` and ``print("(")`` as the body of a python
+    here-document are refused on the unresolved-structure ground above;
+    and a quoted pattern written after a body is read as a pattern, so
+    ``ls '.*'``, ``sed 's/.*//'`` and ``find . -name '.*'`` deny on the
+    line after a terminator although the bullet above allows all three on
+    their own.  Measured over forty-four everyday here-document shapes —
+    python dicts and f-strings, jq filters, awk and sed scripts, SQL,
+    YAML, markdown, ``ssh host <<EOF`` — those five are the whole cost.
+    They are the price of reading a body the way bash reads it: the
+    alternative, resolving quoting inside a body, is not something bash
+    does, and a guard that has to agree with bash about where the shell
+    text is cannot do it either;
   - a command longer than 64 KB, which is refused unread (see below);
   - sequence syntax this does not recognise — a three-part ``{a..z..2}``,
     an endpoint that is neither an integer nor a single letter — which is
@@ -566,7 +598,7 @@ _CHARS = (
 )
 
 # The quoting automaton, as the step function of a left fold.  The state is
-# a pair.  First, where we are: 0 unquoted, 1 single-quoted, 2
+# a 4-tuple.  First, where we are: 0 unquoted, 1 single-quoted, 2
 # double-quoted, 3 escaped (from unquoted), 4 escaped (inside double
 # quotes).  Inside single quotes nothing is special, not even a backslash —
 # the rule bash applies.
@@ -577,14 +609,44 @@ _CHARS = (
 # survive into a filename, and the shell then globs the result.  The flag
 # resets on leaving the span, so the `%` in one argument cannot make the
 # metacharacters of a later one live.
+#
+# Third, whether an unquoted `<<` has been seen.  From there on the quoting
+# states 1, 2 and 4 are no longer entered: bash does no quote removal in the
+# body of a here-document, so neither does this.  Fourth, the previous
+# character, which is what lets the `<<` be seen at all — the fold would
+# otherwise have no way to know the character before it.
+#
+# The latch is one-way and runs to the end of the command rather than to a
+# matching delimiter, because the delimiter is not what matters.  Erring
+# *long* means the guard declines to resolve quoting somewhere bash would
+# have, which can only leave more text visible to the rules; erring short
+# means resolving quoting bash does not resolve, and a body is exactly where
+# an unbalanced quote is ordinary text.  A here-string (`<<<`) or a `<<`
+# inside a comment or an arithmetic expansion is therefore matched
+# deliberately: each of them only stops quote resolution, and that direction
+# is safe.
+#
+# Within the latch the automaton keeps exactly one transition: a backslash
+# still escapes the character after it, so a line continuation is still
+# removed as a pair.  Bash removes it in an unquoted body, and in a quoted
+# one the pair survives into text that the consuming program may hand to a
+# shell of its own, which removes it then — either way the two characters
+# are not part of a name, and keeping them would stop the name being
+# contiguous.
 _QUOTE_STEP = (
-    "lambda kv,x: ("
-    "(1 if x==q1 else 2 if x==q2 else 3 if x==bs else 0) if kv[0]==0"
+    "lambda kv,x: (lambda hd: ("
+    "(0 if kv[0]==3 else 3 if x==bs else 0) if hd"
+    " else (1 if x==q1 else 2 if x==q2 else 3 if x==bs else 0) if kv[0]==0"
     " else (0 if x==q1 else 1) if kv[0]==1"
     " else (0 if x==q2 else 4 if x==bs else 2) if kv[0]==2"
     " else (0 if kv[0]==3 else 2),"
-    " 1 if x==pc else (kv[1] if kv[0] else 0))"
+    " 1 if x==pc else (kv[1] if kv[0] else 0), hd, x))"
+    "(kv[2] or (kv[0]==0 and kv[3]+x=='<<'))"
 )
+
+# The fold's seed, named once because two folds consume it: unquoted, no `%`
+# in scope, no here-document operator seen, no previous character.
+_QUOTE_INIT = "(0,0,0,'')"
 
 # Rebuild the command with quoting resolved, one character at a time: drop
 # the delimiters; drop the newline of a line continuation, since a shell
@@ -697,8 +759,8 @@ _SPAN_STEP = (
 # follows.  Bash cannot run such a command either, so the refusal costs
 # nothing real.
 _READINGS = (
-    "sp=list(itertools.accumulate(zip(cc, st, chr(32)+cc, [(0,0)]+st), ds,"
-    " initial=((),1,0,''))); "
+    "sp=list(itertools.accumulate(zip(cc, st, chr(32)+cc, [" + _QUOTE_INIT + "]+st),"
+    " ds, initial=((),1,0,''))); "
     "ut=bool(sp[-1][0]); "
     "gp=functools.reduce(lambda q,e: (q.setdefault(e[2],[]).append(e[3]), q)[1],"
     " sp[1:], {}); "
@@ -880,7 +942,9 @@ _BASH_GUARD_CODE = (
     + _CHARS
     + "st=list(itertools.accumulate(cc, "
     + _QUOTE_STEP
-    + ", initial=(0,0))); "
+    + ", initial="
+    + _QUOTE_INIT
+    + ")); "
     # One pass over the command, producing the readings: the command with
     # every expansion replaced by a placeholder, and one reading per
     # expansion body. Brace expansion then turns those into the list of

@@ -1195,6 +1195,139 @@ class TestOneReadingOfTheWholeCommandText:
         assert _refusal_category(proc) == "budget", command
 
 
+@needs_shell
+@pytest.mark.unit
+class TestAHereDocumentBodyIsNotQuotedText:
+    """From an unquoted ``<<`` on, the guard stops resolving quoting.
+
+    Bash resolves none in the body of a here-document: a ``'`` or a ``"``
+    there is ordinary body text.  A reading that treated them as delimiters
+    would disagree with bash about where quoted spans are for the rest of the
+    command — and a body holding an unbalanced quote (an apostrophe in prose,
+    an unterminated string literal in source) is an everyday thing, not an
+    exotic one.
+
+    The latch does not look for the terminator, so it errs long.  That is the
+    safe direction: declining to resolve quoting leaves more text visible to
+    the rules, while resolving quoting bash does not resolve hides text from
+    them.  What it costs is in
+    ``test_records_what_not_resolving_quoting_over_blocks``.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # A body that opens a quote it never closes, with the payload on
+            # the line after the terminator — where it is plain shell text.
+            "cat <<eof\ndon't\neof\ncat ~/.mure{o,x}/credentials.json",
+            "cat <<'eof'\ndon't\neof\ncat ~/.mure{o,x}/credentials.json",
+            "cat <<-'eof'\ndon't\neof\ncat ~/.mure{o,x}/credentials.json",
+            'cat <<eof\nsay "hi\neof\ncat ~/.mure{o,x}/credentials.json',
+            "python3 - <<'eof'\ns = \"it's\neof\n" "cat ~/.mure{o,x}/credentials.json",
+            # Two bodies, the second one opening the quote.
+            "cat <<a\nx\na\ncat <<b\ndon't\nb\n" "cat ~/.mure{o,x}/credentials.json",
+            # The name written out needs nothing expanded, and is here so the
+            # row above is not the only spelling checked.
+            "cat <<eof\ndon't\neof\ncat ~/.mureo/credentials.json",
+        ],
+    )
+    def test_denies_a_payload_after_a_body_that_leaves_a_quote_open(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # The body is the consuming program's source, and the program
+            # hands it to a shell of its own. Every row writes the directory
+            # in a spelling that only a shell resolves, so the body is the
+            # only place it is written and the body is where it has to be
+            # seen. Measured against a throwaway HOME with a marker file:
+            # each of these reaches it.
+            "python3 - <<'eof'\nimport os\n"
+            "os.system('cat ~/.mure{o,x}/credentials.json')\neof",
+            "python3 - <<'eof'\nimport os\n"
+            "os.system('cat ~/.mure\"o\"/credentials.json')\neof",
+            "perl <<'eof'\nprint `cat ~/.mure{o,x}/credentials.json`;\neof",
+            "ruby <<'eof'\nputs `cat ~/.mure{o,x}/credentials.json`\neof",
+            "node <<'eof'\nrequire('child_process')"
+            ".execSync('cat ~/.mure{o,x}/credentials.json',"
+            "{stdio:'inherit'})\neof",
+            # The consumer is a shell, so the body is shell text outright —
+            # including the line continuation inside the group, which the
+            # body's own reader joins.
+            "bash <<'eof'\ncat ~/.mure{o,\\\nx}/credentials.json\neof",
+        ],
+    )
+    def test_denies_a_reference_inside_a_body(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Everyday here-documents. A body full of quotes and braces is
+            # what people actually write, so these are the rows that say the
+            # latch is affordable.
+            "python3 - <<'eof'\nd = {'a': 1, 'b': {'c': 2}}\neof",
+            "python3 - <<'eof'\ns = {1, 2, 3}\neof",
+            "python3 - <<eof\nprint('hello')\neof",
+            "cat <<'eof'\ndon't worry\neof",
+            "jq . <<'eof'\n{\"a\": 1}\neof",
+            "awk -f - <<'eof'\n{print $1}\neof",
+            "cat <<<'hello'",
+            "cat <<'eof'\nuse `ls` to list\neof",
+            "echo $((1<<3))",
+            'echo $((1<<3)); echo "*.py"',
+        ],
+    )
+    def test_allows_everyday_here_documents(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
+
+    @pytest.mark.parametrize(
+        ("command", "category"),
+        [
+            # Over-blocks, recorded rather than hidden. Not resolving quoting
+            # leaves live whatever a quote used to neutralise: an unmatched
+            # bracket in a body is structure the span fold cannot pair up...
+            ("python3 - <<'eof'\nprint(\"{\")\neof", "budget"),
+            ("python3 - <<'eof'\nprint(\"(\")\neof", "budget"),
+            # ...and a quoted pattern after a terminator is read as a
+            # pattern, although bash hands all three of these to the program
+            # unexpanded. Each of them is allowed on its own; what denies
+            # them is the here-document earlier in the same command.
+            ("cat <<'eof'\nx\neof\nls '.*'", "directory"),
+            ("cat <<'eof'\nx\neof\nsed 's/.*//' f", "directory"),
+            ("cat <<'eof'\nx\neof\nfind . -name '.*'", "directory"),
+        ],
+    )
+    def test_records_what_not_resolving_quoting_over_blocks(
+        self, fake_home: Path, command: str, category: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == category, command
+
+
 # ---------------------------------------------------------------------------
 # Template structure
 # ---------------------------------------------------------------------------

@@ -2,6 +2,20 @@
 
 ### Fixed
 
+- **The credential guard reads the body of a here-document the way bash reads
+  it** (#806). Bash resolves no quoting inside a here-document body: a `'` or a
+  `"` there is ordinary body text. The guard resolved quoting there anyway; from
+  an unquoted `<<` to the end of the command it now does not. A reference
+  written in the body itself is therefore as visible to all four rules as one
+  written outside it. The latch is one-way and does not look for the terminator,
+  because declining to resolve quoting can only leave more text visible to the
+  rules, while resolving quoting bash does not resolve hides text from them. Two
+  deliberate over-blocks come with it, both recorded in the module docstring and
+  pinned by tests: an unmatched `(` or `{` in a body is refused as unresolved
+  structure, and a quoted pattern written after a terminator is read as a
+  pattern. Over forty-four everyday here-document shapes — python dicts and
+  f-strings, jq filters, awk and sed scripts, SQL, YAML, markdown,
+  `ssh host <<EOF` — those are the whole cost.
 - **The credential guard reads a shell expansion as one token, and its body as
   a reading of its own** (#806). `$(...)`, `${...}`, `$((...))`, a backtick
   pair and `<(...)` are indivisible to bash: the parentheses, braces and
