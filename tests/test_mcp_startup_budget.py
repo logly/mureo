@@ -893,6 +893,44 @@ class TestLazyPublicNames:
             getattr(module, unknown)
 
     @pytest.mark.parametrize(
+        "package", sorted(LAZY_PACKAGES), ids=sorted(LAZY_PACKAGES)
+    )
+    def test_a_dotted_attribute_name_answers_false(self, package: str) -> None:
+        """``hasattr`` has to answer, not raise.
+
+        A name with a dot in it sent ``import_module`` after a grandchild. When
+        the first component does not exist either, the ``ModuleNotFoundError``
+        names the *parent* — ``mureo.google_ads.no_such`` — so the guard that
+        turns "no such submodule" into ``AttributeError`` did not match, and the
+        error escaped through ``hasattr``, which PEP 562 and ``hasattr``'s own
+        contract say cannot happen. Measured before the fix:
+        ``ModuleNotFoundError: No module named 'mureo.google_ads.no_such'``.
+        """
+        module = __import__(package, fromlist=["__all__"])
+
+        assert hasattr(module, "no_such.attribute") is False
+        with pytest.raises(AttributeError):
+            getattr(module, "not an identifier")
+
+    @pytest.mark.parametrize(
+        "package", sorted(LAZY_PACKAGES), ids=sorted(LAZY_PACKAGES)
+    )
+    def test_dir_does_not_advertise_the_lazy_machinery(self, package: str) -> None:
+        """``dir()`` lists the package's surface, not this file's imports.
+
+        Listing ``globals()`` put the imports that make the package lazy —
+        ``TYPE_CHECKING``, ``import_module``, ``_LAZY_EXPORTS``, and the
+        ``__future__`` flag — into what a reader and a completion engine take
+        for the public surface. The eager package listed none of them.
+        """
+        module = __import__(package, fromlist=["__all__"])
+        machinery = {"annotations", "import_module", "TYPE_CHECKING", "_LAZY_EXPORTS"}
+
+        assert machinery.isdisjoint(dir(module)), sorted(
+            machinery.intersection(dir(module))
+        )
+
+    @pytest.mark.parametrize(
         "package", sorted(LAZY_CLIENT_EXPORTS), ids=sorted(LAZY_CLIENT_EXPORTS)
     )
     def test_patching_the_client_leaves_no_dead_mock(self, package: str) -> None:

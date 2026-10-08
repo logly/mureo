@@ -29,9 +29,11 @@ Two things a lazy package cannot give back:
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from mureo.google_ads.accounts import (
         GoogleAdsAccountListError,
         list_accessible_accounts,
@@ -58,12 +60,27 @@ def __getattr__(name: str) -> Any:
     Deliberately does NOT cache into ``globals()``: a cached re-export outlives
     the ``mock.patch`` that produced it (``patch`` restores the *defining*
     module's attribute, not this package's copy), which would leave a dead mock
-    installed here for the rest of the process. ``import_module`` is a
-    ``sys.modules`` lookup after the first call, so re-resolving is cheap.
+    installed here for the rest of the process. The price is real and was
+    understated here as "cheap": even on a ``sys.modules`` hit, ``import_module``
+    takes the import lock and re-resolves the name, measured at 12.6 us against
+    0.14 us for the same attribute on its defining module — about ninety times,
+    and a second machine measured 23.6 us against 0.10 us. It stays, because the
+    three in-tree call sites read these names once per operation and a dead mock
+    poisons every test after it; code in a loop should import the defining
+    module. A *miss* costs more still (36 us: it searches the path before
+    failing) and is not cached either, so ``hasattr`` in a loop is the wrong
+    shape for this package.
     """
     module_name = _LAZY_EXPORTS.get(name)
     if module_name is not None:
         return getattr(import_module(module_name), name)
+    if not name.isidentifier():
+        # ``hasattr(pkg, "a.b")`` has to answer False, and a dotted name would
+        # send ``import_module`` looking for a grandchild and raise
+        # ModuleNotFoundError past ``hasattr`` instead (the ``exc.name`` guard
+        # below sees "pkg.a", not the name asked for). PEP 562 promises an
+        # AttributeError for anything this module does not have.
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     try:
         return import_module(f"{__name__}.{name}")
     except ModuleNotFoundError as exc:
@@ -73,9 +90,18 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    """List the lazy names and the submodules, as the eager package did."""
+    """List this module's dunders, its public names and its submodules.
+
+    Not ``globals()``: that advertised the imports this file needs in order to
+    be lazy (``TYPE_CHECKING``, ``import_module``, ``_LAZY_EXPORTS``) as part of
+    the package's surface. They are still reachable as attributes — so are any
+    module's imports — but ``dir()`` is what a reader and a completion engine
+    take for the surface, and the eager package never listed them.
+    """
     from pkgutil import iter_modules
 
     return sorted(
-        set(globals()) | set(__all__) | {info.name for info in iter_modules(__path__)}
+        {name for name in globals() if name.startswith("__")}
+        | set(__all__)
+        | {info.name for info in iter_modules(__path__)}
     )
