@@ -803,11 +803,15 @@ Rules the server enforces (a non-conforming provider is skipped with a
   plugin's is compiled at startup, because you never get a run of
   mureo's CI in which to find out it was wrong. If your `inputSchema` is
   not valid JSON Schema Draft 2020-12, the consequence is narrow and
-  silent by default: **that one tool loses its input validation** and
-  mureo logs a warning naming it. The server still starts, your other
-  tools are unaffected, and the tool still dispatches — with whatever
-  arguments the caller sent, straight to your handler. So a schema typo
-  does not take you offline; it quietly removes a guardrail.
+  easy to miss: **that one tool loses its input validation**. mureo
+  names it in a log record and in a `PluginToolWarning` — both, because
+  a stdio server captures no warnings by default and because only the
+  warning can be promoted to an error. If several of your tools have
+  unusable schemas, all of them are named in one report. The server
+  still starts, your other tools are unaffected, and the tool still
+  dispatches — with whatever arguments the caller sent, straight to
+  your handler. So a schema typo does not take you offline; it quietly
+  removes a guardrail.
 
   To make it loud instead, promote the warning to an error **before**
   the server is imported:
@@ -833,6 +837,57 @@ Rules the server enforces (a non-conforming provider is skipped with a
   Better still, validate your schemas in your own CI with
   `jsonschema.Draft202012Validator.check_schema(tool.inputSchema)` for
   every tool `mcp_tools()` returns, and you will never need either.
+
+  **Keep your module's import cheap: it happens while the MCP server
+  is still importing.** `collect_plugin_tools()` runs during `import
+  mureo.mcp.server` — it loads your entry point, imports your module,
+  instantiates your provider class and calls `mcp_tools()`, all before
+  the server can answer `initialize`. Whatever your module imports at
+  module scope is therefore spent out of the client's connect budget
+  (30,000 ms in Claude Code, not negotiable from inside the server),
+  and mureo cannot defer an import that you make.
+
+  The import that matters is your platform client / SDK. Measured on
+  one development machine (CPython 3.10, the import's own CPU via
+  `time.process_time` inside a child interpreter, min of 5 runs,
+  bytecode cache warm), `import mureo.mcp.server` costs **1.1 s and
+  loads 882 modules** with no plugins installed. With one provider
+  plugin that writes `from mureo.google_ads import GoogleAdsApiClient`
+  at module scope, the same import costs **2.4 s and loads 2229** —
+  1149 of them platform SDK, gRPC, crypto and protobuf modules, loaded
+  for an API call that may never come. mureo itself used to pay exactly
+  this bill on its own import path and stopped (#807); a plugin that
+  keeps paying it puts most of the cost back.
+
+  So import your client under `TYPE_CHECKING`, or inside the method
+  that uses it:
+
+  ```python
+  from typing import TYPE_CHECKING
+
+  if TYPE_CHECKING:
+      from acme_ads_sdk import AcmeClient      # annotations only
+
+  class AcmeAdapter:
+      def mcp_tools(self) -> tuple[Tool, ...]:
+          return MY_TOOLS                      # static, no SDK needed
+
+      async def handle_mcp_tool(self, name, arguments):
+          from acme_ads_sdk import AcmeClient  # paid on first call
+          ...
+  ```
+
+  Your `__init__` is on the same path: it runs during collection, so it
+  must not construct a client, read files or reach for process-wide
+  state either. `mcp_tools()` is already required to be pure and
+  credential-free — treat the module's imports and the constructor the
+  same way.
+
+  mureo's own guard (`tests/test_mcp_startup_budget.py`) charges each
+  platform-SDK import to the module that asked for it, so your plugin's
+  imports never fail mureo's tests and mureo's never look like yours.
+  Which also means nothing on mureo's side will tell you about this
+  one: it is the half of #807 that only a plugin author can fix.
 
 Sync clients: run blocking work off the event loop with
 `asyncio.to_thread(...)` inside `handle_mcp_tool` so you do not block

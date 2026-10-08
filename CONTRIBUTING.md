@@ -84,13 +84,14 @@ because an MCP client gives the server a fixed window to answer `initialize`
 no tools at all (#807). Two kinds of check live there:
 
 - **Deterministic**, and the one that matters: no platform SDK, API client or
-  transport stack may appear in `sys.modules` after that import. It does not
-  depend on how fast the machine is, and it is measured as a difference against
-  what the installed provider plugins load, so it keeps working — rather than
-  skipping — in an environment that has plugins installed. One case is set up
-  rather than waited for: a synthetic `mureo.runtime_context_factory` plugin,
-  which is the configuration #807 was reported from and which CI would otherwise
-  never exercise.
+  transport stack may be asked for on mureo's own import path. It does not
+  depend on how fast the machine is. A `sys.meta_path` finder records which
+  module first asked for each forbidden module, and the test fails if any of
+  them is mureo's — so what a third-party plugin imports for itself is charged
+  to the plugin, and the check keeps its teeth in an environment that has
+  plugins installed. One case is set up rather than waited for: a synthetic
+  `mureo.runtime_context_factory` plugin, which is the configuration #807 was
+  reported from and which CI would otherwise never exercise.
 - A **CPU backstop**, for a new heavy dependency the module-name check cannot
   name. The child reports `time.process_time` and the parent compares it to a
   6 s ceiling, against an achieved cost of roughly 1.1 s. Not wall clock: the
@@ -107,16 +108,33 @@ Raise it for a slow machine, never to accept a regression: if the import got
 slower, `python -X importtime -c 'import mureo.mcp.server'` names what was
 added.
 
-`tests/test_platform_submodule_imports.py` is the other half of this: it imports
-each submodule of `mureo.google_ads` / `mureo.meta_ads` **first**, in a child
-interpreter of its own, so the lazy `__init__` cannot hide an import cycle that
-only a single-file `pytest` run would hit. The default lane sweeps the
-submodules whose source imports a sibling (where a cycle can be at all); the
-exhaustive sweep of all of them is one flag away:
+`tests/test_mcp_tool_validators.py` is the other half of #807: each tool's
+`inputSchema` validator is compiled on that tool's first call, and these tests
+hold the guarantee that deferring it does not weaken — a tool is still
+validated on the call that compiles it, and an unusable schema still costs one
+tool its validation and nothing else.
+
+`tests/test_platform_submodule_imports.py` imports each submodule of
+`mureo.google_ads` / `mureo.meta_ads` **first**, in a child interpreter of its
+own, so the lazy `__init__` cannot hide an import cycle that only a single-file
+`pytest` run would hit.
+
+### Exhaustive (`slow`) lanes
+
+A few checks are real but cost minutes of child interpreters: the exhaustive
+submodule sweep above, the whole-product credential-guard enumeration, the
+plugin strict-mode startup, and the per-package submodule-attribute sweep. They
+are marked `slow` AND gated on an environment variable, so a plain `pytest`
+skips them visibly (as skips in the summary, not as a silent deselect) and
+running them has to be asked for by name:
 
 ```bash
-pytest -m slow tests/test_platform_submodule_imports.py
+MUREO_RUN_EXHAUSTIVE_TESTS=1 pytest -m slow
 ```
+
+The `test-slow` CI job runs exactly that on one Python version. `pytest -m slow`
+without the variable is a no-op by design — the marker alone says which tests
+they are, the variable says you meant it.
 
 ### Browser Assets
 
