@@ -87,19 +87,36 @@ no tools at all (#807). Two kinds of check live there:
   transport stack may appear in `sys.modules` after that import. It does not
   depend on how fast the machine is, and it is measured as a difference against
   what the installed provider plugins load, so it keeps working — rather than
-  skipping — in an environment that has plugins installed.
-- A **wall-clock backstop**, for a new heavy dependency the module-name check
-  cannot name. Its ceiling is 10 s against an achieved cost of roughly 1 s of
-  CPU, so it should never fire on a slow day.
+  skipping — in an environment that has plugins installed. One case is set up
+  rather than waited for: a synthetic `mureo.runtime_context_factory` plugin,
+  which is the configuration #807 was reported from and which CI would otherwise
+  never exercise.
+- A **CPU backstop**, for a new heavy dependency the module-name check cannot
+  name. The child reports `time.process_time` and the parent compares it to a
+  6 s ceiling, against an achieved cost of roughly 1.1 s. Not wall clock: the
+  same import measured 7–9 s warm and 19 s cold on a loaded machine while its
+  CPU time stayed inside a tenth of a second, which made the old wall-clock
+  version a load meter.
 
 ```bash
-# Raise the wall-clock ceiling for a slow machine or a loaded CI runner.
+# Raise the CPU ceiling for a slow machine or a loaded CI runner.
 MUREO_MCP_IMPORT_BUDGET_SECONDS=20 pytest tests/test_mcp_startup_budget.py
 ```
 
 Raise it for a slow machine, never to accept a regression: if the import got
 slower, `python -X importtime -c 'import mureo.mcp.server'` names what was
 added.
+
+`tests/test_platform_submodule_imports.py` is the other half of this: it imports
+each submodule of `mureo.google_ads` / `mureo.meta_ads` **first**, in a child
+interpreter of its own, so the lazy `__init__` cannot hide an import cycle that
+only a single-file `pytest` run would hit. The default lane sweeps the
+submodules whose source imports a sibling (where a cycle can be at all); the
+exhaustive sweep of all of them is one flag away:
+
+```bash
+pytest -m slow tests/test_platform_submodule_imports.py
+```
 
 ### Browser Assets
 

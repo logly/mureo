@@ -809,11 +809,28 @@ Rules the server enforces (a non-conforming provider is skipped with a
   arguments the caller sent, straight to your handler. So a schema typo
   does not take you offline; it quietly removes a guardrail.
 
-  To make it loud instead, use the strict mode described below: the
-  warning is also emitted as a `PluginToolWarning`, so
-  `warnings.filterwarnings("error", category=PluginToolWarning)` turns an
-  uncompilable schema into a startup failure. Validate your schemas in
-  your own CI with
+  To make it loud instead, promote the warning to an error **before**
+  the server is imported:
+
+  ```python
+  import warnings
+
+  from mureo.plugin_warnings import PluginToolWarning
+
+  warnings.filterwarnings("error", category=PluginToolWarning)
+
+  from mureo.mcp.server import main  # now raises on a plugin fault
+  ```
+
+  The order is the whole recipe, and the import has to be
+  `mureo.plugin_warnings` — importing anything under `mureo.mcp` imports
+  the server, which collects your plugin, which reports the fault; a
+  filter installed after that has nothing left to catch. (`-W
+  error::...` cannot be used for this at all: the interpreter cannot
+  import a non-builtin category while parsing `-W` and skips the option
+  with `Invalid -W option ignored`.)
+
+  Better still, validate your schemas in your own CI with
   `jsonschema.Draft202012Validator.check_schema(tool.inputSchema)` for
   every tool `mcp_tools()` returns, and you will never need either.
 

@@ -2,65 +2,121 @@
 
 ### Fixed
 
-- **The MCP server no longer loses the client's 30-second connect race**
-  (#807). Against a default MCP connect budget of 30,000 ms in Claude Code,
-  whether the server came up at all depended on how much of the start was
-  already cached. When it lost, the session had **none** of the
-  `mcp__mureo__*` tools, and an unattended run — a headless `claude -p`, a
-  scheduled job, a fresh container — starts cold by definition. All of the
+- **The MCP server's start no longer spends most of the client's connect budget
+  on work no tool call needs** (#807). Against a default MCP connect budget of
+  30,000 ms in Claude Code, whether the server came up at all depended on how
+  much of the start was already cached. When it lost, the session had **none**
+  of the `mcp__mureo__*` tools, and an unattended run — a headless `claude -p`,
+  a scheduled job, a fresh container — starts cold by definition. All of the
   cost was `import mureo.mcp.server`; building the server itself takes 7 ms.
 
-  Two things paid for it, and neither was serving a tool call:
-  `mureo/google_ads/__init__.py` (and its Meta counterpart) eagerly imported
-  the API client, so a stdlib-only helper the tool schemas need — the GAQL
-  period whitelist behind every `period` enum — dragged in the whole generated
-  `google.ads.googleads.v25` protobuf tree; and every tool in the catalog had
-  its `inputSchema` validated against the JSON Schema Draft 2020-12 metaschema
-  at import, for hundreds of tools a session never calls. The platform packages
-  now resolve their public names and submodules on first access (PEP 562) —
-  `from mureo.google_ads import GoogleAdsApiClient` and
-  `import mureo.google_ads` then `.client` both still work exactly as before —
-  and a tool's validator is compiled on that tool's first call, which is where
-  it is enforced, so no call is served unvalidated.
+  Three things paid for it, and none of them was serving a tool call:
 
-  Measured on one development machine (CPython 3.10, macOS, 228 tools, no
-  provider plugins installed), answering `initialize` over stdio with **every
-  `__pycache__` removed first, in the tree and in `site-packages`** — the cold
-  start the issue is about: **5.6 s → 2.6 s** wall, 4.8 s → 2.3 s of child CPU.
-  With the dependencies' bytecode cached and only mureo's recompiled: 4.3 s →
-  1.9 s. For a figure that does not move with system load, the CPU time of the
-  import itself (`time.process_time`, best of three, bytecode cache warm) is
-  **3.38 s → 1.14 s**, and `len(sys.modules)` after it **2249 → 880**. The
-  17–34 s in the issue is from an installation that has provider plugins, where
-  there is correspondingly more to import; it is the same defect, scaled.
+  - `mureo/google_ads/__init__.py` (and its Meta counterpart) eagerly imported
+    the API client, so a stdlib-only helper the tool schemas need — the GAQL
+    period whitelist behind every `period` enum — dragged in the whole
+    generated `google.ads.googleads.v25` protobuf tree.
+  - Every tool in the catalog had its `inputSchema` validated against the JSON
+    Schema Draft 2020-12 metaschema at import, for hundreds of tools a session
+    never calls.
+  - Plugin collection, which runs during that import, constructed the Amazon
+    Ads bridge, whose `__init__` resolved its manifest path, which asked for
+    the `RuntimeContext`, which runs an integrator's registered
+    `mureo.runtime_context_factory` — and that imports the adapter packages,
+    which imported their platform clients. In an installation that has such a
+    factory registered, which is how #807 was reported, this one path put the
+    SDKs back by itself: fixing only the first two left 2258 modules loaded,
+    1150 of them platform SDK, gRPC, crypto or protobuf.
+
+  So: the platform packages now resolve their public names and submodules on
+  first access (PEP 562) — `from mureo.google_ads import GoogleAdsApiClient`
+  and `import mureo.google_ads` then `.client` both still work exactly as
+  before — a tool's validator is compiled on that tool's first call, which is
+  where it is enforced, so no call is served unvalidated, and the bridge
+  resolves its manifest path on first use rather than in its constructor.
+
+  Measured on one development machine (CPython 3.10, macOS, 228 built-in
+  tools), answering `initialize` over stdio with **every `__pycache__` removed
+  first, in the tree and in `site-packages`** — the cold start the issue is
+  about — as child CPU (`getrusage`) and wall clock, min of two runs:
+
+  | configuration | before | after |
+  |---|---|---|
+  | no plugins installed | 6.38 s CPU / 13.74 s | 2.67 s CPU / 4.39 s |
+  | with a `runtime_context_factory` plugin | 6.45 s CPU / 12.47 s | 2.75 s CPU / 4.08 s |
+
+  With the bytecode cache warm, the same answer: 3.34 s CPU / 4.90 s wall →
+  1.22 s / 2.03 s with no plugins, and 3.67 s / 4.68 s → 1.26 s / 2.08 s with
+  the factory. The wall figures move with system load; the CPU ones are the
+  ones to compare.
+
+  For a figure that does not move at all — the import's own CPU
+  (`time.process_time`, inside the child, bytecode warm) and `len(sys.modules)`
+  after it: **3.48 s / 2249 modules → 1.11 s / 880** with no plugins, and
+  **3.20 s / 2259 modules → 1.12 s / 890** with the factory, of which 1150 were
+  platform SDK, gRPC, crypto or protobuf modules before and 0 are now. The
+  saving splits roughly evenly between two of the three causes, so neither
+  should be credited with it alone: with the metaschema check stubbed out the
+  old import still cost 2.09 s against its usual 3.08 s, putting `check_schema`
+  at ≈1.0 s and the imports it stopped doing at ≈1.2 s.
+
+  The issue reports 17–34 s. This is the same defect, but the figures above are
+  not claimed to account for all of it: that installation has more plugins than
+  were reproduced here, and what a plugin spends importing itself is the
+  plugin's own.
 
   `tools/list` is unchanged — not "equivalent", the same bytes: the sha256 of
   the exact `tools/list` result line is identical before and after, both with
   credentials present and with `HOME` pointed at an empty directory. Importing
   the server now loads no platform SDK, API client, gRPC, crypto or protobuf
-  module at all, and `tests/test_mcp_startup_budget.py` fails if any comes
-  back. That test measures the module set as a **difference** against what the
-  installed provider plugins load, so it keeps running in an environment that
-  has plugins — rather than stepping aside there, which is the environment the
-  issue was reported from.
+  module **from mureo's own import path**, with or without a
+  `runtime_context_factory` registered, and `tests/test_mcp_startup_budget.py`
+  fails if any comes back — including under a synthetic factory, because CI
+  installs no plugins and would otherwise never exercise the configuration the
+  issue was reported from. What a third-party plugin imports for itself is
+  outside that rule: the test measures the module set as a **difference**
+  against what the installed plugins load, so it keeps running rather than
+  stepping aside in an environment that has plugins, and it now warns when a
+  plugin's own imports are what is crediting a forbidden module.
 
 ### Changed
 
-- **A malformed builtin tool `inputSchema` is now reported on that tool's first
-  call instead of at server start** (#807). The check itself is unchanged, and
-  so is its consequence — that one tool loses input validation, a warning names
-  it, the rest of the catalog is unaffected — but it now happens when the tool
-  is first used. Builtin schemas are checked for every tool in CI instead
-  (`tests/test_mcp_strict_input_schemas.py`), so an authoring mistake still
-  fails before it ships.
+- **A malformed built-in tool `inputSchema` is now reported on that tool's
+  first call instead of at server start** (#807). The check itself is
+  unchanged, and so is its consequence — that one tool loses input validation,
+  a warning names it, the rest of the catalog is unaffected — but it now
+  happens when the tool is first used, and the log record's logger name moves
+  from `mureo.mcp.server` to `mureo.mcp._tool_validation`. Built-in schemas are
+  checked for every tool in CI instead
+  (`tests/test_mcp_strict_input_schemas.py`, against both the authored schema
+  and the rebuilt one the server actually compiles), so an authoring mistake
+  still fails before it ships.
 
   A **plugin's** schema is still checked while the server starts: a plugin
   author gets no run of mureo's CI, and there are normally a handful of such
-  tools (2.4 ms for two, 22 ms for ten). That report now also goes out as a
-  `PluginToolWarning`, so the
-  `warnings.filterwarnings("error", category=PluginToolWarning)` strict mode
-  `docs/plugin-authoring.md` documents turns an uncompilable plugin schema into
-  a startup failure. It previously could not: the message was logged only.
+  tools (2.4 ms for two, 22 ms for ten). Two things about that report changed.
+  It now goes out as a `PluginToolWarning` and **not** to the log — one line,
+  one channel, where it previously was a multi-line log record; a built-in's
+  goes to the log and not as a warning, because no plugin author can act on it.
+  And the category now lives in a new leaf module, `mureo.plugin_warnings`,
+  with `mureo.mcp.tool_provider` re-exporting it so existing imports keep
+  working.
+
+  That move is what makes the strict mode `docs/plugin-authoring.md` documents
+  work at all. `from mureo.mcp.tool_provider import PluginToolWarning` imports
+  `mureo.mcp`, which imports the server, which collects the plugins and reports
+  the fault — so the
+  `warnings.filterwarnings("error", category=PluginToolWarning)` that followed
+  it was always installed too late, and the documented recipe was inert. Import
+  the category from `mureo.plugin_warnings`, install the filter, *then* import
+  the server, and an uncompilable plugin schema fails the start as documented.
+
+- The Google Ads mutate-error wrapper moved out of `mureo/google_ads/client.py`
+  into `mureo/google_ads/_mutate_errors.py`, so the lazily-imported package can
+  use it without pulling the SDK in. Its log records' logger name changes with
+  it, from `mureo.google_ads.client` to `mureo.google_ads._mutate_errors`; the
+  messages, and the exceptions it raises, are unchanged. A log filter or alert
+  keyed on that logger name needs updating.
 
 ## [0.21.3] - 2026-09-25
 
