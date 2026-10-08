@@ -126,9 +126,10 @@ jobs:
         # tests/test_credential_guard_product.py is deliberately NOT collected
         # here. Its one whole-product test enumerates every guarded command
         # through a real shell: measured at 1 h 56 m on a developer machine,
-        # against 77 s for all 63 other `slow` tests put together. Giving that
-        # one a CI budget is a separate decision from giving the rest one, and
-        # it should not be made by a job that was added for the rest.
+        # against 77 s idle (2 m 37 s on the same machine under load) for all
+        # 63 other `slow` tests put together. Giving that one a CI budget is a
+        # separate decision from giving the rest one, and it should not be made
+        # by a job that was added for the rest.
         run: pytest -m slow --ignore=tests/test_credential_guard_product.py -v
 
   # Windows compatibility guard. mureo has no Windows dev machines, so
