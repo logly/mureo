@@ -8,7 +8,9 @@
   much of the start was already cached. When it lost, the session had **none**
   of the `mcp__mureo__*` tools, and an unattended run — a headless `claude -p`,
   a scheduled job, a fresh container — starts cold by definition. All of the
-  cost was `import mureo.mcp.server`; building the server itself takes 7 ms.
+  cost was `import mureo.mcp.server`: building the server object and
+  answering `tools/list` cost 0.14 ms and 0.06 ms of CPU respectively once
+  that import was done (min of 5, same machine).
 
   Two things paid for it, and neither was serving a tool call:
 
