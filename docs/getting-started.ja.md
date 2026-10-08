@@ -318,4 +318,4 @@ Claude Desktop を完全終了 (`⌘Q`) して再起動。設定は完全起動�
 **Code で `/daily-check` 等の slash command が出ない**
 `ls ~/.claude/skills/` を確認 — `daily-check` ディレクトリが無ければ `mureo setup claude-code` を再実行。あるのに slash ピッカーに出ない場合は Claude Code を再起動。
 
-詳細は [docs/byod.ja.md](byod.ja.md), [docs/authentication.md](authentication.md), [docs/cli.md](cli.md) を参照。
+詳細は [docs/byod.ja.md](byod.ja.md), [docs/authentication.ja.md](authentication.ja.md), [docs/cli.md](cli.md) を参照。

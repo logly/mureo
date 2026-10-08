@@ -1,5 +1,43 @@
 ## [Unreleased]
 
+### Docs
+
+- **`docs/authentication.ja.md` — the authentication guide now exists in
+  Japanese.** It was English-only, and `README.ja.md` said so out loud
+  ("（英語）"), so the one document a Japanese operator needs before anything
+  else works was the one they could not read. Full translation, not a summary;
+  commands, field names, environment variables, JSON and URLs stay as they
+  are. The Japanese references now point at it — `README.ja.md` (both places,
+  minus the "（英語）" marker), `docs/getting-started.ja.md`, `docs/byod.ja.md`
+  (both places). English references are unchanged.
+- **Both language versions gained the operational facts that were missing
+  from the console walkthrough.** (1) The OAuth client is created under
+  **Google Auth Platform > Clients** today; the guide only had the older
+  **APIs & Services > Credentials** path, so both are now named. (2) A refresh
+  token issued by a project configured for the **External** user type whose
+  publishing status is still **Testing** expires in **7 days** unless the
+  requested scopes are a subset of name / email address / user profile —
+  `https://www.googleapis.com/auth/adwords` is not, so an install left on
+  Testing needs re-authentication weekly. That is the usual cause of "it
+  worked for a while and then the API stopped going through", and it was
+  documented nowhere. (3) Refresh tokens are capped at **100** per OAuth
+  client ID per Google account, and passing the cap invalidates the oldest
+  one without warning — which repeated `mureo auth setup` / `mureo configure`
+  re-authentication consumes. (4) **App Review is not needed to run your own
+  ad accounts**: in development mode the ads / `pages_*` / `leads_retrieval`
+  permissions are offered to anyone holding an admin, developer or tester role
+  on the app, and Advanced Access is what you need for users who hold no role.
+  The guide listed the scopes but never said when review enters the picture.
+  (5) `http://localhost` — no port — is what goes in **Valid OAuth Redirect
+  URIs**, because mureo picks a free port and calls back to
+  `http://localhost:<port>/callback`. Each of the five carries its official
+  Google / Meta source link in the prose.
+- **"What you create by hand" opens the credential sections in both
+  languages.** By hand: a Google OAuth client and a Meta app. Everything else
+  — the Google `refresh_token`, Meta's Long-Lived Token — mureo obtains from
+  that pair; `developer_token` is no longer needed at all, and
+  `login_customer_id` only applies through an MCC.
+
 ## [0.21.3] - 2026-09-25
 
 ### Fixed

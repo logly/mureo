@@ -130,6 +130,20 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 
 **Resolution order**: credentials.json takes priority. Environment variables are only checked if the corresponding section in credentials.json is missing or incomplete.
 
+## What You Create by Hand
+
+Two things, and only two, are created by hand in a platform console:
+
+- **Google** — an **OAuth client**, which gives you a `client_id` and a `client_secret`.
+- **Meta** — an **app**, which gives you an `app_id` and an `app_secret`.
+
+Everything else is obtained for you:
+
+- **`refresh_token` (Google) and the access token (Meta's Long-Lived Token) are obtained by mureo.** Enter the pair above in the `mureo configure` browser UI, or in `mureo auth setup`, and mureo runs the consent flow and stores the result with the right scopes. (`mureo auth setup` takes the Google **Client ID** / **Client Secret** and the Meta **App ID** / **App Secret** as its inputs — `auth_setup.py`.)
+- **`developer_token` (Google) is no longer needed.** Google stopped issuing developer tokens on 2026-09-09; mureo sends one if it is stored, and the API ignores it.
+- **`login_customer_id` (Google)** only applies when you reach the account through a manager account (MCC).
+- On the ad-platform side, what Google Ads requires is that **the Google account you consent with has access to the target ad account**. A Google Ads manager account (MCC) is not required.
+
 ## Obtaining Google Ads Credentials
 
 ### 1. Google Ads API access (Google Cloud Console)
@@ -141,10 +155,30 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 
 ### 2. OAuth 2.0 Client ID and Secret
 
-1. In the **same project**, navigate to **APIs & Services > Credentials**.
-2. Click **Create Credentials > OAuth client ID**.
+1. In the **same project**, navigate to **Google Auth Platform > Clients**. This is the current path; the older **APIs & Services > Credentials** path still works today, and both reach the same OAuth clients ([Google Cloud Help](https://support.google.com/cloud/answer/15549257)).
+2. Create an **OAuth client ID** (on the older path: **Create Credentials > OAuth client ID**).
 3. Select **Desktop app** as the application type.
 4. Copy the **Client ID** and **Client Secret**.
+
+> **Leave the publishing status on "Testing" and the refresh token expires in 7 days.**
+> A refresh token issued by a Google Cloud project whose OAuth consent screen is
+> configured for the **External** user type and whose publishing status is **Testing**
+> expires in **7 days** — unless the scopes being requested are a subset of name,
+> email address and user profile. mureo requests
+> `https://www.googleapis.com/auth/adwords`, which is **not** in that exempt subset,
+> so a project left on Testing needs re-authentication every 7 days. This is the
+> usual cause of "it worked for a while and then the API stopped going through".
+> For production use, set the publishing status to **In production**. The 7-day
+> limit does not apply to the **Internal** user type. Official reference:
+> [Using OAuth 2.0 to Access Google APIs](https://developers.google.com/identity/protocols/oauth2).
+
+> **Refresh tokens are capped at 100 per Google account per OAuth client.**
+> The limit is currently **100** refresh tokens per OAuth 2.0 client ID per Google
+> account. When the limit is reached, creating a new refresh token **invalidates the
+> oldest one without warning**. Re-authenticating through `mureo auth setup` /
+> `mureo configure` mints a new refresh token each time, so repeated re-authentication
+> consumes this budget. Official reference:
+> [Using OAuth 2.0 to Access Google APIs](https://developers.google.com/identity/protocols/oauth2).
 
 ### 3. Refresh Token
 
@@ -181,6 +215,23 @@ Google migrated the access level of every Cloud project that made API calls with
 3. Leave the old `developer_token` in credentials.json or delete it -- mureo no longer needs it.
 
 ## Obtaining Meta Ads Credentials
+
+### App Review — when it is needed, and when it is not
+
+**Running your own ad accounts needs no App Review.** While the app is in
+**development mode**, `ads_management`, `ads_read`, the `pages_*` scopes and
+`leads_retrieval` are offered on the consent screen to any user who holds an
+**admin**, **developer** or **tester** role on that app. So if what you are doing
+is operating your own (your company's) ad accounts with your own app, there is
+nothing to submit for review.
+
+App Review — that is, **Advanced Access** — is what you need when the app is to be
+used by people who hold **no role on it**. Switching the app to live mode leaves only
+the permissions App Review approved on the consent screen.
+
+References:
+[App Roles](https://developers.facebook.com/docs/development/build-and-test/app-roles),
+[Permissions Reference](https://developers.facebook.com/docs/permissions/).
 
 ### Permissions (OAuth scopes)
 
@@ -312,6 +363,14 @@ expiry, nor lets you pick an ad account.
 3. Copy the **App ID** and **App Secret**.
 
 These are optional for basic use, but **required for reading a pasted token's expiry** and **required for automatic token refresh** (see below). Meta only describes a token to the app that issued it, so the pair has to belong to that app.
+
+### Redirect URI
+
+Under **Products > Facebook Login > Settings**, add `http://localhost` — no port — to
+**Valid OAuth Redirect URIs**. mureo picks a free port automatically and calls back to
+`http://localhost:<port>/callback` (`_generate_meta_auth_url` and `run_meta_oauth` in
+`mureo/auth_setup.py`; the prerequisites the interactive setup prints are these same
+three steps). There is no need to register a fixed port number.
 
 ## Meta Ads Token Auto-Refresh
 
