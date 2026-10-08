@@ -36,7 +36,32 @@
   languages.** By hand: a Google OAuth client and a Meta app. Everything else
   — the Google `refresh_token`, Meta's Long-Lived Token — mureo obtains from
   that pair; `developer_token` is no longer needed at all, and
-  `login_customer_id` only applies through an MCC.
+  `login_customer_id` only applies through an MCC. It also states the part the
+  OAuth client does *not* cover: on Google, the Cloud project needs an access
+  level before it can touch a production ad account, and that is a separate
+  application.
+- **Fixed: the Google Ads API access-level ladder was documented wrong, and
+  the error read as "you cannot touch production until Basic".**
+  `docs/authentication.md` and `docs/getting-started.md` (plus
+  `docs/getting-started.ja.md`) said enabling the API grants Test access and
+  production accounts need Basic, which needs brand verification — omitting
+  the **Explorer** level entirely. Explorer *does* reach production accounts
+  (2,880 operations a day against production, 15,000 against test), is applied
+  for from the Google Ads API **Overview** page, and **needs no brand
+  verification**; Google calls it sufficient for most developers to get
+  started and build basic automation, with account creation, user management,
+  planning tools and billing services restricted. All four levels are now a
+  table — Test (15,000, test accounts only, granted on enabling the API),
+  Explorer, Basic (15,000 production and test, brand verification of the Cloud
+  project as a prerequisite before applying), Standard (unlimited, manual
+  audit against the Required Minimum Functionality) — in both languages, with
+  Google's access-level and developer-token pages linked. Also recorded from
+  the 2026-09 migration: the access level belongs to the Cloud project that
+  issued the OAuth credentials rather than to a developer token, a future
+  major API version is to reject a developer token rather than ignore it,
+  Basic applications still pending at the migration were all closed, and
+  access management and brand verification both live in the Google Cloud
+  Console now that the API Center is gone.
 
 ## [0.21.3] - 2026-09-25
 

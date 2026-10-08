@@ -68,7 +68,7 @@ Create `~/.mureo/credentials.json` with the following structure:
 }
 ```
 
-`developer_token` is optional (legacy): Google stopped issuing developer tokens on 2026-09-09; sent if present, ignored by the API.
+`developer_token` is optional (legacy): Google stopped issuing developer tokens on 2026-09-09; sent if present, ignored by the API — and a future major version of the API is to reject it.
 
 You can include only the platforms you use. For example, if you only use Google Ads, the `meta_ads` section can be omitted.
 
@@ -140,18 +140,38 @@ Two things, and only two, are created by hand in a platform console:
 Everything else is obtained for you:
 
 - **`refresh_token` (Google) and the access token (Meta's Long-Lived Token) are obtained by mureo.** Enter the pair above in the `mureo configure` browser UI, or in `mureo auth setup`, and mureo runs the consent flow and stores the result with the right scopes. (`mureo auth setup` takes the Google **Client ID** / **Client Secret** and the Meta **App ID** / **App Secret** as its inputs — `auth_setup.py`.)
-- **`developer_token` (Google) is no longer needed.** Google stopped issuing developer tokens on 2026-09-09; mureo sends one if it is stored, and the API ignores it.
+- **`developer_token` (Google) is no longer needed.** Google stopped issuing developer tokens on 2026-09-09; mureo sends one if it is stored, the API ignores it, and a future major version of the API is to reject it.
 - **`login_customer_id` (Google)** only applies when you reach the account through a manager account (MCC).
 - On the ad-platform side, what Google Ads requires is that **the Google account you consent with has access to the target ad account**. A Google Ads manager account (MCC) is not required.
+
+One thing the OAuth client does **not** give you: **on the Google side, creating the OAuth client is not enough to touch a production ad account. The Cloud project needs an access level, and that is a separate application.** Enabling the API grants **Test** access, which reaches test accounts only. Production accounts need at least **Explorer**, which you apply for from the Google Ads API **Overview** page and which does not require brand verification — see [Access levels](#access-levels) below.
 
 ## Obtaining Google Ads Credentials
 
 ### 1. Google Ads API access (Google Cloud Console)
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project (or select an existing one).
-2. Enable the **Google Ads API** under **APIs & Services > Library**.
-3. On the Google Ads API **Overview** page, sign up for API access. Enabling the API grants **Test** access (test accounts only) right away; **Basic** access (production accounts) needs brand verification and an application on the same page, which Google may approve automatically. No Google Ads manager account is required.
-4. The access level belongs to **this project** -- every OAuth client you create in it inherits the project's access level.
+2. Enable the **Google Ads API** under **APIs & Services > Library**. Enabling it grants the project **Test** access.
+3. On the Google Ads API **Overview** page, apply for the access level you actually need — see the table below. No Google Ads manager account is required.
+4. The access level belongs to **this project** -- every OAuth client you create in it inherits the project's access level. Since the 2026-09 migration it is a property of the Cloud project that issued the OAuth credentials, not of a developer token.
+
+Access management and brand verification both happen in the **Google Cloud Console**; the old API Center is gone.
+
+#### Access levels
+
+| Level | Production accounts | Daily operations limit | How you reach it |
+|---|---|---|---|
+| **Test** | No — test accounts only | 15,000 | Granted automatically the moment you enable the Google Ads API |
+| **Explorer** | **Yes** | **2,880** production / 15,000 test | Apply from the Google Ads API **Overview** page. **Brand verification is not required** |
+| **Basic** | Yes | 15,000 (production and test) | **Brand verification of the Cloud project is a prerequisite**; then apply from the **Overview** page |
+| **Standard** | Yes | Unlimited | Manual audit — you have to demonstrate compliance with the Required Minimum Functionality |
+
+**Explorer is where most people should start.** It lets the project make Google Ads API requests against both test accounts and production accounts, and Google describes it as sufficient for most developers to get started with the API and build basic automation. It does restrict account creation, user management, planning tools and billing services. For **Basic**, brand verification of the Cloud project comes first; Google may then upgrade the project automatically once you submit the application.
+
+Official references:
+[Access levels](https://developers.google.com/google-ads/api/docs/access-levels),
+[API policy — access levels](https://developers.google.com/google-ads/api/docs/api-policy/access-levels),
+[Developer token](https://developers.google.com/google-ads/api/docs/get-started/dev-token).
 
 ### 2. OAuth 2.0 Client ID and Secret
 
@@ -213,6 +233,8 @@ Google migrated the access level of every Cloud project that made API calls with
 1. Open the project's **Google Ads API > Overview** page and check the access level shown there.
 2. Confirm the developers who work on the integration hold **owner** or **editor** IAM roles on the project.
 3. Leave the old `developer_token` in credentials.json or delete it -- mureo no longer needs it.
+
+Basic access applications that were still pending at the migration were all closed. If yours was one of them, apply again from the **Overview** page.
 
 ## Obtaining Meta Ads Credentials
 

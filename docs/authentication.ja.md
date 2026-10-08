@@ -70,7 +70,7 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 }
 ```
 
-`developer_token` は任意 (レガシー): Google は 2026-09-09 に developer token の発行を終了しました。保存されていれば送りますが、API 側は無視します。
+`developer_token` は任意 (レガシー): Google は 2026-09-09 に developer token の発行を終了しました。保存されていれば送りますが、API 側は無視します。将来のメジャーバージョンでは拒否される予定です。
 
 使うプラットフォームだけ書けば十分です。たとえば Google Ads だけを使うなら `meta_ads` セクションは省略できます。
 
@@ -142,18 +142,38 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 残りは mureo が取得します:
 
 - **`refresh_token` (Google) とアクセストークン (Meta の Long-Lived Token) は mureo が取得します。** 上記の組を `mureo configure` のブラウザ画面か `mureo auth setup` に入力すれば、mureo が同意フローを実行し、正しいスコープ付きで保存します (`mureo auth setup` は Google の **Client ID** / **Client Secret** と Meta の **App ID** / **App Secret** を入力として受け取ります — `auth_setup.py`)。
-- **`developer_token` (Google) はもう不要です。** Google は 2026-09-09 に developer token の発行を終了しました。保存されていれば mureo は送りますが、API 側は無視します。
+- **`developer_token` (Google) はもう不要です。** Google は 2026-09-09 に developer token の発行を終了しました。保存されていれば mureo は送りますが、API 側は無視し、将来のメジャーバージョンでは拒否される予定です。
 - **`login_customer_id` (Google)** はマネージャーアカウント (MCC) 経由でアカウントに到達する場合だけ関係します。
 - 広告プラットフォーム側で Google Ads が要求するのは、**同意に使う Google アカウントが対象の広告アカウントにアクセス権を持っていること**です。Google Ads のマネージャーアカウント (MCC) は必須ではありません。
+
+OAuth クライアントだけでは足りないものが 1 つあります: **Google 側は OAuth クライアントを作るだけでは本番アカウントを触れません。Cloud プロジェクトにアクセスレベルが必要で、その申請は別物です。** API を有効化して付与されるのは **Test** アクセスで、これはテストアカウントにしか届きません。本番アカウントには最低でも **Explorer** が必要です。Explorer は Google Ads API の **Overview** ページから申請し、ブランド確認は不要です。下の [アクセスレベル](#アクセスレベル) を参照。
 
 ## Google Ads の認証情報を取得する
 
 ### 1. Google Ads API のアクセス (Google Cloud Console)
 
 1. [Google Cloud Console](https://console.cloud.google.com/) を開き、新しいプロジェクトを作成 (または既存のものを選択) する。
-2. **APIs & Services > Library** から **Google Ads API** を有効化する。
-3. Google Ads API の **Overview** ページで API アクセスを申し込む。API を有効化すると **Test** アクセス (テストアカウントのみ) はすぐ付与される。**Basic** アクセス (本番アカウント) はブランド確認と同じページからの申請が必要で、Google が自動承認することもある。Google Ads のマネージャーアカウントは不要。
-4. アクセスレベルは**このプロジェクト**に属する。プロジェクト内で作る OAuth クライアントはすべてプロジェクトのアクセスレベルを継承する。
+2. **APIs & Services > Library** から **Google Ads API** を有効化する。有効化した時点でプロジェクトに **Test** アクセスが付与される。
+3. Google Ads API の **Overview** ページから、実際に必要なアクセスレベルを申請する (下の表を参照)。Google Ads のマネージャーアカウントは不要。
+4. アクセスレベルは**このプロジェクト**に属する。プロジェクト内で作る OAuth クライアントはすべてプロジェクトのアクセスレベルを継承する。2026-09 の移行以降、アクセスレベルは developer token ではなく、OAuth 認証情報を発行した Cloud プロジェクトの属性である。
+
+アクセス管理とブランド確認はどちらも **Google Cloud Console** で行います。旧 API Center は廃止されました。
+
+#### アクセスレベル
+
+| レベル | 本番アカウント | 1 日の操作上限 | 到達条件 |
+|---|---|---|---|
+| **Test** | 不可 — テストアカウントのみ | 15,000 | Google Ads API を有効化した時点で自動付与 |
+| **Explorer** | **可** | 本番 **2,880** / テスト 15,000 | Google Ads API の **Overview** ページから申請。**ブランド確認は不要** |
+| **Basic** | 可 | 15,000 (本番・テストとも) | **Cloud プロジェクトのブランド確認が前提条件**。そのうえで **Overview** ページから申請 |
+| **Standard** | 可 | 無制限 | 手動監査 — Required Minimum Functionality への準拠を示す必要がある |
+
+**まずは Explorer から始めるのが普通です。** Explorer はプロジェクトがテストアカウントと本番アカウントの両方に対して Google Ads API のリクエストを行えるようにするもので、Google はこれを「ほとんどの開発者が API を使い始め、基本的な自動化を組むには十分」と説明しています。ただしアカウント作成・ユーザー管理・プランニングツール・課金サービスは制限されます。**Basic** を取るには、まず Cloud プロジェクトのブランド確認が必要です。そのうえで申請すると、Google がプロジェクトを自動的に Basic へ上げることがあります。
+
+出典:
+[Access levels](https://developers.google.com/google-ads/api/docs/access-levels)、
+[API policy — access levels](https://developers.google.com/google-ads/api/docs/api-policy/access-levels)、
+[Developer token](https://developers.google.com/google-ads/api/docs/get-started/dev-token)。
 
 ### 2. OAuth 2.0 のクライアント ID とシークレット
 
@@ -214,6 +234,8 @@ Google は、2026-09-09 の前 90 日間に承認済み developer token で API 
 1. プロジェクトの **Google Ads API > Overview** ページを開き、表示されているアクセスレベルを確認する。
 2. この連携を担当する開発者がプロジェクトの **owner** または **editor** IAM ロールを持っていることを確認する。
 3. credentials.json の古い `developer_token` は残しても削除してもよい。mureo はもう必要としない。
+
+移行時点で保留中だった Basic アクセスの申請はすべてクローズされました。自分の申請がそれに当たる場合は、**Overview** ページから再度申請してください。
 
 ## Meta Ads の認証情報を取得する
 
