@@ -39,16 +39,13 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-import jsonschema
-from jsonschema import Draft202012Validator
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Sequence
 
     from mcp.types import Tool
 
@@ -75,6 +72,10 @@ from mureo.mcp._result_decorations import (
     _maybe_append_plugin_strategy_reminder,
     _maybe_append_strategy_reminder,
     _refuse_text_content,
+)
+from mureo.mcp._tool_validation import (
+    LazyToolValidators,
+    validate_tool_input,
 )
 from mureo.mcp.exclusion_preflight import (
     append_notice as append_exclusion_impact_notice,
@@ -361,114 +362,28 @@ _ALL_TOOLS, _REASON_TOOLS = inject_reason_params(
 )
 
 
-# Pre-compiled JSON Schema validators for every tool, keyed by tool name.
-# The MCP framework does not enforce ``inputSchema``, so declared bounds
-# (``minimum``, ``required``, ``type``, ``enum``) are advisory until checked
-# server-side. Validating here is the single guard that makes them real for
-# every mutation — most importantly the real-spend boundary values
-# (budget / bid ``minimum: 1``) flagged in issue #277.
+# Server-side ``inputSchema`` enforcement lives in
+# :mod:`mureo.mcp._tool_validation`; see that module for why a tool's
+# validator is compiled on that tool's first call rather than for the whole
+# catalog at import (#807), and for what a malformed schema does.
 #
-# Plugin tools are validated here too (guardrail parity, #114 follow-up): a
-# plugin that declares ``minimum``/``required``/``enum`` on a real-spend
-# parameter now has those bounds enforced server-side, exactly like a
-# built-in, instead of relying on the (unverifiable) assumption that every
-# provider validates its own inputs. A plugin whose schema is permissive
-# (no constraints, ``additionalProperties`` open) is unaffected — the
-# validator simply finds nothing to reject. A malformed plugin schema is
-# skipped per-tool, same as a malformed built-in schema.
-#
-# Compiled on first use per tool, not for the whole catalog at import (#807).
-# ``Draft202012Validator(schema)`` is free (microseconds); the cost is
-# ``check_schema``, which validates the schema against the Draft 2020-12
-# metaschema and takes ~25 ms per tool on a warm machine. Paying that for every
-# tool in the catalog — hundreds, most of which a session never calls — was the
-# largest single item in the server's startup cost, and the MCP client's connect
-# budget (30 s in Claude Code, not negotiable from in here) is what it was spent
-# against. What the guard does is unchanged: the first call to a tool compiles
-# and metaschema-checks that tool's schema, and :func:`_validate_tool_input`
-# enforces it on that same call, so no call is ever served unvalidated. The only
-# visible difference is *when* the warning for a malformed schema is logged —
-# first use of that tool instead of server startup. Built-in schemas are
-# metaschema-checked in CI instead (tests/test_mcp_strict_input_schemas.py), so
-# an authoring mistake still fails before it ships.
-class _LazyToolValidators(Mapping[str, Draft202012Validator]):
-    """Per-tool JSON Schema validators, compiled on first lookup.
-
-    A read-only mapping, so ``name in validators`` / ``validators[name]`` /
-    ``validators.get(name)`` read exactly as the eager ``dict`` did; each of
-    those compiles the one tool asked for. A tool with no dict ``inputSchema``,
-    or one whose schema fails ``check_schema``, is absent from the mapping —
-    again as before.
-    """
-
-    def __init__(self, tools: Sequence[Tool]) -> None:
-        self._schemas: dict[str, dict[str, Any]] = {
-            tool.name: schema
-            for tool in tools
-            if isinstance(schema := getattr(tool, "inputSchema", None), dict)
-        }
-        self._compiled: dict[str, Draft202012Validator | None] = {}
-
-    def _compile(self, name: str) -> Draft202012Validator | None:
-        """Return the validator for ``name``, or ``None`` if it has none."""
-        if name in self._compiled:
-            return self._compiled[name]
-        schema = self._schemas.get(name)
-        validator: Draft202012Validator | None = None
-        if schema is not None:
-            try:
-                Draft202012Validator.check_schema(schema)
-            except jsonschema.exceptions.SchemaError as exc:
-                # A malformed built-in schema must not take the whole server
-                # offline — skip validation for that one tool and log it.
-                logger.warning(
-                    "tool %s: inputSchema is not a valid JSON Schema (%s); "
-                    "input validation skipped for it",
-                    name,
-                    exc,
-                )
-            else:
-                validator = Draft202012Validator(schema)
-        self._compiled[name] = validator
-        return validator
-
-    def __getitem__(self, name: str) -> Draft202012Validator:
-        validator = self._compile(name)
-        if validator is None:
-            raise KeyError(name)
-        return validator
-
-    def __iter__(self) -> Iterator[str]:
-        # Materialises the whole catalog — only reached by code that iterates
-        # or takes ``len()``, which the dispatch path never does.
-        return iter([n for n in self._schemas if self._compile(n) is not None])
-
-    def __len__(self) -> int:
-        return sum(1 for _ in self)
-
-
-_TOOL_VALIDATORS: Mapping[str, Draft202012Validator] = _LazyToolValidators(_ALL_TOOLS)
+# Plugin-owned schemas are compiled HERE, at server start, on purpose. They are
+# a handful, so the cost is noise against the connect budget, and a plugin
+# author has no CI run of ours in which to discover a bad schema — mureo's own
+# are covered by tests/test_mcp_strict_input_schemas.py instead.
+_TOOL_VALIDATORS = LazyToolValidators(_ALL_TOOLS, plugin_names=_PLUGIN_NAMES)
+_TOOL_VALIDATORS.compile_eagerly(_PLUGIN_NAMES)
 
 
 def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
     """Validate ``arguments`` against the tool's declared ``inputSchema``.
 
-    Raises ``ValueError`` (the dispatcher's standard caller-error channel)
-    on the first violation, before the tool handler runs — so an invalid
-    budget/bid never reaches a real-spend API call. Applies to both built-in
-    and plugin tools. No-op for a tool without a registered validator (no
-    schema, or a schema that fails ``check_schema`` when it is compiled on
-    this tool's first call).
+    Thin module-level binding over
+    :func:`mureo.mcp._tool_validation.validate_tool_input`, kept so the
+    dispatcher and the tests that exercise the real-spend boundary keep reading
+    the validators this module instance built.
     """
-    validator = _TOOL_VALIDATORS.get(name)
-    if validator is None:
-        return
-    errors = sorted(validator.iter_errors(arguments), key=lambda e: list(e.path))
-    if not errors:
-        return
-    first = errors[0]
-    location = "/".join(str(p) for p in first.path) or "(root)"
-    raise ValueError(f"Invalid arguments for {name}: at '{location}': {first.message}")
+    validate_tool_input(_TOOL_VALIDATORS, name, arguments)
 
 
 # Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names

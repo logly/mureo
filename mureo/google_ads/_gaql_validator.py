@@ -103,7 +103,7 @@ SUPPORTED_PERIOD_CONSTANTS: frozenset[str] = VALID_DATE_RANGE_CONSTANTS | frozen
 #     what the parser would not is exactly the drift this module exists to
 #     prevent. Note this makes the pattern Python-flavoured: an ECMA-262
 #     validator reads ``\A`` as a literal ``A``. Enforcement is server-side only
-#     (``mureo.mcp.server._LazyToolValidators``), so that costs nothing today.
+#     (``mureo.mcp._tool_validation``), so that costs nothing today.
 PERIOD_BETWEEN_PATTERN = (
     r"\ABETWEEN '([0-9]{4}-[0-9]{2}-[0-9]{2})' AND '([0-9]{4}-[0-9]{2}-[0-9]{2})'\Z"
 )
