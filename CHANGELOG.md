@@ -2,6 +2,62 @@
 
 ### Fixed
 
+- **A brace span the shell leaves literal no longer hides the group around
+  it** (#806). Bash expands braces over the raw command text, before every
+  other expansion, so an alternative carrying a `{...}` with no comma and no
+  `..` is just an alternative. The guard resolved nesting by expanding the
+  innermost group first and waiting for the one around it to become innermost
+  — and an inert span never goes away, because nothing expands it, so the span
+  around it was never read as a group. It now writes an inert span's braces as
+  placeholders of their own, which leaves the enclosing span readable, and puts
+  them back before any rule runs, so each candidate is still the string the
+  shell would produce. A span with a comma or a `..` is left to the expansion
+  step and one holding a separator is left alone, so `find . -exec rm {} ;`,
+  `awk '{print $1}'`, `jq '{a: {b: 1}}'` and real brace expansion are
+  unaffected. The mapping is bounded like the rest of the brace step, and a
+  text still changing when the bound is reached is refused rather than read
+  half-mapped.
+- **The credential guard reads a quoted metacharacter twice, once for each
+  shell that sees it** (#806). Quoting keeps *this* shell off a metacharacter,
+  which is why the guard collapses it, and that is the right answer to every
+  question about what this shell will expand. It is the wrong answer to what
+  the next program along will do, and a quoted string is exactly how a command
+  hands text to one that starts a shell of its own. There is now a second set
+  of readings that leaves quoted metacharacters live, and the two rules that
+  read something written out — the directory name and the protected credential
+  filenames — see both. The second set does not judge patterns and raises no
+  refusal of its own, so `sed 's/.*//'`, `find . -name '.*'`, `tar -czf a.tgz
+  '*.py'` and `jq '{a: 1, b: $x}'` are untouched.
+- **An expansion's result is read as text of unknown extent** (#806). The
+  shell splices what an expansion produces into the middle of a word, so the
+  characters after the closer belong to the same path component and the
+  result's own length is not in the command text. The reading holding an
+  expansion's body now ends in a wildcard, which puts "the body wrote part of a
+  name and the command wrote the rest" to the rule that already asks whether a
+  pattern matches the protected directory; before, each reading dropped that
+  question for a different reason. The cost is recorded in the module docstring
+  and pinned by tests: an expansion whose body *ends* on a prefix of the
+  directory name is refused, a bare `.` being one such prefix.
+- **A here-document body is read as the text it is, not as a command line**
+  (#806). Bash reads no operator in a body, so `(` `)` `;` `|` `&` `<` `>`
+  there are ordinary characters in whatever language the body is written in.
+  The guard read them as word boundaries, which made an everyday short script —
+  a dict holding a call, an SQL statement, a javascript object — into brace
+  contents it could not account for, and refused it. Whitespace stays a
+  separator, because a body is still a run of lines and two braces on different
+  lines of one are not a group, and brace groups and expansions in a body are
+  still read in full: a body is what a program consumes, and several of the
+  programs anyone sends one to hand their own text back to a shell.
+- **A bracket or an expansion whose extent could not be decided says so,
+  instead of borrowing the brace budget's reason** (#806). No budget is spent
+  deciding an extent and no brace expansion is attempted, so telling the agent
+  to use fewer brace groups sent it to count groups when what the command needs
+  is a closing delimiter. The reason names the bracket as well as the
+  expansion, because the guard pairs up plain `(` and `{` too and an unbalanced
+  one of those is sometimes a command a shell runs happily. Which commands are
+  refused does not change; the sentence they get does. This completes the same correction already made for the budget itself,
+  for contents that did not resolve, and for a refusal from inside a
+  here-document.
 - **The credential guard decides a brace group's contents by quoting, not by
   which characters are in them** (#806). A brace group is part of one word, so
   bash does not expand one across a separator it is allowed to act on — and a

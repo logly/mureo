@@ -74,6 +74,7 @@ def _bash_guard_command() -> str:
 # agent actually reads, so it is what a test about reasons has to assert on.
 _REFUSAL_MARKERS = (
     ("oversize", "over 65536 bytes"),
+    ("span", "not closed"),
     ("budget", "brace expansion"),
     ("unresolved", "could not resolve"),
     ("heredoc", "here-document operator"),
@@ -961,10 +962,6 @@ class TestGuardThroughARealShell:
             # dotglob set — here, or in an earlier call on the persistent
             # shell, or in the user's rc file — `*` reaches dotfiles.
             "shopt -s dotglob; cat ~/*/credentials.json",
-            # The leading dot is produced at runtime, so the text never
-            # contains a dot-anchored component to test.
-            "cat ~/$(printf '.')mureo/credentials.json",
-            "cat ~/$(printf '.')mure?/credentials.json",
             # The name is assembled by a previous command.
             "cat ~/$P/credentials.json",
             # Another notation has to be decoded first.
@@ -981,6 +978,12 @@ class TestGuardThroughARealShell:
         surface is a list someone has to edit, rather than something a
         reviewer discovers: closing one means deleting its row and saying
         so in the module docstring.
+
+        The list is shorter than it was: reading an expansion's result as text
+        of unknown extent, rather than as text that stops where the body's own
+        text does, decides some of the shapes whose name is produced at
+        runtime. It decides them by what is written in the body, so the class
+        is not closed — only the spellings that write enough of the name down.
 
         What they have in common is that the text handed to the guard does
         not contain the thing that reaches the filesystem — it is produced
@@ -1189,12 +1192,25 @@ class TestOneReadingOfTheWholeCommandText:
     def test_refuses_an_expansion_whose_extent_is_undecided(
         self, fake_home: Path, command: str
     ) -> None:
+        """And says *that*, not that a brace budget ran out.
+
+        No budget is spent deciding an expansion's extent and no brace
+        expansion is attempted, so borrowing the budget's reason sent the agent
+        to count brace groups when what the command needs is a closing
+        delimiter.  The two grounds are separate facts about separate steps and
+        each says its own.
+
+        The same ground covers a plain bracket the fold could not pair up,
+        which is why the reason names a bracket as well as an expansion: some
+        of those are commands a shell runs happily, and a reason that said
+        "expansion" would send the reader looking for one that is not there.
+        """
         proc = run_guard_in_shell(
             _bash_guard_command(), {"command": command}, fake_home
         )
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
-        assert _refusal_category(proc) == "budget", command
+        assert _refusal_category(proc) == "span", command
 
 
 @needs_shell
@@ -1308,8 +1324,8 @@ class TestAHereDocumentBodyIsNotQuotedText:
             # Over-blocks, recorded rather than hidden. Not resolving quoting
             # leaves live whatever a quote used to neutralise: an unmatched
             # bracket in a body is structure the span fold cannot pair up...
-            ("python3 - <<'eof'\nprint(\"{\")\neof", "budget"),
-            ("python3 - <<'eof'\nprint(\"(\")\neof", "budget"),
+            ("python3 - <<'eof'\nprint(\"{\")\neof", "span"),
+            ("python3 - <<'eof'\nprint(\"(\")\neof", "span"),
             # ...and a quoted pattern after a terminator is read as a
             # pattern, although bash hands all three of these to the program
             # unexpanded. Each of them is allowed on its own; what denies
@@ -1334,6 +1350,72 @@ class TestAHereDocumentBodyIsNotQuotedText:
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
         assert _refusal_category(proc) == category, command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "python3 - <<'eof'\nd = {\"n\": len([1, 2])}\neof",
+            'python3 - <<"eof"\nd = {"n": len([1, 2])}\neof',
+            'python3 - <<eof\nd = {"n": len([1, 2])}\neof',
+            "python3 - <<'eof'\nprint({1, 2})\neof",
+            "python3 - <<'eof'\nd = {'a': f(1, 2), 'b': g(3)}\neof",
+            "python3 - <<'eof'\nxs = [{'a': 1, 'b': 2}]\neof",
+            "node <<'eof'\nconst o = {a: f(1, 2)};\neof",
+            "psql <<'eof'\nselect a, b from t where c in (1, 2);\neof",
+        ],
+    )
+    def test_an_operator_in_a_body_is_not_a_separator(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """Bash reads no operator in a body, so neither does this.
+
+        A body is a run of text in whatever language the program reading it
+        speaks, and in none of them is ``(`` or ``;`` a word boundary.  Reading
+        them as boundaries the way a command line's are read made a brace span
+        holding a call or a statement into contents the guard could not account
+        for, and refused the commonest thing anyone sends a here-document: a
+        short script.  A short script is not a brace group and nothing about
+        this guard's subject is decided by it.
+
+        Whitespace stays a separator inside the latch, because a body is still a
+        run of lines and two braces on different lines of one are not a group.
+        """
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # An expansion in a body is read in full, delimiter quoted or not:
+            # it is where a body's text reaches a shell, either this one's or
+            # one the program reading the body starts for itself.
+            "cat <<eof\n$(cat ~/.mureo/credentials.json)\neof",
+            "cat <<eof\n`cat ~/.mureo/credentials.json`\neof",
+            "cat <<eof\n$(cat ~/.mure{o,x}/credentials.json)\neof",
+            "perl <<'eof'\nprint `cat ~/.mure{o,x}/credentials.json`;\neof",
+            "ruby <<'eof'\nputs `cat ~/.mure{o,x}/credentials.json`\neof",
+            "python3 - <<'eof'\nimport os\nos.system('cat ~/.mure{o,x}/x')\neof",
+        ],
+    )
+    def test_a_body_is_still_read_for_the_shell_text_in_it(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """Not reading operators is not the same as not reading the body.
+
+        Brace groups in a body are still read, and so is every expansion in it.
+        A body is what a program consumes, and several of the programs anyone
+        sends one to hand their own text back to a shell; the guard cannot tell
+        which line of a script does that, so it reads the text and not the
+        intention.
+        """
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
 
     def test_a_refusal_inside_the_latch_does_not_claim_reachability(
         self, fake_home: Path
@@ -1493,18 +1575,19 @@ class TestABraceGroupIsPartOfOneWord:
         ]
         assert "~/.mureo" not in reason, "the command never named the directory"
 
-    def test_the_separator_placeholders_cannot_be_written_by_the_command(
+    def test_the_placeholders_cannot_be_written_by_the_command(
         self, fake_home: Path
     ) -> None:
         """A placeholder in the input must not buy a boundary.
 
-        The two placeholders are the only characters in the normalized text
-        that mean something other than themselves, so a command that writes
-        one has to be unable to claim it: both are replaced on the way in.
-        Written inside a group, the character therefore does not make the
-        group vanish, and written anywhere else it is an ordinary boundary.
+        The placeholders are the only characters in the normalized text that
+        mean something other than themselves — two for the kinds of separator,
+        two for the braces of a span the shell leaves literal — so a command
+        that writes one has to be unable to claim it: each is replaced on the
+        way in.  Written inside a group, the character therefore does not make
+        the group vanish, and written anywhere else it is an ordinary boundary.
         """
-        for placeholder in ("\x01", "\x02"):
+        for placeholder in ("\x01", "\x02", "\x03", "\x04"):
             inside = run_guard_in_shell(
                 _bash_guard_command(),
                 {"command": f"cat ~/.mure{{o,{placeholder}x}}/credentials.json"},
@@ -1519,6 +1602,272 @@ class TestABraceGroupIsPartOfOneWord:
                 fake_home,
             )
             assert deny_decision(elsewhere) is None, placeholder
+
+
+def _inert_nest(depth: int) -> str:
+    """A ``{...}`` with no comma and no ``..``, nested ``depth`` levels deep."""
+    body = ""
+    for i in range(depth):
+        body = "{" + chr(97 + i % 26) + body + "}"
+    return body
+
+
+@needs_shell
+@pytest.mark.unit
+class TestASpanTheShellLeavesLiteralIsNotStructure:
+    """A ``{...}`` with no comma and no ``..`` is text, inside a group or out.
+
+    Bash expands braces over the raw command before it does anything else, so
+    which alternatives a group has is settled without regard to a ``{...}``
+    sitting inside one: the inner span stays as written and the outer one is
+    expanded.  A reading that resolved nesting by waiting for the innermost
+    span to go away waited forever on an inert one, because there is nothing
+    about it to resolve — and while it waited, the group around it was not a
+    group to anybody but the shell.
+
+    So the inert span's braces are taken out of the way as the literal
+    characters they are, and put back before any rule runs.  Both halves are
+    load-bearing: without the first the enclosing group is invisible, and
+    without the second a candidate string is not the string the shell produces.
+    """
+
+    @pytest.mark.parametrize(
+        "alternative",
+        [
+            "o,x{y}",
+            "o,{y}x",
+            "o,{y}x{z}",
+            "o,x{}",
+            "o,x{y{z}}",
+            "o,x{y{z{w}}}",
+            'o,x{"y"}',
+            "o,p,x{y}",
+            "o,x{y}z{w}",
+            "o,x{y}{z}",
+        ],
+    )
+    def test_an_inert_span_inside_a_group_leaves_the_group_a_group(
+        self, fake_home: Path, alternative: str
+    ) -> None:
+        """The group's first alternative is the directory's own name.
+
+        Whatever the second alternative holds, bash expands the first straight
+        onto the protected directory, so the group has to be read as a group.
+        """
+        command = "cat ~/.mure{" + alternative + "}/credentials.json"
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "directory", command
+
+    @pytest.mark.parametrize("depth", [1, 2, 3, 8, 20, 64])
+    def test_nesting_an_inert_span_does_not_buy_depth(
+        self, fake_home: Path, depth: int
+    ) -> None:
+        """One level or sixty-four, the group around it is still the group.
+
+        Taking the braces out of the way needs one pass per level, so depth is
+        the thing to measure rather than the one shape that showed the
+        question. Past the passes the mapping is given, the text is read
+        half-mapped and is therefore refused with the rest of the structure the
+        budget did not finish — the deny side, which is where running out has
+        to land.
+        """
+        command = "cat ~/.mure{o,x" + _inert_nest(depth) + "}/credentials.json"
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # An inert span is put back as written, so a command that passes
+            # one to a program reads exactly as it was typed.
+            "find . -name '*.pyc' -exec rm {} ;",
+            "find . -type f -exec grep -l x {} ;",
+            "awk '{print $1}' f",
+            "echo {}",
+            "echo a{b}c",
+            "echo {a}{b}",
+            "git log --format={}",
+            "echo {x{y}}",
+            "jq '{a: {b: 1}}' f.json",
+            "kubectl get pods -o jsonpath={.items[0].metadata.name}",
+            "echo {a}, {b}",
+            "mv x {y}",
+            # Real brace expansion is unaffected: these have a comma or a
+            # `..`, so they are the shell's to expand and nothing is mapped.
+            "mkdir -p build/{lib,bin,share}",
+            "mv file{1..10}.txt dest/",
+            "cp a{,.bak}",
+            "echo {1..100}",
+            "echo {a,b}{c,d}",
+            "echo x{1,2} y{3,4} z{5,6}",
+        ],
+    )
+    def test_an_inert_span_costs_nothing(self, fake_home: Path, command: str) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
+
+
+@needs_shell
+@pytest.mark.unit
+class TestQuotingKeepsThisShellOffAMetacharacterNotEveryShell:
+    """Two readings, because a quoted metacharacter answers two questions.
+
+    The first reading collapses it, which is what quoting means to the shell in
+    front of it, and every question about what *this* shell will expand has to
+    be answered there.  But a quoted string is also how a command hands text to
+    a program that starts a shell of its own, and that shell sees the
+    metacharacter as written.  So there is a second reading that leaves it
+    live, and the rules that read something written out — the directory name
+    and the protected filenames — see both.
+
+    The second reading does not answer the rule that asks whether a *pattern*
+    matches.  A pattern the shell will not act on is text, which is the whole
+    reason the first reading collapses it, and judging it as a pattern would
+    refuse every quoted glob and regex anyone types.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "sh -c 'cat ~/.mure{o,x}/credentials.json'",
+            "ssh host 'cat ~/.mure{o,x}/credentials.json'",
+            "echo 'cat ~/.mure{o,x}/credentials.json' | sh",
+            "python3 -c 'import os; os.system(\"cat ~/.mure{o,x}/credentials.json\")'",
+            "python3 -c \"import os; os.system('cat ~/.mure{o,x}/credentials.json')\"",
+            "sh -c 'cat ~/{.,z}mureo/credentials.json'",
+        ],
+    )
+    def test_a_quoted_group_is_still_read_as_a_group(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "directory", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # A quoted pattern is text to the shell, and the second reading
+            # must not turn it into a pattern again. Each of these would be
+            # refused if it did.
+            'cat "$HOME/.mure?/credentials.json"',
+            "sed 's/.*//' f",
+            "find . -name '.*'",
+            "ls '.*'",
+            "grep '.*' f",
+            "tar -czf a.tgz '*.py'",
+            "rsync -a 'src/*' dst/",
+            "jq '{a: 1, b: $x}' f",
+            "awk '{print $1, $2}' f",
+            "python3 -c 'print({1, 2})'",
+            "kubectl get pods -o jsonpath='{.items[*].metadata.name}'",
+            "echo '{a,b}'",
+        ],
+    )
+    def test_the_second_reading_does_not_judge_a_pattern(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
+
+
+@needs_shell
+@pytest.mark.unit
+class TestAnExpansionsResultHasUnknownExtent:
+    """A body reading ends where the expansion does; its result does not.
+
+    The shell splices an expansion's result into the middle of a word, so what
+    follows the closer belongs to the same path component and the result's own
+    length is not in the text.  Read as text that stops where the body's text
+    stops, a body ending on part of the directory's name is a name that merely
+    resembles it; and the command reading, where the whole expansion is one
+    unknown token, has no dot in it to judge.  Each reading dropped the
+    question for its own reason.  So a body reading ends in a wildcard, which
+    puts the question to the rule that already asks it.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cat $(printf ~/.mur)eo/credentials.json",
+            "cat $(echo ~/.mure)o/credentials.json",
+            "cat ~/$(echo .mur)eo/credentials.json",
+            "cat `printf ~/.mur`eo/credentials.json",
+            "cat ${q:-~/.mur}eo/credentials.json",
+        ],
+    )
+    def test_a_name_split_across_the_closer_is_read(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        ["echo $(ls .)", "echo $(ls -d .)", "echo `ls .`", "echo $(dirname .)"],
+    )
+    def test_records_what_the_unknown_extent_over_blocks(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """A body ending on a prefix of the directory name, recorded as a cost.
+
+        A bare ``.`` is such a prefix, so an expansion whose body ends on one is
+        refused although what it produces is a listing rather than a name.  What
+        the expansion produces is not in the text, and a credential guard that
+        cannot tell has to answer on the deny side; the bound on the cost is
+        that the body has to *end* there.
+        """
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "echo $(date)",
+            "echo ${HOME}",
+            "echo $((1 + 2))",
+            "diff <(sort a) <(sort b)",
+            "echo $(ls -a)",
+            "tar -cf a.tar $(cat list.txt)",
+            "echo $(git rev-parse HEAD)",
+            "echo $(basename a.txt)",
+            "echo x | tee >(cat) >/dev/null",
+            "for f in $(ls *.py); do echo $f; done",
+            "echo ${PATH%%:*}",
+            "cd $(dirname a/b.txt)",
+            "echo $(pwd)/x",
+        ],
+    )
+    def test_everyday_expansions_are_unaffected(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
 
 
 # ---------------------------------------------------------------------------
