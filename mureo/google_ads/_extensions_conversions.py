@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from google.protobuf.field_mask_pb2 import FieldMask as PbFieldMask
 
-from mureo.google_ads.client import _wrap_mutate_error
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads.mappers import map_conversion_action, map_tag_snippet
 
 logger = logging.getLogger(__name__)

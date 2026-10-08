@@ -19,7 +19,7 @@ from mureo.google_ads._enum_names import (
     MINUTE_OF_HOUR_MAP,
     map_enum_name,
 )
-from mureo.google_ads.client import _wrap_mutate_error
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads.mappers import (
     AD_GROUP_CRITERION_STATUS_MAP,
     AGE_RANGE_TYPE_MAP,

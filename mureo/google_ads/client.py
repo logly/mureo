@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import logging
 import math
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
@@ -19,11 +17,16 @@ if TYPE_CHECKING:
     from mureo.throttle import Throttler
 
 from mureo.core import clock
+from mureo.google_ads._ads import _AdsMixin
+from mureo.google_ads._ads_display import _DisplayAdsMixin
 from mureo.google_ads._analysis import _AnalysisMixin
 from mureo.google_ads._api_version import GOOGLE_ADS_API_VERSION
+from mureo.google_ads._asset_groups import _AssetGroupsMixin
+from mureo.google_ads._asset_groups_images import _AssetGroupImagesMixin
 from mureo.google_ads._creative import _CreativeMixin
 from mureo.google_ads._diagnostics import _DiagnosticsMixin
 from mureo.google_ads._enum_names import AD_NETWORK_TYPE_MAP, map_enum_name
+from mureo.google_ads._extensions import _ExtensionsMixin
 from mureo.google_ads._gaql_validator import (
     escape_string_literal as _gaql_escape_string_literal,
 )
@@ -45,8 +48,11 @@ from mureo.google_ads._gaql_validator import (
 from mureo.google_ads._gaql_validator import (
     validate_id as _gaql_validate_id,
 )
+from mureo.google_ads._keywords import _KeywordsMixin
 from mureo.google_ads._media import _MediaMixin
 from mureo.google_ads._monitoring import _MonitoringMixin
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
+from mureo.google_ads._placements import _PlacementsMixin
 from mureo.google_ads.mappers import (
     BUDGET_DELIVERY_METHOD_MAP,
     BUDGET_PERIOD_MAP,
@@ -103,7 +109,6 @@ _VALID_RECOMMENDATION_TYPES = frozenset(
         "CALL_ASSET",
     }
 )
-_F = TypeVar("_F", bound=Callable[..., Any])
 
 
 def _resolve_amount_micros(
@@ -182,58 +187,6 @@ def _resolve_total_amount_micros(params: dict[str, Any]) -> int | None:
 # deliberately does not accept it.
 _VALID_BUDGET_PERIODS = frozenset({"DAILY", "CUSTOM_PERIOD"})
 
-
-def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
-    """Decorator that logs GoogleAdsException details and re-raises a
-    RuntimeError whose message includes the specific API error detail.
-
-    Including the API detail (e.g. "bid below minimum", "invalid asset
-    format", etc.) lets agents see the actual reason their request was
-    rejected rather than a generic "An error occurred..." message.
-    """
-
-    def decorator(fn: _F) -> _F:
-        @functools.wraps(fn)
-        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            try:
-                return await fn(self, *args, **kwargs)
-            except GoogleAdsException as exc:
-                detail = self._extract_error_detail(exc)
-                logger.error(
-                    "%s failed: %s (campaign=%s)",
-                    label,
-                    detail,
-                    args[0] if args else kwargs,
-                )
-                # Return a specific hint for RESOURCE_NOT_FOUND, but
-                # still append the API detail so the resource name or
-                # other context surfaces in the error message.
-                if self._has_error_code(exc, "mutate_error", "RESOURCE_NOT_FOUND"):
-                    raise RuntimeError(
-                        f"{label} failed: The specified resource was not found. "
-                        "Please verify the ID is correct. "
-                        "Retrieve the latest ID using a list tool "
-                        f"(e.g., ads.list) and try again. Details: {detail}"
-                    ) from exc
-                raise RuntimeError(
-                    f"An error occurred while processing {label}: {detail}"
-                ) from exc
-
-        return wrapper  # type: ignore[return-value]
-
-    return decorator
-
-
-# Import after _wrap_mutate_error definition (avoid circular import)
-from mureo.google_ads._ads import _AdsMixin  # noqa: E402
-from mureo.google_ads._ads_display import _DisplayAdsMixin  # noqa: E402
-from mureo.google_ads._asset_groups import _AssetGroupsMixin  # noqa: E402
-from mureo.google_ads._asset_groups_images import (  # noqa: E402
-    _AssetGroupImagesMixin,
-)
-from mureo.google_ads._extensions import _ExtensionsMixin  # noqa: E402
-from mureo.google_ads._keywords import _KeywordsMixin  # noqa: E402
-from mureo.google_ads._placements import _PlacementsMixin  # noqa: E402
 
 # Threshold ratio for warning when search partner CPA exceeds Google Search CPA
 PARTNER_CPA_WARNING_RATIO: float = 2.0

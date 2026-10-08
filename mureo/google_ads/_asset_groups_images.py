@@ -60,7 +60,7 @@ from mureo.google_ads._media import (
     _GOOGLE_ALLOWED_IMAGE_EXTENSIONS,
     _GOOGLE_MAX_IMAGE_SIZE_BYTES,
 )
-from mureo.google_ads.client import _wrap_mutate_error
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads.mappers import ASSET_TYPE_MAP
 
 if TYPE_CHECKING:
