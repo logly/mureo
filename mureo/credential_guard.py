@@ -29,6 +29,12 @@ Two guards are installed:
   the directory name, rules 3 and 4 the two things a search that never
   spells the directory does write down.
 
+  "Once" means one pass producing one *set* of readings — the command with
+  its expansions taken out of its structure, the body of each expansion,
+  and then every string brace expansion makes of those — and every rule
+  runs against every reading.  What is forbidden is a rule that owns a
+  string of its own; see below.
+
   The single reading is the load-bearing part, and it was learned the
   expensive way.  Earlier versions had one rule scanning the raw command
   and another scanning the folded text; every obfuscation one of them
@@ -220,10 +226,32 @@ Two guards are installed:
     animate the metacharacters of a later one — ``echo "100%" ; sed
     's/.*//'`` is still allowed.
 
-  Brace groups are then *expanded*, not approximated: the normalized text
-  becomes the list of strings the shell would produce, and every rule runs
-  against all of them.  ``~/.mure{o,x}`` and ``~/{.,z}mureo`` are caught
-  because ``.mureo`` is literally among the results.
+  An *expansion* is one indivisible token, and the fold treats it as one.
+  ``$( ... )``, ``${ ... }``, ``$(( ... ))``, a backtick pair and
+  ``<( ... )`` are single words to bash: the parentheses, braces, spaces and
+  ``;`` ``|`` ``&`` inside one belong to the expansion, not to the command,
+  and bash splits neither a word nor a brace group on them.  So the fold
+  takes each expansion out of the command's structure — the span reads as
+  ``*/`` followed by the boundary placeholder — and keeps its body as a
+  reading of its own.  A nested expansion is simply another reading, so
+  nothing has to recurse.  Both halves of that are load-bearing.  Without
+  the first, the ``}`` of ``~/.mur{e,${q}}o/<file>`` pairs with the group's
+  ``{`` and the group disappears, although bash keeps the word whole and
+  expands its first alternative straight into the protected directory.
+  Without the second, ``cat $(echo ~/.mureo/<file>)`` loses the only place
+  the name is written.  Replacing a span with a placeholder and dropping
+  its text would trade one for the other.
+
+  An expansion whose extent cannot be decided — one that never closes, or
+  one whose closer does not match its opener — is refused rather than
+  guessed at, for the same reason the brace budget refuses: whatever the
+  guard concluded about the structure around it would be a guess.  Bash
+  cannot run such a command either.
+
+  Brace groups are then *expanded*, not approximated: each reading becomes
+  the list of strings the shell would produce, and every rule runs against
+  all of them.  ``~/.mure{o,x}`` and ``~/{.,z}mureo`` are caught because
+  ``.mureo`` is literally among the results.
 
   An earlier version folded each group to one placeholder and guessed
   which — ``.*`` if the group held a dot anywhere, ``*`` otherwise — and
@@ -285,6 +313,14 @@ Two guards are installed:
   - brace structure the expansion budget could not resolve: more than
     eight groups in one command, or an expansion whose normalized text
     exceeds 200 KB;
+  - structure the span fold could not pair up: ``cat ~/x$(``, an unclosed
+    backtick, and an unquoted ``{`` with no ``}`` after it (``echo a{b``,
+    which bash does print).  The last is the price of refusing a brace group
+    left open around an expansion, where the group's closing brace is the
+    one the expansion took: the two are the same shape, and the guard cannot
+    tell them apart without deciding the extent it just failed to decide.  A
+    *closing* brace with nothing to close is not refused — ``echo a}b`` is
+    allowed — because a stray closer hides nothing;
   - a command longer than 64 KB, which is refused unread (see below);
   - sequence syntax this does not recognise — a three-part ``{a..z..2}``,
     an endpoint that is neither an integer nor a single letter — which is
@@ -569,11 +605,16 @@ _QUOTE_STEP = (
 #
 # `%` becomes an expansion in *every* state, quoted or not, because it is
 # the next program along that expands it, not this shell.
-_NORMALIZE = (
-    "''.join('' if (k==0 and x in q1+q2+bs) or (k==1 and x==q1)"
+#
+# It is written per character rather than as one join because the span step
+# below has to decide, for each character, whether it belongs to the command
+# or to the body of an expansion — and the two decisions are made in the same
+# pass, so there is still exactly one place that says what a character reads
+# as.
+_NORMALIZE_CHAR = (
+    "nz=lambda x,k,m: '' if (k==0 and x in q1+q2+bs) or (k==1 and x==q1)"
     " or (k==2 and x in q2+bs) or (k>2 and x==nl)"
-    " else ('*/' if x in dl+tk+pc else (ho if k and not m and x in mt else x))"
-    " for x,(k,m) in zip(cc,st))"
+    " else ('*/' if x in dl+tk+pc else (ho if k and not m and x in mt else x)); "
 )
 
 # An expansion swallows the identifier run that names it: `$D` and `%s` are
@@ -584,6 +625,86 @@ _NORMALIZE = (
 # the raw text to find it.  This cannot hide a name: it removes only
 # identifier characters, and every form the guard looks for contains a dot.
 _COLLAPSE = "re.sub('[*]/[a-z0-9_]*', '*/', t)"
+
+# An expansion is one indivisible token, and the characters inside it are not
+# the command's.  The separators, parentheses and *braces* within `$(...)`,
+# `${...}`, `$((...))`, a backtick pair or `<(...)` are the expansion's own:
+# bash neither splits a word nor opens a brace group on them.  So
+# `~/.mur{e,${q}}o/<file>` is one word whose group has two alternatives, and
+# the first of them is the real protected directory — while a reading that
+# pairs the group's `{` with the *parameter expansion's* `}` sees no group at
+# all and lets the command through.
+#
+# The step below is the fold that finds those spans.  It runs on the quoting
+# states, so only a character the shell would act on can open or close one:
+# inside single quotes, and after a backslash, a `(` is an ordinary
+# character.  A span opens on `(` preceded by one of `$ < > @ ? * + !`, on `{`
+# preceded by `$`, and on a backtick (which toggles).  Inside a span, `(` and
+# `{` nest and `)` and `}` close, each against the opener it belongs to — a
+# `}` cannot close a `$(`, which is how a command that leaves an expansion
+# open is told apart from one that does not.
+#
+# The state is a stack as a linked list — `(entry, parent)` — so pushing and
+# popping are O(1) and a deeply nested command cannot turn the fold
+# quadratic.  An entry is `(closer, span)`: `P`/`B`/backtick mark an entry
+# that *is* an expansion, `)`/`}` one that is merely nested inside the
+# command, and `span` numbers the reading the characters under it belong to.
+# A closer with nothing to close is ignored rather than treated as an error:
+# `case x in a)` and `esac` are ordinary shell.
+#
+# Each step also yields what the character contributes and which reading it
+# contributes to, so grouping the output by reading is all that is left to do.
+# A span's opening sigil already normalizes to `*/` (`$` and the backtick do;
+# `<` and `@` read as themselves, which is what they are), its brackets
+# contribute nothing, and its closer contributes the boundary placeholder so
+# that the identifier collapse stops there — `$(x)credentials.json` must stay
+# as visible as `$(x) credentials.json`.
+_SPAN_STEP = (
+    "lv=lambda k: k==0 or k==2; "
+    "sg=dl+'<>@?*+'+chr(33); "
+    "tp=lambda s: s[0][0] if s else ''; "
+    "cs=lambda s: s[0][1] if s else 0; "
+    "ds=lambda a,z: (lambda x,k,m,px,pk,s,n:"
+    " ((('P',n),s), n+1, cs(s), '')"
+    " if x=='(' and lv(k) and lv(pk) and px in sg"
+    " else ((('B',n),s), n+1, cs(s), '')"
+    " if x=='{' and lv(k) and lv(pk) and px==dl"
+    " else ((s[1], n, cs(s[1]), ho) if tp(s)==tk else (((tk,n),s), n+1, cs(s), '*/'))"
+    " if x==tk and lv(k)"
+    " else (((')',cs(s)),s), n, cs(s), nz(x,k,m)) if x=='(' and k==0"
+    " else ((('}',cs(s)),s), n, cs(s), nz(x,k,m)) if x=='{' and k==0"
+    " else (s[1], n, cs(s[1]), ho if tp(s)=='P' else nz(x,k,m))"
+    " if x==')' and lv(k) and tp(s) in ('P', ')')"
+    " else (s[1], n, cs(s[1]), ho if tp(s)=='B' else nz(x,k,m))"
+    " if x=='}' and lv(k) and tp(s) in ('B', '}')"
+    " else (s, n, cs(s), nz(x,k,m))"
+    ")(z[0], z[1][0], z[1][1], z[2], z[3][0], a[0], a[1]); "
+)
+
+# The readings: one for the command with every expansion replaced by `*/`, and
+# one per expansion holding its body with the expansions *inside it* replaced
+# the same way.  Nesting therefore needs no recursion — an expansion two
+# levels in is simply its own reading — and rules 1 to 4 run against all of
+# them, so taking an expansion out of the command's structure does not take
+# its text out of the guard's sight.  `cat $(echo ~/.mureo/<file>)` is denied
+# because the body is a reading, not because the span was left in place.
+#
+# `ut` is the structure the fold could not finish: a stack that is not empty
+# at the end of the command means an expansion whose extent is undecided —
+# either it never closes or its closer does not match its opener.  Anything
+# the guard would then conclude about the braces around it would be a guess,
+# so it concludes nothing and refuses, the same rule the brace budget
+# follows.  Bash cannot run such a command either, so the refusal costs
+# nothing real.
+_READINGS = (
+    "sp=list(itertools.accumulate(zip(cc, st, chr(32)+cc, [(0,0)]+st), ds,"
+    " initial=((),1,0,''))); "
+    "ut=bool(sp[-1][0]); "
+    "gp=functools.reduce(lambda q,e: (q.setdefault(e[2],[]).append(e[3]), q)[1],"
+    " sp[1:], {}); "
+    "rd=[''.join(v) for v in gp.values()] or ['']; "
+    "rd=[" + _COLLAPSE + " for t in rd]; "
+)
 
 # Brace expansion, done properly: the command is turned into the *list* of
 # strings the shell would produce, and every rule runs against all of them.
@@ -657,12 +778,17 @@ _BRACE_HELPERS = (
 # neither a comma nor a `..`, so bash leaves it literal and so does `fe`.
 # What is left is a command with more than eight brace groups, or one whose
 # expansion exceeds 400 strings, and neither is a thing anyone types.
+#
+# The budget is spent over *all* the readings, the expansion bodies included:
+# a command does not get a fresh 200 KB for every `$(...)` it writes.
+# `ut` joins `un` because both say the same thing — the structure was not
+# resolved — and both therefore answer with the same reason.
 _EXPAND = (
     "rs=functools.reduce(lambda q,_: q if q[1] else"
     " (lambda n: (q[0],True) if sum(map(len,n))>200000"
     " else (n, n==q[0]))"
-    "([y for x in q[0] for y in ex(x)]), range(8), ([t],False)); "
-    "ls=rs[0]; un=[x for x in ls if fe(x)]; "
+    "([y for x in q[0] for y in ex(x)]), range(8), (rd,False)); "
+    "ls=rs[0]; un=[x for x in ls if fe(x)] + ([cc] if ut else []); "
 )
 
 # Source of a python expression yielding the regex for one path component
@@ -755,13 +881,14 @@ _BASH_GUARD_CODE = (
     + "st=list(itertools.accumulate(cc, "
     + _QUOTE_STEP
     + ", initial=(0,0))); "
-    # One reading of the command, built once. Brace expansion turns it into
-    # the list of readings the shell would produce; every rule sees all of
-    # them, so none depends on a guess about any single one.
-    "t=" + _NORMALIZE + "; "
-    "t="
-    + _COLLAPSE
-    + "; "
+    # One pass over the command, producing the readings: the command with
+    # every expansion replaced by a placeholder, and one reading per
+    # expansion body. Brace expansion then turns those into the list of
+    # readings the shell would produce; every rule sees all of them, so none
+    # depends on a guess about any single one.
+    + _NORMALIZE_CHAR
+    + _SPAN_STEP
+    + _READINGS
     + _BRACE_HELPERS
     + _EXPAND
     + "p=[x for s in ls for x in re.findall("

@@ -2,6 +2,21 @@
 
 ### Fixed
 
+- **The credential guard reads a shell expansion as one token, and its body as
+  a reading of its own** (#806). `$(...)`, `${...}`, `$((...))`, a backtick
+  pair and `<(...)` are indivisible to bash: the parentheses, braces and
+  separators inside one belong to the expansion, not to the command, so bash
+  splits neither a word nor a brace group on them. The guard now takes each
+  expansion out of the command's structure and reads its body as a separate
+  reading — a nested expansion simply becomes another one — so the structure
+  *around* an expansion is judged the way bash judges it, while the text
+  *inside* one stays as visible to all four rules as text outside it ever was.
+  An expansion whose extent cannot be decided (one that never closes, or one
+  whose closer does not match its opener) is refused with the same "structure
+  unresolved" reason the brace budget uses; bash cannot run such a command
+  either, so nothing real is refused by it. The expansion budget is spent
+  across all the readings together, so a command gets no fresh allowance per
+  expansion.
 - **The credential guard no longer tells you a command can reach `~/.mureo`
   when it never mentioned it** (#806). When brace expansion in a Bash command
   went past the guard's budget, the refusal borrowed rule 1's reason — "commands

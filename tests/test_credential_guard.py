@@ -839,6 +839,24 @@ class TestGuardThroughARealShell:
             # Braces on separate lines of a multi-line command must not pair
             # up across the newline and swallow what lies between them.
             "echo '{' > a.json\necho '}' >> a.json",
+            # Everyday expansions. Taking an expansion out of the command's
+            # brace structure must not make the ordinary ones refusals: the
+            # braces, parentheses and separators inside one are the
+            # expansion's own, and none of these is unresolved structure.
+            "echo $(date)",
+            "echo ${HOME}",
+            "echo $((1 + 2))",
+            "echo ${PATH%%:*}",
+            "for f in $(ls); do echo $f; done",
+            "diff <(sort a.txt) <(sort b.txt)",
+            "V=$(git rev-parse HEAD); echo ${V:0:8}",
+            # A closing brace with nothing to close is not unresolved
+            # structure: a stray closer hides nothing, so only a stray
+            # *opener* is refused (see the budget test for that row).
+            "echo a}b",
+            "case $x in a) echo a;; esac",
+            "f() { echo a; }; f",
+            "((i=1)); echo $i",
             # A continuation that only wraps a long line.
             "ls -la \\\n  ~/project",
             # mureo's own identifiers, including inside quotes.
@@ -1084,6 +1102,97 @@ class TestOneReadingOfTheWholeCommandText:
         )
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # A parameter expansion inside the group. Its braces are not the
+            # group's braces, and anything that pairs the two off reads the
+            # group as closed where it is not and stops seeing it at all —
+            # while bash keeps the whole word, expands the group and takes
+            # the first alternative straight into the directory. The plainest
+            # spelling is first.
+            "cat ~/.mur{e,${q}}o/credentials.json",
+            "cat ~/.mur{e,${q:-a b}}o/credentials.json",
+            "cat ~/.mur{e,${q:=a b}}o/credentials.json",
+            "cat ~/.mur{e,${q:?a b}}o/credentials.json",
+            "cat ~/.mur{e,${q:0:1}}o/credentials.json",
+            "cat ~/.mur{e,${q/a b/c}}o/credentials.json",
+            "cat ~/.mur{e,${#q}}o/credentials.json",
+            "cat ~/.mur{e,${q[@]}}o/credentials.json",
+            "cat ~/.mur{e,${q^^}}o/credentials.json",
+            # ...and the same group one expansion further in, which only a
+            # reading that recurses into the body can see.
+            "cat $(echo ~/.mur{e,${q}}o/credentials.json)",
+            "cat `echo ~/.mur{e,${q}}o/credentials.json`",
+        ],
+    )
+    def test_denies_a_group_holding_a_parameter_expansion(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Taking the expansion out of the command's structure must not
+            # take its text out of the guard's reading: every one of these
+            # names the directory or a protected file INSIDE the expansion,
+            # and the body is the only place it is written.
+            "cat $(echo ~/.mureo/credentials.json)",
+            "cat $(cat ~/.mureo/credentials.json)",
+            "cat $(echo $(cat ~/.mureo/credentials.json))",
+            "cat `echo ~/.mureo/credentials.json`",
+            'cat "${q:-~/.mureo/credentials.json}"',
+            "cat $(echo ~/.mure{o,x}/credentials.json)",
+            "cat $(echo ~/.mure?/credentials.json)",
+            "cat $(find ~ -name credentials.json)",
+            "cat $((0))$(cat ~/.mureo/credentials.json)",
+        ],
+    )
+    def test_denies_a_reference_inside_an_expansion_body(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # An expansion whose extent cannot be decided: whatever the
+            # guard would conclude about the structure around it would be a
+            # guess, so it concludes nothing and refuses on that ground.
+            # Bash cannot run any of these as written either.
+            "cat ~/.mur{e,$(}o/credentials.json",
+            "cat ~/.mur{e,`echo}o/credentials.json",
+            "cat ~/.mur{e,${q}o/credentials.json",
+            "cat ~/.mure$(",
+            "cat ~/.mure`printf o",
+            # An unquoted `{` with no `}` after it. This one bash really does
+            # run — `echo a{b` prints `a{b` — so it is an over-block, and it
+            # is the price of the row above it: a brace group left open
+            # around an expansion is the same shape, and telling the two
+            # apart means deciding the extent the fold just failed to decide.
+            # Recorded here rather than hidden.
+            "echo a{b",
+        ],
+    )
+    def test_refuses_an_expansion_whose_extent_is_undecided(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "budget", command
 
 
 # ---------------------------------------------------------------------------
