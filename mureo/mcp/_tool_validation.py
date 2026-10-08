@@ -19,14 +19,18 @@ the catalog.** (One machine, CPython 3.10, no plugins installed,
 which is where an earlier estimate of "~25 ms per tool" came from.)
 
 Removing the eager platform imports was worth more than this deferral — about
-1.6 times as much, not the 2 s an earlier version of this comment implied by
-crediting both changes to one of them. Splitting the two on the same clock, by
-importing the pre-#807 server with ``check_schema`` replaced by a no-op (min of
-5, same method, no plugins installed):
+1.4 to 1.6 times as much, not the 2 s an earlier version of this comment
+implied by crediting both changes to one of them. Splitting the two on the same
+clock, by importing the pre-#807 server with ``check_schema`` replaced by a
+no-op (min of 5, same method, no plugins installed; two sittings on the same
+machine, hours apart, because the absolute figures move a few percent with the
+machine's state and a single column would read as more exact than it is):
 
-    pre-#807 import, as shipped              3.07 s
-    pre-#807 import, check_schema no-op      2.26 s   -> check_schema  ~0.81 s
-    this branch (both changes)               0.95 s   -> SDK imports   ~1.31 s
+    pre-#807 import, as shipped              3.07 s   2.97 s
+    pre-#807 import, check_schema no-op      2.26 s   2.11 s  -> check_schema
+                                                                 0.8-0.9 s
+    this branch (both changes)               0.95 s   0.90 s  -> SDK imports
+                                                                 1.2-1.3 s
 
 (``jsonschema`` is imported before the clock starts in all three, so the rows
 differ only in the work being measured.) ``check_schema`` is the one remaining

@@ -56,8 +56,9 @@
 
   The saving splits between the two causes, so neither should be credited with
   it alone: with the metaschema check stubbed out the old import still cost
-  2.26 s against its usual 3.07 s, putting `check_schema` at ≈0.8 s and the
-  imports it stopped doing at ≈1.3 s.
+  2.26 s against its usual 3.07 s, putting `check_schema` at 0.8-0.9 s and the
+  imports it stopped doing at 1.2-1.3 s (two sittings on the same machine; the
+  absolute figures move a few percent with its state, the split less).
 
   The issue reports 17–34 s. This is the same defect, but the figures above are
   not claimed to account for all of it: that installation has more plugins than
