@@ -40,6 +40,15 @@
   OAuth client does *not* cover: on Google, the Cloud project needs an access
   level before it can touch a production ad account, and that is a separate
   application.
+- **A signpost between "App Review not needed" and "Live app required".** Both
+  statements are true and both were on the page, but a reader could take the
+  first as the whole answer: a development-mode app needs no review and can
+  complete the localhost browser OAuth, yet it cannot publish a new ad
+  creative (error subcode 1885183), while a Live app can create creatives but
+  cannot finish the localhost OAuth and therefore wants the system-user token
+  of Option C. Both language versions now close the App Review section with
+  that split as a table, and Option C opens with a pointer back to it. No new
+  claims — only the three facts already on the page, put next to each other.
 - **Fixed: the Google Ads API access-level ladder was documented wrong, and
   the error read as "you cannot touch production until Basic".**
   `docs/authentication.md` and `docs/getting-started.md` (plus

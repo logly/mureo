@@ -255,6 +255,18 @@ References:
 [App Roles](https://developers.facebook.com/docs/development/build-and-test/app-roles),
 [Permissions Reference](https://developers.facebook.com/docs/permissions/).
 
+**"No App Review needed" is about permissions, not about everything.** The app's
+mode also decides two things described further down this page, so the practical
+split is:
+
+| App mode | App Review | localhost OAuth (browser login) | Creating ad creatives | Credential to use |
+|---|---|---|---|---|
+| **Development** | Not needed | **Works** | **Blocked** — error subcode 1885183 | Long-Lived Token from the browser OAuth flow |
+| **Live** | Needed only for users who hold no role on the app | **Does not work** — rejected on the consent page | Works | **System-user token** — Option C under [Access Token](#access-token) |
+
+So a development-mode app is enough if you are only reading data; publishing a new
+ad creative needs a Live app and the system-user token of Option C.
+
 ### Permissions (OAuth scopes)
 
 `mureo configure` / `mureo auth setup` request the following scopes automatically during sign-in — you do not list them by hand. The full set is the source of truth in `mureo/auth_setup.py` (`_META_OAUTH_SCOPES`):
@@ -305,6 +317,9 @@ curl -X POST "https://graph.facebook.com/v26.0/oauth/access_token" \
 > reason.
 
 **Option C: System User Token (recommended for automation — and required for Live apps)**
+
+For how the app's mode relates to App Review, see **App Review — when it is needed,
+and when it is not** above.
 
 A Business Manager **system-user token** is the most robust Meta credential,
 and for many operators it is the *only* one that works end to end:

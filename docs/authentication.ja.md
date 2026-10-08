@@ -256,6 +256,17 @@ App Review で承認されたものだけが出ます。
 [App Roles](https://developers.facebook.com/docs/development/build-and-test/app-roles)、
 [Permissions Reference](https://developers.facebook.com/docs/permissions/)。
 
+**「App Review は不要」は権限の話であって、すべての話ではありません。** アプリのモードは、
+このページの後ろで説明している 2 つのことも決めるので、実務上の分岐はこうなります:
+
+| アプリのモード | App Review | localhost の OAuth (ブラウザログイン) | 広告クリエイティブの作成 | 使う認証情報 |
+|---|---|---|---|---|
+| **開発モード** | 不要 | **可** | **不可** — エラー subcode 1885183 | ブラウザ OAuth で取得した Long-Lived Token |
+| **ライブモード** | アプリにロールを持たない利用者に使わせる場合のみ必要 | **不可** — 同意画面で拒否される | 可 | **システムユーザートークン** — [アクセストークン](#アクセストークン) 節の選択肢 C |
+
+つまり、データを読むだけなら開発モードのアプリで足ります。新しい広告クリエイティブを
+公開するには、ライブアプリと選択肢 C のシステムユーザートークンが必要です。
+
 ### 権限 (OAuth スコープ)
 
 `mureo configure` / `mureo auth setup` はサインイン時に次のスコープを自動で要求します。手で列挙する必要はありません。完全な一覧の正は `mureo/auth_setup.py` の `_META_OAUTH_SCOPES` です:
@@ -306,6 +317,9 @@ curl -X POST "https://graph.facebook.com/v26.0/oauth/access_token" \
 > POST しています。
 
 **選択肢 C: システムユーザートークン (自動化に推奨 — ライブアプリでは必須)**
+
+アプリのモードと App Review の関係は、上の **App Review が必要になるとき、ならないとき**
+を参照してください。
 
 ビジネスマネージャの**システムユーザートークン**は、Meta の認証情報として最も堅牢で、
 多くのオペレーターにとっては端から端まで通る*唯一*の手段です:
