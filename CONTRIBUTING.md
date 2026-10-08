@@ -76,6 +76,31 @@ pytest -m unit
 pytest -m integration
 ```
 
+### MCP Server Startup Budget
+
+`tests/test_mcp_startup_budget.py` pins what `import mureo.mcp.server` costs,
+because an MCP client gives the server a fixed window to answer `initialize`
+(30,000 ms by default in Claude Code) and a server that misses it contributes
+no tools at all (#807). Two kinds of check live there:
+
+- **Deterministic**, and the one that matters: no platform SDK, API client or
+  transport stack may appear in `sys.modules` after that import. It does not
+  depend on how fast the machine is, and it is measured as a difference against
+  what the installed provider plugins load, so it keeps working — rather than
+  skipping — in an environment that has plugins installed.
+- A **wall-clock backstop**, for a new heavy dependency the module-name check
+  cannot name. Its ceiling is 10 s against an achieved cost of roughly 1 s of
+  CPU, so it should never fire on a slow day.
+
+```bash
+# Raise the wall-clock ceiling for a slow machine or a loaded CI runner.
+MUREO_MCP_IMPORT_BUDGET_SECONDS=20 pytest tests/test_mcp_startup_budget.py
+```
+
+Raise it for a slow machine, never to accept a regression: if the import got
+slower, `python -X importtime -c 'import mureo.mcp.server'` names what was
+added.
+
 ### Browser Assets
 
 The configure UI in `mureo/_data/web/` ships as plain `<script>`-loaded

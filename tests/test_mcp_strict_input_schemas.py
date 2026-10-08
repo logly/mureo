@@ -20,7 +20,7 @@ Scope decisions:
   whitelist, so only the top level is closed.
 * **Builtin registries only.** Plugin-provided tools (entry-point plugins,
   logly bridges, etc.) are out of scope — their schemas are owned by the
-  plugin author, and ``server._LazyToolValidators`` already tolerates a
+  plugin author, and ``_tool_validation.LazyToolValidators`` already tolerates a
   permissive plugin schema. This test imports the builtin registry modules
   directly rather than the assembled ``server._ALL_TOOLS`` so the plugin
   surface never leaks in.
@@ -104,14 +104,17 @@ def test_every_builtin_tool_declares_additional_properties_false() -> None:
 def test_every_builtin_tool_schema_is_a_valid_json_schema() -> None:
     """Every builtin tool's inputSchema passes the Draft 2020-12 metaschema.
 
-    ``server._LazyToolValidators`` compiles a tool's validator on that tool's
-    first call rather than for the whole catalog at import, because the
-    metaschema check costs ~25 ms per tool and the server has an MCP connect
-    budget to meet (#807). A malformed schema is therefore reported on first use
-    instead of at startup — in production the right trade, but it would let an
-    authoring mistake in a builtin schema reach a release unnoticed. This test
-    is where that is caught instead: it runs the same check the server runs, for
-    every builtin tool, in CI.
+    ``_tool_validation.LazyToolValidators`` compiles a tool's validator on that
+    tool's first call rather than for the whole catalog at import, because the
+    metaschema check costs a median of 2.2 ms per tool — 0.73 s for the whole
+    228-tool catalog, measured with ``time.process_time``, best of three — and
+    the server has an MCP connect budget to meet (#807). A malformed **builtin**
+    schema is therefore reported on first use instead of at startup: in
+    production the right trade, but it would let an authoring mistake reach a
+    release unnoticed. This test is where that is caught instead: it runs the
+    same check the server runs, for every builtin tool, in CI. (A *plugin's*
+    schema is still checked at startup — a plugin author never gets a run of
+    this suite.)
     """
     from jsonschema import Draft202012Validator
     from jsonschema.exceptions import SchemaError

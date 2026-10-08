@@ -797,6 +797,26 @@ Rules the server enforces (a non-conforming provider is skipped with a
   still translate malformed arguments into your own error type rather
   than letting a bare `KeyError`/`ValueError` escape.
 
+  **Your schema is metaschema-checked while the server starts.** mureo
+  compiles a built-in tool's validator on that tool's first call, to keep
+  the server inside the MCP client's connect budget (#807) — but a
+  plugin's is compiled at startup, because you never get a run of
+  mureo's CI in which to find out it was wrong. If your `inputSchema` is
+  not valid JSON Schema Draft 2020-12, the consequence is narrow and
+  silent by default: **that one tool loses its input validation** and
+  mureo logs a warning naming it. The server still starts, your other
+  tools are unaffected, and the tool still dispatches — with whatever
+  arguments the caller sent, straight to your handler. So a schema typo
+  does not take you offline; it quietly removes a guardrail.
+
+  To make it loud instead, use the strict mode described below: the
+  warning is also emitted as a `PluginToolWarning`, so
+  `warnings.filterwarnings("error", category=PluginToolWarning)` turns an
+  uncompilable schema into a startup failure. Validate your schemas in
+  your own CI with
+  `jsonschema.Draft202012Validator.check_schema(tool.inputSchema)` for
+  every tool `mcp_tools()` returns, and you will never need either.
+
 Sync clients: run blocking work off the event loop with
 `asyncio.to_thread(...)` inside `handle_mcp_tool` so you do not block
 the MCP server.
