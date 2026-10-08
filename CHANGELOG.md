@@ -1,5 +1,28 @@
 ## [Unreleased]
 
+### Fixed
+
+- **The MCP server no longer loses the client's 30-second connect race**
+  (#807). `mureo.mcp` took 17–34 s to answer `initialize`, against a default
+  MCP connect budget of 30,000 ms in Claude Code, so whether the server came
+  up at all depended on whether the start was warm. When it lost, the session
+  had **none** of the `mcp__mureo__*` tools, and an unattended run — a headless
+  `claude -p`, a scheduled job, a fresh container — starts cold by definition.
+  All of the cost was `import mureo.mcp.server`; building the server itself
+  takes 7 ms. Two things paid for it, and neither was serving a tool call:
+  `mureo/google_ads/__init__.py` (and its Meta counterpart) eagerly imported
+  the API client, so a stdlib-only helper the tool schemas need — the GAQL
+  period whitelist behind every `period` enum — dragged in the whole generated
+  `google.ads.googleads.v25` protobuf tree; and every tool in the catalog had
+  its `inputSchema` validated against the JSON Schema Draft 2020-12 metaschema
+  at import, ~25 ms each, for hundreds of tools a session never calls. The
+  platform packages now resolve their public names on first access (PEP 562) —
+  `from mureo.google_ads import GoogleAdsApiClient` still works exactly as
+  before — and a tool's validator is compiled on that tool's first call, which
+  is where it is enforced, so no call is served unvalidated. `tools/list` is
+  byte-identical, with or without credentials present. Importing the server no
+  longer loads any platform SDK, and a test now fails if one comes back.
+
 ## [0.21.3] - 2026-09-25
 
 ### Fixed
