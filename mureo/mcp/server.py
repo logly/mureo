@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 import jsonschema
@@ -47,7 +48,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from mcp.types import Tool
 
@@ -374,30 +375,79 @@ _ALL_TOOLS, _REASON_TOOLS = inject_reason_params(
 # provider validates its own inputs. A plugin whose schema is permissive
 # (no constraints, ``additionalProperties`` open) is unaffected — the
 # validator simply finds nothing to reject. A malformed plugin schema is
-# skipped per-tool below, same as a malformed built-in schema.
-def _build_tool_validators() -> dict[str, Draft202012Validator]:
-    validators: dict[str, Draft202012Validator] = {}
-    for tool in _ALL_TOOLS:
-        schema = getattr(tool, "inputSchema", None)
-        if not isinstance(schema, dict):
-            continue
-        try:
-            Draft202012Validator.check_schema(schema)
-        except jsonschema.exceptions.SchemaError as exc:
-            # A malformed built-in schema must not take the whole server
-            # offline — skip validation for that one tool and log it.
-            logger.warning(
-                "tool %s: inputSchema is not a valid JSON Schema (%s); "
-                "input validation skipped for it",
-                tool.name,
-                exc,
-            )
-            continue
-        validators[tool.name] = Draft202012Validator(schema)
-    return validators
+# skipped per-tool, same as a malformed built-in schema.
+#
+# Compiled on first use per tool, not for the whole catalog at import (#807).
+# ``Draft202012Validator(schema)`` is free (microseconds); the cost is
+# ``check_schema``, which validates the schema against the Draft 2020-12
+# metaschema and takes ~25 ms per tool on a warm machine. Paying that for every
+# tool in the catalog — hundreds, most of which a session never calls — was the
+# largest single item in the server's startup cost, and the MCP client's connect
+# budget (30 s in Claude Code, not negotiable from in here) is what it was spent
+# against. What the guard does is unchanged: the first call to a tool compiles
+# and metaschema-checks that tool's schema, and :func:`_validate_tool_input`
+# enforces it on that same call, so no call is ever served unvalidated. The only
+# visible difference is *when* the warning for a malformed schema is logged —
+# first use of that tool instead of server startup. Built-in schemas are
+# metaschema-checked in CI instead (tests/test_mcp_strict_input_schemas.py), so
+# an authoring mistake still fails before it ships.
+class _LazyToolValidators(Mapping[str, Draft202012Validator]):
+    """Per-tool JSON Schema validators, compiled on first lookup.
+
+    A read-only mapping, so ``name in validators`` / ``validators[name]`` /
+    ``validators.get(name)`` read exactly as the eager ``dict`` did; each of
+    those compiles the one tool asked for. A tool with no dict ``inputSchema``,
+    or one whose schema fails ``check_schema``, is absent from the mapping —
+    again as before.
+    """
+
+    def __init__(self, tools: Sequence[Tool]) -> None:
+        self._schemas: dict[str, dict[str, Any]] = {
+            tool.name: schema
+            for tool in tools
+            if isinstance(schema := getattr(tool, "inputSchema", None), dict)
+        }
+        self._compiled: dict[str, Draft202012Validator | None] = {}
+
+    def _compile(self, name: str) -> Draft202012Validator | None:
+        """Return the validator for ``name``, or ``None`` if it has none."""
+        if name in self._compiled:
+            return self._compiled[name]
+        schema = self._schemas.get(name)
+        validator: Draft202012Validator | None = None
+        if schema is not None:
+            try:
+                Draft202012Validator.check_schema(schema)
+            except jsonschema.exceptions.SchemaError as exc:
+                # A malformed built-in schema must not take the whole server
+                # offline — skip validation for that one tool and log it.
+                logger.warning(
+                    "tool %s: inputSchema is not a valid JSON Schema (%s); "
+                    "input validation skipped for it",
+                    name,
+                    exc,
+                )
+            else:
+                validator = Draft202012Validator(schema)
+        self._compiled[name] = validator
+        return validator
+
+    def __getitem__(self, name: str) -> Draft202012Validator:
+        validator = self._compile(name)
+        if validator is None:
+            raise KeyError(name)
+        return validator
+
+    def __iter__(self) -> Iterator[str]:
+        # Materialises the whole catalog — only reached by code that iterates
+        # or takes ``len()``, which the dispatch path never does.
+        return iter([n for n in self._schemas if self._compile(n) is not None])
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self)
 
 
-_TOOL_VALIDATORS: dict[str, Draft202012Validator] = _build_tool_validators()
+_TOOL_VALIDATORS: Mapping[str, Draft202012Validator] = _LazyToolValidators(_ALL_TOOLS)
 
 
 def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
@@ -407,7 +457,8 @@ def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
     on the first violation, before the tool handler runs — so an invalid
     budget/bid never reaches a real-spend API call. Applies to both built-in
     and plugin tools. No-op for a tool without a registered validator (no
-    schema, or a schema that failed ``check_schema`` at build time).
+    schema, or a schema that fails ``check_schema`` when it is compiled on
+    this tool's first call).
     """
     validator = _TOOL_VALIDATORS.get(name)
     if validator is None:

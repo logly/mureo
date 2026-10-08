@@ -20,7 +20,7 @@ Scope decisions:
   whitelist, so only the top level is closed.
 * **Builtin registries only.** Plugin-provided tools (entry-point plugins,
   logly bridges, etc.) are out of scope — their schemas are owned by the
-  plugin author, and ``server._build_tool_validators`` already tolerates a
+  plugin author, and ``server._LazyToolValidators`` already tolerates a
   permissive plugin schema. This test imports the builtin registry modules
   directly rather than the assembled ``server._ALL_TOOLS`` so the plugin
   surface never leaks in.
@@ -97,4 +97,33 @@ def test_every_builtin_tool_declares_additional_properties_false() -> None:
         '`"additionalProperties": False` at the top level, so unknown '
         "parameters pass validation and are silently dropped by the "
         f"handler whitelist:\n{offenders}"
+    )
+
+
+@pytest.mark.unit
+def test_every_builtin_tool_schema_is_a_valid_json_schema() -> None:
+    """Every builtin tool's inputSchema passes the Draft 2020-12 metaschema.
+
+    ``server._LazyToolValidators`` compiles a tool's validator on that tool's
+    first call rather than for the whole catalog at import, because the
+    metaschema check costs ~25 ms per tool and the server has an MCP connect
+    budget to meet (#807). A malformed schema is therefore reported on first use
+    instead of at startup — in production the right trade, but it would let an
+    authoring mistake in a builtin schema reach a release unnoticed. This test
+    is where that is caught instead: it runs the same check the server runs, for
+    every builtin tool, in CI.
+    """
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import SchemaError
+
+    offenders = []
+    for tool in _all_builtin_tools():
+        try:
+            Draft202012Validator.check_schema(tool.inputSchema)
+        except SchemaError as exc:
+            offenders.append((tool.name, str(exc).splitlines()[0]))
+    assert not offenders, (
+        "These builtin tool schemas are not valid JSON Schema, so the server "
+        "would skip input validation for them (and log a warning on their "
+        f"first call):\n{offenders}"
     )
