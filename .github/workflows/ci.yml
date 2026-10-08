@@ -97,6 +97,34 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  # The exhaustive lanes (`pytest.mark.slow`), which a plain `pytest` skips.
+  # They exist because the checks in them are real but cost minutes of child
+  # interpreters: sweeping every submodule of the platform packages as a first
+  # import (tests/test_platform_submodule_imports.py), the whole-product
+  # credential-guard enumeration, and the plugin strict-mode startup. Nothing
+  # was running them automatically, which is the same as not having them.
+  #
+  # Single Python (3.12) and no coverage: these lanes test import topology and
+  # shell behaviour, neither of which differs across the matrix enough to pay
+  # three times for. Both the marker and MUREO_RUN_EXHAUSTIVE_TESTS are
+  # required (see tests/conftest.py), so this job has to ask twice — on
+  # purpose, so that a default run cannot drift into these costs by accident.
+  test-slow:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Run the exhaustive lanes
+        env:
+          MUREO_RUN_EXHAUSTIVE_TESTS: "1"
+        run: pytest -m slow -v
+
   # Windows compatibility guard. mureo has no Windows dev machines, so
   # this job is the real-Windows verification: the os.fchmod crash and
   # the %APPDATA% Claude Desktop path are otherwise only exercised by

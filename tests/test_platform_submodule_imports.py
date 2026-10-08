@@ -177,18 +177,6 @@ def standalone_sweep() -> _StandaloneSweep:
     return _StandaloneSweep()
 
 
-@pytest.fixture
-def only_when_asked_for(request: pytest.FixtureRequest) -> None:
-    """Run only when ``slow`` was selected, so a plain ``pytest`` skips it.
-
-    Expressed here rather than as a global ``addopts`` filter, matching
-    tests/test_credential_guard_product.py: a marker that silently disappears
-    from the default run is how a suite ends up with checks nobody has executed.
-    """
-    if "slow" not in str(request.config.getoption("markexpr")):
-        pytest.skip("exhaustive; run with: pytest -m slow")
-
-
 def _assert_imports_alone(module: str, returncode: int, stderr: str) -> None:
     assert returncode == 0, (
         f"{module} cannot be imported first. Something it imports imports it "

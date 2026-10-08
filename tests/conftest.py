@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import pytest
 
@@ -111,3 +112,25 @@ def _isolate_credential_writes(monkeypatch, tmp_path_factory):
     runtime_context.reset_runtime_context()
     yield
     runtime_context.reset_runtime_context()
+
+
+#: Opt-in switch for the exhaustive lanes (``pytest.mark.slow``). An
+#: environment variable rather than an inspection of ``-m``: the lanes used to
+#: ask whether ``"slow" in markexpr``, which is true of ``-m "not slow"`` as
+#: well, so the condition did not actually mean what it was read as. Marker and
+#: switch are both required, so a plain ``pytest`` run skips these and a
+#: deliberate run has to say so twice. Documented in CONTRIBUTING.md and run by
+#: the ``test-slow`` CI job.
+EXHAUSTIVE_TESTS_ENV = "MUREO_RUN_EXHAUSTIVE_TESTS"
+
+
+@pytest.fixture
+def only_when_asked_for():
+    """Skip unless the exhaustive lanes were asked for by name.
+
+    Expressed as a skip rather than a global ``addopts`` filter: a marker that
+    silently disappears from the default run is how a suite ends up with checks
+    nobody has executed in months, so the skip is visible in the run's summary.
+    """
+    if os.environ.get(EXHAUSTIVE_TESTS_ENV) != "1":
+        pytest.skip(f"exhaustive; run with: {EXHAUSTIVE_TESTS_ENV}=1 pytest -m slow")
