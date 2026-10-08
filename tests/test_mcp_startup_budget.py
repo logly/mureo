@@ -51,6 +51,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import pathlib
 import subprocess
 import sys
 import threading
@@ -64,7 +65,10 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
 from mureo.mcp._tool_validation import LazyToolValidators, validate_tool_input
-from mureo.mcp.tool_provider import PluginToolWarning
+from mureo.plugin_warnings import PluginToolWarning
+from tests._measurement_child import measurement_child_env
+
+_UNKNOWN_NAME_PROBES = 5000
 
 SERVER_MODULE = "mureo.mcp.server"
 
@@ -138,6 +142,63 @@ for ep in entry_points(group=PROVIDERS_ENTRY_POINT_GROUP):
 print("\\n".join(sorted(sys.modules)))
 """
 
+# A plugin with one uncompilable ``inputSchema``, installed the way a real one
+# is: an importable module plus a ``*.dist-info`` directory declaring the entry
+# point. Nothing here is skipped or stubbed, so the strict-mode check below runs
+# the sequence an operator would run.
+_BAD_SCHEMA_PLUGIN = "plug_badschema"
+_BAD_SCHEMA_TOOL = "plug_badschema_echo"
+_BAD_SCHEMA_PLUGIN_SOURCE = '''"""Throwaway provider with an uncompilable inputSchema."""
+
+from typing import Any
+
+from PACKAGE.core.providers.capabilities import Capability
+
+
+class Provider:
+    name = "plug_badschema"
+    display_name = "plug_badschema"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self):
+        from mcp.types import Tool
+
+        return (
+            Tool(
+                name="plug_badschema_echo",
+                description="echo",
+                inputSchema={"type": 1},
+            ),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        from mcp.types import TextContent
+
+        return [TextContent(type="text", text="")]
+'''.replace(
+    "PACKAGE", "mureo"
+)
+
+# The documented strict mode, in the order an operator writes it: name the
+# category, install the filter, import the server. The marker proves the first
+# step did not already import the server — while the category lived under
+# ``mureo.mcp``, importing it ran ``mureo/mcp/__init__.py``, which imports the
+# server, and the warnings were over before the filter existed.
+_SERVER_NOT_IMPORTED = "server-not-yet-imported"
+_STRICT_MODE_CODE = """
+import sys
+import warnings
+
+from mureo.plugin_warnings import PluginToolWarning
+
+assert {server!r} not in sys.modules, "importing the category imported the server"
+print({marker!r})
+{install_filter}
+__import__({server!r})
+print("started")
+"""
+
+
 _SERVER_FOOTPRINT_CODE = f"""
 import sys
 __import__({SERVER_MODULE!r})
@@ -157,36 +218,56 @@ def _import_budget_seconds() -> float:
         ) from exc
 
 
-def _child_env() -> dict[str, str]:
-    """Environment for a measurement child, with the measuring kit removed.
-
-    ``COV_CORE_*`` is what ``pytest-cov`` uses to start coverage in a
-    subprocess. Inherited, it puts a trace function on the child's imports and
-    makes the figure this module reports a figure about coverage: measured on the
-    development machine, importing the server cost 1.08 s of CPU / 1.58 s wall
-    without them and 1.47 s / 2.63 s with them. The ubuntu CI job runs
-    ``--cov=mureo``, so this is the difference between the budget test measuring
-    the product and measuring the measuring kit. Dropped so the cost is the cost.
-    """
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith("COV_CORE_")
-    }
-    env["PYTHONPATH"] = os.pathsep.join(sys.path)
-    return env
-
-
 def _run_in_fresh_interpreter(
-    code: str, *args: str
+    code: str, *args: str, extra_path: tuple[str, ...] = ()
 ) -> subprocess.CompletedProcess[str]:
-    """Run ``code`` in a child interpreter sharing this one's sys.path."""
+    """Run ``code`` in a child interpreter sharing this one's sys.path.
+
+    ``extra_path`` goes in front of it, which is how a throwaway distribution
+    gets "installed" for one child and for nothing else.
+    """
     return subprocess.run(
         [sys.executable, "-c", code, *args],
         capture_output=True,
         text=True,
-        env=_child_env(),
+        env=measurement_child_env(extra_path),
         timeout=300,
+    )
+
+
+def _install_fake_dist(
+    root: pathlib.Path, *, module: str, source: str, group: str, target: str
+) -> str:
+    """Write a module plus the ``*.dist-info`` that declares its entry point.
+
+    Enough of an installation for ``importlib.metadata.entry_points`` to find
+    it, with no pip and no effect on the environment the suite itself runs in:
+    the returned directory is only ever put on a child's ``sys.path``.
+    """
+    (root / f"{module}.py").write_text(source, encoding="utf-8")
+    dist = root / f"{module}-0.0.dist-info"
+    dist.mkdir(exist_ok=True)
+    (dist / "METADATA").write_text(
+        f"Metadata-Version: 2.1\nName: {module.replace('_', '-')}\nVersion: 0.0\n",
+        encoding="utf-8",
+    )
+    (dist / "entry_points.txt").write_text(
+        f"[{group}]\n{module} = {target}\n", encoding="utf-8"
+    )
+    return str(root)
+
+
+@pytest.fixture(scope="session")
+def bad_schema_plugin_path(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """An installed provider plugin whose one tool has an unusable schema."""
+    from mureo.core.providers.registry import PROVIDERS_ENTRY_POINT_GROUP
+
+    return _install_fake_dist(
+        tmp_path_factory.mktemp("bad_schema_plugin"),
+        module=_BAD_SCHEMA_PLUGIN,
+        source=_BAD_SCHEMA_PLUGIN_SOURCE,
+        group=PROVIDERS_ENTRY_POINT_GROUP,
+        target=f"{_BAD_SCHEMA_PLUGIN}:Provider",
     )
 
 
@@ -359,7 +440,43 @@ class TestLazyToolValidators:
         validators.compile_eagerly(["plug_echo", "not_a_tool"])
 
         assert validators._compiled["plug_echo"] is not None
-        assert validators._compiled["not_a_tool"] is None
+        assert "not_a_tool" not in validators._compiled
+
+    def test_unknown_tool_names_do_not_grow_the_cache(self) -> None:
+        """A name the catalog never had leaves no entry behind.
+
+        ``_gated_dispatch`` validates before ``_dispatch_tool`` rejects an
+        unknown tool name, so the names reaching here come straight from the MCP
+        client. Caching them let a caller add an entry per name for the life of
+        the process; the eager ``dict.get`` wrote nothing.
+        """
+        validators = LazyToolValidators(
+            [_tool_with_schema("known", {"type": "object"})]
+        )
+
+        for index in range(_UNKNOWN_NAME_PROBES):
+            validate_tool_input(validators, f"no_such_tool_{index}", {})
+
+        assert validators._compiled == {}
+        assert validators.get("known") is not None
+
+    def test_truthiness_compiles_nothing(self) -> None:
+        """``if validators:`` must not compile the catalog.
+
+        ``Mapping`` supplies no ``__bool__``, so Python falls back to
+        ``__len__`` -> ``__iter__`` -> compile everything: one truthiness test
+        would have paid the whole bill this class defers.
+        """
+        validators = LazyToolValidators(
+            [
+                _tool_with_schema("one", {"type": "object"}),
+                _tool_with_schema("two", {"type": "object"}),
+            ]
+        )
+
+        assert bool(validators) is True
+        assert validators._compiled == {}
+        assert bool(LazyToolValidators([])) is False
 
 
 @pytest.mark.unit
@@ -443,14 +560,14 @@ class TestValidatorCompileFaults:
         with pytest.raises(ValueError, match="'who' is a required property"):
             validate_tool_input(validators, "good", {})
 
-    def test_a_plugins_bad_schema_can_be_made_fatal(self) -> None:
-        """``filterwarnings("error", ...)`` turns a plugin's bad schema into one.
+    def test_a_plugins_bad_schema_warns_and_a_builtins_does_not(self) -> None:
+        """A plugin's fault is the plugin author's; a built-in's is ours.
 
-        docs/plugin-authoring.md offers that strict mode for plugin faults; a
-        schema mureo cannot compile is one, so it is reported as a
-        ``PluginToolWarning`` and not only to the log. A built-in's is the
-        maintainers' problem, caught by
-        tests/test_mcp_strict_input_schemas.py, and stays log-only.
+        docs/plugin-authoring.md documents ``warnings`` as the channel for
+        plugin faults, so a plugin's uncompilable schema goes there. A
+        built-in's goes to the log instead: no plugin author can act on it, it
+        is caught by tests/test_mcp_strict_input_schemas.py in CI, and a stdio
+        MCP client shows an operator one copy of stderr at best.
         """
         plugin_validators = LazyToolValidators(
             [_tool_with_schema("plug_bad", {"type": 1})], plugin_names={"plug_bad"}
@@ -466,6 +583,105 @@ class TestValidatorCompileFaults:
             warnings.simplefilter("always")
             builtin_validators.get("builtin_bad")
         assert [w for w in recorded if issubclass(w.category, PluginToolWarning)] == []
+
+    def test_a_failed_compile_is_cached_even_when_the_report_raises(self) -> None:
+        """Strict mode must not turn one bad schema into a per-call failure.
+
+        The report is what strict mode raises from, so if it ran before the
+        cache write the result was never cached: every call recompiled, failed
+        again, and raised past the dispatcher. The class docstring claimed the
+        opposite. The cache write now happens first.
+        """
+        validators = LazyToolValidators(
+            [_tool_with_schema("plug_bad", {"type": 1})], plugin_names={"plug_bad"}
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", PluginToolWarning)
+            with pytest.raises(PluginToolWarning):
+                validators.get("plug_bad")
+
+            assert validators._compiled == {"plug_bad": None}
+            # Second call: cached, so nothing is reported and nothing raises.
+            assert validators.get("plug_bad") is None
+
+    def test_reporting_does_not_hold_the_lock(self) -> None:
+        """A report handler may read the mapping it is reporting about.
+
+        ``logging`` handlers and ``showwarning`` hooks are arbitrary code, and
+        reporting from inside the (non-reentrant) lock meant a hook that looked
+        up any tool deadlocked the server during startup. Run on a thread with a
+        timeout so a regression fails instead of hanging the suite.
+        """
+        validators = LazyToolValidators(
+            [
+                _tool_with_schema("plug_bad", {"type": 1}),
+                _tool_with_schema("good", {"type": "object"}),
+            ],
+            plugin_names={"plug_bad"},
+        )
+        reentered: list[bool] = []
+        finished = threading.Event()
+
+        def hook(message: object, *args: object, **kwargs: object) -> None:
+            reentered.append(validators.get("good") is not None)
+
+        def worker() -> None:
+            validators.get("plug_bad")
+            finished.set()
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("always")
+            warnings.showwarning = hook  # type: ignore[assignment]
+            threading.Thread(target=worker, daemon=True).start()
+            assert finished.wait(timeout=30), (
+                "reporting still holds the mapping's lock: a showwarning hook "
+                "that reads the mapping deadlocked"
+            )
+
+        assert reentered == [True]
+
+    def test_a_plugins_bad_schema_can_be_made_fatal(
+        self, bad_schema_plugin_path: str
+    ) -> None:
+        """The strict mode the docs promise, run the way the docs write it.
+
+        In a child interpreter, because it is a property of the import order:
+        name the category, install the filter, import the server. Asserting that
+        the warning is *emitted* (which is all this test used to do) says
+        nothing about whether a filter could ever see it — it could not, and the
+        test passed anyway.
+        """
+        strict = _run_in_fresh_interpreter(
+            _STRICT_MODE_CODE.format(
+                server=SERVER_MODULE,
+                marker=_SERVER_NOT_IMPORTED,
+                install_filter=(
+                    'warnings.filterwarnings("error", category=PluginToolWarning)'
+                ),
+            ),
+            extra_path=(bad_schema_plugin_path,),
+        )
+        permissive = _run_in_fresh_interpreter(
+            _STRICT_MODE_CODE.format(
+                server=SERVER_MODULE,
+                marker=_SERVER_NOT_IMPORTED,
+                install_filter="pass",
+            ),
+            extra_path=(bad_schema_plugin_path,),
+        )
+
+        assert _SERVER_NOT_IMPORTED in permissive.stdout, permissive.stderr
+        assert permissive.returncode == 0, permissive.stderr
+        assert "started" in permissive.stdout
+
+        assert strict.returncode != 0, (
+            f"strict mode did not fail the startup. stdout={strict.stdout!r} "
+            f"stderr={strict.stderr[-2000:]!r}"
+        )
+        assert "PluginToolWarning" in strict.stderr
+        assert _BAD_SCHEMA_TOOL in strict.stderr
+        assert "started" not in strict.stdout
 
 
 @pytest.mark.unit
