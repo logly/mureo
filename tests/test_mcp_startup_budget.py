@@ -9,15 +9,16 @@ import drags in.
 
 Measured on the development machine (CPython 3.10, macOS) with
 ``time.process_time`` in a child interpreter, best of three runs, bytecode cache
-warm, so the figures below do not move with system load:
+warm — all load-independent, because this machine's load average is not:
 
-===========================================  ========  ========
-measurement                                  before    after
-===========================================  ========  ========
-CPU time of ``import mureo.mcp.server``        3.38 s    1.14 s
-``len(sys.modules)`` after that import         2249       880
-``check_schema`` over the whole tool catalog   0.73 s    not run
-===========================================  ========  ========
+============================================  ========  ========
+measurement                                   before    after
+============================================  ========  ========
+CPU of ``import mureo.mcp.server``              3.48 s    1.11 s
+``len(sys.modules)`` after that import           2249       880
+the same, with one runtime-context factory       2259       890
+``check_schema`` over the whole tool catalog   0.80-1.00  not run
+============================================  ========  ========
 
 The guards, in increasing order of how early they catch a regression:
 
@@ -28,22 +29,26 @@ The guards, in increasing order of how early they catch a regression:
   interpreters (one that loads only the installed provider plugins, one that
   imports the server), so it keeps working in an environment that has plugins
   installed — which is the environment #807 was reported from — instead of
-  skipping there and going quietly silent.
+  skipping there and going quietly silent. One case is set up rather than waited
+  for: a ``mureo.runtime_context_factory`` plugin, which is what #807 was
+  reported with and what left a second, unfixed route into the Google Ads SDK
+  (2258 modules against this branch's 890). CI installs no plugins, so without
+  it that route is only red on the machines that have one.
 * :class:`TestLazyToolValidators` — a tool's input-schema validator is compiled
   on that tool's first call, and enforced on that same call; a plugin's is
   compiled at startup.
 * :class:`TestValidatorCompileFaults` — an unusable schema disables validation
   for that one tool, exactly once, and never for the rest of the catalog.
-* :class:`TestImportBudget` — a wall-clock ceiling, as a backstop for growth the
-  module-name check cannot see (a new heavy dependency nobody listed).
+* :class:`TestImportBudget` — a ceiling on the import's own CPU time, as a
+  backstop for growth the module-name check cannot see (a new heavy dependency
+  nobody listed).
 * :class:`TestLazyPublicNames` — making the import lazy must not change what the
   package looks like from outside, and must not push the failure from import
   time to call time.
 
 :class:`TestImportBudget` stays in the default lane rather than moving to the
 ``slow`` marker: the deterministic module-name check above is the primary guard
-and this is only the backstop, so it is cheap to keep honest here, and the
-measurement is now independent of whether coverage is tracing the child.
+and this is only the backstop, so it is cheap to keep honest here.
 """
 
 from __future__ import annotations
@@ -72,16 +77,26 @@ _UNKNOWN_NAME_PROBES = 5000
 
 SERVER_MODULE = "mureo.mcp.server"
 
-# Ceiling for ``import mureo.mcp.server`` in a fresh interpreter, in seconds.
+# Ceiling for the CPU time of ``import mureo.mcp.server`` in a fresh
+# interpreter, in seconds.
 #
-# This is a REGRESSION detector, not the target. The achieved cost is ~1.1 s of
-# CPU (see the table above); CI runners are slower and start cold (no
-# ``__pycache__``, cold page cache — which roughly doubles it), so a value near
-# the achieved figure would flake. 10 s sits several times above it, well under the
-# pre-#807 cost, and comfortably inside the client's 30 s connect budget — so it
-# fails on a real regression and not on a bad day. Override with
-# MUREO_MCP_IMPORT_BUDGET_SECONDS (documented in CONTRIBUTING.md).
-DEFAULT_IMPORT_BUDGET_SECONDS = 10.0
+# CPU rather than wall clock, because wall clock made this test a load meter.
+# On a loaded development machine the same import measured 6.96-9.43 s warm and
+# 19.45 s cold against a 10 s wall-clock ceiling — 3 of 3 cold runs reached it —
+# while its CPU time sat at 1.11-1.14 s with a spread of hundredths. The
+# docstring claim that the ceiling "sits several times above" the cost was true
+# of the cost and false of the clock it was compared against.
+#
+# This is a REGRESSION detector, not the target: the achieved cost is ~1.1 s and
+# a CI runner's CPU is slower, so 6 s is five times the achieved figure and
+# still well inside the client's 30 s connect budget. What it is for is growth
+# the module-name check cannot name — a new dependency that costs more CPU than
+# everything the server imports today. It is NOT what catches a return to the
+# pre-#807 cost (3.48 s of CPU, which fits under any ceiling a slow runner
+# tolerates): :class:`TestEagerPlatformImports` owns that, by name and without a
+# clock. Override with MUREO_MCP_IMPORT_BUDGET_SECONDS (documented in
+# CONTRIBUTING.md).
+DEFAULT_IMPORT_BUDGET_SECONDS = 6.0
 IMPORT_BUDGET_ENV = "MUREO_MCP_IMPORT_BUDGET_SECONDS"
 
 # Module prefixes that must NOT be in sys.modules after importing the server.
@@ -89,9 +104,10 @@ IMPORT_BUDGET_ENV = "MUREO_MCP_IMPORT_BUDGET_SECONDS"
 # only an API call needs, or one of mureo's own API clients — things only a
 # handler actually serving a call can need, never the tool schemas. Before #807
 # every one of these was loaded at import (941 modules for the generated Google
-# Ads surface alone, 54 for ``cryptography``, 23 for ``grpc``); after it, none
-# is. Naming the transitive stacks and not just ``google.ads.googleads`` is what
-# catches a regression that arrives by some other route.
+# Ads surface alone, 54 for ``cryptography``, 37 for ``google.protobuf``, 23 for
+# ``grpc``); after it, none is. Naming the transitive stacks and not just
+# ``google.ads.googleads`` is what catches a regression that arrives by some
+# other route.
 FORBIDDEN_EAGER_PREFIXES = (
     "cryptography",
     "facebook_business",
@@ -99,6 +115,7 @@ FORBIDDEN_EAGER_PREFIXES = (
     "google.api_core",
     "google.auth",
     "google.oauth2",
+    "google.protobuf",
     "googleapiclient",
     "grpc",
     "mureo.google_ads.client",
@@ -152,7 +169,7 @@ _BAD_SCHEMA_PLUGIN_SOURCE = '''"""Throwaway provider with an uncompilable inputS
 
 from typing import Any
 
-from PACKAGE.core.providers.capabilities import Capability
+from mureo.core.providers.capabilities import Capability
 
 
 class Provider:
@@ -175,9 +192,7 @@ class Provider:
         from mcp.types import TextContent
 
         return [TextContent(type="text", text="")]
-'''.replace(
-    "PACKAGE", "mureo"
-)
+'''
 
 # The documented strict mode, in the order an operator writes it: name the
 # category, install the filter, import the server. The marker proves the first
@@ -199,10 +214,37 @@ print("started")
 """
 
 
+# A ``mureo.runtime_context_factory`` plugin, which is the configuration #807
+# was reported from. Its factory imports the provider adapter packages, as an
+# integrator's does; the server's import reaches it through
+# ``collect_plugin_tools`` -> the Amazon bridge -> the manifest location ->
+# ``get_runtime_context()``. Registered for one child interpreter only.
+_FACTORY_MODULE = "startup_budget_probe_factory"
+_FACTORY_SOURCE = '''"""Throwaway runtime-context factory for the #807 startup guard."""
+
+from mureo.adapters.google_ads import GoogleAdsAdapter  # noqa: F401
+from mureo.adapters.meta_ads import MetaAdsAdapter  # noqa: F401
+from mureo.core.runtime_context import default_runtime_context
+
+
+def make_context():
+    return default_runtime_context()
+'''
+
+
 _SERVER_FOOTPRINT_CODE = f"""
 import sys
 __import__({SERVER_MODULE!r})
 print("\\n".join(sorted(sys.modules)))
+"""
+
+# The import's own CPU time, measured inside the child so the parent's clock —
+# and whatever else the machine is doing — never enters into it.
+_IMPORT_CPU_CODE = f"""
+import time
+started = time.process_time()
+__import__({SERVER_MODULE!r})
+print(time.process_time() - started)
 """
 
 
@@ -271,8 +313,8 @@ def bad_schema_plugin_path(tmp_path_factory: pytest.TempPathFactory) -> str:
     )
 
 
-def _loaded_modules(code: str) -> set[str]:
-    proc = _run_in_fresh_interpreter(code)
+def _loaded_modules(code: str, *, extra_path: tuple[str, ...] = ()) -> set[str]:
+    proc = _run_in_fresh_interpreter(code, extra_path=extra_path)
     assert proc.returncode == 0, proc.stderr
     return set(proc.stdout.split())
 
@@ -286,6 +328,29 @@ def _forbidden(modules: set[str]) -> list[str]:
             for prefix in FORBIDDEN_EAGER_PREFIXES
         )
     )
+
+
+def _warn_if_plugins_excuse_forbidden(plugin_modules: set[str]) -> None:
+    """Say out loud which forbidden modules the subtraction is about to excuse.
+
+    The difference against the plugins' own footprint is what keeps this guard
+    alive in an environment that has plugins, but it cuts both ways: a plugin
+    that imports ``mureo.google_ads`` (plausible — it is how a provider talks to
+    Google Ads) puts ``mureo.google_ads.client`` in BOTH footprints, and that
+    prefix then cannot fail this test no matter what the server does. Failing
+    would be wrong — what a plugin imports is the plugin's business — but going
+    quiet would be worse, so the weakening is reported where a reader of the
+    test output can see it.
+    """
+    excused = _forbidden(plugin_modules)
+    if excused:
+        warnings.warn(
+            f"{len(excused)} forbidden modules are credited to installed "
+            f"provider plugins and are therefore NOT checked against the "
+            f"server's import: {excused[:10]}. Installed provider plugins: "
+            f"{_installed_provider_plugins()}.",
+            stacklevel=2,
+        )
 
 
 def _installed_provider_plugins() -> list[str]:
@@ -306,9 +371,32 @@ def _tool_with_schema(name: str, schema: object) -> SimpleNamespace:
 class TestEagerPlatformImports:
     """No platform SDK is imported just to describe the tools."""
 
-    def test_server_import_pulls_no_platform_sdk(self) -> None:
-        plugin_modules = _loaded_modules(_PLUGIN_FOOTPRINT_CODE)
-        server_modules = _loaded_modules(_SERVER_FOOTPRINT_CODE)
+    @pytest.fixture(scope="session")
+    def runtime_context_factory_path(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> str:
+        """An installed ``mureo.runtime_context_factory`` plugin, for one child."""
+        from mureo.core.runtime_context import (
+            RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP,
+        )
+
+        return _install_fake_dist(
+            tmp_path_factory.mktemp("runtime_context_factory"),
+            module=_FACTORY_MODULE,
+            source=_FACTORY_SOURCE,
+            group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP,
+            target=f"{_FACTORY_MODULE}:make_context",
+        )
+
+    def _assert_no_platform_sdk(self, extra_path: tuple[str, ...] = ()) -> set[str]:
+        """Compare the server's import footprint with the plugins' own.
+
+        Returns the server's share, so a caller can assert something further
+        about it.
+        """
+        plugin_modules = _loaded_modules(_PLUGIN_FOOTPRINT_CODE, extra_path=extra_path)
+        server_modules = _loaded_modules(_SERVER_FOOTPRINT_CODE, extra_path=extra_path)
+        _warn_if_plugins_excuse_forbidden(plugin_modules)
         mureos_own = server_modules - plugin_modules
 
         # The subtraction must not be able to empty the measurement out. If a
@@ -326,6 +414,34 @@ class TestEagerPlatformImports:
             f"{offenders}. Move the import into the function that uses it. "
             f"(Modules credited to installed provider plugins and therefore "
             f"not counted: {sorted(_forbidden(plugin_modules))})"
+        )
+        return mureos_own
+
+    def test_server_import_pulls_no_platform_sdk(self) -> None:
+        self._assert_no_platform_sdk()
+
+    def test_a_runtime_context_factory_plugin_pulls_no_platform_sdk(
+        self, runtime_context_factory_path: str
+    ) -> None:
+        """The configuration #807 was reported from, set up on purpose.
+
+        One registered factory is enough to make the server's import load every
+        platform SDK again, by a route the first round of this fix did not
+        touch: the Amazon bridge resolves its manifest location in its
+        constructor, which asks for the runtime context, which runs the
+        factory, which imports the adapters, which imported their clients. CI
+        installs no plugins, so that route was green here and red only for a
+        developer who had one.
+        """
+        mureos_own = self._assert_no_platform_sdk(
+            extra_path=(runtime_context_factory_path,)
+        )
+
+        # Not a vacuous pass: the factory has to have run for this to mean
+        # anything, and it runs during the import, not after it.
+        assert _FACTORY_MODULE in mureos_own, (
+            f"the registered {_FACTORY_MODULE} factory never ran during the "
+            f"server's import, so this test proved nothing"
         )
 
     @pytest.mark.parametrize(
@@ -361,16 +477,22 @@ class TestEagerPlatformImports:
 
 @pytest.mark.unit
 class TestImportBudget:
-    """Wall-clock backstop on the server's import cost."""
+    """CPU backstop on the server's import cost."""
 
-    def test_server_imports_within_budget(self) -> None:
+    def test_server_imports_within_cpu_budget(self) -> None:
+        """Measured by the child, in CPU seconds, not by the parent's clock.
+
+        The import is CPU-bound, and a busy machine or a shared CI runner can
+        multiply the wall time of exactly the same work by five. Timing it from
+        here measured the machine; ``time.process_time`` in the child measures
+        the import.
+        """
         budget = _import_budget_seconds()
-        started = time.monotonic()
-        proc = _run_in_fresh_interpreter(f"__import__({SERVER_MODULE!r})")
-        elapsed = time.monotonic() - started
+        proc = _run_in_fresh_interpreter(_IMPORT_CPU_CODE)
         assert proc.returncode == 0, proc.stderr
-        assert elapsed < budget, (
-            f"import {SERVER_MODULE} took {elapsed:.2f}s, over the "
+        cpu = float(proc.stdout.strip().splitlines()[-1])
+        assert cpu < budget, (
+            f"import {SERVER_MODULE} spent {cpu:.2f}s of CPU, over the "
             f"{budget:.2f}s budget. Run "
             f"`python -X importtime -c 'import {SERVER_MODULE}'` and look at "
             f"what was added. Raise {IMPORT_BUDGET_ENV} only for a slow "
