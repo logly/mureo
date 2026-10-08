@@ -75,6 +75,8 @@ def _bash_guard_command() -> str:
 _REFUSAL_MARKERS = (
     ("oversize", "over 65536 bytes"),
     ("budget", "brace expansion"),
+    ("unresolved", "could not resolve"),
+    ("heredoc", "here-document operator"),
     ("filename", "credential file"),
     ("directory", "can reach"),
 )
@@ -1312,9 +1314,15 @@ class TestAHereDocumentBodyIsNotQuotedText:
             # pattern, although bash hands all three of these to the program
             # unexpanded. Each of them is allowed on its own; what denies
             # them is the here-document earlier in the same command.
-            ("cat <<'eof'\nx\neof\nls '.*'", "directory"),
-            ("cat <<'eof'\nx\neof\nsed 's/.*//' f", "directory"),
-            ("cat <<'eof'\nx\neof\nfind . -name '.*'", "directory"),
+            #
+            # Their category is the point of the rows, not an incidental: the
+            # guard has read text without resolving quoting, so it does not
+            # know whether the reference it found is one the shell would act
+            # on, and a refusal that said the command can reach the directory
+            # would be asserting something it cannot know.
+            ("cat <<'eof'\nx\neof\nls '.*'", "heredoc"),
+            ("cat <<'eof'\nx\neof\nsed 's/.*//' f", "heredoc"),
+            ("cat <<'eof'\nx\neof\nfind . -name '.*'", "heredoc"),
         ],
     )
     def test_records_what_not_resolving_quoting_over_blocks(
@@ -1326,6 +1334,191 @@ class TestAHereDocumentBodyIsNotQuotedText:
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
         assert _refusal_category(proc) == category, command
+
+    def test_a_refusal_inside_the_latch_does_not_claim_reachability(
+        self, fake_home: Path
+    ) -> None:
+        """What the agent reads has to be something the guard knows.
+
+        Outside the latch quoting is resolved, so a reference the rules find
+        is one the shell would act on and the refusal says so.  Inside it,
+        quoting is not resolved — deliberately, because bash does not resolve
+        it in a body — and the same reference may be text the shell never
+        touches.  The two cases therefore get different reasons, and neither
+        borrows the other's claim.
+        """
+        plain = run_guard_in_shell(
+            _bash_guard_command(),
+            {"command": "cat ~/.mureo/credentials.json"},
+            fake_home,
+        )
+        latched = run_guard_in_shell(
+            _bash_guard_command(),
+            {"command": "bash <<'eof'\ncat ~/.mureo/credentials.json\neof"},
+            fake_home,
+        )
+        assert deny_decision(plain) == "deny"
+        assert deny_decision(latched) == "deny"
+        assert _refusal_category(plain) == "directory"
+        assert _refusal_category(latched) == "heredoc"
+        reason = json.loads(latched.stdout)["hookSpecificOutput"][
+            "permissionDecisionReason"
+        ]
+        assert "can reach" not in reason
+        assert "Read tool" in reason
+
+
+@needs_shell
+@pytest.mark.unit
+class TestABraceGroupIsPartOfOneWord:
+    """What counts as a group's contents is a question about quoting.
+
+    Bash does not expand a brace group across a separator it is allowed to
+    act on, so a ``{...}`` holding one is not brace expansion and costs the
+    guard nothing.  A separator the shell may *not* act on is ordinary text
+    in the middle of the word, so a group holding one is a group like any
+    other.  Both halves matter: deciding it by which characters are present,
+    rather than by whether the shell would act on them, gets one of the two
+    wrong whichever way it is written.
+
+    Every command here goes through a real bash, because every one of them
+    turns on a quoting question.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # A separator the shell acts on: these are not groups, so they
+            # are not expanded and cost nothing. The second is the same text
+            # with the separators taken out, which IS a group — one group,
+            # well inside the budget — so both spellings are allowed and for
+            # different reasons.
+            'echo {"a": 1, "b": 2}',
+            'echo {"a":1,"b":2}',
+            # The same, nine times over in a body, which is where a
+            # structure that counted them as groups would run out of budget.
+            "cat <<'eof'\n"
+            + "\n".join(f'{{"k{i}": {i}, "v{i}": {i}}}' for i in range(9))
+            + "\neof",
+            # Shell brace grouping and a function body are separated by `;`
+            # and by newlines, and have no comma, so they are not groups on
+            # either count.
+            "{ echo a; echo b; }",
+            "{\necho a\necho b\n}",
+            "g() { echo a; }\ng",
+            # Real brace expansion keeps working: the separators are between
+            # the groups, not inside them.
+            "mkdir -p build/{lib,bin} dist/{a,b}",
+            "cp {a,b}.txt dest/",
+            "echo start; echo {a,b}",
+            "echo one\necho {a,b}",
+            # An object filter written for another program, quoted so the
+            # shell keeps off it.
+            "jq '{name: .name, id: .id}' f.json",
+            "awk '{print $1, $2}' f",
+        ],
+    )
+    def test_a_separator_the_shell_acts_on_is_not_inside_a_group(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
+
+    @pytest.mark.parametrize(
+        "alternative",
+        [
+            'o,"x y"',
+            "o,'x y'",
+            'o,"x;y"',
+            'o,"x|y"',
+            'o,"x&y"',
+            'o,"x(y"',
+            'o,"x<y"',
+            'o,"x>y"',
+            'o,"x\ty"',
+            'o,"x\ny"',
+            "o,x\\ y",
+        ],
+    )
+    def test_a_separator_the_shell_cannot_act_on_leaves_a_group_a_group(
+        self, fake_home: Path, alternative: str
+    ) -> None:
+        """Quoted, the character is text; the word, and the group, are whole.
+
+        The group's first alternative is the protected directory's own name,
+        so bash expands it straight onto the directory whatever the second
+        alternative holds.  ``credential_guard_product.py`` runs the same
+        property against a real ``HOME`` with a marker file in it.
+        """
+        command = "cat ~/.mure{" + alternative + "}/credentials.json"
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "directory", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # An expandable group holding both a separator and an expansion.
+            # Bash expands neither of these, so refusing them costs nothing
+            # real — and it is what keeps an expansion form the span fold
+            # does not recognise on the deny side instead of making the group
+            # disappear.
+            "echo {a, $(date)}",
+            "echo {a, $x}",
+            "echo {a, ${x}}",
+            "echo {a, `date`}",
+            # A separator of the second kind inside an expandable group.
+            "echo {a;b,c}",
+            "echo {a|b,c}",
+            "echo {a,b(c)}",
+        ],
+    )
+    def test_contents_that_did_not_resolve_are_refused_on_their_own_ground(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "unresolved", command
+        reason = json.loads(proc.stdout)["hookSpecificOutput"][
+            "permissionDecisionReason"
+        ]
+        assert "~/.mureo" not in reason, "the command never named the directory"
+
+    def test_the_separator_placeholders_cannot_be_written_by_the_command(
+        self, fake_home: Path
+    ) -> None:
+        """A placeholder in the input must not buy a boundary.
+
+        The two placeholders are the only characters in the normalized text
+        that mean something other than themselves, so a command that writes
+        one has to be unable to claim it: both are replaced on the way in.
+        Written inside a group, the character therefore does not make the
+        group vanish, and written anywhere else it is an ordinary boundary.
+        """
+        for placeholder in ("\x01", "\x02"):
+            inside = run_guard_in_shell(
+                _bash_guard_command(),
+                {"command": f"cat ~/.mure{{o,{placeholder}x}}/credentials.json"},
+                fake_home,
+            )
+            assert deny_decision(inside) == "deny", placeholder
+            assert _refusal_category(inside) == "directory", placeholder
+
+            elsewhere = run_guard_in_shell(
+                _bash_guard_command(),
+                {"command": f"echo a{placeholder}b"},
+                fake_home,
+            )
+            assert deny_decision(elsewhere) is None, placeholder
 
 
 # ---------------------------------------------------------------------------

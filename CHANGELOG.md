@@ -2,6 +2,34 @@
 
 ### Fixed
 
+- **The credential guard decides a brace group's contents by quoting, not by
+  which characters are in them** (#806). A brace group is part of one word, so
+  bash does not expand one across a separator it is allowed to act on — and a
+  separator it may *not* act on is ordinary text in the middle of the word,
+  leaving the group a group. The guard decided this by looking for a newline in
+  the finished text, which got both halves wrong in opposite directions. It now
+  marks each separator the shell would act on while it is resolving quoting, and
+  the brace step reads that off instead of asking again. Two things follow.
+  `{"a": 1, "b": 2}` is no longer brace expansion, so a command carrying JSON —
+  nine objects in a here-document body was the reported case — no longer spends
+  the guard's expansion budget and no longer trips its refusal; and a group whose
+  alternatives are spelled with separators the shell cannot act on is expanded
+  like any other. Contents the guard cannot account for fail closed rather than
+  being ignored: an expandable group holding a separator together with an
+  expansion, or holding a separator of the `;` `|` `&` `(` `)` `<` `>` kind, is
+  refused as structure that did not resolve, with its own reason rather than the
+  budget's. Measured over eighty-eight everyday shapes — JSON pretty and
+  minified, jq object filters, python dicts and comprehensions, awk programs,
+  shell brace grouping and function definitions, real brace expansion and
+  sequences, and the forty-four here-document shapes from the change below —
+  one is newly refused and is recorded in the module docstring.
+- **A refusal from inside a here-document no longer claims the command can
+  reach `~/.mureo`** (#806). From a here-document operator on, the guard reads
+  text without resolving quoting, as bash does in a body, so a reference it
+  finds there may be text the shell never acts on — saying the command "can
+  reach" the directory asserted something the guard does not know, and sent the
+  agent looking for a live reference that may not exist. Such a refusal now says
+  what was found, says why it was not decided, and points at the Read tool.
 - **The credential guard reads the body of a here-document the way bash reads
   it** (#806). Bash resolves no quoting inside a here-document body: a `'` or a
   `"` there is ordinary body text. The guard resolved quoting there anyway; from

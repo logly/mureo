@@ -243,6 +243,18 @@ Two guards are installed:
     unquoted body, and in a quoted one the pair reaches whatever program
     consumes the body, which removes it then; either way the two characters
     are not part of a name.
+  - a separator the shell is allowed to act on becomes a placeholder, and
+    two of them: one for whitespace, one for ``;`` ``|`` ``&`` ``(`` ``)``
+    ``<`` ``>``.  Where one word ends and the next begins is a question
+    about *quoting*, not about which characters are present — a quoted
+    space is ordinary text in the middle of a word, an unquoted one ends
+    it — so it is the fold that answers it, once, and the brace step reads
+    the answer off the placeholders instead of asking again.  The two kinds
+    are kept apart because the brace step treats them differently; see
+    below.  Nothing else in the text means anything but itself, so the
+    placeholders are control characters, and a control character arriving
+    in the command is replaced on the way in: a command must not be able
+    to write one and claim a boundary the shell would not make.
 
   An *expansion* is one indivisible token, and the fold treats it as one.
   ``$( ... )``, ``${ ... }``, ``$(( ... ))``, a backtick pair and
@@ -279,6 +291,32 @@ Two guards are installed:
   two leading dots, and meanwhile the literal ``.mureo`` that rule 1 would
   have matched had already been replaced.  Both rules passed and the file
   was read.  Expanding removes the guess instead of refining it.
+
+  A brace group is part of one word, so what counts as its contents is
+  decided by the separator placeholders and not by the characters
+  themselves.  A group whose contents hold a placeholder is not a group:
+  bash does not expand a brace group across a separator it is allowed to
+  act on, and neither does this.  A separator the shell may *not* act on is
+  ordinary text in the middle of the word, so a group holding one is still
+  a group and is expanded like any other — which is the whole reason the
+  question is asked of the fold rather than of the finished text.
+  ``{"a": 1, "b": 2}`` is therefore not brace expansion and costs nothing,
+  while a group whose alternatives are spelled with quoted separators is.
+
+  Ignoring such a ``{...}`` is only safe where the guard can see that
+  nothing was lost by doing so, so the ignoring is conditional and fails
+  closed.  A ``{...}`` the shell would expand — one with a comma or a
+  ``..`` — whose contents hold either an expansion placeholder or a
+  separator from the second kind is *refused* as structure that did not
+  resolve, rather than ignored.  The reasoning is the same as the budget's:
+  if an expansion form the span fold does not recognise were to slip
+  through, its insides would read as separators, and ignoring the group on
+  that basis would be a guess in the fail-open direction.  Spelled this
+  way, any such slip lands on deny.  The condition is restricted to
+  expandable groups because a brace span without a comma or a ``..`` is not
+  brace expansion to any shell, so there is nothing about it to get wrong;
+  and bash's own separating comma is always at the group's top level, so it
+  is always visible in the reading when the group is real.
 
   Two groups are not lists of alternatives and cannot be enumerated this
   way: a sequence (``.{l..n}ureo`` covers ``m`` without the letter
@@ -331,6 +369,15 @@ Two guards are installed:
   - brace structure the expansion budget could not resolve: more than
     eight groups in one command, or an expansion whose normalized text
     exceeds 200 KB;
+  - brace structure whose contents did not resolve: a ``{...}`` the shell
+    would expand whose contents hold both a separator and an expansion
+    (``echo {a, $(date)}``, ``echo {a, $x}``), or a separator of the second
+    kind.  Bash expands neither, so nothing real is refused by the first
+    half; the second half costs a comma-bearing group written around text
+    in another language, measured with the here-document bullet below.
+    Both are the price of failing closed on contents the guard cannot
+    account for rather than ignoring them, and both say so in their own
+    reason rather than borrowing the budget's;
   - structure the span fold could not pair up: ``cat ~/x$(``, an unclosed
     backtick, and an unquoted ``{`` with no ``}`` after it (``echo a{b``,
     which bash does print).  The last is the price of refusing a brace group
@@ -349,10 +396,19 @@ Two guards are installed:
     their own.  Measured over forty-four everyday here-document shapes —
     python dicts and f-strings, jq filters, awk and sed scripts, SQL,
     YAML, markdown, ``ssh host <<EOF`` — those five are the whole cost.
-    They are the price of reading a body the way bash reads it: the
-    alternative, resolving quoting inside a body, is not something bash
-    does, and a guard that has to agree with bash about where the shell
-    text is cannot do it either;
+    Add forty-four brace-using shapes alongside them — JSON pretty and
+    minified, jq object filters, python dicts and comprehensions, awk
+    programs, shell brace grouping and function definitions, real brace
+    expansion and sequences — and the cost over all eighty-eight is those
+    five plus one body holding a comma-bearing brace group around a call
+    (``d = {"n": len([1, 2])}``), which the bullet above refuses.  They are
+    the price of reading a body the way bash reads it: the alternative,
+    resolving quoting inside a body, is not something bash does, and a
+    guard that has to agree with bash about where the shell text is cannot
+    do it either.  Within the latch a refusal from rules 1 to 3 cannot
+    claim the reference is live, because the guard has read text without
+    resolving quoting and does not know; it says that instead of claiming
+    the command can reach the directory;
   - a command longer than 64 KB, which is refused unread (see below);
   - sequence syntax this does not recognise — a three-part ``{a..z..2}``,
     an endpoint that is neither an integer nor a single letter — which is
@@ -592,13 +648,34 @@ _PATH_GUARD_CODE = (
 # pc %.  `ho` is the placeholder a quoted metacharacter collapses to — it
 # must be none of: an identifier character (it has to read as a component
 # boundary), a metacharacter, or a dot.
+#
+# `ws` and `op` are the two kinds of character that separate one word from
+# the next when the shell is allowed to act on them, and `sw` and `so` are
+# the placeholders each kind becomes in the normalized text.  Whether a
+# separator is live is a question about quoting, so it is the fold that has
+# to answer it rather than a regex over the result — see `nz` below.
+#
+# The two placeholders carry the only meaning in the normalized text that is
+# not the meaning of the character itself, so they must be characters a
+# brace group's contents cannot hold: control characters, which no path
+# component and no shell word contains, and which `_SANITIZE` removes from
+# the input so a command cannot write one and claim it.
 _CHARS = (
     "q1=chr(39); q2=chr(34); bs=chr(92); dl=chr(36); tk=chr(96); nl=chr(10); "
     "pc=chr(37); ho='='; mt='*?[]{},'; "
+    "sw=chr(1); so=chr(2); sn=sw+so; ws=chr(32)+chr(9)+nl; op=';|&()<>'; "
 )
 
+# A separator placeholder arriving in the input would let a command claim a
+# boundary the shell will not make, so neither reaches the fold: both are
+# replaced by the boundary placeholder on the way in.  Nothing is hidden by
+# the swap — a control character reads as a component boundary either way —
+# and after it the only `sw` and `so` in the text are the ones the fold put
+# there.
+_SANITIZE = "cc=cc.replace(sw,ho).replace(so,ho); "
+
 # The quoting automaton, as the step function of a left fold.  The state is
-# a 4-tuple.  First, where we are: 0 unquoted, 1 single-quoted, 2
+# a 5-tuple.  First, where we are: 0 unquoted, 1 single-quoted, 2
 # double-quoted, 3 escaped (from unquoted), 4 escaped (inside double
 # quotes).  Inside single quotes nothing is special, not even a backslash —
 # the rule bash applies.
@@ -633,20 +710,39 @@ _CHARS = (
 # shell of its own, which removes it then — either way the two characters
 # are not part of a name, and keeping them would stop the name being
 # contiguous.
+#
+# The fifth component is the same automaton run as if the latch had never
+# closed, and it exists for one question: whether the shell is allowed to act
+# on a separator.  Dropping quote resolution is the right answer for every
+# other question a body raises — where the command's words are, which
+# metacharacters are live — because erring there can only leave more text
+# visible to the rules.  It is the wrong answer for this one, and in the
+# fail-open direction: a body handed to a shell of its own has its quoting
+# resolved by that shell, so a separator written inside quotes there is text
+# in the middle of a word, and reading it as a word boundary would make a
+# brace group around it disappear.  A separator is therefore a separator only
+# where *both* readings say unquoted.  Where they disagree the group survives
+# and is judged, which is the safe direction; and a body whose quotes do not
+# balance — the thing the latch exists for — can only push this component into
+# a quoted state, so it can only keep groups alive, never dissolve one.
+_QUOTE_NEXT = (
+    "qn=lambda k,x: (1 if x==q1 else 2 if x==q2 else 3 if x==bs else 0) if k==0"
+    " else (0 if x==q1 else 1) if k==1"
+    " else (0 if x==q2 else 4 if x==bs else 2) if k==2"
+    " else (0 if k==3 else 2); "
+)
+
 _QUOTE_STEP = (
     "lambda kv,x: (lambda hd: ("
-    "(0 if kv[0]==3 else 3 if x==bs else 0) if hd"
-    " else (1 if x==q1 else 2 if x==q2 else 3 if x==bs else 0) if kv[0]==0"
-    " else (0 if x==q1 else 1) if kv[0]==1"
-    " else (0 if x==q2 else 4 if x==bs else 2) if kv[0]==2"
-    " else (0 if kv[0]==3 else 2),"
-    " 1 if x==pc else (kv[1] if kv[0] else 0), hd, x))"
+    "(0 if kv[0]==3 else 3 if x==bs else 0) if hd else qn(kv[0],x),"
+    " 1 if x==pc else (kv[1] if kv[0] else 0), hd, x, qn(kv[4],x)))"
     "(kv[2] or (kv[0]==0 and kv[3]+x=='<<'))"
 )
 
 # The fold's seed, named once because two folds consume it: unquoted, no `%`
-# in scope, no here-document operator seen, no previous character.
-_QUOTE_INIT = "(0,0,0,'')"
+# in scope, no here-document operator seen, no previous character, and the
+# latch-free quoting state also unquoted.
+_QUOTE_INIT = "(0,0,0,'',0)"
 
 # Rebuild the command with quoting resolved, one character at a time: drop
 # the delimiters; drop the newline of a line continuation, since a shell
@@ -668,15 +764,30 @@ _QUOTE_INIT = "(0,0,0,'')"
 # `%` becomes an expansion in *every* state, quoted or not, because it is
 # the next program along that expands it, not this shell.
 #
+# A separator becomes a placeholder when, and only when, the shell is allowed
+# to act on it: an unquoted space, tab or newline becomes `sw`, an unquoted
+# `;` `|` `&` `(` `)` `<` `>` becomes `so`.  Quoted, escaped, and inside an
+# expansion-that-the-span-step-has-already-taken-out, the same characters are
+# ordinary text and stay as written, which is what the shell does with them.
+# Deciding this here is what lets a later step ask whether a brace group's
+# contents are one word without asking a second time about quoting.
+#
+# `j` is the latch-free quoting state, and the separator question is the only
+# one that consults it: both it and `k` have to say unquoted.  See `_QUOTE_NEXT`
+# for why the two are not the same question inside a here-document body.
+#
 # It is written per character rather than as one join because the span step
 # below has to decide, for each character, whether it belongs to the command
 # or to the body of an expansion — and the two decisions are made in the same
 # pass, so there is still exactly one place that says what a character reads
 # as.
 _NORMALIZE_CHAR = (
-    "nz=lambda x,k,m: '' if (k==0 and x in q1+q2+bs) or (k==1 and x==q1)"
+    "nz=lambda x,k,m,j: '' if (k==0 and x in q1+q2+bs) or (k==1 and x==q1)"
     " or (k==2 and x in q2+bs) or (k>2 and x==nl)"
-    " else ('*/' if x in dl+tk+pc else (ho if k and not m and x in mt else x)); "
+    " else ('*/' if x in dl+tk+pc"
+    " else sw if k==0 and j==0 and x in ws"
+    " else so if k==0 and j==0 and x in op"
+    " else (ho if k and not m and x in mt else x)); "
 )
 
 # An expansion swallows the identifier run that names it: `$D` and `%s` are
@@ -726,21 +837,21 @@ _SPAN_STEP = (
     "sg=dl+'<>@?*+'+chr(33); "
     "tp=lambda s: s[0][0] if s else ''; "
     "cs=lambda s: s[0][1] if s else 0; "
-    "ds=lambda a,z: (lambda x,k,m,px,pk,s,n:"
+    "ds=lambda a,z: (lambda x,k,m,px,pk,s,n,j:"
     " ((('P',n),s), n+1, cs(s), '')"
     " if x=='(' and lv(k) and lv(pk) and px in sg"
     " else ((('B',n),s), n+1, cs(s), '')"
     " if x=='{' and lv(k) and lv(pk) and px==dl"
     " else ((s[1], n, cs(s[1]), ho) if tp(s)==tk else (((tk,n),s), n+1, cs(s), '*/'))"
     " if x==tk and lv(k)"
-    " else (((')',cs(s)),s), n, cs(s), nz(x,k,m)) if x=='(' and k==0"
-    " else ((('}',cs(s)),s), n, cs(s), nz(x,k,m)) if x=='{' and k==0"
-    " else (s[1], n, cs(s[1]), ho if tp(s)=='P' else nz(x,k,m))"
+    " else (((')',cs(s)),s), n, cs(s), nz(x,k,m,j)) if x=='(' and k==0"
+    " else ((('}',cs(s)),s), n, cs(s), nz(x,k,m,j)) if x=='{' and k==0"
+    " else (s[1], n, cs(s[1]), ho if tp(s)=='P' else nz(x,k,m,j))"
     " if x==')' and lv(k) and tp(s) in ('P', ')')"
-    " else (s[1], n, cs(s[1]), ho if tp(s)=='B' else nz(x,k,m))"
+    " else (s[1], n, cs(s[1]), ho if tp(s)=='B' else nz(x,k,m,j))"
     " if x=='}' and lv(k) and tp(s) in ('B', '}')"
-    " else (s, n, cs(s), nz(x,k,m))"
-    ")(z[0], z[1][0], z[1][1], z[2], z[3][0], a[0], a[1]); "
+    " else (s, n, cs(s), nz(x,k,m,j))"
+    ")(z[0], z[1][0], z[1][1], z[2], z[3][0], a[0], a[1], z[1][4]); "
 )
 
 # The readings: one for the command with every expansion replaced by `*/`, and
@@ -787,15 +898,32 @@ _READINGS = (
 # of them, so those are read coarsely — see `sq` below for which of the two
 # coarse readings applies and why.
 #
-# `ga` excludes the newline from a group's contents, because an unquoted
-# newline is a token separator: bash will not expand a brace group across
-# one, so neither should this. Matching across newlines would also let two
-# unrelated braces on different lines of a multi-line command pair up and
-# swallow everything between them.
+# `ga` excludes the two separator placeholders from a group's contents,
+# because a brace group is part of one word: bash will not expand a group
+# across a separator it is allowed to act on, so neither does this. Asking
+# about the placeholders rather than about the characters is what keeps that
+# agreement exact — a separator the shell may not act on is ordinary text
+# inside the word, and a group holding one is still a group. Taking the
+# characters themselves out would also let two unrelated braces on different
+# lines of a multi-line command pair up and swallow what lies between them.
+#
+# `gu` is the same span with the placeholders *allowed*, which is how the
+# leftovers are found: a `{...}` that `ga` does not match is one the shell
+# would not expand, and ignoring it is only safe when the guard can see that
+# nothing was lost by doing so. `nr` is that test, and it fails closed: of
+# the leftovers it looks only at the ones a shell would expand — a span
+# without a comma or a `..` is not brace expansion to anybody, so there is
+# nothing about it to get wrong — and it refuses those holding a separator
+# from `op`, or an expansion the span step could not take out of the way.
+# Either means the structure around the group was not resolved, and
+# resolving nothing is how this guard answers that.
 _BRACE_HELPERS = (
-    "ga='[{][^{}' + nl + ']*[}]'; "
+    "ga='[{][^{}' + sn + ']*[}]'; gu='[{][^{}]*[}]'; "
     "fe=lambda s: next((w for w in re.finditer(ga, s)"
     " if ',' in w.group() or '..' in w.group()), None); "
+    "nr=lambda s: [w for w in re.findall(gu, s)"
+    " if (',' in w or '..' in w)"
+    " and (so in w or (sw in w and '*/' in w))]; "
     # A sequence bash recognises has endpoints that are integers or single
     # *letters*, and neither can be a dot: an integer never contains one,
     # and a letter range lies within ASCII 65..122, well clear of 46. So a
@@ -845,12 +973,19 @@ _BRACE_HELPERS = (
 # a command does not get a fresh 200 KB for every `$(...)` it writes.
 # `ut` joins `un` because both say the same thing — the structure was not
 # resolved — and both therefore answer with the same reason.
+#
+# `nu` is the same refusal for the other way the structure can fail to
+# resolve: a `{...}` the shell would not expand *and* whose contents the
+# guard cannot account for, which is what `nr` decides. It is computed after
+# expansion rather than before it, because expanding an inner group is what
+# brings an outer one into view.
 _EXPAND = (
     "rs=functools.reduce(lambda q,_: q if q[1] else"
     " (lambda n: (q[0],True) if sum(map(len,n))>200000"
     " else (n, n==q[0]))"
     "([y for x in q[0] for y in ex(x)]), range(8), (rd,False)); "
     "ls=rs[0]; un=[x for x in ls if fe(x)] + ([cc] if ut else []); "
+    "nu=[x for x in ls if nr(x)]; "
 )
 
 # Source of a python expression yielding the regex for one path component
@@ -925,6 +1060,30 @@ _BUDGET_REASON = (
     "fewer brace groups or run it in pieces"
 )
 
+# Same principle, different ground: a brace group whose contents the guard
+# cannot account for is structure it did not resolve, and it says that rather
+# than borrowing the budget's claim about a budget it never spent.
+_UNRESOLVED_REASON = (
+    "mureo credential guard: this command has brace structure the guard could "
+    "not resolve, so it was refused rather than guessed at; keep each brace "
+    "group inside one word, with no unquoted separator between its braces, or "
+    "run the command in pieces"
+)
+
+# From a here-document operator on, this guard reads text the way bash reads
+# a body, which means it resolves no quoting there. So a reference it finds
+# in such a command may be one the shell would never act on, and claiming the
+# command "can reach ~/.mureo" would be claiming more than the guard knows —
+# the mistake the budget's own reason exists to avoid (#582). This one says
+# what was found and why it was not decided.
+_HEREDOC_REASON = (
+    "mureo credential guard: this command names ~/.mureo or a pattern that "
+    "matches it, and it carries a here-document operator, after which this "
+    "guard stops resolving quoting as bash does in a body; so it cannot tell "
+    "whether the reference is live and refused rather than guessed; read the "
+    "file with the Read tool, or send the command without a here-document"
+)
+
 _BASH_GUARD_CODE = (
     "import sys,json,re,os,fnmatch,functools,itertools; "
     # Fail closed: an escaping exception exits 1, which both hosts treat as a
@@ -940,11 +1099,18 @@ _BASH_GUARD_CODE = (
     # later step runs on the empty string instead.
     "bg=len(c)>65536; cc='' if bg else c; "
     + _CHARS
+    + _SANITIZE
+    + _QUOTE_NEXT
     + "st=list(itertools.accumulate(cc, "
     + _QUOTE_STEP
     + ", initial="
     + _QUOTE_INIT
     + ")); "
+    # Whether the here-document latch ever closed over the command. It does
+    # not change a single decision; it changes what the refusal is allowed to
+    # claim, because within the latch the guard has read text without
+    # resolving quoting and cannot say whether a reference it found is live.
+    + "lt=bool(st[-1][2]); "
     # One pass over the command, producing the readings: the command with
     # every expansion replaced by a placeholder, and one reading per
     # expansion body. Brace expansion then turns those into the list of
@@ -976,19 +1142,25 @@ _BASH_GUARD_CODE = (
     # appended so the end of a candidate counts as a boundary without the
     # pattern needing a `$`, which the payload may not contain.
     "f=[s for s in ls if re.search(" + _FILENAME_PATTERN + ", s + chr(32))]; "
-    # `un` is answered on its own, before rules 1 to 3: structure the guard
-    # could not resolve denies, but it denies for its own reason rather than
-    # borrowing one that claims a match. `bg` is answered before both.
+    # `un` and `nu` are answered on their own, before rules 1 to 3: structure
+    # the guard could not resolve denies, but each denies for its own reason
+    # rather than borrowing one that claims a match. `bg` is answered first of
+    # all. Within the here-document latch rules 1 to 3 cannot claim the
+    # reference is live either, so the refusal they produce says so.
     "b=[s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g or h; "
-    "fb=[] if b or un else f; "
+    "fb=[] if b or un or nu else f; "
     + _deny_expr(_OVERSIZE_REASON)
     + " if bg else ("
     + _deny_expr(_BUDGET_REASON)
     + " if un else ("
+    + _deny_expr(_UNRESOLVED_REASON)
+    + " if nu else ("
     + _deny_expr(_BASH_REASON)
+    + " if b and not lt else ("
+    + _deny_expr(_HEREDOC_REASON)
     + " if b else ("
     + _deny_expr(_FILENAME_REASON)
-    + " if fb else None)))"
+    + " if fb else None)))))"
 )
 
 
