@@ -100,9 +100,9 @@ jobs:
   # The exhaustive lanes (`pytest.mark.slow`), which a plain `pytest` skips.
   # They exist because the checks in them are real but cost minutes of child
   # interpreters: sweeping every submodule of the platform packages as a first
-  # import (tests/test_platform_submodule_imports.py), the whole-product
-  # credential-guard enumeration, and the plugin strict-mode startup. Nothing
-  # was running them automatically, which is the same as not having them.
+  # import (tests/test_platform_submodule_imports.py), the plugin strict-mode
+  # startup, and the per-package submodule-attribute sweep. Nothing was running
+  # them automatically, which is the same as not having them.
   #
   # Single Python (3.12) and no coverage: these lanes test import topology and
   # shell behaviour, neither of which differs across the matrix enough to pay
@@ -123,7 +123,13 @@ jobs:
       - name: Run the exhaustive lanes
         env:
           MUREO_RUN_EXHAUSTIVE_TESTS: "1"
-        run: pytest -m slow -v
+        # tests/test_credential_guard_product.py is deliberately NOT collected
+        # here. Its one whole-product test enumerates every guarded command
+        # through a real shell: measured at 1 h 56 m on a developer machine,
+        # against 77 s for all 63 other `slow` tests put together. Giving that
+        # one a CI budget is a separate decision from giving the rest one, and
+        # it should not be made by a job that was added for the rest.
+        run: pytest -m slow --ignore=tests/test_credential_guard_product.py -v
 
   # Windows compatibility guard. mureo has no Windows dev machines, so
   # this job is the real-Windows verification: the os.fchmod crash and
