@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -65,6 +66,43 @@ def _bash_guard_command() -> str:
     from mureo.credential_guard import bash_guard_entry
 
     return str(bash_guard_entry()["hooks"][0]["command"])
+
+
+# Each refusal has its own reason; the marker below is the phrase that is in
+# one of them and in none of the others.  Matching on the reason text rather
+# than on which branch of the hook fired is deliberate: the reason is what the
+# agent actually reads, so it is what a test about reasons has to assert on.
+_REFUSAL_MARKERS = (
+    ("oversize", "over 65536 bytes"),
+    ("budget", "brace expansion"),
+    ("filename", "credential file"),
+    ("directory", "can reach"),
+)
+
+
+def _refusal_category(proc: subprocess.CompletedProcess[str]) -> str | None:
+    """Which refusal a guard run produced, or ``None`` when it allowed.
+
+    A deny arrives in one of two shapes — the deny JSON on stdout with exit 0,
+    or exit 2 with the reason on stderr — and both hosts accept either.  A
+    helper that read only one channel would report the other as "allowed" and
+    the test would pass for the wrong reason, so both are read here.
+    """
+    reason = None
+    if proc.stdout.strip():
+        reason = (
+            json.loads(proc.stdout)
+            .get("hookSpecificOutput", {})
+            .get("permissionDecisionReason")
+        )
+    if reason is None and proc.returncode == 2:
+        reason = proc.stderr.strip()
+    if not reason:
+        return None
+    for category, marker in _REFUSAL_MARKERS:
+        if marker in reason:
+            return category
+    raise AssertionError(f"refusal reason matches no known category: {reason!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -561,6 +599,76 @@ class TestSearchByNameRatherThanByDirectory:
         assert "~/.mureo" in reason
 
 
+# Nine brace groups on one line: one more than the expansion budget resolves,
+# and nothing in it refers to the protected directory.  This is the shape the
+# budget refusal exists for, isolated from every other rule.
+_OVER_THE_BRACE_BUDGET = "echo " + " ".join(f"x{{{i},{i + 1}}}" for i in range(9))
+
+
+@pytest.mark.unit
+class TestTheBudgetRefusalSaysWhatHappened:
+    """Unresolved brace structure denies for its own reason (#806).
+
+    The budget answers before rules 1 to 4 and independently of them, so it
+    cannot claim anything about what matched.  Borrowing rule 1's reason told
+    the command it "can reach ~/.mureo" when the command never mentioned the
+    directory — the same mistake rule 4's own reason exists to avoid (#582):
+    the agent goes looking for a reference that is not there and retries.
+
+    What the refusal does *not* change is which commands are refused.  The
+    budget denied before the rules on both sides of this change; only the
+    sentence it prints is different.
+    """
+
+    def test_unresolved_structure_does_not_borrow_rule_ones_reason(
+        self, fake_home: Path
+    ) -> None:
+        proc = run_guard(
+            _bash_guard_command(),
+            {"command": _OVER_THE_BRACE_BUDGET},
+            fake_home,
+            tool_name="Bash",
+        )
+        assert proc.returncode == 0
+        assert deny_decision(proc) == "deny"
+        assert _refusal_category(proc) == "budget"
+        reason = json.loads(proc.stdout)["hookSpecificOutput"][
+            "permissionDecisionReason"
+        ]
+        assert "~/.mureo" not in reason, "the command never named the directory"
+
+    def test_a_directory_reference_keeps_the_directory_reason(
+        self, fake_home: Path
+    ) -> None:
+        proc = run_guard(
+            _bash_guard_command(),
+            {"command": "cat ~/.mureo/credentials.json"},
+            fake_home,
+            tool_name="Bash",
+        )
+        assert deny_decision(proc) == "deny"
+        assert _refusal_category(proc) == "directory"
+
+    def test_the_budget_answers_before_the_directory_rules(
+        self, fake_home: Path
+    ) -> None:
+        """A command that trips both is refused on the budget.
+
+        The budget runs first because its answer is "nothing was concluded
+        about this command": the readings rule 1 would judge are the ones the
+        guard failed to finish producing.  Reporting a match off an unfinished
+        expansion would be reporting a guess.
+        """
+        proc = run_guard(
+            _bash_guard_command(),
+            {"command": f"cat ~/.mureo/credentials.json; {_OVER_THE_BRACE_BUDGET}"},
+            fake_home,
+            tool_name="Bash",
+        )
+        assert deny_decision(proc) == "deny"
+        assert _refusal_category(proc) == "budget"
+
+
 # ---------------------------------------------------------------------------
 # The shell layer
 # ---------------------------------------------------------------------------
@@ -867,6 +975,117 @@ class TestGuardThroughARealShell:
         assert proc.stdout.strip() == "", f"now denied, update the docstring: {command}"
 
 
+@needs_shell
+@pytest.mark.unit
+class TestOneReadingOfTheWholeCommandText:
+    """The guard reads the command as a single string, and that is load-bearing.
+
+    Every row below writes the protected directory as a brace group and then
+    surrounds it with something that *looks* like a reason to stop reading: a
+    heredoc body, a word boundary, a command substitution.  Each of them was
+    measured against a throwaway ``HOME`` holding a marker credentials file,
+    and all but ``<<=A`` print the marker when the guard is removed — ``<<=A``
+    sends the text to the interpreter's stdin instead, so it is pinned as a
+    refusal rather than as a leak.
+
+    They are a table, not prose, because two attempts to narrow the guard — one
+    exempting quoted heredoc bodies, one splitting the command into words
+    before expanding braces — each re-opened a part of it.  Narrowing means
+    deciding where the text stops being shell, and that decision needs bash's
+    whole tokeniser to be right.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # `<<<` is a here-string, not a heredoc: it has no body, so the
+            # next line is an ordinary command the shell runs.
+            "python3 -c pass <<<'eof'\ncat ~/.mure{o,x}/credentials.json\neof",
+            # The operator sits in a comment, so there is no heredoc at all
+            # and again the next line is a command.
+            "python3 -V #<<'eof'\ncat ~/.mure{o,x}/credentials.json\neof",
+            # The delimiter is written across two adjacent quoted segments, so
+            # the body ends at `eo` — everything between `eof` and `eo`,
+            # including the payload, is shell text.
+            "python3 - <<'eo'\"f\"\nx = {1,2}\neof\n"
+            "cat ~/.mure{o,x}/credentials.json\neo",
+            # `<<=A` delimits on `=A`, which never arrives, so the payload is
+            # swallowed as an unterminated body: bash does not read the file
+            # here, and the refusal is recorded for the shape rather than for
+            # a measured leak.
+            "python3 - <<=A\ncat ~/.mure{o,x}/credentials.json\nA",
+        ],
+    )
+    def test_denies_a_brace_group_around_a_heredoc(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # A separator inside the group, quoted so that bash keeps the
+            # whole thing in one word and expands it. Splitting the command
+            # into words first has to agree with bash about every one of
+            # these, and the quoted ones are where it stops agreeing.
+            'cat ~/.mure{o," "x}/credentials.json',
+            "cat ~/.mure{o,' 'x}/credentials.json",
+            "cat ~/.mure{o,\\ x}/credentials.json",
+            'cat ~/.mure{o,"\tx"}/credentials.json',
+            'cat ~/.mure{o,";"x}/credentials.json',
+            'cat ~/.mure{o,"|"x}/credentials.json',
+            'cat ~/.mure{o,"&"x}/credentials.json',
+            'cat ~/.mure{o,"("x}/credentials.json',
+            'cat ~/.mure{o,"<"x}/credentials.json',
+            'cat ~/.mure{o,">"x}/credentials.json',
+            # The same group with no separator in it, as a control.
+            "cat ~/.mure{o,x}/credentials.json",
+        ],
+    )
+    def test_denies_a_group_holding_a_quoted_separator(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # A substitution inside the group. The separators in these are
+            # unquoted, so anything that tracked quoting but not substitution
+            # nesting would read them as word boundaries and cut the group in
+            # two — while bash expands it and reaches the directory.
+            "cat ~/.mur{e,$()}o/credentials.json",
+            "cat ~/.mur{e,$(true)}o/credentials.json",
+            "cat ~/.mur{e,$(:|:)}o/credentials.json",
+            "cat ~/.mur{e,$(:;:)}o/credentials.json",
+            "cat ~/.mur{e,$(:&)}o/credentials.json",
+            "cat ~/.mur{e,$(cat</dev/null)}o/credentials.json",
+            "cat ~/.mur{e,$(:>/dev/null)}o/credentials.json",
+            "cat ~/.mur{e,$(echo a b)}o/credentials.json",
+            "cat ~/.mur{e,$(echo $(echo a b))}o/credentials.json",
+            "cat ~/.mur{e,`echo a b`}o/credentials.json",
+            "cat ~/.mur{e,<(true)}o/credentials.json",
+            "cat ~/.mur{e,$((1 + 1))}o/credentials.json",
+        ],
+    )
+    def test_denies_a_group_holding_a_substitution(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+
 # ---------------------------------------------------------------------------
 # Template structure
 # ---------------------------------------------------------------------------
@@ -915,6 +1134,24 @@ class TestGuardTemplates:
         for bad in ("it's blocked", 'say "no"', "a\\b", "cost $5", "x`y`"):
             with pytest.raises(ValueError, match="unsafe"):
                 _deny_expr(bad)
+
+    def test_every_deny_reason_is_shell_safe(self) -> None:
+        """Checked over the module's reasons, not over a hand-written list.
+
+        ``_deny_expr`` already refuses an unsafe reason at build time, but only
+        for the reasons something calls it with. Sweeping every ``*_REASON``
+        catches one that is added and wired in later, when the import-time
+        failure would land on a user instead of here.
+        """
+        from mureo import credential_guard
+
+        names = sorted(n for n in vars(credential_guard) if n.endswith("_REASON"))
+        assert "_BUDGET_REASON" in names, names
+        for name in names:
+            reason = getattr(credential_guard, name)
+            unsafe = set(reason) - credential_guard._SAFE_REASON_CHARS
+            assert not unsafe, f"{name} has unsafe characters: {unsafe!r}"
+            credential_guard._deny_expr(reason)
 
     def test_guard_entries_returns_fresh_copies(self) -> None:
         """Installers merge these into user config — aliasing would let one

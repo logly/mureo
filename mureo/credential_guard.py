@@ -357,12 +357,14 @@ Two guards are installed:
     wildcard, brace here, brace tail, brace whole, sequence, star} x {what
     the breaking form contains: plain, an alternative with its own dot,
     with two, a backup-looking name, a nested group, a metacharacter, a
-    leading dot} x {how deeply it nests: 0, 1, 2, 3, 5, 8, 9, 11, 14, 20}
-    x {where}.  2698 members.  ``pytest -m slow`` runs all of them,
-    executing each in a throwaway ``HOME`` to confirm it really does read
-    the marker file and then asking the guard: all 2698 read it, all 2698
-    deny.  The default run checks an evenly-strided sample of 118, so
-    every commit defends the property even without the slow pass;
+    leading dot, a substitution, a substitution holding a space, a
+    backtick substitution, an arithmetic expansion} x {how deeply it
+    nests: 0, 1, 2, 3, 5, 8, 9, 11, 14, 20} x {where}.  3098 members.
+    ``pytest -m slow`` runs all of them, executing each in a throwaway
+    ``HOME`` to confirm it really does read the marker file and then
+    asking the guard: all 3098 read it, all 3098 deny.  The default run
+    checks an evenly-strided sample of 135, so every commit defends the
+    property even without the slow pass;
   - the nesting cliff has its own table: every depth from 1 to 20 with
     two, three and five alternatives per level, 60 cells, run by default.
     Each asserts that the command really reads the marker file *and* that
@@ -724,6 +726,17 @@ _OVERSIZE_REASON = (
     "not analysed; shorten it or run it in pieces"
 )
 
+# A refusal is not a match. The budget answers before rules 1 to 4 and
+# independently of them, so it cannot claim anything about what matched:
+# told the command "can reach ~/.mureo" when it never mentioned the
+# directory, an agent goes looking for a reference that is not there and
+# retries — the mistake rule 4's own reason exists to avoid (#582).
+_BUDGET_REASON = (
+    "mureo credential guard: brace expansion in this command exceeded the "
+    "guard budget, so it was refused with its structure unresolved; use "
+    "fewer brace groups or run it in pieces"
+)
+
 _BASH_GUARD_CODE = (
     "import sys,json,re,os,fnmatch,functools,itertools; "
     # Fail closed: an escaping exception exits 1, which both hosts treat as a
@@ -772,20 +785,19 @@ _BASH_GUARD_CODE = (
     # appended so the end of a candidate counts as a boundary without the
     # pattern needing a `$`, which the payload may not contain.
     "f=[s for s in ls if re.search(" + _FILENAME_PATTERN + ", s + chr(32))]; "
-    # `un` first: structure the guard could not resolve denies on its own.
-    # `bg` is answered separately below, because it needs its own reason.
-    "b=un or [s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)]"
-    " or g or h; "
-    # Rule 4 carries its own reason: told the command "can reach ~/.mureo"
-    # when it never mentioned the directory, an agent goes looking for a
-    # reference that is not there. This one says what actually matched.
-    "fb=[] if b else f; "
+    # `un` is answered on its own, before rules 1 to 3: structure the guard
+    # could not resolve denies, but it denies for its own reason rather than
+    # borrowing one that claims a match. `bg` is answered before both.
+    "b=[s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g or h; "
+    "fb=[] if b or un else f; "
     + _deny_expr(_OVERSIZE_REASON)
     + " if bg else ("
+    + _deny_expr(_BUDGET_REASON)
+    + " if un else ("
     + _deny_expr(_BASH_REASON)
     + " if b else ("
     + _deny_expr(_FILENAME_REASON)
-    + " if fb else None))"
+    + " if fb else None)))"
 )
 
 

@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+### Fixed
+
+- **The credential guard no longer tells you a command can reach `~/.mureo`
+  when it never mentioned it** (#806). When brace expansion in a Bash command
+  went past the guard's budget, the refusal borrowed rule 1's reason — "commands
+  that can reach `~/.mureo` are blocked" — although nothing in the command
+  referred to the directory. The budget answers before rules 1 to 4 and
+  independently of them, so it cannot say what matched; an agent sent looking
+  for a reference that is not there just retries. The reason now says what
+  actually happened: the brace structure could not be resolved, so the command
+  was refused unresolved, and the way out is fewer brace groups or running it in
+  pieces. Which commands are refused and which are allowed is unchanged.
+
 ## [0.21.3] - 2026-09-25
 
 ### Fixed

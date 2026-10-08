@@ -15,7 +15,10 @@ feature:
 * how the name is broken up — continuation, quote splits, escapes,
   classes, wildcards, brace forms, sequences;
 * what the breaking form *contains* — an alternative carrying its own dot
-  is what defeated the fold that replaced a group with one placeholder;
+  is what defeated the fold that replaced a group with one placeholder, and
+  an alternative carrying a substitution is what defeats any reading that
+  stops at an unquoted separator, since the separators inside ``$(...)`` are
+  not separators of the command;
 * how deeply the form nests — the expansion budget's cliff was invisible
   while every member sat at depth two or less;
 * where in the name it happens.
@@ -61,6 +64,14 @@ PARENTS: list[tuple[str, str, str]] = [
 ]
 
 # (label, the other alternative of a brace group, extra members of a class)
+#
+# The last four put a *substitution* inside the group. Without them the
+# product could only fill a group with plain text, so every reading that
+# stopped at an unquoted `(`, `;`, `&` or space — a word split, say — kept the
+# group whole in the product and broke it only outside the suite. The class
+# column is a plain letter for those four: a bracket expression's contents are
+# not a word, so the substitution has nothing to vary there and the spelling
+# collapses onto a member another filling already supplies.
 FILLERS: list[tuple[str, str, str]] = [
     ("plain", "z", "z"),
     ("dotted", "x.y", "x"),
@@ -69,6 +80,10 @@ FILLERS: list[tuple[str, str, str]] = [
     ("nested group", "{a,b}.c", "c"),
     ("metachar", "x*", "x"),
     ("leading dot", ".hidden", "h"),
+    ("substitution", "$(id)", "x"),
+    ("substitution with a space", "$(echo a b)", "x"),
+    ("backtick substitution", TICK + "echo a b" + TICK, "x"),
+    ("arithmetic expansion", "$((0))", "x"),
 ]
 
 NESTINGS = [0, 1, 2, 3, 5, 8, 9, 11, 14, 20]
