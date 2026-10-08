@@ -444,15 +444,10 @@ class AmazonAdsBridge:
         refresher: Refresher | None = None,
         token_saver: TokenSaver | None = None,
     ) -> None:
-        # Kept unresolved: ``_default_manifest_path()`` goes through
-        # ``get_runtime_context()``, and this constructor runs on the MCP
-        # server's import path — ``collect_plugin_tools`` instantiates every
-        # provider, and this bridge is appended to every installation. With a
-        # ``mureo.runtime_context_factory`` plugin registered, that one
-        # attribute cost the whole platform SDK stack at import (#807). See
-        # :attr:`_manifest_path`.
-        self._given_manifest_path = manifest_path
-        self._cached_manifest_path: Path | None = None
+        # This runs on the MCP server's import path: ``collect_plugin_tools``
+        # builds every provider while the server is still importing, so keep
+        # what a constructor does here small (#807).
+        self._manifest_path = manifest_path or _default_manifest_path()
         self._connect: ConnectFactory = connect or _default_connect
         # The credential seam both session paths share (#520) — see
         # :class:`mureo.amazon_ads.session_auth.SessionCredentials`. Every
@@ -464,22 +459,6 @@ class AmazonAdsBridge:
             refresher=refresher or refresh_access_token,
             token_saver=token_saver or runtime_token_saver,
         )
-
-    @property
-    def _manifest_path(self) -> Path:
-        """The manifest location, resolved once on first use.
-
-        Same value as resolving it in ``__init__`` did — an injected path
-        still wins, the default still comes from
-        :func:`_default_manifest_path`, and it is still resolved exactly once
-        per bridge — only the moment moves: to the first read, which is
-        :meth:`mcp_tools` (and the call path below it), never module import.
-        """
-        if self._cached_manifest_path is None:
-            self._cached_manifest_path = (
-                self._given_manifest_path or _default_manifest_path()
-            )
-        return self._cached_manifest_path
 
     # -- collection-time (pure, never raises) -------------------------------
 
