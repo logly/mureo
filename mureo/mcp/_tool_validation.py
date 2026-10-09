@@ -3,10 +3,13 @@
 Recent ``mcp`` releases (1.30.0 checked) validate a call's arguments against
 the tool's ``inputSchema`` before dispatch, but not every path gets that check:
 ``pyproject.toml`` allows ``mcp>=1.0``, a range that includes releases without
-``validate_input``, and a caller that invokes ``handle_call_tool`` directly (the
-tests, any future internal caller) never passes through the framework at all.
-On those paths declared bounds (``minimum``, ``required``, ``type``, ``enum``)
-are advisory until something checks them.
+``validate_input``, and a caller that invokes ``handle_call_tool`` directly
+never passes through the framework at all. That is not a hypothetical: the
+rollback handlers' ``_get_dispatcher()`` calls it for every reversal they
+apply, so a real-spend reversal (a budget put back) reaches this module with
+no other check in front of it; the tests do the same. On those paths declared
+bounds (``minimum``, ``required``, ``type``, ``enum``) are advisory until
+something checks them.
 :meth:`LazyToolValidators.validate_tool_input` is the inner of the two checks —
 the one that makes them real for every mutation on an older ``mcp`` and on a
 direct call, most importantly the real-spend boundary values (budget / bid
