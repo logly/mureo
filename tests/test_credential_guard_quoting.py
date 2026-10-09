@@ -367,7 +367,19 @@ class TestQuotingStateRows:
     @pytest.mark.parametrize(
         "command",
         [
+            # A comment at the start of a line does not shift the quoting of
+            # the next line: an apostrophe in the comment opens nothing, so the
+            # command below reads exactly as it would without the comment.
+            # Three spellings of the next line's quoting -- single, double and
+            # ANSI-C -- each stay their own thing.
             "# don't touch the originals\nsed 's/.*//' notes.txt",
+            '# don\'t touch the originals\ngrep "foo" notes.txt',
+            "# don't touch the originals\nprintf $'a\\tb'",
+            # A `#` in the middle of a word is an ordinary character, not the
+            # start of a comment; only one at a word start opens one.
+            "echo a#b",
+            "printf '%s' x#y",
+            "git log --format=%h#%s",
         ],
     )
     def test_allows(self, fake_home: Path, command: str) -> None:

@@ -221,9 +221,12 @@ _QUOTE_INIT = "(0,0,0,'',0,(0,1),(0,1))"
 # Deciding this here is what lets a later step ask whether a brace group's
 # contents are one word without asking a second time about quoting.
 #
-# `j` is the latch-free quoting state, and the separator question is the only
-# one that consults it: both it and `k` have to say unquoted.  See `_QUOTE_NEXT`
-# for why the two are not the same question inside a here-document body.
+# `j` is the latch-free quoting state, and the whitespace separator consults
+# it: both it and `k` have to say unquoted.  The operator separator does not
+# need to, because the latch `e` already turns it off inside a body, and a
+# body is the only place `j` and `k` disagree: outside one the latch has not
+# closed and the two folds are the same.  See `_QUOTE_NEXT` for why the two
+# are not the same question inside a here-document body.
 #
 # It is written per character rather than as one join because the span step
 # in spans.py has to decide, for each character, whether it belongs to the command
@@ -250,7 +253,7 @@ _NORMALIZE_CHAR = (
     " or (k==2 and x in q2+bs) or (k>2 and x==nl)"
     " else ('*/' if x in dl+tk+pc"
     " else sw if k==0 and j==0 and x in ws"
-    " else so if k==0 and j==0 and not e and x in op"
+    " else so if k==0 and not e and x in op"
     " else (ho if k and not m and not v and x in mt else x)); "
 )
 
