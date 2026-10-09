@@ -122,13 +122,16 @@
   a fault costs depends on which of three kinds it is, and for calls, on the
   path they take (see Fixed): through the MCP framework, `mcp` 1.30.0 runs
   the same metaschema check and refuses all three kinds before mureo's layer
-  is reached; the cells below about calls describe mureo's layer, which is
+  is reached (for a schema that declares no `$schema` or Draft 2020-12; an
+  older declared draft is judged by the framework under that draft, while
+  mureo's layer always judges by 2020-12); the cells below about calls
+  describe mureo's layer, which is
   what an `mcp` without `validate_input`, a direct `handle_call_tool` call
   and a rollback reversal get.
 
   | fault | before | now |
   |---|---|---|
-  | not a valid JSON Schema (`check_schema` raises `SchemaError`) | warning at start; on a direct call the tool is served **without input validation** (through the framework, `mcp` 1.30.0 refuses it) | the same, on the tool's first call: served without input validation on a direct call, refused by `mcp` 1.30.0 through the framework (for a schema that declares no `$schema` or Draft 2020-12) |
+  | not a valid JSON Schema (`check_schema` raises `SchemaError`) | warning at start; on a direct call the tool is served **without input validation** (through the framework, `mcp` 1.30.0 refuses it for a schema that declares no `$schema` or Draft 2020-12) | the same, on the tool's first call: served without input validation on a direct call, refused by `mcp` 1.30.0 through the framework (for a schema that declares no `$schema` or Draft 2020-12) |
   | compiling raises anything else (a `RecursionError` from a `$ref` cycle, a `jsonschema` bug) | **the server did not start** | **calls to that tool are refused** (`ToolSchemaUnusableError` from mureo's layer; the framework's own error through the framework); the rest of the catalog is served |
   | the schema raises when applied to a call (a `$ref` into nothing) | that call refused, with the third-party exception | that call refused: with `ToolSchemaUnusableError` where mureo's layer checks it, with the third-party message as before through the framework (see Fixed) |
 

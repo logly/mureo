@@ -316,7 +316,9 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
         except jsonschema.exceptions.SchemaError as exc:
             # Not a valid JSON Schema: this layer lets the tool's calls
             # through unchecked, as before #807 (where the mcp framework
-            # validates first, it refuses them), and the fault is reported.
+            # validates first, it refuses them, unless the schema declares
+            # an older draft that the framework accepts), and the fault is
+            # reported.
             problem = (
                 f"inputSchema is not a valid JSON Schema (Draft 2020-12), so "
                 f"mureo's own check cannot validate its input; whether calls are "
@@ -451,7 +453,9 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
         (``SchemaError`` at compile time), is let through unchecked by this
         method: see the module docstring for why those two cases differ, and
         for the framework path, where a call to a tool with a broken schema
-        is refused before this method is reached.
+        is refused before this method is reached (for a schema that declares
+        no ``$schema`` or Draft 2020-12; an older declared draft is judged by
+        the framework under that draft).
         """
         validator = self.get(name)
         if validator is None:
