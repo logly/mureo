@@ -1,10 +1,16 @@
 """Server-side enforcement of each tool's declared ``inputSchema``.
 
-The MCP framework does not enforce ``inputSchema``, so declared bounds
-(``minimum``, ``required``, ``type``, ``enum``) are advisory until something
-checks them. :meth:`LazyToolValidators.validate_tool_input` is that check — the
-single guard that makes them real for every mutation, most importantly the
-real-spend boundary values (budget / bid ``minimum: 1``) flagged in #277. Plugin
+Recent ``mcp`` releases (1.30.0 checked) validate a call's arguments against
+the tool's ``inputSchema`` before dispatch, but not every path gets that check:
+``pyproject.toml`` allows ``mcp>=1.0``, a range that includes releases without
+``validate_input``, and a caller that invokes ``handle_call_tool`` directly (the
+tests, any future internal caller) never passes through the framework at all.
+On those paths declared bounds (``minimum``, ``required``, ``type``, ``enum``)
+are advisory until something checks them.
+:meth:`LazyToolValidators.validate_tool_input` is the inner of the two checks —
+the one that makes them real for every mutation on an older ``mcp`` and on a
+direct call, most importantly the real-spend boundary values (budget / bid
+``minimum: 1``) flagged in #277. Plugin
 tools are checked on the same path (guardrail parity, #114 follow-up), instead
 of trusting the unverifiable assumption that every provider validates its own
 inputs; a permissive plugin schema is simply a check that finds nothing to
