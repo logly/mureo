@@ -143,24 +143,55 @@ from __future__ import annotations
 # and is judged, which is the safe direction; and a body whose quotes do not
 # balance — the thing the latch exists for — can only push this component into
 # a quoted state, so it can only keep groups alive, never dissolve one.
+#
+# Two more things decide how a quote reads, and both are about where a word
+# starts, so each quoting state carries a pair `(f, w)` beside it.  `w` says
+# what the previous character left behind: 1 at a word start (the start of
+# the command, or after a separator the shell acted on), 2 after a live `$`,
+# 0 otherwise.  A backslash carries it across, so a line continuation, which
+# bash removes before it reads anything, does not move a word start.  `f` is
+# the mode the state is in: 0 none, 5 a comment, 6 inside `$'...'`, 7 just
+# after a backslash there.
+#
+# A `#` at a word start opens a comment that runs to the end of the line, and
+# nothing in it is quoting: an apostrophe in a comment opens no quoted span,
+# which is what bash does with it.  Read as a quote, it paired with the next
+# apostrophe in the command and turned the text between them into quoted
+# text.  The comment's characters are otherwise read as unquoted text, as
+# they always were, so a reference written in a comment is still seen; a
+# `#` anywhere else (`a#b`, `${#x}`, `$#`) is an ordinary character.
+#
+# `$'...'` is ANSI-C quoting.  It reads as single-quoted text, except that a
+# backslash escapes the next character, so `\'` does not close it and `\\`
+# is one backslash.  A `$$` is the shell's PID, so the `$` after one does
+# not start another expansion.
 _QUOTE_NEXT = (
-    "qn=lambda k,x: (1 if x==q1 else 2 if x==q2 else 3 if x==bs else 0) if k==0"
-    " else (0 if x==q1 else 1) if k==1"
-    " else (0 if x==q2 else 4 if x==bs else 2) if k==2"
-    " else (0 if k==3 else 2); "
+    "qn=lambda k,a,x: ((0,(0,1)) if x==nl else (0,a)) if a[0]==5"
+    " else (1,(6,0)) if a[0]==7"
+    " else ((0,(0,0)) if x==q1 else (1,(7,0)) if x==bs else (1,a)) if a[0]==6"
+    " else ((0,(5,0)) if x==chr(35) and a[1]==1"
+    " else (1,(6,0)) if x==q1 and a[1]==2"
+    " else (1 if x==q1 else 2 if x==q2 else 3 if x==bs else 0,"
+    " (0, a[1] if x==bs else 1 if x in ws+op else 2 if x==dl and a[1]-2 else 0)))"
+    " if k==0"
+    " else ((0 if x==q1 else 1),(0,0)) if k==1"
+    " else ((0 if x==q2 else 4 if x==bs else 2),(0,0)) if k==2"
+    " else (0,(0,a[1] if x==nl else 0)) if k==3"
+    " else (2,(0,0)); "
 )
 
 _QUOTE_STEP = (
-    "lambda kv,x: (lambda hd: ("
-    "(0 if kv[0]==3 else 3 if x==bs else 0) if hd else qn(kv[0],x),"
-    " 1 if x==pc else (kv[1] if kv[0] else 0), hd, x, qn(kv[4],x)))"
-    "(kv[2] or (kv[0]==0 and kv[3]+x=='<<'))"
+    "lambda kv,x: (lambda hd,nm,nj: ("
+    "(0 if kv[0]==3 else 3 if x==bs else 0) if hd else nm[0],"
+    " 1 if x==pc else (kv[1] if kv[0] else 0), hd, x, nj[0],"
+    " (0,0) if hd else nm[1], nj[1]))"
+    "(kv[2] or (kv[0]==0 and kv[3]+x=='<<'), qn(kv[0],kv[5],x), qn(kv[4],kv[6],x))"
 )
 
 # The fold's seed, named once because two folds consume it: unquoted, no `%`
-# in scope, no here-document operator seen, no previous character, and the
-# latch-free quoting state also unquoted.
-_QUOTE_INIT = "(0,0,0,'',0)"
+# in scope, no here-document operator seen, no previous character, the
+# latch-free quoting state also unquoted, and both at a word start.
+_QUOTE_INIT = "(0,0,0,'',0,(0,1),(0,1))"
 
 # Rebuild the command with quoting resolved, one character at a time: drop
 # the delimiters; drop the newline of a line continuation, since a shell

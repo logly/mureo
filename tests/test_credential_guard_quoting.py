@@ -336,7 +336,8 @@ class TestQuotingKeepsThisShellOffAMetacharacterNotEveryShell:
 class TestQuotingStateRows:
     """Commands that pin the quoting automaton's states.
 
-    Each row is refused, and its category is the one the guard reports.
+    Each row of the first table is refused with the category the guard
+    reports for it, and each row of the second is allowed.
     """
 
     @pytest.mark.parametrize(
@@ -350,6 +351,9 @@ class TestQuotingStateRows:
                 "python3 - <<'eof'\nd = {'a': 1}\ncat ~/.mure{o,\" \"x}/credentials.json\neof",
                 "heredoc",
             ),
+            ("echo $'\\''; cat ~/.mure?/credentials.json #'", "directory"),
+            ("echo hi # don't\ncat ~/.mure?/credentials.json #'", "directory"),
+            ("echo hi # don't\ncat ~/.{l..n}ureo/credentials.json #'", "directory"),
         ],
     )
     def test_denies(self, fake_home: Path, command: str, category: str) -> None:
@@ -359,3 +363,16 @@ class TestQuotingStateRows:
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
         assert _refusal_category(proc) == category, command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "# don't touch the originals\nsed 's/.*//' notes.txt",
+        ],
+    )
+    def test_allows(self, fake_home: Path, command: str) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
