@@ -39,10 +39,13 @@ differing in one rewrite: a quoted metacharacter is left live instead of
 collapsing to the placeholder.  Collapsing it is the right answer to "what
 will this shell expand", and that is the only question the first set is
 asked.  It is the wrong answer to "what will the next program along do with
-this string", and a quoted string is exactly how a command hands text to a
-program that starts a shell of its own: a command that a shell re-reads.
-That shell sees the metacharacters as written, and the brace step over the
-second reading produces what it would produce.  Two readings of the one
+this string", and a quoted string is how a command hands text to another
+program — and a here-document body is how it hands it a whole block.  The
+second set is built over all of that text, not only over a string a shell
+is known to re-read, because the guard cannot tell which program consumes
+it and a program that starts a shell of its own sees the metacharacters as
+written.  The brace step over the second reading produces what that shell
+would produce.  Two readings of the one
 question is *not* the split-brain bug the bash_guard module docstring
 forbids: that bug was partition, each rule owning one string and blind to
 the other.  Here every rule that reads a name written

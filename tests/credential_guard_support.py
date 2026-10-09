@@ -65,6 +65,7 @@ _REFUSAL_MARKERS = (
     ("heredoc", "here-document operator"),
     ("filename", "credential file"),
     ("directory", "can reach"),
+    ("path", "are protected"),
 )
 
 

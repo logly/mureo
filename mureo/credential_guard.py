@@ -56,17 +56,19 @@ Two guards are installed:
     too, though neither can reach the directory;
   - a format string that builds ``<something>.<something>`` is the shape
     of ``printf '%s.mureo/…' ~/``, and nothing in the text distinguishes
-    them, so ``printf '%s.%s' a b`` denies.  Of twenty ``%``-heavy
-    everyday commands (``date +%Y-%m-%d``, ``git log --format=%h``,
-    ``awk '{printf "%.2f", $1}'``, ``grep '100%'``, a commit message
-    reading ``30% faster``) that is the only one that does;
+    them, so ``printf '%s.%s' a b`` denies.  ``%``-heavy everyday commands
+    (``date +%Y-%m-%d``, ``git log --format=%h``, ``awk '{printf "%.2f",
+    $1}'``, ``grep '100%'``, a commit message reading ``30% faster``) do
+    not: the shape it refuses is a ``%`` template building ``x.y``;
   - brace structure the expansion budget could not resolve: more than
     eight groups in one command, an inert span nested past the passes the
-    mapping is given, an expansion whose normalized text exceeds the
-    budget, or, in a quoted string a shell re-reads, a group the second
-    reading set cannot enumerate.  The budget is a fixed total split
-    between the two reading sets, so adding the second set did not raise
-    the work the hook can be made to do;
+    mapping is given, or an expansion whose normalized text exceeds the
+    byte budget, in the first reading set; and in a quoted string or a
+    here-document body the second set reads, a group it cannot enumerate,
+    or so many comma-bearing groups packed into one unbroken word that the
+    enumeration would overrun its per-word or total candidate cap.  The
+    first set spends its budget over all its readings at once; the second
+    spends a bounded budget per word;
   - an expansion whose body *ends* on a prefix of the directory's name,
     which is what reading the result as text of unknown extent costs.  A
     bare ``.`` is such a prefix, so ``echo $(ls .)`` denies although what it
@@ -133,10 +135,14 @@ Two guards are installed:
   The coarse approximations that are left: an expansion's *text*
   (unknowable, so ``*`` in the command reading and a trailing wildcard on the
   body's), an expansion's *extent* (unknowable, so ``/``), and a ``%``
-  template's result.  Two more — a sequence group and a group
-  with more than 64 alternatives — still take both coarse readings in the
-  first reading set rather than being enumerated; the second set enumerates
-  them or refuses them.
+  template's result.  Two more — an unrecognised sequence group and a group
+  with absurdly many alternatives — still take a coarse reading in the first
+  reading set rather than being enumerated: a recognised sequence takes
+  ``*`` alone, since neither an integer nor a letter can be a leading dot,
+  and the other forms take both ``*`` and ``.*``.  The second reading set
+  enumerates both of these where it can — a comma list whole, a letter range
+  as a superset of the characters bash makes of it, an integer sequence as
+  one endpoint — and refuses what it cannot.
 
   What the guard does not cover — measured, not assumed, and pinned by
   ``test_known_open_bypasses``:
@@ -295,8 +301,11 @@ from typing import Any
 
 # The payloads are assembled in mureo._credential_guard, one module per
 # step.  What callers and tests import is re-exported here: the payloads,
-# the protected filenames, and the deny reasons with the check on them --
-# re-exports nothing here uses, hence the blanket noqa.
+# the protected filenames, and the deny reasons callers refer to by name,
+# with the check on them.  Nothing here uses the re-exports, hence the
+# blanket per-import noqa.  The crash and empty-stdin reasons are built into
+# the payloads and referred to by no caller, so they are not among the
+# re-exports; tests that sweep every reason read the reasons module directly.
 from mureo._credential_guard.bash_guard import (  # noqa: F401
     _BASH_GUARD_CODE,
     GUARDED_FILENAMES,

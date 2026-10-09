@@ -1,8 +1,8 @@
 """Differential tests for the Bash guard: what the shell does vs what the
 guard decides.
 
-The parametrised rows in ``test_credential_guard.py`` pin roughly ninety
-spellings someone thought of.  These check a whole product, and they check
+The parametrised rows in ``test_credential_guard.py`` pin the spellings
+someone thought of.  These check a whole product, and they check
 it against a real bash rather than against a re-implementation of the rule
 — which is the only way the earlier bypasses were ever found.
 

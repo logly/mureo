@@ -5,12 +5,16 @@
 - **The credential guard's Bash hook reads a command the way bash does in more
   places** (#806). It now agrees with bash about which brace groups a command
   expands and where a here-document body, a shell expansion and a quoted string
-  begin and end, and it also reads a quoted string the way a shell that re-reads
-  it would. What it cannot resolve is refused rather than guessed at, in every
-  reading set, and each refusal states its own ground instead of claiming the
-  command can reach the credentials directory. The over-blocks this costs are
-  listed in the module docstring of `mureo/credential_guard.py` and pinned by
-  tests.
+  begin and end, and it also reads a quoted string or a here-document body the
+  way a program that re-reads it would. That second reading is expanded a word
+  at a time and bounded per word, so ordinary data handed to a program in one
+  quoted argument — a JSON array, a dictionary in a `python -c` script — is no
+  longer refused for its size; what is left on the deny side there is a run of
+  comma-bearing brace groups packed into a single unbroken quoted word. What it
+  cannot resolve is refused rather than guessed at, in every reading set, and
+  each refusal states its own ground instead of claiming the command can reach
+  the credentials directory. The over-blocks this costs are listed in the module
+  docstring of `mureo/credential_guard.py` and pinned by tests.
 - **Both credential-guard hooks read their stdin as bytes** (#806), so a host
   that sends UTF-8 is read as UTF-8 under every Windows code page; before, a home
   directory with a non-ASCII name could stop matching the protected path. An

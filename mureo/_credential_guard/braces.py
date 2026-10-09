@@ -40,15 +40,17 @@ brace expansion to any shell, so there is nothing about it to get wrong;
 and bash's own separating comma is always at the group's top level, so it
 is always visible in the reading when the group is real.
 
-Two groups are not lists of alternatives and cannot be enumerated this
-way: a sequence (``.{l..n}ureo`` covers ``m`` without the letter
-appearing anywhere) and one with absurdly many alternatives.  In the
-first reading set those fall back to *both* coarse readings, ``*`` and
-``.*``, which between them cover "supplies a leading dot" and "does not"
-— the pair the single guess was missing.  A group with neither a comma
-nor a ``..`` is not brace expansion at all; bash leaves ``{eo}``
-literal, so the guard does too, and ``~/.mur{eo}`` is allowed because it
-opens nothing.
+Two groups are not lists of alternatives the first reading set enumerates:
+a sequence (``.{l..n}ureo`` covers ``m`` without the letter appearing
+anywhere) and one with absurdly many alternatives.  A sequence it
+recognises — endpoints that are integers or single letters — takes the one
+coarse reading ``*``, because neither an integer nor a letter can be the
+leading dot of a dotfile, so ``.*`` would only over-block; a sequence it
+does not recognise, and a group with too many alternatives, take *both*
+``*`` and ``.*``, which between them cover "supplies a leading dot" and
+"does not".  A group with neither a comma nor a ``..`` is not brace
+expansion at all; bash leaves ``{eo}`` literal, so the guard does too, and
+``~/.mur{eo}`` is allowed because it opens nothing.
 
 Being literal is not the same as being absent, and that distinction is the
 whole of the next step.  Nesting resolves by expanding the innermost group
@@ -68,19 +70,22 @@ mapping needs a pass per level of nesting and is bounded like everything
 else here, and a text still changing when the bound is reached is refused
 with the rest of the structure the budget did not finish.
 
-Expansion has a budget — eight passes, 100,000 bytes of candidate text
-per reading set — so a pathological command cannot explode the hook.
-**Whatever the budget does not resolve is refused**, in both reading
+Expansion has a budget so a pathological command cannot explode the hook,
+and **whatever the budget does not resolve is refused**, in both reading
 sets.  Anything still holding an expandable group after the passes denies
-on that ground alone.  The second set has no coarse reading to fall back
-on: it does not answer the pattern rule, so a wildcard standing for a
-group there would be judged by nothing.  It enumerates instead — a list of
-up to 64 alternatives as it is, a sequence of single characters as the set
-of characters it covers, an integer sequence as one of its endpoints,
-since no name the rules read there holds a digit — and a group it cannot
-enumerate that way is left unresolved and refused with the rest.  That
-refusal answers after rules 1 to 3, so a command they already refuse
-keeps the reason they give.
+on that ground alone.  The first set spends eight passes and 100,000 bytes
+over all its readings at once.  The second set has no coarse reading to
+fall back on — it does not answer the pattern rule, so a wildcard standing
+for a group there would be judged by nothing — so it enumerates, and to
+keep that affordable it is spent a word at a time: each word gets sixteen
+passes, at most 1,024 distinct strings in a pass and 1,000,000 bytes, and
+the words of one reading share a total of 4,096 strings.  A comma list is
+enumerated whole, a one-character range between two letters as the
+characters it covers, an integer sequence as one of its endpoints (no name
+the rules read there holds a digit); a group it cannot enumerate that way,
+or a word that overruns its budget, is left unresolved and refused with the
+rest.  That refusal answers after rules 1 to 3, so a command they already
+refuse keeps the reason they give.
 
 That rule replaced a fallback that collapsed leftovers coarsely, and it
 is worth saying plainly why, because the docstring claimed the fallback
@@ -93,15 +98,17 @@ budget that shrugs is a bypass with a length requirement.  The general
 form of the rule is: when the guard cannot compute what the shell would
 produce, it denies.
 
-What that refuses in practice is a command with more than eight brace
-groups, or one whose expansion exceeds 100,000 bytes; in a quoted
-string a shell re-reads, also a group the second set cannot enumerate.
-Of twenty-one brace-using everyday commands — ``awk '{print $1}'``,
-``find . -exec rm {} ;``, ``mkdir -p build/{lib,bin,share}``, ``mv
-file{1..10}.txt``, ``jq '{name: .name}'``, eight groups on one line —
-exactly one is refused: nine groups on one line.  Quoted braces never
-reach this step, and a group with no comma and no ``..`` is literal to
-bash and to ``fe``.
+What that refuses in practice, in the first set, is a command with more
+than eight brace groups, or one whose expansion exceeds the byte budget.
+In a quoted string a shell re-reads, the second set also refuses a group
+it cannot enumerate, and — because it enumerates a word at a time — a
+single word holding more than ten two-way groups, or more than 1,024
+distinct strings' worth of alternatives, or a command whose words make
+more than 4,096 strings between them.  A space between the groups puts
+them in different words and costs far less, so the shape that is left is a
+run of comma-bearing groups packed into one unbroken quoted word.  Quoted
+braces are the only ones that reach the second set at all, and a group with
+no comma and no ``..`` is literal to bash and to ``fe``.
 """
 
 from __future__ import annotations
@@ -246,11 +253,13 @@ _BRACE_HELPERS = (
 # budget that shrugs is a bypass with a length requirement.
 #
 # The rule is general: when the guard cannot compute what the shell would
-# produce, it denies. Nothing legitimate is refused by it — a quoted
-# `awk '{print $1}'` never reaches this step, and `find . -exec {} \\;` has
-# neither a comma nor a `..`, so bash leaves it literal and so does `fe`.
-# What is left is a command with more than eight brace groups, or one whose
-# expansion exceeds 100,000 bytes, and neither is a thing anyone types.
+# produce, it denies. In the first set what is left is a command with more
+# than eight brace groups, or one whose expansion exceeds the byte budget. In
+# the second set a `find . -exec {} \\;` has neither a comma nor a `..`, so
+# bash leaves it literal and so does `fe`; what is left there is a run of
+# comma-bearing groups packed into one unbroken quoted word with no space to
+# split it — more than ten two-way ones, or alternatives past the per-word or
+# the total candidate cap.
 #
 # The first set spends one allowance over *all* its readings, the expansion
 # bodies included: a command does not get a fresh one for every `$(...)` it

@@ -10,8 +10,9 @@ from mureo._credential_guard.reasons import (
 )
 
 # stdin is read as bytes and handed to ``json.loads`` undecoded, which detects
-# UTF-8, -16 and -32 by itself.  Read as text it is decoded with the console
-# code page on Windows, so a host that sends UTF-8 has every non-ASCII
+# UTF-8, -16 and -32 by itself.  Read as text it is decoded with the ANSI code
+# page -- the locale's encoding -- on Windows, so a host that sends UTF-8 has
+# every non-ASCII
 # character in it turned into something else: a path under a home directory
 # with a non-ASCII name stops comparing equal to ``~/.mureo``, and a Bash
 # command with non-ASCII text in it is read as different text.  No stdin at
