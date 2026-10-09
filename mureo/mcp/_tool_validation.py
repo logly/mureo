@@ -491,9 +491,12 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
             )
             self._report([(name, problem)])
             return
+        # ASCII like a report (see _render): the tool name can be a plugin's,
+        # in any language, and this line goes to the same console.
         logger.debug(
-            "tool %s: inputSchema could not be applied again; %d calls refused "
-            "so far",
-            name,
-            count,
+            "%s",
+            _ascii(
+                f"tool {name}: inputSchema could not be applied again; "
+                f"{count} calls refused so far"
+            ),
         )

@@ -349,3 +349,36 @@ class TestReportsAreAscii:
         stream.flush()
         written = stream.buffer.getvalue().decode("ascii")
         assert "tool bad:" in written, written
+
+    def test_a_repeated_refusal_reaches_an_ascii_stream(self) -> None:
+        """The quiet DEBUG line for a repeat is a record too.
+
+        A plugin can name its tool in any language, and that name is in the
+        line, so it is escaped like a report.
+        """
+        name = "予算_reffy"
+        stream = io.TextIOWrapper(io.BytesIO(), encoding="ascii")
+        handler = logging.StreamHandler(stream)
+        handler.setLevel(logging.DEBUG)
+        logger = logging.getLogger(_LOGGER_NAME)
+        logger.addHandler(handler)
+        validators = LazyToolValidators(
+            [_tool(name, _UNRESOLVABLE)], plugin_names={name}
+        )
+        try:
+            with (
+                patch.object(logger, "level", logging.DEBUG),
+                warnings.catch_warnings(),
+            ):
+                warnings.simplefilter("ignore", PluginToolWarning)
+                for _ in range(3):
+                    with pytest.raises(ToolSchemaUnusableError):
+                        validators.validate_tool_input(name, dict(_BELOW_THE_MINIMUM))
+        finally:
+            logger.removeHandler(handler)
+
+        stream.flush()
+        lines = stream.buffer.getvalue().decode("ascii").splitlines()
+        repeats = [line for line in lines if "calls refused so far" in line]
+        assert len(repeats) == 2, lines
+        assert all(line.startswith("tool \\u4e88\\u7b97_reffy:") for line in repeats)

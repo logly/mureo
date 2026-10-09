@@ -151,17 +151,26 @@ class _ReentrantHandler(logging.Handler):
     """A log handler that looks a tool up from inside ``emit``.
 
     If reporting ever happens under the mapping's lock again, the worker thread
-    deadlocks inside ``emit`` while holding this handler's own lock
-    (``Handler.handle`` takes it around ``emit``). ``logging.shutdown`` at exit
-    acquires every live handler's lock, so the interpreter hung after reporting
-    the failure. The test sets ``lock`` to ``None`` once it is done, which
-    leaves exit nothing to wait on.
+    deadlocks inside ``emit``. With a handler lock, it would be holding that
+    too (``Handler.handle`` takes it around ``emit``), and ``logging.shutdown``
+    at exit acquires every live handler's lock, so the interpreter hung after
+    reporting the failure. So this handler has no lock, the way the stdlib's
+    ``NullHandler`` has none: ``createLock`` leaves ``lock`` at ``None``, which
+    leaves exit nothing to wait on, and ``_at_fork_reinit`` — which ``Handler``
+    otherwise calls on ``lock`` unconditionally in a forked child — has nothing
+    to reinitialise.
     """
 
     def __init__(self, validators: LazyToolValidators, seen: list[str]) -> None:
         super().__init__()
         self._validators = validators
         self._seen = seen
+
+    def createLock(self) -> None:  # noqa: N802 - overrides logging.Handler
+        self.lock = None
+
+    def _at_fork_reinit(self) -> None:
+        pass
 
     def emit(self, record: logging.LogRecord) -> None:
         self._seen.append(f"log:{self._validators.get('good') is not None}")
@@ -538,7 +547,52 @@ class TestValidatorCompileFaults:
                 thread.join(timeout=_THREAD_TIMEOUT_SECONDS)
         finally:
             logger.removeHandler(handler)
-            handler.lock = None  # see _ReentrantHandler
+
+        assert not thread.is_alive()
+        assert reentered == ["log:True", "warn:True"]
+
+    def test_reporting_an_apply_failure_does_not_hold_the_lock(self) -> None:
+        """The same, for a schema that compiles and then raises when applied.
+
+        That report has its own path (``_report_apply_failure``, which takes the
+        lock to count the failure), so the compile-time test above does not
+        cover it.
+        """
+        unresolvable = {"type": "object", "properties": {"b": {"$ref": "#/nowhere"}}}
+        validators = LazyToolValidators(
+            [
+                _tool_with_schema("plug_reffy", unresolvable),
+                _tool_with_schema("good", {}),
+            ],
+            plugin_names={"plug_reffy"},
+        )
+        reentered: list[str] = []
+        finished = threading.Event()
+
+        def hook(message: object, *args: object, **kwargs: object) -> None:
+            reentered.append(f"warn:{validators.get('good') is not None}")
+
+        def worker() -> None:
+            with pytest.raises(_tool_validation.ToolSchemaUnusableError):
+                validators.validate_tool_input("plug_reffy", {"b": 1})
+            finished.set()
+
+        logger = logging.getLogger(_LOGGER_NAME)
+        handler = _ReentrantHandler(validators, reentered)
+        logger.addHandler(handler)
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("always")
+                warnings.showwarning = hook  # type: ignore[assignment]
+                thread = threading.Thread(target=worker, daemon=True)
+                thread.start()
+                assert finished.wait(timeout=_THREAD_TIMEOUT_SECONDS), (
+                    "reporting an apply failure still holds the mapping's lock: "
+                    "a report handler that reads the mapping deadlocked"
+                )
+                thread.join(timeout=_THREAD_TIMEOUT_SECONDS)
+        finally:
+            logger.removeHandler(handler)
 
         assert not thread.is_alive()
         assert reentered == ["log:True", "warn:True"]
