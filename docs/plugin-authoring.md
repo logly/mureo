@@ -790,12 +790,141 @@ Rules the server enforces (a non-conforming provider is skipped with a
   otherwise change owner the moment the operator dropped the flag.
 - **Keep `inputSchema` honest — mureo enforces it server-side.** Since
   #324 the dispatcher validates every call against your declared
-  `inputSchema` *before* it reaches your handler and rejects a violation
-  with `ValueError`. Declare the types your handler actually accepts: a
+  `inputSchema` *before* it reaches your handler. Over stdio, `mcp`
+  (1.30.0 checked) validates first and rejects a violation with its own
+  error result; where mureo's layer is the one that sees the call (an
+  `mcp` without `validate_input`, a direct call to `handle_call_tool`,
+  the rollback handlers' reversals), it rejects one with `ValueError`.
+  Either way the call does not reach your handler. Declare the types
+  your handler actually accepts: a
   tool that declares `{"type": "integer"}` but tolerates `"1000"` will
   now have that call rejected before you see it. Beyond schema shape,
   still translate malformed arguments into your own error type rather
   than letting a bare `KeyError`/`ValueError` escape.
+
+  **Your schema is metaschema-checked while the server starts.** mureo
+  compiles a built-in tool's validator on that tool's first call, to keep
+  the server inside the MCP client's connect budget (#807) — but a
+  plugin's is compiled at startup, because you never get a run of
+  mureo's CI in which to find out it was wrong. If your `inputSchema` is
+  not valid JSON Schema Draft 2020-12, or cannot be compiled for any
+  other reason (a `RecursionError` from a `$ref` cycle, say), mureo
+  names the tool in a log record and in a `PluginToolWarning` — both,
+  because a stdio server captures no warnings by default and because
+  only the warning can be promoted to an error. If several of your
+  tools have unusable schemas, all of them are named in one report. The
+  server still starts and your other tools are unaffected.
+
+  **On the usual path, that startup report is all mureo tells you.**
+  Over stdio, `mcp` (1.30.0 checked) validates every call's arguments
+  against your `inputSchema` before mureo sees the call, running the
+  metaschema check itself, and turns any exception from that into an
+  error result. So a broken schema that declares no `$schema`, or
+  declares Draft 2020-12, makes **every call to that tool fail** there,
+  with the third-party error text, which does not name your tool;
+  mureo's own check is never reached, logs nothing and raises no
+  warning for those calls, and the strict mode below does not see
+  them. If you write `$schema` at all, make it Draft 2020-12: `mcp`
+  picks the draft from `$schema`, while mureo's check always uses
+  2020-12, so with any other draft the two layers can disagree — a
+  schema that declares draft-07 and is invalid only under 2020-12 is
+  validated by `mcp` as draft-07, and mureo's check then lets the call
+  through unchecked. A `$ref` that resolves to nothing is the case to
+  watch: the metaschema check accepts it, so the startup report is
+  silent, and it is only resolved when a call is validated — on this
+  path, every call that cannot be checked then fails with no report
+  from mureo at all.
+
+  mureo's own check is the only one on an `mcp` without
+  `validate_input`, on a direct call to `handle_call_tool`, and on the
+  rollback handlers' reversals, which go through that direct call.
+  There the two kinds of fault go different ways. A schema that is not
+  valid Draft 2020-12 costs that one tool its input validation: it
+  still dispatches, with whatever arguments the caller sent, straight
+  to your handler, so a schema typo quietly removes a guardrail. A
+  schema that *is* valid but cannot be used — it fails to compile for
+  another reason, or raises when applied to a call — gets the calls it
+  cannot check **refused** before your handler runs, with an error
+  naming the tool. The first such apply-time refusal is reported on the
+  same two channels; under the strict mode below it raises the
+  `PluginToolWarning` instead. The rest of your tools are unaffected.
+
+  To make it loud instead, promote the warning to an error **before**
+  the server is imported:
+
+  ```python
+  import warnings
+
+  from mureo.plugin_warnings import PluginToolWarning
+
+  warnings.filterwarnings("error", category=PluginToolWarning)
+
+  from mureo.mcp.server import main  # now raises on a plugin fault
+  ```
+
+  The order is the whole recipe, and the import has to be
+  `mureo.plugin_warnings` — importing anything under `mureo.mcp` imports
+  the server, which collects your plugin, which reports the fault; a
+  filter installed after that has nothing left to catch. (`-W
+  error::...` cannot be used for this at all: the interpreter cannot
+  import a non-builtin category while parsing `-W` and skips the option
+  with `Invalid -W option ignored`.)
+
+  Better still, validate your schemas in your own CI with
+  `jsonschema.Draft202012Validator.check_schema(tool.inputSchema)` for
+  every tool `mcp_tools()` returns, and you will never need either.
+
+  **Keep your module's import cheap: it happens while the MCP server
+  is still importing.** `collect_plugin_tools()` runs during `import
+  mureo.mcp.server` — it loads your entry point, imports your module,
+  instantiates your provider class and calls `mcp_tools()`, all before
+  the server can answer `initialize`. Whatever your module imports at
+  module scope is therefore spent out of the client's connect budget
+  (30,000 ms in Claude Code, not negotiable from inside the server),
+  and mureo cannot defer an import that you make.
+
+  The import that matters is your platform client / SDK. Measured on
+  one development machine on 2026-10-08 (CPython 3.10, the import's
+  own CPU via `time.process_time` inside a child interpreter, min of 5
+  runs, bytecode cache warm, `jsonschema`'s own import included),
+  `import mureo.mcp.server` costs **1.1 s and
+  loads 882 modules** with no plugins installed. With one provider
+  plugin that writes `from mureo.google_ads import GoogleAdsApiClient`
+  at module scope, the same import costs **2.4 s and loads 2229** —
+  1149 of them platform SDK, gRPC, crypto and protobuf modules, loaded
+  for an API call that may never come. mureo itself used to pay exactly
+  this bill on its own import path and stopped (#807); a plugin that
+  keeps paying it puts most of the cost back.
+
+  So import your client under `TYPE_CHECKING`, or inside the method
+  that uses it:
+
+  ```python
+  from typing import TYPE_CHECKING
+
+  if TYPE_CHECKING:
+      from acme_ads_sdk import AcmeClient      # annotations only
+
+  class AcmeAdapter:
+      def mcp_tools(self) -> tuple[Tool, ...]:
+          return MY_TOOLS                      # static, no SDK needed
+
+      async def handle_mcp_tool(self, name, arguments):
+          from acme_ads_sdk import AcmeClient  # paid on first call
+          ...
+  ```
+
+  Your `__init__` is on the same path: it runs during collection, so it
+  must not construct a client, read files or reach for process-wide
+  state either. `mcp_tools()` is already required to be pure and
+  credential-free — treat the module's imports and the constructor the
+  same way.
+
+  mureo's own guard (`tests/test_mcp_startup_budget.py`) charges each
+  platform-SDK import to the module that asked for it, so your plugin's
+  imports never fail mureo's tests and mureo's never look like yours.
+  Which also means nothing on mureo's side will tell you about this
+  one: it is the half of #807 that only a plugin author can fix.
 
 Sync clients: run blocking work off the event loop with
 `asyncio.to_thread(...)` inside `handle_mcp_tool` so you do not block

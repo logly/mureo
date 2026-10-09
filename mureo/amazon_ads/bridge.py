@@ -444,6 +444,9 @@ class AmazonAdsBridge:
         refresher: Refresher | None = None,
         token_saver: TokenSaver | None = None,
     ) -> None:
+        # This runs on the MCP server's import path: ``collect_plugin_tools``
+        # builds every provider while the server is still importing, so keep
+        # what a constructor does here small (#807).
         self._manifest_path = manifest_path or _default_manifest_path()
         self._connect: ConnectFactory = connect or _default_connect
         # The credential seam both session paths share (#520) — see

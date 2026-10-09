@@ -156,18 +156,6 @@ class TestSubprocessContracts:
         assert not bad, f"non-string environment values: {bad}"
 
 
-@pytest.fixture
-def only_when_asked_for(request: pytest.FixtureRequest) -> None:
-    """Run only when ``slow`` was selected, so a plain ``pytest`` skips it.
-
-    Expressed here rather than as a global ``addopts`` filter: a marker that
-    silently disappears from the default run is how a suite ends up with
-    checks nobody has executed in months.
-    """
-    if "slow" not in str(request.config.getoption("markexpr")):
-        pytest.skip("exhaustive; run with: pytest -m slow")
-
-
 @needs_shell
 @needs_posix_shell
 @pytest.mark.slow

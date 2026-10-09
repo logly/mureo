@@ -41,8 +41,6 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-import jsonschema
-from jsonschema import Draft202012Validator
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
@@ -75,6 +73,7 @@ from mureo.mcp._result_decorations import (
     _maybe_append_strategy_reminder,
     _refuse_text_content,
 )
+from mureo.mcp._tool_validation import LazyToolValidators
 from mureo.mcp.exclusion_preflight import (
     append_notice as append_exclusion_impact_notice,
 )
@@ -360,64 +359,28 @@ _ALL_TOOLS, _REASON_TOOLS = inject_reason_params(
 )
 
 
-# Pre-compiled JSON Schema validators for every tool, keyed by tool name.
-# The MCP framework does not enforce ``inputSchema``, so declared bounds
-# (``minimum``, ``required``, ``type``, ``enum``) are advisory until checked
-# server-side. Validating here is the single guard that makes them real for
-# every mutation — most importantly the real-spend boundary values
-# (budget / bid ``minimum: 1``) flagged in issue #277.
+# Server-side ``inputSchema`` enforcement lives in
+# :mod:`mureo.mcp._tool_validation`; see that module for why a tool's
+# validator is compiled on that tool's first call rather than for the whole
+# catalog at import (#807), and for what a malformed schema does.
 #
-# Plugin tools are validated here too (guardrail parity, #114 follow-up): a
-# plugin that declares ``minimum``/``required``/``enum`` on a real-spend
-# parameter now has those bounds enforced server-side, exactly like a
-# built-in, instead of relying on the (unverifiable) assumption that every
-# provider validates its own inputs. A plugin whose schema is permissive
-# (no constraints, ``additionalProperties`` open) is unaffected — the
-# validator simply finds nothing to reject. A malformed plugin schema is
-# skipped per-tool below, same as a malformed built-in schema.
-def _build_tool_validators() -> dict[str, Draft202012Validator]:
-    validators: dict[str, Draft202012Validator] = {}
-    for tool in _ALL_TOOLS:
-        schema = getattr(tool, "inputSchema", None)
-        if not isinstance(schema, dict):
-            continue
-        try:
-            Draft202012Validator.check_schema(schema)
-        except jsonschema.exceptions.SchemaError as exc:
-            # A malformed built-in schema must not take the whole server
-            # offline — skip validation for that one tool and log it.
-            logger.warning(
-                "tool %s: inputSchema is not a valid JSON Schema (%s); "
-                "input validation skipped for it",
-                tool.name,
-                exc,
-            )
-            continue
-        validators[tool.name] = Draft202012Validator(schema)
-    return validators
-
-
-_TOOL_VALIDATORS: dict[str, Draft202012Validator] = _build_tool_validators()
+# Plugin-owned schemas are compiled HERE, at server start, on purpose. They are
+# a handful, so the cost is noise against the connect budget, and a plugin
+# author has no CI run of ours in which to discover a bad schema — mureo's own
+# are covered by tests/test_mcp_strict_input_schemas.py instead.
+_TOOL_VALIDATORS = LazyToolValidators(_ALL_TOOLS, plugin_names=_PLUGIN_NAMES)
+_TOOL_VALIDATORS.compile_eagerly(_PLUGIN_NAMES)
 
 
 def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
     """Validate ``arguments`` against the tool's declared ``inputSchema``.
 
-    Raises ``ValueError`` (the dispatcher's standard caller-error channel)
-    on the first violation, before the tool handler runs — so an invalid
-    budget/bid never reaches a real-spend API call. Applies to both built-in
-    and plugin tools. No-op for a tool without a registered validator (no
-    schema, or a schema that failed ``check_schema`` at build time).
+    Thin module-level binding over
+    :meth:`mureo.mcp._tool_validation.LazyToolValidators.validate_tool_input`,
+    kept so the dispatcher and the tests that exercise the real-spend boundary
+    keep reading the validators this module instance built.
     """
-    validator = _TOOL_VALIDATORS.get(name)
-    if validator is None:
-        return
-    errors = sorted(validator.iter_errors(arguments), key=lambda e: list(e.path))
-    if not errors:
-        return
-    first = errors[0]
-    location = "/".join(str(p) for p in first.path) or "(root)"
-    raise ValueError(f"Invalid arguments for {name}: at '{location}': {first.message}")
+    _TOOL_VALIDATORS.validate_tool_input(name, arguments)
 
 
 # Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names
@@ -837,6 +800,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     Raises:
         ValueError: Unknown tool name, schema-invalid arguments, or a
             missing required parameter.
+        ToolSchemaUnusableError: The tool's ``inputSchema`` cannot check this
+            call (see :mod:`mureo.mcp._tool_validation`); no handler runs.
     """
     with journal_call(name, arguments) as call:
         return await _gated_dispatch(name, arguments, call)

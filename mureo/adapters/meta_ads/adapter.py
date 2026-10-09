@@ -43,7 +43,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable
 from datetime import date
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from mureo.adapters.meta_ads.errors import UnsupportedOperation
 from mureo.adapters.meta_ads.mappers import (
@@ -71,7 +71,15 @@ from mureo.core.providers.models import (
     UpdateCampaignRequest,
     minor_units_per_unit,
 )
-from mureo.meta_ads.client import MetaAdsApiClient
+
+if TYPE_CHECKING:
+    # Deferred on purpose (#807). This adapter package is imported by a
+    # ``mureo.runtime_context_factory`` plugin's factory, which runs while
+    # the MCP server is still importing; importing the client here loaded
+    # the platform SDK (generated API surface, gRPC, crypto) before a
+    # single tool had been called. The one runtime use is the constructor's
+    # ``isinstance`` check, which imports it there.
+    from mureo.meta_ads.client import MetaAdsApiClient
 
 _T = TypeVar("_T")
 
@@ -173,6 +181,8 @@ class MetaAdsAdapter:
     )
 
     def __init__(self, client: MetaAdsApiClient, *, currency: str) -> None:
+        from mureo.meta_ads.client import MetaAdsApiClient
+
         if not isinstance(client, MetaAdsApiClient):
             raise TypeError(
                 f"MetaAdsAdapter requires a MetaAdsApiClient instance, "
