@@ -71,11 +71,17 @@ and the difference is deliberate:
 
 That describes the paths above, where this layer is the only check. On the
 framework path — a client over stdio, ``mcp`` 1.30.0 checked — this layer never
-meets a broken schema: the framework's ``jsonschema.validate()`` runs
-``check_schema`` itself before the handler, and its ``except Exception`` turns
-any of the three faults into an ``isError`` result carrying the third-party
-message, which does not name the tool. So there a ``SchemaError`` tool is
-refused, not served unchecked, and a refusal raises no
+meets a broken schema that declares no ``$schema`` or declares Draft 2020-12:
+the framework's ``jsonschema.validate()`` runs ``check_schema`` itself before
+the handler, and its ``except Exception`` turns any of the three faults into an
+``isError`` result carrying the third-party message, which does not name the
+tool. So there such a ``SchemaError`` tool is refused, not served unchecked.
+The two layers part ways on a schema that declares an older draft:
+``jsonschema.validate()`` picks the draft from ``$schema``, while this layer
+always judges by Draft 2020-12, so a schema that declares draft-07 (say) and is
+invalid only under 2020-12 is validated by the framework under the draft it
+declares, and this layer lets the call through as a ``SchemaError``. A refusal
+on the framework path raises no
 :class:`ToolSchemaUnusableError`, writes no log record and emits no
 :class:`~mureo.plugin_warnings.PluginToolWarning`; strict mode does not see it.
 What still reaches an operator on that path is the startup report for a
@@ -190,7 +196,8 @@ def _public_type_name(exc: BaseException) -> str:
     internals in a message that reaches the client.
     """
     return next(
-        cls.__name__ for cls in type(exc).__mro__ if not cls.__name__.startswith("_")
+        (cls.__name__ for cls in type(exc).__mro__ if not cls.__name__.startswith("_")),
+        type(exc).__name__,
     )
 
 
@@ -311,8 +318,9 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
             # through unchecked, as before #807 (where the mcp framework
             # validates first, it refuses them), and the fault is reported.
             problem = (
-                f"inputSchema is not a valid JSON Schema, so its input is not "
-                f"validated ({_one_line(exc)})"
+                f"inputSchema is not a valid JSON Schema (Draft 2020-12), so "
+                f"mureo's own check cannot validate its input; whether calls are "
+                f"served depends on the MCP framework's check ({_one_line(exc)})"
             )
             return None, problem, None
         except Exception as exc:

@@ -819,14 +819,21 @@ Rules the server enforces (a non-conforming provider is skipped with a
   Over stdio, `mcp` (1.30.0 checked) validates every call's arguments
   against your `inputSchema` before mureo sees the call, running the
   metaschema check itself, and turns any exception from that into an
-  error result. So a broken schema makes **every call to that tool
-  fail** there, with the third-party error text, which does not name
-  your tool; mureo's own check is never reached, logs nothing and
-  raises no warning for those calls, and the strict mode below does not
-  see them. A `$ref` that resolves to nothing is the case to watch: the
-  metaschema check accepts it, so the startup report is silent, and it
-  is only resolved when a call is validated — on this path, every call
-  then fails with no report from mureo at all.
+  error result. So a broken schema that declares no `$schema`, or
+  declares Draft 2020-12, makes **every call to that tool fail** there,
+  with the third-party error text, which does not name your tool;
+  mureo's own check is never reached, logs nothing and raises no
+  warning for those calls, and the strict mode below does not see
+  them. If you write `$schema` at all, make it Draft 2020-12: `mcp`
+  picks the draft from `$schema`, while mureo's check always uses
+  2020-12, so with any other draft the two layers can disagree — a
+  schema that declares draft-07 and is invalid only under 2020-12 is
+  validated by `mcp` as draft-07, and mureo's check then lets the call
+  through unchecked. A `$ref` that resolves to nothing is the case to
+  watch: the metaschema check accepts it, so the startup report is
+  silent, and it is only resolved when a call is validated — on this
+  path, every call that cannot be checked then fails with no report
+  from mureo at all.
 
   mureo's own check is the only one on an `mcp` without
   `validate_input`, on a direct call to `handle_call_tool`, and on the

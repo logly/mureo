@@ -331,7 +331,7 @@ class TestReportsAreAscii:
 
         (record,) = _own_records(caplog)
         message = record.getMessage()
-        problem = message[message.index("(") + 1 : -1]
+        problem = message[message.index("check (") + len("check (") : -1]
         assert len(problem.encode("ascii")) <= _tool_validation._PROBLEM_CHAR_BUDGET
 
     def test_the_record_reaches_an_ascii_stream(self) -> None:
