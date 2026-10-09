@@ -183,21 +183,25 @@ _BRACE_HELPERS = (
     # fall back on: that set does not answer rule 2, so a `*` there would be
     # judged by nothing.  It enumerates what it can and leaves the rest of the
     # group as written, which `fe` still finds and `uf` refuses.  A comma list
-    # is enumerated whole, with no count cap of its own: the per-word and total
-    # candidate caps in `xq` bound it instead, and equal members cost nothing
-    # once they are deduplicated there.  An integer sequence is read as one
-    # endpoint: digits are no part of any name the rules read here.  A
-    # one-character sequence is enumerated only between two ASCII letters, in
-    # either direction.  Bash expands it by the ords of the endpoints as
-    # written, but the command is lowercased before the guard reads it, so
-    # `{A..z}` and `{a..z}` arrive the same and a lowercased endpoint cannot
-    # say which case it was.  Taking both the upper- and lower-case ord of each
-    # endpoint and ranging over their extremes covers every character bash
-    # makes of any case-spelling, lowercased and deduplicated.  It is a
-    # superset: a same-case range picks up the six punctuation characters ASCII
-    # puts between the cases, `_` among them, which only ever adds candidates.
-    # An endpoint that is not an ASCII letter is left as written and refused.
-    "aq=lambda g:(lambda e:g[1:-1].split(',')if','in g"
+    # is deduplicated and enumerated whole up to 1,024 distinct members, which
+    # is the per-word cap: a list with more than that is left unresolved as a
+    # group here rather than built out, so `ex` never materialises more than the
+    # cap's worth of a single group and the memory stays bounded by the input's
+    # size.  Equal members cost nothing, being deduplicated before the count.
+    # An integer sequence is read as one endpoint: digits are no part of any
+    # name the rules read here.  A one-character sequence is enumerated only
+    # between two ASCII letters, in either direction.  Bash expands it by the
+    # ords of the endpoints as written, but the command is lowercased before the
+    # guard reads it, so `{A..z}` and `{a..z}` arrive the same and a lowercased
+    # endpoint cannot say which case it was.  Taking both the upper- and
+    # lower-case ord of each endpoint and ranging over their extremes covers
+    # every character bash makes of any case-spelling, lowercased and
+    # deduplicated: always the 26 letters plus the six punctuation characters
+    # ASCII puts between the cases, `_` among them, so thirty-two candidates for
+    # any letter range, which only ever adds to what bash makes.  An endpoint
+    # that is not an ASCII letter is left as written and refused.
+    "aq=lambda g:(lambda e:(lambda d:list(d)if len(d)<=1024 else[g])"
+    "(dict.fromkeys(g[1:-1].split(',')))if','in g"
     " else[e[0]]if len(e)==2 and all(x.lstrip(chr(45)).isdigit()for x in e)"
     " else(lambda o:list(dict.fromkeys(chr(i).lower()"
     " for i in range(min(o),max(o)+1)))if all(97<=(c|32)<=122 for c in o)else[g])"
@@ -233,7 +237,7 @@ _BRACE_HELPERS = (
     "mp=lambda s: functools.reduce(lambda q,_: q if q[1]"
     " else (lambda n: (n, n==q[0]))(mb(q[0])), range(8), (s,False))[0]; "
     "ex=lambda s,a=al: (lambda t: (lambda w:"
-    " [t[:w.start()]+b+t[w.end():] for b in a(w.group())]"
+    " (t[:w.start()]+b+t[w.end():] for b in a(w.group()))"
     " if w else [t])(fe(t)))(mp(s)); "
 )
 
