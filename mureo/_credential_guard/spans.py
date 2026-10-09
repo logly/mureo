@@ -55,9 +55,10 @@ judge it as a pattern refuses every quoted glob and regex anyone writes:
 ``sed 's/.*//'``, ``find . -name '.*'``, ``ls '.*'``, ``tar -czf a.tgz
 '*.py'``.  It answers rules 1 and 4, which read something spelled out, and
 it carries no wildcard for the same reason: a wildcard is a pattern.  Nor
-does it produce a refusal of its own.  The structure it could not resolve is
-the same structure the first set could not, and refusing twice over would
-deny ``jq '{a: 1, b: $x}'`` for a group bash never expands.
+does the refusal for contents that did not resolve read it: that structure
+is the same in both sets, and refusing twice over would deny ``jq '{a: 1,
+b: $x}'`` for a group bash never expands.  The one refusal it does produce
+is the budget's, for a group it cannot enumerate; see braces.py.
 """
 
 from __future__ import annotations

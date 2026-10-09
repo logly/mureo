@@ -301,3 +301,78 @@ class TestASpanTheShellLeavesLiteralIsNotStructure:
         )
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) is None, command
+
+
+def _quoted(body: str) -> str:
+    """``body`` as the quoted argument of a shell that re-reads it."""
+    return "sh -c 'echo " + body + "'"
+
+
+def _groups(count: int) -> str:
+    return " ".join(["{a,b}"] * count)
+
+
+def _alternatives(count: int) -> str:
+    return "{" + ",".join(["x"] * count) + "}"
+
+
+@needs_shell
+@pytest.mark.unit
+class TestEveryReadingSetIsBoundByTheBudget:
+    """What the budget does not resolve is refused in either reading set.
+
+    The second set does not answer the pattern rule, so a coarse reading there
+    would be judged by nothing.  It enumerates what it can instead, and a group
+    it cannot enumerate is left unresolved and refused.  The first set keeps
+    its coarse readings.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            _quoted(_groups(8)),
+            _quoted("{1..10}"),
+            _quoted("{a..c}"),
+            _quoted(_alternatives(64)),
+        ],
+    )
+    def test_allows_what_the_second_set_can_enumerate(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            _quoted(_groups(9)),
+            _quoted("{1..10..2}"),
+            _quoted(_alternatives(65)),
+        ],
+    )
+    def test_refuses_what_the_second_set_cannot_enumerate(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "budget", command
+
+    @pytest.mark.parametrize(
+        "command",
+        ["echo " + _alternatives(65), "echo {1..10..2}"],
+    )
+    def test_the_first_set_keeps_its_coarse_readings(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "directory", command

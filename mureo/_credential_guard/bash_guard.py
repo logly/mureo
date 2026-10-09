@@ -279,7 +279,11 @@ _BASH_GUARD_CODE = (
     # next one's. Rules 2 and 3 stay on the first set and the raw text: rule 2
     # asks whether a pattern matches, and the second set's answer to that
     # question would be "every quoted glob does".
+    #
+    # The second set's unresolved structure joins `un` only where rules 1 to 3
+    # have not already refused, so a command they refuse keeps their reason.
     "b=[s for s in ls + lq if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g or h; "
+    "un=un or not b and uf(xq); "
     "fb=[] if b or ut or un or nu else f; "
     + _deny_expr(_EMPTY_STDIN_REASON)
     + " if not ib else ("

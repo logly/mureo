@@ -42,12 +42,13 @@ is always visible in the reading when the group is real.
 
 Two groups are not lists of alternatives and cannot be enumerated this
 way: a sequence (``.{l..n}ureo`` covers ``m`` without the letter
-appearing anywhere) and one with absurdly many alternatives.  Those fall
-back to *both* coarse readings, ``*`` and ``.*``, which between them
-cover "supplies a leading dot" and "does not" — the pair the single
-guess was missing.  A group with neither a comma nor a ``..`` is not
-brace expansion at all; bash leaves ``{eo}`` literal, so the guard does
-too, and ``~/.mur{eo}`` is allowed because it opens nothing.
+appearing anywhere) and one with absurdly many alternatives.  In the
+first reading set those fall back to *both* coarse readings, ``*`` and
+``.*``, which between them cover "supplies a leading dot" and "does not"
+— the pair the single guess was missing.  A group with neither a comma
+nor a ``..`` is not brace expansion at all; bash leaves ``{eo}``
+literal, so the guard does too, and ``~/.mur{eo}`` is allowed because it
+opens nothing.
 
 Being literal is not the same as being absent, and that distinction is the
 whole of the next step.  Nesting resolves by expanding the innermost group
@@ -69,8 +70,17 @@ with the rest of the structure the budget did not finish.
 
 Expansion has a budget — eight passes, 100,000 bytes of candidate text
 per reading set — so a pathological command cannot explode the hook.
-**Whatever the budget does not resolve is refused.**  Anything still
-holding an expandable group after the passes denies on that ground alone.
+**Whatever the budget does not resolve is refused**, in both reading
+sets.  Anything still holding an expandable group after the passes denies
+on that ground alone.  The second set has no coarse reading to fall back
+on: it does not answer the pattern rule, so a wildcard standing for a
+group there would be judged by nothing.  It enumerates instead — a list of
+up to 64 alternatives as it is, a sequence of single characters as the set
+of characters it covers, an integer sequence as one of its endpoints,
+since no name the rules read there holds a digit — and a group it cannot
+enumerate that way is left unresolved and refused with the rest.  That
+refusal answers after rules 1 to 3, so a command they already refuse
+keeps the reason they give.
 
 That rule replaced a fallback that collapsed leftovers coarsely, and it
 is worth saying plainly why, because the docstring claimed the fallback
@@ -84,12 +94,14 @@ form of the rule is: when the guard cannot compute what the shell would
 produce, it denies.
 
 What that refuses in practice is a command with more than eight brace
-groups, or one whose expansion exceeds 100,000 bytes.  Of twenty-one
-brace-using everyday commands — ``awk '{print $1}'``, ``find . -exec rm
-{} ;``, ``mkdir -p build/{lib,bin,share}``, ``mv file{1..10}.txt``,
-``jq '{name: .name}'``, eight groups on one line — exactly one is
-refused: nine groups on one line.  Quoted braces never reach this step,
-and a group with no comma and no ``..`` is literal to bash and to ``fe``.
+groups, or one whose expansion exceeds 100,000 bytes; in a quoted
+string a shell re-reads, also a group the second set cannot enumerate.
+Of twenty-one brace-using everyday commands — ``awk '{print $1}'``,
+``find . -exec rm {} ;``, ``mkdir -p build/{lib,bin,share}``, ``mv
+file{1..10}.txt``, ``jq '{name: .name}'``, eight groups on one line —
+exactly one is refused: nine groups on one line.  Quoted braces never
+reach this step, and a group with no comma and no ``..`` is literal to
+bash and to ``fe``.
 """
 
 from __future__ import annotations
@@ -158,8 +170,21 @@ _BRACE_HELPERS = (
     " or (len(e[0])==1 and len(e[1])==1 and not"
     " (min(ord(e[0]),ord(e[1]))<=46<=max(ord(e[0]),ord(e[1])))))"
     " else ['*','.*'])(v.split('..')); "
-    "al=lambda w: (lambda v: v if ',' in w.group() and len(v)<=64"
-    " else sq(w.group()[1:-1]))(w.group()[1:-1].split(',')); "
+    "al=lambda g: (lambda v: v if ',' in g and len(v)<=64"
+    " else sq(g[1:-1]))(g[1:-1].split(',')); "
+    # `aq` is the second reading set's `al`, and it has no coarse reading to
+    # fall back on: that set does not answer rule 2, so a `*` there would be
+    # judged by nothing.  It enumerates what it can and leaves the rest of the
+    # group as written, which `fe` still finds and `un` refuses.  A list of up
+    # to 64 alternatives is enumerated as in `al`.  An integer sequence is read
+    # as one endpoint: digits are no part of any name the rules read here.  A
+    # sequence of single characters is enumerated, in either direction, when it
+    # has at most 64 members.  Anything else is left as written.
+    "aq=lambda g:(lambda e:([g]if g.count(',')>63 else g[1:-1].split(','))if','in g"
+    " else[e[0]]if len(e)==2 and all(x.lstrip(chr(45)).isdigit()for x in e)"
+    " else(lambda o:[chr(i)for i in range(o[0],o[1]+1)]"
+    "if o[1]-o[0]<64 else[g])(sorted(map(ord,e)))"
+    "if list(map(len,e))==[1,1]else[g])(g[1:-1].split('..')); "
     # `mb` takes the braces of a span that is *literal* to bash — one holding
     # neither a comma nor a `..`, and no separator the shell may act on — and
     # writes them as their own placeholders.  That is what lets a group be
@@ -189,8 +214,8 @@ _BRACE_HELPERS = (
     # half-mapped.
     "mp=lambda s: functools.reduce(lambda q,_: q if q[1]"
     " else (lambda n: (n, n==q[0]))(mb(q[0])), range(8), (s,False))[0]; "
-    "ex=lambda s: (lambda t: (lambda w:"
-    " [t[:w.start()] + a + t[w.end():] for a in al(w)]"
+    "ex=lambda s,a=al: (lambda t: (lambda w:"
+    " [t[:w.start()]+b+t[w.end():] for b in a(w.group())]"
     " if w else [t])(fe(t)))(mp(s)); "
 )
 
@@ -200,10 +225,12 @@ _BRACE_HELPERS = (
 #
 # Whatever is left when the budget runs out is *refused*, not approximated:
 # `un` collects the candidates that still hold an expandable group, and a
-# non-empty `un` denies on that ground alone. The budget used to end in a
-# coarse fallback of two `re.sub` collapses, which past ten levels of
-# nesting left literal braces in the candidates — text `fnmatch` reads as
-# ordinary characters, so neither rule fired and
+# non-empty `un` denies on that ground alone.  `uf` is that test, and the
+# second set's candidates `xq` take it too, in bash_guard.py, once rules 1 to
+# 3 have had their say.  The budget used to end in a coarse fallback of two
+# `re.sub` collapses, which past ten levels of nesting left literal braces in
+# the candidates — text `fnmatch` reads as ordinary characters, so neither
+# rule fired and
 # `~/.{z11,{z10,...{z1,mureo}}}` was allowed while bash read the file. A
 # budget that shrugs is a bypass with a length requirement.
 #
@@ -220,12 +247,13 @@ _BRACE_HELPERS = (
 # the total — the two together cost what one cost before, so the bound on the
 # work the hook can be made to do has not moved.
 #
-# `ms` is the mapping's own leftover: a candidate whose inert brace spans were
-# still being taken out when the passes ran out was read half-mapped, so it
-# joins `un`, the structure the budget did not finish. `ut` does *not* join
-# them any more. It is an expansion whose extent the span fold could not
-# decide, which is a different fact about a different step, and a refusal that
-# said the brace budget ran out would be stating something that did not happen.
+# The mapping's own leftover — a candidate whose inert brace spans were still
+# being taken out when the passes ran out, and so was read half-mapped — is the
+# second half of `uf`: it is structure the budget did not finish.  `ut` does
+# *not* join them any more. It is an expansion whose extent the span fold
+# could not decide, which is a different fact about a different step, and a
+# refusal that said the brace budget ran out would be stating something that
+# did not happen.
 #
 # `nu` is the same refusal for the other way the structure can fail to
 # resolve: a `{...}` the shell would not expand *and* whose contents the
@@ -238,15 +266,15 @@ _BRACE_HELPERS = (
 # rule sees the strings the shell would produce and a span the mapping treated
 # as literal reads exactly as it was written.
 _EXPAND = (
-    "xp=lambda r: functools.reduce(lambda q,_: q if q[1] else"
+    "xp=lambda r,a=al: functools.reduce(lambda q,_: q if q[1] else"
     " (lambda n: (q[0],True) if sum(map(len,n))>100000"
     " else (n, n==q[0]))"
-    "([y for x in q[0] for y in ex(x)]), range(8), (r,False))[0]; "
+    "([y for x in q[0] for y in ex(x,a)]), range(8), (r,False))[0]; "
     "rl=lambda r: [x.replace(bo,'{').replace(bc,'}') for x in r]; "
     # `not ... ==` rather than the inequality operator: the payload may not
     # contain `!`, which a shell with history expansion would rewrite.
-    "rs=xp(rd); ms=[x for x in rs if not mb(x)==x]; "
-    "un=[x for x in rs if fe(x)] + ms; "
+    "rs=xp(rd); xq=xp(rq,aq); "
+    "uf=lambda r:[x for x in r if fe(x) or not mb(x)==x]; un=uf(rs); "
     "nu=[x for x in rs if nr(x)]; "
-    "ls=rl(rs); lq=rl(xp(rq)); "
+    "ls=rl(rs); lq=rl(xq); "
 )

@@ -62,10 +62,11 @@ Two guards are installed:
     reading ``30% faster``) that is the only one that does;
   - brace structure the expansion budget could not resolve: more than
     eight groups in one command, an inert span nested past the passes the
-    mapping is given, or an expansion whose normalized text exceeds the
-    budget.  The budget is a fixed total split between the two reading sets,
-    so adding the second set did not raise the work the hook can be made to
-    do;
+    mapping is given, an expansion whose normalized text exceeds the
+    budget, or, in a quoted string a shell re-reads, a group the second
+    reading set cannot enumerate.  The budget is a fixed total split
+    between the two reading sets, so adding the second set did not raise
+    the work the hook can be made to do;
   - an expansion whose body *ends* on a prefix of the directory's name,
     which is what reading the result as text of unknown extent costs.  A
     bare ``.`` is such a prefix, so ``echo $(ls .)`` denies although what it
@@ -133,9 +134,9 @@ Two guards are installed:
   (unknowable, so ``*`` in the command reading and a trailing wildcard on the
   body's), an expansion's *extent* (unknowable, so ``/``), and a ``%``
   template's result.  Two more — a sequence group and a group
-  with more than 64 alternatives — still take both coarse readings rather
-  than being enumerated; enumerating them is a contained change and the
-  place to start if this list is ever shortened again.
+  with more than 64 alternatives — still take both coarse readings in the
+  first reading set rather than being enumerated; the second set enumerates
+  them or refuses them.
 
   What the guard does not cover — measured, not assumed, and pinned by
   ``test_known_open_bypasses``:
