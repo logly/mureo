@@ -280,6 +280,23 @@ class TestGuardThroughARealShell:
         assert deny_decision(proc) == "deny", command
 
     @pytest.mark.parametrize(
+        ("command", "category"),
+        [
+            ("cat ~/$(printf '.')mureo/credentials.json", "directory"),
+            ("cat ~/$(printf '.')mure?/credentials.json", "directory"),
+        ],
+    )
+    def test_denies_through_the_shell_with_its_category(
+        self, fake_home: Path, command: str, category: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == category, command
+
+    @pytest.mark.parametrize(
         "command",
         [
             # Quoted metacharacters are ordinary characters: a regex, a
