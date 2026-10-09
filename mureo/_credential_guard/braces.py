@@ -179,13 +179,22 @@ _BRACE_HELPERS = (
     # is enumerated whole, with no count cap of its own: the per-word and total
     # candidate caps in `xq` bound it instead, and equal members cost nothing
     # once they are deduplicated there.  An integer sequence is read as one
-    # endpoint: digits are no part of any name the rules read here.  A sequence
-    # of single characters is enumerated, in either direction.  Anything else
-    # is left as written.
+    # endpoint: digits are no part of any name the rules read here.  A
+    # one-character sequence is enumerated only between two ASCII letters, in
+    # either direction.  Bash expands it by the ords of the endpoints as
+    # written, but the command is lowercased before the guard reads it, so
+    # `{A..z}` and `{a..z}` arrive the same and a lowercased endpoint cannot
+    # say which case it was.  Taking both the upper- and lower-case ord of each
+    # endpoint and ranging over their extremes covers every character bash
+    # makes of any case-spelling, lowercased and deduplicated.  It is a
+    # superset: a same-case range picks up the six punctuation characters ASCII
+    # puts between the cases, `_` among them, which only ever adds candidates.
+    # An endpoint that is not an ASCII letter is left as written and refused.
     "aq=lambda g:(lambda e:g[1:-1].split(',')if','in g"
     " else[e[0]]if len(e)==2 and all(x.lstrip(chr(45)).isdigit()for x in e)"
-    " else(lambda o:[chr(i)for i in range(o[0],o[1]+1)]"
-    "if o[1]-o[0]<64 else[g])(sorted(map(ord,e)))"
+    " else(lambda o:list(dict.fromkeys(chr(i).lower()"
+    " for i in range(min(o),max(o)+1)))if all(97<=(c|32)<=122 for c in o)else[g])"
+    "([ord(e[0]),ord(e[0])^32,ord(e[1]),ord(e[1])^32])"
     "if list(map(len,e))==[1,1]else[g])(g[1:-1].split('..')); "
     # `mb` takes the braces of a span that is *literal* to bash — one holding
     # neither a comma nor a `..`, and no separator the shell may act on — and

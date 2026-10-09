@@ -11,7 +11,9 @@ How these tests run the hook payloads is described in
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -20,7 +22,7 @@ from tests.credential_guard_support import (
     _refusal_category,
     needs_shell,
 )
-from tests.hook_guard_runner import deny_decision, run_guard_in_shell
+from tests.hook_guard_runner import BASH, deny_decision, run_guard_in_shell
 
 
 @needs_shell
@@ -462,3 +464,59 @@ class TestQuotedDataIsNotRefusedForItsSize:
         )
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) is None, command
+
+
+def _second_set_alternatives(group: str) -> set[str]:
+    """What the second reading set makes of ``group``, as the hook sees it.
+
+    The hook lowercases the command before reading it, so the group is
+    lowercased here too, and the result is compared with a real bash run.
+    """
+    from mureo._credential_guard.braces import _BRACE_HELPERS
+    from mureo._credential_guard.chars import _CHARS
+
+    scope: dict[str, Any] = {}
+    exec("import re, functools; " + _CHARS + _BRACE_HELPERS, scope)
+    return set(scope["aq"](group.lower()))
+
+
+@needs_shell
+@pytest.mark.unit
+class TestOneCharacterRangesInTheSecondSet:
+    """A one-character range is a sequence to bash only between two letters.
+
+    Bash compares the endpoints as written, but the hook only ever sees the
+    command lowercased, so it reads a letter range as the widest range its
+    endpoints could have spelled.  That is a superset of what bash makes of
+    any case-spelling, which is the safe direction.  A range whose endpoint is
+    not a letter is not a sequence it enumerates, so it is left unresolved and
+    refused.
+    """
+
+    @pytest.mark.parametrize(
+        "group",
+        ["{A..Z}", "{a..z}", "{A..z}", "{a..Z}", "{z..a}", "{Z..A}", "{a..d}"],
+    )
+    def test_the_enumeration_is_a_superset_of_what_bash_makes(self, group: str) -> None:
+        assert BASH is not None
+        made = subprocess.run(
+            [BASH, "-c", "for x in " + group + '; do printf "<%s>" "$x"; done'],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        ).stdout
+        chars = {m.lower() for m in made[1:-1].split("><") if m}
+        assert len(chars) > 1, made
+        assert chars <= _second_set_alternatives(group)
+
+    @pytest.mark.parametrize("group", ["{-..0}", "{@..a}", "{a..~}", "{0..a}"])
+    def test_a_range_between_non_letters_is_refused(
+        self, fake_home: Path, group: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": _quoted(group)}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", group
+        assert _refusal_category(proc) == "budget", group
