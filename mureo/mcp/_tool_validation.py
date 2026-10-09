@@ -24,8 +24,9 @@ construction really is microseconds — 1.6 ms for the whole 228-tool catalog.
 What costs is ``check_schema``, which validates the schema against the Draft
 2020-12 metaschema: **a median of 3.1 ms per tool (0.5 ms to 19 ms), 0.82 s
 summed over the catalog.** (Both measured 2026-10-08 on one development machine,
-CPython 3.10, no plugins installed: ``check_schema`` called directly on each of
-the 228 schemas, ``time.process_time``, bytecode cache warm, min of 5 runs. Not
+CPython 3.10, no plugins installed: the constructor and ``check_schema`` each
+called directly on each of the 228 schemas and summed, ``time.process_time``,
+bytecode cache warm, min of 5 runs. Not
 measured with ``cProfile``: tracing inflates a call this small by about an order
 of magnitude, which is where an earlier estimate of "~25 ms per tool" came
 from.)
@@ -53,13 +54,13 @@ Claude Code, not negotiable from inside the server) stays fixed. So a tool's
 validator is compiled on that tool's first call, which is the call it is
 enforced on, and a session pays only for the tools it uses.
 
-A tool whose schema cannot be used is handled one of two ways, and the
-difference is deliberate:
+A tool whose schema cannot be used is handled by this layer one of two ways,
+and the difference is deliberate:
 
-* **Not a valid JSON Schema** (``check_schema`` raises ``SchemaError``): the
-  tool loses its input validation and is still served. This is pre-#807
-  behaviour, unchanged; mureo's own schemas are metaschema-checked in CI, so
-  in practice this reaches production only through a plugin. It is reported.
+* **Not a valid JSON Schema** (``check_schema`` raises ``SchemaError``): this
+  layer lets the call through unchecked. This is pre-#807 behaviour,
+  unchanged; mureo's own schemas are metaschema-checked in CI, so in practice
+  this reaches production only through a plugin. It is reported.
 * **Anything else** — compiling raised something other than ``SchemaError`` (a
   ``RecursionError`` from a pathological ``$ref`` cycle, a ``jsonschema`` bug),
   or the schema raised while being *applied* (a ``$ref`` that resolves to
@@ -68,7 +69,20 @@ difference is deliberate:
   the first made the server fail to start and the second failed the call; a
   call is never served with declared bounds it could not check.
 
-Both are reported to the log, and a plugin's also as a
+That describes the paths above, where this layer is the only check. On the
+framework path — a client over stdio, ``mcp`` 1.30.0 checked — this layer never
+meets a broken schema: the framework's ``jsonschema.validate()`` runs
+``check_schema`` itself before the handler, and its ``except Exception`` turns
+any of the three faults into an ``isError`` result carrying the third-party
+message, which does not name the tool. So there a ``SchemaError`` tool is
+refused, not served unchecked, and a refusal raises no
+:class:`ToolSchemaUnusableError`, writes no log record and emits no
+:class:`~mureo.plugin_warnings.PluginToolWarning`; strict mode does not see it.
+What still reaches an operator on that path is the startup report for a
+plugin's schema (:meth:`LazyToolValidators.compile_eagerly`), which covers the
+two compile-time faults and not one that only raises when applied.
+
+Every report this layer makes goes to the log, and a plugin's also as a
 :class:`~mureo.plugin_warnings.PluginToolWarning` — see
 :meth:`LazyToolValidators._report`, which every report goes through.
 
@@ -123,6 +137,8 @@ class ToolSchemaUnusableError(RuntimeError):
     sends can fix this — the fault is in the schema. The original exception is
     chained as ``__cause__``; its type is not part of this one, so a
     ``jsonschema`` / ``referencing`` exception type does not leak to callers.
+    Only this layer raises it: a call the ``mcp`` framework has already refused
+    on its own check (see the module docstring) never becomes one.
     """
 
 
@@ -220,8 +236,9 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
     ``plugin_names`` marks the tools mureo does not own. Their schemas are
     compiled eagerly by :meth:`compile_eagerly` at server start (there are
     normally a handful, and a plugin author gets no CI run of ours in which to
-    find out otherwise), and a fault in one of them — at compile time or when a
-    call applies it — is reported as a
+    find out otherwise), and a fault in one of them — at compile time, or when
+    a call applies it on a path where this layer is the check that applies it
+    (see the module docstring) — is reported as a
     :class:`~mureo.plugin_warnings.PluginToolWarning` as well as logged, so the
     documented ``warnings.filterwarnings("error", ...)`` strict mode can turn it
     into an error. Built-in schemas are metaschema-checked in CI instead
@@ -290,8 +307,9 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
             Draft202012Validator.check_schema(schema)
             return Draft202012Validator(schema), None, None
         except jsonschema.exceptions.SchemaError as exc:
-            # Not a valid JSON Schema: the tool is served without input
-            # validation, as before #807, and the fault is reported.
+            # Not a valid JSON Schema: this layer lets the tool's calls
+            # through unchecked, as before #807 (where the mcp framework
+            # validates first, it refuses them), and the fault is reported.
             problem = (
                 f"inputSchema is not a valid JSON Schema, so its input is not "
                 f"validated ({_one_line(exc)})"
@@ -422,8 +440,10 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
                 a plugin's tool — the call is refused either way.
 
         A tool with no schema, or one that is not a valid JSON Schema
-        (``SchemaError`` at compile time), is served unvalidated: see the
-        module docstring for why those two cases differ.
+        (``SchemaError`` at compile time), is let through unchecked by this
+        method: see the module docstring for why those two cases differ, and
+        for the framework path, where a call to a tool with a broken schema
+        is refused before this method is reached.
         """
         validator = self.get(name)
         if validator is None:

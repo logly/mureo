@@ -10,7 +10,9 @@
   a scheduled job, a fresh container — starts cold by definition. All of the
   cost was `import mureo.mcp.server`: building the server object and
   answering `tools/list` cost 0.14 ms and 0.06 ms of CPU respectively once
-  that import was done (min of 5, same machine).
+  that import was done (measured 2026-10-09 on the machine described below,
+  by calling `_create_server()` and `handle_list_tools()` in-process right
+  after the import, `time.process_time`, min of 5).
 
   Two things paid for it, and neither was serving a tool call:
 
@@ -35,8 +37,10 @@
   compiled on that tool's first call, which is where it is enforced.
 
   Measured on one development machine (CPython 3.10, macOS, 228 built-in tools)
-  as the import's own CPU time (`time.process_time` inside a child interpreter,
-  bytecode cache warm, min of 5 runs) and `len(sys.modules)` after it. No wall
+  on 2026-10-08 as the import's own CPU time (`time.process_time` inside a
+  child interpreter, bytecode cache warm, min of 5 runs) and `len(sys.modules)`
+  after it. The import is timed whole, `jsonschema`'s own import included;
+  the split below starts its clock after `jsonschema` is imported. No wall
   clock is quoted: on this machine the same work measured 7–9 s warm and 19 s
   cold while its CPU time moved by hundredths, so a wall figure here would be a
   load average.
@@ -81,31 +85,52 @@
   comparison this check used to be went quiet in exactly the installations that
   have plugins, which is where #807 was reported from.
 
-- **A call that a tool's `inputSchema` cannot check is refused with an error
-  that names the tool** (#807). `check_schema` accepts a `$ref`, and resolving
-  it is deferred to the first validation, which then raises `referencing`'s
-  `Unresolvable` / `PointerToNowhere` for a pointer into nothing or a `$ref` to
-  a URL. Such a call was already refused before the handler ran; what reached
-  the client was a bare third-party exception. It is now a
-  `ToolSchemaUnusableError` naming the tool and the cause (chained), still not
-  a `ValueError`, because nothing the caller sends can fix it. The handler
-  still never runs: the bound the schema declares cannot be checked, so the
-  call is not served. The first refusal per tool is logged in full, and for a
-  plugin's tool also raised as a `PluginToolWarning`, so the documented strict
-  mode sees it; repeats are logged at DEBUG with a running count, so an agent
-  retrying in a loop does not write a full warning per attempt.
+- **Where mureo's own check is the one that sees it, a call that a tool's
+  `inputSchema` cannot check is refused with an error that names the tool**
+  (#807). `check_schema` accepts a `$ref`, and resolving it is deferred to the
+  first validation, which then raises `referencing`'s `Unresolvable` /
+  `PointerToNowhere` for a pointer into nothing or a `$ref` to a URL. Such a
+  call was already refused before the handler ran, and still is. Which layer
+  refuses it depends on the path the call takes:
+
+  - **Through the MCP framework** (a client over stdio): `mcp` (1.30.0
+    checked) validates the arguments against the `inputSchema` before mureo
+    sees the call, and turns any exception from that check into an error
+    result.
+    The call is refused there, with the third-party message, which does not
+    name the tool. mureo's layer is never reached, so nothing below happens
+    on this path: no `ToolSchemaUnusableError`, no log record, no
+    `PluginToolWarning`, and strict mode does not see it.
+  - **Where mureo's layer is the only check**: an `mcp` without
+    `validate_input` (the declared range is `mcp>=1.0,<2`), a direct call to
+    `handle_call_tool`, and the rollback handlers, which apply every reversal
+    — a real-spend one such as a budget put back included — through that
+    direct call. What reached the caller there was the bare third-party
+    exception; it is now a `ToolSchemaUnusableError` naming the tool and the
+    cause (chained), still not a `ValueError`, because nothing the caller
+    sends can fix it. The handler still never runs: the bound the schema
+    declares cannot be checked, so the call is not served. The first refusal
+    per tool is logged in full, and for a plugin's tool also raised as a
+    `PluginToolWarning`, so the documented strict mode sees it on these
+    paths; repeats are logged at DEBUG with a running count, so an agent
+    retrying in a loop does not write a full warning per attempt.
 
 ### Changed
 
 - **A built-in tool's `inputSchema` is now compiled on that tool's first call
   instead of at server start** (#807), so a fault in one is found there. What
-  a fault costs depends on which of three kinds it is:
+  a fault costs depends on which of three kinds it is, and for calls, on the
+  path they take (see Fixed): through the MCP framework, `mcp` 1.30.0 runs
+  the same metaschema check and refuses all three kinds before mureo's layer
+  is reached; the cells below about calls describe mureo's layer, which is
+  what an `mcp` without `validate_input`, a direct `handle_call_tool` call
+  and a rollback reversal get.
 
   | fault | before | now |
   |---|---|---|
-  | not a valid JSON Schema (`check_schema` raises `SchemaError`) | warning at start; the tool is served **without input validation** | the same, on the tool's first call |
-  | compiling raises anything else (a `RecursionError` from a `$ref` cycle, a `jsonschema` bug) | **the server did not start** | **calls to that tool are refused** (`ToolSchemaUnusableError`); the rest of the catalog is served |
-  | the schema raises when applied to a call (a `$ref` into nothing) | that call refused, with the third-party exception | that call refused, with `ToolSchemaUnusableError` (see Fixed) |
+  | not a valid JSON Schema (`check_schema` raises `SchemaError`) | warning at start; on a direct call the tool is served **without input validation** (through the framework, `mcp` 1.30.0 refuses it) | the same, on the tool's first call: served without input validation on a direct call, refused by `mcp` 1.30.0 through the framework |
+  | compiling raises anything else (a `RecursionError` from a `$ref` cycle, a `jsonschema` bug) | **the server did not start** | **calls to that tool are refused** (`ToolSchemaUnusableError` from mureo's layer; the framework's own error through the framework); the rest of the catalog is served |
+  | the schema raises when applied to a call (a `$ref` into nothing) | that call refused, with the third-party exception | that call refused: with `ToolSchemaUnusableError` where mureo's layer checks it, with the third-party message as before through the framework (see Fixed) |
 
   The first row keeps the pre-#807 behaviour on purpose. The second cannot:
   with compilation deferred the server is already running when it happens, so
