@@ -118,3 +118,12 @@ _EMPTY_STDIN_REASON = (
     "mureo credential guard: the hook received no tool call on stdin, so it "
     "refused rather than guessed"
 )
+
+# What the excepthook prints.  An exception means the guard reached no
+# conclusion about the call at all, so this reason claims none: borrowing a
+# rule's reason would tell the agent something matched when nothing was
+# evaluated, and would let a test that expects that rule pass on a crash.
+_CRASH_REASON = (
+    "mureo credential guard: the guard could not evaluate this tool call and "
+    "refused it"
+)

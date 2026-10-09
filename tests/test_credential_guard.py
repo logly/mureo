@@ -385,6 +385,7 @@ class TestGuardThroughARealShell:
         )
         assert deny_decision(proc) == "deny", raw_stdin
         assert proc.returncode == 0, proc.stderr
+        assert _refusal_category(proc) == "crash", raw_stdin
 
     def test_path_guard_malformed_input_denies(self, fake_home: Path) -> None:
         proc = run_guard_in_shell(
@@ -392,6 +393,7 @@ class TestGuardThroughARealShell:
         )
         assert deny_decision(proc) == "deny"
         assert proc.returncode == 0
+        assert _refusal_category(proc) == "crash"
 
     @pytest.mark.skipif(
         sys.platform == "win32",
@@ -414,6 +416,7 @@ class TestGuardThroughARealShell:
         )
         assert deny_decision(proc) == "deny"
         assert proc.returncode == 0
+        assert _refusal_category(proc) == "crash"
 
     @pytest.mark.parametrize(
         "command",

@@ -56,6 +56,7 @@ def _bash_guard_command() -> str:
 # than on which branch of the hook fired is deliberate: the reason is what the
 # agent actually reads, so it is what a test about reasons has to assert on.
 _REFUSAL_MARKERS = (
+    ("crash", "could not evaluate"),
     ("empty", "no tool call"),
     ("oversize", "over 65536 bytes"),
     ("span", "not closed"),

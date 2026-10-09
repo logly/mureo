@@ -14,6 +14,7 @@ from mureo._credential_guard.quoting import (
 from mureo._credential_guard.reasons import (
     _BASH_REASON,
     _BUDGET_REASON,
+    _CRASH_REASON,
     _EMPTY_STDIN_REASON,
     _FILENAME_REASON,
     _HEREDOC_REASON,
@@ -66,7 +67,7 @@ _BASH_GUARD_CODE = (
     "import sys,json,re,os,fnmatch,functools,itertools; "
     # Fail closed: an escaping exception exits 1, which both hosts treat as a
     # non-blocking hook error, so every exception must deny instead.
-    "sys.excepthook=lambda *a: (" + _deny_expr(_BASH_REASON) + ", "
+    "sys.excepthook=lambda *a: (" + _deny_expr(_CRASH_REASON) + ", "
     "sys.stdout.flush(), os._exit(0)); "
     + _STDIN
     + "c=str((d.get('tool_input') or {}).get('command') or '').lower(); "

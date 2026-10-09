@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mureo._credential_guard.reasons import (
+    _CRASH_REASON,
     _EMPTY_STDIN_REASON,
     _PATH_REASON,
     _deny_expr,
@@ -22,7 +23,7 @@ _PATH_GUARD_CODE = (
     # Fail closed: exit 1 is a non-blocking hook error in both hosts, so an
     # escaping exception would let the call through. A path that makes
     # realpath raise (an embedded NUL, say) must deny, not proceed.
-    "sys.excepthook=lambda *a: (" + _deny_expr(_PATH_REASON) + ", "
+    "sys.excepthook=lambda *a: (" + _deny_expr(_CRASH_REASON) + ", "
     "sys.stdout.flush(), os._exit(0)); " + _STDIN + "i=d.get('tool_input') or {}; "
     "p=str(i.get('file_path') or i.get('path') or i.get('notebook_path') or ''); "
     "e=os.path.expanduser(p); "
