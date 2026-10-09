@@ -99,11 +99,14 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["LazyToolValidators", "ToolSchemaUnusableError"]
 
-#: Longest problem description carried into a report. ``SchemaError`` renders the
-#: offending schema and the metaschema branch it failed, which ran past 15 lines
-#: in practice; folded to one line that is still over a kilobyte. A report is
-#: read by a human looking for which tool to fix, so it is cut here, and the
-#: whole schema is in the plugin's own source anyway.
+#: Longest problem description carried into a report, in ASCII characters (so
+#: in bytes) *after* escaping. ``SchemaError`` renders the offending schema and
+#: the metaschema branch it failed, which ran past 15 lines in practice; folded
+#: to one line that is still over a kilobyte. A report is read by a human
+#: looking for which tool to fix, so it is cut here, and the whole schema is in
+#: the plugin's own source anyway. Counted after escaping because one non-ASCII
+#: character escapes to six: counted before, it let a 1,420-byte description
+#: into one record, for a schema whose ``type`` was 400 Japanese characters.
 _PROBLEM_CHAR_BUDGET: Final = 240
 
 #: What a cut problem description ends with. ASCII, like the rest of a report.
@@ -136,12 +139,43 @@ class _NotCompiled:
 _NOT_COMPILED: Final = _NotCompiled()
 
 
+def _ascii(text: str) -> str:
+    """Escape everything outside ASCII as ``\\xNN`` / ``\\uNNNN`` / ``\\UNNNNNNNN``."""
+    return text.encode("ascii", "backslashreplace").decode("ascii")
+
+
 def _one_line(exc: BaseException) -> str:
-    """Render ``exc`` as a single truncated line fit for a report."""
+    """Render ``exc`` as a single escaped line, cut to the report budget.
+
+    Escaped first and cut afterwards, so the budget holds in bytes; the cut
+    falls between two characters' escapes, never inside one.
+    """
     folded = " ".join(str(exc).split())
-    if len(folded) <= _PROBLEM_CHAR_BUDGET:
-        return folded
-    return folded[: _PROBLEM_CHAR_BUDGET - len(_ELLIPSIS)] + _ELLIPSIS
+    escaped = _ascii(folded)
+    if len(escaped) <= _PROBLEM_CHAR_BUDGET:
+        return escaped
+    room = _PROBLEM_CHAR_BUDGET - len(_ELLIPSIS)
+    kept: list[str] = []
+    for char in folded:
+        piece = _ascii(char)
+        if len(piece) > room:
+            break
+        kept.append(piece)
+        room -= len(piece)
+    return "".join(kept) + _ELLIPSIS
+
+
+def _public_type_name(exc: BaseException) -> str:
+    """Name ``exc``'s first public class, skipping ``_``-prefixed ones.
+
+    ``jsonschema`` raises a private wrapper (``_WrappedReferencingError``) for a
+    ``$ref`` it cannot resolve; its public base (``referencing``'s
+    ``Unresolvable``) says the same thing without naming a third party's
+    internals in a message that reaches the client.
+    """
+    return next(
+        cls.__name__ for cls in type(exc).__mro__ if not cls.__name__.startswith("_")
+    )
 
 
 def _render(problems: Sequence[tuple[str, str]]) -> str:
@@ -151,8 +185,9 @@ def _render(problems: Sequence[tuple[str, str]]) -> str:
     both of those end up on whatever console the operator's MCP client gave the
     server, whose encoding is not ours to assume — on an ASCII stream one
     non-ASCII character costs the whole record, not just itself. A problem
-    quotes the schema, which can be in any language, so anything outside ASCII
-    is escaped rather than trusted to be absent.
+    quotes the schema, which can be in any language; :func:`_one_line` has
+    already escaped it, and the whole line is escaped again here for the tool
+    name, which comes from a plugin and is not trusted to be ASCII either.
     """
     if len(problems) == 1:
         name, problem = problems[0]
@@ -160,7 +195,7 @@ def _render(problems: Sequence[tuple[str, str]]) -> str:
     else:
         listed = "; ".join(f"{name}: {problem}" for name, problem in problems)
         text = f"{len(problems)} tools have an unusable inputSchema: {listed}"
-    return text.encode("ascii", "backslashreplace").decode("ascii")
+    return _ascii(text)
 
 
 def _first_error_path(error: ValidationError) -> list[Any]:
@@ -270,7 +305,7 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
             # retried on every call, and every call is refused.
             problem = (
                 f"inputSchema could not be compiled, so calls to it are refused "
-                f"({type(exc).__name__}: {_one_line(exc)})"
+                f"({_public_type_name(exc)}: {_one_line(exc)})"
             )
             # Keep the cause for chaining, not the ~1000 frames a
             # RecursionError's traceback would pin for the life of the process.
@@ -396,7 +431,7 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
             if refusal is not None:
                 raise ToolSchemaUnusableError(
                     f"tool {name}: inputSchema could not be compiled "
-                    f"({type(refusal).__name__}: {_one_line(refusal)}); "
+                    f"({_public_type_name(refusal)}: {_one_line(refusal)}); "
                     f"the call is refused"
                 ) from refusal
             return
@@ -408,7 +443,7 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
             self._report_apply_failure(name, exc)
             raise ToolSchemaUnusableError(
                 f"tool {name}: inputSchema could not be applied "
-                f"({type(exc).__name__}: {_one_line(exc)}); the call is refused"
+                f"({_public_type_name(exc)}: {_one_line(exc)}); the call is refused"
             ) from exc
         if first is None:
             return
@@ -432,7 +467,7 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
         if count == 1:
             problem = (
                 f"inputSchema could not be applied, so calls it cannot check "
-                f"are refused ({type(exc).__name__}: {_one_line(exc)})"
+                f"are refused ({_public_type_name(exc)}: {_one_line(exc)})"
             )
             self._report([(name, problem)])
             return

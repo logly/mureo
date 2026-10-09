@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import warnings
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -157,6 +158,30 @@ class TestApplyTimeRefusal:
         assert type(raised.value).__module__ == _tool_validation.__name__
         assert raised.value.__cause__ is not None
 
+    def test_the_refusal_names_no_private_class(self) -> None:
+        """``jsonschema`` wraps the cause in a private class; name a public one.
+
+        The text reaches the client and the log, where a ``_``-prefixed name is
+        an implementation detail of a third party that can change under us.
+        """
+        validators = LazyToolValidators([_tool("reffy", _UNRESOLVABLE)])
+
+        with pytest.raises(ToolSchemaUnusableError) as raised:
+            validators.validate_tool_input("reffy", dict(_BELOW_THE_MINIMUM))
+
+        text = str(raised.value)
+        assert re.findall(r"\b_[A-Za-z]\w*", text) == [], text
+        assert "Unresolvable:" in text, text
+
+    def test_a_private_class_is_named_by_its_first_public_base(self) -> None:
+        class _WrappedError(LookupError):
+            pass
+
+        class _WrappedAgainError(_WrappedError):
+            pass
+
+        assert _tool_validation._public_type_name(_WrappedAgainError()) == "LookupError"
+
     def test_a_schema_error_is_not_a_refusal(self) -> None:
         validators = LazyToolValidators([_tool("bad", {"type": 1})])
 
@@ -282,6 +307,32 @@ class TestReportsAreAscii:
 
         report.encode("ascii")
         assert "plug_ja" in report
+
+    def test_the_budget_is_counted_after_escaping(self) -> None:
+        """Escaping a non-ASCII character turns it into six, so cut afterwards.
+
+        Cut first, the 240-character budget let a 1,420-byte description into
+        one record, for the schema in the next test.
+        """
+        line = _tool_validation._one_line(SchemaError("予算 は 1 以上 " * 40))
+
+        assert len(line.encode("ascii")) <= _tool_validation._PROBLEM_CHAR_BUDGET
+        assert line.endswith("...")
+        # Cut between escapes, never inside one.
+        assert re.search(r"\\u[0-9a-f]{0,3}\.\.\.$", line) is None, line
+
+    def test_a_reported_record_keeps_to_the_budget(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        validators = LazyToolValidators([_tool("bad", {"type": "予算" * 200})])
+
+        with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
+            validators.get("bad")
+
+        (record,) = _own_records(caplog)
+        message = record.getMessage()
+        problem = message[message.index("(") + 1 : -1]
+        assert len(problem.encode("ascii")) <= _tool_validation._PROBLEM_CHAR_BUDGET
 
     def test_the_record_reaches_an_ascii_stream(self) -> None:
         """On an ASCII stream one bad character used to cost the whole record."""
