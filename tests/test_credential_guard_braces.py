@@ -255,6 +255,19 @@ class TestASpanTheShellLeavesLiteralIsNotStructure:
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
 
+    @pytest.mark.parametrize("depth", [65, 100])
+    def test_nesting_past_the_passes_is_refused_as_budget(
+        self, fake_home: Path, depth: int
+    ) -> None:
+        """Nesting deeper than the passes can map is the budget's refusal."""
+        command = "{" * depth + "a" + "}" * depth
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", depth
+        assert _refusal_category(proc) == "budget", depth
+
     @pytest.mark.parametrize(
         "command",
         [
