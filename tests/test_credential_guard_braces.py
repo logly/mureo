@@ -309,11 +309,24 @@ def _quoted(body: str) -> str:
 
 
 def _groups(count: int) -> str:
-    return " ".join(["{a,b}"] * count)
+    """``count`` two-way groups with no separator between them."""
+    return "{a,b}" * count
 
 
 def _alternatives(count: int) -> str:
-    return "{" + ",".join(["x"] * count) + "}"
+    """One group of ``count`` distinct alternatives."""
+    return "{" + ",".join(f"x{i}" for i in range(count)) + "}"
+
+
+def _quoted_args(regions: int) -> str:
+    """``regions`` separate quoted words, each full of groups on its own.
+
+    The words are separated by unquoted spaces, so each is a word of its own
+    to the shell that re-reads the string, and the second set expands them
+    one at a time.
+    """
+    word = "'" + _groups(10) + "'"
+    return "echo " + " ".join([word] * regions)
 
 
 @needs_shell
@@ -325,15 +338,27 @@ class TestEveryReadingSetIsBoundByTheBudget:
     would be judged by nothing.  It enumerates what it can instead, and a group
     it cannot enumerate is left unresolved and refused.  The first set keeps
     its coarse readings.
+
+    The second set is expanded a word at a time.  One word makes at most 1,024
+    distinct strings in a pass, and the words of a command make at most 4,096
+    between them; a word that would overrun either is left unresolved.  Equal
+    strings are counted once, so a group whose alternatives repeat costs only
+    what its distinct members do.
     """
 
     @pytest.mark.parametrize(
         "command",
         [
-            _quoted(_groups(8)),
+            # One word, ten two-way groups: 1024 strings, at the limit.
+            _quoted(_groups(10)),
+            # One group of distinct alternatives, at the limit.
+            _quoted(_alternatives(1024)),
+            # Four words of 1024 each, at the total.
+            _quoted_args(4),
+            # Separated words each stay small, so many of them are fine.
+            "echo '" + _groups(6) + "' '" + _groups(6) + "'",
             _quoted("{1..10}"),
             _quoted("{a..c}"),
-            _quoted(_alternatives(64)),
         ],
     )
     def test_allows_what_the_second_set_can_enumerate(
@@ -348,9 +373,13 @@ class TestEveryReadingSetIsBoundByTheBudget:
     @pytest.mark.parametrize(
         "command",
         [
-            _quoted(_groups(9)),
+            # One more two-way group than the per-word limit holds.
+            _quoted(_groups(11)),
+            # One more distinct alternative than the per-word limit holds.
+            _quoted(_alternatives(1025)),
+            # One more word than the total holds.
+            _quoted_args(5),
             _quoted("{1..10..2}"),
-            _quoted(_alternatives(65)),
         ],
     )
     def test_refuses_what_the_second_set_cannot_enumerate(
@@ -376,3 +405,60 @@ class TestEveryReadingSetIsBoundByTheBudget:
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
         assert _refusal_category(proc) == "directory", command
+
+
+def _objects(count: int, sep: str = ",", colon: str = ":") -> str:
+    return sep.join(
+        f'{{"id"{colon}{i}{sep}"name"{colon}"item{i}"}}' for i in range(count)
+    )
+
+
+_THREE_DICTS = "a={'x':1,'y':2,'z':3}; b={'x':1,'y':2,'z':3}; c={'x':1,'y':2,'z':3}"
+
+
+@needs_shell
+@pytest.mark.unit
+class TestQuotedDataIsNotRefusedForItsSize:
+    """Data handed to a program in one quoted string is allowed.
+
+    JSON for ``curl -d``, a dict in a ``python -c`` script: each brace pair
+    with a comma in it is a group to a shell that re-reads the string, so the
+    second reading set expands it.  Expanding the string as a whole multiplied
+    the groups of every word together and refused ordinary payloads on the
+    budget; expanding it a word at a time, and counting equal strings once,
+    gives the same candidates without the product.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "curl -s -X POST -H 'Content-Type: application/json' -d "
+            '\'{"ids":[' + ",".join(str(i) for i in range(1, 71)) + "]}' "
+            "https://example.com/api",
+            "curl -s -d '[" + _objects(9) + "]' https://example.com/api",
+            "curl -s -d '[" + _objects(9, ", ", ": ") + "]' https://example.com/api",
+            'python3 -c "' + _THREE_DICTS + "; s='" + "x" * 4000 + "'; "
+            'print(a,b,c,len(s))"',
+            'python3 -c "' + _THREE_DICTS + '; print(a,b,c)"',
+            "jq '.items[] | {id: .id, name: .name, tags: [.tags[] | "
+            "{k: .key, v: .value}]}' data.json",
+            "git commit -m 'refactor: accept {a, b} and {c, d} in config parser'",
+            "curl -s -X POST https://example.com/api/v1/items "
+            "-H 'Content-Type: application/json' -d "
+            '\'{"items":['
+            + ",".join(
+                f'{{"sku":"abc-{i:03d}","qty":{i},"price":{i * 100}}}' for i in range(5)
+            )
+            + '],"note":"'
+            + "y" * 200
+            + "\"}'",
+        ],
+    )
+    def test_benign_json_and_scripts_are_allowed(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command

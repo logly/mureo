@@ -175,12 +175,14 @@ _BRACE_HELPERS = (
     # `aq` is the second reading set's `al`, and it has no coarse reading to
     # fall back on: that set does not answer rule 2, so a `*` there would be
     # judged by nothing.  It enumerates what it can and leaves the rest of the
-    # group as written, which `fe` still finds and `un` refuses.  A list of up
-    # to 64 alternatives is enumerated as in `al`.  An integer sequence is read
-    # as one endpoint: digits are no part of any name the rules read here.  A
-    # sequence of single characters is enumerated, in either direction, when it
-    # has at most 64 members.  Anything else is left as written.
-    "aq=lambda g:(lambda e:([g]if g.count(',')>63 else g[1:-1].split(','))if','in g"
+    # group as written, which `fe` still finds and `uf` refuses.  A comma list
+    # is enumerated whole, with no count cap of its own: the per-word and total
+    # candidate caps in `xq` bound it instead, and equal members cost nothing
+    # once they are deduplicated there.  An integer sequence is read as one
+    # endpoint: digits are no part of any name the rules read here.  A sequence
+    # of single characters is enumerated, in either direction.  Anything else
+    # is left as written.
+    "aq=lambda g:(lambda e:g[1:-1].split(',')if','in g"
     " else[e[0]]if len(e)==2 and all(x.lstrip(chr(45)).isdigit()for x in e)"
     " else(lambda o:[chr(i)for i in range(o[0],o[1]+1)]"
     "if o[1]-o[0]<64 else[g])(sorted(map(ord,e)))"
@@ -241,11 +243,23 @@ _BRACE_HELPERS = (
 # What is left is a command with more than eight brace groups, or one whose
 # expansion exceeds 100,000 bytes, and neither is a thing anyone types.
 #
-# The budget is spent over *all* the readings of one set, the expansion bodies
-# included: a command does not get a fresh allowance for every `$(...)` it
-# writes.  `xp` runs it twice, once per reading set, and each set gets half of
-# the total — the two together cost what one cost before, so the bound on the
-# work the hook can be made to do has not moved.
+# The first set spends one allowance over *all* its readings, the expansion
+# bodies included: a command does not get a fresh one for every `$(...)` it
+# writes.  The second set answers rules 1 and 4, which read a name written
+# out, not rule 2, so it cannot fall back on a coarse reading of a group the
+# way the first set does — it enumerates or it refuses.  Enumerating a whole
+# string at once multiplied the groups of every word together, which refused
+# ordinary quoted data (a JSON array, a `python -c` dict) on the budget.  So
+# `xq` splits each reading on the separators the shell acts on and expands the
+# words one at a time: `ga` never spans a separator, so the strings a word
+# makes are the same either way, only without the cross-word product.  A word
+# is given sixteen passes, at most 1,024 distinct strings in a pass (counted
+# as they are generated, with `itertools.islice` stopping at the 1,025th so
+# the work is bounded before the list is built), and 1,000,000 bytes; the
+# words of one reading share a total of 4,096 strings, summed over each word's
+# finished candidates, past which the rest are left unresolved.  A word that
+# overruns any of these is left holding a group, which `fe` finds and `uf`
+# refuses — the first set's rule, now reached a word at a time.
 #
 # The mapping's own leftover — a candidate whose inert brace spans were still
 # being taken out when the passes ran out, and so was read half-mapped — is the
@@ -266,14 +280,17 @@ _BRACE_HELPERS = (
 # rule sees the strings the shell would produce and a span the mapping treated
 # as literal reads exactly as it was written.
 _EXPAND = (
-    "xp=lambda r,a=al: functools.reduce(lambda q,_: q if q[1] else"
-    " (lambda n: (q[0],True) if sum(map(len,n))>100000"
-    " else (n, n==q[0]))"
-    "([y for x in q[0] for y in ex(x,a)]), range(8), (r,False))[0]; "
+    "xp=lambda r,a=al,p=8,m=100000,k=None: functools.reduce(lambda q,_: q if q[1]"
+    " else (lambda n: (q[0],True) if sum(map(len,n))>m or k and len(n)>k"
+    " else (n, n==q[0]))((lambda d: list(itertools.islice("
+    "(y for x in q[0] for y in ex(x,a) if not(y in d or d.setdefault(y,0))),"
+    " k and k+1)))(dict())), range(p), (r,False))[0]; "
     "rl=lambda r: [x.replace(bo,'{').replace(bc,'}') for x in r]; "
     # `not ... ==` rather than the inequality operator: the payload may not
     # contain `!`, which a shell with history expansion would rewrite.
-    "rs=xp(rd); xq=xp(rq,aq); "
+    "rs=xp(rd); xq=functools.reduce(lambda q,s: (lambda n: (q[0]+n, q[1]+len(n)))"
+    "(xp([s],aq,16,1000000,1024) if q[1]<=4096 else [s]),"
+    " [s for r in rq for s in re.split('['+sn+']+', r)], ([],0))[0]; "
     "uf=lambda r:[x for x in r if fe(x) or not mb(x)==x]; un=uf(rs); "
     "nu=[x for x in rs if nr(x)]; "
     "ls=rl(rs); lq=rl(xq); "
