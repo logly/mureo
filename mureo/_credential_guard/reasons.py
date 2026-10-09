@@ -16,16 +16,37 @@ _SAFE_REASON_CHARS = frozenset(
 )
 
 
-def _deny_expr(reason: str) -> str:
-    """A python expression that prints the PreToolUse deny JSON."""
+def _check_reason(reason: str) -> None:
+    """Raise if ``reason`` holds a character the payload may not carry."""
     unsafe = set(reason) - _SAFE_REASON_CHARS
     if unsafe:
         raise ValueError(f"deny reason contains unsafe characters: {unsafe!r}")
+
+
+def _deny_expr(reason: str) -> str:
+    """A python expression that prints the PreToolUse deny JSON."""
+    _check_reason(reason)
     return (
         "print(json.dumps({'hookSpecificOutput':{'hookEventName':'PreToolUse',"
         "'permissionDecision':'deny','permissionDecisionReason':"
         f"'{reason}'}}}}))"
     )
+
+
+# The deny printer, defined once and called from each branch so the long JSON
+# wrapper is spelled a single time rather than inlined at every refusal.  A
+# payload that carries it defines ``D`` before anything can raise; see the
+# excepthook in bash_guard.py, which is itself one of the callers.
+_DENY_DEF = (
+    "D=lambda r:print(json.dumps({'hookSpecificOutput':{'hookEventName':"
+    "'PreToolUse','permissionDecision':'deny','permissionDecisionReason':r}})); "
+)
+
+
+def _deny_call(reason: str) -> str:
+    """A call to the ``D`` printer defined by ``_DENY_DEF``."""
+    _check_reason(reason)
+    return f"D('{reason}')"
 
 
 _PATH_REASON = "mureo credential guard: files under ~/.mureo are protected"

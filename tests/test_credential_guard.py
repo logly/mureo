@@ -662,3 +662,43 @@ class TestGuardTemplates:
         assert first == second
         assert first[0] is not second[0]
         assert first[0]["hooks"] is not second[0]["hooks"]
+
+
+@pytest.mark.unit
+class TestThePayloadFitsAndParses:
+    """The generated payloads are bounded, parseable, and shell-safe.
+
+    Each guard command is one shell line, ``python3 -c "<payload>" # tag``.
+    The payload rides inside double quotes, so it may hold none of the
+    characters a shell would act on there; it must parse on the oldest Python
+    the guard supports; and the whole line must fit a Windows command-line
+    budget.  These were properties someone checked by hand until now.
+    """
+
+    # cmd.exe caps a command line at 8,191 characters; the wrapper around the
+    # payload spends a few dozen, so the whole command is held under this with
+    # room to spare.
+    _MAX = 8150
+
+    def _codes(self) -> list[str]:
+        from mureo._credential_guard.bash_guard import _BASH_GUARD_CODE
+        from mureo._credential_guard.path_guard import _PATH_GUARD_CODE
+
+        return [_BASH_GUARD_CODE, _PATH_GUARD_CODE]
+
+    def test_each_command_is_within_the_budget(self) -> None:
+        for command in (_bash_guard_command(), _path_guard_command()):
+            assert len(command) <= self._MAX, len(command)
+
+    def test_each_payload_parses_on_the_oldest_supported_python(self) -> None:
+        import ast
+
+        for code in self._codes():
+            ast.parse(code, feature_version=(3, 8))
+
+    def test_no_payload_carries_a_shell_hazard(self) -> None:
+        """Inside double quotes a shell acts on these; the payload may hold
+        none of them, so each special character arrives via ``chr()``."""
+        for code in self._codes():
+            for hazard in ('"', "$", chr(92), "!", "`", chr(10)):
+                assert hazard not in code, hazard

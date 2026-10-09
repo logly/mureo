@@ -161,13 +161,14 @@ from mureo._credential_guard.reasons import (
     _BASH_REASON,
     _BUDGET_REASON,
     _CRASH_REASON,
+    _DENY_DEF,
     _EMPTY_STDIN_REASON,
     _FILENAME_REASON,
     _HEREDOC_REASON,
     _OVERSIZE_REASON,
     _SPAN_REASON,
     _UNRESOLVED_REASON,
-    _deny_expr,
+    _deny_call,
 )
 from mureo._credential_guard.spans import _READINGS, _SPAN_STEP
 
@@ -210,10 +211,11 @@ _FILENAME_PATTERN = (
 )
 
 _BASH_GUARD_CODE = (
-    "import sys,json,re,os,fnmatch,functools,itertools; "
+    "import sys,json,re,os,fnmatch,functools,itertools; " + _DENY_DEF
     # Fail closed: an escaping exception exits 1, which both hosts treat as a
-    # non-blocking hook error, so every exception must deny instead.
-    "sys.excepthook=lambda *a: (" + _deny_expr(_CRASH_REASON) + ", "
+    # non-blocking hook error, so every exception must deny instead.  `D` is
+    # defined just above so the excepthook can print through it too.
+    + "sys.excepthook=lambda *a: (" + _deny_call(_CRASH_REASON) + ", "
     "sys.stdout.flush(), os._exit(0)); "
     + _STDIN
     + "c=str((d.get('tool_input') or {}).get('command') or '').lower(); "
@@ -285,20 +287,20 @@ _BASH_GUARD_CODE = (
     "b=[s for s in ls + lq if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g or h; "
     "un=un or not b and uf(xq); "
     "fb=[] if b or ut or un or nu else f; "
-    + _deny_expr(_EMPTY_STDIN_REASON)
+    + _deny_call(_EMPTY_STDIN_REASON)
     + " if not ib else ("
-    + _deny_expr(_OVERSIZE_REASON)
+    + _deny_call(_OVERSIZE_REASON)
     + " if bg else ("
-    + _deny_expr(_SPAN_REASON)
+    + _deny_call(_SPAN_REASON)
     + " if ut else ("
-    + _deny_expr(_BUDGET_REASON)
+    + _deny_call(_BUDGET_REASON)
     + " if un else ("
-    + _deny_expr(_UNRESOLVED_REASON)
+    + _deny_call(_UNRESOLVED_REASON)
     + " if nu else ("
-    + _deny_expr(_BASH_REASON)
+    + _deny_call(_BASH_REASON)
     + " if b and not lt else ("
-    + _deny_expr(_HEREDOC_REASON)
+    + _deny_call(_HEREDOC_REASON)
     + " if b else ("
-    + _deny_expr(_FILENAME_REASON)
+    + _deny_call(_FILENAME_REASON)
     + " if fb else None)))))))"
 )
