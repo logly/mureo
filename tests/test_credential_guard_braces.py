@@ -342,10 +342,13 @@ class TestEveryReadingSetIsBoundByTheBudget:
     its coarse readings.
 
     The second set is expanded a word at a time.  One word makes at most 1,024
-    distinct strings in a pass, and the words of a command make at most 4,096
-    between them; a word that would overrun either is left unresolved.  Equal
-    strings are counted once, so a group whose alternatives repeat costs only
-    what its distinct members do.
+    distinct strings in a pass, and the words that hold a group make at most
+    4,096 between them, over every reading of the command; a word that holds no
+    group is not counted, because it is one candidate already bounded by the
+    byte and word limits.  The word that carries the running total past 4,096
+    still expands, so the effective ceiling is 5,120, and the next group-bearing
+    word after that is left unresolved.  Equal strings are counted once, so a
+    group whose alternatives repeat costs only what its distinct members do.
     """
 
     @pytest.mark.parametrize(
@@ -357,6 +360,10 @@ class TestEveryReadingSetIsBoundByTheBudget:
             _quoted(_alternatives(1024)),
             # Four words of 1024 each, at the total.
             _quoted_args(4),
+            # A fifth word carries the total past 4,096, and the word that
+            # crosses it still expands, so five words of 1024 are allowed and
+            # the effective ceiling is 5,120.
+            _quoted_args(5),
             # Separated words each stay small, so many of them are fine.
             "echo '" + _groups(6) + "' '" + _groups(6) + "'",
             _quoted("{1..10}"),
@@ -379,8 +386,8 @@ class TestEveryReadingSetIsBoundByTheBudget:
             _quoted(_groups(11)),
             # One more distinct alternative than the per-word limit holds.
             _quoted(_alternatives(1025)),
-            # One more word than the total holds.
-            _quoted_args(5),
+            # One more group-bearing word than the effective ceiling holds.
+            _quoted_args(6),
             _quoted("{1..10..2}"),
         ],
     )
@@ -407,6 +414,53 @@ class TestEveryReadingSetIsBoundByTheBudget:
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
         assert _refusal_category(proc) == "directory", command
+
+    def test_a_run_of_plain_words_does_not_spend_the_total(
+        self, fake_home: Path
+    ) -> None:
+        # More plain words than the total holds, then one small group. The
+        # words carry no group, so they are not counted, and the group is
+        # reached and enumerated instead of refused on a total it never spent.
+        body = " ".join(f"w{i}" for i in range(4100))
+        command = "cat <<EOF\n" + body + "\n{a,b}\nEOF"
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
+
+
+@needs_shell
+@pytest.mark.unit
+class TestTheInnerWordSplitKeepsAProtectedNameWhole:
+    """Splitting on the inner shell's spaces never splits a protected name.
+
+    A protected name holds no space, so an unquoted space can never fall inside
+    one; and a space that is quoted, escaped, or stands in a quoted alternative
+    of a group keeps the group together, so a name the inner shell would reach
+    through such a group is still reached here.
+    """
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # The name is one alternative; the space sits in a quoted sibling.
+            'cat ~/{.mure,"x y"}o/credentials.json',
+            # The space in the sibling is escaped, not quoted.
+            "cat ~/{.mure,x\\ y}o/credentials.json",
+            # A comma list that spells the name, with a space after the comma.
+            "cat ~/{.mureo, other}/credentials.json",
+        ],
+    )
+    def test_a_group_reaching_the_name_is_still_denied(
+        self, fake_home: Path, body: str
+    ) -> None:
+        command = "sh -c '" + body + "'"
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
 
 
 def _objects(count: int, sep: str = ",", colon: str = ":") -> str:
@@ -464,6 +518,84 @@ class TestQuotedDataIsNotRefusedForItsSize:
         )
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) is None, command
+
+
+def _json_blob(count: int, keys: int, fmt: str) -> str:
+    """``count`` objects of ``keys`` keys, rendered in one of three styles."""
+    objs: list[dict[str, Any]] = [{"id": i, "name": f"item{i}"} for i in range(count)]
+    if keys == 3:
+        for i, obj in enumerate(objs):
+            obj["qty"] = i % 7
+    if fmt == "spaced":  # the json.dumps default: ``, `` and ``: ``
+        return json.dumps(objs)
+    if fmt == "indented":
+        return json.dumps(objs, indent=2)
+    return json.dumps(objs, separators=(",", ":"))
+
+
+def _json_command(blob: str, form: str) -> str:
+    """Wrap a JSON ``blob`` in the way a program is handed it."""
+    if form == "sq curl":
+        return (
+            "curl -s -X POST -H 'Content-Type: application/json' -d '"
+            + blob
+            + "' https://example.com/api"
+        )
+    if form == "dq python":  # a python dict (``'`` keys) in a double-quoted arg
+        return (
+            'python3 -c "import json; d=' + blob.replace('"', "'") + '; print(len(d))"'
+        )
+    if form == "heredoc cat":  # quoted delimiter
+        return "cat > data.json <<'EOF'\n" + blob + "\nEOF"
+    return "curl -s -d @- https://example.com/api <<EOF\n" + blob + "\nEOF"
+
+
+_JSON_FORMS = ("sq curl", "dq python", "heredoc cat", "heredoc body")
+
+
+@needs_shell
+@pytest.mark.unit
+class TestFormattedJsonIsAllowedByTheInnerWordSplit:
+    """Formatted JSON and dicts are allowed well past the old thresholds.
+
+    The second reading set is a string a program may re-read with a shell of
+    its own, and that shell splits the content on the spaces in it and will not
+    expand a brace group that holds an unquoted space.  So the objects of a
+    JSON array printed with spaces after its commas — the default of
+    ``json.dumps`` and of every pretty-printer — fall into separate words whose
+    brace fragments carry no comma, and the array is allowed whatever its
+    length.  Only a string with no space anywhere between its groups still
+    multiplies them, which a shell would too, and that remains refused.
+    """
+
+    @pytest.mark.parametrize("form", _JSON_FORMS)
+    @pytest.mark.parametrize("count", [11, 20, 50])
+    @pytest.mark.parametrize("keys", [2, 3])
+    @pytest.mark.parametrize("fmt", ["spaced", "indented"])
+    def test_spaced_json_is_allowed_above_the_old_threshold(
+        self, fake_home: Path, fmt: str, keys: int, count: int, form: str
+    ) -> None:
+        command = _json_command(_json_blob(count, keys, fmt), form)
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) is None, command
+
+    @pytest.mark.parametrize("form", ["sq curl", "heredoc cat"])
+    @pytest.mark.parametrize("keys", [2, 3])
+    def test_a_string_with_no_space_between_its_groups_is_still_refused(
+        self, fake_home: Path, keys: int, form: str
+    ) -> None:
+        # No space anywhere, so the groups share one word and multiply, exactly
+        # as a shell re-reading the string would.  A known, safe over-block.
+        command = _json_command(_json_blob(11, keys, "nospace"), form)
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "budget", command
 
 
 def _second_set_alternatives(group: str) -> set[str]:

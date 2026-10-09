@@ -74,18 +74,31 @@ Expansion has a budget so a pathological command cannot explode the hook,
 and **whatever the budget does not resolve is refused**, in both reading
 sets.  Anything still holding an expandable group after the passes denies
 on that ground alone.  The first set spends eight passes and 100,000 bytes
-over all its readings at once.  The second set has no coarse reading to
+over all its readings at once, and it deduplicates as it goes, so a group
+whose alternatives repeat costs only its distinct members; the same
+deduplication runs on the first set's readings too, which only ever removes
+repeats and so changes no decision.  The second set has no coarse reading to
 fall back on — it does not answer the pattern rule, so a wildcard standing
 for a group there would be judged by nothing — so it enumerates, and to
-keep that affordable it is spent a word at a time: each word gets sixteen
-passes, at most 1,024 distinct strings in a pass and 1,000,000 bytes, and
-the words of one reading share a total of 4,096 strings.  A comma list is
-enumerated whole, a one-character range between two letters as the
-characters it covers, an integer sequence as one of its endpoints (no name
-the rules read there holds a digit); a group it cannot enumerate that way,
-or a word that overruns its budget, is left unresolved and refused with the
-rest.  That refusal answers after rules 1 to 3, so a command they already
-refuse keeps the reason they give.
+keep that affordable it is spent a word at a time, over the inner shell's
+own words: a second reading is a string handed to a program that re-reads it
+with a shell of its own, and that shell splits the content this shell left
+quoted on the spaces in it, and will not expand a brace group that holds an
+unquoted space.  So the spaces the inner shell acts on split the words here
+too, a group with such a space in it dissolves exactly as it does for bash,
+and a space that is quoted, escaped, or inside a quoted alternative stays in
+the word.  Each word gets sixteen passes, at most 1,024 distinct strings in
+a pass and 1,000,000 bytes; the words that hold a group share a total of
+4,096 strings, over every reading of the command, and a word that holds none
+is not counted against it.  The word that carries the total past 4,096 still
+expands, so the ceiling is 5,120.  A comma list is enumerated whole up to
+1,024 distinct members, a one-character range between two letters as the
+thirty-two characters its endpoints could cover in any case-spelling, an
+integer sequence as one of its endpoints (no name the rules read there holds
+a digit); a group it cannot enumerate that way, or a word that overruns its
+budget, is left unresolved and refused with the rest.  That refusal answers
+after rules 1 to 3, so a command they already refuse keeps the reason they
+give.
 
 That rule replaced a fallback that collapsed leftovers coarsely, and it
 is worth saying plainly why, because the docstring claimed the fallback
@@ -100,15 +113,19 @@ produce, it denies.
 
 What that refuses in practice, in the first set, is a command with more
 than eight brace groups, or one whose expansion exceeds the byte budget.
-In a quoted string a shell re-reads, the second set also refuses a group
-it cannot enumerate, and — because it enumerates a word at a time — a
-single word holding more than ten two-way groups, or more than 1,024
-distinct strings' worth of alternatives, or a command whose words make
-more than 4,096 strings between them.  A space between the groups puts
-them in different words and costs far less, so the shape that is left is a
-run of comma-bearing groups packed into one unbroken quoted word.  Quoted
-braces are the only ones that reach the second set at all, and a group with
-no comma and no ``..`` is literal to bash and to ``fe``.
+In a string a program re-reads, the second set also refuses a group it
+cannot enumerate, and — because it enumerates a word at a time — a single
+word holding more than ten two-way groups, or more than 1,024 distinct
+strings' worth of alternatives (three letter ranges, whose thirty-two
+members each make 32,768, are past it), or a command whose group-bearing
+words make more than 5,120 strings between them.  A space the inner shell
+acts on puts the groups in different words, or dissolves a group that holds
+one, and costs almost nothing — which is why formatted JSON, with a space
+after each comma, is allowed whatever its length.  The shape that is left is
+a run of comma-bearing groups packed into one word with no space anywhere
+between them, which a shell re-reading the string would multiply too.
+Quoted braces are the only ones that reach the second set at all, and a
+group with no comma and no ``..`` is literal to bash and to ``fe``.
 """
 
 from __future__ import annotations
@@ -261,9 +278,9 @@ _BRACE_HELPERS = (
 # than eight brace groups, or one whose expansion exceeds the byte budget. In
 # the second set a `find . -exec {} \\;` has neither a comma nor a `..`, so
 # bash leaves it literal and so does `fe`; what is left there is a run of
-# comma-bearing groups packed into one unbroken quoted word with no space to
-# split it — more than ten two-way ones, or alternatives past the per-word or
-# the total candidate cap.
+# comma-bearing groups packed into one word with no space anywhere between
+# them to split it — more than ten two-way ones, or alternatives past the
+# per-word or the total candidate cap.
 #
 # The first set spends one allowance over *all* its readings, the expansion
 # bodies included: a command does not get a fresh one for every `$(...)` it
@@ -271,17 +288,27 @@ _BRACE_HELPERS = (
 # out, not rule 2, so it cannot fall back on a coarse reading of a group the
 # way the first set does — it enumerates or it refuses.  Enumerating a whole
 # string at once multiplied the groups of every word together, which refused
-# ordinary quoted data (a JSON array, a `python -c` dict) on the budget.  So
-# `xq` splits each reading on the separators the shell acts on and expands the
-# words one at a time: `ga` never spans a separator, so the strings a word
-# makes are the same either way, only without the cross-word product.  A word
-# is given sixteen passes, at most 1,024 distinct strings in a pass (counted
-# as they are generated, with `itertools.islice` stopping at the 1,025th so
-# the work is bounded before the list is built), and 1,000,000 bytes; the
-# words of one reading share a total of 4,096 strings, summed over each word's
-# finished candidates, past which the rest are left unresolved.  A word that
-# overruns any of these is left holding a group, which `fe` finds and `uf`
-# refuses — the first set's rule, now reached a word at a time.
+# ordinary quoted data (a JSON array, a `python -c` dict) on the budget.  A
+# second reading is a string a program re-reads with a shell of its own, and
+# that shell splits the content this shell left quoted on the spaces in it
+# and will not expand a group holding an unquoted space.  So `iw` promotes
+# those spaces to the separator placeholder — but only the ones the inner
+# shell acts on, tracking its quotes and its escapes so a space it has quoted
+# stays in the word — and `xq` splits each reading on the separators and
+# expands the words one at a time: `ga` never spans a separator, so the
+# strings a word makes are the same either way, only without the cross-word
+# product.  A word that holds no group expands to itself and is not counted:
+# it is one candidate, bounded already, and counting it would let a long run
+# of plain words (a here-document body) spend the total before a real group
+# is reached.  A word that holds one (`g`) is given sixteen passes, at most
+# 1,024 distinct strings in a pass (counted as they are generated, with
+# `itertools.islice` stopping at the 1,025th so the work is bounded before the
+# list is built), and 1,000,000 bytes; the group-bearing words of a command
+# share a total of 4,096 strings, over every reading, past which the rest are
+# left unresolved — though the word that carries the total past it still
+# expands, so the ceiling is 5,120.  A word that overruns any of these is left
+# holding a group, which `fe` finds and `uf` refuses — the first set's rule,
+# now reached a word at a time.
 #
 # The mapping's own leftover — a candidate whose inert brace spans were still
 # being taken out when the passes ran out, and so was read half-mapped — is the
@@ -308,11 +335,37 @@ _EXPAND = (
     "(y for x in q[0] for y in ex(x,a) if not(y in d or d.setdefault(y,0))),"
     " k and k+1)))(dict())), range(p), (r,False))[0]; "
     "rl=lambda r: [x.replace(bo,'{').replace(bc,'}') for x in r]; "
+    # `iq` is the inner shell's quoting automaton, and `iw` promotes the
+    # whitespace that automaton would act on to the separator placeholder. A
+    # second reading is a string handed to a program that re-reads it with a
+    # shell of its own: that shell splits the content this shell left quoted on
+    # the spaces in it, and it will not expand a brace group that holds an
+    # unquoted space (``{a, b}`` is literal to bash, ``{a,b}`` a group). So a
+    # space is a boundary only where the inner shell is unquoted, and a space
+    # the inner shell has quoted, escaped, or that stands in an inner quoted
+    # alternative stays in the word. The states are 0 unquoted, 1 single, 2
+    # double, 3 escaped from unquoted, 4 escaped in double; a protected name has
+    # no space in it, so an unquoted space can never split one apart, and a
+    # group reaching a protected name through a quoted-space alternative keeps
+    # that space and stays a group.
+    "iq=lambda a,c: 0 if a==3 else 2 if a==4 else (0 if c==q1 else 1) if a==1"
+    " else (4 if c==bs else 0 if c==q2 else 2) if a==2"
+    " else 3 if c==bs else 1 if c==q1 else 2 if c==q2 else 0; "
+    "iw=lambda r: ''.join(sw if a==0 and c in ws else c"
+    " for c,a in zip(r, itertools.accumulate(r, iq, initial=0))); "
     # `not ... ==` rather than the inequality operator: the payload may not
     # contain `!`, which a shell with history expansion would rewrite.
-    "rs=xp(rd); xq=functools.reduce(lambda q,s: (lambda n: (q[0]+n, q[1]+len(n)))"
-    "(xp([s],aq,16,1000000,1024) if q[1]<=4096 else [s]),"
-    " [s for r in rq for s in re.split('['+sn+']+', r)], ([],0))[0]; "
+    #
+    # A word that holds no expandable group expands to itself and is not
+    # counted against the total: it is one candidate, bounded already by the
+    # byte and word limits, and counting it would let a long run of plain words
+    # (a here-document body) exhaust the total before any real group is reached.
+    # Only a word that holds a group (``g``) is gated on the total and added to
+    # it, so the total measures the enumeration work, not the word count.
+    "rs=xp(rd); xq=functools.reduce(lambda q,s: (lambda g: (lambda n:"
+    " (q[0]+n, q[1]+len(n)*g))(xp([s],aq,16,1000000,1024)"
+    " if not g or q[1]<=4096 else [s]))(1 if fe(mp(s)) else 0),"
+    " [s for r in rq for s in re.split('['+sn+']+', iw(r))], ([],0))[0]; "
     "uf=lambda r:[x for x in r if fe(x) or not mb(x)==x]; un=uf(rs); "
     "nu=[x for x in rs if nr(x)]; "
     "ls=rl(rs); lq=rl(xq); "
