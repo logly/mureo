@@ -281,6 +281,8 @@ mureo/
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
 ├── credential_guard.py  # Blocks AI agents from reading ~/.mureo/credentials.json
+├── _credential_guard/   # The hook payloads' pieces, one module per step (quoting, spans,
+│                        #   braces, rules, reasons); import from credential_guard.py
 ├── logging_setup.py     # Configure-server logging (#581): rotating ~/.mureo/logs/configure.log,
 │                        #   MUREO_LOG_LEVEL, and the HTTP access-log query scrubber. Installed by
 │                        #   the configure entry point only — never at import time, never on root.
