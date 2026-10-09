@@ -109,3 +109,12 @@ _HEREDOC_REASON = (
     "whether the reference is live and refused rather than guessed; read the "
     "file with the Read tool, or send the command without a here-document"
 )
+
+# A hook run with nothing on stdin was handed no tool call, so there is nothing
+# to judge and nothing to allow: reading the absence as an empty call would let
+# a host that failed to deliver the call through unchecked.  It is not a match
+# either, so it says what happened instead of borrowing a rule's reason.
+_EMPTY_STDIN_REASON = (
+    "mureo credential guard: the hook received no tool call on stdin, so it "
+    "refused rather than guessed"
+)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mureo._credential_guard.braces import _BRACE_HELPERS, _EXPAND
 from mureo._credential_guard.chars import _CHARS, _SANITIZE
+from mureo._credential_guard.path_guard import _STDIN
 from mureo._credential_guard.quoting import (
     _NORMALIZE_CHAR,
     _QUOTE_INIT,
@@ -13,6 +14,7 @@ from mureo._credential_guard.quoting import (
 from mureo._credential_guard.reasons import (
     _BASH_REASON,
     _BUDGET_REASON,
+    _EMPTY_STDIN_REASON,
     _FILENAME_REASON,
     _HEREDOC_REASON,
     _OVERSIZE_REASON,
@@ -66,8 +68,8 @@ _BASH_GUARD_CODE = (
     # non-blocking hook error, so every exception must deny instead.
     "sys.excepthook=lambda *a: (" + _deny_expr(_BASH_REASON) + ", "
     "sys.stdout.flush(), os._exit(0)); "
-    "d=json.loads(sys.stdin.read() or '{}'); "
-    "c=str((d.get('tool_input') or {}).get('command') or '').lower(); "
+    + _STDIN
+    + "c=str((d.get('tool_input') or {}).get('command') or '').lower(); "
     # A guard that is merely slow is a guard that is bypassed: the host
     # kills a hook that overruns and that process exits non-zero without
     # printing the deny JSON, which is the non-blocking case. So an
@@ -132,6 +134,8 @@ _BASH_GUARD_CODE = (
     # question would be "every quoted glob does".
     "b=[s for s in ls + lq if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g or h; "
     "fb=[] if b or ut or un or nu else f; "
+    + _deny_expr(_EMPTY_STDIN_REASON)
+    + " if not ib else ("
     + _deny_expr(_OVERSIZE_REASON)
     + " if bg else ("
     + _deny_expr(_SPAN_REASON)
@@ -145,5 +149,5 @@ _BASH_GUARD_CODE = (
     + _deny_expr(_HEREDOC_REASON)
     + " if b else ("
     + _deny_expr(_FILENAME_REASON)
-    + " if fb else None))))))"
+    + " if fb else None)))))))"
 )

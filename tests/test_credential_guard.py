@@ -15,6 +15,7 @@ answer depends on quoting run the whole command through a real bash instead
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -25,10 +26,16 @@ from tests.credential_guard_support import (
     _PROTECTED_FILES,
     _bash_guard_command,
     _path_guard_command,
+    _refusal_category,
     make_fake_home,
     needs_shell,
 )
-from tests.hook_guard_runner import deny_decision, run_guard, run_guard_in_shell
+from tests.hook_guard_runner import (
+    deny_decision,
+    run_guard,
+    run_guard_bytes,
+    run_guard_in_shell,
+)
 
 
 @pytest.fixture
@@ -476,6 +483,88 @@ class TestGuardThroughARealShell:
         )
         assert proc.returncode == 0, proc.stderr
         assert proc.stdout.strip() == "", f"now denied, update the docstring: {command}"
+
+
+# A code page that cannot be mistaken for UTF-8: what a Japanese Windows
+# console decodes a text-mode stdin with.  ``None`` is the platform default.
+_STDIN_ENCODINGS = (None, "cp932")
+
+
+def _utf8_call(tool_name: str, tool_input: dict[str, str]) -> bytes:
+    """A tool call the way a host sends it: UTF-8, non-ASCII unescaped."""
+    call = {"tool_name": tool_name, "tool_input": tool_input}
+    return json.dumps(call, ensure_ascii=False).encode("utf-8")
+
+
+@pytest.mark.unit
+class TestStdinIsReadAsBytes:
+    """The payloads read the host's UTF-8 as UTF-8 under any stdin encoding.
+
+    Read as text, stdin is decoded with the console code page on Windows, so
+    a home directory with a non-ASCII name stopped matching ``~/.mureo`` and
+    non-ASCII text in a Bash command was read as other text.  ``PYTHONIOENCODING``
+    pins the text decoding to a code page on every platform, which is what
+    lets the property be checked off Windows too.
+    """
+
+    @pytest.fixture
+    def non_ascii_home(self, tmp_path: Path) -> Path:
+        # A name whose UTF-8 bytes also decode as cp932, into other text: the
+        # case where text-mode stdin was quietly wrong rather than raising.
+        home = tmp_path / "山田"
+        home.mkdir()
+        return make_fake_home(home)
+
+    @pytest.mark.parametrize("encoding", _STDIN_ENCODINGS)
+    def test_path_guard_denies_under_a_non_ascii_home(
+        self, non_ascii_home: Path, encoding: str | None
+    ) -> None:
+        target = str(non_ascii_home / ".mureo" / "credentials.json")
+        proc = run_guard_bytes(
+            _path_guard_command(),
+            _utf8_call("Read", {"file_path": target}),
+            non_ascii_home,
+            {"PYTHONIOENCODING": encoding} if encoding else None,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny"
+        assert "are protected" in proc.stdout
+
+    @pytest.mark.parametrize("encoding", _STDIN_ENCODINGS)
+    def test_path_guard_allows_other_files_under_a_non_ascii_home(
+        self, non_ascii_home: Path, encoding: str | None
+    ) -> None:
+        proc = run_guard_bytes(
+            _path_guard_command(),
+            _utf8_call("Read", {"file_path": str(non_ascii_home / "a.txt")}),
+            non_ascii_home,
+            {"PYTHONIOENCODING": encoding} if encoding else None,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == ""
+
+    @pytest.mark.parametrize("encoding", _STDIN_ENCODINGS)
+    def test_bash_guard_allows_a_non_ascii_command(
+        self, non_ascii_home: Path, encoding: str | None
+    ) -> None:
+        proc = run_guard_bytes(
+            _bash_guard_command(),
+            _utf8_call("Bash", {"command": "git commit -m '日本語のメッセージ'"}),
+            non_ascii_home,
+            {"PYTHONIOENCODING": encoding} if encoding else None,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == ""
+
+    @pytest.mark.parametrize("which", ["path", "bash"])
+    def test_empty_stdin_is_refused_with_its_own_reason(
+        self, fake_home: Path, which: str
+    ) -> None:
+        """No stdin is no tool call, which is nothing to allow."""
+        command = _path_guard_command() if which == "path" else _bash_guard_command()
+        proc = run_guard_bytes(command, b"", fake_home)
+        assert proc.returncode == 0, proc.stderr
+        assert _refusal_category(proc) == "empty"
 
 
 # ---------------------------------------------------------------------------
