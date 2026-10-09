@@ -279,12 +279,11 @@ Two guards are installed:
   ``*/`` followed by the boundary placeholder — and keeps its body as a
   reading of its own.  A nested expansion is simply another reading, so
   nothing has to recurse.  Both halves of that are load-bearing.  Without
-  the first, the ``}`` of ``~/.mur{e,${q}}o/<file>`` pairs with the group's
-  ``{`` and the group disappears, although bash keeps the word whole and
-  expands its first alternative straight into the protected directory.
-  Without the second, ``cat $(echo ~/.mureo/<file>)`` loses the only place
-  the name is written.  Replacing a span with a placeholder and dropping
-  its text would trade one for the other.
+  the first, a group whose alternatives are themselves spans loses its
+  closing brace to a span and disappears, although bash keeps the word
+  whole and expands it.  Without the second, a name written only inside an
+  expansion's body is not read at all.  Replacing a span with a placeholder
+  and dropping its text would trade one for the other.
 
   An expansion whose extent cannot be decided — one that never closes, or
   one whose closer does not match its opener — is refused rather than
@@ -311,10 +310,9 @@ Two guards are installed:
   will this shell expand", and that is the only question the first set is
   asked.  It is the wrong answer to "what will the next program along do with
   this string", and a quoted string is exactly how a command hands text to a
-  program that starts a shell of its own — ``sh -c '…'``, ``ssh host '…'``, a
-  language runtime's ``system``.  That shell sees the metacharacters as
-  written, and the brace step over the second reading produces what it would
-  produce.  Two readings of the one question is *not* the split-brain bug the
+  program that starts a shell of its own: a command that a shell re-reads.
+  That shell sees the metacharacters as written, and the brace step over the
+  second reading produces what it would produce.  Two readings of the one question is *not* the split-brain bug the
   top of this docstring forbids: that bug was partition, each rule owning one
   string and blind to the other.  Here every rule that reads a name written
   out sees both sets, so neither can hide anything from it.
@@ -474,22 +472,14 @@ Two guards are installed:
     and a quoted pattern written after a body is read as a pattern, so
     ``ls '.*'``, ``sed 's/.*//'`` and ``find . -name '.*'`` deny on the
     line after a terminator although the bullet above allows all three on
-    their own.  Measured over forty-four everyday here-document shapes —
-    python dicts and f-strings, jq filters, awk and sed scripts, SQL,
-    YAML, markdown, ``ssh host <<EOF`` — those five are the whole cost.
-    Add forty-four brace-using shapes alongside them — JSON pretty and
-    minified, jq object filters, python dicts and comprehensions, awk
-    programs, shell brace grouping and function definitions, real brace
-    expansion and sequences — and the cost over all eighty-eight is those
-    five and nothing else.  A body holding a comma-bearing brace group around
-    a call (``d = {"n": len([1, 2])}``) was on this list until a body's
+    their own.  A body holding a comma-bearing brace group around a call
+    (``d = {"n": len([1, 2])}``) was on this list until a body's
     punctuation stopped being read as a command line's; it is an everyday
     script, and refusing it was the kind of cost that teaches people to turn
     a guard off.  What is left is the price of reading a body the way bash
-    reads it, and the alternative,
-    resolving quoting inside a body, is not something bash does, and a
-    guard that has to agree with bash about where the shell text is cannot
-    do it either.  Within the latch a refusal from rules 1 to 3 cannot
+    reads it, and the alternative, resolving quoting inside a body, is not
+    something bash does, and a guard that has to agree with bash about where
+    the shell text is cannot do it either.  Within the latch a refusal from rules 1 to 3 cannot
     claim the reference is live, because the guard has read text without
     resolving quoting and does not know; it says that instead of claiming
     the command can reach the directory;

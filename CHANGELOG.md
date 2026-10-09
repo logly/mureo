@@ -2,129 +2,19 @@
 
 ### Fixed
 
-- **A brace span the shell leaves literal no longer hides the group around
-  it** (#806). Bash expands braces over the raw command text, before every
-  other expansion, so an alternative carrying a `{...}` with no comma and no
-  `..` is just an alternative. The guard resolved nesting by expanding the
-  innermost group first and waiting for the one around it to become innermost
-  — and an inert span never goes away, because nothing expands it, so the span
-  around it was never read as a group. It now writes an inert span's braces as
-  placeholders of their own, which leaves the enclosing span readable, and puts
-  them back before any rule runs, so each candidate is still the string the
-  shell would produce. A span with a comma or a `..` is left to the expansion
-  step and one holding a separator is left alone, so `find . -exec rm {} ;`,
-  `awk '{print $1}'`, `jq '{a: {b: 1}}'` and real brace expansion are
-  unaffected. The mapping is bounded like the rest of the brace step, and a
-  text still changing when the bound is reached is refused rather than read
-  half-mapped.
-- **The credential guard reads a quoted metacharacter twice, once for each
-  shell that sees it** (#806). Quoting keeps *this* shell off a metacharacter,
-  which is why the guard collapses it, and that is the right answer to every
-  question about what this shell will expand. It is the wrong answer to what
-  the next program along will do, and a quoted string is exactly how a command
-  hands text to one that starts a shell of its own. There is now a second set
-  of readings that leaves quoted metacharacters live, and the two rules that
-  read something written out — the directory name and the protected credential
-  filenames — see both. The second set does not judge patterns and raises no
-  refusal of its own, so `sed 's/.*//'`, `find . -name '.*'`, `tar -czf a.tgz
-  '*.py'` and `jq '{a: 1, b: $x}'` are untouched.
-- **An expansion's result is read as text of unknown extent** (#806). The
-  shell splices what an expansion produces into the middle of a word, so the
-  characters after the closer belong to the same path component and the
-  result's own length is not in the command text. The reading holding an
-  expansion's body now ends in a wildcard, which puts "the body wrote part of a
-  name and the command wrote the rest" to the rule that already asks whether a
-  pattern matches the protected directory; before, each reading dropped that
-  question for a different reason. The cost is recorded in the module docstring
-  and pinned by tests: an expansion whose body *ends* on a prefix of the
-  directory name is refused, a bare `.` being one such prefix.
-- **A here-document body is read as the text it is, not as a command line**
-  (#806). Bash reads no operator in a body, so `(` `)` `;` `|` `&` `<` `>`
-  there are ordinary characters in whatever language the body is written in.
-  The guard read them as word boundaries, which made an everyday short script —
-  a dict holding a call, an SQL statement, a javascript object — into brace
-  contents it could not account for, and refused it. Whitespace stays a
-  separator, because a body is still a run of lines and two braces on different
-  lines of one are not a group, and brace groups and expansions in a body are
-  still read in full: a body is what a program consumes, and several of the
-  programs anyone sends one to hand their own text back to a shell.
-- **A bracket or an expansion whose extent could not be decided says so,
-  instead of borrowing the brace budget's reason** (#806). No budget is spent
-  deciding an extent and no brace expansion is attempted, so telling the agent
-  to use fewer brace groups sent it to count groups when what the command needs
-  is a closing delimiter. The reason names the bracket as well as the
-  expansion, because the guard pairs up plain `(` and `{` too and an unbalanced
-  one of those is sometimes a command a shell runs happily. Which commands are
-  refused does not change; the sentence they get does. This completes the same correction already made for the budget itself,
-  for contents that did not resolve, and for a refusal from inside a
-  here-document.
-- **The credential guard decides a brace group's contents by quoting, not by
-  which characters are in them** (#806). A brace group is part of one word, so
-  bash does not expand one across a separator it is allowed to act on — and a
-  separator it may *not* act on is ordinary text in the middle of the word,
-  leaving the group a group. The guard decided this by looking for a newline in
-  the finished text, which got both halves wrong in opposite directions. It now
-  marks each separator the shell would act on while it is resolving quoting, and
-  the brace step reads that off instead of asking again. Two things follow.
-  `{"a": 1, "b": 2}` is no longer brace expansion, so a command carrying JSON —
-  nine objects in a here-document body was the reported case — no longer spends
-  the guard's expansion budget and no longer trips its refusal; and a group whose
-  alternatives are spelled with separators the shell cannot act on is expanded
-  like any other. Contents the guard cannot account for fail closed rather than
-  being ignored: an expandable group holding a separator together with an
-  expansion, or holding a separator of the `;` `|` `&` `(` `)` `<` `>` kind, is
-  refused as structure that did not resolve, with its own reason rather than the
-  budget's. Measured over eighty-eight everyday shapes — JSON pretty and
-  minified, jq object filters, python dicts and comprehensions, awk programs,
-  shell brace grouping and function definitions, real brace expansion and
-  sequences, and the forty-four here-document shapes from the change below —
-  one is newly refused and is recorded in the module docstring.
-- **A refusal from inside a here-document no longer claims the command can
-  reach `~/.mureo`** (#806). From a here-document operator on, the guard reads
-  text without resolving quoting, as bash does in a body, so a reference it
-  finds there may be text the shell never acts on — saying the command "can
-  reach" the directory asserted something the guard does not know, and sent the
-  agent looking for a live reference that may not exist. Such a refusal now says
-  what was found, says why it was not decided, and points at the Read tool.
-- **The credential guard reads the body of a here-document the way bash reads
-  it** (#806). Bash resolves no quoting inside a here-document body: a `'` or a
-  `"` there is ordinary body text. The guard resolved quoting there anyway; from
-  an unquoted `<<` to the end of the command it now does not. A reference
-  written in the body itself is therefore as visible to all four rules as one
-  written outside it. The latch is one-way and does not look for the terminator,
-  because declining to resolve quoting can only leave more text visible to the
-  rules, while resolving quoting bash does not resolve hides text from them. Two
-  deliberate over-blocks come with it, both recorded in the module docstring and
-  pinned by tests: an unmatched `(` or `{` in a body is refused as unresolved
-  structure, and a quoted pattern written after a terminator is read as a
-  pattern. Over forty-four everyday here-document shapes — python dicts and
-  f-strings, jq filters, awk and sed scripts, SQL, YAML, markdown,
-  `ssh host <<EOF` — those are the whole cost.
-- **The credential guard reads a shell expansion as one token, and its body as
-  a reading of its own** (#806). `$(...)`, `${...}`, `$((...))`, a backtick
-  pair and `<(...)` are indivisible to bash: the parentheses, braces and
-  separators inside one belong to the expansion, not to the command, so bash
-  splits neither a word nor a brace group on them. The guard now takes each
-  expansion out of the command's structure and reads its body as a separate
-  reading — a nested expansion simply becomes another one — so the structure
-  *around* an expansion is judged the way bash judges it, while the text
-  *inside* one stays as visible to all four rules as text outside it ever was.
-  An expansion whose extent cannot be decided (one that never closes, or one
-  whose closer does not match its opener) is refused with the same "structure
-  unresolved" reason the brace budget uses; bash cannot run such a command
-  either, so nothing real is refused by it. The expansion budget is spent
-  across all the readings together, so a command gets no fresh allowance per
-  expansion.
-- **The credential guard no longer tells you a command can reach `~/.mureo`
-  when it never mentioned it** (#806). When brace expansion in a Bash command
-  went past the guard's budget, the refusal borrowed rule 1's reason — "commands
-  that can reach `~/.mureo` are blocked" — although nothing in the command
-  referred to the directory. The budget answers before rules 1 to 4 and
-  independently of them, so it cannot say what matched; an agent sent looking
-  for a reference that is not there just retries. The reason now says what
-  actually happened: the brace structure could not be resolved, so the command
-  was refused unresolved, and the way out is fewer brace groups or running it in
-  pieces. Which commands are refused and which are allowed is unchanged.
+- **The credential guard's Bash hook reads a command the way bash does in more
+  places** (#806). It now agrees with bash about which brace groups a command
+  expands and where a here-document body, a shell expansion and a quoted string
+  begin and end, and it also reads a quoted string the way a shell that re-reads
+  it would. What it cannot resolve is refused rather than guessed at, and each
+  refusal states its own ground instead of claiming the command can reach the
+  credentials directory. The over-blocks this costs are listed in the module
+  docstring of `mureo/credential_guard.py` and pinned by tests.
+- **Both credential-guard hooks read their stdin as bytes** (#806), so a host
+  that sends UTF-8 is read as UTF-8 under every Windows code page; before, a home
+  directory with a non-ASCII name could stop matching the protected path. An
+  empty stdin, and an exception inside a hook, are now refused with reasons of
+  their own.
 
 ## [0.21.3] - 2026-09-25
 

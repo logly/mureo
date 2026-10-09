@@ -7,11 +7,10 @@ from mureo._credential_guard.quoting import _COLLAPSE, _QUOTE_INIT
 # An expansion is one indivisible token, and the characters inside it are not
 # the command's.  The separators, parentheses and *braces* within `$(...)`,
 # `${...}`, `$((...))`, a backtick pair or `<(...)` are the expansion's own:
-# bash neither splits a word nor opens a brace group on them.  So
-# `~/.mur{e,${q}}o/<file>` is one word whose group has two alternatives, and
-# the first of them is the real protected directory — while a reading that
-# pairs the group's `{` with the *parameter expansion's* `}` sees no group at
-# all and lets the command through.
+# bash neither splits a word nor opens a brace group on them.  So a group
+# whose alternatives are themselves spans is still one group in one word —
+# while a reading that pairs the group's `{` with a span's `}` sees no group
+# at all and judges nothing.
 #
 # The step below is the fold that finds those spans.  It runs on the quoting
 # states, so only a character the shell would act on can open or close one:
