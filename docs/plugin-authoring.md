@@ -790,8 +790,13 @@ Rules the server enforces (a non-conforming provider is skipped with a
   otherwise change owner the moment the operator dropped the flag.
 - **Keep `inputSchema` honest — mureo enforces it server-side.** Since
   #324 the dispatcher validates every call against your declared
-  `inputSchema` *before* it reaches your handler and rejects a violation
-  with `ValueError`. Declare the types your handler actually accepts: a
+  `inputSchema` *before* it reaches your handler. Over stdio, `mcp`
+  (1.30.0 checked) validates first and rejects a violation with its own
+  error result; where mureo's layer is the one that sees the call (an
+  `mcp` without `validate_input`, a direct call to `handle_call_tool`,
+  the rollback handlers' reversals), it rejects one with `ValueError`.
+  Either way the call does not reach your handler. Declare the types
+  your handler actually accepts: a
   tool that declares `{"type": "integer"}` but tolerates `"1000"` will
   now have that call rejected before you see it. Beyond schema shape,
   still translate malformed arguments into your own error type rather
