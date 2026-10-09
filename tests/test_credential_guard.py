@@ -37,13 +37,6 @@ from tests.hook_guard_runner import (
     run_guard_in_shell,
 )
 
-
-@pytest.fixture
-def fake_home(tmp_path: Path) -> Path:
-    """A home directory with a populated ``~/.mureo``."""
-    return make_fake_home(tmp_path)
-
-
 # ---------------------------------------------------------------------------
 # Path guard (Read / Edit / Write / Grep / Glob)
 # ---------------------------------------------------------------------------
@@ -626,16 +619,22 @@ class TestGuardTemplates:
         for the reasons something calls it with. Sweeping every ``*_REASON``
         catches one that is added and wired in later, when the import-time
         failure would land on a user instead of here.
-        """
-        from mureo import credential_guard
 
-        names = sorted(n for n in vars(credential_guard) if n.endswith("_REASON"))
-        assert "_BUDGET_REASON" in names, names
+        The sweep reads the module that defines the reasons, not the facade
+        that re-exports some of them, so a reason the facade does not
+        re-export is still checked.
+        """
+        from mureo._credential_guard import reasons
+
+        names = sorted(n for n in vars(reasons) if n.endswith("_REASON"))
+        assert {"_BUDGET_REASON", "_CRASH_REASON", "_EMPTY_STDIN_REASON"} <= set(
+            names
+        ), names
         for name in names:
-            reason = getattr(credential_guard, name)
-            unsafe = set(reason) - credential_guard._SAFE_REASON_CHARS
+            reason = getattr(reasons, name)
+            unsafe = set(reason) - reasons._SAFE_REASON_CHARS
             assert not unsafe, f"{name} has unsafe characters: {unsafe!r}"
-            credential_guard._deny_expr(reason)
+            reasons._deny_expr(reason)
 
     def test_guard_entries_returns_fresh_copies(self) -> None:
         """Installers merge these into user config — aliasing would let one

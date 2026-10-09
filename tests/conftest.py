@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -111,3 +112,15 @@ def _isolate_credential_writes(monkeypatch, tmp_path_factory):
     runtime_context.reset_runtime_context()
     yield
     runtime_context.reset_runtime_context()
+
+
+@pytest.fixture
+def fake_home(tmp_path: Path) -> Path:
+    """A home directory with a populated ``~/.mureo``, for the credential guard.
+
+    Shared by the credential-guard test modules; a module that needs a
+    different home defines its own ``fake_home``, which takes precedence.
+    """
+    from tests.credential_guard_support import make_fake_home
+
+    return make_fake_home(tmp_path)

@@ -192,7 +192,7 @@ Two guards are installed:
   them.  The fold cannot make that mistake, and it also gets ``echo
   it\\'s`` right, where an escaped quote is not a delimiter at all.
 
-  The fold rewrites five things:
+  The fold rewrites eight things:
 
   - quote delimiters are dropped, so the text reads as the shell will read
     it (this is what catches ``~/.mure"o"``);
@@ -255,11 +255,11 @@ Two guards are installed:
     the answer off the placeholders instead of asking again.  The two kinds
     are kept apart because the brace step treats them differently; see
     below.  Nothing else in the text means anything but itself, so the
-    placeholders are control characters, and a control character arriving
-    in the command is replaced on the way in: a command must not be able
-    to write one and claim a boundary the shell would not make.  The same
-    goes for the two the brace step uses for the braces of a span the shell
-    leaves literal — four in all, none of them writable by the command;
+    placeholders are control characters, and any of them arriving in the
+    command is replaced on the way in: a command must not be able to write
+    one and claim a boundary the shell would not make.  The same goes for
+    the two the brace step uses for the braces of a span the shell leaves
+    literal — chr(1) to chr(4), four in all, none writable by the command;
   - inside the body of a here-document the second kind is not a separator
     at all.  Bash reads no operator in a body, so ``(`` ``)`` ``;`` ``|``
     ``&`` ``<`` ``>`` there are ordinary characters in the middle of
@@ -397,10 +397,10 @@ Two guards are installed:
   else here, and a text still changing when the bound is reached is refused
   with the rest of the structure the budget did not finish.
 
-  Expansion has a budget — eight passes, 400 strings — so a pathological
-  command cannot explode the hook.  **Whatever the budget does not resolve
-  is refused.**  Anything still holding an expandable group after the
-  passes denies on that ground alone, without being examined further.
+  Expansion has a budget — eight passes, 100,000 bytes of candidate text
+  per reading set — so a pathological command cannot explode the hook.
+  **Whatever the budget does not resolve is refused.**  Anything still
+  holding an expandable group after the passes denies on that ground alone.
 
   That rule replaced a fallback that collapsed leftovers coarsely, and it
   is worth saying plainly why, because the docstring claimed the fallback
@@ -414,7 +414,7 @@ Two guards are installed:
   produce, it denies.
 
   What that refuses in practice is a command with more than eight brace
-  groups, or one whose expansion exceeds 400 strings.  Of twenty-one
+  groups, or one whose expansion exceeds 100,000 bytes.  Of twenty-one
   brace-using everyday commands — ``awk '{print $1}'``, ``find . -exec rm
   {} ;``, ``mkdir -p build/{lib,bin,share}``, ``mv file{1..10}.txt``,
   ``jq '{name: .name}'``, eight groups on one line — exactly one is
@@ -678,8 +678,8 @@ from typing import Any
 
 # The payloads are assembled in mureo._credential_guard, one module per
 # step.  What callers and tests import is re-exported here: the payloads,
-# the protected filenames, and every deny reason with the check on them --
-# the suite reads the reasons off THIS module, hence the blanket noqa.
+# the protected filenames, and the deny reasons with the check on them --
+# re-exports nothing here uses, hence the blanket noqa.
 from mureo._credential_guard.bash_guard import (  # noqa: F401
     _BASH_GUARD_CODE,
     GUARDED_FILENAMES,

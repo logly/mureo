@@ -19,16 +19,9 @@ import pytest
 from tests.credential_guard_support import (
     _bash_guard_command,
     _refusal_category,
-    make_fake_home,
     needs_shell,
 )
 from tests.hook_guard_runner import deny_decision, run_guard_in_shell
-
-
-@pytest.fixture
-def fake_home(tmp_path: Path) -> Path:
-    """A home directory with a populated ``~/.mureo``."""
-    return make_fake_home(tmp_path)
 
 
 @needs_shell

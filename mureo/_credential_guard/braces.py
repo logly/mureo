@@ -120,7 +120,7 @@ _BRACE_HELPERS = (
 # `awk '{print $1}'` never reaches this step, and `find . -exec {} \\;` has
 # neither a comma nor a `..`, so bash leaves it literal and so does `fe`.
 # What is left is a command with more than eight brace groups, or one whose
-# expansion exceeds 400 strings, and neither is a thing anyone types.
+# expansion exceeds 100,000 bytes, and neither is a thing anyone types.
 #
 # The budget is spent over *all* the readings of one set, the expansion bodies
 # included: a command does not get a fresh allowance for every `$(...)` it

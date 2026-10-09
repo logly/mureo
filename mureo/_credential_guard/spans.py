@@ -33,9 +33,9 @@ from mureo._credential_guard.quoting import _COLLAPSE, _QUOTE_INIT
 # Each step also yields what the character contributes and which reading it
 # contributes to, so grouping the output by reading is all that is left to do.
 # A span's opening sigil already normalizes to `*/` (`$` and the backtick do;
-# `<` and `@` read as themselves, which is what they are), its brackets
-# contribute nothing, and its closer contributes the boundary placeholder so
-# that the identifier collapse stops there — `$(x)credentials.json` must stay
+# an unquoted `<` or `>` is a separator placeholder and the rest read as
+# themselves), its brackets contribute nothing, and its closer contributes
+# the boundary placeholder so that the identifier collapse stops there — `$(x)credentials.json` must stay
 # as visible as `$(x) credentials.json`.
 _SPAN_STEP = (
     "lv=lambda k: k==0 or k==2; "
