@@ -60,8 +60,8 @@ from mureo.google_ads._enum_names import (
     map_enum_name,
 )
 from mureo.google_ads._gaql_validator import validate_static_query
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads._rsa_validator import display_width
-from mureo.google_ads.client import _wrap_mutate_error
 
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient

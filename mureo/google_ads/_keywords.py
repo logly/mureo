@@ -17,7 +17,7 @@ from mureo.google_ads._enum_names import (
     KEYWORD_PLAN_COMPETITION_LEVEL_MAP,
     map_enum_name,
 )
-from mureo.google_ads.client import _wrap_mutate_error
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads.mappers import (
     map_keyword,
     map_keyword_quality_info,
