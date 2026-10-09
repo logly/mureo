@@ -123,6 +123,24 @@ def _isolate_credential_writes(monkeypatch, tmp_path_factory):
 #: the ``test-slow`` CI job.
 EXHAUSTIVE_TESTS_ENV = "MUREO_RUN_EXHAUSTIVE_TESTS"
 
+#: The one value that turns the exhaustive lanes on.
+EXHAUSTIVE_TESTS_ON = "1"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Refuse a value of the switch that is neither unset nor ``"1"``.
+
+    A misspelt value (``true``, ``yes``) would otherwise skip every exhaustive
+    test and exit 0: the ``test-slow`` CI job green and empty, which is the
+    failure the job exists to prevent.
+    """
+    raw = os.environ.get(EXHAUSTIVE_TESTS_ENV)
+    if raw not in (None, EXHAUSTIVE_TESTS_ON):
+        raise pytest.UsageError(
+            f"{EXHAUSTIVE_TESTS_ENV}={raw!r}: only "
+            f"{EXHAUSTIVE_TESTS_ON!r} enables the exhaustive lanes"
+        )
+
 
 @pytest.fixture
 def only_when_asked_for():
@@ -132,5 +150,5 @@ def only_when_asked_for():
     silently disappears from the default run is how a suite ends up with checks
     nobody has executed in months, so the skip is visible in the run's summary.
     """
-    if os.environ.get(EXHAUSTIVE_TESTS_ENV) != "1":
+    if os.environ.get(EXHAUSTIVE_TESTS_ENV) != EXHAUSTIVE_TESTS_ON:
         pytest.skip(f"exhaustive; run with: {EXHAUSTIVE_TESTS_ENV}=1 pytest -m slow")

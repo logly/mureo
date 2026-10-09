@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tests._measurement_child import measurement_child_env
+from tests._measurement_child import CHILD_TIMEOUT_SECONDS, measurement_child_env
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -97,19 +97,25 @@ def _imports_inside(package: str, path: pathlib.Path) -> bool:
     Static, because importing it to find out is the very thing under test. Both
     spellings count: ``from mureo.google_ads.x import y`` and the relative
     ``from .x import y`` (nothing in-tree uses the latter today, and a cycle
-    written that way would be just as real).
+    written that way would be just as real). A module counts as inside the
+    package by name, not by prefix: ``mureo.google_adsx`` is not
+    ``mureo.google_ads``.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             if node.level > 0:
                 return True
-            if node.module is not None and node.module.startswith(package):
+            if node.module is not None and _is_inside(node.module, package):
                 return True
         elif isinstance(node, ast.Import):
-            if any(alias.name.startswith(package) for alias in node.names):
+            if any(_is_inside(alias.name, package) for alias in node.names):
                 return True
     return False
+
+
+def _is_inside(module: str, package: str) -> bool:
+    return module == package or module.startswith(package + ".")
 
 
 def _all_submodules() -> list[str]:
@@ -141,7 +147,7 @@ def _import_alone(module: str, env: dict[str, str]) -> tuple[str, int, str]:
         capture_output=True,
         text=True,
         env=env,
-        timeout=300,
+        timeout=CHILD_TIMEOUT_SECONDS,
     )
     return module, proc.returncode, proc.stderr
 
@@ -204,10 +210,20 @@ def test_every_submodule_imports_as_the_first_import(
     _assert_imports_alone(module, returncode, stderr)
 
 
+#: The default lane held 33 submodules when this was written (27 Google Ads, 6
+#: Meta). The floor sits near that rather than near zero, so a scan that quietly
+#: lost most of the lane fails here; lower it when sibling imports are removed.
+_DEFAULT_LANE_FLOOR = 30
+
+
 @pytest.mark.unit
 def test_the_default_lane_is_not_empty() -> None:
     """A source-driven lane that silently finds nothing would pass forever."""
-    assert len(SIBLING_IMPORTING_SUBMODULES) >= len(STANDALONE_IMPORT_PACKAGES)
+    assert len(SIBLING_IMPORTING_SUBMODULES) >= _DEFAULT_LANE_FLOOR, len(
+        SIBLING_IMPORTING_SUBMODULES
+    )
+    covered = {name.rpartition(".")[0] for name in SIBLING_IMPORTING_SUBMODULES}
+    assert covered == set(STANDALONE_IMPORT_PACKAGES), covered
     assert set(SIBLING_IMPORTING_SUBMODULES) <= set(ALL_SUBMODULES)
 
 

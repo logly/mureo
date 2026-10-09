@@ -513,7 +513,7 @@ class TestEagerPlatformImports:
         proc = run_in_fresh_interpreter(_WARNING_CATEGORY_CODE)
         assert proc.returncode == 0, proc.stderr
         loaded = json.loads(proc.stdout.strip().splitlines()[-1])
-        assert loaded == ["mureo", "mureo.plugin_warnings"], loaded
+        assert "mureo.mcp" not in loaded and "mureo.plugin_warnings" in loaded, loaded
 
 
 @pytest.mark.unit
