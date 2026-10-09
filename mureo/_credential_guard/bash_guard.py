@@ -1,4 +1,150 @@
-"""Rules 1 to 4, and the Bash guard's payload assembled from every piece."""
+"""Rules 1 to 4, and the Bash guard's payload assembled from every piece.
+
+The single reading is the load-bearing part, and it was learned the
+expensive way.  Earlier versions had one rule scanning the raw command
+and another scanning the folded text; every obfuscation one of them
+resolved was invisible to the other, so each new fold opened a new hole
+on the axis the other rule owned.  ``D=~/; cat $D.mu\\<newline>reo/…``
+reads the file: the continuation was folded away in the text the
+pattern rule read, while the rule that knew about ``$D`` was still
+looking at the raw command.  Nothing here may reintroduce a second
+reader.  If a rule needs information the fold destroys, the fold has to
+preserve it — which is what ``_COLLAPSE`` does for expansion
+boundaries — rather than the rule reaching for a different string.
+
+Rule 3 reads the raw text too, and that is not the thing this paragraph
+forbids — read this before adding another rule that does the same,
+because the difference is the whole point.  The split-brain bug was
+*partition*: each rule owned one string and was blind to the other, so
+an obfuscation resolved on one axis walked past the rule that owned the
+other.  Rule 3 is a *union* — it runs against the readings AND the raw
+command, so nothing is invisible to it and no fold can open a hole
+underneath it.  It also does not want anything the fold destroys: it
+looks for a pattern that a program other than the shell will expand,
+and the fold models the shell alone, so there is nothing for
+``_COLLAPSE`` to preserve on its behalf.  A rule reading the raw text
+*instead of* the readings would be the old bug returning.
+
+Rule 1 (the name spelled out) denies when the normalized text contains
+``.mureo`` where a path component could *start*.  Anchoring on the
+directory name rather than on ``credentials`` also covers a wildcard
+that follows the name (``cat ~/.mureo/cred*``).  Rule 2 below covers a
+metacharacter placed *inside* the name.  Because both read the
+normalized text, a name that only becomes contiguous once the shell has
+worked on it — ``.mure"o"``, ``.mur'e'o``, ``.mu\\<newline>reo``,
+``$D.mureo`` — is as visible to them as one written out.
+
+A bare substring test over-blocks badly, because case-folded ``.mureo``
+is also a prefix of things that are emphatically not the directory:
+mureo's own browser globals (``window.MUREO_REPORTS_FORMAT``) and every
+hostname under the project's domain (``pkgs.mureo.jp``,
+``docs.mureo.jp``).  Naming either one in a commit message, a release
+note or a PR body was denied outright.
+
+What separates those from a real reference is what comes *before*: a
+path component named ``.mureo`` always starts at a boundary — after
+``/``, ``~``, a quote, whitespace, or the start of the string — whereas
+the false positives are preceded by an identifier character that belongs
+to a longer name (``window``, ``pkgs``).  So the guard denies when the
+substring is at the start of the command or preceded by a non-identifier
+character.
+
+That boundary test would be too weak on the raw command, because an
+identifier character can also be the tail of a *substitution* that
+supplies the parent directory: with ``D=~/``, the command ``cat
+$D.mureo/credentials.json`` resolves into the protected directory while
+putting ``D`` immediately before the name.  The same applies one level
+up, to a format specifier a program will fill in (``printf
+'%s.mureo/...' ~/``).
+
+This is where an earlier design added a *second rule* over the raw text,
+and where the split-brain bugs came from.  Normalization handles it
+instead: an expansion becomes ``*/`` and swallows the identifier run
+that names it, so ``$D.mureo``, ``${D}.mureo``, ``$1.mureo`` and
+``%s.mureo`` all read as ``*/.mureo``.  The dot then sits after a
+non-identifier character, exactly as it does in ``~/.mureo``, and the
+one boundary test sees every one of them — including when the name is
+*also* broken up, which is what the two-rule version could not do.
+
+Nothing that names the directory in plain path syntax is admitted by
+this: sibling directories (``~/.mureoX``, ``~/.mureo_backup``) still
+deny, since only the text before the name is consulted.
+
+Rule 2 (the name written as a pattern).  A metacharacter inside the name
+breaks rule 1's six-character literal while the shell still expands the
+pattern onto the real directory: ``cat ~/.mure?/credentials.json``
+prints the credentials file, and so do ``.[m]ureo``, ``.mur*``,
+``.m?reo``, ``.?????``, ``.[!.]*`` and the brace form ``.mure{o,x}``
+(each run against bash 5.2 with a throwaway ``HOME``).  No pattern over
+the command text can decide this, because the string that reaches the
+filesystem does not exist yet — so the guard asks the question the other
+way round.  It takes the path components of the normalized command,
+keeps those beginning at a component boundary with a literal ``.`` and
+containing a metacharacter, and denies when ``fnmatch`` says the pattern
+matches ``.mureo``.
+
+Requiring the literal leading ``.`` is what makes that safe to do.  A
+shell will not let a wildcard match the leading period of a filename
+unless ``dotglob`` is set, so ``ls *``, ``rm -rf build/*`` and
+``tests/*.py`` cannot reach ``.mureo`` and are never candidates.
+Without that restriction the rule would have to deny every glob anyone
+types, ``fnmatch('.mureo', '*')`` being true.
+
+Rules 1 and 2 both read the *directory* name, and for a long time that
+was all the guard read.  It meant a command that never spelled the
+directory at all walked straight past: ``find ~ -path '*mureo*' -exec
+cat {} ;`` and ``find ~ -name credentials.json -exec cat {} ;`` both
+printed the credentials, with no obfuscation and no adversarial intent
+required.  "Look for any leftover credential files under my home
+directory" is an ordinary instruction, and it is exactly the accident
+this guard exists for.  Rules 3 and 4 read the two things such a command
+does write down.
+
+Rule 3 (a pattern reaching into the name without the dot).  Rule 2 only
+considers components that begin with a literal ``.``, so ``*mureo*`` —
+which ``find -path`` happily matches against the full path, leading
+period included — was not a candidate.  Rule 3 denies when a glob
+metacharacter stands immediately before the literal ``mureo``.  It is
+deliberately narrower than "any pattern that could match": ``mureo`` has
+to be written out, so working inside a checkout of this very repository
+(``grep -r foo mureo/``) is untouched, while ``-path '*mureo*'`` and
+``-name '*mureo*'`` are not.
+
+Rule 3 reads the raw command text as well as the normalized readings,
+and that is the point of it.  Normalization models what the *shell*
+expands, so it neutralizes a quoted ``*`` — correctly, for the shell.
+But the quotes in ``-path '*mureo*'`` are there precisely to keep the
+shell off the pattern so that ``find`` can expand it itself, and by the
+time the normalized reading exists the pattern has become ``=mureo=``
+and there is nothing left to match.  A pattern meant for a downstream
+program is written literally in the command; that is where rule 3 looks
+for it.  Every other rule stays on the normalized readings, because
+every other rule is about what the shell will do.
+
+Rule 4 (the protected filenames).  A tree search can name the file
+instead of the directory, so the filenames are candidates in their own
+right — but only where the name stands on its own, with no ``/`` before
+it.  That restriction is the rule.  A name with a path in front of it is
+not a search but a specific file, and which file it is has already been
+settled by rules 1 to 3 from the directory: ``~/.mureo/credentials.json``
+denies on rule 1, while ``~/backups/credentials.json`` is the user's own
+file and refusing it would be the guard overreaching into a directory it
+does not protect.  Without the restriction the rule also contradicted
+three cases the guard already reasons about and allows —
+``cat "$HOME/.mure?/credentials.json"`` and the two fully-quoted paths —
+where the name is written but the shell cannot reach the directory.
+
+``config.json`` is deliberately NOT among them.  It is one of the most
+common filenames in software, and denying it would stop ``cat
+config.json`` in every project the agent ever works in — the guard is
+judged by whether it makes the common accident less likely *without
+blocking real work*, and that trade lands the wrong way.  The cost is
+stated rather than hidden: ``find ~ -name config.json -exec cat {} ;``
+still reads that one file.  The names that are matched are specific
+enough that a project file colliding with one is rare, and when it does
+the deny reason says to use the Read tool, which is guarded by path and
+so allows a same-named file anywhere outside ``~/.mureo``.
+"""
 
 from __future__ import annotations
 
@@ -34,7 +180,7 @@ _PATTERN_COMPONENT = "'[.][]a-z0-9_.*?[^{},' + chr(33) + '-]*'"
 
 # The files rule 4 matches by name, so a tree search cannot walk to them
 # without naming the directory. ``config.json`` is deliberately absent —
-# see rule 4 in the credential_guard.py docstring for why, and for what that costs.
+# see rule 4 in this module's docstring for why, and for what that costs.
 GUARDED_FILENAMES = (
     "credentials.json",
     "credentials.json.bak",

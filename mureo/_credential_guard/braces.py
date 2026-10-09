@@ -1,4 +1,96 @@
-"""Brace expansion over the readings, and the budget that bounds it."""
+"""Brace expansion over the readings, and the budget that bounds it.
+
+Brace groups are then *expanded*, not approximated: each reading becomes
+the list of strings the shell would produce, and every rule runs against
+all of them.  ``~/.mure{o,x}`` and ``~/{.,z}mureo`` are caught because
+``.mureo`` is literally among the results.
+
+An earlier version folded each group to one placeholder and guessed
+which — ``.*`` if the group held a dot anywhere, ``*`` otherwise — and
+the guess is what broke.  ``~/.{mureo,x.y}`` has a dot before the group
+and a dot inside an alternative that has nothing to do with the
+directory; the fold read them as one, produced ``..*``, which requires
+two leading dots, and meanwhile the literal ``.mureo`` that rule 1 would
+have matched had already been replaced.  Both rules passed and the file
+was read.  Expanding removes the guess instead of refining it.
+
+A brace group is part of one word, so what counts as its contents is
+decided by the separator placeholders and not by the characters
+themselves.  A group whose contents hold a placeholder is not a group:
+bash does not expand a brace group across a separator it is allowed to
+act on, and neither does this.  A separator the shell may *not* act on is
+ordinary text in the middle of the word, so a group holding one is still
+a group and is expanded like any other — which is the whole reason the
+question is asked of the fold rather than of the finished text.
+``{"a": 1, "b": 2}`` is therefore not brace expansion and costs nothing,
+while a group whose alternatives are spelled with quoted separators is.
+
+Ignoring such a ``{...}`` is only safe where the guard can see that
+nothing was lost by doing so, so the ignoring is conditional and fails
+closed.  A ``{...}`` the shell would expand — one with a comma or a
+``..`` — whose contents hold either an expansion placeholder or a
+separator from the second kind is *refused* as structure that did not
+resolve, rather than ignored.  The reasoning is the same as the budget's:
+if an expansion form the span fold does not recognise were to slip
+through, its insides would read as separators, and ignoring the group on
+that basis would be a guess in the fail-open direction.  Spelled this
+way, any such slip lands on deny.  The condition is restricted to
+expandable groups because a brace span without a comma or a ``..`` is not
+brace expansion to any shell, so there is nothing about it to get wrong;
+and bash's own separating comma is always at the group's top level, so it
+is always visible in the reading when the group is real.
+
+Two groups are not lists of alternatives and cannot be enumerated this
+way: a sequence (``.{l..n}ureo`` covers ``m`` without the letter
+appearing anywhere) and one with absurdly many alternatives.  Those fall
+back to *both* coarse readings, ``*`` and ``.*``, which between them
+cover "supplies a leading dot" and "does not" — the pair the single
+guess was missing.  A group with neither a comma nor a ``..`` is not
+brace expansion at all; bash leaves ``{eo}`` literal, so the guard does
+too, and ``~/.mur{eo}`` is allowed because it opens nothing.
+
+Being literal is not the same as being absent, and that distinction is the
+whole of the next step.  Nesting resolves by expanding the innermost group
+first, so that the one around it becomes innermost in its turn — but an
+inert span never goes away, because nothing expands it, and for as long as
+it is there the span around it holds a brace and is not a group to this
+reading at all.  Bash has no such order to wait on: it expands braces over
+the raw text, before every other expansion, so an alternative carrying an
+inert ``{...}`` is just an alternative.  The guard agrees with it by
+writing an inert span's braces as placeholders of their own, which leaves
+the enclosing span readable, and by putting them back before any rule runs,
+which keeps the candidate strings the strings the shell produces.  Only
+inert spans are mapped: one with a comma or a ``..`` is the expansion
+step's, and mapping it would resolve the inside before the outside; one
+holding a separator is not kept in a single word by bash either.  The
+mapping needs a pass per level of nesting and is bounded like everything
+else here, and a text still changing when the bound is reached is refused
+with the rest of the structure the budget did not finish.
+
+Expansion has a budget — eight passes, 100,000 bytes of candidate text
+per reading set — so a pathological command cannot explode the hook.
+**Whatever the budget does not resolve is refused.**  Anything still
+holding an expandable group after the passes denies on that ground alone.
+
+That rule replaced a fallback that collapsed leftovers coarsely, and it
+is worth saying plainly why, because the docstring claimed the fallback
+"over-approximates rather than dropping candidates" and that was false.
+Past ten levels of nesting the collapse left literal ``{`` and ``}`` in
+the candidates, which ``fnmatch`` reads as ordinary characters, so
+*neither* rule fired: ``cat ~/.{z11,{z10,…{z1,mureo}}}/…`` — ninety
+characters, no exotic syntax — was allowed while bash read the file.  A
+budget that shrugs is a bypass with a length requirement.  The general
+form of the rule is: when the guard cannot compute what the shell would
+produce, it denies.
+
+What that refuses in practice is a command with more than eight brace
+groups, or one whose expansion exceeds 100,000 bytes.  Of twenty-one
+brace-using everyday commands — ``awk '{print $1}'``, ``find . -exec rm
+{} ;``, ``mkdir -p build/{lib,bin,share}``, ``mv file{1..10}.txt``,
+``jq '{name: .name}'``, eight groups on one line — exactly one is
+refused: nine groups on one line.  Quoted braces never reach this step,
+and a group with no comma and no ``..`` is literal to bash and to ``fe``.
+"""
 
 from __future__ import annotations
 

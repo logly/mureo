@@ -2,8 +2,10 @@
 
 :mod:`mureo.credential_guard` is the public face: the hook commands, the
 PreToolUse entries the installers write, and the module docstring that says
-what the guard does, why, and what it does not cover.  Read that docstring
-first; the comments in this package assume it.
+what the guard does, what it refuses that it need not, and what it does not
+cover.  Read that docstring first.  Why each step works the way it does is
+in the docstring of the module that holds it; the comments in each module
+assume its docstring.
 
 The payloads are single-line python programs, and this package holds them in
 the order a reader needs them:

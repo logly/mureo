@@ -1,4 +1,94 @@
-"""The quoting automaton, and what each character of the command reads as."""
+"""The quoting automaton, and what each character of the command reads as.
+
+Normalization produces those readings, and it is a left fold over the
+characters with a five-state quoting automaton — unquoted, single-quoted,
+double-quoted, and the two escaped states — because that is the only way
+to get quoting right.  An earlier version stripped quoted spans with two
+regex passes and had the defect that shape invites: in ``echo "it's" ;
+cat ~/.mure?/x 'x'`` the single-quote pass read the apostrophe of
+``it's`` as an opening delimiter, paired it with the unrelated ``'x'``
+at the end of the line, and deleted the real pattern sitting between
+them.  The fold cannot make that mistake, and it also gets ``echo
+it\\'s`` right, where an escaped quote is not a delimiter at all.
+
+The fold rewrites eight things:
+
+- quote delimiters are dropped, so the text reads as the shell will read
+  it (this is what catches ``~/.mure"o"``);
+- a line continuation — a backslash with a newline after it — is dropped
+  whole, both characters, because that is what a shell does with the
+  pair before it tokenises anything.  ``cat ~/.mu\\<newline>reo/…``
+  prints the credentials file, and so do ``.\\<newline>mureo``,
+  ``.mure\\<newline>?`` and the same spellings inside double quotes.
+  Keeping the newline was enough to stop the name ever being contiguous.
+  Inside *single* quotes a backslash is an ordinary character, so there
+  is no continuation there and none is normalized away;
+- a *quoted* metacharacter becomes ``=``, because quoting makes it an
+  ordinary character and no ordinary character in ``.mureo`` is a
+  metacharacter.  That is why ``sed 's/.*//'`` and ``find . -name '.*'``
+  are a regex and a literal rather than globs, and why ``cat
+  "$HOME/.mure?/x"`` — which opens nothing — is allowed while the
+  unquoted spelling is denied.  The placeholder has to be a character
+  that reads as a *boundary*: it was ``_`` once, and since ``_`` is an
+  identifier character, ``'{}.mureo'`` folded to ``__.mureo`` and the
+  boundary test saw one long name rather than the directory.  This is the
+  one rewrite the fold does *twice*, once each way; see the second reading
+  in spans.py for the question the collapse is the wrong answer to;
+- the start of an expansion (``$``, backtick, ``%``) becomes ``*/`` and
+  swallows the identifier run naming it: ``*`` because its text is
+  unknown, ``/`` because its extent is unknown too, so what follows
+  cannot be assumed to continue the same path component, and swallowing
+  ``D`` in ``$D`` so the expansion reads as one unknown thing.  ``%`` is
+  an expansion in every state, quoted or not, because the program that
+  fills it in is the next one along, not this shell;
+- a quoted span containing ``%`` keeps its metacharacters live, because
+  such a span is a template rather than text: ``printf
+  '%s.mure?/x'`` builds a name whose ``?`` the shell then globs.  The
+  flag resets at the end of the span, so a ``%`` in one argument cannot
+  animate the metacharacters of a later one — ``echo "100%" ; sed
+  's/.*//'`` is still allowed.
+- from an unquoted ``<<`` to the end of the command, quoting is not
+  resolved at all.  Bash resolves none in the body of a here-document: a
+  ``'`` or ``"`` there is ordinary body text, so a body containing an
+  apostrophe does not open a quoted span, and the text after the body is
+  read exactly as unquoted as it is.  The latch is one-way and does not
+  look for the delimiter, deliberately.  Erring *long* means the guard
+  declines to resolve quoting somewhere bash would have, which can only
+  leave more text visible to the rules; erring short means resolving
+  quoting bash does not resolve, and the body of a here-document is
+  precisely where unbalanced quotes are ordinary.  A here-string
+  (``<<<``), a ``<<`` inside a comment and a left shift inside ``$(( ))``
+  all match it, and that is intended: what they lose is quote resolution,
+  and losing it is the safe direction.  One transition survives inside
+  the latch — a backslash still escapes the character after it, so a line
+  continuation is still removed as a pair.  Bash removes it in an
+  unquoted body, and in a quoted one the pair reaches whatever program
+  consumes the body, which removes it then; either way the two characters
+  are not part of a name.
+- a separator the shell is allowed to act on becomes a placeholder, and
+  two of them: one for whitespace, one for ``;`` ``|`` ``&`` ``(`` ``)``
+  ``<`` ``>``.  Where one word ends and the next begins is a question
+  about *quoting*, not about which characters are present — a quoted
+  space is ordinary text in the middle of a word, an unquoted one ends
+  it — so it is the fold that answers it, once, and the brace step reads
+  the answer off the placeholders instead of asking again.  The two kinds
+  are kept apart because the brace step treats them differently; see
+  braces.py.  Nothing else in the text means anything but itself, so the
+  placeholders are control characters, and any of them arriving in the
+  command is replaced on the way in: a command must not be able to write
+  one and claim a boundary the shell would not make.  The same goes for
+  the two the brace step uses for the braces of a span the shell leaves
+  literal — chr(1) to chr(4), four in all, none writable by the command;
+- inside the body of a here-document the second kind is not a separator
+  at all.  Bash reads no operator in a body, so ``(`` ``)`` ``;`` ``|``
+  ``&`` ``<`` ``>`` there are ordinary characters in the middle of
+  whatever language the body is written in, exactly as a quoted one is on
+  a command line.  Whitespace stays a separator, because a body is still a
+  run of lines and two braces on different lines of one are not a group.
+  Reading a body's punctuation as a command line's made an everyday short
+  script — a dict holding a call, an SQL statement, a javascript object —
+  into contents the guard could not account for, and refused it;
+"""
 
 from __future__ import annotations
 

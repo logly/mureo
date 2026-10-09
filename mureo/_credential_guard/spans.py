@@ -1,4 +1,64 @@
-"""Expansion spans, and the readings the command is split into."""
+"""Expansion spans, and the readings the command is split into.
+
+An *expansion* is one indivisible token, and the fold treats it as one.
+``$( ... )``, ``${ ... }``, ``$(( ... ))``, a backtick pair and
+``<( ... )`` are single words to bash: the parentheses, braces, spaces and
+``;`` ``|`` ``&`` inside one belong to the expansion, not to the command,
+and bash splits neither a word nor a brace group on them.  So the fold
+takes each expansion out of the command's structure — the span reads as
+``*/`` followed by the boundary placeholder — and keeps its body as a
+reading of its own.  A nested expansion is simply another reading, so
+nothing has to recurse.  Both halves of that are load-bearing.  Without
+the first, a group whose alternatives are themselves spans loses its
+closing brace to a span and disappears, although bash keeps the word
+whole and expands it.  Without the second, a name written only inside an
+expansion's body is not read at all.  Replacing a span with a placeholder
+and dropping its text would trade one for the other.
+
+An expansion whose extent cannot be decided — one that never closes, or
+one whose closer does not match its opener — is refused rather than
+guessed at, on the same principle the brace budget refuses on: whatever
+the guard concluded about the structure around it would be a guess.  Bash
+cannot run such a command either.  It says that in its *own* reason, and
+not the budget's: no budget is spent deciding an extent and no brace
+expansion is attempted, so "use fewer brace groups" sent the agent to
+count groups when what the command needs is a closing delimiter.
+
+Where the expansion *does* close, what it produces is still unknown — and
+unknown in extent as well as in text, because the shell splices the result
+into the middle of a word and the characters after the closer belong to the
+same path component.  So the reading holding an expansion's body ends in a
+wildcard, which is what puts "the body wrote part of a name and the command
+wrote the rest" to rule 2.  Without it each reading dropped that question
+for its own reason: the body reading ended on a name that merely resembled
+the directory's, and the command reading, where the whole expansion is one
+unknown token, had no dot in it to judge.
+
+There is a *second* set of readings, built the same way over the same spans,
+differing in one rewrite: a quoted metacharacter is left live instead of
+collapsing to the placeholder.  Collapsing it is the right answer to "what
+will this shell expand", and that is the only question the first set is
+asked.  It is the wrong answer to "what will the next program along do with
+this string", and a quoted string is exactly how a command hands text to a
+program that starts a shell of its own: a command that a shell re-reads.
+That shell sees the metacharacters as written, and the brace step over the
+second reading produces what it would produce.  Two readings of the one
+question is *not* the split-brain bug the bash_guard module docstring
+forbids: that bug was partition, each rule owning one string and blind to
+the other.  Here every rule that reads a name written
+out sees both sets, so neither can hide anything from it.
+
+What the second set must not answer is rule 2, the one that asks whether a
+*pattern* matches.  A quoted pattern is text the shell will not act on —
+that is why the first reading collapses it — so letting the second reading
+judge it as a pattern refuses every quoted glob and regex anyone writes:
+``sed 's/.*//'``, ``find . -name '.*'``, ``ls '.*'``, ``tar -czf a.tgz
+'*.py'``.  It answers rules 1 and 4, which read something spelled out, and
+it carries no wildcard for the same reason: a wildcard is a pattern.  Nor
+does it produce a refusal of its own.  The structure it could not resolve is
+the same structure the first set could not, and refusing twice over would
+deny ``jq '{a: 1, b: $x}'`` for a group bash never expands.
+"""
 
 from __future__ import annotations
 
@@ -34,8 +94,8 @@ from mureo._credential_guard.quoting import _COLLAPSE, _QUOTE_INIT
 # A span's opening sigil already normalizes to `*/` (`$` and the backtick do;
 # an unquoted `<` or `>` is a separator placeholder and the rest read as
 # themselves), its brackets contribute nothing, and its closer contributes
-# the boundary placeholder so that the identifier collapse stops there — `$(x)credentials.json` must stay
-# as visible as `$(x) credentials.json`.
+# the boundary placeholder so that the identifier collapse stops there —
+# `$(x)credentials.json` must stay as visible as `$(x) credentials.json`.
 _SPAN_STEP = (
     "lv=lambda k: k==0 or k==2; "
     "sg=dl+'<>@?*+'+chr(33); "
