@@ -14,7 +14,9 @@ which is what the eager block used to do as a side effect), and ``dir()`` lists
 both — they are materialised on access instead of at package import. See
 :mod:`mureo.google_ads` for why the hooks sit in the ``else`` branch (so that a
 typo'd name still fails ``mypy``) and for the one behaviour that does change (an
-``ImportError`` inside a submodule surfaces on first access).
+``ImportError`` inside a submodule surfaces on first access). As there,
+``inspect.getmembers`` on this package imports every submodule, the API client
+included.
 """
 
 from __future__ import annotations

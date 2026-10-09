@@ -28,6 +28,10 @@ tests/test_mcp_startup_budget.py reads this file and fails if they drift.
 One thing a lazy package does change: an ``ImportError`` inside a submodule
 surfaces on first access rather than at package import. It is not swallowed —
 see :func:`mureo._lazy_package.lazy_getattr`.
+
+Anything that walks ``dir()`` and reads each name back pays for all of it:
+``inspect.getmembers(mureo.google_ads)`` imports every submodule, the API client
+included (``sys.modules`` from 73 to 1764 entries, measured 2026-10-09).
 """
 
 from __future__ import annotations

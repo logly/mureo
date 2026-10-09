@@ -11,19 +11,23 @@ A package keeps only the parts that cannot be shared: its ``__all__``, the
 the ``if TYPE_CHECKING:`` import list that gives a type-checker the real types
 (see :mod:`mureo.google_ads`).
 
-Nothing resolved here is cached into the asking package's ``globals()``, and
-that is deliberate: a cached re-export outlives the ``mock.patch`` that produced
-it, because ``patch`` restores the *defining* module's attribute and knows
-nothing about the package's copy — which would leave a dead mock installed for
-the rest of the process. The price is real and is not "cheap": even on a
-``sys.modules`` hit, :func:`importlib.import_module` takes the import lock and
-re-resolves the name. Measured below, which is why the in-tree call sites read
-these names once per operation; code in a loop should import the defining module
-instead.
+No **re-exported name** resolved here is cached into the asking package's
+``globals()``, and that is deliberate: a cached re-export outlives the
+``mock.patch`` that produced it, because ``patch`` restores the *defining*
+module's attribute and knows nothing about the package's copy — which would
+leave a dead mock installed for the rest of the process. The price is real and
+is not "cheap": even on a ``sys.modules`` hit, :func:`importlib.import_module`
+takes the import lock and re-resolves the name. Measured below, which is why the
+in-tree call sites read these names once per operation; code in a loop should
+import the defining module instead. (A **submodule** is different, and not by
+choice: importing ``pkg.sub`` makes the import system bind ``sub`` on ``pkg``,
+so after its first access a submodule *is* in the package's ``globals()`` and
+this hook is not consulted for it again — exactly as with an eager package.)
 
-Measured on one development machine (CPython 3.10.0, macOS, no plugins,
-bytecode cache warm, ``time.process_time`` over 200,000 iterations — 20,000 for
-the miss — min of 5 runs, no ``cProfile``):
+Measured 2026-10-08 on one development machine (CPython 3.10.0, macOS, no
+plugins, bytecode cache warm, ``time.process_time`` over 200,000 iterations —
+20,000 for the miss — min of 5 runs, no ``cProfile``). Not checked by any test;
+re-measure before relying on the absolute figures:
 
 =========================================  ==========  =========
 attribute access                           per call    ratio
@@ -57,6 +61,14 @@ def lazy_getattr(package: str, exports: Mapping[str, str], name: str) -> object:
     requires. An ``ImportError`` from inside a submodule is *not* swallowed:
     only a ``ModuleNotFoundError`` naming the attribute asked for becomes an
     ``AttributeError``; anything else propagates unchanged.
+
+    One case this cannot tell apart: an ``AttributeError`` raised while a
+    submodule's own body runs propagates unchanged too, and an
+    ``AttributeError`` is what "no such attribute" looks like. ``getattr``
+    surfaces the inner error, but ``hasattr(package, name)`` answers ``False``
+    for a submodule that exists and is broken. Unlike ``ModuleNotFoundError``,
+    an ``AttributeError`` does not reliably name what was missing, so there is
+    nothing to match on; import the submodule directly to see the fault.
     """
     module_name = exports.get(name)
     if module_name is not None:
@@ -100,10 +112,13 @@ def lazy_dir(
     """List a lazy package's dunders, its public names and its submodules.
 
     ``namespace`` is the package's ``globals()``, and only its dunders are taken
-    from it. Listing all of it advertised the imports that make the package lazy
-    (``TYPE_CHECKING``, ``_LAZY_EXPORTS``, the hooks' own names) as part of the
-    package's surface; ``dir()`` is what a reader and a completion engine take
-    for the surface, and the eager package never listed them.
+    from it. Listing all of it advertised the machinery that makes the package
+    lazy (``TYPE_CHECKING``, ``_LAZY_EXPORTS``, ``lazy_dir``, ``lazy_getattr``)
+    as part of the package's surface; ``dir()`` is what a reader and a
+    completion engine take for the surface, and the eager package never listed
+    them. The filter is by name, so dunders pass as a class — which includes
+    the hooks themselves (``__getattr__``, ``__dir__``) and
+    ``__annotations__``.
     """
     return sorted(
         {name for name in namespace if name.startswith("__")}
