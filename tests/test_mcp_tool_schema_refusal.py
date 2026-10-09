@@ -350,7 +350,9 @@ class TestReportsAreAscii:
         written = stream.buffer.getvalue().decode("ascii")
         assert "tool bad:" in written, written
 
-    def test_a_repeated_refusal_reaches_an_ascii_stream(self) -> None:
+    def test_a_repeated_refusal_reaches_an_ascii_stream(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """The quiet DEBUG line for a repeat is a record too.
 
         A plugin can name its tool in any language, and that name is in the
@@ -365,11 +367,9 @@ class TestReportsAreAscii:
         validators = LazyToolValidators(
             [_tool(name, _UNRESOLVABLE)], plugin_names={name}
         )
+        caplog.set_level(logging.DEBUG, logger=_LOGGER_NAME)
         try:
-            with (
-                patch.object(logger, "level", logging.DEBUG),
-                warnings.catch_warnings(),
-            ):
+            with warnings.catch_warnings():
                 warnings.simplefilter("ignore", PluginToolWarning)
                 for _ in range(3):
                     with pytest.raises(ToolSchemaUnusableError):

@@ -159,12 +159,17 @@ class _ReentrantHandler(logging.Handler):
     leaves exit nothing to wait on, and ``_at_fork_reinit`` — which ``Handler``
     otherwise calls on ``lock`` unconditionally in a forked child — has nothing
     to reinitialise.
+
+    ``lookup`` is the tool it reads. Only a tool nothing has compiled yet takes
+    the lock — a cached one is read without it — so a test that emits more than
+    one record points this at a fresh tool before each record it means to check.
     """
 
     def __init__(self, validators: LazyToolValidators, seen: list[str]) -> None:
         super().__init__()
         self._validators = validators
         self._seen = seen
+        self.lookup = "good"
 
     def createLock(self) -> None:  # noqa: N802 - overrides logging.Handler
         self.lock = None
@@ -173,7 +178,7 @@ class _ReentrantHandler(logging.Handler):
         pass
 
     def emit(self, record: logging.LogRecord) -> None:
-        self._seen.append(f"log:{self._validators.get('good') is not None}")
+        self._seen.append(f"log:{self._validators.get(self.lookup) is not None}")
 
 
 @pytest.fixture(scope="session")
@@ -551,18 +556,29 @@ class TestValidatorCompileFaults:
         assert not thread.is_alive()
         assert reentered == ["log:True", "warn:True"]
 
-    def test_reporting_an_apply_failure_does_not_hold_the_lock(self) -> None:
+    def test_reporting_an_apply_failure_does_not_hold_the_lock(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """The same, for a schema that compiles and then raises when applied.
 
         That report has its own path (``_report_apply_failure``, which takes the
         lock to count the failure), so the compile-time test above does not
-        cover it.
+        cover it. Two calls, because the path reports twice over: the first
+        refusal in full (log, then warning), a repeat as a DEBUG record. Each
+        of the three reads a tool nothing has compiled yet — the log handler
+        ``good``, the warning hook ``good2``, the handler again ``good3`` for
+        the repeat — because a cached tool is read without the lock: a hook
+        reading ``good`` after the handler had compiled it would not notice
+        the warning being issued under the lock, nor the handler the DEBUG
+        record.
         """
         unresolvable = {"type": "object", "properties": {"b": {"$ref": "#/nowhere"}}}
         validators = LazyToolValidators(
             [
                 _tool_with_schema("plug_reffy", unresolvable),
                 _tool_with_schema("good", {}),
+                _tool_with_schema("good2", {}),
+                _tool_with_schema("good3", {}),
             ],
             plugin_names={"plug_reffy"},
         )
@@ -570,13 +586,16 @@ class TestValidatorCompileFaults:
         finished = threading.Event()
 
         def hook(message: object, *args: object, **kwargs: object) -> None:
-            reentered.append(f"warn:{validators.get('good') is not None}")
+            reentered.append(f"warn:{validators.get('good2') is not None}")
 
         def worker() -> None:
-            with pytest.raises(_tool_validation.ToolSchemaUnusableError):
-                validators.validate_tool_input("plug_reffy", {"b": 1})
+            for lookup in ("good", "good3"):
+                handler.lookup = lookup
+                with pytest.raises(_tool_validation.ToolSchemaUnusableError):
+                    validators.validate_tool_input("plug_reffy", {"b": 1})
             finished.set()
 
+        caplog.set_level(logging.DEBUG, logger=_LOGGER_NAME)
         logger = logging.getLogger(_LOGGER_NAME)
         handler = _ReentrantHandler(validators, reentered)
         logger.addHandler(handler)
@@ -595,7 +614,7 @@ class TestValidatorCompileFaults:
             logger.removeHandler(handler)
 
         assert not thread.is_alive()
-        assert reentered == ["log:True", "warn:True"]
+        assert reentered == ["log:True", "warn:True", "log:True"]
 
     @pytest.mark.slow
     @pytest.mark.usefixtures("only_when_asked_for")
