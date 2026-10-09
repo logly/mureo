@@ -2,9 +2,10 @@
 
 The other half of the #807 startup fix: ``check_schema`` — validating a tool's
 ``inputSchema`` against the JSON Schema Draft 2020-12 metaschema — cost a median
-of 3.1 ms per tool and 0.82 s over the 228-tool catalog at import, for hundreds
-of tools a session never calls (one machine, CPython 3.10, ``time.process_time``,
-bytecode warm, min of 5). :class:`mureo.mcp._tool_validation.LazyToolValidators`
+of 3.1 ms per tool and 0.82 s summed over the 228-tool catalog at import, for
+hundreds of tools a session never calls (measured 2026-10-08 on one machine,
+CPython 3.10, ``time.process_time``, bytecode warm, min of 5; see
+``mureo/mcp/_tool_validation.py``). :class:`mureo.mcp._tool_validation.LazyToolValidators`
 moves that to each tool's first call, which is the call it is enforced on.
 
 What that must not change is the guarantee itself, which is a real-spend one:
@@ -15,11 +16,13 @@ as much as for built-in ones (#114 follow-up). So:
 * :class:`TestLazyToolValidators` — a tool's validator is compiled on its first
   call and enforced on that same call; a plugin's is compiled at startup;
   nothing else compiles the catalog by accident.
-* :class:`TestValidatorCompileFaults` — an unusable schema costs that one tool
-  its validation, exactly once, says so on both channels, and never takes the
+* :class:`TestValidatorCompileFaults` — a schema that cannot be compiled is
+  reported exactly once, on both channels for a plugin's, and never takes the
   rest of the catalog with it.
 
-The import-cost guards are in tests/test_mcp_startup_budget.py.
+What an unusable schema does to the *call* (refused, or for a ``SchemaError``
+served unvalidated) is in tests/test_mcp_tool_schema_refusal.py; the
+import-cost guards are in tests/test_mcp_startup_budget.py.
 """
 
 from __future__ import annotations
@@ -37,7 +40,8 @@ import pytest
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
-from mureo.mcp._tool_validation import LazyToolValidators, validate_tool_input
+from mureo.mcp import _tool_validation
+from mureo.mcp._tool_validation import LazyToolValidators
 from mureo.plugin_warnings import PluginToolWarning
 from tests._measurement_child import install_fake_dist, run_in_fresh_interpreter
 
@@ -45,10 +49,16 @@ _UNKNOWN_NAME_PROBES = 5000
 
 SERVER_MODULE = "mureo.mcp.server"
 
+#: ``caplog`` sits on the root logger and sees every logger's records, so the
+#: assertions below count this module's only.
+_LOGGER_NAME = _tool_validation.logger.name
+
 #: How long a test waits for a thread that should finish immediately. Generous,
 #: because the point is to FAIL on a deadlock rather than hang the suite; the
 #: threads are daemons and their liveness is asserted, so a regression is red
-#: within this window instead of blocking the run.
+#: within this window instead of blocking the run. (A daemon left deadlocked can
+#: still hang the interpreter's exit through a lock that ``atexit`` needs; see
+#: ``test_reporting_does_not_hold_the_lock`` for the one place that applies.)
 _THREAD_TIMEOUT_SECONDS = 30
 
 # A plugin with one uncompilable ``inputSchema``, installed the way a real one
@@ -128,9 +138,33 @@ def _tool_with_schema(name: str, schema: object) -> SimpleNamespace:
     return SimpleNamespace(name=name, inputSchema=schema)
 
 
+def _own_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [record for record in caplog.records if record.name == _LOGGER_NAME]
+
+
 def patch_check_schema(replacement: object) -> AbstractContextManager[object]:
     """Replace ``Draft202012Validator.check_schema`` for the duration."""
     return patch.object(Draft202012Validator, "check_schema", replacement)
+
+
+class _ReentrantHandler(logging.Handler):
+    """A log handler that looks a tool up from inside ``emit``.
+
+    If reporting ever happens under the mapping's lock again, the worker thread
+    deadlocks inside ``emit`` while holding this handler's own lock
+    (``Handler.handle`` takes it around ``emit``). ``logging.shutdown`` at exit
+    acquires every live handler's lock, so the interpreter hung after reporting
+    the failure. The test sets ``lock`` to ``None`` once it is done, which
+    leaves exit nothing to wait on.
+    """
+
+    def __init__(self, validators: LazyToolValidators, seen: list[str]) -> None:
+        super().__init__()
+        self._validators = validators
+        self._seen = seen
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._seen.append(f"log:{self._validators.get('good') is not None}")
 
 
 @pytest.fixture(scope="session")
@@ -181,8 +215,7 @@ class TestLazyToolValidators:
         assert validators._compiled == {}
 
         with pytest.raises(ValueError):
-            validate_tool_input(
-                validators,
+            validators.validate_tool_input(
                 tool,
                 {"customer_id": "123", "budget_id": "1", "amount_micros": 0},
             )
@@ -213,7 +246,7 @@ class TestLazyToolValidators:
         )
 
         for index in range(_UNKNOWN_NAME_PROBES):
-            validate_tool_input(validators, f"no_such_tool_{index}", {})
+            validators.validate_tool_input(f"no_such_tool_{index}", {})
 
         assert validators._compiled == {}
         assert validators.get("known") is not None
@@ -290,7 +323,7 @@ class TestValidatorCompileFaults:
             validators.get("bad")
 
         with (
-            caplog.at_level(logging.WARNING, logger="mureo.mcp._tool_validation"),
+            caplog.at_level(logging.WARNING, logger=_LOGGER_NAME),
             patch_check_schema(slow_check),
         ):
             threads = [threading.Thread(target=worker, daemon=True) for _ in range(2)]
@@ -303,18 +336,18 @@ class TestValidatorCompileFaults:
             "a compile thread never finished: the lock around the compile " "deadlocked"
         )
         assert len(calls) == 1, f"compiled {len(calls)} times, expected once"
-        assert len(caplog.records) == 1, [r.getMessage() for r in caplog.records]
+        records = _own_records(caplog)
+        assert len(records) == 1, [r.getMessage() for r in records]
         assert "bad" not in validators
 
     def test_a_schema_that_fails_to_compile_is_not_retried(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """A non-``SchemaError`` failure is cached as "no validator", not retried.
+        """A non-``SchemaError`` failure is cached, not retried on every lookup.
 
-        Before, only ``SchemaError`` reached the cache write, so a
-        ``RecursionError`` from a pathological schema meant every call to that
-        tool recompiled, failed again, and raised something the dispatcher's
-        ``ValueError`` channel does not classify.
+        Cached as "no validator" for the mapping and as a refusal for the
+        dispatcher (tests/test_mcp_tool_schema_refusal.py): either way the
+        compile runs once, and the fault is reported once.
         """
         validators = LazyToolValidators([_tool_with_schema("deep", {"type": "object"})])
         calls: list[object] = []
@@ -324,7 +357,7 @@ class TestValidatorCompileFaults:
             raise RecursionError("maximum recursion depth exceeded")
 
         with (
-            caplog.at_level(logging.WARNING, logger="mureo.mcp._tool_validation"),
+            caplog.at_level(logging.WARNING, logger=_LOGGER_NAME),
             patch_check_schema(exploding_check),
         ):
             first = validators.get("deep")
@@ -332,8 +365,9 @@ class TestValidatorCompileFaults:
 
         assert (first, second) == (None, None)
         assert len(calls) == 1, f"recompiled {len(calls)} times"
-        assert len(caplog.records) == 1
-        assert "RecursionError" in caplog.records[0].getMessage()
+        records = _own_records(caplog)
+        assert len(records) == 1
+        assert "RecursionError" in records[0].getMessage()
 
     def test_other_tools_keep_their_validation(self) -> None:
         validators = LazyToolValidators(
@@ -345,7 +379,7 @@ class TestValidatorCompileFaults:
 
         assert "bad" not in validators
         with pytest.raises(ValueError, match="'who' is a required property"):
-            validate_tool_input(validators, "good", {})
+            validators.validate_tool_input("good", {})
 
     def test_a_plugins_bad_schema_reaches_both_channels(
         self, caplog: pytest.LogCaptureFixture
@@ -367,16 +401,16 @@ class TestValidatorCompileFaults:
             [_tool_with_schema("builtin_bad", {"type": 1})]
         )
 
-        with caplog.at_level(logging.WARNING, logger="mureo.mcp._tool_validation"):
+        with caplog.at_level(logging.WARNING, logger=_LOGGER_NAME):
             with pytest.warns(PluginToolWarning, match="plug_bad"):
                 plugin_validators.get("plug_bad")
-            logged_for_plugin = [r.getMessage() for r in caplog.records]
+            logged_for_plugin = [r.getMessage() for r in _own_records(caplog)]
 
             caplog.clear()
             with warnings.catch_warnings(record=True) as recorded:
                 warnings.simplefilter("always")
                 builtin_validators.get("builtin_bad")
-            logged_for_builtin = [r.getMessage() for r in caplog.records]
+            logged_for_builtin = [r.getMessage() for r in _own_records(caplog)]
 
         assert len(logged_for_plugin) == 1, logged_for_plugin
         assert "plug_bad" in logged_for_plugin[0]
@@ -402,7 +436,7 @@ class TestValidatorCompileFaults:
         )
 
         with (
-            caplog.at_level(logging.WARNING, logger="mureo.mcp._tool_validation"),
+            caplog.at_level(logging.WARNING, logger=_LOGGER_NAME),
             pytest.warns(PluginToolWarning) as recorded,
         ):
             validators.compile_eagerly(set(names))
@@ -413,7 +447,8 @@ class TestValidatorCompileFaults:
         assert (
             message.index("plug_a") < message.index("plug_b") < message.index("plug_c")
         ), message
-        assert len(caplog.records) == 1, [r.getMessage() for r in caplog.records]
+        records = _own_records(caplog)
+        assert len(records) == 1, [r.getMessage() for r in records]
 
     def test_a_failed_compile_is_cached_even_when_the_report_raises(self) -> None:
         """Strict mode must not turn one bad schema into a per-call failure.
@@ -449,15 +484,16 @@ class TestValidatorCompileFaults:
         )
 
         with (
-            caplog.at_level(logging.WARNING, logger="mureo.mcp._tool_validation"),
+            caplog.at_level(logging.WARNING, logger=_LOGGER_NAME),
             warnings.catch_warnings(),
         ):
             warnings.simplefilter("error", PluginToolWarning)
             with pytest.raises(PluginToolWarning):
                 validators.get("plug_bad")
 
-        assert len(caplog.records) == 1, [r.getMessage() for r in caplog.records]
-        message = caplog.records[0].getMessage()
+        records = _own_records(caplog)
+        assert len(records) == 1, [r.getMessage() for r in records]
+        message = records[0].getMessage()
         assert message.startswith("tool plug_bad: inputSchema is not a valid")
 
     def test_reporting_does_not_hold_the_lock(self) -> None:
@@ -468,20 +504,16 @@ class TestValidatorCompileFaults:
         up any tool deadlocked the server during startup. Both channels are
         exercised — the log record goes out first, so a handler is the earlier
         chance to deadlock.
+
+        A regression fails here after ``_THREAD_TIMEOUT_SECONDS`` and the run
+        still exits: see :class:`_ReentrantHandler` for what used to hang it.
         """
         validators = LazyToolValidators(
-            [
-                _tool_with_schema("plug_bad", {"type": 1}),
-                _tool_with_schema("good", {"type": "object"}),
-            ],
+            [_tool_with_schema("plug_bad", {"type": 1}), _tool_with_schema("good", {})],
             plugin_names={"plug_bad"},
         )
         reentered: list[str] = []
         finished = threading.Event()
-
-        class ReentrantHandler(logging.Handler):
-            def emit(self, record: logging.LogRecord) -> None:
-                reentered.append(f"log:{validators.get('good') is not None}")
 
         def hook(message: object, *args: object, **kwargs: object) -> None:
             reentered.append(f"warn:{validators.get('good') is not None}")
@@ -490,8 +522,8 @@ class TestValidatorCompileFaults:
             validators.get("plug_bad")
             finished.set()
 
-        logger = logging.getLogger("mureo.mcp._tool_validation")
-        handler = ReentrantHandler()
+        logger = logging.getLogger(_LOGGER_NAME)
+        handler = _ReentrantHandler(validators, reentered)
         logger.addHandler(handler)
         try:
             with warnings.catch_warnings():
@@ -506,32 +538,10 @@ class TestValidatorCompileFaults:
                 thread.join(timeout=_THREAD_TIMEOUT_SECONDS)
         finally:
             logger.removeHandler(handler)
+            handler.lock = None  # see _ReentrantHandler
 
         assert not thread.is_alive()
         assert reentered == ["log:True", "warn:True"]
-
-    def test_a_schema_that_only_fails_when_applied_is_not_a_server_error(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """A ``$ref`` into nothing passes ``check_schema`` and fails on use.
-
-        Resolution is deferred to ``iter_errors``, which raises ``referencing``'s
-        ``Unresolvable`` — not a ``ValueError``, so it escaped the dispatcher's
-        caller-error channel and surfaced as a server fault on a tool call. It
-        now gets the same treatment as a schema that would not compile: the
-        fault is reported and that call is served without its declared bounds.
-        """
-        schema = {"type": "object", "properties": {"who": {"$ref": "#/nowhere"}}}
-        Draft202012Validator.check_schema(schema)  # the compile step is happy
-        validators = LazyToolValidators([_tool_with_schema("reffy", schema)])
-
-        with caplog.at_level(logging.WARNING, logger="mureo.mcp._tool_validation"):
-            validate_tool_input(validators, "reffy", {"who": 1})
-
-        assert len(caplog.records) == 1, [r.getMessage() for r in caplog.records]
-        message = caplog.records[0].getMessage()
-        assert "reffy" in message
-        assert "could not be applied" in message
 
     @pytest.mark.slow
     @pytest.mark.usefixtures("only_when_asked_for")

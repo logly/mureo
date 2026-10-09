@@ -57,8 +57,12 @@
   The saving splits between the two causes, so neither should be credited with
   it alone: with the metaschema check stubbed out the old import still cost
   2.26 s against its usual 3.07 s, putting `check_schema` at 0.8-0.9 s and the
-  imports it stopped doing at 1.2-1.3 s (two sittings on the same machine; the
-  absolute figures move a few percent with its state, the split less).
+  imports it stopped doing at 1.2-1.3 s (two sittings on the same machine on
+  2026-10-08; the absolute figures move a few percent with its state, the
+  split less). That 0.8-0.9 s is the difference between two whole-server
+  imports; it is a separate measurement from the 0.82 s quoted elsewhere for
+  `check_schema`, which is `check_schema` called directly on each of the 228
+  schemas and summed.
 
   The issue reports 17–34 s. This is the same defect, but the figures above are
   not claimed to account for all of it: that installation has more plugins than
@@ -77,27 +81,53 @@
   comparison this check used to be went quiet in exactly the installations that
   have plugins, which is where #807 was reported from.
 
-- **A tool whose `inputSchema` cannot be *applied* no longer surfaces as a
-  server fault** (#807). `check_schema` accepts a `$ref`, and resolving it is
-  deferred to the first validation, which then raises `Unresolvable` /
-  `PointerToNowhere` for a pointer into nothing or a `$ref` to a URL. Those are
-  not `ValueError`, so they escaped the dispatcher's caller-error channel. They
-  now get the same treatment as a schema that will not compile: the fault is
-  logged naming the tool, and that call is served without its declared bounds
-  rather than failing.
+- **A call that a tool's `inputSchema` cannot check is refused with an error
+  that names the tool** (#807). `check_schema` accepts a `$ref`, and resolving
+  it is deferred to the first validation, which then raises `referencing`'s
+  `Unresolvable` / `PointerToNowhere` for a pointer into nothing or a `$ref` to
+  a URL. Such a call was already refused before the handler ran; what reached
+  the client was a bare third-party exception. It is now a
+  `ToolSchemaUnusableError` naming the tool and the cause (chained), still not
+  a `ValueError`, because nothing the caller sends can fix it. The handler
+  still never runs: the bound the schema declares cannot be checked, so the
+  call is not served. The first refusal per tool is logged in full, and for a
+  plugin's tool also raised as a `PluginToolWarning`, so the documented strict
+  mode sees it; repeats are logged at DEBUG with a running count, so an agent
+  retrying in a loop does not write a full warning per attempt.
 
 ### Changed
 
-- **A malformed built-in tool `inputSchema` is now reported on that tool's
-  first call instead of at server start** (#807). The check itself is
-  unchanged, and so is its consequence — that one tool loses input validation,
-  a warning names it, the rest of the catalog is unaffected — but it now
-  happens when the tool is first used, and the log record's logger name moves
-  from `mureo.mcp.server` to `mureo.mcp._tool_validation`. Built-in schemas are
-  checked for every tool in CI instead
-  (`tests/test_mcp_strict_input_schemas.py`, against both the authored schema
-  and the rebuilt one the server actually compiles), so an authoring mistake
-  still fails before it ships.
+- **A built-in tool's `inputSchema` is now compiled on that tool's first call
+  instead of at server start** (#807), so a fault in one is found there. What
+  a fault costs depends on which of three kinds it is:
+
+  | fault | before | now |
+  |---|---|---|
+  | not a valid JSON Schema (`check_schema` raises `SchemaError`) | warning at start; the tool is served **without input validation** | the same, on the tool's first call |
+  | compiling raises anything else (a `RecursionError` from a `$ref` cycle, a `jsonschema` bug) | **the server did not start** | **calls to that tool are refused** (`ToolSchemaUnusableError`); the rest of the catalog is served |
+  | the schema raises when applied to a call (a `$ref` into nothing) | that call refused, with the third-party exception | that call refused, with `ToolSchemaUnusableError` (see Fixed) |
+
+  The first row keeps the pre-#807 behaviour on purpose. The second cannot:
+  with compilation deferred the server is already running when it happens, so
+  the nearest equivalent is that the one tool cannot be called — narrower than
+  before, and never a call served with bounds nobody checked. Each is
+  reported; the log record's logger name moves from `mureo.mcp.server` to
+  `mureo.mcp._tool_validation`. Built-in schemas are checked for every tool in
+  CI (`tests/test_mcp_strict_input_schemas.py`, against both the authored
+  schema and the rebuilt one the server actually compiles), so an authoring
+  mistake still fails before it ships.
+
+  One cost moved the same way and is worth knowing about: the Google Ads SDK
+  is no longer imported while the server starts, so the **first Google Ads
+  tool call** imports it. That call's client construction is synchronous and
+  runs on the event loop, so other calls in flight wait for it. Measured on the
+  same development machine on 2026-10-09: about **1.2 s** of CPU (1.22-1.28 s
+  over 5 runs, against 0.93-0.99 s for the server's whole import in the same
+  runs; `time.process_time` in a child interpreter, timing the two imports
+  `create_google_ads_client` performs right after `import mureo.mcp.server`,
+  bytecode cache warm, one warm-up run discarded), taking `sys.modules` from
+  882 to 2228. The Meta client costs under 10 ms after that. Moving the
+  Google import off the event loop is separate work.
 
   A **plugin's** schema is still checked while the server starts: a plugin
   author gets no run of mureo's CI, and there are normally a handful of such

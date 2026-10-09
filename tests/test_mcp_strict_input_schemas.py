@@ -125,10 +125,10 @@ def test_every_builtin_tool_schema_is_a_valid_json_schema() -> None:
 
     ``_tool_validation.LazyToolValidators`` compiles a tool's validator on that
     tool's first call rather than for the whole catalog at import, because the
-    metaschema check costs a median of 2.7-3.6 ms per tool — 0.80-1.00 s for the
-    whole 228-tool catalog, five runs in a fresh child interpreter with
-    ``time.process_time`` — and the server has an MCP connect budget to meet
-    (#807). A malformed **builtin** schema is therefore reported on first use
+    metaschema check costs a median of 3.1 ms per tool and 0.82 s summed over
+    the 228-tool catalog (the 2026-10-08 measurement quoted, with its method, in
+    ``mureo/mcp/_tool_validation.py``) and the server has an MCP connect budget
+    to meet (#807). A malformed **builtin** schema is therefore reported on first use
     instead of at startup: in production the right trade, but it would let an
     authoring mistake reach a release unnoticed. This test is where that is
     caught instead, in CI, and it checks both the schema as authored (the

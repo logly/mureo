@@ -813,6 +813,17 @@ Rules the server enforces (a non-conforming provider is skipped with a
   your handler. So a schema typo does not take you offline; it quietly
   removes a guardrail.
 
+  A schema that *is* valid Draft 2020-12 but cannot be used goes the
+  other way. If compiling it fails for any reason other than an invalid
+  schema (a `RecursionError` from a `$ref` cycle, say), or it raises
+  when applied to a call (a `$ref` that resolves to nothing — the
+  metaschema check accepts it, and it is only resolved when a call is
+  validated), the calls it cannot check are **refused** before your
+  handler runs, with an error naming the tool. The first such refusal
+  is reported on the same two channels; under the strict mode below it
+  raises the `PluginToolWarning` instead. The rest of your tools are
+  unaffected.
+
   To make it loud instead, promote the warning to an error **before**
   the server is imported:
 

@@ -73,10 +73,7 @@ from mureo.mcp._result_decorations import (
     _maybe_append_strategy_reminder,
     _refuse_text_content,
 )
-from mureo.mcp._tool_validation import (
-    LazyToolValidators,
-    validate_tool_input,
-)
+from mureo.mcp._tool_validation import LazyToolValidators
 from mureo.mcp.exclusion_preflight import (
     append_notice as append_exclusion_impact_notice,
 )
@@ -379,11 +376,11 @@ def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
     """Validate ``arguments`` against the tool's declared ``inputSchema``.
 
     Thin module-level binding over
-    :func:`mureo.mcp._tool_validation.validate_tool_input`, kept so the
-    dispatcher and the tests that exercise the real-spend boundary keep reading
-    the validators this module instance built.
+    :meth:`mureo.mcp._tool_validation.LazyToolValidators.validate_tool_input`,
+    kept so the dispatcher and the tests that exercise the real-spend boundary
+    keep reading the validators this module instance built.
     """
-    validate_tool_input(_TOOL_VALIDATORS, name, arguments)
+    _TOOL_VALIDATORS.validate_tool_input(name, arguments)
 
 
 # Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names
@@ -803,6 +800,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     Raises:
         ValueError: Unknown tool name, schema-invalid arguments, or a
             missing required parameter.
+        ToolSchemaUnusableError: The tool's ``inputSchema`` cannot check this
+            call (see :mod:`mureo.mcp._tool_validation`); no handler runs.
     """
     with journal_call(name, arguments) as call:
         return await _gated_dispatch(name, arguments, call)
