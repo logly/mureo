@@ -54,6 +54,7 @@ mureo/
 │   ├── _rda_validator.py     # RDA input validator (display ads)
 │   ├── _message_match.py     # LP screenshot capture (Playwright, SSRF-guarded)
 │   ├── _gaql_validator.py    # GAQL input validators (ASCII-only ID/date whitelists — see below)
+│   ├── _date_ranges.py       # Period-over-period comparison windows (SDK-free, #809)
 │   └── accounts.py           # Accessible-customer / account listing
 ├── meta_ads/            # Meta Ads API client (Mixin composition)
 │   ├── client.py        # MetaAdsApiClient (main entry)

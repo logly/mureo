@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from google.ads.googleads import util
@@ -447,7 +447,7 @@ class TestHandlers:
                 captured.update(params)
                 return {"level": "campaign", "campaign_id": "100", "created": []}
 
-        monkeypatch.setattr(h, "_get_client", lambda _args: _Client())
+        monkeypatch.setattr(h, "_get_client", AsyncMock(return_value=_Client()))
         result = await h.HANDLERS["google_ads_negative_placements_add"](
             {
                 "campaign_id": "100",
@@ -471,7 +471,7 @@ class TestHandlers:
             async def list_negative_placements(self, **kwargs: Any) -> list[Any]:
                 return [{"criterion_id": "1"}]
 
-        monkeypatch.setattr(h, "_get_client", lambda _args: _Client())
+        monkeypatch.setattr(h, "_get_client", AsyncMock(return_value=_Client()))
         result = await h.HANDLERS["google_ads_negative_placements_list"]({})
         assert json.loads(result[0].text) == [{"criterion_id": "1"}]
 
@@ -481,7 +481,7 @@ class TestHandlers:
     ) -> None:
         from mureo.mcp import _handlers_google_ads as h
 
-        monkeypatch.setattr(h, "_get_client", lambda _args: MagicMock())
+        monkeypatch.setattr(h, "_get_client", AsyncMock(return_value=MagicMock()))
         with pytest.raises(ValueError, match="criterion_ids"):
             await h.HANDLERS["google_ads_negative_placements_remove"](
                 {"campaign_id": "100"}

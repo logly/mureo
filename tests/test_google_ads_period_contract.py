@@ -17,13 +17,13 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.types import TextContent
 
 from mureo.core import clock
-from mureo.google_ads import _analysis_constants
+from mureo.google_ads import _analysis_constants, _date_ranges
 from mureo.google_ads._analysis_constants import (
     _PERIOD_DAYS,
     _get_comparison_date_ranges,
@@ -569,6 +569,7 @@ class TestComparisonWindowResolution:
 
     def test_module_does_not_bind_date_today(self) -> None:
         assert not hasattr(_analysis_constants, "date_today")
+        assert not hasattr(_date_ranges, "date_today")
 
 
 class TestComparisonToolSchemas:
@@ -886,7 +887,7 @@ class TestExplicitRangeSpanGuard:
             raise AssertionError("the query must never be issued")
 
         monkeypatch.setattr(client, "_search", _explode)
-        monkeypatch.setattr(handlers, "_get_client", lambda _args: client)
+        monkeypatch.setattr(handlers, "_get_client", AsyncMock(return_value=client))
 
         with pytest.raises(ValueError, match="Date range too long"):
             await server.handle_call_tool(

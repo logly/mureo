@@ -206,7 +206,7 @@ class TestHandlerWiring:
     ) -> Any:
         from mureo.mcp import _handlers_google_ads as handlers
 
-        monkeypatch.setattr(handlers, "_get_client", lambda args: client)
+        monkeypatch.setattr(handlers, "_get_client", AsyncMock(return_value=client))
         return handlers
 
     async def test_ads_create_refuses_and_does_not_mutate(

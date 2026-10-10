@@ -360,7 +360,7 @@ class TestGoogleCustomerIdScoping:
         ):
             assert self._resolve(None, "999-000-1111") == "111-222-3333"
 
-    def test_get_client_refuses_out_of_set_argument(self) -> None:
+    async def test_get_client_refuses_out_of_set_argument(self) -> None:
         from mureo.mcp import _handlers_google_ads as handlers
 
         creds = MagicMock(customer_id="111", login_customer_id="999")
@@ -375,10 +375,10 @@ class TestGoogleCustomerIdScoping:
             patch.object(handlers, "create_google_ads_client") as factory,
         ):
             with pytest.raises(ValueError, match="refused"):
-                handlers._get_client({"customer_id": "222"})
+                await handlers._get_client({"customer_id": "222"})
             factory.assert_not_called()
 
-    def test_get_client_builds_client_for_allowed_argument(self) -> None:
+    async def test_get_client_builds_client_for_allowed_argument(self) -> None:
         from mureo.mcp import _handlers_google_ads as handlers
 
         creds = MagicMock(customer_id=None, login_customer_id=None)
@@ -392,7 +392,7 @@ class TestGoogleCustomerIdScoping:
             ),
             patch.object(handlers, "create_google_ads_client") as factory,
         ):
-            handlers._get_client({"customer_id": "1112223333"})
+            await handlers._get_client({"customer_id": "1112223333"})
         factory.assert_called_once()
         assert factory.call_args.args[1] == "1112223333"
 

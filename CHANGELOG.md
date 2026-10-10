@@ -2,6 +2,12 @@
 
 ### Fixed
 
+- **The first Google Ads tool call no longer stalls the MCP server's event
+  loop while the Google Ads SDK is imported** (#809). The API client, and the
+  account listing that `google_ads_accounts_list` runs without a
+  `customer_id`, now run in a worker thread (`asyncio.to_thread`), so other
+  calls in flight keep being served during the roughly 1.2 s of CPU that
+  import costs.
 - **The credential guard's Bash hook reads a command the way bash does in more
   places** (#806). It now agrees with bash about which brace groups a command
   expands and where a here-document body, a shell expansion and a quoted string

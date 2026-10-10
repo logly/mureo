@@ -161,7 +161,7 @@ class TestCaptureBeforeState:
         )
         monkeypatch.setattr(
             "mureo.mcp._handlers_google_ads._get_client",
-            lambda args: client,
+            AsyncMock(return_value=client),
         )
         status = await nr.capture_before_state(
             "google_ads_ads_update_status",

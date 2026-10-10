@@ -28,6 +28,7 @@ as an empty window.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from mureo.change_import.models import ChangeFeedResult, ExternalChange
@@ -248,7 +249,8 @@ class GoogleAdsChangeFeed:
         is day-grained on mureo's side; the extra hours at each edge cost
         nothing, since the deduper drops anything already imported.
         """
-        client = self._open_client(account_id)
+        # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+        client = await asyncio.to_thread(self._open_client, account_id)
         if client is None:
             # BYOD. ``unavailable_reason`` — NOT an empty result: nothing was
             # looked at, and an empty ``changes`` tuple would be reported as

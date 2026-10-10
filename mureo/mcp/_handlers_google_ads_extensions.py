@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 @api_error_handler
 async def handle_sitelinks_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_sitelinks(_require(args, "campaign_id"))
@@ -38,7 +38,7 @@ async def handle_sitelinks_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_sitelinks_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -56,7 +56,7 @@ async def handle_sitelinks_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_sitelinks_remove(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -74,7 +74,7 @@ async def handle_sitelinks_remove(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_callouts_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_callouts(_require(args, "campaign_id"))
@@ -83,7 +83,7 @@ async def handle_callouts_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_callouts_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -96,7 +96,7 @@ async def handle_callouts_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_callouts_remove(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -114,7 +114,7 @@ async def handle_callouts_remove(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_conversions_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_conversion_actions()
@@ -123,7 +123,7 @@ async def handle_conversions_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_conversions_get(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_conversion_action(_require(args, "conversion_action_id"))
@@ -134,7 +134,7 @@ async def handle_conversions_get(args: dict[str, Any]) -> list[TextContent]:
 async def handle_conversions_performance(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_conversion_performance(
@@ -146,7 +146,7 @@ async def handle_conversions_performance(
 
 @api_error_handler
 async def handle_conversions_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -169,7 +169,7 @@ async def handle_conversions_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_conversions_update(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -193,7 +193,7 @@ async def handle_conversions_update(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_conversions_remove(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -205,7 +205,7 @@ async def handle_conversions_remove(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_conversions_tag(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_conversion_action_tag(
@@ -223,7 +223,7 @@ async def handle_conversions_tag(args: dict[str, Any]) -> list[TextContent]:
 async def handle_recommendations_list(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_recommendations(
@@ -237,7 +237,7 @@ async def handle_recommendations_list(
 async def handle_recommendations_apply(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -251,7 +251,7 @@ async def handle_recommendations_apply(
 async def handle_device_targeting_get(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_device_targeting(_require(args, "campaign_id"))
@@ -262,7 +262,7 @@ async def handle_device_targeting_get(
 async def handle_demographic_targeting_list(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_demographic_criteria(
@@ -276,7 +276,7 @@ async def handle_demographic_targeting_list(
 async def handle_audience_targeting_list(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_audience_criteria(
@@ -290,7 +290,7 @@ async def handle_audience_targeting_list(
 async def handle_device_targeting_set(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -305,7 +305,7 @@ async def handle_device_targeting_set(
 async def handle_bid_adjustments_get(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_bid_adjustments(_require(args, "campaign_id"))
@@ -316,7 +316,7 @@ async def handle_bid_adjustments_get(
 async def handle_bid_adjustments_update(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -332,7 +332,7 @@ async def handle_bid_adjustments_update(
 async def handle_location_targeting_list(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_location_targeting(_require(args, "campaign_id"))
@@ -343,7 +343,7 @@ async def handle_location_targeting_list(
 async def handle_location_targeting_update(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -363,7 +363,7 @@ async def handle_location_targeting_update(
 async def handle_schedule_targeting_list(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_schedule_targeting(_require(args, "campaign_id"))
@@ -374,7 +374,7 @@ async def handle_schedule_targeting_list(
 async def handle_schedule_targeting_update(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -394,7 +394,7 @@ async def handle_schedule_targeting_update(
 async def handle_change_history_list(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.list_change_history(

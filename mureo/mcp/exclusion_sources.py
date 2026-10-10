@@ -123,7 +123,7 @@ async def google_ads_client(arguments: Mapping[str, Any]) -> Any:
     """A Google Ads client for this call's account, or ``None``."""
     from mureo.mcp._handlers_google_ads import _get_client
 
-    return _get_client(dict(arguments))
+    return await _get_client(dict(arguments))
 
 
 async def meta_ads_client(arguments: Mapping[str, Any]) -> Any:

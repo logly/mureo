@@ -27,6 +27,7 @@ Failure modes:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
@@ -90,7 +91,7 @@ _GOOGLE_WINDOW_TO_PERIOD: dict[int, str] = {
     # overlaps (7d ⊂ 30d) or, for the 30d case, is literally identical to the
     # current window (baseline == current → ratio always 1.0 → no anomaly can
     # fire). Same non-overlapping period-over-period contract the rest of the
-    # analysis layer uses (google_ads/_analysis_constants,
+    # analysis layer uses (google_ads/_date_ranges,
     # meta_ads/_period, #134).
     7: "LAST_7_DAYS",
     14: "LAST_14_DAYS",
@@ -193,11 +194,13 @@ async def fetch_google_ads_metrics(
     fan-out is a follow-up; the trade-off is documented and tested
     in ``test_live_clients.py``.
     """
-    client, account_id = _open_google_ads_client(account_id)
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
 
-    # Local import defers the google_ads analysis module until first use (the
-    # registry import must stay cheap; see the module docstring).
-    from mureo.google_ads._analysis_constants import _get_comparison_date_ranges
+    # Local import keeps the registry import cheap (see the module docstring).
+    # ``_date_ranges`` is SDK-free, so this never imports the SDK on the loop,
+    # BYOD included (#809).
+    from mureo.google_ads._date_ranges import _get_comparison_date_ranges
 
     period_token = _GOOGLE_WINDOW_TO_PERIOD.get(window_days, "LAST_7_DAYS")
     # Non-overlapping, equal-length current/previous BETWEEN clauses. The Google
@@ -236,7 +239,8 @@ async def fetch_google_ads_performance_rows(
     :func:`fetch_google_ads_metrics` so the adapter renders a single
     sentinel headline rather than diverging on the same condition.
     """
-    client, account_id = _open_google_ads_client(account_id)
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
     rows: list[dict[str, object]] = await client.get_performance_report(  # type: ignore[attr-defined]
         period=period
     )
@@ -367,8 +371,9 @@ async def fetch_google_ads_per_campaign_metrics(
     Raises :class:`NoCredentialsError` uniformly with
     :func:`fetch_google_ads_metrics`.
     """
-    client, account_id = _open_google_ads_client(account_id)
-    from mureo.google_ads._analysis_constants import _get_comparison_date_ranges
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
+    from mureo.google_ads._date_ranges import _get_comparison_date_ranges
 
     period_token = _GOOGLE_WINDOW_TO_PERIOD.get(window_days, "LAST_7_DAYS")
     current_period, baseline_period = _get_comparison_date_ranges(period_token)
@@ -434,7 +439,8 @@ async def fetch_google_ads_list(
     value (#435). Raises :class:`NoCredentialsError` in live mode when creds are
     missing.
     """
-    client, account_id = _open_google_ads_client(account_id)
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
     ads: list[dict[str, object]] = await client.list_ads()  # type: ignore[attr-defined]
     return ads, account_id
 
