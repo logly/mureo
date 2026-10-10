@@ -29,7 +29,7 @@ mureo configure
 
 ### `--skip-auth` と非対話実行
 
-`mureo setup …` の各サブコマンドは `--skip-auth` を受け付けます。OAuth を実行せずに、MCP 設定・認証ガード・(対応ホストでは)コマンド/skill ファイルだけをインストールします。ダブルクリック型インストーラの導線のように、認証を後から Claude Code の `/onboard`、Codex の `$onboard`、あるいは本物のターミナルでの `mureo auth setup` で済ませる場合に便利です。
+`mureo setup …` の各サブコマンドは `--skip-auth` を受け付けます。OAuth を実行せずに、MCP 設定・認証ガード・(対応ホストでは)コマンド/skill ファイルだけをインストールします。ダブルクリック型インストーラの導線のように、認証を後から Claude Code の `/onboard`、Codex の `$onboard`、あるいはターミナルアプリで直接実行する `mureo auth setup` で済ませる場合に便利です。
 
 `mureo setup …` を AI エージェントのサブプロセス (Claude Code の Bash ツール、Codex など) から呼び出すと、制御端末 (TTY) がないため `--skip-auth` が自動的に補われます。`typer.confirm` のプロンプトでハングしないようにするためです。stdout のバナーが、あとで `Terminal.app` から認証を終わらせるようオペレーターに伝えます。
 
@@ -43,7 +43,7 @@ mureo configure
 
 認証ステップは、すでにディスクにあるものを再利用します。Google の refresh token が保存済みなら (Google Ads と Search Console は 1 本を共有) Google の認可ステップはスキップされ、UI がそう表示します。新しいトークンを発行したいときのために **Re-authorize Google** ボタンが出ます。
 
-**UI で何かが失敗したとき**、画面上のメッセージは意図的に汎用的です (エラー表示がトークンの素材を反映してはいけません)。原因は configure のログ — `~/.mureo/logs/configure.log` — にあります。起動時にパスが表示され、全プラットフォームで書き出されます。他では見えないもの、つまり失敗した Meta トークンの更新や永続化できなかった更新、拒否されたアカウント一覧の取得、パースできない `credentials.json` も含まれます。`MUREO_LOG_LEVEL=DEBUG mureo configure` で詳細度を上げられます。どのレベルでも、ログ行がトークン・シークレット・認証情報の値を持つことはありません。[cli.md — Configure log](cli.md#configure-log) 参照。
+**UI で何かが失敗したとき**、画面上のメッセージは意図的に汎用的にしています (エラー表示にトークンの中身が漏れないようにするためです)。原因は configure のログ — `~/.mureo/logs/configure.log` — にあります。起動時にパスが表示され、全プラットフォームで書き出されます。他では見えないもの、つまり失敗した Meta トークンの更新や永続化できなかった更新、拒否されたアカウント一覧の取得、パースできない `credentials.json` も含まれます。`MUREO_LOG_LEVEL=DEBUG mureo configure` で詳細度を上げられます。どのレベルでも、ログ行がトークン・シークレット・認証情報の値を持つことはありません。[cli.md — Configure log](cli.md#configure-log) 参照。
 
 ## 認証情報のしくみ
 
@@ -141,7 +141,7 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 
 残りは mureo が取得します:
 
-- **`refresh_token` (Google) とアクセストークン (Meta の Long-Lived Token) は mureo が取得します。** 上記の組を `mureo configure` のブラウザ画面か `mureo auth setup` に入力すれば、mureo が同意フローを実行し、正しいスコープ付きで保存します (`mureo auth setup` は Google の **Client ID** / **Client Secret** と Meta の **App ID** / **App Secret** を入力として受け取ります — `auth_setup.py`)。
+- **`refresh_token` (Google) と、Meta のアクセストークンである長期トークン（Long-Lived Token）は mureo が取得します。** 上記の組を `mureo configure` のブラウザ画面か `mureo auth setup` に入力すれば、mureo が同意フローを実行し、正しいスコープ付きで保存します (`mureo auth setup` は Google の **Client ID** / **Client Secret** と Meta の **App ID** / **App Secret** を入力として受け取ります — `auth_setup.py`)。
 - **`developer_token` (Google) はもう不要です。** Google は 2026-09-09 に developer token の発行を終了しました。保存されていれば mureo は送りますが、API 側は無視し、将来のメジャーバージョンでは拒否される予定です。
 - **`login_customer_id` (Google)** はマネージャーアカウント (MCC) 経由でアカウントに到達する場合だけ関係します。
 - 広告プラットフォーム側で Google Ads が要求するのは、**同意に使う Google アカウントが対象の広告アカウントにアクセス権を持っていること**です。Google Ads のマネージャーアカウント (MCC) は必須ではありません。
@@ -168,7 +168,7 @@ API アクセスの申請と管理は、**Google Cloud Console** の Google Ads 
 | **Basic** | 可 | 15,000 (本番・テストとも) | **Cloud プロジェクトのブランド確認が前提条件**。そのうえで **Overview** ページから申請 |
 | **Standard** | 可 | 無制限 | **Cloud プロジェクトのブランド確認が前提条件**。加えて手動監査 — Required Minimum Functionality への準拠を示す必要がある |
 
-**まずは Explorer から始めるのが普通です。** Explorer はプロジェクトがテストアカウントと本番アカウントの両方に対して Google Ads API のリクエストを行えるようにするもので、Google はこれを「ほとんどの開発者が API を使い始め、基本的な自動化を組むには十分」と説明しています。ただしアカウント作成・ユーザー管理・プランニングツール・課金サービスは制限されます。**Basic** を取るには、まず Cloud プロジェクトのブランド確認が必要です。そのうえで申請すると、Google がプロジェクトを自動的に Basic へ上げることがあります。**Standard** の新規申請にも、手動監査に加えてブランド確認が必要です ([Developer token — Brand verification is required for Basic and Standard access](https://developers.google.com/google-ads/api/docs/get-started/dev-token#brand-verification))。
+**ほとんどの人は Explorer から始めるべきです。** Explorer はプロジェクトがテストアカウントと本番アカウントの両方に対して Google Ads API のリクエストを行えるようにするもので、Google は、ほとんどの開発者が API を使い始めて基本的な自動化を組むにはこれで十分だと説明しています。ただしアカウント作成・ユーザー管理・プランニングツール・課金サービスは制限されます。**Basic** を取るには、まず Cloud プロジェクトのブランド確認が必要です。そのうえで申請すると、Google がプロジェクトを自動的に Basic へ上げることがあります。**Standard** の新規申請にも、手動監査に加えてブランド確認が必要です ([Developer token — Brand verification is required for Basic and Standard access](https://developers.google.com/google-ads/api/docs/get-started/dev-token#brand-verification))。
 
 **無料トライアルと停止中の請求先アカウント。** Cloud プロジェクトが Google Cloud の無料トライアル中である場合や、請求先アカウントが停止・無効になっている場合は、ブランド確認を済ませていても Explorer / Basic の申請が却下されることを、Google は既知の問題として挙げています。回避策としては、プロジェクトを有料ティアにアップグレードする、プロジェクトから請求先を外す (そのプロジェクトで動いている他の有料 Google Cloud サービスはすべて止まります)、別のプロジェクトから申請する、の 3 つが示されています ([Developer token — Known issues](https://developers.google.com/google-ads/api/docs/get-started/dev-token#known-issues))。
 
@@ -198,7 +198,7 @@ API アクセスの申請と管理は、**Google Cloud Console** の Google Ads 
 
 > **refresh token は 1 Google アカウント × 1 OAuth クライアントあたり 100 本まで。**
 > 上限は OAuth 2.0 クライアント ID ごと・Google アカウントごとに、現在 **100** 本です。
-> 上限に達すると、新しい refresh token の作成が**最も古いものを警告なしに無効化します**。
+> 上限に達した状態で新しい refresh token を作成すると、**最も古いものが警告なしに無効化されます**。
 > `mureo auth setup` / `mureo configure` での再認証は毎回新しい refresh token を発行する
 > ので、再認証を繰り返すとこの枠を消費します。出典:
 > [Using OAuth 2.0 to Access Google APIs](https://developers.google.com/identity/protocols/oauth2)。
@@ -247,7 +247,7 @@ Google は、2026-09-09 の前 90 日間に承認済み developer token で API 
 **開発モード (development mode)** のあいだは、`ads_management` / `ads_read` /
 `pages_*` / `leads_retrieval` は、そのアプリに **管理者 (admin)** /
 **開発者 (developer)** / **テスター (tester)** のいずれかのロールを持つ利用者に対して
-認可画面に出ます。つまり、自分 (自社) の広告アカウントを自分のアプリで運用するだけ
+同意画面に出ます。つまり、自分 (自社) の広告アカウントを自分のアプリで運用するだけ
 なら、審査に出すものはありません。
 
 Meta のアクセスレベルはロールで線が引かれています。ビジネスアプリはすべての権限について
@@ -269,7 +269,7 @@ Meta のアクセスレベルはロールで線が引かれています。ビジ
 
 | アプリのモード | App Review | localhost の OAuth (ブラウザログイン) | 広告クリエイティブの作成 | 使う認証情報 |
 |---|---|---|---|---|
-| **開発モード** | 不要 | **可** | **不可** — エラー subcode 1885183 | ブラウザ OAuth で取得した Long-Lived Token |
+| **開発モード** | 不要 | **可** | **不可** — エラーサブコード 1885183 | ブラウザ OAuth で取得した長期トークン |
 | **ライブモード** | アプリにロールを持つ人には不要 (スタンダードアクセス)。ロールを持たない人にはアドバンスアクセス — App Review + ビジネス認証 — が必要 | **不可** — 同意画面で拒否される | 可 | **システムユーザートークン** — [アクセストークン](#アクセストークン) 節の選択肢 C |
 
 つまり、データを読むだけなら開発モードのアプリで足ります。新しい広告クリエイティブを
@@ -305,10 +305,10 @@ Meta のアクセスレベルはロールで線が引かれています。ビジ
 3. **Generate Access Token** をクリックする。広告の読み書きには `ads_management` + `ads_read` が最低限。ページ・リード広告・Instant Form の機能を試すには上の表から `pages_*` / `leads_retrieval` を足す。
 4. 得られるトークンは短命 (1〜2 時間)。
 
-**選択肢 B: Long-Lived Token (本番用)**
+**選択肢 B: 長期トークン (本番用)**
 
 1. Graph API Explorer で短命のユーザートークンを取得する。
-2. それを長命トークン (60 日) に交換する:
+2. それを長期トークン (60 日) に交換する:
 
 ```bash
 curl -X POST "https://graph.facebook.com/v26.0/oauth/access_token" \
@@ -330,7 +330,7 @@ curl -X POST "https://graph.facebook.com/v26.0/oauth/access_token" \
 を参照してください。
 
 ビジネスマネージャの**システムユーザートークン**は、Meta の認証情報として最も堅牢で、
-多くのオペレーターにとっては端から端まで通る*唯一*の手段です:
+多くのオペレーターにとっては、最初から最後まで問題なく通せる*唯一*の手段です:
 
 - **ライブモードのアプリは localhost の configure UI から OAuth を完了できません。**
   Facebook が自身の同意画面で `http://localhost` のリダイレクトを拒否するため、
@@ -370,8 +370,8 @@ Meta の「never」判定なら `token_never_expires`。日付がある場合、
 そのままにします。mureo が恒久トークンを交換することはありません。交換すれば 60 日
 のものに置き換えてしまうからです。
 
-**その検査を可能にしているのが App ID と App Secret です。** Meta はトークンを発行した
-アプリに対してのみ、そのトークンを説明します: `debug_token` は*アプリアクセストークン*
+**その検査を可能にしているのが App ID と App Secret です。** Meta がトークンの情報を
+返すのは、そのトークンを発行したアプリに対してだけです: `debug_token` は*アプリアクセストークン*
 (`app_id|app_secret`) で認証する GET であり、システムユーザートークンは自分自身を
 検査できません。したがってカードの**任意項目である App ID と App Secret** は 2 つの
 役割を持ちます:
@@ -395,7 +395,7 @@ Meta の「never」判定なら `token_never_expires`。日付がある場合、
 `META_ADS_ACCESS_TOKEN` を保存することもできます。手で入れたトークンは入力どおりに
 保存され、自動更新の時計には乗りません (この書き込みは `token_obtained_at`、
 `token_expires_at`、`token_type`、`token_never_expires` をクリアします。いずれも
-置き換えられるトークンを説明するものであり、このフォームは新しい値を得るための
+置き換え前のトークンについての情報であり、このフォームは新しい値を得るための
 Graph 呼び出しをしないからです)。ただし 1 フィールドを書くだけなので、トークンの
 検証もしませんし、期限の読み取りも、広告アカウントの選択もできません。
 
@@ -405,7 +405,7 @@ Graph 呼び出しをしないからです)。ただし 1 フィールドを書�
 2. 自分のアプリ > **Settings > Basic** に移動する。
 3. **App ID** と **App Secret** をコピーする。
 
-基本的な用途では任意ですが、**貼り付けたトークンの期限を読むには必須**で、**自動トークン更新にも必須**です (後述)。Meta はトークンを発行したアプリに対してのみそのトークンを説明するので、この組はそのアプリのものでなければなりません。
+基本的な用途では任意ですが、**貼り付けたトークンの期限を読むには必須**で、**自動トークン更新にも必須**です (後述)。Meta はトークンの情報をそのトークンを発行したアプリにしか返さないので、この組はそのアプリのものでなければなりません。
 
 ### リダイレクト URI
 
@@ -419,16 +419,16 @@ mureo の対話セットアップは、**Products > Facebook Login > Settings** 
 
 ## Meta Ads トークンの自動更新
 
-mureo は Long-Lived Token を失効前に自動で更新できるので、手でトークンを交換し直す必要はもうありません。
+mureo は長期トークンを失効前に自動で更新できるので、手でトークンを交換し直す必要はもうありません。
 
 ### しくみ
 
 1. `mureo auth setup` が Meta Ads のトークンを保存するとき、`credentials.json` に ISO 8601 のタイムスタンプ `token_obtained_at` を記録します。configure UI の貼り付けカードは加えて、そのトークンについて Meta の `debug_token` が報告した内容を記録します — 期限があれば `token_expires_at`、無ければ `token_never_expires: true`。この検査には発行元アプリの app ID と secret が必要で、無ければ何も記録されず、期限は未追跡のままになります。
 2. Meta Ads の認証情報が読み込まれるたびに、mureo はトークンが更新時期かどうかを確認します。
 3. **`token_never_expires` が立っている場合**、他に何が保存されていてもトークンは交換されません。Meta が恒久だと報告したものを 60 日のトークンに取り替えるのは格下げです。
-4. **`token_expires_at` が分かっている場合**、更新時期はその日付の **7 日前**です。貼り付けられたシステムユーザートークンにとって正しい時計はこれだけです。60 日の寿命のどの時点で発行されたものか分からないので、経過時間は残り時間をほとんど語りません。
-5. **分かっていない場合**、mureo はトークンの経過時間にフォールバックします: **53 日以上**。mureo 自身が発行した長命ユーザートークンの約 60 日の寿命に対して 7 日の余裕を取った値です。
-6. いずれの場合も、mureo は Meta Graph API 経由で新しいトークンに交換します。`set_token_expires_in_60_days=true` が付くのは **`token_type` が `SYSTEM_USER` の場合だけ**です。Meta がこのパラメータを文書化しているのはシステムユーザートークンの更新についてであって、長命ユーザートークンの交換についてではなく、2 つを見分けられるのはトークン自身の種別だけです。新しいトークン・タイムスタンプ・期限は `credentials.json` に原子的に書き戻されます。
+4. **`token_expires_at` が分かっている場合**、更新時期はその日付の **7 日前**です。貼り付けられたシステムユーザートークンにとって正しい時計はこれだけです。60 日の寿命のどの時点で発行されたものか分からないので、経過時間からは残り時間がほとんど分かりません。
+5. **分かっていない場合**、mureo はトークンの経過時間にフォールバックします: **53 日以上**。mureo 自身が発行した長期ユーザートークンの約 60 日の寿命に対して 7 日の余裕を取った値です。
+6. いずれの場合も、mureo は Meta Graph API 経由で新しいトークンに交換します。`set_token_expires_in_60_days=true` が付くのは **`token_type` が `SYSTEM_USER` の場合だけ**です。Meta がこのパラメータを文書化しているのはシステムユーザートークンの更新についてであって、長期ユーザートークンの交換についてではなく、2 つを見分けられるのはトークン自身の種別だけです。新しいトークン・タイムスタンプ・期限は `credentials.json` に原子的に書き戻されます。
 7. これは Meta クライアントを開くすべての経路で走ります: MCP tool と、#726 以降は `mureo_analytics_run` とレポート skills の背後にあるアナリティクスアダプタです。
 
 ### 必要なもの
@@ -487,14 +487,14 @@ mureo は Long-Lived Token を失効前に自動で更新できるので、手�
 - **同時実行の保護** — `asyncio.Lock` が複数の更新試行の同時実行を防ぎます。
 - **原子的なファイル書き込み** — 認証情報はまず一時ファイルに書かれ、その後リネームされるので、破損しません。
 - **0600 パーミッション** — 認証情報ファイルは所有者のみに制限されます。
-- **穏当なフォールバック** — 更新が何らかの理由で失敗した場合 (ネットワークエラー、期限切れの app secret など)、mureo は既存のトークンで続行し、警告をログに出します。tool 呼び出しがブロックされることはありません。
+- **失敗時のフォールバック** — 更新が何らかの理由で失敗した場合 (ネットワークエラー、期限切れの app secret など)、mureo は既存のトークンで続行し、警告をログに出します。tool 呼び出しがブロックされることはありません。
 
 ## 対話セットアップウィザード
 
 `mureo auth setup` (`mureo setup claude-code` の一部としても呼ばれます) は認証を対話形式で案内します:
 
 1. **Google Ads OAuth** — Client ID/Secret を入力し (developer token は任意)、ブラウザで OAuth を開き、アカウントを選択。
-2. **Meta Ads OAuth** — App ID/Secret を入力し、ブラウザで OAuth を開き、Long-Lived Token を取得し、アカウントを選択。
+2. **Meta Ads OAuth** — App ID/Secret を入力し、ブラウザで OAuth を開き、長期トークンを取得し、アカウントを選択。
 3. **MCP 設定** — グローバル (`~/.claude/settings.json`) かプロジェクト単位 (`.mcp.json`) を選択。
 
 ### プロジェクト単位の MCP 設定 (`.mcp.json`)
