@@ -50,6 +50,13 @@ import logging
 import warnings
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+# Re-exported, defined in a leaf module. A deployment that promotes this
+# category to an error has to name it before the warnings are emitted, and
+# importing anything under ``mureo.mcp`` runs ``mureo/mcp/__init__.py``, which
+# imports the server — so importing the category from here was already too
+# late to filter on (#807 review). Kept in ``__all__`` for compatibility.
+from mureo.plugin_warnings import PluginToolWarning
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -58,14 +65,6 @@ if TYPE_CHECKING:
     from mcp.types import Tool
 
     from mureo.core.providers.registry import ProviderEntry
-
-
-class PluginToolWarning(UserWarning):
-    """Emitted when a plugin's MCP tools are skipped.
-
-    A distinct subclass so strict deployments can opt into
-    ``warnings.filterwarnings("error", category=PluginToolWarning)``.
-    """
 
 
 @runtime_checkable

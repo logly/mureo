@@ -32,7 +32,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Sequence
 from datetime import date
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from mureo.adapters.google_ads.errors import UnsupportedOperation
 from mureo.adapters.google_ads.mappers import (
@@ -66,7 +66,15 @@ from mureo.core.providers.models import (
     UpdateAdRequest,
     UpdateCampaignRequest,
 )
-from mureo.google_ads.client import GoogleAdsApiClient
+
+if TYPE_CHECKING:
+    # Deferred on purpose (#807). This adapter package is imported by a
+    # ``mureo.runtime_context_factory`` plugin's factory, which runs while
+    # the MCP server is still importing; importing the client here loaded
+    # the platform SDK (generated API surface, gRPC, crypto) before a
+    # single tool had been called. The one runtime use is the constructor's
+    # ``isinstance`` check, which imports it there.
+    from mureo.google_ads.client import GoogleAdsApiClient
 
 _T = TypeVar("_T")
 
@@ -175,6 +183,8 @@ class GoogleAdsAdapter:
     )
 
     def __init__(self, client: GoogleAdsApiClient) -> None:
+        from mureo.google_ads.client import GoogleAdsApiClient
+
         if not isinstance(client, GoogleAdsApiClient):
             raise TypeError(
                 f"GoogleAdsAdapter requires a GoogleAdsApiClient instance, "

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from mureo.google_ads.client import _wrap_mutate_error
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads.mappers import map_sitelink
 
 logger = logging.getLogger(__name__)

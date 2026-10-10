@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING, Any
 
 from google.protobuf.field_mask_pb2 import FieldMask as PbFieldMask
 
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads._rsa_validator import (
     RSAValidationResult,
     predict_ad_strength,
     validate_rsa_texts,
 )
-from mureo.google_ads.client import _wrap_mutate_error
 from mureo.google_ads.mappers import (
     map_ad_strength,
     map_ad_type,

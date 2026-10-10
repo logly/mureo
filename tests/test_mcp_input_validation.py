@@ -1,9 +1,12 @@
 """MCP dispatch-layer JSON Schema validation (issue #277).
 
-The MCP framework does not enforce a tool's ``inputSchema``, so declared
-bounds (``minimum``, ``required``, ``type``) are advisory until checked
-server-side. ``mureo.mcp.server._validate_tool_input`` is the single guard
-that makes them real before any handler / real-spend API call runs.
+Recent ``mcp`` releases validate a call's arguments against the tool's
+``inputSchema`` before dispatch, but older releases inside the ``mcp>=1.0``
+range do not, and a direct ``handle_call_tool`` call bypasses the framework
+entirely. On those paths declared bounds (``minimum``, ``required``, ``type``)
+are advisory until checked server-side. ``mureo.mcp.server._validate_tool_input``
+is the inner of the two checks, the one that makes them real before any
+handler / real-spend API call runs on those paths.
 """
 
 from __future__ import annotations

@@ -26,11 +26,11 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads._rda_validator import (
     RDAValidationResult,
     validate_rda_inputs,
 )
-from mureo.google_ads.client import _wrap_mutate_error
 
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient

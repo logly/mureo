@@ -26,11 +26,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads._placement_mappers import (
     map_negative_placement,
     map_placement_performance,
 )
-from mureo.google_ads.client import _wrap_mutate_error
 
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
