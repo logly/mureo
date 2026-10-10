@@ -127,8 +127,8 @@ BYOD lets you run mureo against a **read-only export** of your real Google Ads /
 | **Meta Ads** | Ads Manager → Reports → Saved Report (mureo template) → 2-click XLSX export | ~2 min |
 
 Detailed step-by-step:
-- [`docs/byod.md#google-ads-setup`](byod.md#google-ads-setup) — Google Ads template + filling instructions
-- [`docs/byod.md#meta-ads-setup`](byod.md#meta-ads-setup) — Meta Ads Saved Report (recognized in 9 languages: English / Japanese / Simplified Chinese / Traditional Chinese / Korean / Spanish / Portuguese / German / French)
+- [`docs/byod.md#step-2a--run-the-google-ads-script-optional`](byod.md#step-2a--run-the-google-ads-script-optional) — Google Ads template + filling instructions
+- [`docs/byod.md#step-2b--export-from-meta-ads-manager-optional`](byod.md#step-2b--export-from-meta-ads-manager-optional) — Meta Ads Saved Report (recognized in 9 languages: English / Japanese / Simplified Chinese / Traditional Chinese / Korean / Spanish / Portuguese / German / French)
 
 The exports are independent — you can start with one platform and add the other later. Search Console, GA4, Amazon Ads, and TikTok Ads are not part of BYOD; they require the Live API path. (Amazon Ads is bridged through the official Amazon Ads MCP and has no BYOD bundle by design — see [`docs/amazon-ads.md`](amazon-ads.md).)
 
@@ -200,7 +200,7 @@ Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually exec
 | **Amazon Ads** | A Login with Amazon (LwA) app: Client ID + (recommended) Refresh Token + Client Secret. See [`docs/amazon-ads.md`](amazon-ads.md) |
 | **GA4 / Search Console** | OAuth login (no developer token); the wizard handles this |
 
-> **Approval timing**: Enabling the Google Ads API in the Cloud Console grants Test access (test accounts only) right away; Basic access for production accounts needs brand verification plus an application and is not instant. Use BYOD in the meantime.
+> **Google Ads API access level**: enabling the API in the Cloud Console grants **Test** access (test accounts only) right away. **Production accounts need at least Explorer** — applied for from the Google Ads API **Overview** page, with no brand verification required (2,880 production operations a day). **Basic** (15,000 a day) has brand verification of the Cloud project as a prerequisite before you can apply. Use BYOD while you wait. See [docs/authentication.md — Access levels](authentication.md#access-levels).
 
 Credentials land in `~/.mureo/credentials.json` (permission `0600`). You never need to edit that file by hand — the wizard handles it.
 
