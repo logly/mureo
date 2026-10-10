@@ -386,7 +386,7 @@ class InsightsMixin:
                 insights.append(
                     f"{worst['age']} / {worst['gender']} CPA ({worst['cpa']}) is "
                     f"{best['age']} / {best['gender']} ({best['cpa']}) of "
-                    f"{round(worst['cpa'] / best['cpa'], 1)}x."
+                    f"{round(worst['cpa'] / best['cpa'], 1)}x. "
                     "Consider reviewing your targeting."
                 )
 
