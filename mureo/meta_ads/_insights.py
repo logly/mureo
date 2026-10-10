@@ -384,8 +384,8 @@ class InsightsMixin:
             worst = max(with_cpa, key=lambda x: x["cpa"])
             if worst["cpa"] > best["cpa"] * 2:
                 insights.append(
-                    f"{worst['age']}・{worst['gender']} CPA ({worst['cpa']}) is "
-                    f"{best['age']}・{best['gender']}（{best['cpa']}) of "
+                    f"{worst['age']} / {worst['gender']} CPA ({worst['cpa']}) is "
+                    f"{best['age']} / {best['gender']} ({best['cpa']}) of "
                     f"{round(worst['cpa'] / best['cpa'], 1)}x."
                     "Consider reviewing your targeting."
                 )
@@ -394,7 +394,7 @@ class InsightsMixin:
         for s in segments:
             if s["conversions"] == 0 and s["spend"] > 0:
                 insights.append(
-                    f"{s['age']}・{s['gender']} has 0 CV with {s['spend']} in cost."
+                    f"{s['age']} / {s['gender']} has 0 CV with {s['spend']} in cost."
                 )
 
         return {
