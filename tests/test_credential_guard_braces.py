@@ -462,6 +462,26 @@ class TestTheInnerWordSplitKeepsAProtectedNameWhole:
         assert proc.returncode == 0, proc.stderr
         assert deny_decision(proc) == "deny", command
 
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # The sibling's space sits in a backtick substitution.
+            "cat ~/{.mure,`echo x y`}o/credentials.json",
+            # The sibling's space sits in a parameter expansion.
+            "cat ~/{.mure,${x:-a b}}o/credentials.json",
+        ],
+    )
+    def test_a_space_one_level_deeper_keeps_the_group(
+        self, fake_home: Path, body: str
+    ) -> None:
+        command = "sh -c '" + body + "'"
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+        assert _refusal_category(proc) == "directory", command
+
 
 def _objects(count: int, sep: str = ",", colon: str = ":") -> str:
     return sep.join(
