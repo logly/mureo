@@ -17,7 +17,7 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.types import TextContent
@@ -886,7 +886,7 @@ class TestExplicitRangeSpanGuard:
             raise AssertionError("the query must never be issued")
 
         monkeypatch.setattr(client, "_search", _explode)
-        monkeypatch.setattr(handlers, "_get_client", lambda _args: client)
+        monkeypatch.setattr(handlers, "_get_client", AsyncMock(return_value=client))
 
         with pytest.raises(ValueError, match="Date range too long"):
             await server.handle_call_tool(

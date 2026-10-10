@@ -2,6 +2,12 @@
 
 ### Fixed
 
+- **The first Google Ads tool call that builds an API client no longer
+  stalls the MCP server's event loop while the Google Ads SDK is imported**
+  (#809). The client is now built in a worker thread (`asyncio.to_thread`),
+  so other calls in flight keep being served during the roughly 1.2 s of CPU
+  that import costs.
+
 - **The MCP server's start no longer spends most of the client's connect budget
   on work no tool call needs** (#807). Against a default MCP connect budget of
   30,000 ms in Claude Code, whether the server came up at all depended on how

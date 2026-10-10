@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -553,7 +554,8 @@ class TestDispatcherEnforcement:
 
         monkeypatch.setattr(sources, "google_ads_client", _fake_client)
         monkeypatch.setattr(
-            "mureo.mcp._handlers_google_ads._get_client", lambda args: client
+            "mureo.mcp._handlers_google_ads._get_client",
+            AsyncMock(return_value=client),
         )
         result = await handle_call_tool(
             GOOGLE_ADD,
@@ -635,7 +637,8 @@ class TestDispatcherEnforcement:
         client = _FakeGoogleClient([])
         monkeypatch.setattr(sources, "google_ads_client", _boom)
         monkeypatch.setattr(
-            "mureo.mcp._handlers_google_ads._get_client", lambda args: client
+            "mureo.mcp._handlers_google_ads._get_client",
+            AsyncMock(return_value=client),
         )
         await handle_call_tool(
             GOOGLE_ADD,
@@ -671,7 +674,8 @@ class TestDispatcherEnforcement:
 
         monkeypatch.setattr(sources, "google_ads_client", _fake_client)
         monkeypatch.setattr(
-            "mureo.mcp._handlers_google_ads._get_client", lambda args: client
+            "mureo.mcp._handlers_google_ads._get_client",
+            AsyncMock(return_value=client),
         )
         result = await handle_call_tool(
             GOOGLE_ADD,
@@ -887,7 +891,8 @@ class TestInertRuleSurfacing:
 
         monkeypatch.setattr(sources, "google_ads_client", _fake_client)
         monkeypatch.setattr(
-            "mureo.mcp._handlers_google_ads._get_client", lambda args: client
+            "mureo.mcp._handlers_google_ads._get_client",
+            AsyncMock(return_value=client),
         )
         result = await handle_call_tool(
             GOOGLE_ADD,

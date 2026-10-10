@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 @api_error_handler
 async def handle_budget_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {"name": _require(args, "name")}
@@ -80,7 +80,7 @@ async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
 
     byod = byod_has("google_ads")
     if byod or _opt(args, "customer_id"):
-        client = _get_client(args)
+        client = await _get_client(args)
         if client is None:
             return _no_google_creds()
         result = await client.list_accounts()
@@ -139,7 +139,7 @@ def _account_row_id(row: dict[str, Any]) -> str:
 async def handle_network_performance_report(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_network_performance_report(
@@ -153,7 +153,7 @@ async def handle_network_performance_report(
 async def handle_ad_performance_report(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_ad_performance_report(
@@ -171,7 +171,7 @@ async def handle_ad_performance_report(
 
 @api_error_handler
 async def handle_keywords_pause(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -186,7 +186,7 @@ async def handle_keywords_pause(args: dict[str, Any]) -> list[TextContent]:
 async def handle_negative_keywords_remove(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -201,7 +201,7 @@ async def handle_negative_keywords_remove(
 async def handle_negative_keywords_add_to_ad_group(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {
@@ -221,7 +221,7 @@ async def handle_negative_keywords_add_to_ad_group(
 async def handle_ads_policy_details(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_ad_policy_details(
@@ -240,7 +240,7 @@ async def handle_ads_policy_details(
 async def handle_search_terms_analyze(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.analyze_search_terms(
@@ -254,7 +254,7 @@ async def handle_search_terms_analyze(
 async def handle_negative_keywords_suggest(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.suggest_negative_keywords(
@@ -273,7 +273,7 @@ async def handle_negative_keywords_suggest(
 
 @api_error_handler
 async def handle_keywords_audit(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.audit_keywords(
@@ -288,7 +288,7 @@ async def handle_keywords_audit(args: dict[str, Any]) -> list[TextContent]:
 async def handle_keywords_cross_adgroup_duplicates(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.find_cross_adgroup_duplicates(
@@ -307,7 +307,7 @@ async def handle_keywords_cross_adgroup_duplicates(
 async def handle_performance_analyze(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.analyze_performance(
@@ -321,7 +321,7 @@ async def handle_performance_analyze(
 async def handle_cost_increase_investigate(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.investigate_cost_increase(
@@ -332,7 +332,7 @@ async def handle_cost_increase_investigate(
 
 @api_error_handler
 async def handle_health_check(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.health_check_all_campaigns()
@@ -343,7 +343,7 @@ async def handle_health_check(args: dict[str, Any]) -> list[TextContent]:
 async def handle_ad_performance_compare(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.compare_ad_performance(
@@ -360,7 +360,7 @@ async def handle_ad_performance_compare(
 
 @api_error_handler
 async def handle_budget_efficiency(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.analyze_budget_efficiency(
@@ -373,7 +373,7 @@ async def handle_budget_efficiency(args: dict[str, Any]) -> list[TextContent]:
 async def handle_budget_reallocation(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.suggest_budget_reallocation(
@@ -391,7 +391,7 @@ async def handle_budget_reallocation(
 async def handle_auction_insights_get(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.get_auction_insights(
@@ -410,7 +410,7 @@ async def handle_auction_insights_get(
 async def handle_rsa_assets_analyze(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.analyze_rsa_assets(
@@ -422,7 +422,7 @@ async def handle_rsa_assets_analyze(
 
 @api_error_handler
 async def handle_rsa_assets_audit(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.audit_rsa_assets(
@@ -441,7 +441,7 @@ async def handle_rsa_assets_audit(args: dict[str, Any]) -> list[TextContent]:
 async def handle_btob_optimizations(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.suggest_btob_optimizations(
@@ -460,7 +460,7 @@ async def handle_btob_optimizations(
 async def handle_landing_page_analyze(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.analyze_landing_page(_require(args, "url"))
@@ -471,7 +471,7 @@ async def handle_landing_page_analyze(
 async def handle_creative_research(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.research_creative(
@@ -491,7 +491,7 @@ async def handle_creative_research(
 async def handle_delivery_goal_evaluate(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.evaluate_delivery_goal(_require(args, "campaign_id"))
@@ -502,7 +502,7 @@ async def handle_delivery_goal_evaluate(
 async def handle_cpa_goal_evaluate(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.evaluate_cpa_goal(
@@ -514,7 +514,7 @@ async def handle_cpa_goal_evaluate(
 
 @api_error_handler
 async def handle_cv_goal_evaluate(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.evaluate_cv_goal(
@@ -528,7 +528,7 @@ async def handle_cv_goal_evaluate(args: dict[str, Any]) -> list[TextContent]:
 async def handle_zero_conversions_diagnose(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_google_creds()
     result = await client.diagnose_zero_conversions(

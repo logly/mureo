@@ -27,6 +27,7 @@ Failure modes:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
@@ -193,7 +194,8 @@ async def fetch_google_ads_metrics(
     fan-out is a follow-up; the trade-off is documented and tested
     in ``test_live_clients.py``.
     """
-    client, account_id = _open_google_ads_client(account_id)
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
 
     # Local import defers the google_ads analysis module until first use (the
     # registry import must stay cheap; see the module docstring).
@@ -236,7 +238,8 @@ async def fetch_google_ads_performance_rows(
     :func:`fetch_google_ads_metrics` so the adapter renders a single
     sentinel headline rather than diverging on the same condition.
     """
-    client, account_id = _open_google_ads_client(account_id)
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
     rows: list[dict[str, object]] = await client.get_performance_report(  # type: ignore[attr-defined]
         period=period
     )
@@ -367,7 +370,8 @@ async def fetch_google_ads_per_campaign_metrics(
     Raises :class:`NoCredentialsError` uniformly with
     :func:`fetch_google_ads_metrics`.
     """
-    client, account_id = _open_google_ads_client(account_id)
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
     from mureo.google_ads._analysis_constants import _get_comparison_date_ranges
 
     period_token = _GOOGLE_WINDOW_TO_PERIOD.get(window_days, "LAST_7_DAYS")
@@ -434,7 +438,8 @@ async def fetch_google_ads_list(
     value (#435). Raises :class:`NoCredentialsError` in live mode when creds are
     missing.
     """
-    client, account_id = _open_google_ads_client(account_id)
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
     ads: list[dict[str, object]] = await client.list_ads()  # type: ignore[attr-defined]
     return ads, account_id
 

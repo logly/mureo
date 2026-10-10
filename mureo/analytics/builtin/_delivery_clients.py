@@ -15,6 +15,7 @@ allow-list.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.delivery_collapse import (
@@ -77,7 +78,8 @@ async def fetch_google_ads_delivery_series(
     Raises :class:`NoCredentialsError` (live mode, missing creds or an
     out-of-scope account) or :class:`DeliveryDataUnavailableError`.
     """
-    client, account_id = _open_google_ads_client(account_id)
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
     return await _fetch_series(client, account_id, days=days, platform="google_ads")
 
 

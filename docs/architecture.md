@@ -427,7 +427,7 @@ server.py :: _create_server()
         │     └── _HANDLERS[name](args)
         │           │
         │       │   ├── load_google_ads_credentials()
-        │       │   ├── create_google_ads_client(creds, customer_id)
+        │       │   ├── create_google_ads_client(creds, customer_id)  (asyncio.to_thread)
         │           └── client.method() → list[TextContent]
         │
     │   ├── name in _META_ADS_NAMES? → handle_meta_ads_tool(name, args)
@@ -470,7 +470,7 @@ Key implementation details:
 
     Building the server object itself is free — the tool schemas are already assembled by then.
 
-    What the start no longer pays, the first call that needs it does. The Google Ads SDK is imported by the **first Google Ads tool call**, inside `create_google_ads_client`, which is synchronous and runs on the event loop, so other calls in flight wait for it. On the same development machine (2026-10-09, `time.process_time` in a child interpreter right after `import mureo.mcp.server`, bytecode cache warm, 5 runs after a discarded warm-up) that import costs about 1.2 s of CPU (1.22-1.28 s, against 0.93-0.99 s for the server's whole import in the same runs) and takes `sys.modules` from 882 to 2228. The Meta client costs under 10 ms after it.
+    What the start no longer pays, the first call that needs it does. The Google Ads SDK is imported by the **first Google Ads tool call**, inside `create_google_ads_client`, which is synchronous. Every async path that builds a Google Ads client runs it in a worker thread through `asyncio.to_thread` (#809): the handlers' shared `_get_client`, and through it the exclusion-impact and before-state reads, plus change import and the built-in analytics modules. The import is paid there, and the event loop keeps serving other calls while it happens. The one exception is `google_ads_accounts_list` called without a `customer_id`, which goes through `list_accessible_accounts` and still imports the SDK on the loop. The server's own import stays SDK-free (#807). Plugin authors are held to the same bar: blocking work in `handle_mcp_tool` goes through `asyncio.to_thread` (see `docs/plugin-authoring.md`). On the same development machine (2026-10-09, `time.process_time` in a child interpreter right after `import mureo.mcp.server`, bytecode cache warm, 5 runs after a discarded warm-up) that import costs about 1.2 s of CPU (1.22-1.28 s, against 0.93-0.99 s for the server's whole import in the same runs) and takes `sys.modules` from 882 to 2228. The Meta client costs under 10 ms after it.
 
 ## Rate Limiting
 

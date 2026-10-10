@@ -312,7 +312,7 @@ async def _read_status(
 
     from mureo.mcp._handlers_google_ads import _get_client as _get_google_client
 
-    client = _get_google_client(args)
+    client = await _get_google_client(args)
     if client is None:
         return None
     if entity == "campaigns":
