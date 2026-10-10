@@ -595,7 +595,7 @@ def test_meta_adapter_phase3_creatives_csv(tmp_path, byod_root):
 
 def test_meta_adapter_recognizes_japanese_headers(tmp_path, byod_root):
     """Japanese Ads Manager export: localized column headers
-    (キャンペーン名 / インプレッション / 消化金額 / 結果) round-trip
+    (Japanese campaign name / impressions / amount spent / results) round-trip
     through the adapter exactly like English headers do."""
     from mureo.byod.bundle import import_bundle
 

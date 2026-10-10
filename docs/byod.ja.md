@@ -12,7 +12,7 @@ mureo がこの XLSX を **ローカルのファイルとして読むだけ** �
 > **対応状況 (Phase 2)** Google Ads（mureo の Google Ads Script 経由）と
 > Meta Ads（広告マネージャの Excel エクスポート経由）の 2 プラットフォーム
 > を Sheet bundle で取り込めます。GA4 / Search Console は引き続き Live API
-> 認証で接続するパスを使ってください（`docs/authentication.md` 参照）。
+> 認証で接続するパスを使ってください（`docs/authentication.ja.md` 参照）。
 
 > **対応範囲 — BYOD/デモは mureo-native 専用。** BYOD（および `mureo
 > demo`。デモは合成 BYOD 束にすぎません）は、mureo 自身の CSV ベース
@@ -387,4 +387,4 @@ but X is missing on disk」という警告が出ていないか確認してく�
 - スクリプトテンプレート: `scripts/sheet-template/README.md`
 - CLI リファレンス: `docs/cli.md`
 - アーキテクチャ: `docs/architecture.md`
-- Live API 認証: `docs/authentication.md`
+- Live API 認証: `docs/authentication.ja.md`

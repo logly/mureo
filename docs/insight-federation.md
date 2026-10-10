@@ -1,6 +1,6 @@
 # Insight federation — `mureo_consult_advisor`
 
-> 日本語版: [insight-federation.ja.md](insight-federation.ja.md)
+> 日本語版: [insight-federation.ja.md](insight-federation.ja.md) <!-- ja-literal -->
 
 mureo's `mureo_consult_advisor` MCP tool lets diagnostic agents query
 external **advisor servers** for practitioner know-how during a

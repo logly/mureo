@@ -352,7 +352,7 @@ test.describe("the detail screen's ground is its sections', not the page's", fun
     );
   });
 
-  test.it("leaves the 運用ナビ band blue — it is a voice, not a section", async function () {
+  test.it("leaves the navigation band blue — it is a voice, not a section", async function () {
     const page = await openDetail({ display: DISPLAY });
     assert.equal(styleOf(page, ".reports-nav-band", "background"), "var(--report-blue)");
   });

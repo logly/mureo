@@ -86,13 +86,13 @@ BYOD は**設計上、読み取り専用**です。すべての変更系ツー�
 
 mureo を Google Ads / Meta Ads API に直接接続します。実際に変更を実行する場合（`/rescue`、`/budget-rebalance`、`/creative-refresh` の実行や、`rollback_apply` ツールによるロールバックの適用）と、GA4 / Search Console を使う場合はこちらが必須です。
 
-同じ `mureo configure` の UI で「プラットフォーム接続」を開くと、各コンソールへのディープリンク付きで Google / Meta の OAuth をブラウザ内で完了でき、公式 MCP プロバイダの登録もできます。（ターミナルでは `mureo auth setup` で同じことができます。）**[認証ガイド →](docs/authentication.md)**
+同じ `mureo configure` の UI で「プラットフォーム接続」を開くと、各コンソールへのディープリンク付きで Google / Meta の OAuth をブラウザ内で完了でき、公式 MCP プロバイダの登録もできます。（ターミナルでは `mureo auth setup` で同じことができます。）**[認証ガイド →](docs/authentication.ja.md)**
 
 前提として、Google Ads API のアクセス権を持つ Google Cloud プロジェクトと OAuth クライアント、Meta の App ID と Secret が必要です（開発モードのままで構いません）。取得手順もウィザードが案内します。
 
 接続できたら、運用に使うディレクトリを Claude Code で開き、最初に `/onboard` を一度実行して `STRATEGY.md`（戦略）と `STATE.json`（状態）を生成してください。戦略に基づく運用は、この2つのファイルがあって初めて動きます。
 
-> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Google Ads API のアクセス申請は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。**数分で mureo がどう動くかが分かるので、Live API のセットアップに踏み込むかどうかはそれから判断すれば大丈夫です。
+> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Google Ads API のアクセス申請は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。** 数分で mureo がどう動くかが分かるので、Live API のセットアップに踏み込むかどうかはそれから判断すれば大丈夫です。
 
 ### どちらのモードが合うか
 
@@ -295,7 +295,7 @@ mureo auth check-google    # Google広告の認証情報を表示（マスク済
 mureo auth check-meta      # Meta広告の認証情報を表示（マスク済み）
 ```
 
-スキーマ、環境変数の一覧、ホスト別のセットアップ手順は **[認証ガイド →](docs/authentication.md)**（英語）にまとめています。
+スキーマ、環境変数の一覧、ホスト別のセットアップ手順は **[認証ガイド →](docs/authentication.ja.md)** にまとめています。
 
 ### 戦略コンテキスト
 

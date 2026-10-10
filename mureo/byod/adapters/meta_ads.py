@@ -22,12 +22,12 @@ the Ads Manager export does not include numeric IDs by default. The
 hash is stable across re-imports so STATE.json references continue
 to resolve.
 
-Recognized header names — multilingual (English / 日本語 / Español /
-Português / 한국어 / 繁體中文 / 简体中文 / Français / Deutsch). The
-adapter looks for any of the per-language aliases on each required
-column, so a workbook exported with Ads Manager in Japanese
-(キャンペーン名, インプレッション, …) imports the same way as an English
-export.
+Recognized header names — multilingual (English / Japanese / Spanish /
+Portuguese / Korean / Traditional Chinese / Simplified Chinese / French /
+German). The adapter looks for any of the per-language aliases on each
+required column, so a workbook exported with Ads Manager in Japanese
+(the Japanese "Campaign name", "Impressions", … headers) imports the same
+way as an English export.
 
 Currency: any account currency is accepted. The spend column's
 header may carry an ISO currency suffix (``Amount spent (JPY)`` /
@@ -188,10 +188,11 @@ _CLICKS_ALIASES = (
     "clicks (all)",
     "link clicks",
     "clicks",
-    # Japanese — verified actual export uses "クリック(すべて)" with
-    # half-width parens and no space; older / customized exports have
-    # also been observed using 全件 wording and full-width parens, so
-    # both forms are aliased.
+    # Japanese — verified actual export uses the "Clicks (all)" header
+    # with half-width parens and no space (first alias below); older /
+    # customized exports have also been observed using a different
+    # Japanese word for "all" and full-width parens, so both forms are
+    # aliased.
     "クリック(すべて)",
     "クリック (すべて)",
     "クリック(全件)",
@@ -520,8 +521,8 @@ def _detect_meta_sheet(workbook: Workbook) -> str | None:
 
     The Google Ads Script tabs use the column ``campaign`` (short
     form), while every Meta Ads Manager export — across all locales —
-    uses a long-form campaign-name header (``Campaign name``,
-    ``キャンペーン名``, ``Nombre de la campaña``, …). Requiring any of
+    uses a long-form campaign-name header (``Campaign name``, its
+    Japanese equivalent, ``Nombre de la campaña``, …). Requiring any of
     those long-form aliases keeps the Google Ads / Meta adapters
     disjoint when both data sources are bundled in a single workbook,
     while still accepting any localized Meta export.
@@ -638,8 +639,9 @@ class MetaAdsAdapter:
         ad_metrics_agg: dict[tuple[str, str, str, str], dict[str, float]] = {}
         # Phase 3-3 — demographics breakdown rows. Activated only when
         # at least one row has a non-"All" value in age/gender/region/
-        # placement. Subtotal rows ("All" / 全部 / etc.) are filtered
-        # out so totals from the breakdown rows are not double-counted.
+        # placement. Subtotal rows ("All" or a localized equivalent —
+        # see ``_ALL_SENTINELS``) are filtered out so totals from the
+        # breakdown rows are not double-counted.
         demo_agg: dict[tuple[str, str, str, str], dict[str, float]] = {}
         # Phase 3-4 — creatives by ad_id. Best-effort: only populated
         # when the export carries image_url / video_url / headline /
@@ -1299,7 +1301,8 @@ def _round2(value: float) -> str:
 
 # Regex stripping a trailing ISO currency code wrapped in parentheses
 # from a column header — e.g. "Amount spent (USD)" → "Amount spent",
-# "消化金額 (JPY)" → "消化金額", "지출 금액 (KRW)" → "지출 금액".
+# "지출 금액 (KRW)" → "지출 금액", and the Japanese "Amount spent (JPY)"
+# header to the bare Japanese "Amount spent".
 # Both ASCII (...) and full-width （...） parens are accepted because
 # Japanese exports occasionally use the latter.
 _CURRENCY_SUFFIX_RE = re.compile(r"\s*[\(（][a-z]{3}[\)）]\s*$")

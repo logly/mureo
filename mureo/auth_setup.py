@@ -507,7 +507,7 @@ async def run_google_oauth(
         client_secret: OAuth Client Secret
 
     Returns:
-        OAuthResult（refresh_token, access_token）
+        OAuthResult (refresh_token, access_token)
 
     Raises:
         RuntimeError: If OAuth authentication fails.
