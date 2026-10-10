@@ -32,8 +32,9 @@ Usage::
     python scripts/check_english_only.py          # exit 1 on any hit
     python scripts/check_english_only.py --list   # print the scanned files
 
-Each hit is printed as ``path:line: text``. Standard library only, so it can
-run before the package is installed.
+Each hit is printed as ``path:line: text``, in UTF-8 whatever the console's
+code page is. Standard library only, so it can run before the package is
+installed.
 """
 
 from __future__ import annotations
@@ -234,13 +235,27 @@ def tracked_files(root: Path) -> list[str]:
         ["git", "ls-files", "-z"],
         cwd=root,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     return sorted(p for p in result.stdout.split("\0") if p and is_scanned(p))
 
 
+def _use_utf8_output() -> None:
+    """Write UTF-8 whatever the console's code page is.
+
+    Every hit line contains Japanese by definition. On a console with a
+    legacy code page (Windows cp1252) printing one raised UnicodeEncodeError,
+    so the run ended in a traceback with no report. Characters a stream
+    still cannot take are written as backslash escapes, never dropped.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _use_utf8_output()
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument(
         "--list", action="store_true", help="print the scanned file set and exit"
