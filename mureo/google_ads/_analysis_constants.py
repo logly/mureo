@@ -49,9 +49,10 @@ _STATUS_MAP: dict[int, str] = AD_GROUP_CRITERION_STATUS_MAP
 
 # ---------------------------------------------------------------------------
 # Informational query patterns. Japanese tokens that signal informational
-# (non-commercial) search intent — e.g. "とは" (what is), "比較" (compare),
-# "口コミ" (reviews). Kept in Japanese because mureo is designed to
-# classify Japanese ad-platform search terms.
+# (non-commercial) search intent — e.g. the Japanese for "what is",
+# "compare" and "reviews" (the first, second and seventh entries below).
+# Kept in Japanese because mureo is designed to classify Japanese
+# ad-platform search terms.
 # ---------------------------------------------------------------------------
 
 _INFORMATIONAL_PATTERNS: tuple[str, ...] = (

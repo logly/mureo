@@ -1,6 +1,6 @@
 # BYOD: Bring Your Own Data
 
-> [日本語版](byod.ja.md)
+> [日本語版](byod.ja.md) <!-- ja-literal -->
 
 Run mureo against your **real Google Ads / Meta Ads account** in 5
 minutes — no OAuth Client ID to register, no Google Ads API access
@@ -326,8 +326,8 @@ completeness only: no mureo tool reads them today.
 - **Live token refresh.** BYOD doesn't read or refresh OAuth tokens.
 
 The Meta export adapter recognizes column headers in English /
-日本語 / Español / Português / 한국어 / 繁體中文 / 简体中文 /
-Français / Deutsch — exporting from Ads Manager in any of these
+Japanese / Spanish / Portuguese / Korean / Traditional Chinese /
+Simplified Chinese / French / German — exporting from Ads Manager in any of these
 languages works without changing Account language.
 
 The spend column is **currency-agnostic**: Meta exports the header

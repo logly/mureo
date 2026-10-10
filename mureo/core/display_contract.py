@@ -93,7 +93,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 NAV_MESSAGE_MAX_CHARS: int = 80
-"""The operator-facing navigation line (運用ナビ), in characters.
+"""The operator-facing navigation line (``nav_message``), in characters.
 
 One line at the top of a client's report saying what to do next. One line
 is the whole point: it is read at a glance, above the numbers, and a
@@ -147,7 +147,7 @@ STATED_VALUE_MAX_CHARS: int = 12
 
 A value is normally a NUMBER. A string is allowed because a report
 legitimately states things a number cannot carry (``"3 of 7"``,
-``"¥12,400"``, ``"未設定"``), and refusing those would push exactly that
+``"¥12,400"``, a "not set" label), and refusing those would push exactly that
 content back into the prose this contract exists to empty. Twelve
 characters is what a chip holds; past it, it is a sentence.
 """

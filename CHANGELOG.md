@@ -117,6 +117,11 @@
 
 ### Changed
 
+- **Shipped files are English-only, and CI checks it** (#810). The remaining
+  Japanese comments, docstrings and markdown prose are translated (Japanese
+  data literals stay), and `scripts/check_english_only.py` runs in the lint
+  job.
+
 - **A built-in tool's `inputSchema` is now compiled on that tool's first call
   instead of at server start** (#807), so a fault in one is found there. What
   a fault costs depends on which of three kinds it is, and for calls, on the
@@ -371,7 +376,7 @@
   freshness line and the per-platform rows now name the day the figures run to
   beside the update time — *"To 2026-09-22, updated 14h ago"* (*"Stale
   2026-09-22, updated 14h ago"* when mureo will not vouch for them), and
-  `{date}まで・{ago}更新` in Japanese. Where no coverage is stated the line
+  the same two facts in the Japanese locale. Where no coverage is stated the line
   reads exactly as it did. The line is now clipped rather than wrapped: it
   carries two facts in a card track ~204px wide, and wrapping it makes every
   card in the grid taller; the full line is the element's tooltip. The card's
@@ -1266,8 +1271,8 @@
 
 - **The detail screen's figures read as figures** (#734). Three things the
   owner's review of v0.17.1 found on one screen. The chip row of what the
-  report stated is headed **"Key figures in this report"**
-  (レポートの主要数値) rather than "Values this report stated", which read as
+  report stated is headed **"Key figures in this report"** (with the
+  matching Japanese label) rather than "Values this report stated", which read as
   a caveat about the figures instead of as a name for them. The same heading
   now names the same thing on the LEGACY detail screen — the label/value
   table a client with no display contract gets, previously "Stated by this
@@ -1345,7 +1350,7 @@
   report text sat bare on the tint. The surface now belongs to each grouping
   — every one of them a rounded, padded block with whitespace between it and
   the next — and the page behind them is the ordinary dashboard ground. The
-  運用ナビ band keeps its blue: it is a voice, not a section. Inside the
+  navigation band keeps its blue: it is a voice, not a section. Inside the
   recent-actions block each logged entry is now a white card of its own
   rather than a row divided by a hairline, so an entry stands off the block's
   ground instead of reading as one line of a ruled sheet; the timeline rail
@@ -1611,7 +1616,7 @@
   identical, and "did nothing happen, or is this broken?" is not a question
   the rail should leave open.
 
-  The band is painted in the **same blue as the detail screen's 運用ナビ
+  The band is painted in the **same blue as the detail screen's navigation
   banner**, from the same `--report-blue` / `--report-on-blue` tokens rather
   than a second blue of its own: the two bands are the same object on two
   screens, so recolouring one moves the other, in both themes. Nothing on
@@ -1640,7 +1645,7 @@
 - **The client detail view is numbers and charts first** (#706, step 3-a of
   3). Steps 1 and 2 built the display contract and taught the skills to fill
   it; this is the screen that reads it. A client that has one now gets, top
-  to bottom: the 運用ナビ band (the one line to act on today, with the skill
+  to bottom: the navigation band (the one line to act on today, with the skill
   that wrote the screen and when), a **KPI funnel** — spend → impressions →
   clicks → conversions, each carrying the rate it implies — a **daily chart**
   with metric and day/week/month switches, the **proposals** panel, the
@@ -2464,8 +2469,8 @@
   rendered as one unbroken paragraph — a real one ran to ~700 characters with
   the period, the figures, the per-ad and per-adspot findings, the verdict and
   the proposal all inside a single string. `totals` and `flags` existed for
-  most of it and went unused, and the operator's verdict was *このまま表示され
-  ているので見る気がしません*: not that the information was wrong, but that
+  most of it and went unused, and the operator's verdict was *"shown like
+  this, I don't feel like reading it"*: not that the information was wrong, but that
   nobody read it.
 
   #663 renders the structure. This is the half that makes there be one.
@@ -2565,8 +2570,8 @@
 
 ### Fixed
 
-- **The Reports health filter did nothing** (#665). Clicking 要対応 / 注視 /
-  指摘なし left every card on screen. The JavaScript was right, and had tests
+- **The Reports health filter did nothing** (#665). Clicking *Needs attention* /
+  *Watch* / *Nothing raised* left every card on screen. The JavaScript was right, and had tests
   proving it: `applyReportsHealthFilter` set `hidden` on exactly the cards it
   should. `.reports-client-card-item` declares `display: flex` — an AUTHOR
   rule, which beats the user agent's `[hidden] { display: none }`, so nothing
@@ -2982,8 +2987,8 @@
   or "the last 8 days" wrote exactly that, and the label became a window.
 
   Nothing errored and nobody lied. The daily check reported *All persistence
-  complete* because the write had succeeded; the card reported *古い数値 —
-  3日前に更新* because the canonical bucket really was stale. Both statements
+  complete* because the write had succeeded; the card reported *Stale —
+  updated 3 days ago* because the canonical bucket really was stale. Both statements
   were true, and nothing anywhere named the mismatch — an operator was left
   with a check that "worked" and a dashboard that had not moved. It also
   defeated #638: the staleness that change exists to surface was being
@@ -7656,7 +7661,7 @@ uninstall + install cycle.
 ### Changed
 
 - Report flags render as friendly, localized, colour-coded chips instead of
-  raw `snake_case` tags (e.g. `cpa_over_target_logly` → "CPAが目標超過").
+  raw `snake_case` tags (e.g. `cpa_over_target_logly` → "CPA over target").
   Off-target / setup gaps read amber (warn), data-integrity / runaway red
   (danger), on-target green (success); unmapped flags are humanized
   generically.
@@ -8388,7 +8393,7 @@ operator needs.
 
 The post-v0.9.23 honest audit of mureo's six advertised strengths surfaced two gaps where the claim outran the implementation. This release closes both with the minimum, least-invasive changes that genuinely move each claim from "partially implemented" toward "fully implemented" — without changing any tool shape, schema, or user-facing behaviour.
 
-#### Strategy-driven enforcement (claim 1: 戦略起点)
+#### Strategy-driven enforcement (claim 1: strategy-first)
 
 The audit found that "every decision references STRATEGY.md" was prompt-convention only — the diagnostic skill prompts instruct the agent to read STRATEGY.md at workflow start, but MCP tool handlers themselves never consult it. If the agent forgets, drifts, or is interrupted between calls, nothing in the codebase re-surfaces the strategy.
 
@@ -8442,7 +8447,7 @@ The two raw queries in `mureo/google_ads/accounts.py` (own-account name+manager 
 
 No tool / handler / schema / skill prompt changes.
 
-Closes the v0.9.23 audit gaps for claims 1 (戦略起点) and 2c (GAQL universal coverage). Claims 4 (audit), 5 (local), 6 (/learn) are unchanged — they were already fully implemented per the audit. Claim 3 (GA4) is a docs gap (the platform is delegated to an external MCP, not a native mureo surface) and is tracked separately.
+Closes the v0.9.23 audit gaps for claims 1 (strategy-first) and 2c (GAQL universal coverage). Claims 4 (audit), 5 (local), 6 (/learn) are unchanged — they were already fully implemented per the audit. Claim 3 (GA4) is a docs gap (the platform is delegated to an external MCP, not a native mureo surface) and is tracked separately.
 
 ## [0.9.23] - 2026-05-31
 
@@ -8509,7 +8514,7 @@ A parallel English + Japanese documentation audit after v0.9.21 surfaced six dri
 
 **README.md** — workflow-commands table gains `/lead-form-create` (between `/creative-refresh` and `/budget-rebalance`); a new paragraph in the *Learnable operational know-how* section describes external advisor MCP federation via `~/.mureo/insight_sources.json` and `mureo_consult_advisor`, with a link to `docs/insight-federation.md`.
 
-**README.ja.md** — same additions mirrored in Japanese: workflow table gains `/lead-form-create`, and the ナレッジベース section gains an advisor-federation paragraph linking to `docs/insight-federation.ja.md`.
+**README.ja.md** — same additions mirrored in Japanese: workflow table gains `/lead-form-create`, and the knowledge-base section gains an advisor-federation paragraph linking to `docs/insight-federation.ja.md`.
 
 **docs/mcp-server.md** — opening tool count corrected from `173` to `185`, with an explicit per-family breakdown and a maintenance note to re-check against the `test_list_tools_returns_all_tools` pin when MCP tools are added or removed.
 
@@ -8814,7 +8819,7 @@ Web extensions can now ship an optional `display_name_i18n: Mapping[str, str]` c
 
 - **`mureo.web.extensions`** — `WebExtensionEntry` gains a `display_name_i18n: Mapping[str, str]` field that defaults to `{}` so existing constructors continue to work unchanged. The `WebExtension` Protocol is **unchanged** — the new attribute is read defensively via `getattr` so every pre-feature extension keeps loading without modification. Discovery validates the value as `Mapping[str, str]` (`str` keys and values both required) and skips the extension with a `WebExtensionWarning` if the shape is wrong.
 - **HTTP** — `GET /api/extensions` includes a new `display_name_i18n` field per entry (empty `{}` when the extension did not declare any). JSON-only addition; existing consumers ignore unknown keys.
-- **Front-end** (`mureo/_data/web/extensions.js`) — initial render reads `document.documentElement.lang` and looks up `display_name_i18n[locale]` with a fallback chain `locale → "en" → display_name`. A `mureo:locale_changed` listener (fired by `app.js#setLocale`) re-runs the lookup so every nav label updates the moment the operator toggles 日本語 / English.
+- **Front-end** (`mureo/_data/web/extensions.js`) — initial render reads `document.documentElement.lang` and looks up `display_name_i18n[locale]` with a fallback chain `locale → "en" → display_name`. A `mureo:locale_changed` listener (fired by `app.js#setLocale`) re-runs the lookup so every nav label updates the moment the operator toggles between Japanese and English.
 - **Plugin author docs** — `docs/plugin-authoring.md` §13 gains a *Localising the nav-tab label* subsection with the example class attribute and the documented lookup priority.
 
 Backward compatibility: extensions that do not declare `display_name_i18n` get an empty `dict` in their `WebExtensionEntry`; the renderer's fallback chain resolves to `display_name`, so the nav tab looks byte-identical to v0.9.5.
@@ -8932,7 +8937,7 @@ These refactors are call-site changes only; all on-disk artefacts and CLI behavi
 
 ### Changed — host selector clarity + Desktop-unavailable credential-guard hook note
 - The configure-UI host selector labels were ambiguous (`Claude Code (terminal)` implied terminal-only). Relabelled to **`Claude Code (CLI, Desktop app)`** vs **`Claude Desktop app (Chat, Cowork)`** so users running Claude Code *inside* the Desktop app correctly pick the Claude Code option (which targets `~/.claude.json`). Japanese punctuation made consistent (fullwidth `、`).
-- The credential-guard hook has no surface on Claude Desktop (`install_auth_hook` is a `noop:unsupported_on_desktop` there). The basic-setup list (wizard **and** dashboard) now appends "(not available on the Desktop app)" / "（デスクトップアプリでは利用できません）" to that row when the chosen host is Claude Desktop, instead of implying it can be installed.
+- The credential-guard hook has no surface on Claude Desktop (`install_auth_hook` is a `noop:unsupported_on_desktop` there). The basic-setup list (wizard **and** dashboard) now appends "(not available on the Desktop app)" (or its Japanese translation) to that row when the chosen host is Claude Desktop, instead of implying it can be installed.
 
 ### Fixed — dashboard "mureo integrations" listed GA4 (not native) and omitted Search Console
 - The configure-UI dashboard's **mureo integrations** section listed `Google Ads / Meta Ads / GA4`. mureo ships **no native GA4 tools** (GA4 is official-provider-only), so GA4 did not belong there; meanwhile the genuinely mureo-native **Search Console** was missing (only a sub-note under Google Ads). GA4's presence came from the `ga4` credentials.json section, which actually stores the *official* GA4 MCP's service-account env — not a mureo-native integration.
@@ -9032,7 +9037,7 @@ PyPI re-publish of v0.7.0 with the post-#54 fixes folded in. The original `0.7.0
 ## [0.7.0] - 2026-04-29
 
 ### Added
-- **BYOD Meta Ads adapter** — `mureo/byod/adapters/meta_ads.py` consumes the user's Ads Manager Excel export (Reports → Customize → Export → Excel) and normalizes it to CSVs under `~/.mureo/byod/meta_ads/`. Identity (campaign_id / ad_set_id / ad_id) is synthesized from name via deterministic SHA-256 hash so re-imports keep stable IDs. **Multilingual header support** — recognizes column names in English / 日本語 / Español / Português / 한국어 / 繁體中文 / 简体中文 / Français / Deutsch (e.g. キャンペーン名, インプレッション, 消化金額 (JPY), 結果), verified against actual exports in each locale. Multiple rows per (day, campaign) — typical when Ad-set or Ad breakdown is enabled — are summed before write. Pivot subtotal rows (date cell = `All` or locale equivalent) are skipped automatically. Currency is JPY-only; non-JPY symbol prefix (`$`, `€`, `£`, …) raises `UnsupportedFormatError` to prevent silent over/under-reporting. (Restriction lifted in 0.7.1 — see above.) Disjoint from the Google Ads adapter via the long-form vs short-form campaign header distinction, so a single workbook can carry both adapters' data.
+- **BYOD Meta Ads adapter** — `mureo/byod/adapters/meta_ads.py` consumes the user's Ads Manager Excel export (Reports → Customize → Export → Excel) and normalizes it to CSVs under `~/.mureo/byod/meta_ads/`. Identity (campaign_id / ad_set_id / ad_id) is synthesized from name via deterministic SHA-256 hash so re-imports keep stable IDs. **Multilingual header support** — recognizes column names in English / Japanese / Spanish / Portuguese / Korean / Traditional Chinese / Simplified Chinese / French / German (e.g. the Japanese headers for campaign name, impressions, amount spent (JPY) and results), verified against actual exports in each locale. Multiple rows per (day, campaign) — typical when Ad-set or Ad breakdown is enabled — are summed before write. Pivot subtotal rows (date cell = `All` or locale equivalent) are skipped automatically. Currency is JPY-only; non-JPY symbol prefix (`$`, `€`, `£`, …) raises `UnsupportedFormatError` to prevent silent over/under-reporting. (Restriction lifted in 0.7.1 — see above.) Disjoint from the Google Ads adapter via the long-form vs short-form campaign header distinction, so a single workbook can carry both adapters' data.
   - **Phase 3 schema (richer analytics):** `metrics_daily.csv` extended with `reach`, `frequency`, `result_indicator` columns (frequency falls back to impressions/reach when not directly exported). New per-grain CSVs are written when the export carries the relevant columns: `ad_set_metrics_daily.csv` ((date, campaign_id, ad_set_id) × metrics+reach), `ad_metrics_daily.csv` ((date, campaign_id, ad_set_id, ad_id) × metrics+reach), `demographics_daily.csv` (one row per (date, campaign_id, dimension, value) for age / gender / region / placement breakdowns — these rows are excluded from `metrics_daily` to avoid double-counting), and `creatives.csv` (best-effort: ad_id, name, image_url, video_url, headline, body, cta — only written when those columns are present in the export). Each new CSV is suppressed when the source export lacks the corresponding columns, so existing campaign-only exports import unchanged.
 - **BYOD Sheet bundle pipeline (Google Ads only)** — XLSX-in, Google-Ads-out import. Users run the mureo Google Ads Script (`scripts/sheet-template/google-ads-script.js`) inside Google Ads → Tools → Bulk actions → Scripts, which populates a Google Sheet with `campaigns / ad_groups / search_terms / keywords / auction_insights` tabs. They download the sheet as XLSX and run `mureo byod import bundle.xlsx`. The bundle importer (`mureo/byod/bundle.py`) opens the XLSX with openpyxl read-only, dispatches the workbook to the Google Ads adapter, writes per-platform CSVs to `~/.mureo/byod/google_ads/`, and updates `manifest.json` atomically with rollback on partial failure. New `openpyxl>=3.1,<4` runtime dependency.
 - **Richer Google Ads adapter** — surfaces `search_terms.csv`, `keywords.csv`, and `auction_insights.csv` alongside the previous `campaigns.csv` / `ad_groups.csv` / `metrics_daily.csv`, giving `/daily-check` access to query-level and competitor-level data the v0.6 CSV path could not.

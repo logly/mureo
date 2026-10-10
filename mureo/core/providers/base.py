@@ -107,8 +107,9 @@ class BaseProvider(Protocol):
       chain as the per-field ``display_name_i18n`` from #186). Providers
       that omit it keep the bare ``display_name`` in every locale, so
       this is fully backward-compatible. Example: a Yahoo! JAPAN Ads
-      bridge can show ``Yahoo! JAPAN 広告（検索）`` under a ``ja`` locale
-      while keeping ``Yahoo! JAPAN Ads (Search)`` as the ``en`` default.
+      bridge can show its Japanese name ("Yahoo! JAPAN Ads (Search)"
+      written in Japanese) under a ``ja`` locale while keeping
+      ``Yahoo! JAPAN Ads (Search)`` as the ``en`` default.
     """
 
     name: str

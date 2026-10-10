@@ -725,8 +725,8 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     ) -> dict[str, Any]:
         """Change campaign status
 
-        For REMOVED, use remove operation due to API constraints。
-        For ENABLED/PAUSED, use update operation to change status。
+        For REMOVED, use remove operation due to API constraints.
+        For ENABLED/PAUSED, use update operation to change status.
         """
         self._validate_id(campaign_id, "campaign_id")
         validated_status = self._validate_status(status)

@@ -2,9 +2,10 @@
 
 Operators phrase requests in Japanese, but skill firing is driven by the
 ``description`` frontmatter. Descriptions written only in English lower
-the match confidence for natural Japanese asks ("CPAが急に悪化した" vs
-"Use when the user reports a sudden CPA spike"), which showed up as
-near-zero real-world usage for several workflow skills. The newer skills
+the match confidence for natural Japanese asks (a Japanese "my CPA
+suddenly got worse" vs "Use when the user reports a sudden CPA spike"),
+which showed up as near-zero real-world usage for several workflow
+skills. The newer skills
 (ad-fatigue-check, audience-review, ...) already enumerate Japanese
 trigger phrases; this suite pins that EVERY user-triggered operational
 skill does.

@@ -30,9 +30,9 @@ before deciding where an insight belongs (step 4).
 ## When to use
 
 - The user runs `/learn` followed by an insight, e.g.:
-  - `/learn CV少ないサイトではマイクロCVを活用すべき`
-  - `/learn 予算5000円/日で広告グループ8個は多すぎる`
-  - `/learn Target CPA を下げすぎると逆に CV が減る`
+  - `/learn CV少ないサイトではマイクロCVを活用すべき` (sites with few conversions should use micro-conversions) <!-- ja-literal -->
+  - `/learn 予算5000円/日で広告グループ8個は多すぎる` (eight ad groups is too many on a ¥5,000/day budget) <!-- ja-literal -->
+  - `/learn Target CPA を下げすぎると逆に CV が減る` (lowering Target CPA too far reduces conversions) <!-- ja-literal -->
 - The user runs `/learn` with no argument — review the current
   conversation for corrections or marketing expertise the user shared
   and propose those as insights.

@@ -99,7 +99,7 @@ class _KeywordsMixin:
             if len(text) > 80:
                 raise ValueError(
                     f"Keywords must be 80 characters or less: "
-                    f"'{text[:20]}...'（{len(text)} chars)"
+                    f"'{text[:20]}...' ({len(text)} chars)"
                 )
         agc_service = self._get_service("AdGroupCriterionService")
         operations = []
