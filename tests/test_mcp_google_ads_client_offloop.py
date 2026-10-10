@@ -236,3 +236,85 @@ class TestOtherAsyncCallers:
             )
         assert factory.threads[0] is not loop_thread
         assert ticks >= 10
+
+
+def _sdk_client(customer_id: str) -> MagicMock:
+    """A fake ``GoogleAdsClient`` reaching one non-manager account."""
+    response = MagicMock()
+    response.resource_names = [f"customers/{customer_id}"]
+    customer_service = MagicMock()
+    customer_service.list_accessible_customers.return_value = response
+    row = MagicMock()
+    row.customer.descriptive_name = "Acct"
+    row.customer.manager = False
+    row.customer.status.name = "ENABLED"
+    ga_service = MagicMock()
+    ga_service.search.return_value = [row]
+    client = MagicMock()
+    client.get_service.side_effect = lambda name: (
+        customer_service if name == "CustomerService" else ga_service
+    )
+    return client
+
+
+_EXPECTED_ROSTER = [
+    {
+        "id": _CUSTOMER_ID,
+        "name": "Acct",
+        "is_manager": False,
+        "parent_id": None,
+        "level": 0,
+        "status": "ENABLED",
+    }
+]
+
+
+def _listing_creds() -> Any:
+    from mureo.auth import GoogleAdsCredentials
+
+    return GoogleAdsCredentials(
+        client_id="cid", client_secret="csec", refresh_token="rtok"
+    )
+
+
+@pytest.mark.unit
+class TestAccountListing:
+    async def test_public_listing_runs_the_sdk_off_loop(self) -> None:
+        from mureo.google_ads import list_accessible_accounts
+
+        factory = _RecordingFactory(_sdk_client(_CUSTOMER_ID))
+        loop_thread = threading.current_thread()
+        with patch("google.ads.googleads.client.GoogleAdsClient", factory):
+            accounts = await list_accessible_accounts(_listing_creds())
+        assert accounts == _EXPECTED_ROSTER
+        assert factory.threads
+        assert all(thread is not loop_thread for thread in factory.threads)
+
+    async def test_accounts_list_without_customer_id_keeps_loop_responsive(
+        self,
+    ) -> None:
+        from mureo.mcp import _handlers_google_ads_analysis as analysis
+
+        factory = _RecordingFactory(
+            _sdk_client(_CUSTOMER_ID), delay=_SLOW_BUILD_SECONDS
+        )
+        with (
+            patch("mureo.byod.runtime.byod_has", return_value=False),
+            patch(
+                "mureo.auth.load_google_ads_credentials",
+                return_value=_listing_creds(),
+            ),
+            patch.object(
+                analysis, "runtime_google_ads_customer_ids", return_value=None
+            ),
+            patch("google.ads.googleads.client.GoogleAdsClient", factory),
+        ):
+            results: list[Any] = []
+
+            async def call() -> None:
+                results.append(await analysis.handle_accounts_list({}))
+
+            ticks = await _ticks_while_building(factory, call())
+        result = results[0]
+        assert json.loads(result[0].text) == _EXPECTED_ROSTER
+        assert ticks >= 10

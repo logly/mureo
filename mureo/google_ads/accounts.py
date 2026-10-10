@@ -26,6 +26,7 @@ than returning an empty list (#746).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -33,7 +34,7 @@ from mureo.google_ads._api_version import GOOGLE_ADS_API_VERSION
 from mureo.google_ads._gaql_validator import validate_static_query
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from mureo.auth import GoogleAdsCredentials
 
@@ -161,6 +162,10 @@ async def list_accessible_accounts(
     This handles the common case where a user has been granted access
     only to an MCC but needs to operate on its child accounts.
 
+    The SDK import and the gRPC calls run in a worker thread via
+    ``asyncio.to_thread`` (#809), so the event loop stays responsive while
+    the roster is built.
+
     Args:
         credentials: Google Ads credentials (OAuth client + refresh
             token; the legacy developer token is optional).
@@ -192,6 +197,15 @@ async def list_accessible_accounts(
             so no roster could be built. Never confuse this with an
             empty list — see the class docstring.
     """
+    # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
+    return await asyncio.to_thread(_list_accessible_accounts_sync, credentials)
+
+
+def _client_maker(credentials: GoogleAdsCredentials) -> Callable[..., Any]:
+    """Return a ``GoogleAdsClient`` builder bound to ``credentials``.
+
+    Imports the Google Ads SDK, so it must only run off the event loop.
+    """
     from google.ads.googleads.client import GoogleAdsClient
     from google.oauth2.credentials import Credentials as OAuthCredentials
 
@@ -214,8 +228,17 @@ async def list_accessible_accounts(
             version=GOOGLE_ADS_API_VERSION,
         )
 
+    return _make_client
+
+
+def _list_accessible_accounts_sync(
+    credentials: GoogleAdsCredentials,
+) -> list[dict[str, Any]]:
+    """Blocking body of :func:`list_accessible_accounts` (#809)."""
+    make_client = _client_maker(credentials)
+
     # Step 1: Get directly accessible accounts
-    base_client = _make_client(login_cid=credentials.login_customer_id)
+    base_client = make_client(login_cid=credentials.login_customer_id)
     try:
         customer_service = base_client.get_service("CustomerService")
         response = customer_service.list_accessible_customers()
@@ -238,6 +261,13 @@ async def list_accessible_accounts(
             f"Failed to retrieve account list ({type(exc).__name__})"
         ) from None
 
+    return _collect_accounts(response.resource_names, make_client)
+
+
+def _collect_accounts(
+    resource_names: Iterable[str], make_client: Callable[..., Any]
+) -> list[dict[str, Any]]:
+    """Build the roster from the ``listAccessibleCustomers`` resource names."""
     accounts: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
 
@@ -274,28 +304,33 @@ async def list_accessible_accounts(
     # both the info query and the child traversal run against the
     # right context; the operator-default ``base_client`` is reserved
     # for the ``listAccessibleCustomers`` call itself.
-    for resource_name in response.resource_names:
-        customer_id = resource_name.split("/")[-1]
-
-        own_client = _make_client(login_cid=customer_id)
-        own_ga_service = own_client.get_service("GoogleAdsService")
-
-        name, is_manager, status = _describe_customer(own_ga_service, customer_id)
-        _add(
-            customer_id,
-            name,
-            is_manager=is_manager,
-            parent_id=None,
-            level=0,
-            status=status,
-        )
-
-        # Step 3: Traverse child accounts under this MCC. Same client
-        # already has ``login_customer_id`` set to the MCC.
-        if is_manager:
-            _traverse_children(own_ga_service, customer_id, _add)
+    for resource_name in resource_names:
+        _add_customer(resource_name.split("/")[-1], make_client, _add)
 
     return accounts
+
+
+def _add_customer(
+    customer_id: str, make_client: Callable[..., Any], add: Callable[..., None]
+) -> None:
+    """Add one directly accessible account, and its children if it is an MCC."""
+    own_client = make_client(login_cid=customer_id)
+    own_ga_service = own_client.get_service("GoogleAdsService")
+
+    name, is_manager, status = _describe_customer(own_ga_service, customer_id)
+    add(
+        customer_id,
+        name,
+        is_manager=is_manager,
+        parent_id=None,
+        level=0,
+        status=status,
+    )
+
+    # Step 3: Traverse child accounts under this MCC. Same client
+    # already has ``login_customer_id`` set to the MCC.
+    if is_manager:
+        _traverse_children(own_ga_service, customer_id, add)
 
 
 __all__ = ["GoogleAdsAccountListError", "list_accessible_accounts"]
