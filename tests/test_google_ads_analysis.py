@@ -841,7 +841,7 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     def test_classify_search_term_rule3_add_high_ctr(self) -> None:
-        """Rule 3: CV=0 & Click>=20 & CTR>=3% → add PHRASE (score=50)。"""
+        """Rule 3: CV=0 & Click>=20 & CTR>=3% → add PHRASE (score=50)."""
         client = self._make_client()
         add: list[dict[str, Any]] = []
         client._classify_search_term(
@@ -868,7 +868,7 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     def test_classify_search_term_rule4_exclude(self) -> None:
-        """Rule 4: CV=0 & cost>=CPA*2 → exclude EXACT (score=80)。"""
+        """Rule 4: CV=0 & cost>=CPA*2 → exclude EXACT (score=80)."""
         client = self._make_client()
         exclude: list[dict[str, Any]] = []
         # clicks=10, impressions=1000 → CTR=1%, so Rule 3 does not match.
@@ -895,7 +895,7 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     def test_classify_search_term_rule5_low_ctr(self) -> None:
-        """Rule 5: CV=0 & Click>=30 & CTR<1% → exclude EXACT (score=60)。"""
+        """Rule 5: CV=0 & Click>=30 & CTR<1% → exclude EXACT (score=60)."""
         client = self._make_client()
         exclude: list[dict[str, Any]] = []
         client._classify_search_term(
@@ -1061,7 +1061,7 @@ class TestKeywordsAnalysisMixin:
 
     @pytest.mark.unit
     def test_evaluate_keyword_rule2_no_cv_many_clicks(self) -> None:
-        """Rule 2: CV=0 & Click>50 → pause。"""
+        """Rule 2: CV=0 & Click>50 → pause."""
         kw = {
             "text": "kw",
             "criterion_id": "1",
@@ -1081,7 +1081,7 @@ class TestKeywordsAnalysisMixin:
 
     @pytest.mark.unit
     def test_evaluate_keyword_rule3_phrase_high_cvr(self) -> None:
-        """Rule 3: PHRASE & CVR>avg*1.5 → add_exact。"""
+        """Rule 3: PHRASE & CVR>avg*1.5 → add_exact."""
         kw = {
             "text": "kw",
             "criterion_id": "1",
@@ -1102,7 +1102,7 @@ class TestKeywordsAnalysisMixin:
 
     @pytest.mark.unit
     def test_evaluate_keyword_rule4_exact_low_imp(self) -> None:
-        """Rule 4: EXACT & Imp<50 → expand_to_phrase。"""
+        """Rule 4: EXACT & Imp<50 → expand_to_phrase."""
         kw = {
             "text": "kw",
             "criterion_id": "1",

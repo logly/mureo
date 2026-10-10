@@ -1,4 +1,4 @@
-"""Static-content guards for the reports period toggle (前日 / 30日, PR-C).
+"""Static-content guards for the reports period toggle (Yesterday / 30 days, PR-C).
 
 The configure UI's reporting dashboard renders a per-window toggle
 (YESTERDAY / LAST_30_DAYS) sourced from the summary's ``periods`` union.
