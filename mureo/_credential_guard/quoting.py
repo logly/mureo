@@ -251,7 +251,7 @@ _QUOTE_INIT = "(0,0,0,'',0,(0,1),(0,1))"
 _NORMALIZE_CHAR = (
     "nz=lambda x,k,m,j,e,v: '' if (k==0 and x in q1+q2+bs) or (k==1 and x==q1)"
     " or (k==2 and x in q2+bs) or (k>2 and x==nl)"
-    " else ('*/' if x in dl+tk+pc"
+    " else ('*/' if x in dl+pc or (x==tk and not v)"
     " else sw if k==0 and j==0 and x in ws"
     " else so if k==0 and not e and x in op"
     " else (ho if k and not m and not v and x in mt else x)); "

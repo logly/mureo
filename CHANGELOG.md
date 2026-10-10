@@ -8,7 +8,9 @@
   begin and end, and it also reads a quoted string or a here-document body the
   way a program that re-reads it would. That second reading is expanded over the
   inner shell's own words — a space that shell acts on splits the content and
-  dissolves any brace group that holds it, exactly as it does for bash — and is
+  dissolves the brace group whose own level holds it, while a space one level
+  deeper, inside a substitution or a nested group, is kept, exactly as it does
+  for bash — and is
   bounded per word, so ordinary data handed to a program in one quoted argument
   — a JSON array, a dictionary in a `python -c` script — is no longer refused for
   its size, however long, as long as it has a space after each comma, which

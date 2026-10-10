@@ -84,10 +84,12 @@ keep that affordable it is spent a word at a time, over the inner shell's
 own words: a second reading is a string handed to a program that re-reads it
 with a shell of its own, and that shell splits the content this shell left
 quoted on the spaces in it, and will not expand a brace group that holds an
-unquoted space.  So the spaces the inner shell acts on split the words here
-too, a group with such a space in it dissolves exactly as it does for bash,
-and a space that is quoted, escaped, or inside a quoted alternative stays in
-the word.  Each word gets sixteen passes, at most 1,024 distinct strings in
+unquoted space at the group's own level.  So the spaces the inner shell acts
+on split the words here too, a group with such a space in it dissolves
+exactly as it does for bash, and a space that is quoted, escaped, or one
+level deeper -- inside a command or parameter substitution, a backtick, or a
+nested group -- stays in the word and leaves the group able to expand.  Each
+word gets sixteen passes, at most 1,024 distinct strings in
 a pass and 1,000,000 bytes; the words that hold a group share a total of
 4,096 strings, over every reading of the command, and a word that holds none
 is not counted against it.  The word that carries the total past 4,096 still
@@ -341,18 +343,32 @@ _EXPAND = (
     # shell of its own: that shell splits the content this shell left quoted on
     # the spaces in it, and it will not expand a brace group that holds an
     # unquoted space (``{a, b}`` is literal to bash, ``{a,b}`` a group). So a
-    # space is a boundary only where the inner shell is unquoted, and a space
-    # the inner shell has quoted, escaped, or that stands in an inner quoted
-    # alternative stays in the word. The states are 0 unquoted, 1 single, 2
-    # double, 3 escaped from unquoted, 4 escaped in double; a protected name has
-    # no space in it, so an unquoted space can never split one apart, and a
-    # group reaching a protected name through a quoted-space alternative keeps
-    # that space and stays a group.
-    "iq=lambda a,c: 0 if a==3 else 2 if a==4 else (0 if c==q1 else 1) if a==1"
-    " else (4 if c==bs else 0 if c==q2 else 2) if a==2"
-    " else 3 if c==bs else 1 if c==q1 else 2 if c==q2 else 0; "
-    "iw=lambda r: ''.join(sw if a==0 and c in ws else c"
-    " for c,a in zip(r, itertools.accumulate(r, iq, initial=0))); "
+    # space is a boundary only where the inner shell would act on it. The state
+    # is (quote, paren, backtick, brace): quote is 0 unquoted, 1 single, 2
+    # double, 3 escaped from unquoted, 4 escaped in double; paren counts the
+    # open `(` of a command substitution, arithmetic, process substitution, or
+    # subshell; backtick toggles a backtick substitution; brace counts open
+    # `{`. A space is promoted only when unquoted, at paren depth 0, with no
+    # open backtick, and at brace depth 0 or 1. This matches what dissolves a
+    # brace group in bash: a space at the group's own level makes it literal
+    # (``{a, b}``), but a space one level deeper -- inside `$( )`, `` ` ` ``,
+    # `${ }`, or a nested group -- is kept, so the group still expands and can
+    # still reach a protected name (``{o,$(echo a b)}``, ``{o,${x:-a b}}``,
+    # ``{o,{a b}}`` all reach ``.mureo``). A protected name holds no space, so a
+    # promoted space can never split one apart. Backticks are left live in the
+    # second reading (see `nz`) so the toggle can see them; dollar forms keep
+    # their `*/` sigil and are found by the paren or brace that follows it.
+    "iq=lambda a,c: ((0,2)[a[0]-3],)+a[1:] if a[0]>2"
+    " else ((0 if c==q1 else 1),)+a[1:] if a[0]==1"
+    " else ((4 if c==bs else 0 if c==q2 else 2),)+a[1:] if a[0]==2"
+    " else (3,)+a[1:] if c==bs else (1,)+a[1:] if c==q1"
+    " else (2,)+a[1:] if c==q2 else (0,a[1]+1)+a[2:] if c==op[3]"
+    " else (0,max(a[1]-1,0))+a[2:] if c==op[4]"
+    " else a[:2]+(1-a[2],a[3]) if c==tk else a[:3]+(a[3]+1,) if c==mt[4]"
+    " else a[:3]+(max(a[3]-1,0),) if c==mt[5] else (0,)+a[1:]; "
+    "iw=lambda r: ''.join(sw if a[0]==0 and not(a[1]or a[2]) and a[3]<2"
+    " and c in ws else c"
+    " for c,a in zip(r, itertools.accumulate(r, iq, initial=(0,0,0,0)))); "
     # `not ... ==` rather than the inequality operator: the payload may not
     # contain `!`, which a shell with history expansion would rewrite.
     #
