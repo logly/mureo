@@ -14,9 +14,13 @@ Two speeds:
 * ``-m slow`` runs the whole product, and additionally executes every
   member in a throwaway HOME to confirm it really does read the marker
   file.  This is where the counts quoted in
-  ``mureo/credential_guard.py`` come from::
+  ``mureo/credential_guard.py`` come from.  It takes about two hours, so
+  the per-PR ``test-slow`` job leaves it out and CI runs it nightly (and
+  on demand) in ``.github/workflows/credential-guard-sweep.yml`` instead.
+  Like every ``slow`` lane it skips unless the switch in
+  ``tests/conftest.py`` is on; locally::
 
-      pytest tests/test_credential_guard_product.py -m slow
+      MUREO_RUN_EXHAUSTIVE_TESTS=1 pytest tests/test_credential_guard_product.py -m slow
 
 Keep the numbers in that docstring and the output of the slow run in step.
 If you add an axis here, update them; if a claim there has no counterpart
