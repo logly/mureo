@@ -283,6 +283,10 @@ Configuration is in `pyproject.toml`:
 
 Never commit credentials, API keys, or tokens. Use environment variables or `~/.mureo/credentials.json`.
 
+### Repository Language
+
+The repository is English: code comments, docstrings, docs, skills, tests, commit messages, issues and PRs. Japanese belongs in two places only — the `*.ja.md` translations (`README.ja.md`, `docs/*.ja.md`) and string literals that are Japanese data, such as ad-text samples, the Japanese column headers a report parser matches on, a validator's character classes, or the `ja` entries of a per-locale label table. When a markdown line outside a code fence has to carry Japanese on purpose (a language-switch link, a literal UI string, an example of operator input), end that line with `<!-- ja-literal -->` and give the English meaning beside it. The one exemption is the `description:` key in a `SKILL.md` frontmatter: it carries the Japanese trigger phrases a skill fires on when an operator asks in Japanese, and `tests/test_skill_ja_triggers.py` requires them (#396). `python scripts/check_english_only.py` enforces this in CI (Python comments and docstrings, markdown prose, and CSS/HTML comments under `mureo/`); `--list` prints the files it scans.
+
 ## Pull Request Guidelines
 
 ### Before Submitting

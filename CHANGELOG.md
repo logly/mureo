@@ -117,6 +117,11 @@
 
 ### Changed
 
+- **Shipped files are English-only, and CI checks it** (#810). The remaining
+  Japanese comments, docstrings and markdown prose are translated (Japanese
+  data literals stay), and `scripts/check_english_only.py` runs in the lint
+  job.
+
 - **A built-in tool's `inputSchema` is now compiled on that tool's first call
   instead of at server start** (#807), so a fault in one is found there. What
   a fault costs depends on which of three kinds it is, and for calls, on the
