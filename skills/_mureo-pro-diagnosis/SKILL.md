@@ -2,7 +2,7 @@
 name: _mureo-pro-diagnosis
 description: "Professional marketing diagnostic frameworks: expert-level campaign analysis that grows with your experience."
 metadata:
-  version: 0.21.3
+  version: 0.22.0
   openclaw:
     category: "marketing"
     requires:
