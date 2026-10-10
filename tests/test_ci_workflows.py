@@ -33,6 +33,12 @@ _SLOW_MARKER = "-m slow"
 # Well past the measured local run (1 h 56 m), so a slower hosted runner is
 # not cut off mid-sweep and reported as a guard failure.
 _MIN_TIMEOUT_MINUTES = 240
+# GitHub's hard cap for a job on a hosted runner; anything above it is
+# silently clamped, so a larger figure would only misstate the budget.
+_MAX_TIMEOUT_MINUTES = 360
+_CRON_FIELD = re.compile(r"^[\d*/,-]+$")
+_CRON_FIELD_COUNT = 5
+_SWEEP_PERMISSIONS = {"contents": "read", "issues": "write"}
 _PINNED_ACTION = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
 
 pytestmark = pytest.mark.unit
@@ -93,8 +99,13 @@ def ci() -> dict[str, Any]:
 def test_sweep_runs_on_a_schedule_and_on_demand(sweep: dict[str, Any]) -> None:
     triggers = _triggers(sweep)
     assert triggers.get("schedule"), "the sweep has no schedule"
-    assert all(entry.get("cron") for entry in triggers["schedule"])
+    for entry in triggers["schedule"]:
+        fields = str(entry.get("cron", "")).split()
+        assert len(fields) == _CRON_FIELD_COUNT, f"not a 5-field cron: {entry}"
+        assert all(_CRON_FIELD.match(field) for field in fields), entry
     assert "workflow_dispatch" in triggers
+    # The sweep must never run with a token handed to code from a fork.
+    assert "pull_request_target" not in triggers
 
 
 def test_sweep_job_has_room_for_the_whole_enumeration(
@@ -102,13 +113,18 @@ def test_sweep_job_has_room_for_the_whole_enumeration(
 ) -> None:
     timeout = sweep["jobs"][_SWEEP_JOB]["timeout-minutes"]
     assert isinstance(timeout, int)
-    assert timeout >= _MIN_TIMEOUT_MINUTES
+    assert _MIN_TIMEOUT_MINUTES <= timeout <= _MAX_TIMEOUT_MINUTES
 
 
 def test_sweep_step_runs_the_product_file_with_the_switch_on(
     sweep: dict[str, Any],
 ) -> None:
     step = _step_running(sweep, _SWEEP_JOB, _PRODUCT_FILE)
+    # The step pipes pytest into tee; without pipefail the step's status is
+    # tee's, and a failing sweep would be reported green.
+    assert re.search(
+        r"^\s*set -o pipefail\s*$", step["run"], re.MULTILINE
+    ), "the sweep step pipes pytest through tee without set -o pipefail"
     assert _switch_is_on(sweep, _SWEEP_JOB, step), (
         f"the sweep step does not set {EXHAUSTIVE_TESTS_ENV}={EXHAUSTIVE_TESTS_ON},"
         " so every test in it would skip and the run would be green and empty"
@@ -161,3 +177,31 @@ def test_sweep_reports_a_timeout_as_well_as_a_failure(
     assert condition == "failure()||cancelled()"
     env = str(reporters[0].get("env", {}))
     assert "job.status" in env, "the report does not say failed or cancelled"
+
+
+def test_sweep_token_is_scoped_to_what_the_report_needs(
+    sweep: dict[str, Any],
+) -> None:
+    assert sweep["permissions"] == _SWEEP_PERMISSIONS
+
+
+def test_sweep_log_is_uploaded_whatever_the_outcome(sweep: dict[str, Any]) -> None:
+    uploads = [
+        step
+        for step in _steps(sweep, _SWEEP_JOB)
+        if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    ]
+    assert len(uploads) == 1, "expected one step that uploads the sweep log"
+    assert uploads[0].get("if") == "always()"
+
+
+def test_no_run_script_interpolates_an_expression(sweep: dict[str, Any]) -> None:
+    # An expression inside run: is pasted into the script before the shell
+    # parses it; passing values through env: keeps them data.
+    interpolating = [
+        step.get("name", step.get("uses", "?"))
+        for job in sweep["jobs"].values()
+        for step in job["steps"]
+        if "${{" in str(step.get("run", ""))
+    ]
+    assert not interpolating, f"expressions inside run: in {interpolating}"
