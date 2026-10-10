@@ -141,9 +141,10 @@ the whole-product credential-guard enumeration, measured 1 h 56 m on a developer
 machine (against 77 s for all the others together), which no per-PR job can
 carry. The `credential-guard-sweep.yml` workflow runs it nightly instead, and can
 be started by hand from the Actions tab (`workflow_dispatch`) — do that after
-changing the guard rather than waiting for the night. A failed sweep opens an
-issue labelled `guard-sweep`, or comments on the one already open, with a link to
-the run; the run's `sweep.log` artifact holds the full output. To run it locally:
+changing the guard rather than waiting for the night. A sweep that fails, times
+out or is cancelled opens an issue labelled `guard-sweep`, or comments on the one
+already open, with the job status (`failure` or `cancelled`) and a link to the
+run; the run's `sweep.log` artifact holds the full output. To run it locally:
 
 ```bash
 MUREO_RUN_EXHAUSTIVE_TESTS=1 pytest tests/test_credential_guard_product.py -m slow

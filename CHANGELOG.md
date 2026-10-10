@@ -146,7 +146,8 @@
 - CI: the whole-product credential-guard enumeration
   (`tests/test_credential_guard_product.py`), which the per-PR `test-slow` job
   leaves out for its two-hour run time, now runs nightly and on demand in a new
-  `credential-guard-sweep.yml` workflow that opens an issue when it fails (#808).
+  `credential-guard-sweep.yml` workflow that opens an issue when it fails or
+  times out (#808).
 - **A built-in tool's `inputSchema` is now compiled on that tool's first call
   instead of at server start** (#807), so a fault in one is found there. What
   a fault costs depends on which of three kinds it is, and for calls, on the

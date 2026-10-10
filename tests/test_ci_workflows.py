@@ -144,3 +144,20 @@ def test_per_pr_slow_lane_still_leaves_the_product_file_out(
     assert (
         f"--ignore={_PRODUCT_FILE}" in step["run"]
     ), "the per-PR slow lane would run the two-hour sweep on every pull request"
+
+
+def test_sweep_reports_a_timeout_as_well_as_a_failure(
+    sweep: dict[str, Any],
+) -> None:
+    # A job that hits timeout-minutes ends as cancelled, not failed, so a
+    # failure()-only report would stay silent on the sweep that ran too long.
+    reporters = [
+        step
+        for step in _steps(sweep, _SWEEP_JOB)
+        if "gh issue" in str(step.get("run", ""))
+    ]
+    assert len(reporters) == 1, "expected one step that reports to an issue"
+    condition = re.sub(r"\s+", "", str(reporters[0].get("if", "")))
+    assert condition == "failure()||cancelled()"
+    env = str(reporters[0].get("env", {}))
+    assert "job.status" in env, "the report does not say failed or cancelled"

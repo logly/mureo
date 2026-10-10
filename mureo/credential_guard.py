@@ -199,11 +199,11 @@ Two guards are installed:
     leading dot, a substitution, a substitution holding a space, a
     backtick substitution, an arithmetic expansion} x {how deeply it
     nests: 0, 1, 2, 3, 5, 8, 9, 11, 14, 20} x {where}.  3098 members.
-    ``pytest -m slow`` runs all of them, executing each in a throwaway
-    ``HOME`` to confirm it really does read the marker file and then
-    asking the guard: all 3098 read it, all 3098 deny.  The default run
-    checks an evenly-strided sample of 135, so every commit defends the
-    property even without the slow pass;
+    ``MUREO_RUN_EXHAUSTIVE_TESTS=1 pytest -m slow`` runs all of them,
+    executing each in a throwaway ``HOME`` to confirm it really does read
+    the marker file and then asking the guard: all 3098 read it, all 3098
+    deny.  The default run checks an evenly-strided sample of 135, so
+    every commit defends the property even without the slow pass;
   - the nesting cliff has its own table: every depth from 1 to 20 with
     two, three and five alternatives per level, 60 cells, run by default.
     Each asserts that the command really reads the marker file *and* that
