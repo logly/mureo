@@ -766,7 +766,8 @@ def set_display(
         path: STATE.json location.
         source: The skill writing this screen (``"daily-check"``). Required
             whenever any section is stated; omitted only for the clear.
-        nav_message: The one operator-facing line (運用ナビ).
+        nav_message: The one operator-facing line (the navigation
+            line, labelled in Japanese in the configure UI).
         highlights: Up to three ``{tone, text}`` chips.
         proposals: ``{title, body, status, date}`` rows.
         breakdown: ``{campaigns: [...], adgroups: [...]}`` — rows of
