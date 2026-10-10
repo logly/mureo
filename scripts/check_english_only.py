@@ -50,8 +50,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Hiragana + Katakana, CJK Extension A, CJK Unified Ideographs, half-width
-# Katakana. Full-width punctuation is deliberately not included: on its own
-# it is not Japanese prose.
+# Katakana. The Katakana block includes the middle dot (U+30FB) and the
+# long-vowel mark (U+30FC), so those two are flagged too. The CJK
+# punctuation block (U+3000-U+303F, e.g. the full stop and brackets) and
+# the full-width ASCII forms (U+FF01-U+FF65) are not included.
 JAPANESE = re.compile("[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff66-\uff9f]")
 
 JA_LITERAL_MARKER = "<!-- ja-literal -->"
