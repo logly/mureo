@@ -8,17 +8,18 @@
   begin and end, and it also reads a quoted string or a here-document body the
   way a program that re-reads it would. That second reading is expanded over the
   inner shell's own words — a space that shell acts on splits the content and
-  dissolves the brace group whose own level holds it, while a space one level
-  deeper, inside a substitution or a nested group, is kept, exactly as it does
-  for bash — and is
+  dissolves any brace group that holds it, while a space that is quoted,
+  escaped, or inside a substitution is kept, exactly as it does for bash — and
+  is
   bounded per word, so ordinary data handed to a program in one quoted argument
   — a JSON array, a dictionary in a `python -c` script — is no longer refused for
   its size, however long, as long as it has a space after each comma, which
   `json.dumps` and every pretty-printer write by default. What is left on the
   deny side there is a run of comma-bearing brace groups packed into one word
   with no space anywhere between them, which a shell re-reading the string would
-  multiply too. What it cannot resolve is refused rather than guessed at, in
-  every reading set, and
+  multiply too, and a group whose space sits inside a group nested in it, which
+  is kept whole although bash would split it. What it cannot resolve is refused
+  rather than guessed at, in every reading set, and
   each refusal states its own ground instead of claiming the command can reach
   the credentials directory. The over-blocks this costs are listed in the module
   docstring of `mureo/credential_guard.py` and pinned by tests.

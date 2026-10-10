@@ -71,7 +71,9 @@ Two guards are installed:
     whose candidates pass the total — a run a shell re-reading the string
     would multiply too.  The first set spends its budget over all its
     readings at once; the second spends a bounded budget per word, over the
-    inner shell's own words, and counts only the words that hold a group;
+    inner shell's own words, and counts only the words that hold a group,
+    and it keeps whole a group whose space sits in a group nested in it,
+    which bash would split;
   - an expansion whose body *ends* on a prefix of the directory's name,
     which is what reading the result as text of unknown extent costs.  A
     bare ``.`` is such a prefix, so ``echo $(ls .)`` denies although what it

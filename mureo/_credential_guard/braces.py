@@ -86,9 +86,9 @@ with a shell of its own, and that shell splits the content this shell left
 quoted on the spaces in it, and will not expand a brace group that holds an
 unquoted space at the group's own level.  So the spaces the inner shell acts
 on split the words here too, a group with such a space in it dissolves
-exactly as it does for bash, and a space that is quoted, escaped, or one
-level deeper -- inside a command or parameter substitution, a backtick, or a
-nested group -- stays in the word and leaves the group able to expand.  Each
+exactly as it does for bash, and a space that is quoted, escaped, or inside a
+command substitution, a backtick, or a parameter expansion stays in the word
+and leaves the group able to expand.  Each
 word gets sixteen passes, at most 1,024 distinct strings in
 a pass and 1,000,000 bytes; the words that hold a group share a total of
 4,096 strings, over every reading of the command, and a word that holds none
@@ -125,7 +125,9 @@ acts on puts the groups in different words, or dissolves a group that holds
 one, and costs almost nothing — which is why formatted JSON, with a space
 after each comma, is allowed whatever its length.  The shape that is left is
 a run of comma-bearing groups packed into one word with no space anywhere
-between them, which a shell re-reading the string would multiply too.
+between them, which a shell re-reading the string would multiply too.  A
+space inside a group nested in another is not taken as a boundary, so that
+outer group is kept whole and judged although bash would split it.
 Quoted braces are the only ones that reach the second set at all, and a
 group with no comma and no ``..`` is literal to bash and to ``fe``.
 """
@@ -350,12 +352,14 @@ _EXPAND = (
     # subshell; backtick toggles a backtick substitution; brace counts open
     # `{`. A space is promoted only when unquoted, at paren depth 0, with no
     # open backtick, and at brace depth 0 or 1. This matches what dissolves a
-    # brace group in bash: a space at the group's own level makes it literal
-    # (``{a, b}``), but a space one level deeper -- inside `$( )`, `` ` ` ``,
-    # `${ }`, or a nested group -- is kept, so the group still expands and can
-    # still reach a protected name (``{o,$(echo a b)}``, ``{o,${x:-a b}}``,
-    # ``{o,{a b}}`` all reach ``.mureo``). A protected name holds no space, so a
-    # promoted space can never split one apart. Backticks are left live in the
+    # brace group in bash: an unquoted space makes it literal (``{a, b}``),
+    # but a space that is quoted, escaped, or inside `$( )`, `` ` ` `` or
+    # `${ }` is kept, so the group still expands and can still reach a
+    # protected name. The brace count is there for `${ }`; it also holds a
+    # space inside a plain nested group, which bash would split, so such a
+    # group is kept whole -- a refusal on the safe side. A protected name holds
+    # no space, so a promoted space can never split one apart. Backticks are
+    # left live in the
     # second reading (see `nz`) so the toggle can see them; dollar forms keep
     # their `*/` sigil and are found by the paren or brace that follows it.
     "iq=lambda a,c: ((0,2)[a[0]-3],)+a[1:] if a[0]>2"
