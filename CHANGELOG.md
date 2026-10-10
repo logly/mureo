@@ -11,6 +11,11 @@
   `README.ja.md` (both places, minus that marker),
   `docs/getting-started.ja.md`, `docs/byod.ja.md` (both places). English
   references are unchanged.
+- **The BYOD step links in `docs/getting-started.md` and
+  `docs/getting-started.ja.md` now land on their sections.** They pointed at
+  `#google-ads-setup` / `#meta-ads-setup`, anchors that exist in neither
+  `docs/byod.md` nor `docs/byod.ja.md`; they now target the Step 2a / Step 2b
+  headings of each language's BYOD guide.
 - **Both language versions gained the operational facts that were missing
   from the console walkthrough.** (1) The OAuth client is created under
   **Google Auth Platform > Clients**, the path Google's own help documents;

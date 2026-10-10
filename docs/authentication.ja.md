@@ -141,7 +141,7 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 
 残りは mureo が取得します:
 
-- **`refresh_token` (Google) と、Meta のアクセストークンである長期トークン（Long-Lived Token）は mureo が取得します。** 上記の組を `mureo configure` のブラウザ画面か `mureo auth setup` に入力すれば、mureo が同意フローを実行し、正しいスコープ付きで保存します (`mureo auth setup` は Google の **Client ID** / **Client Secret** と Meta の **App ID** / **App Secret** を入力として受け取ります — `auth_setup.py`)。
+- **`refresh_token` (Google) と、Meta のアクセストークンである長期トークン (Long-Lived Token) は mureo が取得します。** 上記の組を `mureo configure` のブラウザ画面か `mureo auth setup` に入力すれば、mureo が同意フローを実行し、正しいスコープ付きで保存します (`mureo auth setup` は Google の **Client ID** / **Client Secret** と Meta の **App ID** / **App Secret** を入力として受け取ります — `auth_setup.py`)。
 - **`developer_token` (Google) はもう不要です。** Google は 2026-09-09 に developer token の発行を終了しました。保存されていれば mureo は送りますが、API 側は無視し、将来のメジャーバージョンでは拒否される予定です。
 - **`login_customer_id` (Google)** はマネージャーアカウント (MCC) 経由でアカウントに到達する場合だけ関係します。
 - 広告プラットフォーム側で Google Ads が要求するのは、**同意に使う Google アカウントが対象の広告アカウントにアクセス権を持っていること**です。Google Ads のマネージャーアカウント (MCC) は必須ではありません。

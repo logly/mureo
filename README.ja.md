@@ -92,7 +92,7 @@ mureo を Google Ads / Meta Ads API に直接接続します。実際に変更�
 
 接続できたら、運用に使うディレクトリを Claude Code で開き、最初に `/onboard` を一度実行して `STRATEGY.md`（戦略）と `STATE.json`（状態）を生成してください。戦略に基づく運用は、この2つのファイルがあって初めて動きます。
 
-> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Google Ads API のアクセス申請は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。**数分で mureo がどう動くかが分かるので、Live API のセットアップに踏み込むかどうかはそれから判断すれば大丈夫です。
+> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Google Ads API のアクセス申請は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。** 数分で mureo がどう動くかが分かるので、Live API のセットアップに踏み込むかどうかはそれから判断すれば大丈夫です。
 
 ### どちらのモードが合うか
 
