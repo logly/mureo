@@ -221,7 +221,7 @@
     }
   }
 
-  /** A bucket's label as an axis tick: `2026-08-01` → `8/01`, `2026-08` → `8月`. */
+  /** A bucket's label as an axis tick: `2026-08-01` → `8/01`, `2026-08` → `M8` (localized via `dashboard.reports_chart_month`). */
   function axisLabel(label) {
     const day = /^\d{4}-(\d{2})-(\d{2})$/.exec(label);
     if (day) return String(Number(day[1])) + "/" + day[2];

@@ -167,6 +167,26 @@ class TestWebComments:
         assert scan_file("mureo/_data/web/app.html", text) == []
 
 
+class TestJavaScriptComments:
+    JS = "mureo/_data/web/app.js"
+
+    def test_line_start_comment_is_flagged(self) -> None:
+        text = f"const a = 1;\n  // {JA}\n// English\n"
+        assert _lines(scan_file(self.JS, text)) == [2]
+
+    def test_block_comment_is_flagged(self) -> None:
+        text = f"/** {JA} */\nfunction f() {{}}\n/*\n * ok\n * {JA}\n */\n"
+        assert _lines(scan_file(self.JS, text)) == [1, 5]
+
+    def test_url_in_a_string_on_a_code_line_is_not_flagged(self) -> None:
+        text = f'const url = "https://example.com/{JA}";\nlabel("{JA}");\n'
+        assert scan_file(self.JS, text) == []
+
+    def test_test_tree_is_scanned_the_same_way(self) -> None:
+        text = f'test.it("{JA}", () => {{\n  // {JA}\n}});\n'
+        assert _lines(scan_file("tests/js/x.test.js", text)) == [2]
+
+
 class TestFileSet:
     @pytest.mark.parametrize(
         "path",
@@ -182,6 +202,8 @@ class TestFileSet:
             "mureo/_data/skills/learn/SKILL.md",
             "mureo/_data/web/app.css",
             "mureo/_data/web/app.html",
+            "mureo/_data/web/app.js",
+            "tests/js/reports_format.test.js",
         ],
     )
     def test_shipped_files_are_scanned(self, path: str) -> None:
@@ -193,7 +215,9 @@ class TestFileSet:
             "README.ja.md",
             "docs/byod.ja.md",
             "docs/sub/deep.ja.md",
-            "mureo/_data/web/app.js",
+            "scripts/sheet-template/google-ads-script.js",
+            "tests/helper.js",
+            "other/app.js",
             "pyproject.toml",
             "other/notes.md",
             "other/site.css",

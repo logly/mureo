@@ -691,7 +691,7 @@ test.describe("the band's colours are tokens", function () {
     });
   });
 
-  test.it("is painted from the 運用ナビ banner's own tokens", function () {
+  test.it("is painted from the navigation banner's own tokens", function () {
     // The staff review's answer to "the list's blue is not the detail's":
     // the two bands are the same object on two screens, so they are painted
     // from the SAME two tokens rather than from two blues that agree today.

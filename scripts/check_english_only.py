@@ -21,6 +21,11 @@ What is flagged:
   carries the Japanese trigger phrases a skill fires on (#396).
 * CSS and HTML under ``mureo/``: Japanese inside a ``/* */`` or ``<!-- -->``
   comment. What renders (rules, markup, text) is not checked.
+* JavaScript under ``mureo/`` and ``tests/js/``: Japanese inside a ``/* */``
+  block, or in a ``//`` comment that starts its line (leading whitespace
+  allowed). Limitation: a ``//`` comment AFTER code on the same line is not
+  checked, because telling it apart from ``//`` inside a string (a URL, say)
+  needs a JavaScript tokenizer. String literals are not checked.
 
 Usage::
 
@@ -55,10 +60,17 @@ _PYTHON_DIRS = ("mureo/", "tests/", "scripts/")
 _MARKDOWN_DIRS = ("docs/",)
 _SKILL_DIRS = ("skills/", "mureo/_data/skills/")
 _EXCLUDED_SUFFIXES = (".ja.md",)
-_WEB_DIRS = ("mureo/",)
-_WEB_COMMENTS = {
-    ".css": re.compile(r"/\*.*?\*/", re.DOTALL),
-    ".html": re.compile(r"<!--.*?-->", re.DOTALL),
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+_LINE_START_COMMENT = re.compile(r"^[ \t]*//.*$", re.MULTILINE)
+_WEB_COMMENTS: dict[str, tuple[re.Pattern[str], ...]] = {
+    ".css": (_BLOCK_COMMENT,),
+    ".html": (re.compile(r"<!--.*?-->", re.DOTALL),),
+    ".js": (_BLOCK_COMMENT, _LINE_START_COMMENT),
+}
+_WEB_DIRS: dict[str, tuple[str, ...]] = {
+    ".css": ("mureo/",),
+    ".html": ("mureo/",),
+    ".js": ("mureo/", "tests/js/"),
 }
 
 _FRONTMATTER_DELIMITER = "---"
@@ -83,8 +95,9 @@ def is_scanned(path: str) -> bool:
         return path.startswith(_PYTHON_DIRS)
     if path.endswith(".md"):
         return "/" not in path or path.startswith(_MARKDOWN_DIRS)
-    if path.endswith(tuple(_WEB_COMMENTS)):
-        return path.startswith(_WEB_DIRS)
+    suffix = Path(path).suffix
+    if suffix in _WEB_DIRS:
+        return path.startswith(_WEB_DIRS[suffix])
     return False
 
 
@@ -188,20 +201,21 @@ def scan_markdown(text: str, exempt: frozenset[int] = frozenset()) -> list[Hit]:
     return hits
 
 
-def scan_comments(text: str, comment: re.Pattern[str]) -> list[Hit]:
-    """Return ``(line, text)`` for Japanese inside ``comment`` matches."""
+def scan_comments(text: str, comments: tuple[re.Pattern[str], ...]) -> list[Hit]:
+    """Return ``(line, text)`` for Japanese inside any ``comments`` match."""
     lines = text.splitlines()
     hits: set[Hit] = set()
-    for match in comment.finditer(text):
-        first = text.count("\n", 0, match.start()) + 1
-        for offset, segment in enumerate(match.group().split("\n")):
-            if JAPANESE.search(segment):
-                hits.add((first + offset, lines[first + offset - 1]))
+    for comment in comments:
+        for match in comment.finditer(text):
+            first = text.count("\n", 0, match.start()) + 1
+            for offset, segment in enumerate(match.group().split("\n")):
+                if JAPANESE.search(segment):
+                    hits.add((first + offset, lines[first + offset - 1]))
     return sorted(hits)
 
 
 def scan_file(path: str, text: str) -> list[Hit]:
-    """Dispatch on file type: Python, CSS/HTML comments, or markdown."""
+    """Dispatch on file type: Python, CSS/HTML/JS comments, or markdown."""
     suffix = Path(path).suffix
     if suffix == ".py":
         return scan_python(text)
