@@ -68,7 +68,7 @@ Create `~/.mureo/credentials.json` with the following structure:
 }
 ```
 
-`developer_token` is optional (legacy): Google stopped issuing developer tokens on 2026-09-09; sent if present, ignored by the API.
+`developer_token` is optional (legacy): Google stopped issuing developer tokens on 2026-09-09; sent if present, ignored by the API — and a future major version of the API is to reject it.
 
 You can include only the platforms you use. For example, if you only use Google Ads, the `meta_ads` section can be omitted.
 
@@ -130,21 +130,77 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 
 **Resolution order**: credentials.json takes priority. Environment variables are only checked if the corresponding section in credentials.json is missing or incomplete.
 
+## What You Create by Hand
+
+Two things, and only two, are created by hand in a platform console:
+
+- **Google** — an **OAuth client**, which gives you a `client_id` and a `client_secret`.
+- **Meta** — an **app**, which gives you an `app_id` and an `app_secret`.
+
+Everything else is obtained for you:
+
+- **`refresh_token` (Google) and the access token (Meta's Long-Lived Token) are obtained by mureo.** Enter the pair above in the `mureo configure` browser UI, or in `mureo auth setup`, and mureo runs the consent flow and stores the result with the right scopes. (`mureo auth setup` takes the Google **Client ID** / **Client Secret** and the Meta **App ID** / **App Secret** as its inputs — `auth_setup.py`.)
+- **`developer_token` (Google) is no longer needed.** Google stopped issuing developer tokens on 2026-09-09; mureo sends one if it is stored, the API ignores it, and a future major version of the API is to reject it.
+- **`login_customer_id` (Google)** only applies when you reach the account through a manager account (MCC).
+- On the ad-platform side, what Google Ads requires is that **the Google account you consent with has access to the target ad account**. A Google Ads manager account (MCC) is not required.
+
+One thing the OAuth client does **not** give you: **on the Google side, creating the OAuth client is not enough to touch a production ad account. The Cloud project needs an access level, and that is a separate application.** Enabling the API grants **Test** access, which reaches test accounts only. Production accounts need at least **Explorer**, which you apply for from the Google Ads API **Overview** page and which does not require brand verification — see [Access levels](#access-levels) below.
+
 ## Obtaining Google Ads Credentials
 
 ### 1. Google Ads API access (Google Cloud Console)
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project (or select an existing one).
-2. Enable the **Google Ads API** under **APIs & Services > Library**.
-3. On the Google Ads API **Overview** page, sign up for API access. Enabling the API grants **Test** access (test accounts only) right away; **Basic** access (production accounts) needs brand verification and an application on the same page, which Google may approve automatically. No Google Ads manager account is required.
-4. The access level belongs to **this project** -- every OAuth client you create in it inherits the project's access level.
+2. Enable the **Google Ads API** under **APIs & Services > Library**. Enabling it grants the project **Test** access.
+3. On the Google Ads API **Overview** page, apply for the access level you actually need — see the table below. No Google Ads manager account is required.
+4. The access level belongs to **this project** -- every OAuth client you create in it inherits the project's access level. Since the 2026-09 migration it is a property of the Cloud project that issued the OAuth credentials, not of a developer token.
+
+Applying for and managing API access happens on the Google Ads API **Overview** page in the **Google Cloud Console**. The API Center page of a Google Ads manager account no longer processes access applications; you can still open it to look up your historical developer details, and Google says it will completely sunset in the future ([Developer token — A new API access management experience](https://developers.google.com/google-ads/api/docs/get-started/dev-token#new-api-access-management)).
+
+#### Access levels
+
+| Level | Production accounts | Daily operations limit | How you reach it |
+|---|---|---|---|
+| **Test** | No — test accounts only | 15,000 | Granted automatically the moment you enable the Google Ads API |
+| **Explorer** | **Yes** | **2,880** production / 15,000 test | Apply from the Google Ads API **Overview** page. **Brand verification is not required** |
+| **Basic** | Yes | 15,000 (production and test) | **Brand verification of the Cloud project is a prerequisite**; then apply from the **Overview** page |
+| **Standard** | Yes | Unlimited | **Brand verification of the Cloud project is a prerequisite**, plus a manual audit — you have to demonstrate compliance with the Required Minimum Functionality |
+
+**Explorer is where most people should start.** It lets the project make Google Ads API requests against both test accounts and production accounts, and Google describes it as sufficient for most developers to get started with the API and build basic automation. It does restrict account creation, user management, planning tools and billing services. For **Basic**, brand verification of the Cloud project comes first; Google may then upgrade the project automatically once you submit the application. A new **Standard** application needs brand verification too, on top of the manual audit ([Developer token — Brand verification is required for Basic and Standard access](https://developers.google.com/google-ads/api/docs/get-started/dev-token#brand-verification)).
+
+**Free Trial and suspended billing.** Google lists as a known issue that Explorer and Basic applications are rejected when the Cloud project is on the Google Cloud Free Trial program or its billing account is suspended or disabled, even after brand verification; as of 2026-10 Google says it has identified the root cause and is working on a fix. Google's workarounds are to upgrade the project to a paid tier, to remove billing from the project (which turns off every other paid Google Cloud service running in it), or to apply from a different project ([Developer token — Known issues](https://developers.google.com/google-ads/api/docs/get-started/dev-token#known-issues)).
+
+Official references:
+[Access levels](https://developers.google.com/google-ads/api/docs/access-levels),
+[API policy — access levels](https://developers.google.com/google-ads/api/docs/api-policy/access-levels),
+[Developer token](https://developers.google.com/google-ads/api/docs/get-started/dev-token).
 
 ### 2. OAuth 2.0 Client ID and Secret
 
-1. In the **same project**, navigate to **APIs & Services > Credentials**.
-2. Click **Create Credentials > OAuth client ID**.
+1. In the **same project**, navigate to **Google Auth Platform > Clients** ([Google Cloud Help — Manage OAuth Clients](https://support.google.com/cloud/answer/15549257)).
+2. Click **Create client**.
 3. Select **Desktop app** as the application type.
 4. Copy the **Client ID** and **Client Secret**.
+
+> **Leave the publishing status on "Testing" and the refresh token expires in 7 days.**
+> A refresh token issued by a Google Cloud project whose OAuth consent screen is
+> configured for the **External** user type and whose publishing status is **Testing**
+> expires in **7 days** — unless the scopes being requested are a subset of name,
+> email address and user profile. mureo requests
+> `https://www.googleapis.com/auth/adwords`, which is **not** in that exempt subset,
+> so a project left on Testing needs re-authentication every 7 days. This is the
+> usual cause of "it worked for a while and then the API stopped going through".
+> For production use, set the publishing status to **In production**. The 7-day
+> limit does not apply to the **Internal** user type. Official reference:
+> [Using OAuth 2.0 to Access Google APIs](https://developers.google.com/identity/protocols/oauth2).
+
+> **Refresh tokens are capped at 100 per Google account per OAuth client.**
+> The limit is currently **100** refresh tokens per OAuth 2.0 client ID per Google
+> account. When the limit is reached, creating a new refresh token **invalidates the
+> oldest one without warning**. Re-authenticating through `mureo auth setup` /
+> `mureo configure` mints a new refresh token each time, so repeated re-authentication
+> consumes this budget. Official reference:
+> [Using OAuth 2.0 to Access Google APIs](https://developers.google.com/identity/protocols/oauth2).
 
 ### 3. Refresh Token
 
@@ -180,7 +236,52 @@ Google migrated the access level of every Cloud project that made API calls with
 2. Confirm the developers who work on the integration hold **owner** or **editor** IAM roles on the project.
 3. Leave the old `developer_token` in credentials.json or delete it -- mureo no longer needs it.
 
+Basic access applications that were still pending at the migration were all closed. If yours was one of them, apply again from the **Overview** page.
+
 ## Obtaining Meta Ads Credentials
+
+### App Review — when it is needed, and when it is not
+
+**Running your own ad accounts needs no App Review.** While the app is in
+**development mode**, `ads_management`, `ads_read`, the `pages_*` scopes and
+`leads_retrieval` are offered on the consent screen to any user who holds an
+**admin**, **developer** or **tester** role on that app. So if what you are doing
+is operating your own (your company's) ad accounts with your own app, there is
+nothing to submit for review.
+
+Meta's access levels are drawn by role. Every Business app is automatically
+approved for **Standard Access** to all permissions, and Standard Access
+permissions can only be requested from people who hold a role on the app; per
+Access Levels, an app used only by people with a role on it needs nothing more.
+**Advanced Access** is what you need when the app is to be used by people who
+hold **no role on it**: it is approved per permission through App Review, and
+it requires **Business Verification**
+([Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/)).
+
+**Meta's own pages disagree about Live mode.**
+[App Modes](https://developers.facebook.com/docs/development/build-and-test/app-modes/) says an app in Live mode
+can request only permissions approved through App Review, with consumer apps as
+the exception that relies on access levels; Access Levels states that it applies
+to apps created with an App Type. Before switching the app to Live, check the
+access level of each permission under **App Review > Permissions and Features**
+in your app's dashboard ([Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/)).
+
+References:
+[App Roles](https://developers.facebook.com/docs/development/build-and-test/app-roles),
+[Permissions Reference](https://developers.facebook.com/docs/permissions/),
+[Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/).
+
+**"No App Review needed" is about permissions, not about everything.** The app's
+mode also decides two things described further down this page, so the practical
+split is:
+
+| App mode | App Review | localhost OAuth (browser login) | Creating ad creatives | Credential to use |
+|---|---|---|---|---|
+| **Development** | Not needed | **Works** | **Blocked** — error subcode 1885183 | Long-Lived Token from the browser OAuth flow |
+| **Live** | Role holders: usable at Standard Access per Access Levels; App Modes says otherwise — check your app. Users with no role: Advanced Access — App Review + Business Verification | **Does not work** — rejected on the consent page | Works | **System-user token** — Option C under [Access Token](#access-token) |
+
+So a development-mode app is enough if you are only reading data; publishing a new
+ad creative needs a Live app and the system-user token of Option C.
 
 ### Permissions (OAuth scopes)
 
@@ -232,6 +333,9 @@ curl -X POST "https://graph.facebook.com/v26.0/oauth/access_token" \
 > reason.
 
 **Option C: System User Token (recommended for automation — and required for Live apps)**
+
+For how the app's mode relates to App Review, see **App Review — when it is needed,
+and when it is not** above.
 
 A Business Manager **system-user token** is the most robust Meta credential,
 and for many operators it is the *only* one that works end to end:
@@ -312,6 +416,16 @@ expiry, nor lets you pick an ad account.
 3. Copy the **App ID** and **App Secret**.
 
 These are optional for basic use, but **required for reading a pasted token's expiry** and **required for automatic token refresh** (see below). Meta only describes a token to the app that issued it, so the pair has to belong to that app.
+
+### Redirect URI
+
+mureo's interactive setup tells you to add `http://localhost` to **Valid OAuth
+Redirect URIs** under **Products > Facebook Login > Settings** — this is one of the
+three prerequisites `mureo auth setup` prints (`setup_meta_ads` in
+`mureo/auth_setup.py`). mureo then picks a free port and calls back on
+`http://localhost:<port>/callback` (`_generate_meta_auth_url` and `run_meta_oauth`).
+This describes what mureo's setup instructs; it is not a statement of how Meta matches
+redirect URIs.
 
 ## Meta Ads Token Auto-Refresh
 

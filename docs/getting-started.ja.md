@@ -127,8 +127,8 @@ BYOD は、実際の Google Ads / Meta Ads データを **読み取り専用エ�
 | **Meta Ads** | Ads Manager → Reports → 保存済みレポート (mureo テンプレート) → 2 クリックで XLSX エクスポート | 約 2 分 |
 
 詳細手順:
-- [`docs/byod.ja.md#google-ads-setup`](byod.ja.md#google-ads-setup) — Google Ads テンプレート + 入力手順
-- [`docs/byod.ja.md#meta-ads-setup`](byod.ja.md#meta-ads-setup) — Meta Ads 保存済みレポート (9 言語対応: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
+- [`docs/byod.ja.md#step-2a--google-ads-script-を実行任意`](byod.ja.md#step-2a--google-ads-script-を実行任意) — Google Ads テンプレート + 入力手順
+- [`docs/byod.ja.md#step-2b--meta-広告マネージャからエクスポート任意`](byod.ja.md#step-2b--meta-広告マネージャからエクスポート任意) — Meta Ads 保存済みレポート (9 言語対応: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
 
 エクスポートは独立しているので、片方だけでも開始できます(あとから追加可)。Search Console / GA4 / Amazon Ads / TikTok Ads は BYOD 非対応 — Live API のみ。(Amazon Ads は公式 Amazon Ads MCP をブリッジする方式のため、設計上 BYOD バンドルはありません。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。)
 
@@ -200,7 +200,7 @@ mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャン
 | **Amazon Ads** | Login with Amazon (LwA) アプリの Client ID + (推奨) Refresh Token + Client Secret。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md) |
 | **GA4 / Search Console** | OAuth ログインのみ(developer token 不要、ウィザードが処理) |
 
-> **承認の所要時間**: Cloud Console で Google Ads API を有効化すると Test access(テストアカウントのみ)が即時に付与されます。本番アカウント向けの Basic access はブランド確認と申請が必要で、即時ではありません。待ちの間は BYOD で運用してください。
+> **Google Ads API のアクセスレベル**: Cloud Console で API を有効化すると **Test** access(テストアカウントのみ)が即時に付与されます。**本番アカウントには最低でも Explorer** が必要で、これは Google Ads API の **Overview** ページから申請し、ブランド確認は不要です(本番の操作上限は 1 日 2,880)。**Basic**(1 日 15,000)は、申請の前提として Cloud プロジェクトのブランド確認が必要です。待ちの間は BYOD で運用してください。詳細は [docs/authentication.ja.md — アクセスレベル](authentication.ja.md#アクセスレベル)。
 
 認証情報は `~/.mureo/credentials.json` (権限 `0600`) に保存されます。手動編集不要 — ウィザードが処理します。
 
@@ -318,4 +318,4 @@ Claude Desktop を完全終了 (`⌘Q`) して再起動。設定は完全起動�
 **Code で `/daily-check` 等の slash command が出ない**
 `ls ~/.claude/skills/` を確認 — `daily-check` ディレクトリが無ければ `mureo setup claude-code` を再実行。あるのに slash ピッカーに出ない場合は Claude Code を再起動。
 
-詳細は [docs/byod.ja.md](byod.ja.md), [docs/authentication.md](authentication.md), [docs/cli.md](cli.md) を参照。
+詳細は [docs/byod.ja.md](byod.ja.md), [docs/authentication.ja.md](authentication.ja.md), [docs/cli.md](cli.md) を参照。
