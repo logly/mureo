@@ -21,8 +21,8 @@ Guide me through setting up mureo for a new marketing account.
    `BYOD (N rows, ...)`, that platform is in **BYOD mode** — do NOT prompt
    the user to run `mureo auth setup` for it, do NOT call `mureo auth
    status` to "verify" it (that command reads `credentials.json` directly
-   and ignores BYOD), and do NOT report it as "未認証". For BYOD platforms,
-   announce: "Using BYOD CSV data (N rows, <date range>)."
+   and ignores BYOD), and do NOT report it as "未認証" ("not authenticated"). <!-- ja-literal -->
+   For BYOD platforms, announce: "Using BYOD CSV data (N rows, <date range>)."
 
    For the **remaining** platforms (those showing `not configured` or `real
    API`), then run `mureo auth status` to see which have OAuth credentials.

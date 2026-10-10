@@ -1183,7 +1183,7 @@ async def test_meta_oauth_uses_unified_callback_server() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 14. httpx timeout（WARNING）
+# 14. httpx timeout (WARNING)
 # ---------------------------------------------------------------------------
 
 

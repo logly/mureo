@@ -154,7 +154,7 @@ Pick ONE discipline per generation — mixing them muddies the model.
 Five starting points. Each is a scaffold-filled prompt (English — image models
 respond best to English) plus one line on why it converts for that genre.
 
-**美容 / コスメ (beauty):**
+**美容 / コスメ (beauty):** <!-- ja-literal -->
 > Close-up of a dewy skincare cream swatch on smooth skin, a soft highlight
 > gliding across it + minimal pastel studio surface + macro commercial
 > photography, 100mm, shallow depth of field + soft high-key light, no harsh
@@ -175,7 +175,7 @@ respond best to English) plus one line on why it converts for that genre.
 > frame reads as "this tool is simple," and the clear band carries a value-prop
 > headline.
 
-**不動産 (real estate):**
+**不動産 (real estate):** <!-- ja-literal -->
 > A sunlit modern living room with large windows and warm wood floors, a soft
 > linen sofa + bright airy interior with plants near the window + interior
 > architectural photography, 24mm wide, deep focus + warm golden-hour daylight
@@ -185,7 +185,7 @@ respond best to English) plus one line on why it converts for that genre.
 > *Why it converts:* light and space sell the lifestyle; the half-frame
 > composition suits a split layout carrying price / access / area copy in JP.
 
-**EC・食品 (food / ecommerce):**
+**EC・食品 (food / ecommerce):** <!-- ja-literal -->
 > A stack of fresh handmade dorayaki with red-bean filling on a rustic ceramic
 > plate, faint steam rising + warm cafe tabletop with a soft blurred background +
 > macro food photography, 60mm, shallow depth of field + warm directional window
@@ -193,9 +193,9 @@ respond best to English) plus one line on why it converts for that genre.
 > craving-inducing mood + center-weighted subject with even background texture +
 > glossy natural food sheen, rich detail, no artificial-coloring look.
 > *Why it converts:* appetite appeal is visual first; the warm center-weighted
-> shot leaves clean space for a centered badge (期間限定 / 送料無料) and the price.
+> shot leaves clean space for a centered badge (期間限定 / 送料無料, "limited time" / "free shipping") and the price. <!-- ja-literal -->
 
-**採用 (recruiting):**
+**採用 (recruiting):** <!-- ja-literal -->
 > Three diverse colleagues collaborating around a bright table, candid natural
 > laughter mid-action + modern open office with plants and warm wood + candid
 > editorial lifestyle photography, 35mm, natural depth + soft daylight from large

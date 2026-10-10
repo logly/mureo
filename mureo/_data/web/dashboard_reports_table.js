@@ -374,7 +374,7 @@
     // Two different absences share the "—" glyph and must not be read as the
     // same thing: a withheld CPA (we do not trust the numbers behind it) and
     // one that cannot be divided at all (spend, but zero conversions). The
-    // second gets "算出不可" underneath so the row says which it is.
+    // second gets "Not calculable" underneath so the row says which it is.
     //
     // This caption used to hang off the CPA-vs-target cell, a column that is
     // dropped whenever no client has a target — which is every install today,

@@ -200,9 +200,10 @@ def reads_as_a_report_only_action(name: str) -> bool:
     # NFKC first: a fullwidth `ｄｅｌ` is the same verb as `del` to a reader and
     # a different string to `in`, and the whole guard is a string comparison.
     # It does not make the vocabulary complete — a verb written in another
-    # script (`削除_list`) is not reachable from a list of English words, and
-    # this predicate does not pretend otherwise; see the honesty note above
-    # about what a misread costs on this surface.
+    # script (the Japanese word for "delete" followed by `_list`) is not
+    # reachable from a list of English words, and this predicate does not
+    # pretend otherwise; see the honesty note above about what a misread
+    # costs on this surface.
     lowered = unicodedata.normalize("NFKC", name).lower()
     for segment in lowered.split("-"):
         if any(segment.startswith(prefix) for prefix in READ_ONLY_PREFIXES):

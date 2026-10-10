@@ -1251,7 +1251,7 @@ strictly structured, write-guarded surface per client.
 
 | Field | Shape | Bound |
 |-------|-------|-------|
-| `nav_message` | One operator-facing line (運用ナビ) | ≤80 characters |
+| `nav_message` | One operator-facing line (the navigation line) | ≤80 characters |
 | `highlights` | `[{tone, text}]`, tone `good` / `watch` / `bad` | ≤3 items, text ≤60 |
 | `proposals` | `[{title, body, status, date}]`, status `proposed` / `done` | title ≤30, body ≤80, date ≤12 |
 | `breakdown.campaigns` / `.adgroups` | `[{name, spend, mcpa, target_cpa, state, note}]`, `state` from a closed set (`target_met` / `improving` / `watch` / `worsening` / `no_data`) | note ≤40 |
@@ -1270,7 +1270,7 @@ value no view knows is a value no view draws.
 `stated_values` is where the reported defect lives in miniature. It is a
 chip row — a caption and a figure — and whole sentences were arriving in
 it. A value is therefore a real number, or a string short enough to still
-*be* a value (`"3 of 7"`, `"¥12,400"`, `"未設定"`). A short string is
+*be* a value (`"3 of 7"`, `"¥12,400"`, a "not set" label). A short string is
 allowed rather than refused because a report legitimately states things a
 number cannot carry, and refusing those would push exactly that content
 back into the prose this contract exists to empty. A sentence is refused.
@@ -1283,12 +1283,12 @@ currency. Nothing is rounded: a stated ROAS of `3.4` prints as `3.4`, since
 this chip has no column to fit. A value stated as a **string** passes through
 untouched, unit and all — `"3.4x"` is the operator's own text, and the
 contract's promise is that what was written is what is shown. The chip row
-is headed *Key figures in this report* (レポートの主要数値); it was *Values
+is headed *Key figures in this report* (and the matching Japanese label); it was *Values
 this report stated* until the owner read it as a caveat rather than a
 heading. The LEGACY detail screen's equivalent — the label/value table a
 client with no contract gets — carries the same heading, from its own key
-(`reports_stats_title`, previously *Stated by this report* / 「このレポート
-が記載した値」). Two keys because the two screens are separate surfaces and
+(`reports_stats_title`, previously *Stated by this report* and its Japanese
+equivalent). Two keys because the two screens are separate surfaces and
 one can be re-worded without the other; one wording because they name the
 same thing, and a heading the owner rejected must not survive on the path
 most installs are actually on.
@@ -1449,13 +1449,13 @@ A client that has a display contract gets a different detail view, and the
 order down the page is the argument — a dashboard is numbers and charts
 first, and any text on it has to be short, partial and instantly readable:
 
-1. the **運用ナビ band** — `display.nav_message`, the one line to act on
+1. the **navigation band** — `display.nav_message`, the one line to act on
    today, with the skill that wrote the screen and how long ago beside it.
    The contract is replaced whole by whoever writes it last, so that
    attribution is the one question the content cannot answer about itself;
 2. the **KPI funnel** — spend → impressions → clicks → conversions, each
    carrying the rate it implies (CPM, CPC, CPA);
-3. the **daily chart**, with a metric switch and a 日/週/月 granularity
+3. the **daily chart**, with a metric switch and a day / week / month granularity
    switch, beside the **proposals** panel (`display.proposals`: the open ones
    as cards, plus how many have been carried out this month and in total);
 4. the **campaign** and **ad group** breakdown tables from
@@ -1568,7 +1568,7 @@ mean less. It is absent entirely when every summary arrived, and, like the
 band, it is drawn only for a roster.
 
 The band is painted from `--report-blue` and `--report-on-blue` — the same
-two tokens the detail screen's 運用ナビ banner is painted from, referenced
+two tokens the detail screen's navigation banner is painted from, referenced
 rather than restated. A mureo band is one colour in this product, so a
 recolour moves both screens or neither, in both themes. Nothing on the band
 is dimmed — white on this blue is 4.9:1, which clears AA with nothing above
@@ -1598,7 +1598,7 @@ funnel, the report text, the chart, the proposals panel, the breakdown
 tables, the stated values and the verdict chips, each a rounded, padded block
 with whitespace between it and the next. One section vocabulary instead of
 two: before this, the chart and the proposals were white cards and everything
-else sat bare on the tint. The 運用ナビ band keeps its blue — it is a voice,
+else sat bare on the tint. The navigation band keeps its blue — it is a voice,
 not a section. Which of the two screens is showing is carried by a class on
 the shared container rather than by the markup inside it, so the list
 screen's ground cannot change because the detail view rendered something.
@@ -1781,7 +1781,7 @@ bound below **refuses** an over-long write rather than truncating it.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `nav_message` | `string` | The one operator-facing line at the top of the report (運用ナビ), ≤80 characters |
+| `nav_message` | `string` | The one operator-facing line at the top of the report (the navigation line), ≤80 characters |
 | `highlights` | `array` | ≤3 chips of `{tone, text}` — `tone` is `good` / `watch` / `bad`, `text` ≤60 characters |
 | `proposals` | `array` | `{title ≤30, body ≤80, status, date ≤12}`; `status` is `proposed` or `done`, and only `title` is required. `date` should **prefer** `YYYY-MM-DD` — free text like `"last week"` is allowed, but keep one spelling within a client, since two in one list read as two different kinds of fact. mureo enforces the length and no format: it displays the value and never parses it |
 | `breakdown` | `object` | Two tables, `campaigns` and `adgroups`, each an array of `{name, spend, mcpa, target_cpa, state, note ≤40}`. The three figures are raw numbers and a figure a row does not have is **omitted**, never written as `0` — a row with no conversions has no `mcpa`, and `0` would state a perfect CPA rather than the absence of one. `state` is one of `target_met` / `improving` / `watch` / `worsening` / `no_data` |

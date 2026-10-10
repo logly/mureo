@@ -366,7 +366,7 @@ class _DiagnosticsMixin:
         if rarely_served_kws:
             warnings.append(
                 f"{len(rarely_served_kws)} keywords are rarely being displayed"
-                f"（RARELY_SERVED）: {', '.join(rarely_served_kws[:5])}"
+                f" (RARELY_SERVED): {', '.join(rarely_served_kws[:5])}"
             )
 
         # Keyword duplicate count + duplicate texts

@@ -34,6 +34,14 @@ jobs:
         run: ruff check .
       - name: Black check
         run: black --check .
+      # The repository is public and English-only (#810). Japanese belongs in
+      # the *.ja.md translations and in string literals that are Japanese data;
+      # this fails on Japanese in Python comments/docstrings, markdown prose
+      # and CSS/HTML/JS comments (one exemption: SKILL.md frontmatter
+      # `description:`, #396). Stdlib only, so it does not depend on the
+      # install above.
+      - name: English-only check
+        run: python scripts/check_english_only.py
       # mypy stays scoped to mureo/. `strict = true` on tests/ would mean
       # annotating every fixture and mock; that is a separate decision, not a
       # side effect of turning on the lint gate.
@@ -129,7 +137,8 @@ jobs:
         # against 77 s idle (2 m 37 s on the same machine under load) for all
         # 63 other `slow` tests put together. Giving that one a CI budget is a
         # separate decision from giving the rest one, and it should not be made
-        # by a job that was added for the rest. Tracked in #808.
+        # by a job that was added for the rest. It runs nightly in
+        # credential-guard-sweep.yml (#808).
         run: pytest -m slow --ignore=tests/test_credential_guard_product.py -v
 
   # Windows compatibility guard. mureo has no Windows dev machines, so

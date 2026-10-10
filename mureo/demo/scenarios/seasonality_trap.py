@@ -16,8 +16,9 @@ The "wow" the demo is designed to deliver: mureo identifies that
 Meta-only CPA spiked while Google CPA stayed flat — a tracking-break
 signature, not a bidding problem. It also surfaces a hidden winner
 ("Sample Box - Free Shipping") whose pre-Day-22 results were the
-strongest in the account, and a Google Ads search term
-"敏感肌 化粧水 おすすめ" with CVR ~3.5x the surrounding ad group.
+strongest in the account, and a Japanese Google Ads search term
+("sensitive skin / toner / recommended", the first non-brand entry in
+``_GADS_SEARCH_TERMS``) with CVR ~3.5x the surrounding ad group.
 
 All numbers are deterministic — re-running ``mureo demo init`` on the
 same scenario produces an identical bundle.
@@ -104,8 +105,9 @@ _GADS_AD_GROUPS = (
 )
 
 # Search terms — aggregated, no daily breakdown. Includes the HIDDEN
-# WINNER ("敏感肌 化粧水 おすすめ"): CVR ~11% in an ad group whose
-# average is ~5%, a 2x outlier worth promoting to its own campaign.
+# WINNER ("sensitive skin / toner / recommended", the first non-brand
+# row): CVR ~11% in an ad group whose average is ~5%, a 2x outlier worth
+# promoting to its own campaign.
 _GADS_SEARCH_TERMS = (
     # search_term, campaign, ad_group, impressions, clicks, cost_jpy, conversions
     ("flavorbox", "Brand - Exact", "Brand - Exact", 32000, 7040, 422400, 985),

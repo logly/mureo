@@ -777,6 +777,9 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "minLength": 1,
                     "maxLength": NAV_MESSAGE_MAX_CHARS,
+                    # The parenthesised Japanese is the operators' and the
+                    # mockup's name for this line; kept so the agent can
+                    # match an operator's wording.
                     "description": (
                         "The single operator-facing line at the top of the "
                         "report (運用ナビ): what to do next, in at most "
@@ -912,6 +915,9 @@ TOOLS: list[Tool] = [
                                 ),
                             },
                             "value": {
+                                # The second example is a Japanese "not set"
+                                # label: a short Japanese string is a valid
+                                # value, not prose.
                                 "description": (
                                     "A raw number, or a string of at most "
                                     f"{STATED_VALUE_MAX_CHARS} characters "

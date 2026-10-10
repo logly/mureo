@@ -846,8 +846,9 @@ test.describe("the total follows the filter", function () {
 test.describe("card KPI labels do not break mid-word", function () {
   test.it("uses the short conversions label inside a client card", async function () {
     // A card cell is a third of a card wide. Japanese has no spaces, so the
-    // browser wrapped the long name wherever it liked — "コンバージョ / ン",
-    // which reads as a typo rather than as a wrap.
+    // browser wrapped the long name wherever it liked — the Japanese
+    // "Conversions" lost its last character to a second line, which reads
+    // as a typo rather than as a wrap.
     const page = await openRoster();
     viewButton(page, "cards").click();
     await settle();

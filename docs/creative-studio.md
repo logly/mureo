@@ -1,6 +1,6 @@
 # Creative Studio
 
-> [日本語版](creative-studio.ja.md)
+> [日本語版](creative-studio.ja.md) <!-- ja-literal -->
 
 Generate **creator-quality ad creatives** — text-free key visuals plus fully
 composed banners — from a strategy-grounded brief, without leaving your ad-ops

@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://mureo.io">Website</a> ·
   <a href="https://mureo.jp">Commercial edition</a> ·
-  <a href="README.ja.md">日本語</a>
+  <a href="README.ja.md">日本語</a> <!-- ja-literal -->
 </p>
 
 <p align="center">

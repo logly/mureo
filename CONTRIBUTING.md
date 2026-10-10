@@ -136,6 +136,20 @@ The `test-slow` CI job runs exactly that on one Python version. `pytest -m slow`
 without the variable is a no-op by design — the marker alone says which tests
 they are, the variable says you meant it.
 
+One of them is left out of that job: `tests/test_credential_guard_product.py`,
+the whole-product credential-guard enumeration, measured 1 h 56 m on a developer
+machine (against 77 s for all the others together), which no per-PR job can
+carry. The `credential-guard-sweep.yml` workflow runs it nightly instead, and can
+be started by hand from the Actions tab (`workflow_dispatch`) — do that after
+changing the guard rather than waiting for the night. A sweep that fails, times
+out or is cancelled opens an issue labelled `guard-sweep`, or comments on the one
+already open, with the job status (`failure` or `cancelled`) and a link to the
+run; the run's `sweep.log` artifact holds the full output. To run it locally:
+
+```bash
+MUREO_RUN_EXHAUSTIVE_TESTS=1 pytest tests/test_credential_guard_product.py -m slow
+```
+
 ### Browser Assets
 
 The configure UI in `mureo/_data/web/` ships as plain `<script>`-loaded
@@ -282,6 +296,10 @@ Configuration is in `pyproject.toml`:
 ### No Hardcoded Secrets
 
 Never commit credentials, API keys, or tokens. Use environment variables or `~/.mureo/credentials.json`.
+
+### Repository Language
+
+The repository is English: code comments, docstrings, docs, skills, tests, commit messages, issues and PRs. Japanese belongs in two places only — the `*.ja.md` translations (`README.ja.md`, `docs/*.ja.md`) and string literals that are Japanese data, such as ad-text samples, the Japanese column headers a report parser matches on, a validator's character classes, or the `ja` entries of a per-locale label table. When a markdown line outside a code fence has to carry Japanese on purpose (a language-switch link, a literal UI string, an example of operator input), end that line with `<!-- ja-literal -->` and give the English meaning beside it. The checker does not look at identifiers, and Japanese test function names remain (about 350 in 8 test files; tracked separately). The one exemption is the `description:` key in a `SKILL.md` frontmatter: it carries the Japanese trigger phrases a skill fires on when an operator asks in Japanese, and `tests/test_skill_ja_triggers.py` requires them (#396). `python scripts/check_english_only.py` enforces this in CI (Python comments and docstrings, markdown prose, CSS/HTML comments under `mureo/`, and JavaScript comments under `mureo/` and `tests/js/` — `/* */` blocks and `//` comments that start a line; a `//` comment after code on the same line is not checked, so keep those English yourself); `--list` prints the files it scans.
 
 ## Pull Request Guidelines
 
