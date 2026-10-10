@@ -157,7 +157,7 @@ OAuth クライアントだけでは足りないものが 1 つあります: **G
 3. Google Ads API の **Overview** ページから、実際に必要なアクセスレベルを申請する (下の表を参照)。Google Ads のマネージャーアカウントは不要。
 4. アクセスレベルは**このプロジェクト**に属する。プロジェクト内で作る OAuth クライアントはすべてプロジェクトのアクセスレベルを継承する。2026-09 の移行以降、アクセスレベルは developer token ではなく、OAuth 認証情報を発行した Cloud プロジェクトの属性である。
 
-アクセス管理とブランド確認はどちらも **Google Cloud Console** で行います。旧 API Center は廃止されました。
+API アクセスの申請と管理は、**Google Cloud Console** の Google Ads API **Overview** ページで行います。Google Ads マネージャーアカウントの API Center ページはアクセス申請をもう処理しません。過去の開発者情報を確認するために開くことはまだできますが、Google は将来完全に廃止するとしています ([Developer token — A new API access management experience](https://developers.google.com/google-ads/api/docs/get-started/dev-token#new-api-access-management))。
 
 #### アクセスレベル
 
@@ -166,9 +166,11 @@ OAuth クライアントだけでは足りないものが 1 つあります: **G
 | **Test** | 不可 — テストアカウントのみ | 15,000 | Google Ads API を有効化した時点で自動付与 |
 | **Explorer** | **可** | 本番 **2,880** / テスト 15,000 | Google Ads API の **Overview** ページから申請。**ブランド確認は不要** |
 | **Basic** | 可 | 15,000 (本番・テストとも) | **Cloud プロジェクトのブランド確認が前提条件**。そのうえで **Overview** ページから申請 |
-| **Standard** | 可 | 無制限 | 手動監査 — Required Minimum Functionality への準拠を示す必要がある |
+| **Standard** | 可 | 無制限 | **Cloud プロジェクトのブランド確認が前提条件**。加えて手動監査 — Required Minimum Functionality への準拠を示す必要がある |
 
-**まずは Explorer から始めるのが普通です。** Explorer はプロジェクトがテストアカウントと本番アカウントの両方に対して Google Ads API のリクエストを行えるようにするもので、Google はこれを「ほとんどの開発者が API を使い始め、基本的な自動化を組むには十分」と説明しています。ただしアカウント作成・ユーザー管理・プランニングツール・課金サービスは制限されます。**Basic** を取るには、まず Cloud プロジェクトのブランド確認が必要です。そのうえで申請すると、Google がプロジェクトを自動的に Basic へ上げることがあります。
+**まずは Explorer から始めるのが普通です。** Explorer はプロジェクトがテストアカウントと本番アカウントの両方に対して Google Ads API のリクエストを行えるようにするもので、Google はこれを「ほとんどの開発者が API を使い始め、基本的な自動化を組むには十分」と説明しています。ただしアカウント作成・ユーザー管理・プランニングツール・課金サービスは制限されます。**Basic** を取るには、まず Cloud プロジェクトのブランド確認が必要です。そのうえで申請すると、Google がプロジェクトを自動的に Basic へ上げることがあります。**Standard** の新規申請にも、手動監査に加えてブランド確認が必要です ([Developer token — Brand verification is required for Basic and Standard access](https://developers.google.com/google-ads/api/docs/get-started/dev-token#brand-verification))。
+
+**無料トライアルと停止中の請求先アカウント。** Cloud プロジェクトが Google Cloud の無料トライアル中である場合や、請求先アカウントが停止・無効になっている場合は、ブランド確認を済ませていても Explorer / Basic の申請が却下されることを、Google は既知の問題として挙げています。回避策としては、プロジェクトを有料ティアにアップグレードする、プロジェクトから請求先を外す (そのプロジェクトで動いている他の有料 Google Cloud サービスはすべて止まります)、別のプロジェクトから申請する、の 3 つが示されています ([Developer token — Known issues](https://developers.google.com/google-ads/api/docs/get-started/dev-token#known-issues))。
 
 出典:
 [Access levels](https://developers.google.com/google-ads/api/docs/access-levels)、
@@ -177,8 +179,8 @@ OAuth クライアントだけでは足りないものが 1 つあります: **G
 
 ### 2. OAuth 2.0 のクライアント ID とシークレット
 
-1. **同じプロジェクト**で **Google Auth Platform > Clients** を開く。これが現行の導線。旧来の **APIs & Services > Credentials** の導線も今のところ有効で、どちらも同じ OAuth クライアントに到達する ([Google Cloud ヘルプ](https://support.google.com/cloud/answer/15549257))。
-2. **OAuth client ID** を作成する (旧導線では **Create Credentials > OAuth client ID**)。
+1. **同じプロジェクト**で **Google Auth Platform > Clients** を開く ([Google Cloud ヘルプ — Manage OAuth Clients](https://support.google.com/cloud/answer/15549257))。
+2. **Create client** をクリックする。
 3. アプリケーションの種類に **Desktop app** を選ぶ。
 4. **Client ID** と **Client Secret** をコピーする。
 
@@ -248,13 +250,19 @@ Google は、2026-09-09 の前 90 日間に承認済み developer token で API 
 認可画面に出ます。つまり、自分 (自社) の広告アカウントを自分のアプリで運用するだけ
 なら、審査に出すものはありません。
 
-App Review — つまり **Advanced Access** — が必要になるのは、**アプリにロールを持たない
-利用者**にそのアプリを使わせる場合です。ライブモードに切り替えると、認可画面には
-App Review で承認されたものだけが出ます。
+Meta のアクセスレベルはロールで線が引かれています。ビジネスアプリはすべての権限について
+**スタンダードアクセス (Standard Access)** が自動で承認され、スタンダードアクセスの権限は
+アプリにロールを持つ人にしかリクエストできません。したがって、ロールを持つ人だけが使う
+アプリなら、ライブモードかどうかにかかわらずそれ以上は要りません。
+**アドバンスアクセス (Advanced Access)** が必要になるのは、**アプリにロールを持たない人**に
+使わせる場合です。アドバンスアクセスは App Review で権限ごとに承認され、
+**ビジネス認証 (Business Verification)** も必要です
+([Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/))。
 
 出典:
 [App Roles](https://developers.facebook.com/docs/development/build-and-test/app-roles)、
-[Permissions Reference](https://developers.facebook.com/docs/permissions/)。
+[Permissions Reference](https://developers.facebook.com/docs/permissions/)、
+[Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/)。
 
 **「App Review は不要」は権限の話であって、すべての話ではありません。** アプリのモードは、
 このページの後ろで説明している 2 つのことも決めるので、実務上の分岐はこうなります:
@@ -262,7 +270,7 @@ App Review で承認されたものだけが出ます。
 | アプリのモード | App Review | localhost の OAuth (ブラウザログイン) | 広告クリエイティブの作成 | 使う認証情報 |
 |---|---|---|---|---|
 | **開発モード** | 不要 | **可** | **不可** — エラー subcode 1885183 | ブラウザ OAuth で取得した Long-Lived Token |
-| **ライブモード** | アプリにロールを持たない利用者に使わせる場合のみ必要 | **不可** — 同意画面で拒否される | 可 | **システムユーザートークン** — [アクセストークン](#アクセストークン) 節の選択肢 C |
+| **ライブモード** | アプリにロールを持つ人には不要 (スタンダードアクセス)。ロールを持たない人にはアドバンスアクセス — App Review + ビジネス認証 — が必要 | **不可** — 同意画面で拒否される | 可 | **システムユーザートークン** — [アクセストークン](#アクセストークン) 節の選択肢 C |
 
 つまり、データを読むだけなら開発モードのアプリで足ります。新しい広告クリエイティブを
 公開するには、ライブアプリと選択肢 C のシステムユーザートークンが必要です。
@@ -401,11 +409,13 @@ Graph 呼び出しをしないからです)。ただし 1 フィールドを書�
 
 ### リダイレクト URI
 
-**Products > Facebook Login > Settings** の **Valid OAuth Redirect URIs** に
-`http://localhost` を — ポートなしで — 登録します。mureo は空きポートを自動で選び、
-`http://localhost:<port>/callback` にコールバックします (`mureo/auth_setup.py` の
-`_generate_meta_auth_url` と `run_meta_oauth`。対話セットアップが表示する前提条件も
-この 3 ステップです)。ポート番号を固定で登録する必要はありません。
+mureo の対話セットアップは、**Products > Facebook Login > Settings** の
+**Valid OAuth Redirect URIs** に `http://localhost` を追加するよう案内します。
+`mureo auth setup` が表示する 3 つの前提条件の 1 つです (`mureo/auth_setup.py` の
+`setup_meta_ads`)。そのうえで mureo は空きポートを選び、
+`http://localhost:<port>/callback` にコールバックします (`_generate_meta_auth_url` と
+`run_meta_oauth`)。これは mureo のセットアップの案内であって、Meta がリダイレクト URI を
+どう照合するかの説明ではありません。
 
 ## Meta Ads トークンの自動更新
 

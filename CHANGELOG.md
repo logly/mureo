@@ -13,10 +13,10 @@
   references are unchanged.
 - **Both language versions gained the operational facts that were missing
   from the console walkthrough.** (1) The OAuth client is created under
-  **Google Auth Platform > Clients** today; the guide only had the older
-  **APIs & Services > Credentials** path, so both are now named. (2) A refresh
-  token issued by a project configured for the **External** user type whose
-  publishing status is still **Testing** expires in **7 days** unless the
+  **Google Auth Platform > Clients**, the path Google's own help documents;
+  the guide only had the older **APIs & Services > Credentials** path. (2) A
+  refresh token issued by a project configured for the **External** user type
+  whose publishing status is still **Testing** expires in **7 days** unless the
   requested scopes are a subset of name / email address / user profile —
   `https://www.googleapis.com/auth/adwords` is not, so an install left on
   Testing needs re-authentication weekly. That is the usual cause of "it
@@ -27,12 +27,14 @@
   re-authentication consumes. (4) **App Review is not needed to run your own
   ad accounts**: in development mode the ads / `pages_*` / `leads_retrieval`
   permissions are offered to anyone holding an admin, developer or tester role
-  on the app, and Advanced Access is what you need for users who hold no role.
-  The guide listed the scopes but never said when review enters the picture.
-  (5) `http://localhost` — no port — is what goes in **Valid OAuth Redirect
-  URIs**, because mureo picks a free port and calls back to
-  `http://localhost:<port>/callback`. Each of the five carries its official
-  Google / Meta source link in the prose.
+  on the app; Standard Access covers people with a role on the app whether
+  or not it is Live, and Advanced Access (App Review plus Business
+  Verification) is what you need for users who hold no role. The guide listed
+  the scopes but never said when review enters the picture. (5) mureo's setup
+  has you register `http://localhost` in **Valid OAuth Redirect URIs** and
+  calls back on `http://localhost:<port>/callback` on a free port — stated as
+  mureo's own instruction, not as Meta's matching rule. Items (1) to (4) carry
+  their official Google / Meta source link in the prose.
 - **"What you create by hand" opens the credential sections in both
   languages.** By hand: a Google OAuth client and a Meta app. Everything else
   — the Google `refresh_token`, Meta's Long-Lived Token — mureo obtains from
@@ -70,8 +72,13 @@
   issued the OAuth credentials rather than to a developer token, a future
   major API version is to reject a developer token rather than ignore it,
   Basic applications still pending at the migration were all closed, and
-  access management and brand verification both live in the Google Cloud
-  Console now that the API Center is gone.
+  applying for and managing API access moved to the Google Ads API Overview
+  page in the Google Cloud Console — the API Center page stays reachable for
+  historical developer details until Google sunsets it completely. Also from
+  Google's developer-token page: a new Standard application needs brand
+  verification as well as the manual audit, and Explorer / Basic applications
+  from a project on the Free Trial or with a suspended or disabled billing
+  account are rejected (listed as a known issue, with Google's workarounds).
 
 ## [0.21.3] - 2026-09-25
 

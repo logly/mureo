@@ -155,7 +155,7 @@ One thing the OAuth client does **not** give you: **on the Google side, creating
 3. On the Google Ads API **Overview** page, apply for the access level you actually need — see the table below. No Google Ads manager account is required.
 4. The access level belongs to **this project** -- every OAuth client you create in it inherits the project's access level. Since the 2026-09 migration it is a property of the Cloud project that issued the OAuth credentials, not of a developer token.
 
-Access management and brand verification both happen in the **Google Cloud Console**; the old API Center is gone.
+Applying for and managing API access happens on the Google Ads API **Overview** page in the **Google Cloud Console**. The API Center page of a Google Ads manager account no longer processes access applications; you can still open it to look up your historical developer details, and Google says it will completely sunset in the future ([Developer token — A new API access management experience](https://developers.google.com/google-ads/api/docs/get-started/dev-token#new-api-access-management)).
 
 #### Access levels
 
@@ -164,9 +164,11 @@ Access management and brand verification both happen in the **Google Cloud Conso
 | **Test** | No — test accounts only | 15,000 | Granted automatically the moment you enable the Google Ads API |
 | **Explorer** | **Yes** | **2,880** production / 15,000 test | Apply from the Google Ads API **Overview** page. **Brand verification is not required** |
 | **Basic** | Yes | 15,000 (production and test) | **Brand verification of the Cloud project is a prerequisite**; then apply from the **Overview** page |
-| **Standard** | Yes | Unlimited | Manual audit — you have to demonstrate compliance with the Required Minimum Functionality |
+| **Standard** | Yes | Unlimited | **Brand verification of the Cloud project is a prerequisite**, plus a manual audit — you have to demonstrate compliance with the Required Minimum Functionality |
 
-**Explorer is where most people should start.** It lets the project make Google Ads API requests against both test accounts and production accounts, and Google describes it as sufficient for most developers to get started with the API and build basic automation. It does restrict account creation, user management, planning tools and billing services. For **Basic**, brand verification of the Cloud project comes first; Google may then upgrade the project automatically once you submit the application.
+**Explorer is where most people should start.** It lets the project make Google Ads API requests against both test accounts and production accounts, and Google describes it as sufficient for most developers to get started with the API and build basic automation. It does restrict account creation, user management, planning tools and billing services. For **Basic**, brand verification of the Cloud project comes first; Google may then upgrade the project automatically once you submit the application. A new **Standard** application needs brand verification too, on top of the manual audit ([Developer token — Brand verification is required for Basic and Standard access](https://developers.google.com/google-ads/api/docs/get-started/dev-token#brand-verification)).
+
+**Free Trial and suspended billing.** Google lists as a known issue that Explorer and Basic applications are rejected when the Cloud project is on the Google Cloud Free Trial program or its billing account is suspended or disabled, even after brand verification. Google's workarounds are to upgrade the project to a paid tier, to remove billing from the project (which turns off every other paid Google Cloud service running in it), or to apply from a different project ([Developer token — Known issues](https://developers.google.com/google-ads/api/docs/get-started/dev-token#known-issues)).
 
 Official references:
 [Access levels](https://developers.google.com/google-ads/api/docs/access-levels),
@@ -175,8 +177,8 @@ Official references:
 
 ### 2. OAuth 2.0 Client ID and Secret
 
-1. In the **same project**, navigate to **Google Auth Platform > Clients**. This is the current path; the older **APIs & Services > Credentials** path still works today, and both reach the same OAuth clients ([Google Cloud Help](https://support.google.com/cloud/answer/15549257)).
-2. Create an **OAuth client ID** (on the older path: **Create Credentials > OAuth client ID**).
+1. In the **same project**, navigate to **Google Auth Platform > Clients** ([Google Cloud Help — Manage OAuth Clients](https://support.google.com/cloud/answer/15549257)).
+2. Click **Create client**.
 3. Select **Desktop app** as the application type.
 4. Copy the **Client ID** and **Client Secret**.
 
@@ -247,13 +249,19 @@ Basic access applications that were still pending at the migration were all clos
 is operating your own (your company's) ad accounts with your own app, there is
 nothing to submit for review.
 
-App Review — that is, **Advanced Access** — is what you need when the app is to be
-used by people who hold **no role on it**. Switching the app to live mode leaves only
-the permissions App Review approved on the consent screen.
+Meta's access levels are drawn by role. Every Business app is automatically
+approved for **Standard Access** to all permissions, and Standard Access
+permissions can only be requested from people who hold a role on the app — so
+an app used only by people with a role on it needs nothing more, Live or not.
+**Advanced Access** is what you need when the app is to be used by people who
+hold **no role on it**: it is approved per permission through App Review, and
+it requires **Business Verification**
+([Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/)).
 
 References:
 [App Roles](https://developers.facebook.com/docs/development/build-and-test/app-roles),
-[Permissions Reference](https://developers.facebook.com/docs/permissions/).
+[Permissions Reference](https://developers.facebook.com/docs/permissions/),
+[Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/).
 
 **"No App Review needed" is about permissions, not about everything.** The app's
 mode also decides two things described further down this page, so the practical
@@ -262,7 +270,7 @@ split is:
 | App mode | App Review | localhost OAuth (browser login) | Creating ad creatives | Credential to use |
 |---|---|---|---|---|
 | **Development** | Not needed | **Works** | **Blocked** — error subcode 1885183 | Long-Lived Token from the browser OAuth flow |
-| **Live** | Needed only for users who hold no role on the app | **Does not work** — rejected on the consent page | Works | **System-user token** — Option C under [Access Token](#access-token) |
+| **Live** | Not needed for people who hold a role on the app (Standard Access); users with no role need Advanced Access — App Review + Business Verification | **Does not work** — rejected on the consent page | Works | **System-user token** — Option C under [Access Token](#access-token) |
 
 So a development-mode app is enough if you are only reading data; publishing a new
 ad creative needs a Live app and the system-user token of Option C.
@@ -403,11 +411,13 @@ These are optional for basic use, but **required for reading a pasted token's ex
 
 ### Redirect URI
 
-Under **Products > Facebook Login > Settings**, add `http://localhost` — no port — to
-**Valid OAuth Redirect URIs**. mureo picks a free port automatically and calls back to
-`http://localhost:<port>/callback` (`_generate_meta_auth_url` and `run_meta_oauth` in
-`mureo/auth_setup.py`; the prerequisites the interactive setup prints are these same
-three steps). There is no need to register a fixed port number.
+mureo's interactive setup tells you to add `http://localhost` to **Valid OAuth
+Redirect URIs** under **Products > Facebook Login > Settings** — this is one of the
+three prerequisites `mureo auth setup` prints (`setup_meta_ads` in
+`mureo/auth_setup.py`). mureo then picks a free port and calls back on
+`http://localhost:<port>/callback` (`_generate_meta_auth_url` and `run_meta_oauth`).
+This describes what mureo's setup instructs; it is not a statement of how Meta matches
+redirect URIs.
 
 ## Meta Ads Token Auto-Refresh
 
