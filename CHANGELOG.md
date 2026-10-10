@@ -2,6 +2,32 @@
 
 ### Fixed
 
+- **The credential guard's Bash hook reads a command the way bash does in more
+  places** (#806). It now agrees with bash about which brace groups a command
+  expands and where a here-document body, a shell expansion and a quoted string
+  begin and end, and it also reads a quoted string or a here-document body the
+  way a program that re-reads it would. That second reading is expanded over the
+  inner shell's own words — a space that shell acts on splits the content and
+  dissolves any brace group that holds it, while a space that is quoted,
+  escaped, or inside a substitution is kept, exactly as it does for bash — and
+  is
+  bounded per word, so ordinary data handed to a program in one quoted argument
+  — a JSON array, a dictionary in a `python -c` script — is no longer refused for
+  its size, however long, as long as it has a space after each comma, which
+  `json.dumps` and every pretty-printer write by default. What is left on the
+  deny side there is a run of comma-bearing brace groups packed into one word
+  with no space anywhere between them, which a shell re-reading the string would
+  multiply too, and a group whose space sits inside a group nested in it, which
+  is kept whole although bash would split it. What it cannot resolve is refused
+  rather than guessed at, in every reading set, and
+  each refusal states its own ground instead of claiming the command can reach
+  the credentials directory. The over-blocks this costs are listed in the module
+  docstring of `mureo/credential_guard.py` and pinned by tests.
+- **Both credential-guard hooks read their stdin as bytes** (#806), so a host
+  that sends UTF-8 is read as UTF-8 under every Windows code page; before, a home
+  directory with a non-ASCII name could stop matching the protected path. An
+  empty stdin, and an exception inside a hook, are now refused with reasons of
+  their own.
 - **The MCP server's start no longer spends most of the client's connect budget
   on work no tool call needs** (#807). Against a default MCP connect budget of
   30,000 ms in Claude Code, whether the server came up at all depended on how
@@ -117,6 +143,11 @@
 
 ### Changed
 
+- CI: the whole-product credential-guard enumeration
+  (`tests/test_credential_guard_product.py`), which the per-PR `test-slow` job
+  leaves out for its two-hour run time, now runs nightly and on demand in a new
+  `credential-guard-sweep.yml` workflow that opens an issue when it fails or
+  times out (#808).
 - **Shipped files are English-only, and CI checks it** (#810). The remaining
   Japanese comments, docstrings and markdown prose are translated (Japanese
   data literals stay), and `scripts/check_english_only.py` runs in the lint

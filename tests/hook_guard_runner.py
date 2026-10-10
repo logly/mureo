@@ -76,6 +76,39 @@ def run_guard(
     )
 
 
+def run_guard_bytes(
+    command: str,
+    raw_stdin: bytes,
+    home: Path,
+    env_extra: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a guard command with ``raw_stdin`` sent byte for byte.
+
+    ``run_guard`` sends ``json.dumps`` output, which escapes every non-ASCII
+    character, through a text-mode pipe: what reaches the payload is ASCII
+    whatever the pipe's encoding is.  A host sends UTF-8, so a test about
+    non-ASCII input has to send the bytes a host sends.  ``env_extra`` is how
+    such a test pins the payload's stdin encoding to a code page.  The
+    output is decoded here so the result reads like the other runners'.
+    """
+    code = extract_python_code(command)
+    env = dict(os.environ, HOME=str(home), USERPROFILE=str(home))
+    env.update(env_extra or {})
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        input=raw_stdin,
+        capture_output=True,
+        env=env,
+        timeout=30,
+    )
+    return subprocess.CompletedProcess(
+        proc.args,
+        proc.returncode,
+        proc.stdout.decode("utf-8", errors="replace"),
+        proc.stderr.decode("utf-8", errors="replace"),
+    )
+
+
 def run_guard_in_shell(
     command: str,
     tool_input: dict[str, Any] | None,
