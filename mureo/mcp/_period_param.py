@@ -66,7 +66,7 @@ PERIOD_CONSTANTS: tuple[str, ...] = tuple(
     sorted(SUPPORTED_PERIOD_CONSTANTS, key=_display_rank)
 )
 
-# Pinned to mureo.google_ads._analysis_constants._PERIOD_DAYS by
+# Pinned to mureo.google_ads._date_ranges._PERIOD_DAYS by
 # test_comparison_constants_match_the_comparison_resolver.
 COMPARISON_PERIOD_CONSTANTS: tuple[str, ...] = (
     "LAST_7_DAYS",

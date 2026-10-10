@@ -23,7 +23,7 @@ import pytest
 from mcp.types import TextContent
 
 from mureo.core import clock
-from mureo.google_ads import _analysis_constants
+from mureo.google_ads import _analysis_constants, _date_ranges
 from mureo.google_ads._analysis_constants import (
     _PERIOD_DAYS,
     _get_comparison_date_ranges,
@@ -569,6 +569,7 @@ class TestComparisonWindowResolution:
 
     def test_module_does_not_bind_date_today(self) -> None:
         assert not hasattr(_analysis_constants, "date_today")
+        assert not hasattr(_date_ranges, "date_today")
 
 
 class TestComparisonToolSchemas:

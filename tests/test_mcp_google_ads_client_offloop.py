@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -22,6 +25,57 @@ import pytest
 
 _CUSTOMER_ID = "1234567890"
 _SLOW_BUILD_SECONDS = 0.2
+
+
+def _analytics_fetchers() -> dict[str, Any]:
+    from mureo.analytics.builtin import _delivery_clients, _live_clients
+
+    return {
+        "delivery_series": lambda: _delivery_clients.fetch_google_ads_delivery_series(
+            _CUSTOMER_ID
+        ),
+        "list": lambda: _live_clients.fetch_google_ads_list(_CUSTOMER_ID),
+        "metrics": lambda: _live_clients.fetch_google_ads_metrics(
+            _CUSTOMER_ID, window_days=7
+        ),
+        "per_campaign_metrics": (
+            lambda: _live_clients.fetch_google_ads_per_campaign_metrics(
+                _CUSTOMER_ID, window_days=7
+            )
+        ),
+        "performance_rows": lambda: _live_clients.fetch_google_ads_performance_rows(
+            _CUSTOMER_ID, "LAST_7_DAYS"
+        ),
+    }
+
+
+_ANALYTICS_FETCHERS = (
+    "delivery_series",
+    "list",
+    "metrics",
+    "per_campaign_metrics",
+    "performance_rows",
+)
+
+_BYOD_METRICS_SCRIPT = """
+import asyncio
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from mureo.analytics.builtin import _live_clients
+
+client = MagicMock()
+client.get_performance_report = AsyncMock(return_value=[])
+with patch.object(
+    _live_clients, "_open_google_ads_client", return_value=(client, "123")
+):
+    asyncio.run(_live_clients.fetch_google_ads_metrics("123", window_days=7))
+    asyncio.run(
+        _live_clients.fetch_google_ads_per_campaign_metrics("123", window_days=7)
+    )
+loaded = [m for m in sys.modules if m == "google.ads" or m.startswith("google.ads.")]
+print(f"google.ads modules: {len(loaded)}")
+"""
 
 
 class _RecordingFactory:
@@ -215,11 +269,12 @@ class TestOtherAsyncCallers:
         assert factory.threads[0] is not loop_thread
         assert ticks >= 10
 
-    async def test_analytics_opens_client_off_loop(self) -> None:
-        from mureo.analytics.builtin import _live_clients
-
+    @pytest.mark.parametrize("fetcher", _ANALYTICS_FETCHERS)
+    async def test_analytics_opens_client_off_loop(self, fetcher: str) -> None:
         client = MagicMock()
         client.list_ads = AsyncMock(return_value=[])
+        client.get_performance_report = AsyncMock(return_value=[])
+        client.get_daily_delivery_report = AsyncMock(return_value=[])
         factory = _RecordingFactory(client, delay=_SLOW_BUILD_SECONDS)
         loop_thread = threading.current_thread()
         with (
@@ -232,10 +287,26 @@ class TestOtherAsyncCallers:
             patch("mureo.auth.create_google_ads_client", factory),
         ):
             ticks = await _ticks_while_building(
-                factory, _live_clients.fetch_google_ads_list(_CUSTOMER_ID)
+                factory, _analytics_fetchers()[fetcher]()
             )
         assert factory.threads[0] is not loop_thread
         assert ticks >= 10
+
+    def test_byod_metrics_import_no_sdk(self, tmp_path: Any) -> None:
+        """With a client that needs no SDK (BYOD), the comparison-window
+        helper must not pull the SDK in on the loop either: it is pure date
+        arithmetic, so it lives in an SDK-free module. Run in a child
+        interpreter because this process has the SDK loaded already."""
+        result = subprocess.run(
+            [sys.executable, "-c", _BYOD_METRICS_SCRIPT],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "HOME": str(tmp_path)},
+            timeout=120,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr[-2000:]
+        assert result.stdout.strip().splitlines()[-1] == "google.ads modules: 0"
 
 
 def _sdk_client(customer_id: str) -> MagicMock:
