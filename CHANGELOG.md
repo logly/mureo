@@ -32,9 +32,12 @@
   re-authentication consumes. (4) **App Review is not needed to run your own
   ad accounts**: in development mode the ads / `pages_*` / `leads_retrieval`
   permissions are offered to anyone holding an admin, developer or tester role
-  on the app; Standard Access covers people with a role on the app whether
-  or not it is Live, and Advanced Access (App Review plus Business
-  Verification) is what you need for users who hold no role. The guide listed
+  on the app; Meta's Access Levels page has Standard Access cover people
+  with a role on the app, while its App Modes page says a Live app can
+  request only App-Review-approved permissions, so the guide names the
+  conflict and says to check **App Review > Permissions and Features** before
+  going Live. Advanced Access (App Review plus Business Verification) is what
+  you need for users who hold no role. The guide listed
   the scopes but never said when review enters the picture. (5) mureo's setup
   has you register `http://localhost` in **Valid OAuth Redirect URIs** and
   calls back on `http://localhost:<port>/callback` on a free port — stated as
@@ -83,7 +86,8 @@
   Google's developer-token page: a new Standard application needs brand
   verification as well as the manual audit, and Explorer / Basic applications
   from a project on the Free Trial or with a suspended or disabled billing
-  account are rejected (listed as a known issue, with Google's workarounds).
+  account are rejected (listed as a known issue Google says it is working to
+  fix, with its workarounds).
 
 ## [0.21.3] - 2026-09-25
 

@@ -168,7 +168,7 @@ Applying for and managing API access happens on the Google Ads API **Overview** 
 
 **Explorer is where most people should start.** It lets the project make Google Ads API requests against both test accounts and production accounts, and Google describes it as sufficient for most developers to get started with the API and build basic automation. It does restrict account creation, user management, planning tools and billing services. For **Basic**, brand verification of the Cloud project comes first; Google may then upgrade the project automatically once you submit the application. A new **Standard** application needs brand verification too, on top of the manual audit ([Developer token — Brand verification is required for Basic and Standard access](https://developers.google.com/google-ads/api/docs/get-started/dev-token#brand-verification)).
 
-**Free Trial and suspended billing.** Google lists as a known issue that Explorer and Basic applications are rejected when the Cloud project is on the Google Cloud Free Trial program or its billing account is suspended or disabled, even after brand verification. Google's workarounds are to upgrade the project to a paid tier, to remove billing from the project (which turns off every other paid Google Cloud service running in it), or to apply from a different project ([Developer token — Known issues](https://developers.google.com/google-ads/api/docs/get-started/dev-token#known-issues)).
+**Free Trial and suspended billing.** Google lists as a known issue that Explorer and Basic applications are rejected when the Cloud project is on the Google Cloud Free Trial program or its billing account is suspended or disabled, even after brand verification; as of 2026-10 Google says it has identified the root cause and is working on a fix. Google's workarounds are to upgrade the project to a paid tier, to remove billing from the project (which turns off every other paid Google Cloud service running in it), or to apply from a different project ([Developer token — Known issues](https://developers.google.com/google-ads/api/docs/get-started/dev-token#known-issues)).
 
 Official references:
 [Access levels](https://developers.google.com/google-ads/api/docs/access-levels),
@@ -251,12 +251,20 @@ nothing to submit for review.
 
 Meta's access levels are drawn by role. Every Business app is automatically
 approved for **Standard Access** to all permissions, and Standard Access
-permissions can only be requested from people who hold a role on the app — so
-an app used only by people with a role on it needs nothing more, Live or not.
+permissions can only be requested from people who hold a role on the app; per
+Access Levels, an app used only by people with a role on it needs nothing more.
 **Advanced Access** is what you need when the app is to be used by people who
 hold **no role on it**: it is approved per permission through App Review, and
 it requires **Business Verification**
 ([Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/)).
+
+**Meta's own pages disagree about Live mode.**
+[App Modes](https://developers.facebook.com/docs/development/build-and-test/app-modes/) says an app in Live mode
+can request only permissions approved through App Review, with consumer apps as
+the exception that relies on access levels; Access Levels states that it applies
+to apps created with an App Type. Before switching the app to Live, check the
+access level of each permission under **App Review > Permissions and Features**
+in your app's dashboard ([Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/)).
 
 References:
 [App Roles](https://developers.facebook.com/docs/development/build-and-test/app-roles),
@@ -270,7 +278,7 @@ split is:
 | App mode | App Review | localhost OAuth (browser login) | Creating ad creatives | Credential to use |
 |---|---|---|---|---|
 | **Development** | Not needed | **Works** | **Blocked** — error subcode 1885183 | Long-Lived Token from the browser OAuth flow |
-| **Live** | Not needed for people who hold a role on the app (Standard Access); users with no role need Advanced Access — App Review + Business Verification | **Does not work** — rejected on the consent page | Works | **System-user token** — Option C under [Access Token](#access-token) |
+| **Live** | Role holders: usable at Standard Access per Access Levels; App Modes says otherwise — check your app. Users with no role: Advanced Access — App Review + Business Verification | **Does not work** — rejected on the consent page | Works | **System-user token** — Option C under [Access Token](#access-token) |
 
 So a development-mode app is enough if you are only reading data; publishing a new
 ad creative needs a Live app and the system-user token of Option C.

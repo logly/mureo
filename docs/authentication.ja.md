@@ -170,7 +170,7 @@ API アクセスの申請と管理は、**Google Cloud Console** の Google Ads 
 
 **ほとんどの人は Explorer から始めるべきです。** Explorer はプロジェクトがテストアカウントと本番アカウントの両方に対して Google Ads API のリクエストを行えるようにするもので、Google は、ほとんどの開発者が API を使い始めて基本的な自動化を組むにはこれで十分だと説明しています。ただしアカウント作成・ユーザー管理・プランニングツール・課金サービスは制限されます。**Basic** を取るには、まず Cloud プロジェクトのブランド確認が必要です。そのうえで申請すると、Google がプロジェクトを自動的に Basic へ上げることがあります。**Standard** の新規申請にも、手動監査に加えてブランド確認が必要です ([Developer token — Brand verification is required for Basic and Standard access](https://developers.google.com/google-ads/api/docs/get-started/dev-token#brand-verification))。
 
-**無料トライアルと停止中の請求先アカウント。** Cloud プロジェクトが Google Cloud の無料トライアル中である場合や、請求先アカウントが停止・無効になっている場合は、ブランド確認を済ませていても Explorer / Basic の申請が却下されることを、Google は既知の問題として挙げています。回避策としては、プロジェクトを有料ティアにアップグレードする、プロジェクトから請求先を外す (そのプロジェクトで動いている他の有料 Google Cloud サービスはすべて止まります)、別のプロジェクトから申請する、の 3 つが示されています ([Developer token — Known issues](https://developers.google.com/google-ads/api/docs/get-started/dev-token#known-issues))。
+**無料トライアルと停止中の請求先アカウント。** Cloud プロジェクトが Google Cloud の無料トライアル中である場合や、請求先アカウントが停止・無効になっている場合は、ブランド確認を済ませていても Explorer / Basic の申請が却下されることを、Google は既知の問題として挙げており、2026-10 時点では根本原因を特定して修正に取り組んでいるとしています。回避策としては、プロジェクトを有料ティアにアップグレードする、プロジェクトから請求先を外す (そのプロジェクトで動いている他の有料 Google Cloud サービスはすべて止まります)、別のプロジェクトから申請する、の 3 つが示されています ([Developer token — Known issues](https://developers.google.com/google-ads/api/docs/get-started/dev-token#known-issues))。
 
 出典:
 [Access levels](https://developers.google.com/google-ads/api/docs/access-levels)、
@@ -252,11 +252,19 @@ Google は、2026-09-09 の前 90 日間に承認済み developer token で API 
 
 Meta のアクセスレベルはロールで線が引かれています。ビジネスアプリはすべての権限について
 **スタンダードアクセス (Standard Access)** が自動で承認され、スタンダードアクセスの権限は
-アプリにロールを持つ人にしかリクエストできません。したがって、ロールを持つ人だけが使う
-アプリなら、ライブモードかどうかにかかわらずそれ以上は要りません。
+アプリにロールを持つ人にしかリクエストできません。Access Levels によれば、ロールを持つ
+人だけが使うアプリならそれ以上は要りません。
 **アドバンスアクセス (Advanced Access)** が必要になるのは、**アプリにロールを持たない人**に
 使わせる場合です。アドバンスアクセスは App Review で権限ごとに承認され、
 **ビジネス認証 (Business Verification)** も必要です
+([Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/))。
+
+**ライブモードについては、Meta 自身のページどうしで記述が食い違っています。**
+[App Modes](https://developers.facebook.com/docs/development/build-and-test/app-modes/) は、ライブモードのアプリが
+リクエストできるのは App Review で承認された権限だけだとしており、アクセスレベルに依拠する
+例外は消費者アプリだけです。一方 Access Levels は、App Type を使って作成したアプリに
+適用されると書いています。ライブに切り替える前に、アプリのダッシュボードの
+**App Review > Permissions and Features** で権限ごとのアクセスレベルを確認してください
 ([Access Levels](https://developers.facebook.com/docs/graph-api/overview/access-levels/))。
 
 出典:
@@ -270,7 +278,7 @@ Meta のアクセスレベルはロールで線が引かれています。ビジ
 | アプリのモード | App Review | localhost の OAuth (ブラウザログイン) | 広告クリエイティブの作成 | 使う認証情報 |
 |---|---|---|---|---|
 | **開発モード** | 不要 | **可** | **不可** — エラーサブコード 1885183 | ブラウザ OAuth で取得した長期トークン |
-| **ライブモード** | アプリにロールを持つ人には不要 (スタンダードアクセス)。ロールを持たない人にはアドバンスアクセス — App Review + ビジネス認証 — が必要 | **不可** — 同意画面で拒否される | 可 | **システムユーザートークン** — [アクセストークン](#アクセストークン) 節の選択肢 C |
+| **ライブモード** | ロールを持つ人: Access Levels ではスタンダードアクセスで使えるが、App Modes は異なる記述 — 自分のアプリで確認。ロールを持たない人: アドバンスアクセス — App Review + ビジネス認証 | **不可** — 同意画面で拒否される | 可 | **システムユーザートークン** — [アクセストークン](#アクセストークン) 節の選択肢 C |
 
 つまり、データを読むだけなら開発モードのアプリで足ります。新しい広告クリエイティブを
 公開するには、ライブアプリと選択肢 C のシステムユーザートークンが必要です。
