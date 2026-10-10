@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-10
+
 ### Fixed
 
 - **The first Google Ads tool call no longer stalls the MCP server's event
