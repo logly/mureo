@@ -756,7 +756,7 @@ verdicts you already reached; it never reaches a new one.**
 
 | Field | Shape | Bound |
 |-------|-------|-------|
-| `nav_message` | the one operator-facing line (運用ナビ) | ≤80 characters |
+| `nav_message` | the one operator-facing line (the navigation line) | ≤80 characters |
 | `highlights` | `[{tone: good\|watch\|bad, text}]` | ≤3 items, text ≤60 |
 | `proposals` | `[{title, body, status: proposed\|done, date}]` | title ≤30, body ≤80, date ≤12 |
 | `breakdown.campaigns` / `.adgroups` | `[{name, spend, mcpa, target_cpa, state, note}]`, `state` one of `target_met` / `improving` / `watch` / `worsening` / `no_data` | note ≤40 |
