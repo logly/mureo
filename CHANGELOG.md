@@ -4,12 +4,13 @@
 
 - **`docs/authentication.ja.md` — the authentication guide now exists in
   Japanese.** It was English-only, and `README.ja.md` said so out loud
-  ("（英語）"), so the one document a Japanese operator needs before anything
-  else works was the one they could not read. Full translation, not a summary;
-  commands, field names, environment variables, JSON and URLs stay as they
-  are. The Japanese references now point at it — `README.ja.md` (both places,
-  minus the "（英語）" marker), `docs/getting-started.ja.md`, `docs/byod.ja.md`
-  (both places). English references are unchanged.
+  (the "(English)" marker), so the one document a Japanese operator needs
+  before anything else works was the one they could not read. Full
+  translation, not a summary; commands, field names, environment variables,
+  JSON and URLs stay as they are. The Japanese references now point at it —
+  `README.ja.md` (both places, minus that marker),
+  `docs/getting-started.ja.md`, `docs/byod.ja.md` (both places). English
+  references are unchanged.
 - **Both language versions gained the operational facts that were missing
   from the console walkthrough.** (1) The OAuth client is created under
   **Google Auth Platform > Clients** today; the guide only had the older

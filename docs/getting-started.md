@@ -127,8 +127,8 @@ BYOD lets you run mureo against a **read-only export** of your real Google Ads /
 | **Meta Ads** | Ads Manager → Reports → Saved Report (mureo template) → 2-click XLSX export | ~2 min |
 
 Detailed step-by-step:
-- [`docs/byod.md#google-ads-setup`](byod.md#google-ads-setup) — Google Ads template + filling instructions
-- [`docs/byod.md#meta-ads-setup`](byod.md#meta-ads-setup) — Meta Ads Saved Report (recognized in 9 languages: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
+- [`docs/byod.md#step-2a--run-the-google-ads-script-optional`](byod.md#step-2a--run-the-google-ads-script-optional) — Google Ads template + filling instructions
+- [`docs/byod.md#step-2b--export-from-meta-ads-manager-optional`](byod.md#step-2b--export-from-meta-ads-manager-optional) — Meta Ads Saved Report (recognized in 9 languages: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
 
 The exports are independent — you can start with one platform and add the other later. Search Console, GA4, Amazon Ads, and TikTok Ads are not part of BYOD; they require the Live API path. (Amazon Ads is bridged through the official Amazon Ads MCP and has no BYOD bundle by design — see [`docs/amazon-ads.md`](amazon-ads.md).)
 

@@ -127,8 +127,8 @@ BYOD は、実際の Google Ads / Meta Ads データを **読み取り専用エ�
 | **Meta Ads** | Ads Manager → Reports → 保存済みレポート (mureo テンプレート) → 2 クリックで XLSX エクスポート | 約 2 分 |
 
 詳細手順:
-- [`docs/byod.ja.md#google-ads-setup`](byod.ja.md#google-ads-setup) — Google Ads テンプレート + 入力手順
-- [`docs/byod.ja.md#meta-ads-setup`](byod.ja.md#meta-ads-setup) — Meta Ads 保存済みレポート (9 言語対応: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
+- [`docs/byod.ja.md#step-2a--google-ads-script-を実行任意`](byod.ja.md#step-2a--google-ads-script-を実行任意) — Google Ads テンプレート + 入力手順
+- [`docs/byod.ja.md#step-2b--meta-広告マネージャからエクスポート任意`](byod.ja.md#step-2b--meta-広告マネージャからエクスポート任意) — Meta Ads 保存済みレポート (9 言語対応: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
 
 エクスポートは独立しているので、片方だけでも開始できます(あとから追加可)。Search Console / GA4 / Amazon Ads / TikTok Ads は BYOD 非対応 — Live API のみ。(Amazon Ads は公式 Amazon Ads MCP をブリッジする方式のため、設計上 BYOD バンドルはありません。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。)
 

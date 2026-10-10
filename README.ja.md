@@ -295,7 +295,7 @@ mureo auth check-google    # Google広告の認証情報を表示（マスク済
 mureo auth check-meta      # Meta広告の認証情報を表示（マスク済み）
 ```
 
-スキーマ、環境変数の一覧、ホスト別のセットアップ手順は **[認証ガイド →](docs/authentication.ja.md)**にまとめています。
+スキーマ、環境変数の一覧、ホスト別のセットアップ手順は **[認証ガイド →](docs/authentication.ja.md)** にまとめています。
 
 ### 戦略コンテキスト
 
