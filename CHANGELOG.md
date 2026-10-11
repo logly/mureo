@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-12
+
 ### Added
 
 - **A plugin can run the built-in Google Ads, Search Console and Meta Ads
