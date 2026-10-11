@@ -6,6 +6,7 @@ RSA analysis, B2B optimization, creative, monitoring, and capture.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 from typing import TYPE_CHECKING, Any
@@ -13,6 +14,8 @@ from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
+
+    from mureo.mcp.credential_source import GoogleCredentialSource
 
 from mureo.core.runtime_context import runtime_google_ads_customer_ids
 from mureo.mcp._handlers_google_ads import (
@@ -26,6 +29,7 @@ from mureo.mcp._helpers import (
     _require,
     api_error_handler,
 )
+from mureo.mcp.credential_source import current_google_source
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +79,15 @@ async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
     real-mode branches filter the response to the allowed set, mirroring
     the Search Console sites-list filtering (#375). BYOD rows are local
     CSV labels with no shared-auth reach and stay unfiltered.
+
+    An active credential source (:mod:`mureo.mcp.credential_source`, #821)
+    with a ``google`` entry wins over BYOD mode: both branches then run
+    live against the source's credentials, and both are filtered.
     """
     from mureo.byod.runtime import byod_has
 
-    byod = byod_has("google_ads")
+    google = current_google_source()
+    byod = google is None and byod_has("google_ads")
     if byod or _opt(args, "customer_id"):
         client = await _get_client(args)
         if client is None:
@@ -88,14 +97,34 @@ async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
             result = _filter_accounts_to_allowed(result)
         return _json_result(result)
 
+    accounts = await _discover_accounts(google)
+    if accounts is None:
+        return _no_google_creds()
+    return _json_result(_filter_accounts_to_allowed(accounts))
+
+
+async def _discover_accounts(
+    google: GoogleCredentialSource | None,
+) -> list[dict[str, Any]] | None:
+    """Run the id-free roster discovery; ``None`` when there are no credentials.
+
+    With a source (#821) its credentials and ``google.auth`` object are
+    used and the credentials file is not read.
+    """
     from mureo.auth import load_google_ads_credentials
     from mureo.google_ads import list_accessible_accounts
 
-    creds = load_google_ads_credentials()
+    if google is None:
+        creds = load_google_ads_credentials()
+        if creds is None:
+            return None
+        return await list_accessible_accounts(creds)
+    creds = google.load_credentials()
     if creds is None:
-        return _no_google_creds()
-    accounts = await list_accessible_accounts(creds)
-    return _json_result(_filter_accounts_to_allowed(accounts))
+        return None
+    # oauth_credentials() may block (a token refresh): keep it off the loop
+    oauth = await asyncio.to_thread(google.oauth_credentials, creds)
+    return await list_accessible_accounts(creds, oauth_credentials=oauth)
 
 
 def _filter_accounts_to_allowed(accounts: Any) -> Any:

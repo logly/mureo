@@ -6,6 +6,7 @@ Tool definitions and handler mapping are in tools_search_console.py.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +23,7 @@ from mureo.mcp._helpers import (
     api_error_handler,
     register_client_for_cleanup,
 )
+from mureo.mcp.credential_source import current_google_source
 from mureo.throttle import SEARCH_CONSOLE_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -38,12 +40,27 @@ _throttler = Throttler(SEARCH_CONSOLE_THROTTLE)
 async def _get_client(arguments: dict[str, Any]) -> Any:
     """Load credentials and create a Search Console client.
 
+    An active credential source (:mod:`mureo.mcp.credential_source`, #821)
+    with a ``google`` entry supplies both the credentials and the
+    ``google.auth`` object the client uses; the credentials file is not read.
+
     Returns None on auth error.
     """
-    creds = load_google_ads_credentials()
-    if creds is None:
-        return None
-    client = create_search_console_client(creds, throttler=_throttler)
+    google = current_google_source()
+    if google is not None:
+        creds = google.load_credentials()
+        if creds is None:
+            return None
+        # oauth_credentials() may block (a token refresh): keep it off the loop
+        oauth = await asyncio.to_thread(google.oauth_credentials, creds)
+        client = create_search_console_client(
+            creds, throttler=_throttler, oauth_credentials=oauth
+        )
+    else:
+        creds = load_google_ads_credentials()
+        if creds is None:
+            return None
+        client = create_search_console_client(creds, throttler=_throttler)
     # Close the persistent httpx.AsyncClient after the handler returns so the
     # native server does not leak keep-alive sockets across tool calls.
     register_client_for_cleanup(client)

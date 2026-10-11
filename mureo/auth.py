@@ -24,7 +24,7 @@ import os
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 
@@ -33,6 +33,8 @@ from mureo.fsutil import file_lock, lock_path_for
 from mureo.meta_ads._api_version import OAUTH_TOKEN_URL
 
 if TYPE_CHECKING:
+    from google.auth.credentials import Credentials as GoogleAuthCredentials
+
     from mureo.google_ads import GoogleAdsApiClient
     from mureo.meta_ads import MetaAdsApiClient
     from mureo.search_console import SearchConsoleApiClient
@@ -381,6 +383,8 @@ def create_google_ads_client(
     credentials: GoogleAdsCredentials,
     customer_id: str,
     throttler: Throttler | None = None,
+    *,
+    oauth_credentials: GoogleAuthCredentials | None = None,
 ) -> GoogleAdsApiClient:
     """Create a GoogleAdsApiClient from credentials.
 
@@ -388,6 +392,11 @@ def create_google_ads_client(
         credentials: Google Ads credentials
         customer_id: Target Google Ads account (customer_id)
         throttler: Optional rate-limit throttler
+        oauth_credentials: Optional pre-built ``google.auth`` credentials
+            (#821). When given, the client uses it instead of building an
+            OAuth2 refresh-token credential from ``credentials``;
+            ``developer_token`` and ``login_customer_id`` are still read
+            from ``credentials``.
 
     Returns:
         GoogleAdsApiClient instance
@@ -399,16 +408,20 @@ def create_google_ads_client(
 
     from mureo.google_ads import GoogleAdsApiClient
 
-    oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
-        token=None,
-        refresh_token=credentials.refresh_token,
-        client_id=credentials.client_id,
-        client_secret=credentials.client_secret,
-        token_uri=_TOKEN_URI,
-    )
+    if oauth_credentials is None:
+        oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
+            token=None,
+            refresh_token=credentials.refresh_token,
+            client_id=credentials.client_id,
+            client_secret=credentials.client_secret,
+            token_uri=_TOKEN_URI,
+        )
 
     return GoogleAdsApiClient(
-        credentials=oauth_credentials,
+        # The client is annotated with the OAuth2 subclass; any google.auth
+        # credentials object works at runtime (the SDK only refreshes and
+        # reads the token), which is what an injected one is (#821).
+        credentials=cast("Credentials", oauth_credentials),
         customer_id=customer_id,
         developer_token=credentials.developer_token,
         login_customer_id=credentials.login_customer_id,
@@ -419,6 +432,8 @@ def create_google_ads_client(
 def create_search_console_client(
     credentials: GoogleAdsCredentials,
     throttler: Throttler | None = None,
+    *,
+    oauth_credentials: GoogleAuthCredentials | None = None,
 ) -> SearchConsoleApiClient:
     """Create a SearchConsoleApiClient from Google Ads credentials.
 
@@ -428,6 +443,9 @@ def create_search_console_client(
     Args:
         credentials: Google Ads credentials (reused for OAuth2)
         throttler: Optional rate-limit throttler
+        oauth_credentials: Optional pre-built ``google.auth`` credentials
+            (#821), used instead of building one from ``credentials``. Its
+            scopes are the caller's business.
 
     Returns:
         SearchConsoleApiClient instance
@@ -437,19 +455,21 @@ def create_search_console_client(
 
     from mureo.search_console import SearchConsoleApiClient
 
-    oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
-        token=None,
-        refresh_token=credentials.refresh_token,
-        client_id=credentials.client_id,
-        client_secret=credentials.client_secret,
-        token_uri=_TOKEN_URI,
-        scopes=[
-            "https://www.googleapis.com/auth/webmasters",
-        ],
-    )
+    if oauth_credentials is None:
+        oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
+            token=None,
+            refresh_token=credentials.refresh_token,
+            client_id=credentials.client_id,
+            client_secret=credentials.client_secret,
+            token_uri=_TOKEN_URI,
+            scopes=[
+                "https://www.googleapis.com/auth/webmasters",
+            ],
+        )
 
     return SearchConsoleApiClient(
-        credentials=oauth_credentials,
+        # See create_google_ads_client for why the cast is sound (#821).
+        credentials=cast("Credentials", oauth_credentials),
         throttler=throttler,
     )
 

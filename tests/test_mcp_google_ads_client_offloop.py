@@ -169,7 +169,12 @@ class TestHandlerClientHelper:
             await live_google_ads._get_client({"customer_id": "111-222-3333"})
         factory.assert_called_once()
         assert factory.call_args.args[1] == "111-222-3333"
-        assert factory.call_args.kwargs == {"throttler": live_google_ads._throttler}
+        # Without a credential source (#821) oauth_credentials is the
+        # factory's own default, so the client is built exactly as before.
+        assert factory.call_args.kwargs == {
+            "throttler": live_google_ads._throttler,
+            "oauth_credentials": None,
+        }
 
     async def test_missing_credentials_still_return_none(self, live_google_ads) -> None:
         with (
