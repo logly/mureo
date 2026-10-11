@@ -43,6 +43,11 @@ from mureo.context.state import load_conversion_action_types
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from mureo.mcp.credential_source import (
+        GoogleCredentialSource,
+        MetaCredentialSource,
+    )
+
 
 class NoCredentialsError(RuntimeError):
     """Raised when the platform's credentials are missing.
@@ -160,6 +165,7 @@ def _open_google_ads_client(account_id: str) -> tuple[object, str]:
     from mureo.byod.runtime import byod_has
     from mureo.mcp._client_factory import get_google_ads_client
     from mureo.mcp._handlers_google_ads import _resolve_customer_id
+    from mureo.mcp.credential_source import current_google_source
 
     # Bind the account to the workspace allow-list (#411/#413) before it
     # reaches the client factory; a refusal degrades gracefully (#435).
@@ -168,6 +174,10 @@ def _open_google_ads_client(account_id: str) -> tuple[object, str]:
     except ValueError as exc:
         raise AccountNotAvailableError(str(exc)) from exc
 
+    google = current_google_source()
+    if google is not None:
+        return _google_client_from_source(google, account_id), account_id
+
     if byod_has("google_ads"):
         return get_google_ads_client(creds=None, customer_id=account_id), account_id
 
@@ -175,6 +185,24 @@ def _open_google_ads_client(account_id: str) -> tuple[object, str]:
     if creds is None:
         raise NoCredentialsError("google_ads credentials not configured")
     return get_google_ads_client(creds, account_id), account_id
+
+
+def _google_client_from_source(
+    google: GoogleCredentialSource, account_id: str
+) -> object:
+    """Open a live Google Ads client from an active credential source (#821).
+
+    The source wins over BYOD mode and the credentials file, the same
+    precedence as the MCP handlers; ``None`` from it is "no credentials".
+    """
+    from mureo.auth import create_google_ads_client
+
+    creds = google.load_credentials()
+    if creds is None:
+        raise NoCredentialsError("google_ads credentials not configured")
+    return create_google_ads_client(
+        creds, account_id, oauth_credentials=google.oauth_credentials(creds)
+    )
 
 
 async def fetch_google_ads_metrics(
@@ -564,6 +592,7 @@ async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
         _canonical_meta_account_id,
         _resolve_account_id,
     )
+    from mureo.mcp.credential_source import current_meta_source
 
     # Bind the account to the workspace allow-list (#411/#413) before it
     # reaches the client factory; a refusal degrades gracefully (#435).
@@ -578,6 +607,10 @@ async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     # the client factory, escaping the adapters' graceful handler (#435).
     account_id = _canonical_meta_account_id(account_id)
 
+    meta = current_meta_source()
+    if meta is not None:
+        return _meta_client_from_source(meta, account_id), account_id
+
     if byod_has("meta_ads"):
         return get_meta_ads_client(creds=None, account_id=account_id), account_id
 
@@ -589,6 +622,20 @@ async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     # never turns a working analytics call into an error.
     creds = await refresh_meta_token_if_needed(creds)
     return get_meta_ads_client(creds, account_id), account_id
+
+
+def _meta_client_from_source(meta_ads: MetaCredentialSource, account_id: str) -> object:
+    """Open a live Meta Ads client from an active credential source (#821).
+
+    The source wins over BYOD mode and the credentials file, and owns the
+    token lifecycle, so no refresh is attempted here.
+    """
+    from mureo.auth import create_meta_ads_client
+
+    creds = meta_ads.load_credentials()
+    if creds is None:
+        raise NoCredentialsError("meta_ads credentials not configured")
+    return create_meta_ads_client(creds, account_id)
 
 
 async def fetch_meta_ads_metrics(

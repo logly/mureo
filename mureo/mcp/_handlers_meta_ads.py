@@ -30,6 +30,7 @@ from mureo.mcp._helpers import (
     api_error_handler,
     register_client_for_cleanup,
 )
+from mureo.mcp.credential_source import current_meta_source
 from mureo.throttle import META_ADS_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -112,9 +113,14 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
 
     In BYOD mode, returns a CSV-backed client without any credentials.
 
+    An active credential source's ``meta_ads`` entry (#821) wins over BYOD
+    and the file, and its token is used as-is: the source owns the token
+    lifecycle, so no refresh is attempted.
+
     Returns None on auth error (real mode only).
     """
-    if byod_has("meta_ads"):
+    meta = current_meta_source()
+    if meta is None and byod_has("meta_ads"):
         account_id = _opt(arguments, "account_id") or "act_byod"
         client = get_meta_ads_client(
             creds=None, account_id=account_id, throttler=_throttler
@@ -122,7 +128,7 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
         register_client_for_cleanup(client)
         return client
 
-    creds = load_meta_ads_credentials()
+    creds = meta.load_credentials() if meta is not None else load_meta_ads_credentials()
     if creds is None:
         return None
 
@@ -137,7 +143,8 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
             f"Invalid account_id format: {account_id} (must start with 'act_')"
         )
 
-    creds = await refresh_meta_token_if_needed(creds)
+    if meta is None:
+        creds = await refresh_meta_token_if_needed(creds)
     client = create_meta_ads_client(creds, account_id, throttler=_throttler)
     # Close the client's persistent httpx.AsyncClient after the handler returns
     # (see register_client_for_cleanup) so the native server does not leak
@@ -165,7 +172,12 @@ def _entity_result(payload: Any) -> list[TextContent]:
     a marker means live. Wrapping live responses too would be more explicit,
     but would change the shape every existing caller, skill, and test expects
     — not worth it for information the absence already conveys.
+
+    An active credential source's ``meta_ads`` entry wins over BYOD mode
+    (#821), so its responses are live and carry no marker.
     """
+    if current_meta_source() is not None:
+        return _json_result(payload)
     marker = byod_freshness("meta_ads") if byod_has("meta_ads") else None
     if marker is None:
         return _json_result(payload)

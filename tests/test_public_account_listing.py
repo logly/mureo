@@ -199,13 +199,21 @@ def test_legacy_patch_target_intercepts_web_auth_probe(name: str) -> None:
 def test_list_accessible_accounts_signature_is_stable() -> None:
     """Argument shape stays ``(credentials: GoogleAdsCredentials) ->
     list[dict[str, Any]]`` so consumers don't break on the move.
+
+    The one positional parameter is pinned; anything added later must be
+    keyword-only with a default (``oauth_credentials``, #821), so every
+    existing call keeps working.
     """
     from mureo.google_ads import list_accessible_accounts
 
     sig = inspect.signature(list_accessible_accounts)
     params = list(sig.parameters.values())
-    assert len(params) == 1
     assert params[0].name == "credentials"
+    assert params[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    extra = params[1:]
+    assert [p.name for p in extra] == ["oauth_credentials"]
+    assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in extra)
+    assert all(p.default is None for p in extra)
     assert inspect.iscoroutinefunction(list_accessible_accounts)
 
 
