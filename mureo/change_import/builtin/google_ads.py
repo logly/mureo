@@ -286,17 +286,27 @@ class GoogleAdsChangeFeed:
         answer — the window was not checked. Returning an empty result would
         report it as quiet.
         """
-        from mureo.auth import load_google_ads_credentials
+        from mureo.auth import create_google_ads_client, load_google_ads_credentials
         from mureo.byod.runtime import byod_has
         from mureo.mcp._client_factory import get_google_ads_client
         from mureo.mcp._handlers_google_ads import _resolve_customer_id
+        from mureo.mcp.credential_source import current_google_source
 
-        if byod_has("google_ads"):
+        # An active credential source wins over BYOD mode and the
+        # credentials file, as it does for the MCP handlers (#821).
+        google = current_google_source()
+        if google is None and byod_has("google_ads"):
             return None
         # Bind the account to the workspace allow-list (#411/#413) before it
         # reaches the client factory, so change import cannot become a way to
         # read an account the workspace is not scoped to.
         resolved = _resolve_customer_id(account_id, None)
+        if google is not None:
+            creds = google.load_credentials()
+            if creds is None:
+                raise RuntimeError("google_ads credentials are not configured")
+            oauth = google.oauth_credentials(creds)
+            return create_google_ads_client(creds, resolved, oauth_credentials=oauth)
         creds = load_google_ads_credentials()
         if creds is None:
             raise RuntimeError("google_ads credentials are not configured")

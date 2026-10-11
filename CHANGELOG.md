@@ -1,5 +1,26 @@
 ## [Unreleased]
 
+### Added
+
+- **A plugin can run the built-in Google Ads, Search Console and Meta Ads
+  handlers with credentials it resolves itself** (#821). The new public
+  module `mureo.mcp.credential_source` holds a per-call credential source in a
+  context variable: wrap the delegated call in `use_credential_source(...)`
+  and the handlers take the credentials (and, for Google, a pre-built
+  `google.auth` credentials object) from it instead of the credentials file.
+  An active source wins over BYOD mode; a source that returns no credentials
+  yields the usual credentials-not-found result with no file fallback; and
+  the Meta token is not refreshed, since the source owns its lifecycle.
+  `create_google_ads_client`, `create_search_console_client` and
+  `list_accessible_accounts` accept a matching keyword-only
+  `oauth_credentials`. Nothing changes for callers that never set a source.
+  See "Reusing the built-in handlers with your own credentials" in
+  `docs/plugin-authoring.md`.
+- `mureo.mcp.credential_source` also exports `current_google_source()` and
+  `current_meta_source()` (the active source's per-platform entry, or `None`),
+  and `use_credential_source` raises `TypeError` before setting anything when
+  an entry is a class or lacks a method its Protocol requires (#821).
+
 ## [0.22.0] - 2026-10-10
 
 ### Fixed

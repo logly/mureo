@@ -36,6 +36,8 @@ from mureo.google_ads._gaql_validator import validate_static_query
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from google.auth.credentials import Credentials as GoogleAuthCredentials
+
     from mureo.auth import GoogleAdsCredentials
 
 logger = logging.getLogger(__name__)
@@ -150,6 +152,8 @@ def _traverse_children(ga_service: Any, mcc_id: str, add: Callable[..., None]) -
 
 async def list_accessible_accounts(
     credentials: GoogleAdsCredentials,
+    *,
+    oauth_credentials: GoogleAuthCredentials | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve the list of Google Ads accounts the credentials can reach.
 
@@ -173,6 +177,11 @@ async def list_accessible_accounts(
             is used as the operator-wide MCC for the initial
             ``listAccessibleCustomers`` call; per-child traversal uses
             each MCC as its own ``login_customer_id``.
+        oauth_credentials: Optional pre-built ``google.auth`` credentials
+            (#821). When given, every client is built with it instead of an
+            OAuth2 refresh-token credential derived from ``credentials``;
+            ``login_customer_id`` and ``developer_token`` are still read
+            from ``credentials``.
 
     Returns:
         List of account info dicts. An empty list means the credentials
@@ -198,24 +207,34 @@ async def list_accessible_accounts(
             empty list — see the class docstring.
     """
     # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
-    return await asyncio.to_thread(_list_accessible_accounts_sync, credentials)
+    return await asyncio.to_thread(
+        _list_accessible_accounts_sync, credentials, oauth_credentials
+    )
 
 
-def _client_maker(credentials: GoogleAdsCredentials) -> Callable[..., Any]:
+def _client_maker(
+    credentials: GoogleAdsCredentials,
+    oauth_credentials: GoogleAuthCredentials | None = None,
+) -> Callable[..., Any]:
     """Return a ``GoogleAdsClient`` builder bound to ``credentials``.
+
+    ``oauth_credentials``, when given, is used as-is (#821); otherwise an
+    OAuth2 refresh-token credential is built from ``credentials``.
 
     Imports the Google Ads SDK, so it must only run off the event loop.
     """
     from google.ads.googleads.client import GoogleAdsClient
     from google.oauth2.credentials import Credentials as OAuthCredentials
 
-    oauth_creds = OAuthCredentials(  # type: ignore[no-untyped-call]
-        token=None,
-        refresh_token=credentials.refresh_token,
-        client_id=credentials.client_id,
-        client_secret=credentials.client_secret,
-        token_uri="https://oauth2.googleapis.com/token",
-    )
+    oauth_creds = oauth_credentials
+    if oauth_creds is None:
+        oauth_creds = OAuthCredentials(  # type: ignore[no-untyped-call]
+            token=None,
+            refresh_token=credentials.refresh_token,
+            client_id=credentials.client_id,
+            client_secret=credentials.client_secret,
+            token_uri="https://oauth2.googleapis.com/token",
+        )
 
     def _make_client(login_cid: str | None = None) -> Any:
         return GoogleAdsClient(
@@ -233,9 +252,10 @@ def _client_maker(credentials: GoogleAdsCredentials) -> Callable[..., Any]:
 
 def _list_accessible_accounts_sync(
     credentials: GoogleAdsCredentials,
+    oauth_credentials: GoogleAuthCredentials | None = None,
 ) -> list[dict[str, Any]]:
     """Blocking body of :func:`list_accessible_accounts` (#809)."""
-    make_client = _client_maker(credentials)
+    make_client = _client_maker(credentials, oauth_credentials)
 
     # Step 1: Get directly accessible accounts
     base_client = make_client(login_cid=credentials.login_customer_id)

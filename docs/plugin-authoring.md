@@ -19,6 +19,7 @@ and which are not, see [ABI-stability.md](./ABI-stability.md).
 1. [Introduction](#1-introduction)
 2. [Quick start: a minimal plugin](#2-quick-start-a-minimal-plugin)
 3. [Provider Protocols](#3-provider-protocols)
+   - [Reusing the built-in handlers with your own credentials](#reusing-the-built-in-handlers-with-your-own-credentials)
 4. [Capabilities](#4-capabilities)
 5. [Models: frozen dataclasses and enums](#5-models-frozen-dataclasses-and-enums)
 6. [Skill matching](#6-skill-matching)
@@ -476,6 +477,118 @@ def list_oauth_accounts(credentials: dict[str, str]) -> list[dict[str, object]]:
   you return beside the name, so return it. A value that cannot be
   JSON-encoded is dropped from its row (the row itself is kept) rather
   than failing the whole listing.
+
+### Reusing the built-in handlers with your own credentials
+
+The built-in `google_ads_*`, `search_console_*` and `meta_ads_*` handlers
+normally read the operator's credentials file (or the environment). A plugin
+that re-exposes those handlers under its own tool names, and resolves the
+credentials for each call itself, can hand them over with
+`mureo.mcp.credential_source` instead of patching module globals.
+
+Three types make up the surface:
+
+- `GoogleCredentialSource` — `load_credentials()` returns a
+  `GoogleAdsCredentials` (or `None`), and `oauth_credentials(creds)` returns
+  the `google.auth.credentials.Credentials` object the client should use.
+  The token URI, refresh behaviour and scopes are yours. One source serves
+  both Google Ads and Search Console, which share one OAuth identity.
+- `MetaCredentialSource` — `load_credentials()` returns a
+  `MetaAdsCredentials` (or `None`).
+- `CredentialSource(google=..., meta_ads=...)` — a frozen dataclass naming
+  the sources for one call. A platform left at `None` keeps its usual
+  resolution.
+
+Three read-only helpers return what is in effect for the current context:
+
+- `current_credential_source()` — the active `CredentialSource`, or `None`.
+- `current_google_source()` — its `google` entry, or `None` (also `None` when
+  no source is active).
+- `current_meta_source()` — its `meta_ads` entry, or `None` (likewise).
+
+Wrap the delegated call in `use_credential_source(...)`. It checks the
+source's shape before setting anything and raises `TypeError` if an entry is
+a class rather than an instance, or lacks a callable method its Protocol
+requires (`load_credentials` and `oauth_credentials` for `google`,
+`load_credentials` for `meta_ads`). The source lives in a
+`contextvars.ContextVar`, so it reaches `asyncio.to_thread` calls and tasks
+created inside the block, and it is reset on the way out, error or not. It
+does **not** reach a plain `threading.Thread` or a `loop.run_in_executor`
+call: those do not copy the context, so work you start that way does not see
+the source.
+
+```python
+from google.oauth2.credentials import Credentials
+from mcp.types import TextContent
+
+from mureo.auth import GoogleAdsCredentials
+from mureo.mcp import tools_google_ads
+from mureo.mcp.credential_source import CredentialSource, use_credential_source
+
+
+class AcmeGoogleSource:
+    def __init__(self, access_token: str, customer_id: str) -> None:
+        self._token, self._customer_id = access_token, customer_id
+
+    def load_credentials(self) -> GoogleAdsCredentials | None:
+        # Placeholders are fine: with a source active only customer_id,
+        # login_customer_id and developer_token are read from this object.
+        return GoogleAdsCredentials(
+            client_id="-", client_secret="-", refresh_token="-",
+            customer_id=self._customer_id,
+        )
+
+    def oauth_credentials(self, credentials: GoogleAdsCredentials) -> Credentials:
+        return Credentials(token=self._token)
+
+
+class AcmeAdapter:
+    async def handle_mcp_tool(self, name: str, arguments: dict) -> list[TextContent]:
+        token, customer_id = await self._resolve_google_token()  # your own logic
+        source = CredentialSource(google=AcmeGoogleSource(token, customer_id))
+        with use_credential_source(source):
+            # "acme_google_ads_campaigns_list" -> "google_ads_campaigns_list"
+            return await tools_google_ads.handle_tool(
+                name.removeprefix("acme_"), arguments
+            )
+```
+
+The rules the handlers follow while a source is active:
+
+- **`None` means no credentials.** If `load_credentials()` returns `None`, the
+  handler returns its usual credentials-not-found result. It never falls back
+  to the credentials file.
+- **Precedence.** An active source wins over BYOD mode (an explicit per-call
+  choice beats the ambient manifest) and over the credentials file. The other
+  built-in paths that open a client during a tool call (the analytics live
+  clients and the Google Ads change feed) follow the same rule.
+- **Ids and allow-lists are unchanged.** `customer_id` / `account_id` still
+  come from the tool arguments first and from your credentials object second,
+  and the workspace allow-list is still enforced.
+- **Placeholders.** `GoogleAdsCredentials` requires `client_id`,
+  `client_secret` and `refresh_token`. If your source does not hold them, fill
+  placeholders: the handlers only read `customer_id`, `login_customer_id` and
+  `developer_token` from it while a source is active.
+- **Meta token lifecycle.** With `meta_ads` set, the handler does not call
+  `refresh_meta_token_if_needed`: your source owns the token, including its
+  renewal.
+- **Threading.** `load_credentials()` and `oauth_credentials()` may be called
+  on the event-loop thread or on a worker thread (`asyncio.to_thread`),
+  depending on the path. Implementations must be thread-safe, must not depend
+  on a running event loop, and should return quickly: cache what you resolve.
+  `oauth_credentials()` may block (for example to refresh a token); the
+  handlers that run on the event loop call it off the loop.
+
+**Shared state.** Two pieces of handler state are process-wide and not keyed
+by source: the per-platform request throttler, and the tracking-preflight
+snapshot cache (keyed by customer id, with a TTL). A host that serves several
+sources from one process shares the throttle budget across them, and two
+sources that address the same customer id within the TTL see the same cached
+snapshot; account for both.
+
+`mureo.mcp.credential_source` is the supported surface. The
+`mureo.mcp._handlers_*` modules and their module globals remain private and
+may change in any release.
 
 ### Declaring your platform's delivery model (optional)
 
