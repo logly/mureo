@@ -18,12 +18,6 @@ def _import_meta_ads_tools():
     return tools_meta_ads
 
 
-def _import_handlers():
-    from mureo.mcp import _handlers_meta_ads
-
-    return _handlers_meta_ads
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -54,7 +48,7 @@ def _standalone_meta_ads():
     path; the scoped behavior lives in test_account_id_tenant_scope.py.
     """
     with patch(
-        "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+        "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
         return_value=None,
     ):
         yield
@@ -66,13 +60,17 @@ class TestCampaignPauseEnableHandlers:
 
     async def test_campaigns_pause(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.pause_campaign.return_value = {"success": True}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_campaigns_pause",
@@ -85,13 +83,17 @@ class TestCampaignPauseEnableHandlers:
 
     async def test_campaigns_enable(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.enable_campaign.return_value = {"success": True}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_campaigns_enable",
@@ -114,13 +116,17 @@ class TestAdSetExtendedHandlers:
 
     async def test_ad_sets_get(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.get_ad_set.return_value = {"id": "20", "name": "AdSet1"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ad_sets_get",
@@ -133,13 +139,17 @@ class TestAdSetExtendedHandlers:
 
     async def test_ad_sets_pause(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.pause_ad_set.return_value = {"success": True}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ad_sets_pause",
@@ -152,13 +162,17 @@ class TestAdSetExtendedHandlers:
 
     async def test_ad_sets_enable(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.enable_ad_set.return_value = {"success": True}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ad_sets_enable",
@@ -181,13 +195,17 @@ class TestAdExtendedHandlers:
 
     async def test_ads_get(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.get_ad.return_value = {"id": "40", "name": "Ad1"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ads_get",
@@ -200,13 +218,17 @@ class TestAdExtendedHandlers:
 
     async def test_ads_pause(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.pause_ad.return_value = {"success": True}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ads_pause",
@@ -219,13 +241,17 @@ class TestAdExtendedHandlers:
 
     async def test_ads_enable(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.enable_ad.return_value = {"success": True}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ads_enable",
@@ -248,13 +274,17 @@ class TestAudienceExtendedHandlers:
 
     async def test_audiences_get(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.get_custom_audience.return_value = {"id": "50", "name": "Aud1"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_audiences_get",
@@ -267,13 +297,17 @@ class TestAudienceExtendedHandlers:
 
     async def test_audiences_delete(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.delete_custom_audience.return_value = {"success": True}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_audiences_delete",
@@ -286,13 +320,17 @@ class TestAudienceExtendedHandlers:
 
     async def test_audiences_create_lookalike(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.create_lookalike_audience.return_value = {"id": "70"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_audiences_create_lookalike",
@@ -321,13 +359,17 @@ class TestCreativeHandlers:
 
     async def test_creatives_list(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.list_ad_creatives.return_value = [{"id": "cr_1"}]
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_creatives_list",
@@ -340,13 +382,17 @@ class TestCreativeHandlers:
 
     async def test_creatives_create(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.create_ad_creative.return_value = {"id": "cr_2"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_creatives_create",
@@ -364,13 +410,17 @@ class TestCreativeHandlers:
 
     async def test_creatives_create_lead(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.create_lead_ad_creative.return_value = {"id": "cr_lead_1"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_creatives_create_lead",
@@ -396,12 +446,16 @@ class TestCreativeHandlers:
         and the handler must raise rather than POST a malformed
         payload."""
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
             pytest.raises(ValueError, match="form_id"),
         ):
             await mod.handle_tool(
@@ -417,13 +471,17 @@ class TestCreativeHandlers:
 
     async def test_creatives_create_dynamic(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.create_dynamic_creative.return_value = {"id": "cr_3"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_creatives_create_dynamic",
@@ -444,13 +502,17 @@ class TestCreativeHandlers:
 
     async def test_creatives_upload_image(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.upload_ad_image.return_value = {"hash": "abc123"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_creatives_upload_image",
@@ -476,13 +538,17 @@ class TestPixelHandlers:
 
     async def test_pixels_list(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.list_ad_pixels.return_value = [{"id": "px_1"}]
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_pixels_list",
@@ -495,13 +561,17 @@ class TestPixelHandlers:
 
     async def test_pixels_get(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.get_pixel.return_value = {"id": "px_1", "name": "Pixel1"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_pixels_get",
@@ -514,13 +584,17 @@ class TestPixelHandlers:
 
     async def test_pixels_stats(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.get_pixel_stats.return_value = {"events": 100}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_pixels_stats",
@@ -533,13 +607,17 @@ class TestPixelHandlers:
 
     async def test_pixels_events(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.get_pixel_events.return_value = [{"event": "PageView"}]
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_pixels_events",
@@ -552,13 +630,17 @@ class TestPixelHandlers:
 
     async def test_pixels_create(self) -> None:
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.create_ad_pixel.return_value = {"id": "px_new"}
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_pixels_create",
@@ -573,12 +655,16 @@ class TestPixelHandlers:
         """name is the sole required parameter — omit it and the handler
         must raise rather than POST a malformed payload."""
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
             pytest.raises(ValueError, match="name"),
         ):
             await mod.handle_tool(
@@ -590,8 +676,9 @@ class TestPixelHandlers:
     async def test_pixels_create_no_credentials(self) -> None:
         """Returns error text when no credentials are present."""
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
-        with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
+        with patch(
+            "mureo.mcp._meta_ads_client.load_meta_ads_credentials", return_value=None
+        ):
             result = await mod.handle_tool(
                 "meta_ads_pixels_create",
                 {"account_id": "act_123", "name": "Main Pixel"},
@@ -604,13 +691,17 @@ class TestPixelHandlers:
         failure) round-trips through @api_error_handler into the
         API_ERROR_PREFIX envelope rather than propagating."""
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
         client.create_ad_pixel.side_effect = RuntimeError("Meta API request failed")
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
         ):
             result = await mod.handle_tool(
                 "meta_ads_pixels_create",

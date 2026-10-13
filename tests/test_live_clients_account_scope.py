@@ -50,9 +50,10 @@ def _scope_google(monkeypatch: pytest.MonkeyPatch, allowed) -> None:
 
 
 def _scope_meta(monkeypatch: pytest.MonkeyPatch, allowed) -> None:
-    import mureo.mcp._handlers_meta_ads as mh
 
-    monkeypatch.setattr(mh, "runtime_meta_account_ids", lambda: allowed)
+    monkeypatch.setattr(
+        "mureo.mcp._meta_ads_client.runtime_meta_account_ids", lambda: allowed
+    )
 
 
 # --- scope enforcement + resolved-id return (#413/#435) --------------------

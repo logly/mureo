@@ -53,6 +53,16 @@
   `create_google_ads_client`, `byod_has`, `get_google_ads_client` or
   `runtime_google_ads_customer_ids` on `mureo.mcp._handlers_google_ads` must
   patch them on `mureo.mcp._google_ads_client` instead.
+- The Meta Ads client and credential resolution moved from
+  `mureo/mcp/_handlers_meta_ads.py` to the private
+  `mureo/mcp/_meta_ads_client.py`, and the upload / creative handlers to
+  `mureo/mcp/_handlers_meta_ads_creatives.py` (#840); the old module
+  re-exports the names. Code that patches `load_meta_ads_credentials`,
+  `create_meta_ads_client`, `refresh_meta_token_if_needed`, `byod_has`,
+  `byod_freshness`, `get_meta_ads_client`, `register_client_for_cleanup`,
+  `current_meta_source`, `call_source` or `runtime_meta_account_ids` on
+  `mureo.mcp._handlers_meta_ads` must patch them on
+  `mureo.mcp._meta_ads_client` instead.
 - **Skills treat a namespaced built-in variant as the built-in platform**
   (#825). A provider whose tools are `<builtin_platform>_<suffix>_<operation>`,
   with the same operation set and input schemas as the built-in

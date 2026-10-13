@@ -44,12 +44,6 @@ def _import_meta_ads_tools():
     return tools_meta_ads
 
 
-def _import_handlers():
-    from mureo.mcp import _handlers_meta_ads
-
-    return _handlers_meta_ads
-
-
 @pytest.fixture(autouse=True)
 def _standalone_meta_ads():
     """Pin the handler test below to STANDALONE (untenanted) Meta Ads.
@@ -60,7 +54,7 @@ def _standalone_meta_ads():
     assertion for reasons unrelated to this contract.
     """
     with patch(
-        "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+        "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
         return_value=None,
     ):
         yield
@@ -124,13 +118,17 @@ class TestFollowUpActionUrlRequired:
         re-raises untouched, so the caller sees a named-parameter error
         instead of a Meta 400."""
         mod = _import_meta_ads_tools()
-        handlers = _import_handlers()
         client = AsyncMock()
         creds = MagicMock()
 
         with (
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
+            ),
             pytest.raises(ValueError, match="follow_up_action_url"),
         ):
             await mod.handle_tool(

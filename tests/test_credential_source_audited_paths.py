@@ -54,12 +54,13 @@ def _refuse(*_args: Any, **_kwargs: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def _live_unscoped(monkeypatch: pytest.MonkeyPatch) -> None:
-    import mureo.mcp._handlers_meta_ads as mh
 
     monkeypatch.setattr(
         "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids", lambda: None
     )
-    monkeypatch.setattr(mh, "runtime_meta_account_ids", lambda: None)
+    monkeypatch.setattr(
+        "mureo.mcp._meta_ads_client.runtime_meta_account_ids", lambda: None
+    )
     monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: True)
     monkeypatch.setattr("mureo.auth.load_google_ads_credentials", _refuse)
     monkeypatch.setattr("mureo.auth.load_meta_ads_credentials", _refuse)

@@ -925,7 +925,6 @@ async def test_live_meta_ads_list_is_not_annotated(fake_home):
     import json
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from mureo.mcp import _handlers_meta_ads as handlers
     from mureo.mcp import tools_meta_ads
 
     client = MagicMock()
@@ -933,16 +932,20 @@ async def test_live_meta_ads_list_is_not_annotated(fake_home):
     creds = MagicMock(account_id="act_123")
 
     with (
-        patch.object(handlers, "byod_has", return_value=False),
-        patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-        patch.object(
-            handlers, "runtime_meta_account_ids", return_value=frozenset({"act_123"})
+        patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
+        patch(
+            "mureo.mcp._meta_ads_client.load_meta_ads_credentials", return_value=creds
         ),
-        patch.object(
-            handlers, "refresh_meta_token_if_needed", new=AsyncMock(return_value=creds)
+        patch(
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            return_value=frozenset({"act_123"}),
         ),
-        patch.object(handlers, "register_client_for_cleanup"),
-        patch.object(handlers, "create_meta_ads_client", return_value=client),
+        patch(
+            "mureo.mcp._meta_ads_client.refresh_meta_token_if_needed",
+            new=AsyncMock(return_value=creds),
+        ),
+        patch("mureo.mcp._meta_ads_client.register_client_for_cleanup"),
+        patch("mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client),
     ):
         result = await tools_meta_ads.handle_tool(
             "meta_ads_ads_list", {"account_id": "act_123"}

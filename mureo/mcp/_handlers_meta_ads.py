@@ -7,185 +7,62 @@ Tool definitions (TOOLS) and handler mapping (HANDLERS) remain in tools_meta_ads
 from __future__ import annotations
 
 import logging
-import os
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
 
-from mureo.auth import (
-    create_meta_ads_client,
-    load_meta_ads_credentials,
-    refresh_meta_token_if_needed,
+# The upload / creative handlers live in their own module; re-exported here
+# because tools_meta_ads and existing callers import them from this module.
+from mureo.mcp._handlers_meta_ads_creatives import (
+    handle_creatives_create_carousel as handle_creatives_create_carousel,
 )
-from mureo.byod.runtime import byod_freshness, byod_has
-from mureo.core.runtime_context import runtime_meta_account_ids
-from mureo.mcp._client_factory import get_meta_ads_client
+from mureo.mcp._handlers_meta_ads_creatives import (
+    handle_creatives_create_collection as handle_creatives_create_collection,
+)
+from mureo.mcp._handlers_meta_ads_creatives import (
+    handle_images_upload_file as handle_images_upload_file,
+)
+from mureo.mcp._handlers_meta_ads_creatives import (
+    handle_pages_list_photos as handle_pages_list_photos,
+)
+from mureo.mcp._handlers_meta_ads_creatives import (
+    handle_videos_get as handle_videos_get,
+)
+from mureo.mcp._handlers_meta_ads_creatives import (
+    handle_videos_thumbnails as handle_videos_thumbnails,
+)
+from mureo.mcp._handlers_meta_ads_creatives import (
+    handle_videos_upload as handle_videos_upload,
+)
+from mureo.mcp._handlers_meta_ads_creatives import (
+    handle_videos_upload_file as handle_videos_upload_file,
+)
 from mureo.mcp._helpers import (
     _json_result,
-    _no_creds_result,
     _opt,
     _require,
     _validate_positive_money,
     api_error_handler,
-    register_client_for_cleanup,
 )
-from mureo.mcp.credential_source import call_source, current_meta_source
-from mureo.throttle import META_ADS_THROTTLE, Throttler
+
+# Client / credential resolution lives in its own module; the names are
+# re-exported (``as`` form) because sibling modules and callers import them
+# from here.
+from mureo.mcp._meta_ads_client import _NO_CREDS_MSG as _NO_CREDS_MSG
+from mureo.mcp._meta_ads_client import (
+    _canonical_meta_account_id as _canonical_meta_account_id,
+)
+from mureo.mcp._meta_ads_client import _entity_result as _entity_result
+from mureo.mcp._meta_ads_client import _get_client as _get_client
+from mureo.mcp._meta_ads_client import _no_meta_creds as _no_meta_creds
+from mureo.mcp._meta_ads_client import (
+    _normalize_meta_account_id as _normalize_meta_account_id,
+)
+from mureo.mcp._meta_ads_client import _resolve_account_id as _resolve_account_id
+from mureo.mcp._meta_ads_client import _throttler as _throttler
 
 logger = logging.getLogger(__name__)
-
-_NO_CREDS_MSG = (
-    "Credentials not found. Set environment variable "
-    "(META_ADS_ACCESS_TOKEN) "
-    "or configure ~/.mureo/credentials.json."
-)
-
-_throttler = Throttler(META_ADS_THROTTLE)
-
-
-def _normalize_meta_account_id(value: str) -> str:
-    """Strip the ``act_`` prefix so membership checks are prefix-insensitive."""
-    return value[4:] if value.startswith("act_") else value
-
-
-def _canonical_meta_account_id(value: str) -> str:
-    """Ensure the ``act_`` prefix the Meta client factory requires."""
-    return value if value.startswith("act_") else f"act_{value}"
-
-
-def _resolve_account_id(requested: str | None, default: str | None) -> str:
-    """Resolve and workspace-enforce the Meta ``account_id`` (#411).
-
-    Every Meta tool funnels through ``_get_client``, which takes
-    ``account_id`` as a free caller argument while the (possibly shared)
-    credentials can reach every managed ad account. This binds the
-    EFFECTIVE id — explicit argument or credentials default alike — to the
-    active client's allow-list, mirroring Search Console's ``site_url``
-    enforcement (#375):
-
-    - **Not tenant-scoped** (:func:`runtime_meta_account_ids` → ``None``):
-      unchanged — argument wins, credentials default second, missing both
-      is an error.
-    - **Tenant-scoped**: an out-of-set value is refused (fail-closed,
-      prefix-insensitive); no usable value resolves to the single
-      configured account, or is refused when several are configured
-      (ambiguous) or none are (fail-fast).
-    """
-    allowed = runtime_meta_account_ids()
-    if allowed is None:
-        account_id = requested or default
-        if not account_id:
-            raise ValueError(
-                "account_id is required. Provide it as a parameter or "
-                "configure it in ~/.mureo/credentials.json via mureo auth "
-                "setup."
-            )
-        return str(account_id)
-    if not allowed:
-        raise ValueError(
-            "Meta Ads is not configured for this client. Configure the "
-            "client's ad account before querying it."
-        )
-    normalized_allowed = {_normalize_meta_account_id(entry) for entry in allowed}
-    if requested:
-        if _normalize_meta_account_id(str(requested)) not in normalized_allowed:
-            raise ValueError(
-                f"account_id {requested!r} is not one of this client's "
-                "configured ad accounts and was refused."
-            )
-        return _canonical_meta_account_id(str(requested))
-    if default and _normalize_meta_account_id(str(default)) in normalized_allowed:
-        return _canonical_meta_account_id(str(default))
-    if len(allowed) == 1:
-        return _canonical_meta_account_id(next(iter(allowed)))
-    raise ValueError(
-        "account_id is required: this client has multiple configured ad "
-        "accounts — pass one of them explicitly."
-    )
-
-
-async def _get_client(arguments: dict[str, Any]) -> Any:
-    """Load credentials, refresh token if needed, and create a client.
-
-    Falls back to account_id from credentials.json if not provided
-    in the tool arguments.
-
-    In BYOD mode, returns a CSV-backed client without any credentials.
-
-    An active credential source's ``meta_ads`` entry (#821) wins over BYOD
-    and the file, and its token is used as-is: the source owns the token
-    lifecycle, so no refresh is attempted.
-
-    Returns None on auth error (real mode only).
-    """
-    meta = current_meta_source()
-    if meta is None and byod_has("meta_ads"):
-        account_id = _opt(arguments, "account_id") or "act_byod"
-        client = get_meta_ads_client(
-            creds=None, account_id=account_id, throttler=_throttler
-        )
-        register_client_for_cleanup(client)
-        return client
-
-    creds = (
-        call_source("meta_ads", meta.load_credentials)
-        if meta is not None
-        else load_meta_ads_credentials()
-    )
-    if creds is None:
-        return None
-
-    # getattr, not attribute access: the default must not be evaluated
-    # eagerly against credential objects that lack the field (the old
-    # ``or``-chain short-circuited when an explicit id was passed).
-    account_id = _resolve_account_id(
-        _opt(arguments, "account_id"), getattr(creds, "account_id", None)
-    )
-    if not str(account_id).startswith("act_"):
-        raise ValueError(
-            f"Invalid account_id format: {account_id} (must start with 'act_')"
-        )
-
-    if meta is None:
-        creds = await refresh_meta_token_if_needed(creds)
-    client = create_meta_ads_client(creds, account_id, throttler=_throttler)
-    # Close the client's persistent httpx.AsyncClient after the handler returns
-    # (see register_client_for_cleanup) so the native server does not leak
-    # keep-alive sockets across tool calls.
-    register_client_for_cleanup(client)
-    return client
-
-
-def _no_meta_creds() -> list[TextContent]:
-    """Return a Meta Ads credentials-not-found error."""
-    return _no_creds_result(_NO_CREDS_MSG)
-
-
-def _entity_result(payload: Any) -> list[TextContent]:
-    """JSON result for an entity read, marked when it came from BYOD (#468).
-
-    In BYOD mode these tools read the CSVs ``mureo byod import`` wrote, not
-    the Graph API — so what they report is the state at import time. The
-    response is wrapped as ``{"source": "byod_import", "as_of": <imported_at>,
-    "data": <rows>}`` so the agent can see that its picture of delivery status
-    is a snapshot and may have moved since. Row data is untouched inside
-    ``data``.
-
-    A live response is returned exactly as before (no wrapper): the ABSENCE of
-    a marker means live. Wrapping live responses too would be more explicit,
-    but would change the shape every existing caller, skill, and test expects
-    — not worth it for information the absence already conveys.
-
-    An active credential source's ``meta_ads`` entry wins over BYOD mode
-    (#821), so its responses are live and carry no marker.
-    """
-    if current_meta_source() is not None:
-        return _json_result(payload)
-    marker = byod_freshness("meta_ads") if byod_has("meta_ads") else None
-    if marker is None:
-        return _json_result(payload)
-    return _json_result({**marker, "data": payload})
 
 
 # ---------------------------------------------------------------------------
@@ -833,138 +710,6 @@ async def handle_leads_get_by_ad(args: dict[str, Any]) -> list[TextContent]:
         return _no_meta_creds()
     ad_id = _require(args, "ad_id")
     result = await client.get_ad_leads(ad_id, limit=_opt(args, "limit", 100))
-    return _json_result(result)
-
-
-# ---------------------------------------------------------------------------
-# Image upload handlers
-# ---------------------------------------------------------------------------
-
-
-@api_error_handler
-async def handle_images_upload_file(args: dict[str, Any]) -> list[TextContent]:
-    client = await _get_client(args)
-    if client is None:
-        return _no_meta_creds()
-    file_path = _require(args, "file_path")
-    if not os.path.isfile(file_path):
-        raise ValueError(f"File not found: {file_path}")
-    _allowed_image_ext = (".png", ".jpg", ".jpeg", ".gif", ".webp")
-    if not file_path.lower().endswith(_allowed_image_ext):
-        raise ValueError(
-            f"Unsupported image format. Allowed: {', '.join(_allowed_image_ext)}"
-        )
-    name = _opt(args, "name")
-    result = await client.upload_ad_image_file(file_path, name=name)
-    return _json_result(result)
-
-
-# ---------------------------------------------------------------------------
-# Page photo handlers
-# ---------------------------------------------------------------------------
-
-
-@api_error_handler
-async def handle_pages_list_photos(args: dict[str, Any]) -> list[TextContent]:
-    """List a Page's existing photos to pick a cover_photo_id from (#703).
-
-    Distinct from meta_ads_images_upload_file (ad-account image_hash): an
-    Instant Form ``context_card.cover_photo_id`` needs a PAGE photo id.
-    """
-    client = await _get_client(args)
-    if client is None:
-        return _no_meta_creds()
-    page_id = _require(args, "page_id")
-    result = await client.list_page_photos(page_id, limit=_opt(args, "limit", 25))
-    return _json_result(result)
-
-
-# ---------------------------------------------------------------------------
-# Video, carousel, collection handlers
-# ---------------------------------------------------------------------------
-
-
-@api_error_handler
-async def handle_videos_upload(args: dict[str, Any]) -> list[TextContent]:
-    client = await _get_client(args)
-    if client is None:
-        return _no_meta_creds()
-    video_url = _require(args, "video_url")
-    title = _opt(args, "title")
-    result = await client.upload_ad_video(video_url, title=title)
-    return _json_result(result)
-
-
-@api_error_handler
-async def handle_videos_upload_file(args: dict[str, Any]) -> list[TextContent]:
-    client = await _get_client(args)
-    if client is None:
-        return _no_meta_creds()
-    file_path = _require(args, "file_path")
-    if not os.path.isfile(file_path):
-        raise ValueError(f"File not found: {file_path}")
-    # Mirrors mureo.meta_ads._videos._META_ALLOWED_VIDEO_EXTENSIONS, which is
-    # the source of truth. ``.flv`` used to be listed here only, so an .flv file
-    # passed this gate and was then rejected one layer deeper.
-    _allowed_video_ext = (".mp4", ".mov", ".avi", ".wmv", ".mkv")
-    if not file_path.lower().endswith(_allowed_video_ext):
-        raise ValueError(
-            f"Unsupported video format. Allowed: {', '.join(_allowed_video_ext)}"
-        )
-    title = _opt(args, "title")
-    result = await client.upload_ad_video_file(file_path, title=title)
-    return _json_result(result)
-
-
-@api_error_handler
-async def handle_videos_get(args: dict[str, Any]) -> list[TextContent]:
-    """Get a video's processing status (poll before creating a creative)."""
-    client = await _get_client(args)
-    if client is None:
-        return _no_meta_creds()
-    video_id = _require(args, "video_id")
-    result = await client.get_ad_video(video_id)
-    return _json_result(result)
-
-
-@api_error_handler
-async def handle_videos_thumbnails(args: dict[str, Any]) -> list[TextContent]:
-    """List a video's auto-generated thumbnails."""
-    client = await _get_client(args)
-    if client is None:
-        return _no_meta_creds()
-    video_id = _require(args, "video_id")
-    result = await client.list_ad_video_thumbnails(video_id)
-    return _json_result(result)
-
-
-@api_error_handler
-async def handle_creatives_create_carousel(args: dict[str, Any]) -> list[TextContent]:
-    client = await _get_client(args)
-    if client is None:
-        return _no_meta_creds()
-    result = await client.create_carousel_creative(
-        page_id=_require(args, "page_id"),
-        cards=_require(args, "cards"),
-        link=_require(args, "link"),
-        name=_opt(args, "name"),
-    )
-    return _json_result(result)
-
-
-@api_error_handler
-async def handle_creatives_create_collection(args: dict[str, Any]) -> list[TextContent]:
-    client = await _get_client(args)
-    if client is None:
-        return _no_meta_creds()
-    result = await client.create_collection_creative(
-        page_id=_require(args, "page_id"),
-        product_ids=_require(args, "product_ids"),
-        link=_require(args, "link"),
-        cover_image_hash=_opt(args, "cover_image_hash"),
-        cover_video_id=_opt(args, "cover_video_id"),
-        name=_opt(args, "name"),
-    )
     return _json_result(result)
 
 

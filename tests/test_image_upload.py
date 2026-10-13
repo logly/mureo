@@ -36,7 +36,7 @@ def _standalone_account_scoping():
             return_value=None,
         ),
         patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=None,
         ),
     ):
@@ -515,11 +515,11 @@ class TestMcpMetaUploadFile:
         creds = MetaAdsCredentials(access_token="tok")
         with (
             patch(
-                "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
+                "mureo.mcp._meta_ads_client.create_meta_ads_client",
                 return_value=mock_client,
             ),
         ):
