@@ -73,7 +73,7 @@ def _unscoped() -> Iterator[None]:
             return_value=None,
         ),
         patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=None,
         ),
     ):
@@ -287,12 +287,12 @@ class TestMetaGetClient:
 
         refresh = AsyncMock(side_effect=AssertionError("refresh must not run"))
         with (
-            patch.object(handlers, "byod_has", return_value=byod),
-            patch.object(handlers, "load_meta_ads_credentials", _refuse),
-            patch.object(handlers, "get_meta_ads_client", _refuse),
-            patch.object(handlers, "refresh_meta_token_if_needed", refresh),
-            patch.object(handlers, "register_client_for_cleanup"),
-            patch.object(handlers, "create_meta_ads_client") as factory,
+            patch("mureo.mcp._meta_ads_client.byod_has", return_value=byod),
+            patch("mureo.mcp._meta_ads_client.load_meta_ads_credentials", _refuse),
+            patch("mureo.mcp._meta_ads_client.get_meta_ads_client", _refuse),
+            patch("mureo.mcp._meta_ads_client.refresh_meta_token_if_needed", refresh),
+            patch("mureo.mcp._meta_ads_client.register_client_for_cleanup"),
+            patch("mureo.mcp._meta_ads_client.create_meta_ads_client") as factory,
             use_credential_source(CredentialSource(meta_ads=source)),
         ):
             client = await handlers._get_client(args)
@@ -333,10 +333,9 @@ class TestMetaGetClient:
 
         rows = [{"id": "1"}]
         with (
-            patch.object(handlers, "byod_has", return_value=True),
-            patch.object(
-                handlers,
-                "byod_freshness",
+            patch("mureo.mcp._meta_ads_client.byod_has", return_value=True),
+            patch(
+                "mureo.mcp._meta_ads_client.byod_freshness",
                 return_value={"source": "byod_import", "as_of": "2026-01-01"},
             ),
             use_credential_source(CredentialSource(meta_ads=_MetaSource(_META))),
@@ -349,8 +348,8 @@ class TestMetaGetClient:
 
         marker = {"source": "byod_import", "as_of": "2026-01-01"}
         with (
-            patch.object(handlers, "byod_has", return_value=True),
-            patch.object(handlers, "byod_freshness", return_value=marker),
+            patch("mureo.mcp._meta_ads_client.byod_has", return_value=True),
+            patch("mureo.mcp._meta_ads_client.byod_freshness", return_value=marker),
         ):
             result = handlers._entity_result([{"id": "1"}])
         assert json.loads(result[0].text) == {**marker, "data": [{"id": "1"}]}

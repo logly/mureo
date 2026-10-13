@@ -167,7 +167,7 @@ class TestMetaAccountIdScoping:
 
     def test_unscoped_keeps_existing_behavior(self) -> None:
         with patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=None,
         ):
             assert self._resolve("act_222", "act_111") == "act_222"
@@ -178,7 +178,7 @@ class TestMetaAccountIdScoping:
     def test_unconfigured_client_fails_fast(self) -> None:
         with (
             patch(
-                "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
                 return_value=frozenset(),
             ),
             pytest.raises(ValueError, match="not configured"),
@@ -188,7 +188,7 @@ class TestMetaAccountIdScoping:
     def test_out_of_set_explicit_id_is_refused(self) -> None:
         with (
             patch(
-                "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
                 return_value=frozenset({"act_111"}),
             ),
             pytest.raises(ValueError, match="refused"),
@@ -200,7 +200,7 @@ class TestMetaAccountIdScoping:
         it may be an operator-level value that does not belong here."""
         with (
             patch(
-                "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
                 return_value=frozenset({"act_111", "act_222"}),
             ),
             pytest.raises(ValueError, match="refused|required"),
@@ -211,14 +211,14 @@ class TestMetaAccountIdScoping:
         """The common production path: creds default already one of several
         configured accounts, no explicit argument."""
         with patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=frozenset({"act_111", "act_222"}),
         ):
             assert self._resolve(None, "act_111") == "act_111"
 
     def test_in_set_explicit_id_allowed(self) -> None:
         with patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=frozenset({"act_111", "act_222"}),
         ):
             assert self._resolve("act_222", "act_111") == "act_222"
@@ -228,7 +228,7 @@ class TestMetaAccountIdScoping:
         numeric allow-list entry is canonicalized to the act_ form the
         client factory requires."""
         with patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=frozenset({"123456"}),
         ):
             assert self._resolve(None, None) == "act_123456"
@@ -236,7 +236,7 @@ class TestMetaAccountIdScoping:
     def test_prefix_insensitive_membership(self) -> None:
         """act_-prefixed argument matches a bare-numeric allow-list entry."""
         with patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=frozenset({"123456"}),
         ):
             assert self._resolve("act_123456", None) == "act_123456"
@@ -249,15 +249,20 @@ class TestMetaAccountIdScoping:
 
         creds = MagicMock(account_id="act_111")
         with (
-            patch.object(handlers, "byod_has", return_value=False),
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(
-                handlers,
-                "runtime_meta_account_ids",
+            patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
                 return_value=frozenset({"act_111"}),
             ),
-            patch.object(handlers, "refresh_meta_token_if_needed", new=AsyncMock()),
-            patch.object(handlers, "create_meta_ads_client") as factory,
+            patch(
+                "mureo.mcp._meta_ads_client.refresh_meta_token_if_needed",
+                new=AsyncMock(),
+            ),
+            patch("mureo.mcp._meta_ads_client.create_meta_ads_client") as factory,
         ):
             with pytest.raises(ValueError, match="refused"):
                 await handlers._get_client({"account_id": "act_999"})
@@ -269,18 +274,21 @@ class TestMetaAccountIdScoping:
 
         creds = MagicMock(account_id=None)
         with (
-            patch.object(handlers, "byod_has", return_value=False),
-            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
-            patch.object(
-                handlers, "runtime_meta_account_ids", return_value=frozenset({"111"})
+            patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
+            patch(
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                return_value=creds,
             ),
-            patch.object(
-                handlers,
-                "refresh_meta_token_if_needed",
+            patch(
+                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+                return_value=frozenset({"111"}),
+            ),
+            patch(
+                "mureo.mcp._meta_ads_client.refresh_meta_token_if_needed",
                 new=AsyncMock(return_value=creds),
             ),
-            patch.object(handlers, "register_client_for_cleanup"),
-            patch.object(handlers, "create_meta_ads_client") as factory,
+            patch("mureo.mcp._meta_ads_client.register_client_for_cleanup"),
+            patch("mureo.mcp._meta_ads_client.create_meta_ads_client") as factory,
         ):
             await handlers._get_client({"account_id": "act_111"})
         factory.assert_called_once()

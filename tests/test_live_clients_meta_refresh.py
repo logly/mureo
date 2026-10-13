@@ -36,9 +36,9 @@ def stub_meta(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("mureo.mcp._client_factory.get_meta_ads_client", fake_client)
     monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: False)
 
-    import mureo.mcp._handlers_meta_ads as mh
-
-    monkeypatch.setattr(mh, "runtime_meta_account_ids", lambda: None)
+    monkeypatch.setattr(
+        "mureo.mcp._meta_ads_client.runtime_meta_account_ids", lambda: None
+    )
     return opened
 
 
@@ -83,9 +83,10 @@ async def test_byod_never_touches_the_refresh(monkeypatch) -> None:
         "mureo.mcp._client_factory.get_meta_ads_client",
         lambda creds=None, account_id=None: object(),
     )
-    import mureo.mcp._handlers_meta_ads as mh
 
-    monkeypatch.setattr(mh, "runtime_meta_account_ids", lambda: None)
+    monkeypatch.setattr(
+        "mureo.mcp._meta_ads_client.runtime_meta_account_ids", lambda: None
+    )
 
     refresh = AsyncMock(return_value=_REFRESHED)
     with patch("mureo.auth.refresh_meta_token_if_needed", new=refresh):

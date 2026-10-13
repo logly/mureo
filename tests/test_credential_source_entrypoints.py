@@ -90,7 +90,7 @@ def _unscoped() -> Iterator[None]:
             return_value=None,
         ),
         patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=None,
         ),
     ):
@@ -151,7 +151,6 @@ async def test_search_console_handle_tool_uses_the_source() -> None:
 
 
 async def test_meta_ads_handle_tool_uses_the_source() -> None:
-    from mureo.mcp import _handlers_meta_ads as handlers
     from mureo.mcp import tools_meta_ads
 
     rows = [{"id": "c1", "name": "Prospecting"}]
@@ -160,9 +159,9 @@ async def test_meta_ads_handle_tool_uses_the_source() -> None:
     file_loader, auth_loader = _refusing_loader(), _refusing_loader()
     refresh = AsyncMock(side_effect=AssertionError("refresh must not run"))
     with (
-        patch.object(handlers, "load_meta_ads_credentials", file_loader),
+        patch("mureo.mcp._meta_ads_client.load_meta_ads_credentials", file_loader),
         patch("mureo.auth.load_meta_ads_credentials", auth_loader),
-        patch.object(handlers, "refresh_meta_token_if_needed", refresh),
+        patch("mureo.mcp._meta_ads_client.refresh_meta_token_if_needed", refresh),
         patch("mureo.meta_ads.MetaAdsApiClient", constructor),
         use_credential_source(CredentialSource(meta_ads=_MetaSource())),
     ):

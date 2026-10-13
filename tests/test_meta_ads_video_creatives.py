@@ -30,7 +30,7 @@ def _standalone_meta_ads():
     standalone assertions here.
     """
     with patch(
-        "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+        "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
         return_value=None,
     ):
         yield
@@ -457,11 +457,11 @@ class TestVideoHandlers:
 
         with (
             patch(
-                "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
                 return_value=MetaAdsCredentials(access_token="tok"),
             ),
             patch(
-                "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
+                "mureo.mcp._meta_ads_client.create_meta_ads_client",
                 return_value=client,
             ),
         ):
@@ -497,7 +497,7 @@ class TestVideoHandlers:
         from mureo.mcp.tools_meta_ads import handle_tool
 
         with patch(
-            "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+            "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
             return_value=None,
         ):
             result = await handle_tool("meta_ads_videos_get", {"video_id": "video_42"})
@@ -535,7 +535,7 @@ class TestVideoHandlers:
         from mureo.mcp.tools_meta_ads import handle_tool
 
         with patch(
-            "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+            "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
             return_value=None,
         ):
             result = await handle_tool(

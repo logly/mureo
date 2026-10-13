@@ -109,21 +109,19 @@ def _unscoped_live() -> Iterator[None]:
             "mureo.mcp._handlers_google_ads_analysis.runtime_google_ads_customer_ids",
             return_value=None,
         ),
-        patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids", return_value=None
-        ),
+        patch("mureo.mcp._meta_ads_client.runtime_meta_account_ids", return_value=None),
         patch(
             "mureo.mcp._handlers_search_console.runtime_search_console_sites",
             return_value=None,
         ),
         patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
-        patch("mureo.mcp._handlers_meta_ads.byod_has", return_value=False),
+        patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
         patch("mureo.byod.runtime.byod_has", return_value=False),
         patch("mureo.mcp._google_ads_client.load_google_ads_credentials", _refuse),
         patch(
             "mureo.mcp._handlers_search_console.load_google_ads_credentials", _refuse
         ),
-        patch("mureo.mcp._handlers_meta_ads.load_meta_ads_credentials", _refuse),
+        patch("mureo.mcp._meta_ads_client.load_meta_ads_credentials", _refuse),
         patch("mureo.auth.load_google_ads_credentials", _refuse),
     ):
         yield
@@ -229,9 +227,9 @@ class TestStrictHandlers:
         from mureo.mcp import _handlers_meta_ads as handlers
 
         with (
-            patch.object(handlers, "byod_has", return_value=True),
-            patch.object(handlers, "get_meta_ads_client", _refuse),
-            patch.object(handlers, "create_meta_ads_client", _refuse),
+            patch("mureo.mcp._meta_ads_client.byod_has", return_value=True),
+            patch("mureo.mcp._meta_ads_client.get_meta_ads_client", _refuse),
+            patch("mureo.mcp._meta_ads_client.create_meta_ads_client", _refuse),
             use_credential_source(
                 CredentialSource(google=_GoogleSource(), strict=True)
             ),
@@ -433,7 +431,7 @@ class TestCuratedErrorsReachTheClient:
         source = _MetaSource(load_error=KeyError(_SECRET))
         with (
             caplog.at_level(logging.DEBUG),
-            patch.object(handlers, "create_meta_ads_client", _refuse),
+            patch("mureo.mcp._meta_ads_client.create_meta_ads_client", _refuse),
             use_credential_source(CredentialSource(meta_ads=source)),
         ):
             result = await handlers.handle_campaigns_list({})

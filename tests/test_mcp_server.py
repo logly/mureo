@@ -45,7 +45,7 @@ def _standalone_account_scoping():
             return_value=None,
         ),
         patch(
-            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
             return_value=None,
         ),
     ):
