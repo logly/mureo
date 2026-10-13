@@ -62,6 +62,10 @@ from mureo.analysis.tracking import (
     records_from_google_ads_ads,
 )
 from mureo.mcp._helpers import _json_result
+from mureo.mcp.credential_source import (
+    active_source_identity,
+    current_credential_source,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -94,7 +98,13 @@ SNAPSHOT_TTL_SECONDS = 60.0
 #: Consecutive failures before the fail-open path escalates to ERROR.
 _FAILURES_BEFORE_ALARM = 3
 
-_snapshot_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+#: Keyed by ``(customer_id, source identity)``: two credential sources that
+#: resolve to the same customer id must not see each other's rows (#824).
+#: Each entry also holds the credential source it was read under, so that
+#: source's ``id()`` cannot be reused by another object while the entry lives.
+_snapshot_cache: dict[
+    tuple[str, int | None], tuple[float, list[dict[str, Any]], object]
+] = {}
 _consecutive_failures = 0
 
 
@@ -235,15 +245,35 @@ def _fail_open(reason: str, *, exc: BaseException | None = None) -> PreflightOut
     )
 
 
+def _drop_expired(now: float) -> None:
+    """Forget expired snapshots, so per-call sources do not accumulate."""
+    expired = [
+        key
+        for key, (stored, _rows, _source) in _snapshot_cache.items()
+        if now - stored >= SNAPSHOT_TTL_SECONDS
+    ]
+    for key in expired:
+        del _snapshot_cache[key]
+
+
 async def _account_snapshot(client: Any) -> list[dict[str, Any]]:
-    """Account-wide ad rows, reused for ``SNAPSHOT_TTL_SECONDS``."""
-    key = str(getattr(client, "_customer_id", "") or id(client))
+    """Account-wide ad rows, reused for ``SNAPSHOT_TTL_SECONDS``.
+
+    Keyed by customer id and by the active Google credential source (#824),
+    so a source never reads rows another source (or the host's own
+    credentials) cached for the same customer id.
+    """
+    key = (
+        str(getattr(client, "_customer_id", "") or id(client)),
+        active_source_identity("google"),
+    )
     cached = _snapshot_cache.get(key)
     now = time.monotonic()
     if cached is not None and now - cached[0] < SNAPSHOT_TTL_SECONDS:
         return cached[1]
     rows = list(await client.list_ads())
-    _snapshot_cache[key] = (now, rows)
+    _drop_expired(now)
+    _snapshot_cache[key] = (now, rows, current_credential_source())
     return rows
 
 

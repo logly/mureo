@@ -43,9 +43,10 @@ def stub_factories(monkeypatch: pytest.MonkeyPatch):
 
 
 def _scope_google(monkeypatch: pytest.MonkeyPatch, allowed) -> None:
-    import mureo.mcp._handlers_google_ads as gh
 
-    monkeypatch.setattr(gh, "runtime_google_ads_customer_ids", lambda: allowed)
+    monkeypatch.setattr(
+        "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids", lambda: allowed
+    )
 
 
 def _scope_meta(monkeypatch: pytest.MonkeyPatch, allowed) -> None:

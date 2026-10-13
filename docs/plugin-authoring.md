@@ -551,7 +551,7 @@ that re-exposes those handlers under its own tool names, and resolves the
 credentials for each call itself, can hand them over with
 `mureo.mcp.credential_source` instead of patching module globals.
 
-Three types make up the surface:
+These types make up the surface:
 
 - `GoogleCredentialSource` — `load_credentials()` returns a
   `GoogleAdsCredentials` (or `None`), and `oauth_credentials(creds)` returns
@@ -560,16 +560,30 @@ Three types make up the surface:
   both Google Ads and Search Console, which share one OAuth identity.
 - `MetaCredentialSource` — `load_credentials()` returns a
   `MetaAdsCredentials` (or `None`).
-- `CredentialSource(google=..., meta_ads=...)` — a frozen dataclass naming
-  the sources for one call. A platform left at `None` keeps its usual
-  resolution.
+- `CredentialSource(google=..., meta_ads=..., strict=False)` — a frozen
+  dataclass naming the sources for one call. A platform left at `None` keeps
+  its usual resolution: its handlers read the operator's own credentials
+  file, environment or BYOD manifest, exactly as without a source. With the
+  keyword-only `strict=True` they fail closed instead (see below).
+  `merged_with(other)` returns a new source with `other`'s entries over this
+  one's, strict if either is.
+- `CredentialSourceError` — a `RuntimeError` raised when a source fails or a
+  strict source does not cover the platform a handler needs.
 
-Three read-only helpers return what is in effect for the current context:
+The platforms are explicit fields on purpose. This is deliberately explicit;
+a mapping keyed by platform id was considered and rejected so the type
+checker sees each platform. Supporting another platform adds a field.
+
+Read-only helpers return what is in effect for the current context:
 
 - `current_credential_source()` — the active `CredentialSource`, or `None`.
 - `current_google_source()` — its `google` entry, or `None` (also `None` when
-  no source is active).
+  no source is active). Raises `CredentialSourceError` when the active source
+  is strict and has no `google` entry.
 - `current_meta_source()` — its `meta_ads` entry, or `None` (likewise).
+- `active_source_identity(platform)` — `id()` of the active entry for
+  `"google"` or `"meta_ads"`, or `None`; for keying a process-wide cache by
+  source.
 
 Wrap the delegated call in `use_credential_source(...)`. It checks the
 source's shape before setting anything and raises `TypeError` if an entry is
@@ -580,7 +594,17 @@ requires (`load_credentials` and `oauth_credentials` for `google`,
 created inside the block, and it is reset on the way out, error or not. It
 does **not** reach a plain `threading.Thread` or a `loop.run_in_executor`
 call: those do not copy the context, so work you start that way does not see
-the source.
+the source. Conversely, a task created inside the
+`with use_credential_source(...)` block keeps the source after the block
+exits, because `asyncio.create_task` copies the context when the task is
+created.
+
+A nested `use_credential_source(...)` **replaces** the outer source for the
+inner block; it does not merge. An outer `CredentialSource(meta_ads=...)`
+followed by an inner `CredentialSource(google=...)` leaves `meta_ads` at
+`None` inside the inner block, so a `meta_ads_*` call there takes the
+operator's own credentials (or fails closed if the inner source is strict).
+To keep both, pass `outer.merged_with(inner)`.
 
 ```python
 from google.oauth2.credentials import Credentials
@@ -627,6 +651,23 @@ The rules the handlers follow while a source is active:
   choice beats the ambient manifest) and over the credentials file. The other
   built-in paths that open a client during a tool call (the analytics live
   clients and the Google Ads change feed) follow the same rule.
+- **Platforms the source leaves at `None`.** Without `strict`, a handler for
+  such a platform runs exactly as without a source and reads the operator's
+  own credentials. A host that serves several tenants should either set every
+  platform the call can reach or pass `strict=True`: then that handler raises
+  `CredentialSourceError` ("the active credential source is strict and has no
+  meta_ads entry; ...") and never reads the credentials file, the environment
+  or the BYOD manifest. The MCP client receives that text as an error.
+- **Errors from your source.** Every call into `load_credentials()` and
+  `oauth_credentials()` is wrapped: an exception it raises reaches the MCP
+  client only as `CredentialSourceError("credential source failed for
+  <platform> (<ExceptionClass>)")`, and mureo logs only the platform and the
+  class name. The original exception stays attached as `__context__`, so an
+  auth failure (for example a `PlatformAuthError`) is still reported as one,
+  but its text is suppressed from the traceback. Still keep secrets out of
+  your exception text: your own host may log or report it. Host code that
+  calls a source itself can use the same wrapper,
+  `call_source(platform, method, *args)`.
 - **Ids and allow-lists are unchanged.** `customer_id` / `account_id` still
   come from the tool arguments first and from your credentials object second,
   and the workspace allow-list is still enforced.
@@ -644,12 +685,15 @@ The rules the handlers follow while a source is active:
   `oauth_credentials()` may block (for example to refresh a token); the
   handlers that run on the event loop call it off the loop.
 
-**Shared state.** Two pieces of handler state are process-wide and not keyed
-by source: the per-platform request throttler, and the tracking-preflight
-snapshot cache (keyed by customer id, with a TTL). A host that serves several
-sources from one process shares the throttle budget across them, and two
-sources that address the same customer id within the TTL see the same cached
-snapshot; account for both.
+**Shared state.** The per-platform request throttler is process-wide and not
+keyed by source: a host that serves several sources from one process shares
+the throttle budget across them. The tracking-preflight snapshot cache (with
+a TTL) is keyed by customer id *and* by the identity (`id()`) of the active
+`google` entry, so two sources that address the same customer id do not see
+each other's snapshot. Each entry holds a reference to the source it was read
+under until the entry expires, so that identity cannot be reused by another
+source in the meantime; expired entries are dropped. Reuse one source object
+per tenant to keep the cache effective.
 
 `mureo.mcp.credential_source` is the supported surface. The
 `mureo.mcp._handlers_*` modules and their module globals remain private and

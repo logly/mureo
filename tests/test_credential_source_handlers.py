@@ -65,7 +65,7 @@ def _unscoped() -> Iterator[None]:
     """Pin every test to the untenanted resolution unless it patches its own."""
     with (
         patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(
@@ -92,10 +92,10 @@ class TestGoogleAdsGetClient:
         from mureo.mcp import _handlers_google_ads as handlers
 
         with (
-            patch.object(handlers, "byod_has", return_value=byod),
-            patch.object(handlers, "load_google_ads_credentials", _refuse),
-            patch.object(handlers, "get_google_ads_client", _refuse),
-            patch.object(handlers, "create_google_ads_client") as factory,
+            patch("mureo.mcp._google_ads_client.byod_has", return_value=byod),
+            patch("mureo.mcp._google_ads_client.load_google_ads_credentials", _refuse),
+            patch("mureo.mcp._google_ads_client.get_google_ads_client", _refuse),
+            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
             use_credential_source(CredentialSource(google=source)),
         ):
             client = await handlers._get_client(args)
@@ -123,12 +123,10 @@ class TestGoogleAdsGetClient:
         assert factory.call_args.args[1] == "77"
 
     async def test_allow_list_still_refuses(self) -> None:
-        from mureo.mcp import _handlers_google_ads as handlers
 
         with (
-            patch.object(
-                handlers,
-                "runtime_google_ads_customer_ids",
+            patch(
+                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
                 return_value=frozenset({"1112223333"}),
             ),
             pytest.raises(ValueError, match="refused"),
@@ -154,8 +152,8 @@ class TestGoogleAdsGetClient:
         from mureo.mcp import _handlers_google_ads as handlers
 
         with (
-            patch.object(handlers, "byod_has", return_value=False),
-            patch.object(handlers, "load_google_ads_credentials", _refuse),
+            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+            patch("mureo.mcp._google_ads_client.load_google_ads_credentials", _refuse),
             use_credential_source(CredentialSource(google=_GoogleSource(None))),
         ):
             result = await handlers.handle_campaigns_list({"customer_id": "1"})
@@ -166,8 +164,8 @@ class TestGoogleAdsGetClient:
 
         loader = MagicMock(return_value=None)
         with (
-            patch.object(handlers, "byod_has", return_value=False),
-            patch.object(handlers, "load_google_ads_credentials", loader),
+            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+            patch("mureo.mcp._google_ads_client.load_google_ads_credentials", loader),
             use_credential_source(CredentialSource(meta_ads=_MetaSource(_META))),
         ):
             assert await handlers._get_client({"customer_id": "1"}) is None
@@ -383,8 +381,8 @@ class TestOAuthCredentialsOffTheLoop:
         loop_thread = threading.get_ident()
         source = _ThreadRecordingSource(_GOOGLE)
         with (
-            patch.object(handlers, "byod_has", return_value=False),
-            patch.object(handlers, "create_google_ads_client") as factory,
+            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
             use_credential_source(CredentialSource(google=source)),
         ):
             await handlers._get_client({"customer_id": "1"})

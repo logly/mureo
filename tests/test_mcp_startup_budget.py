@@ -756,18 +756,22 @@ class TestLazyPublicNames:
         resolved handler table to a mocked client — so a lazy import that merely
         moved the breakage from startup to the first tool call is caught here.
         """
-        from mureo.mcp import _handlers_google_ads as handlers
         from mureo.mcp import tools_google_ads
 
         client = AsyncMock()
         client.list_campaigns.return_value = [{"id": "1", "name": "Test"}]
         with (
-            patch.object(
-                handlers, "load_google_ads_credentials", return_value=MagicMock()
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=MagicMock(),
             ),
-            patch.object(handlers, "create_google_ads_client", return_value=client),
-            patch.object(
-                handlers, "runtime_google_ads_customer_ids", return_value=None
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+                return_value=None,
             ),
         ):
             result = await tools_google_ads.handle_tool(

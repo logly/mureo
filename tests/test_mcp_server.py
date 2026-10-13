@@ -24,12 +24,6 @@ def _import_server_module():
     return mcp_server_module
 
 
-def _import_google_ads_handlers():
-    from mureo.mcp import _handlers_google_ads
-
-    return _handlers_google_ads
-
-
 # ---------------------------------------------------------------------------
 # list_tools tests
 # ---------------------------------------------------------------------------
@@ -47,7 +41,7 @@ def _standalone_account_scoping():
     """
     with (
         patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(
@@ -140,7 +134,6 @@ class TestCallToolCampaignsList:
     async def test_campaigns_list_calls_client(self) -> None:
         """campaigns.list calls GoogleAdsApiClient.list_campaigns."""
         mod = _import_server_module()
-        ga_mod = _import_google_ads_handlers()
 
         mock_client = AsyncMock()
         mock_client.list_campaigns.return_value = [
@@ -149,10 +142,14 @@ class TestCallToolCampaignsList:
 
         mock_creds = MagicMock()
         with (
-            patch.object(
-                ga_mod, "load_google_ads_credentials", return_value=mock_creds
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=mock_creds,
             ),
-            patch.object(ga_mod, "create_google_ads_client", return_value=mock_client),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=mock_client,
+            ),
         ):
             result = await mod.handle_call_tool(
                 "google_ads_campaigns_list",
@@ -174,7 +171,6 @@ class TestCallToolCampaignsGet:
     async def test_campaigns_get_calls_client(self) -> None:
         """campaigns.get calls GoogleAdsApiClient.get_campaign."""
         mod = _import_server_module()
-        ga_mod = _import_google_ads_handlers()
 
         mock_client = AsyncMock()
         mock_client.get_campaign.return_value = {
@@ -186,10 +182,14 @@ class TestCallToolCampaignsGet:
 
         mock_creds = MagicMock()
         with (
-            patch.object(
-                ga_mod, "load_google_ads_credentials", return_value=mock_creds
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=mock_creds,
             ),
-            patch.object(ga_mod, "create_google_ads_client", return_value=mock_client),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=mock_client,
+            ),
         ):
             result = await mod.handle_call_tool(
                 "google_ads_campaigns_get",
@@ -219,7 +219,7 @@ class TestCallToolErrors:
         mod = _import_server_module()
 
         with patch(
-            "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
+            "mureo.mcp._google_ads_client.load_google_ads_credentials",
             return_value=None,
         ):
             result = await mod.handle_call_tool("google_ads_campaigns_list", {})
@@ -228,12 +228,12 @@ class TestCallToolErrors:
     async def test_missing_required_param_campaign_id(self) -> None:
         """campaigns.get errors when campaign_id is missing."""
         mod = _import_server_module()
-        ga_mod = _import_google_ads_handlers()
 
         mock_creds = MagicMock()
         with (
-            patch.object(
-                ga_mod, "load_google_ads_credentials", return_value=mock_creds
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=mock_creds,
             ),
             pytest.raises(ValueError, match="campaign_id"),
         ):
@@ -244,12 +244,10 @@ class TestCallToolErrors:
 
     async def test_no_credentials_returns_error_text(self) -> None:
         """When credentials are missing, the error is returned as TextContent."""
-        ga_mod = _import_google_ads_handlers()
         mod = _import_server_module()
 
-        with patch.object(
-            ga_mod,
-            "load_google_ads_credentials",
+        with patch(
+            "mureo.mcp._google_ads_client.load_google_ads_credentials",
             return_value=None,
         ):
             result = await mod.handle_call_tool(

@@ -18,12 +18,6 @@ def _import_google_ads_tools():
     return tools_google_ads
 
 
-def _import_handlers():
-    from mureo.mcp import _handlers_google_ads
-
-    return _handlers_google_ads
-
-
 # ---------------------------------------------------------------------------
 # Tool-definition tests
 # ---------------------------------------------------------------------------
@@ -42,7 +36,7 @@ def _standalone_google_ads():
     path; the scoped behavior lives in test_account_id_tenant_scope.py.
     """
     with patch(
-        "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+        "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
         return_value=None,
     ):
         yield
@@ -206,10 +200,15 @@ class TestGoogleAdsBudgetPeriodHandlers:
         creds, client = _mock_google_ads_context()
         client.update_budget.return_value = {"resource_name": "x"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             await mod.handle_tool(
                 "google_ads_budget_update",
@@ -227,10 +226,15 @@ class TestGoogleAdsBudgetPeriodHandlers:
     async def test_budget_update_still_requires_some_amount(self) -> None:
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
             pytest.raises(ValueError, match="required"),
         ):
             await mod.handle_tool(
@@ -243,10 +247,15 @@ class TestGoogleAdsBudgetPeriodHandlers:
         creds, client = _mock_google_ads_context()
         client.create_budget.return_value = {"resource_name": "y"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             await mod.handle_tool(
                 "google_ads_budget_create",
@@ -268,10 +277,15 @@ class TestGoogleAdsBudgetPeriodHandlers:
         creds, client = _mock_google_ads_context()
         client.create_budget.return_value = {"resource_name": "z"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             await mod.handle_tool(
                 "google_ads_budget_create",
@@ -298,10 +312,15 @@ class TestGoogleAdsCriteriaReadHandlers:
             {"criterion_id": "1", "type": "AGE_RANGE", "value": "AGE_RANGE_25_34"}
         ]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_demographic_targeting_list",
@@ -321,10 +340,15 @@ class TestGoogleAdsCriteriaReadHandlers:
             {"criterion_id": "2", "type": "USER_LIST", "value": "customers/1/x/9"}
         ]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_audience_targeting_list",
@@ -342,10 +366,15 @@ class TestGoogleAdsCriteriaReadHandlers:
         creds, client = _mock_google_ads_context()
         client.list_image_assets.return_value = [{"id": "5", "name": "hero"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_image_assets_list", {"customer_id": "123"}
@@ -360,10 +389,15 @@ class TestGoogleAdsCriteriaReadHandlers:
         creds, client = _mock_google_ads_context()
         client.list_image_assets.return_value = []
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             await mod.handle_tool(
                 "google_ads_image_assets_list", {"customer_id": "123", "limit": 25}
@@ -386,10 +420,15 @@ class TestGoogleAdsCampaignHandlers:
         creds, client = _mock_google_ads_context()
         client.list_campaigns.return_value = [{"id": "1", "name": "Test"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_campaigns_list", {"customer_id": "123"}
@@ -404,10 +443,15 @@ class TestGoogleAdsCampaignHandlers:
         creds, client = _mock_google_ads_context()
         client.get_campaign.return_value = {"id": "456", "name": "Detail"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_campaigns_get",
@@ -425,10 +469,15 @@ class TestGoogleAdsCampaignHandlers:
             "resource_name": "customers/123/campaigns/789"
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_campaigns_create",
@@ -447,10 +496,15 @@ class TestGoogleAdsCampaignHandlers:
             "resource_name": "customers/123/campaigns/999"
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             await mod.handle_tool(
                 "google_ads_campaigns_create",
@@ -477,10 +531,15 @@ class TestGoogleAdsCampaignHandlers:
             "resource_name": "customers/123/campaigns/456"
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_campaigns_update",
@@ -498,10 +557,15 @@ class TestGoogleAdsCampaignHandlers:
             "resource_name": "customers/123/campaigns/456"
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_campaigns_update_status",
@@ -528,10 +592,15 @@ class TestGoogleAdsAdGroupHandlers:
         creds, client = _mock_google_ads_context()
         client.list_ad_groups.return_value = [{"id": "10", "name": "AG1"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_ad_groups_list",
@@ -549,10 +618,15 @@ class TestGoogleAdsAdGroupHandlers:
             "resource_name": "customers/123/adGroups/99"
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_ad_groups_create",
@@ -571,10 +645,15 @@ class TestGoogleAdsAdGroupHandlers:
             "resource_name": "customers/123/adGroups/99"
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_ad_groups_update",
@@ -601,10 +680,15 @@ class TestGoogleAdsAdHandlers:
         creds, client = _mock_google_ads_context()
         client.list_ads.return_value = [{"id": "77", "type": "RSA"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_ads_list", {"customer_id": "123"}
@@ -619,10 +703,15 @@ class TestGoogleAdsAdHandlers:
         creds, client = _mock_google_ads_context()
         client.create_ad.return_value = {"resource_name": "customers/123/ads/55"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_ads_create",
@@ -642,10 +731,15 @@ class TestGoogleAdsAdHandlers:
         creds, client = _mock_google_ads_context()
         client.update_ad_status.return_value = {"resource_name": "res"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_ads_update_status",
@@ -672,10 +766,15 @@ class TestGoogleAdsAdHandlers:
             },
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_ads_create_display",
@@ -715,10 +814,15 @@ class TestGoogleAdsKeywordHandlers:
         creds, client = _mock_google_ads_context()
         client.list_keywords.return_value = [{"text": "test", "match_type": "BROAD"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_keywords_list", {"customer_id": "123"}
@@ -732,10 +836,15 @@ class TestGoogleAdsKeywordHandlers:
         creds, client = _mock_google_ads_context()
         client.add_keywords.return_value = [{"resource_name": "res"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_keywords_add",
@@ -754,10 +863,15 @@ class TestGoogleAdsKeywordHandlers:
         creds, client = _mock_google_ads_context()
         client.remove_keyword.return_value = {"resource_name": "res"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_keywords_remove",
@@ -776,10 +890,15 @@ class TestGoogleAdsKeywordHandlers:
         creds, client = _mock_google_ads_context()
         client.suggest_keywords.return_value = [{"keyword": "suggested"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_keywords_suggest",
@@ -794,10 +913,15 @@ class TestGoogleAdsKeywordHandlers:
         creds, client = _mock_google_ads_context()
         client.diagnose_keywords.return_value = {"total": 10, "issues": []}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_keywords_diagnose",
@@ -812,10 +936,15 @@ class TestGoogleAdsKeywordHandlers:
         creds, client = _mock_google_ads_context()
         client.list_negative_keywords.return_value = [{"text": "neg"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_negative_keywords_list",
@@ -830,10 +959,15 @@ class TestGoogleAdsKeywordHandlers:
         creds, client = _mock_google_ads_context()
         client.add_negative_keywords.return_value = [{"resource_name": "res"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_negative_keywords_add",
@@ -862,10 +996,15 @@ class TestGoogleAdsBudgetHandlers:
         creds, client = _mock_google_ads_context()
         client.get_budget.return_value = {"id": "1", "daily_budget": 5000}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_budget_get",
@@ -880,10 +1019,15 @@ class TestGoogleAdsBudgetHandlers:
         creds, client = _mock_google_ads_context()
         client.update_budget.return_value = {"resource_name": "res"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_budget_update",
@@ -908,10 +1052,15 @@ class TestGoogleAdsAnalysisHandlers:
         creds, client = _mock_google_ads_context()
         client.get_performance_report.return_value = [{"clicks": 100}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_performance_report",
@@ -926,10 +1075,15 @@ class TestGoogleAdsAnalysisHandlers:
         creds, client = _mock_google_ads_context()
         client.get_search_terms_report.return_value = [{"term": "query"}]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_search_terms_report",
@@ -944,10 +1098,15 @@ class TestGoogleAdsAnalysisHandlers:
         creds, client = _mock_google_ads_context()
         client.review_search_terms.return_value = {"candidates": []}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_search_terms_review",
@@ -962,10 +1121,15 @@ class TestGoogleAdsAnalysisHandlers:
         creds, client = _mock_google_ads_context()
         client.analyze_auction_insights.return_value = {"competitors": []}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_auction_insights_analyze",
@@ -980,10 +1144,15 @@ class TestGoogleAdsAnalysisHandlers:
         creds, client = _mock_google_ads_context()
         client.detect_cpc_trend.return_value = {"direction": "rising"}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_cpc_detect_trend",
@@ -998,10 +1167,15 @@ class TestGoogleAdsAnalysisHandlers:
         creds, client = _mock_google_ads_context()
         client.analyze_device_performance.return_value = {"devices": []}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_device_analyze",
@@ -1025,7 +1199,7 @@ class TestGoogleAdsErrorHandling:
         """Returns error text when customer_id is missing and credentials.json has none."""
         mod = _import_google_ads_tools()
         with patch(
-            "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
+            "mureo.mcp._google_ads_client.load_google_ads_credentials",
             return_value=None,
         ):
             result = await mod.handle_tool("google_ads_campaigns_list", {})
@@ -1040,8 +1214,10 @@ class TestGoogleAdsErrorHandling:
     async def test_no_credentials_returns_error_text(self) -> None:
         """Returns error text when no credentials are present."""
         mod = _import_google_ads_tools()
-        h = _import_handlers()
-        with patch.object(h, "load_google_ads_credentials", return_value=None):
+        with patch(
+            "mureo.mcp._google_ads_client.load_google_ads_credentials",
+            return_value=None,
+        ):
             result = await mod.handle_tool(
                 "google_ads_campaigns_list", {"customer_id": "123"}
             )
@@ -1054,10 +1230,15 @@ class TestGoogleAdsErrorHandling:
         creds, client = _mock_google_ads_context()
         client.diagnose_campaign_delivery.return_value = {"issues": []}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_campaigns_diagnose",
@@ -1073,10 +1254,15 @@ class TestGoogleAdsErrorHandling:
         creds, client = _mock_google_ads_context()
         client.list_campaigns.side_effect = RuntimeError("API接続エラー")
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 "google_ads_campaigns_list", {"customer_id": "123"}

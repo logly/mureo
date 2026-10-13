@@ -32,7 +32,7 @@ def _standalone_account_scoping():
     """
     with (
         patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(
@@ -568,11 +568,11 @@ class TestMcpGoogleUploadImage:
 
         with (
             patch(
-                "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
                 return_value={"developer_token": "tok"},
             ),
             patch(
-                "mureo.mcp._handlers_google_ads.create_google_ads_client",
+                "mureo.mcp._google_ads_client.create_google_ads_client",
                 return_value=mock_client,
             ),
         ):
