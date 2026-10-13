@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-14
+
 ### Added
 
 - **A credential source can fail closed for the platforms it does not
