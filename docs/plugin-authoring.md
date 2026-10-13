@@ -262,13 +262,24 @@ Defined in `mureo.core.providers.base`. Three class attributes:
 | Attribute | Type | Contract |
 |---|---|---|
 | `name` | `str` | Snake_case identifier matching `^[a-z][a-z0-9_]*$`. Used as registry key and skill-frontmatter token. |
-| `display_name` | `str` | Non-empty human-readable label (CLI output, error messages). |
+| `display_name` | `str` | Non-empty human-readable label (CLI output, error messages, and the platform label on the Reports card — see below). |
 | `capabilities` | `frozenset[Capability]` | The capabilities the provider declares it can serve. Must be a `frozenset` (not `set`) so it is hashable and cannot be mutated. |
 
 These should be **class attributes** (not instance attributes) so the
 registry and skill matcher can introspect them without instantiating
 the provider. `validate_provider()` and `register_provider_class()`
 both look them up on the class via `getattr`.
+
+The configure UI's Reports card labels your platform with `display_name`,
+stripped and followed by ` (plugin)` (`display_name = "ACME Search-X"` →
+`ACME Search-X (plugin)`), so declare it with the casing you want operators
+to read. It is honoured for the canonical `plugin:<distribution>:<provider>`
+key when the registered provider came from that distribution, and for the
+bare provider name. The label is read from the classes discovery already
+loaded; when your provider is not loaded in the rendering process, the key
+names another distribution, the key is the legacy `plugin:<distribution>`
+form, or `display_name` is blank, the label is derived from the key as
+before (`acme_search_x` → `Acme Search X (plugin)`).
 
 `BaseProvider` declares no methods. Phase 1 keeps it minimal so
 adding required methods later cannot break installed plugins — new

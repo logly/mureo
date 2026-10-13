@@ -24,6 +24,10 @@ The plugin half of the vocabulary is read from
 enumeration the write-time guard uses (#631) — so this resolver can never
 disagree with what mureo accepted on write.
 
+A plugin platform's label prefers the ``display_name`` its provider class
+declares (#826), read from the provider registry's already-loaded entries —
+never a fresh entry-point scan, so labelling imports no third-party code.
+
 No document, no store, no I/O: every function takes a string and returns a
 string.
 """
@@ -37,6 +41,7 @@ from mureo.core.platform_keys import (
     is_plugin_platform_key,
     plugin_platform_parts,
 )
+from mureo.core.providers import registry as _provider_registry
 
 # Built-in platform key → human display name. Plugin keys (``plugin:<dist>``)
 # and any unknown key are resolved by :func:`platform_display_name` instead.
@@ -74,8 +79,13 @@ def platform_display_name(key: str) -> str:
       name, with no ``" (plugin)"`` suffix (e.g.
       ``plugin:mureo-amazon-ads-bridge`` → ``"Amazon Ads"``). See
       :data:`_OFFICIAL_BRIDGE_DISPLAY_NAMES`.
-    - A canonical ``plugin:<dist>:<provider>`` key (#537) → a humanized
-      label from ``<provider>``, suffixed ``" (plugin)"``: the provider
+    - A canonical ``plugin:<dist>:<provider>`` key whose provider class is
+      registered from ``<dist>`` and declares a non-blank ``display_name``
+      (#826) → that name, stripped, suffixed ``" (plugin)"`` (e.g.
+      ``"ACME Search-X (plugin)"``). See :func:`_declared_display_name`.
+    - Otherwise, a canonical ``plugin:<dist>:<provider>`` key (#537) → a
+      humanized label from ``<provider>``, suffixed ``" (plugin)"``: the
+      provider
       names the *platform*, which is what a label is for, while the
       distribution is packaging (e.g.
       ``plugin:mureo-lineyahoo-bridge:yahoo_ads`` → ``"Yahoo Ads
@@ -88,7 +98,8 @@ def platform_display_name(key: str) -> str:
       ``plugin:acme-ads`` → ``"Acme Ads (plugin)"``). Unchanged, so state
       written before #537 keeps the label it already had.
     - A bare provider name an INSTALLED plugin registered (#609/#631) → the
-      humanized name with the same ``" (plugin)"`` suffix
+      declared ``display_name`` when its class is registered, else the
+      humanized name, with the same ``" (plugin)"`` suffix
       (``logly_ads_context`` → ``"Logly Ads Context (plugin)"``). See
       :func:`_installed_plugin_platform_label`.
     - Anything else (an unknown built-in-shaped key) → the key itself, so
@@ -109,7 +120,9 @@ def platform_display_name(key: str) -> str:
         official = _OFFICIAL_BRIDGE_DISPLAY_NAMES.get(dist)
         if official is not None:
             return official
-        label = _humanize_words(provider) if provider else ""
+        label = _declared_display_name(provider, dist) if provider else ""
+        if not label and provider:
+            label = _humanize_words(provider)
         if not label:
             label = _humanize_dist(dist)
         return f"{label} (plugin)" if label else key
@@ -153,8 +166,36 @@ def _installed_plugin_platform_label(key: str) -> str:
     installed = installed_platform_names()
     if installed is not None and key not in installed:
         return ""
-    label = _humanize_words(key)
+    label = _declared_display_name(key) or _humanize_words(key)
     return f"{label} (plugin)" if label else ""
+
+
+def _declared_display_name(provider: str, dist: str | None = None) -> str:
+    """The ``display_name`` the registered ``provider`` class declares (#826).
+
+    Read from the provider registry's in-memory entries only: discovery
+    (``discover_providers``, run once at configure-UI and MCP startup) has
+    already loaded the classes, and running it here would import third-party
+    code from a label lookup. A provider discovery has not loaded simply has
+    no declared name, and the caller derives one as before.
+
+    ``dist`` — the distribution a canonical key names — must equal the
+    entry's ``source_distribution``, the same exact join
+    :func:`~mureo.core.platform_keys.plugin_platform_key_matches` uses: a
+    same-named provider loaded from another (or an unknown) distribution is
+    not the platform the key denotes. A bare name carries no distribution,
+    and the registry holds one class per name, so ``None`` skips the check.
+
+    Only a non-blank ``str`` counts, stripped; anything else yields ``""``.
+    """
+    registry = _provider_registry.default_registry
+    if provider not in registry:
+        return ""
+    entry = registry.get(provider)
+    if dist is not None and getattr(entry, "source_distribution", None) != dist:
+        return ""
+    declared = getattr(entry, "display_name", None)
+    return declared.strip() if isinstance(declared, str) else ""
 
 
 def _humanize_words(name: str) -> str:
