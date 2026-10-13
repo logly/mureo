@@ -7390,7 +7390,7 @@
   shared-OAuth backend that has not declared its allow-list fail-closes rather
   than leaking. Standalone (single-workspace) installs are unchanged. (#375)
 - **About "Installed packages" now agrees with the update checker.** A
-  `mureo.skills`-only plugin (e.g. `mureo-logly-tools`) could be flagged
+  `mureo.skills`-only plugin (e.g. `mureo-example-skills`) could be flagged
   "update available" yet never appear under Installed; the About list now
   unions the same name-prefixed `mureo`/`mureo-*` set the updater uses. (#365)
 - **Meta Ads budget conversions honor zero-decimal currencies.** Budget amounts

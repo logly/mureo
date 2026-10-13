@@ -308,23 +308,23 @@ class TestCollectAboutInfo:
 
     def test_name_prefixed_package_without_entry_points_is_listed(self) -> None:
         """A ``mureo-*`` plugin registering NONE of the scanned entry-point
-        groups (e.g. ``mureo-logly-tools`` — ``mureo.skills`` only, but here
+        groups (e.g. ``mureo-example-skills`` — ``mureo.skills`` only, but here
         with no entry point at all) is still listed, matching the updater."""
         with (
             patch("mureo.web.about.entry_points", _entry_points_for({})),
             patch(
                 "mureo.web.about.version",
-                _version_for({"mureo": "1.0.0", "mureo-logly-tools": "0.3.0"}),
+                _version_for({"mureo": "1.0.0", "mureo-example-skills": "0.3.0"}),
             ),
             patch(
                 "mureo.web.about._discover_all_mureo_packages",
-                return_value=["mureo", "mureo-logly-tools"],
+                return_value=["mureo", "mureo-example-skills"],
             ),
         ):
             info = collect_about_info()
-        assert {"name": "mureo-logly-tools", "version": "0.3.0"} in info["packages"]
+        assert {"name": "mureo-example-skills", "version": "0.3.0"} in info["packages"]
         names = [pkg["name"] for pkg in info["packages"]]
-        assert names == ["mureo", "mureo-logly-tools"]
+        assert names == ["mureo", "mureo-example-skills"]
 
     def test_name_prefixed_package_missing_version_uses_placeholder(self) -> None:
         """A name-prefix-discovered dist whose version cannot be resolved
@@ -345,23 +345,23 @@ class TestCollectAboutInfo:
         name prefix) appears exactly once."""
         by_group = {
             "mureo.skills": (
-                _FakeEntryPoint(dist=_FakeDist("mureo-logly-tools", "0.3.0")),
+                _FakeEntryPoint(dist=_FakeDist("mureo-example-skills", "0.3.0")),
             ),
         }
         with (
             patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
             patch(
                 "mureo.web.about.version",
-                _version_for({"mureo": "1.0.0", "mureo-logly-tools": "0.3.0"}),
+                _version_for({"mureo": "1.0.0", "mureo-example-skills": "0.3.0"}),
             ),
             patch(
                 "mureo.web.about._discover_all_mureo_packages",
-                return_value=["mureo", "mureo-logly-tools"],
+                return_value=["mureo", "mureo-example-skills"],
             ),
         ):
             info = collect_about_info()
         names = [pkg["name"] for pkg in info["packages"]]
-        assert names == ["mureo", "mureo-logly-tools"]
+        assert names == ["mureo", "mureo-example-skills"]
 
     def test_skills_only_entry_point_plugin_is_listed(self) -> None:
         """A skills plugin NOT named ``mureo-*`` (so invisible to the
@@ -450,22 +450,22 @@ class TestCollectAboutInfo:
             patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
             patch(
                 "mureo.web.about.version",
-                _version_for({"mureo": "1.0.0", "mureo-logly-tools": "0.3.0"}),
+                _version_for({"mureo": "1.0.0", "mureo-example-skills": "0.3.0"}),
             ),
             patch(
                 "mureo.web.about._discover_all_mureo_packages",
-                return_value=["mureo", "mureo-logly-tools"],
+                return_value=["mureo", "mureo-example-skills"],
             ),
         ):
             info = collect_about_info()
         names = [pkg["name"] for pkg in info["packages"]]
-        assert names == ["mureo", "mureo-logly-tools"]
+        assert names == ["mureo", "mureo-example-skills"]
         assert "Mureo_Logly_Tools" not in names
 
     def test_every_updater_package_appears_exactly_once(self) -> None:
         """Property of #365: every name the updater discovers is listed here
         exactly once (⊆ guarantee), regardless of entry-point registration."""
-        updater_set = ["mureo", "mureo-agency", "mureo-logly-tools", "mureo-x"]
+        updater_set = ["mureo", "mureo-agency", "mureo-example-skills", "mureo-x"]
         by_group = {
             # Only one of them also registers an entry point — the rest are
             # name-prefix-only, exactly the #365 gap.
