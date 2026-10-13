@@ -290,7 +290,7 @@ class GoogleAdsChangeFeed:
         from mureo.byod.runtime import byod_has
         from mureo.mcp._client_factory import get_google_ads_client
         from mureo.mcp._handlers_google_ads import _resolve_customer_id
-        from mureo.mcp.credential_source import current_google_source
+        from mureo.mcp.credential_source import call_source, current_google_source
 
         # An active credential source wins over BYOD mode and the
         # credentials file, as it does for the MCP handlers (#821).
@@ -302,10 +302,10 @@ class GoogleAdsChangeFeed:
         # read an account the workspace is not scoped to.
         resolved = _resolve_customer_id(account_id, None)
         if google is not None:
-            creds = google.load_credentials()
+            creds = call_source("google", google.load_credentials)
             if creds is None:
                 raise RuntimeError("google_ads credentials are not configured")
-            oauth = google.oauth_credentials(creds)
+            oauth = call_source("google", google.oauth_credentials, creds)
             return create_google_ads_client(creds, resolved, oauth_credentials=oauth)
         creds = load_google_ads_credentials()
         if creds is None:

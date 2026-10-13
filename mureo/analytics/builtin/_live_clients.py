@@ -196,13 +196,13 @@ def _google_client_from_source(
     precedence as the MCP handlers; ``None`` from it is "no credentials".
     """
     from mureo.auth import create_google_ads_client
+    from mureo.mcp.credential_source import call_source
 
-    creds = google.load_credentials()
+    creds = call_source("google", google.load_credentials)
     if creds is None:
         raise NoCredentialsError("google_ads credentials not configured")
-    return create_google_ads_client(
-        creds, account_id, oauth_credentials=google.oauth_credentials(creds)
-    )
+    oauth = call_source("google", google.oauth_credentials, creds)
+    return create_google_ads_client(creds, account_id, oauth_credentials=oauth)
 
 
 async def fetch_google_ads_metrics(
@@ -631,8 +631,9 @@ def _meta_client_from_source(meta_ads: MetaCredentialSource, account_id: str) ->
     token lifecycle, so no refresh is attempted here.
     """
     from mureo.auth import create_meta_ads_client
+    from mureo.mcp.credential_source import call_source
 
-    creds = meta_ads.load_credentials()
+    creds = call_source("meta_ads", meta_ads.load_credentials)
     if creds is None:
         raise NoCredentialsError("meta_ads credentials not configured")
     return create_meta_ads_client(creds, account_id)

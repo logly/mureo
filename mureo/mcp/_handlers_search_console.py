@@ -23,7 +23,7 @@ from mureo.mcp._helpers import (
     api_error_handler,
     register_client_for_cleanup,
 )
-from mureo.mcp.credential_source import current_google_source
+from mureo.mcp.credential_source import call_source, current_google_source
 from mureo.throttle import SEARCH_CONSOLE_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -48,11 +48,13 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
     """
     google = current_google_source()
     if google is not None:
-        creds = google.load_credentials()
+        creds = call_source("google", google.load_credentials)
         if creds is None:
             return None
         # oauth_credentials() may block (a token refresh): keep it off the loop
-        oauth = await asyncio.to_thread(google.oauth_credentials, creds)
+        oauth = await asyncio.to_thread(
+            call_source, "google", google.oauth_credentials, creds
+        )
         client = create_search_console_client(
             creds, throttler=_throttler, oauth_credentials=oauth
         )

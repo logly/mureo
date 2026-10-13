@@ -26,12 +26,6 @@ def _import_google_ads_tools():
     return tools_google_ads
 
 
-def _import_handlers():
-    from mureo.mcp import _handlers_google_ads
-
-    return _handlers_google_ads
-
-
 def _tool(name: str) -> Any:
     mod = _import_google_ads_tools()
     return next(t for t in mod.TOOLS if t.name == name)
@@ -41,7 +35,7 @@ def _tool(name: str) -> Any:
 def _standalone_google_ads():
     """Pin these handler tests to STANDALONE (untenanted) Google Ads (#411)."""
     with patch(
-        "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+        "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
         return_value=None,
     ):
         yield
@@ -211,10 +205,15 @@ class TestAssetGroupHandlers:
             {"asset_id": "555", "url": "https://x/555", "field_type": "LOGO"},
         ]
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 _LIST_TOOL,
@@ -237,10 +236,15 @@ class TestAssetGroupHandlers:
         creds, client = _mock_google_ads_context()
         client.list_asset_group_assets.return_value = []
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             await mod.handle_tool(_LIST_TOOL, {"customer_id": "1234567890"})
 
@@ -258,10 +262,15 @@ class TestAssetGroupHandlers:
             "removed": {"asset_id": "111", "text": "Old copy"},
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 _REPLACE_TOOL,
@@ -301,10 +310,15 @@ class TestAssetGroupHandlers:
         }
         args.pop(missing)
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
             pytest.raises(ValueError, match=missing),
         ):
             await mod.handle_tool(_REPLACE_TOOL, args)
@@ -324,10 +338,15 @@ class TestAssetGroupImageHandlers:
             "removed": {"asset_id": "555"},
         }
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             result = await mod.handle_tool(
                 _REPLACE_IMAGE_TOOL,
@@ -355,10 +374,15 @@ class TestAssetGroupImageHandlers:
         creds, client = _mock_google_ads_context()
         client.replace_asset_group_image_asset.return_value = {"added": {}}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             await mod.handle_tool(
                 _REPLACE_IMAGE_TOOL,
@@ -389,10 +413,15 @@ class TestAssetGroupImageHandlers:
         creds, client = _mock_google_ads_context()
         client.replace_asset_group_image_asset.return_value = {"added": {}}
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
         ):
             await mod.handle_tool(
                 _REPLACE_IMAGE_TOOL,
@@ -424,10 +453,15 @@ class TestAssetGroupImageHandlers:
         }
         args.pop(missing)
 
-        h = _import_handlers()
         with (
-            patch.object(h, "load_google_ads_credentials", return_value=creds),
-            patch.object(h, "create_google_ads_client", return_value=client),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.create_google_ads_client",
+                return_value=client,
+            ),
             pytest.raises(ValueError, match=missing),
         ):
             await mod.handle_tool(_REPLACE_IMAGE_TOOL, args)

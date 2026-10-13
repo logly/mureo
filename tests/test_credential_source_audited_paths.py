@@ -54,10 +54,11 @@ def _refuse(*_args: Any, **_kwargs: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def _live_unscoped(monkeypatch: pytest.MonkeyPatch) -> None:
-    import mureo.mcp._handlers_google_ads as gh
     import mureo.mcp._handlers_meta_ads as mh
 
-    monkeypatch.setattr(gh, "runtime_google_ads_customer_ids", lambda: None)
+    monkeypatch.setattr(
+        "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids", lambda: None
+    )
     monkeypatch.setattr(mh, "runtime_meta_account_ids", lambda: None)
     monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: True)
     monkeypatch.setattr("mureo.auth.load_google_ads_credentials", _refuse)
@@ -154,11 +155,11 @@ class TestChangeFeedGoogle:
             GoogleAdsChangeFeed()._open_client("1112223333")
 
     def test_allow_list_still_refuses(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import mureo.mcp._handlers_google_ads as gh
         from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
 
         monkeypatch.setattr(
-            gh, "runtime_google_ads_customer_ids", lambda: frozenset({"1"})
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            lambda: frozenset({"1"}),
         )
         with (
             use_credential_source(CredentialSource(google=_GoogleSource(_GOOGLE))),

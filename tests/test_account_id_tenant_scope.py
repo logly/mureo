@@ -301,7 +301,7 @@ class TestGoogleCustomerIdScoping:
 
     def test_unscoped_keeps_existing_behavior(self) -> None:
         with patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=None,
         ):
             assert self._resolve("222", "111") == "222"
@@ -312,7 +312,7 @@ class TestGoogleCustomerIdScoping:
     def test_unconfigured_client_fails_fast(self) -> None:
         with (
             patch(
-                "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
                 return_value=frozenset(),
             ),
             pytest.raises(ValueError, match="not configured"),
@@ -322,7 +322,7 @@ class TestGoogleCustomerIdScoping:
     def test_out_of_set_explicit_id_is_refused(self) -> None:
         with (
             patch(
-                "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
                 return_value=frozenset({"111-222-3333"}),
             ),
             pytest.raises(ValueError, match="refused"),
@@ -332,21 +332,21 @@ class TestGoogleCustomerIdScoping:
     def test_hyphen_insensitive_membership(self) -> None:
         """1112223333 matches the configured 111-222-3333 and vice versa."""
         with patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=frozenset({"111-222-3333"}),
         ):
             assert self._resolve("1112223333", None) == "1112223333"
 
     def test_multi_entry_default_in_set_is_used(self) -> None:
         with patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=frozenset({"111", "222"}),
         ):
             assert self._resolve(None, "111") == "111"
 
     def test_single_entry_defaults_when_omitted(self) -> None:
         with patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=frozenset({"111-222-3333"}),
         ):
             assert self._resolve(None, None) == "111-222-3333"
@@ -355,7 +355,7 @@ class TestGoogleCustomerIdScoping:
         """The shared login_customer_id (MCC) is usually NOT the client's
         account — with one configured id, resolution lands there instead."""
         with patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=frozenset({"111-222-3333"}),
         ):
             assert self._resolve(None, "999-000-1111") == "111-222-3333"
@@ -365,14 +365,16 @@ class TestGoogleCustomerIdScoping:
 
         creds = MagicMock(customer_id="111", login_customer_id="999")
         with (
-            patch.object(handlers, "byod_has", return_value=False),
-            patch.object(handlers, "load_google_ads_credentials", return_value=creds),
-            patch.object(
-                handlers,
-                "runtime_google_ads_customer_ids",
+            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
                 return_value=frozenset({"111"}),
             ),
-            patch.object(handlers, "create_google_ads_client") as factory,
+            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
         ):
             with pytest.raises(ValueError, match="refused"):
                 await handlers._get_client({"customer_id": "222"})
@@ -383,14 +385,16 @@ class TestGoogleCustomerIdScoping:
 
         creds = MagicMock(customer_id=None, login_customer_id=None)
         with (
-            patch.object(handlers, "byod_has", return_value=False),
-            patch.object(handlers, "load_google_ads_credentials", return_value=creds),
-            patch.object(
-                handlers,
-                "runtime_google_ads_customer_ids",
+            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+            patch(
+                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
                 return_value=frozenset({"111-222-3333"}),
             ),
-            patch.object(handlers, "create_google_ads_client") as factory,
+            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
         ):
             await handlers._get_client({"customer_id": "1112223333"})
         factory.assert_called_once()

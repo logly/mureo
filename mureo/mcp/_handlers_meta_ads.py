@@ -30,7 +30,7 @@ from mureo.mcp._helpers import (
     api_error_handler,
     register_client_for_cleanup,
 )
-from mureo.mcp.credential_source import current_meta_source
+from mureo.mcp.credential_source import call_source, current_meta_source
 from mureo.throttle import META_ADS_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,11 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
         register_client_for_cleanup(client)
         return client
 
-    creds = meta.load_credentials() if meta is not None else load_meta_ads_credentials()
+    creds = (
+        call_source("meta_ads", meta.load_credentials)
+        if meta is not None
+        else load_meta_ads_credentials()
+    )
     if creds is None:
         return None
 

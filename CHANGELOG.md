@@ -2,6 +2,17 @@
 
 ### Added
 
+- **A credential source can fail closed for the platforms it does not
+  cover** (#824). `CredentialSource` gains a keyword-only `strict` field
+  (default `False`). With `strict=True`, a handler for a platform the source
+  leaves at `None` raises the new `CredentialSourceError` (a `RuntimeError`
+  naming the platform) instead of reading the operator's credentials file,
+  environment or BYOD manifest. Without `strict` such a platform still uses
+  the operator's own credentials, as before; this is now stated in
+  `docs/plugin-authoring.md`. A nested `use_credential_source` keeps
+  replacing the outer source; `CredentialSource.merged_with(other)` combines
+  two explicitly. `active_source_identity(platform)` and `call_source(...)`
+  are exported for hosts and built-in paths.
 - **A plugin can override or suppress the callback-URL hint on its OAuth
   card.** `AccountOAuthConfig` gains `callback_hint` (and a
   `callback_hint_i18n` locale table). The configure UI shows that text under
@@ -21,6 +32,27 @@
   are unchanged.
 ### Changed
 
+- **Errors raised by a credential source reach the MCP client curated**
+  (#824). Every call into a source's `load_credentials()` /
+  `oauth_credentials()` is wrapped: the client sees
+  `credential source failed for <platform> (<ExceptionClass>)`, and only the
+  platform and class name are logged, never the source's exception text. An
+  auth failure raised by a source is still reported as an auth failure.
+- **The tracking pre-flight snapshot cache is keyed by credential source**
+  (#824). The key is `(customer_id, identity of the active google source)`,
+  so two sources resolving to the same customer id within the TTL no longer
+  share cached ad rows. An entry holds its source until it expires, so the
+  identity cannot be reused meanwhile, and expired entries are dropped.
+- **Without a credential source the Google Ads client factory is called as
+  before #821** (#824): `oauth_credentials` is passed only when a source
+  supplies one, so a factory patched with the narrower signature works again.
+- The Google Ads client and credential resolution moved from
+  `mureo/mcp/_handlers_google_ads.py` to the private
+  `mureo/mcp/_google_ads_client.py` (#824); the old module re-exports the
+  names. Code that patches `load_google_ads_credentials`,
+  `create_google_ads_client`, `byod_has`, `get_google_ads_client` or
+  `runtime_google_ads_customer_ids` on `mureo.mcp._handlers_google_ads` must
+  patch them on `mureo.mcp._google_ads_client` instead.
 - **Skills treat a namespaced built-in variant as the built-in platform**
   (#825). A provider whose tools are `<builtin_platform>_<suffix>_<operation>`,
   with the same operation set and input schemas as the built-in

@@ -82,7 +82,7 @@ def _unscoped() -> Iterator[None]:
     """Run untenanted, so the allow-lists do not filter the stub rows."""
     with (
         patch(
-            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(
@@ -98,7 +98,6 @@ def _unscoped() -> Iterator[None]:
 
 
 async def test_google_ads_handle_tool_uses_the_source() -> None:
-    from mureo.mcp import _handlers_google_ads as handlers
     from mureo.mcp import tools_google_ads
 
     rows = [{"id": "1", "name": "Brand"}]
@@ -106,9 +105,9 @@ async def test_google_ads_handle_tool_uses_the_source() -> None:
     file_loader, auth_loader = _refusing_loader(), _refusing_loader()
     source = _GoogleSource()
     with (
-        patch.object(handlers, "load_google_ads_credentials", file_loader),
+        patch("mureo.mcp._google_ads_client.load_google_ads_credentials", file_loader),
         patch("mureo.auth.load_google_ads_credentials", auth_loader),
-        patch.object(handlers, "create_google_ads_client", spy),
+        patch("mureo.mcp._google_ads_client.create_google_ads_client", spy),
         use_credential_source(CredentialSource(google=source)),
     ):
         result = await tools_google_ads.handle_tool(

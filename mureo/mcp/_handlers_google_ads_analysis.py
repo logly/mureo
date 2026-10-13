@@ -29,7 +29,7 @@ from mureo.mcp._helpers import (
     _require,
     api_error_handler,
 )
-from mureo.mcp.credential_source import current_google_source
+from mureo.mcp.credential_source import call_source, current_google_source
 
 logger = logging.getLogger(__name__)
 
@@ -119,11 +119,13 @@ async def _discover_accounts(
         if creds is None:
             return None
         return await list_accessible_accounts(creds)
-    creds = google.load_credentials()
+    creds = call_source("google", google.load_credentials)
     if creds is None:
         return None
     # oauth_credentials() may block (a token refresh): keep it off the loop
-    oauth = await asyncio.to_thread(google.oauth_credentials, creds)
+    oauth = await asyncio.to_thread(
+        call_source, "google", google.oauth_credentials, creds
+    )
     return await list_accessible_accounts(creds, oauth_credentials=oauth)
 
 
