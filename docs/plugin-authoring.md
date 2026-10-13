@@ -446,6 +446,15 @@ lives in the `SecretStore` base layer, not in
 `account_credential_fields`. Use `secret=True` when the per-account
 slice itself is the secret.
 
+For a provider that declares an `AccountOAuthConfig`, the configure UI's
+Authenticate button follows the same convention as Save: a declared field the
+form leaves blank (typically the client secret, which is never pre-filled)
+reuses the value already stored in the provider's credentials section, so an
+operator or installer that pre-populates the client id and secret does not
+need to retype them. The `target_field` token is never taken from storage, and
+Authenticate still fails with `client_credentials_missing` when either client
+credential is blank and not stored.
+
 #### Post-auth account picker (`list_oauth_accounts`)
 
 A provider whose `AccountOAuthConfig` names an `accounts_field` can also
