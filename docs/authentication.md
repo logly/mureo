@@ -398,7 +398,9 @@ App Secret** do two jobs:
 
 Leave the pair blank and nothing breaks — mureo simply cannot show or track
 the date. Values already stored are kept when you re-paste a token without
-re-entering them, and they are what the inspection uses on that later paste.
+re-entering them, and they are what the inspection uses on that later paste. The card
+pre-fills a stored App ID and marks the App Secret ✓ Configured / ✗ Not set,
+so you can see whether the pair is already on file.
 
 Prefer that card. Saving `META_ADS_ACCESS_TOKEN` through the Setup tab's
 **mureo Credentials (advanced)** form also works — a hand-entered token is
@@ -407,7 +409,9 @@ stored as entered and stays off the auto-refresh clock (that write clears
 `token_never_expires`, because they all describe the token being replaced and
 this form makes no Graph call to learn new ones) —
 but it writes one field, so it neither validates the token, nor reads its
-expiry, nor lets you pick an ad account.
+expiry, nor lets you pick an ad account. The form shows ✓ Configured / ✗ Not set next to
+**Value** for whichever field is selected, since a stored value is never
+shown back.
 
 ### App ID and App Secret
 

@@ -422,6 +422,11 @@ use the flag to:
 - Choose tighter storage permissions, typically `0o600`, when the
   value lands in a file rather than an injected `SecretStore`.
 
+In `mureo configure` (the **Plugin credentials** cards and the setup
+wizard), each secret field shows ✓ Configured / ✗ Not set next to its
+name, so you can tell whether a value is stored even though the input
+is always empty.
+
 ```python
 account_credential_fields = (
     AccountCredentialField(
