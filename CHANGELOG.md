@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.23.1] - 2026-10-13
+
 ### Fixed
 
 - **A plugin's OAuth Authenticate button reuses stored client credentials.**
