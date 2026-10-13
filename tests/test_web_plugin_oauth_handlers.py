@@ -262,6 +262,183 @@ def test_start_success_uses_form_values_no_prior_save(
     assert "refresh_token" not in persist
 
 
+def _store_section(wiz: ConfigureWizard, section: dict) -> None:
+    """Pre-populate the provider's credentials section on disk, as an
+    earlier Save or an installer would have."""
+    path = wiz.host_paths.credentials_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"yahoo_ads": section}))
+
+
+def _blank_creds_payload(**overrides: str) -> dict:
+    """An Authenticate POST whose client creds are blank, as the dashboard
+    sends them when the secret is stored but never pre-filled."""
+    values = {
+        "client_id": "",
+        "client_secret": "  ",
+        "oauth_callback_url": _CALLBACK_URL,
+    }
+    values.update(overrides)
+    return {"values": values}
+
+
+def _fake_handoff() -> OAuthHandoffResult:
+    return OAuthHandoffResult(
+        url="https://biz-oauth.yahoo.co.jp/oauth/v1/authorize?x=1",
+        state="pending",
+        provider="yahoo_ads",
+    )
+
+
+@pytest.mark.unit
+def test_start_reuses_stored_client_credentials_when_form_blank(
+    wizard: ConfigureWizard,
+) -> None:
+    """Stored client id/secret + blank form values: the flow starts with
+    the stored values, and persist_values carries them (not ``""``) so the
+    callback's atomic write cannot blank a stored secret."""
+    _store_section(wizard, {"client_id": "STORED_CID", "client_secret": "STORED_S"})
+    with patch.object(
+        wizard.oauth_bridge, "start_plugin_oauth", return_value=_fake_handoff()
+    ) as mock_start:
+        resp = _post(
+            wizard,
+            "/api/credentials/plugins/yahoo_ads/oauth/start",
+            _blank_creds_payload(),
+        )
+        assert resp.status == 200
+    kwargs = mock_start.call_args.kwargs
+    assert kwargs["client_id"] == "STORED_CID"
+    assert kwargs["client_secret"] == "STORED_S"
+    persist = kwargs["persist_values"]
+    assert persist["client_id"] == "STORED_CID"
+    assert persist["client_secret"] == "STORED_S"
+    assert persist["oauth_callback_url"] == _CALLBACK_URL
+
+
+@pytest.mark.unit
+def test_start_posted_client_secret_wins_over_stored(
+    wizard: ConfigureWizard,
+) -> None:
+    """A non-blank posted value is used verbatim; storage is only a
+    fallback for blanks."""
+    _store_section(wizard, {"client_id": "STORED_CID", "client_secret": "STORED_S"})
+    with patch.object(
+        wizard.oauth_bridge, "start_plugin_oauth", return_value=_fake_handoff()
+    ) as mock_start:
+        _post(
+            wizard,
+            "/api/credentials/plugins/yahoo_ads/oauth/start",
+            _blank_creds_payload(client_secret="POSTED_S"),
+        )
+    kwargs = mock_start.call_args.kwargs
+    assert kwargs["client_secret"] == "POSTED_S"
+    assert kwargs["persist_values"]["client_secret"] == "POSTED_S"
+    # The blank client id still falls back to storage.
+    assert kwargs["client_id"] == "STORED_CID"
+
+
+@pytest.mark.unit
+def test_start_400_when_blank_form_and_nothing_stored(
+    wizard: ConfigureWizard,
+) -> None:
+    with (
+        patch.object(wizard.oauth_bridge, "start_plugin_oauth") as mock_start,
+        pytest.raises(urllib.error.HTTPError) as exc,
+    ):
+        _post(
+            wizard,
+            "/api/credentials/plugins/yahoo_ads/oauth/start",
+            _blank_creds_payload(),
+        )
+    assert exc.value.code == 400
+    assert json.loads(exc.value.read())["error"] == "client_credentials_missing"
+    mock_start.assert_not_called()
+
+
+@pytest.mark.unit
+def test_start_400_when_only_client_id_stored(wizard: ConfigureWizard) -> None:
+    """One of the pair stored, the other blank in the form and absent from
+    storage (or stored empty) -> still 400."""
+    _store_section(wizard, {"client_id": "STORED_CID", "client_secret": ""})
+    with (
+        patch.object(wizard.oauth_bridge, "start_plugin_oauth") as mock_start,
+        pytest.raises(urllib.error.HTTPError) as exc,
+    ):
+        _post(
+            wizard,
+            "/api/credentials/plugins/yahoo_ads/oauth/start",
+            _blank_creds_payload(),
+        )
+    assert exc.value.code == 400
+    assert json.loads(exc.value.read())["error"] == "client_credentials_missing"
+    mock_start.assert_not_called()
+
+
+@pytest.mark.unit
+def test_start_400_when_only_client_secret_stored(wizard: ConfigureWizard) -> None:
+    _store_section(wizard, {"client_secret": "STORED_S"})
+    with (
+        patch.object(wizard.oauth_bridge, "start_plugin_oauth") as mock_start,
+        pytest.raises(urllib.error.HTTPError) as exc,
+    ):
+        _post(
+            wizard,
+            "/api/credentials/plugins/yahoo_ads/oauth/start",
+            _blank_creds_payload(),
+        )
+    assert exc.value.code == 400
+    assert json.loads(exc.value.read())["error"] == "client_credentials_missing"
+    mock_start.assert_not_called()
+
+
+@pytest.mark.unit
+def test_start_never_fills_target_field_from_storage(
+    wizard: ConfigureWizard,
+) -> None:
+    """The consent-obtained token is never copied from storage into
+    persist_values, even when one is stored and the form posts it blank;
+    the callback writes the new token itself."""
+    _store_section(
+        wizard,
+        {
+            "client_id": "STORED_CID",
+            "client_secret": "STORED_S",
+            "refresh_token": "OLD_TOKEN",
+        },
+    )
+    with patch.object(
+        wizard.oauth_bridge, "start_plugin_oauth", return_value=_fake_handoff()
+    ) as mock_start:
+        _post(
+            wizard,
+            "/api/credentials/plugins/yahoo_ads/oauth/start",
+            _blank_creds_payload(refresh_token=""),
+        )
+    persist = mock_start.call_args.kwargs["persist_values"]
+    assert "refresh_token" not in persist
+    assert "OLD_TOKEN" not in json.dumps(mock_start.call_args.kwargs, default=str)
+
+
+@pytest.mark.unit
+def test_start_does_not_echo_stored_credentials_in_response(
+    wizard: ConfigureWizard,
+) -> None:
+    """Neither the 400 envelope nor the success body carries a stored
+    credential value."""
+    _store_section(wizard, {"client_id": "STORED_CID", "client_secret": "STORED_S"})
+    with patch.object(
+        wizard.oauth_bridge, "start_plugin_oauth", return_value=_fake_handoff()
+    ):
+        body = _post(
+            wizard,
+            "/api/credentials/plugins/yahoo_ads/oauth/start",
+            _blank_creds_payload(),
+        ).read()
+    assert b"STORED_S" not in body
+    assert b"STORED_CID" not in body
+
+
 @pytest.mark.unit
 def test_start_400_when_callback_url_invalid(wizard: ConfigureWizard) -> None:
     """A non-loopback / missing callback URL (#216) is rejected with a

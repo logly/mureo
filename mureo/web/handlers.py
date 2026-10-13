@@ -2018,8 +2018,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         ``target_field`` is ``required``, so a prior Save would deadlock
         (no token to save yet). Instead the operator's **current form
         values** arrive in the POST body and the client id/secret are read
-        from them by the oauth config's field keys — not loaded from disk.
-        Missing either → ``400 client_credentials_missing``.
+        from them by the oauth config's field keys. A declared field the
+        form leaves blank falls back to the value already stored in the
+        provider's section (the Save path's blank-keeps-stored
+        convention), since secrets are never pre-filled in the browser.
+        Still missing either after that → ``400 client_credentials_missing``.
 
         The operator-registered loopback callback URL (#216) rides in under
         ``oauth_callback_url``; an invalid/non-loopback value →
@@ -2053,6 +2056,13 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         values = {
             str(k): str(v).strip() for k, v in raw_values.items() if v is not None
         }
+        declared = {
+            f.key
+            for f in getattr(entry.provider_class, "account_credential_fields", ())
+        }
+        values = self._fill_blank_plugin_values_from_store(
+            provider, values, declared - {oauth_config.target_field}
+        )
 
         client_id = values.get(oauth_config.client_id_field, "")
         client_secret = values.get(oauth_config.client_secret_field, "")
@@ -2070,10 +2080,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # Persist only the provider's declared field keys (an attacker-
         # crafted extra key can't sneak onto disk), minus the still-empty
         # target_field, plus the non-secret callback URL for re-auth.
-        declared = {
-            f.key
-            for f in getattr(entry.provider_class, "account_credential_fields", ())
-        }
         persist_values = {
             k: v
             for k, v in values.items()
@@ -2093,6 +2099,26 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             credentials_path=self.wizard.host_paths.credentials_path,
         )
         send_json(self, result.as_dict())
+
+    def _fill_blank_plugin_values_from_store(
+        self, provider: str, values: dict[str, str], keys: set[str]
+    ) -> dict[str, str]:
+        """Return a copy of ``values`` where each of ``keys`` that is blank
+        or absent takes the truthy value stored in ``provider``'s section.
+
+        A non-blank submitted value always wins; a key with no stored value
+        is left as submitted. Feeding these into ``persist_values`` keeps
+        the callback's merge-then-write from overwriting a stored secret
+        with ``""``. Values are never logged or echoed.
+        """
+        store = FilesystemSecretStore(path=self.wizard.host_paths.credentials_path)
+        stored = store.load(provider)
+        filled = dict(values)
+        for key in keys:
+            stored_value = stored.get(key)
+            if not filled.get(key) and stored_value:
+                filled[key] = str(stored_value).strip()
+        return filled
 
     def _serve_plugin_oauth_status(self, provider: str) -> None:
         """Report a plugin OAuth flow's status (reuses the session store).

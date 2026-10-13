@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Fixed
+
+- **A plugin's OAuth Authenticate button reuses stored client credentials.**
+  When the configure form leaves a declared field such as the client secret
+  blank, the flow now uses the value stored in the provider's credentials
+  section, as Save already does, instead of failing with
+  `client_credentials_missing`, and the post-consent write no longer replaces
+  a stored value with an empty one.
+
 ## [0.23.0] - 2026-10-12
 
 ### Added
