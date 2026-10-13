@@ -19,6 +19,19 @@
   from a different distribution, the legacy `plugin:<distribution>` key and a
   blank name keep the derived label. Built-in platforms and in-tree bridges
   are unchanged.
+### Changed
+
+- **Skills treat a namespaced built-in variant as the built-in platform**
+  (#825). A provider whose tools are `<builtin_platform>_<suffix>_<operation>`,
+  with the same operation set and input schemas as the built-in
+  `<builtin_platform>_<operation>` tools, now gets the full workflow and
+  analysis instead of the best-effort plugin path; the skills call its tools
+  with the prefix substituted. The match is derived from the live tool list.
+  When the built-in and a variant are both present, the skills use the one
+  whose credentials are configured and never call both for the same account.
+  `_mureo-shared` defines the rule, every skill that names built-in tools
+  points to it, and `docs/plugin-authoring.md` describes what mirroring a
+  built-in surface requires.
 
 ## [0.24.0] - 2026-10-13
 

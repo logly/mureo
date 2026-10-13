@@ -9,6 +9,8 @@ metadata:
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 Generate a client-facing monthly marketing operations report. This mirrors `/weekly-report` but over a calendar month, with month-over-month comparison, a goal-attainment verdict, and language written for the **client/stakeholder** who receives it — not internal shorthand.
 
 ## Prerequisites

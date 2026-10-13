@@ -20,6 +20,7 @@ and which are not, see [ABI-stability.md](./ABI-stability.md).
 2. [Quick start: a minimal plugin](#2-quick-start-a-minimal-plugin)
 3. [Provider Protocols](#3-provider-protocols)
    - [Reusing the built-in handlers with your own credentials](#reusing-the-built-in-handlers-with-your-own-credentials)
+   - [Mirroring a built-in surface under a namespaced prefix](#mirroring-a-built-in-surface-under-a-namespaced-prefix)
 4. [Capabilities](#4-capabilities)
 5. [Models: frozen dataclasses and enums](#5-models-frozen-dataclasses-and-enums)
 6. [Skill matching](#6-skill-matching)
@@ -903,6 +904,34 @@ class MyAdapter:
 If a caller is already inside an event loop, `asyncio.run` raises
 `RuntimeError`. That is the documented Phase 1 behaviour and is
 allowed to propagate.
+
+### Mirroring a built-in surface under a namespaced prefix
+
+The workflow skills name the built-in tools (`meta_ads_campaigns_list`,
+`google_ads_performance_report`, …). A provider that is only a different
+credential source for a built-in platform can have the skills treat it as
+that built-in — full workflow and analysis, not the best-effort plugin path —
+by mirroring the built-in surface under a namespaced prefix. The rule the
+skills apply is defined in `skills/_mureo-shared/SKILL.md` → *Namespaced
+built-in variants*; mirroring means:
+
+- **Name shape.** Every tool is `<builtin_platform>_<suffix>_<operation>`,
+  for example `google_ads_<suffix>_campaigns_list` for the built-in
+  `google_ads_campaigns_list`. The suffix goes after the built-in platform
+  prefix: a name that puts your prefix first (`<suffix>_google_ads_…`, as in
+  the delegation example above) is not recognised as a variant.
+- **Same operations.** The set of `<operation>`s matches the built-in
+  `<builtin_platform>_<operation>` tools.
+- **Same input schemas.** Each tool's `inputSchema` matches the built-in
+  tool's. Re-exporting the built-in `Tool` definitions with only the name
+  changed, and delegating to the built-in handlers as shown above, keeps the
+  two in step.
+
+The skills derive the match from the live tool list; there is nothing to
+register. A surface that adds, drops or reshapes operations is not a variant
+and is treated as a plugin platform. When the built-in and a variant are both
+present, the skills use the one whose credentials are configured and never
+call both for the same account.
 
 ### Exposing operations as MCP tools (`MCPToolProvider`)
 

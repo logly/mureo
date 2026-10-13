@@ -9,6 +9,8 @@ metadata:
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 Turn an ad-hoc change into a **designed experiment**. Most "we tried X and CPA moved" claims are noise — one variable was never isolated, the window was never fixed, and the decision was made by peeking. This skill enforces the discipline: a falsifiable hypothesis, exactly **one** variable, a success metric tied to a Goal, a pre-committed duration and sample floor, no peeking, and a per-variant verdict where **inconclusive is a valid outcome**.
 
 Read `../_mureo-learning/SKILL.md` first — its **Observation Windows** and **Minimum Sample Sizes** tables set the duration and sample floor this skill commits to, and its evidence lifecycle is the rulebook for the no-peeking rule below.

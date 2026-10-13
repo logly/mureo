@@ -76,8 +76,13 @@ def test_stays_readable_under_the_size_budget() -> None:
       cannot infer, so neither can live in the docs instead: an agent that
       does not know ``auto_evaluations`` exists either repeats the work or
       drops the verdict.
+    - #825: two — the note that the tool names refer to the built-in
+      platforms and that a namespaced variant is used with its prefix
+      substituted, and the blank line before it. Without it the hard-coded
+      tool names read as "built-in only" and a variant of a built-in drops to
+      the best-effort plugin path; the rule itself lives in ``_mureo-shared``.
     """
-    assert len(_body().splitlines()) <= 185
+    assert len(_body().splitlines()) <= 187
 
 
 def test_two_modes_documented() -> None:
