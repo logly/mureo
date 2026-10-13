@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-13
+
 ### Changed
 
 - **The configure UI shows whether a secret credential field has a stored
