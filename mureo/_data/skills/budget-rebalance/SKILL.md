@@ -2,12 +2,14 @@
 name: budget-rebalance
 description: "Rebalance campaign budgets across all configured platforms based on strategy and performance signals. Use when the user asks to optimize budgets, redistribute spend, scale efficient campaigns, or cap overspending ones. Reads STRATEGY.md goals, analyzes campaign efficiency, and proposes budget changes with rationale. Also use when the user asks in Japanese (予算を最適化して / 予算の再配分 / 好調なキャンペーンに予算を寄せて / 予算リバランス)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Budget Rebalance
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Analyze budget allocation and suggest rebalancing across all campaigns.
 

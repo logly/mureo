@@ -2,12 +2,14 @@
 name: audience-review
 description: "Audit who your ads actually target and where they run, compare it against the STRATEGY.md Persona, and surface exclusions, bid adjustments, lookalikes, and placement pruning tied to that Persona. Use when the user asks to review targeting, audiences, demographics, placements, or device performance, to check whether spend matches the Persona, to find wasted placements (e.g. Audience Network with no conversions), or requests オーディエンスレビュー / 配置レビュー / ターゲティング見直し / ペルソナと配信のズレを確認 / 除外設定を提案して. Reads Persona + Target Audience from STRATEGY.md and drives the read-only targeting tools."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Audience Review
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Reconcile **who you say you want** (the STRATEGY.md Persona / Target Audience) with **who you are actually paying to reach** (the live targeting and the segments where spend lands). Accounts drift: a broad audience quietly spends on a segment the Persona excludes, a placement like Audience Network burns budget with zero conversions, or the Persona implies a lookalike that was never built. This skill inventories current targeting, scores performance by segment, flags the mismatches, and proposes Persona-anchored changes.
 

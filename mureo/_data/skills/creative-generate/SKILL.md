@@ -2,12 +2,14 @@
 name: creative-generate
 description: "Generate creator-quality ad creatives — text-free key visuals plus composed banners — from a strategy-grounded brief. Use when the user asks to create ad creatives, generate ad images or banners, make banner variations, design display / social ad creatives, or asks in Japanese (クリエイティブ作成 / バナー作成 / 広告画像を生成 / バナーのバリエーションを作って). Runs a 6-step workflow (brief → copy → visuals → art-direction scoring loop → HTML/CSS composition → delivery) via the creative_studio_* MCP tools, then hands approved banners to the existing upload tools."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Creative Generate
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Produce professional, on-brand ad creatives — a text-free **key visual** plus
 **composed banners** in the operator's target formats — from a strategy-grounded

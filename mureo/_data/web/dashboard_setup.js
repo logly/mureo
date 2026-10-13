@@ -134,6 +134,20 @@
     return m;
   }
 
+  // "Configured" / "Not set" after a stored-secret field's name, worded as
+  // on the plugin credential cards so every credential form reads alike.
+  // Its own data-i18n span, so a locale re-translation leaves the mark.
+  function secretStatusText(configured) {
+    const key = configured
+      ? "dashboard.credential_secret_configured"
+      : "dashboard.credential_secret_unset";
+    const text = document.createElement("span");
+    text.className = "muted";
+    text.setAttribute("data-i18n", key);
+    text.textContent = MUREO.t(key);
+    return text;
+  }
+
   // Basic-setup row definitions. Keyed entries map a status part to its
   // label, per-row remove endpoint, confirmation key, and button label.
   // Kept as a module-local constant so renderBasicSection stays small.
@@ -557,9 +571,46 @@
     }
   }
 
+  // The Value input is always empty — a stored value never reaches the
+  // browser — so the field picked in the select gets the same ✓ / ✗ mark
+  // and "Configured" / "Not set" status as the other credential forms, and
+  // the keep-current placeholder only when a value is stored (a blank
+  // submit is a no-op, so leaving it blank does keep it).
+  function renderEnvValueStatus(status) {
+    const form = document.querySelector("[data-env-form]");
+    if (!form) return;
+    const holder = form.querySelector("[data-env-value-status]");
+    const input = form.querySelector('[name="env_value"]');
+    const select = form.querySelector("[data-env-name]");
+    const name = select ? select.value : "";
+    if (holder) holder.textContent = "";
+    if (!name) return;
+    const envVars = (status && status.env_vars) || {};
+    const configured = Boolean(envVars[name] && envVars[name].set);
+    if (holder) {
+      // Separates the mark from the "Value" label text before it; the
+      // markup's own whitespace is not relied on.
+      holder.appendChild(document.createTextNode(" "));
+      holder.appendChild(statusMark(configured));
+      holder.appendChild(document.createTextNode(" "));
+      holder.appendChild(secretStatusText(configured));
+    }
+    if (input) {
+      input.placeholder = configured
+        ? MUREO.t("dashboard.plugin_credentials_secret_placeholder")
+        : MUREO.t("dashboard.plugin_credentials_secret_unset_placeholder");
+    }
+  }
+
   function wireEnvForm() {
     const form = document.querySelector("[data-env-form]");
     if (!form) return;
+    const select = form.querySelector("[data-env-name]");
+    if (select) {
+      select.addEventListener("change", function () {
+        renderEnvValueStatus(MUREO.state.status);
+      });
+    }
     form.addEventListener("submit", async function (evt) {
       evt.preventDefault();
       const name = form.querySelector("[data-env-name]").value;
@@ -586,6 +637,9 @@
     // Secret-named vars arrive already masked from status_collector —
     // this function does NOT mask, and the raw value is never available
     // to the browser. Unset vars get a localised "(not set)" placeholder.
+    // The set-a-value form's status follows the same snapshot, so a status
+    // refresh (including the one after a save) updates it too.
+    renderEnvValueStatus(status);
     const list = document.querySelector("[data-dashboard-env-list]");
     if (!list) return;
     while (list.firstChild) list.removeChild(list.firstChild);
@@ -619,8 +673,9 @@
   }
 
   // Creative Studio image-provider keys: one masked input per provider with
-  // a ✓/✗ configured mark + localized hint, one Save (persists every
-  // non-blank field), and a Remove for the whole creative_studio section
+  // a ✓/✗ configured mark, a "Configured" / "Not set" status and a
+  // localized hint, one Save (persists every non-blank field), and a
+  // Remove for the whole creative_studio section
   // (shown only once a key is stored). A stored key never round-trips to the
   // browser — a configured field shows the leave-blank-to-keep placeholder.
   function renderCreativeStudioSection(status) {
@@ -652,6 +707,8 @@
       labelText.textContent = MUREO.t(key.labelKey);
       labelText.setAttribute("data-i18n", key.labelKey);
       head.appendChild(labelText);
+      head.appendChild(document.createTextNode(" "));
+      head.appendChild(secretStatusText(configured));
       label.appendChild(head);
 
       const input = document.createElement("input");

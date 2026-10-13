@@ -2,12 +2,14 @@
 name: monthly-report
 description: "Stakeholder / client-facing monthly digest across all configured platforms: the previous full calendar month with month-over-month comparison, per-Goal attainment, an action-log recap grouped by command with outcome verdicts, budget utilization, and next-month recommendations. Use when the user asks for a monthly report, month-end summary, client report, monthly recap / digest, or requests 月次レポート / 月次まとめ / クライアント向けレポート. Written in plain language for a client audience."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Monthly Report
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Generate a client-facing monthly marketing operations report. This mirrors `/weekly-report` but over a calendar month, with month-over-month comparison, a goal-attainment verdict, and language written for the **client/stakeholder** who receives it — not internal shorthand.
 

@@ -2,12 +2,14 @@
 name: sync-state
 description: "Sync STATE.json with current campaign data from all platforms. Use when the user asks to refresh state, sync campaigns, update STATE.json from live data, or pull latest campaign snapshots. Also use when the user asks in Japanese (STATE.jsonを更新 / 最新データに同期して / キャンペーン情報を取り込み直して)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Sync State
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Synchronize STATE.json with the current state of all marketing platforms.
 

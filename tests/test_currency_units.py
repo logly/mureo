@@ -54,6 +54,24 @@ class TestMinorUnitDivisor:
     def test_no_declared_currency_leaves_meta_amounts_alone(self) -> None:
         assert minor_unit_divisor("meta_ads_ad_sets_update", None) == 1
 
+    @pytest.mark.parametrize(
+        ("variant", "builtin"),
+        [
+            ("meta_ads_acme_ad_sets_update", "meta_ads_ad_sets_update"),
+            ("meta_ads_acme_eu_campaigns_create", "meta_ads_campaigns_create"),
+        ],
+    )
+    @pytest.mark.parametrize("currency", ["EUR", "JPY", None])
+    def test_namespaced_meta_variant_converts_like_the_builtin(
+        self, variant: str, builtin: str, currency: str | None
+    ) -> None:
+        """#837: a ``meta_ads_<suffix>_*`` variant carries the built-in's
+        schemas, so its amounts are the same minor units and convert the same
+        way. Intended, and pinned so the prefix match is not narrowed."""
+        assert minor_unit_divisor(variant, currency) == minor_unit_divisor(
+            builtin, currency
+        )
+
     def test_unknown_code_propagates(self) -> None:
         """The parser validated the code, so this is a programming error."""
         with pytest.raises(ValueError):

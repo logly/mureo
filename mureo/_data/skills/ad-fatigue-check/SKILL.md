@@ -2,12 +2,14 @@
 name: ad-fatigue-check
 description: "Detect creative fatigue across active ads — rising frequency, declining CTR week-over-week, and CPM drift — score each ad FATIGUED / WATCH / FRESH, and hand the evidence to a creative refresh. Use when the user asks whether creatives are worn out, why CTR is falling, if frequency is too high, when to rotate or refresh ads, or requests クリエイティブ疲弊チェック / 広告の疲弊を確認 / フリークエンシーが高い / CTRが落ちてきた / そろそろ差し替え時か. Reads active ads per platform, applies documented fatigue thresholds with noise guards, and routes fatigued ads to /creative-generate or /creative-refresh."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Ad Fatigue Check
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Find the ads whose audience has seen them too many times. Creative fatigue is a slow leak — the same creative keeps spending while frequency climbs, CTR erodes, and CPM drifts up as the algorithm works harder to place a tiring ad. This skill reads active ads per platform, measures the fatigue signals the tools genuinely expose, scores each ad against documented thresholds (with noise guards so a single slow day never triggers a rotation), and hands the fatigued ones to a creative refresh with the evidence attached.
 

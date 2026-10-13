@@ -2,12 +2,14 @@
 name: budget-pacing
 description: "Month-to-date spend vs the monthly budget target, projected month-end landing, and pace alerts across all configured platforms. Use when the user asks about pacing, burn rate, whether they will overspend or underspend this month, monthly-budget tracking, landing/forecast, 'are we on budget', or requests 予算ペーシング / 着地予測 / 予算消化ペース. DISTINCT from /budget-rebalance (which reallocates budget between campaigns) — this manages total-spend trajectory toward a monthly target. Reads STRATEGY.md Guardrails / a Monthly Budget section and STATE.json."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Budget Pacing
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Track month-to-date spend against the monthly budget target, project the month-end landing, and raise pace alerts so the month neither blows the budget nor leaves it unspent.
 

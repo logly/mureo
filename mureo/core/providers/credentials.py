@@ -154,6 +154,23 @@ class AccountOAuthConfig:
             is a *default* the operator can still override, not an
             authority: the bind + verbatim redirect_uri path (#216) is
             unchanged.
+        callback_hint: Provider-supplied text for the hint the configure UI
+            shows under the callback URL input (#828). ``None`` (the
+            default) keeps mureo's generic hint, which tells the operator to
+            register that exact URL as the redirect/callback URI in the
+            provider's developer console. A provider whose flow is
+            *brokered* — the authorization server redirects to an
+            intermediate server's own registered callback, and the loopback
+            URL is only the second hop — has nothing for the operator to
+            register, so it supplies its own wording here. An empty string
+            drops the hint row entirely. Rendered as plain text, never as
+            markup.
+        callback_hint_i18n: Optional locale → hint mapping, resolved with
+            the same ``i18n[locale] → i18n["en"] → callback_hint`` chain as
+            :attr:`AccountCredentialField.display_name_i18n`. Only consulted
+            when :attr:`callback_hint` is a non-empty string: ``None`` keeps
+            the generic hint and ``""`` suppresses it in every locale.
+            Default: empty ``dict``.
         token_auth_style: How the client id/secret are presented at the
             token endpoint. ``"basic"`` (default) sends them in the HTTP
             ``Authorization`` header (RFC 6749 §2.3.1, what Google and most
@@ -185,6 +202,8 @@ class AccountOAuthConfig:
     callback_port: int | None = None
     token_auth_style: str = "basic"
     accounts_field: str | None = None
+    callback_hint: str | None = None
+    callback_hint_i18n: Mapping[str, str] = field(default_factory=dict)
 
 
 __all__ = ["AccountCredentialField", "AccountOAuthConfig"]

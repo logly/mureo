@@ -2,12 +2,14 @@
 name: weekly-report
 description: "Generate a weekly summary report across all platforms. Use when the user asks for a weekly report, summary, recap, end-of-week review, or weekly digest. Also use when the user asks in Japanese (週次レポート / 今週のまとめ / 週報を作成して)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Weekly Report
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Generate a weekly marketing operations report.
 

@@ -2,12 +2,14 @@
 name: goal-review
 description: "Review Goal progress against STRATEGY.md targets. Use when the user asks to evaluate goal achievement, review KPI progress, assess strategy performance, or check if targets are being met. Also use when the user asks in Japanese (目標の進捗を確認 / KPIレビュー / ゴール達成状況は / 目標に届きそうか)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Goal Review
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Review progress toward all marketing goals across all platforms.
 

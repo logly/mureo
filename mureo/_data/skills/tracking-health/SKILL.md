@@ -2,12 +2,14 @@
 name: tracking-health
 description: "Preventive audit of conversion tracking across all configured ad platforms — Meta pixels + CAPI, Google Ads conversion actions, and final-URL tracking-parameter consistency on every platform — with a GA4 cross-check. Use when the user asks to check tracking, audit conversion measurement, verify pixels / tags, check that ads carry the right utm / tracking parameters for the campaign they are in, diagnose why conversions stopped or look wrong, sanity-check CV counting, or requests a 計測ヘルスチェック / タグ・計測監査 / パラメータ整合性チェック / 計測が壊れていないか確認. Reads STRATEGY.md and STATE.json, produces a per-platform tracking scorecard (OK / Watch / Broken per check) and a fix list ranked by revenue risk."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Tracking Health
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Preventively audit conversion tracking across every configured platform. Measurement breakage is the costliest **silent** failure in ad ops — spend keeps flowing while the signal the algorithm optimizes toward is wrong or absent — so this skill hunts for it *before* it shows up as a mysterious CPA spike.
 

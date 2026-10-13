@@ -2,12 +2,14 @@
 name: lead-form-create
 description: "Create a Meta Instant Form (Lead Ad form) through a one-question-at-a-time interview. Use when the user asks to create a lead form, Instant Form, CV form, or similar. The agent collects required parameters via a guided dialogue, confirms, then calls meta_ads_lead_forms_create. Also use when the user asks in Japanese (リードフォームを作成 / インスタントフォームを作って / CVフォーム作成)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Lead Form Create
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection**.
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Drive an interactive interview that produces a Meta Instant Form (Lead Ad form) on the user's Facebook Page. The skill is for the first-time creation flow — lifecycle operations (update / archive / duplicate) live in their own paths.
 

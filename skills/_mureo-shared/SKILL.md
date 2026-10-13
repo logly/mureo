@@ -2,7 +2,7 @@
 name: _mureo-shared
 description: "mureo: Shared patterns for authentication, security rules, and output formatting."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
   openclaw:
     category: "advertising"
     requires:
@@ -15,6 +15,8 @@ metadata:
 # mureo Shared Patterns
 > This file covers authentication, security rules, output formatting, and MCP configuration
 > shared across all mureo skills (Google Ads, Meta Ads, Strategy).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 ## Overview
 
@@ -126,9 +128,18 @@ The platform tools (`google_ads_*`, `meta_ads_*`, `search_console_*`) are the sa
 
 **OpenAI Codex (CLI / desktop)** behaves like Claude Code for tool selection — it has native file `Read`/`Write` tools, so use the **Claude Code** column above (read/write files directly; reach for the `mureo_state_*` MCP tools for STATE.json mutations). mureo installs its skills to `~/.codex/skills/` (foundation skills as `~/.codex/skills/mureo-*/`), and they are invoked as `$<name>` or from the `/skills` picker. The legacy `/prompts` slash-commands under `~/.codex/prompts/*.md` are deprecated in codex-cli ≥ 0.117 (openai/codex#15941); if you are on an older Codex, the same skills are still reachable that way.
 
+## Namespaced built-in variants
+
+Some providers reach a built-in platform through a different credential source and expose the built-in tool surface again under a namespaced prefix. A **namespaced built-in variant** is a provider whose tool names are `<builtin_platform>_<suffix>_<operation>` and whose `<operation>` set and input schemas match the built-in `<builtin_platform>_<operation>` tools. Treat such a variant as the built-in platform itself — full workflow and full analysis, not the best-effort plugin path — and call its tools wherever a skill names a built-in tool, substituting the prefix.
+
+- **Derive it from the live tool list.** Never assume a suffix; there is no fixed list of variants. A family of tools qualifies only when, for the same `<builtin_platform>` and `<suffix>`, its `<operation>` set and each tool's input schema match the built-in `<builtin_platform>_<operation>` tools.
+- **Example.** If the live tool list carries `meta_ads_<suffix>_campaigns_list`, `meta_ads_<suffix>_insights_report`, … with the same operations and input schemas as `meta_ads_campaigns_list`, `meta_ads_insights_report`, …, a skill step that calls `meta_ads_insights_report` calls `meta_ads_<suffix>_insights_report` with the same arguments.
+- **No match, no variant.** A provider whose operation set or input schemas differ from the built-in stays on the *Plugin platforms* path below, with its honest scope.
+- **Built-in and variant both present.** Use the one whose credentials are configured, as reported by the tool list / configure status, and never call both for the same account — that would read or change one account twice.
+
 ## Plugin platforms (third-party providers)
 
-Beyond the built-in platforms, an entry-point provider installed as a mureo plugin can expose its own operations as `mcp__mureo__<plugin>_*` tools. When a workflow enumerates "all configured platforms", **also enumerate these plugin tools** and include each plugin platform on a **best-effort, clearly-labelled** line (e.g. `Acme Ads (plugin) — …`), driving it with the plugin's own tools as their names/descriptions imply.
+Beyond the built-in platforms, an entry-point provider installed as a mureo plugin can expose its own operations as `mcp__mureo__<plugin>_*` tools. When a workflow enumerates "all configured platforms", **also enumerate these plugin tools** and include each plugin platform on a **best-effort, clearly-labelled** line (e.g. `Acme Ads (plugin) — …`), driving it with the plugin's own tools as their names/descriptions imply. A provider that qualifies as a *Namespaced built-in variant* (above) is not a plugin platform for this purpose.
 
 > **Amazon Ads (official-MCP bridge):** when configured, mureo bridges the official Amazon Ads MCP and exposes Amazon's own tool names (e.g. `campaign_management-*`, `account_management-*`). It rides this exact same provider-platform path — enumerate it best-effort, label it `Amazon Ads (official MCP) — …`, and apply the identical honest scope below. mureo's deep per-platform analytics are **not** available for it (tracked in #120); treat it as advisory. Its tool surface, the calling requirements that otherwise burn turns (`accessRequestedAccount`, one ad product per query, the global-account `profileId` rule) and its single-state ad model are documented in `../_mureo-amazon-ads/SKILL.md`.
 

@@ -2,7 +2,7 @@
 name: _mureo-strategy
 description: "Strategy Context: Manage business strategy files (STRATEGY.md, STATE.json) for strategy-driven ad operations."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
   openclaw:
     category: "advertising"
     requires:
@@ -12,6 +12,8 @@ metadata:
 
 # Strategy Context
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 ## Overview
 

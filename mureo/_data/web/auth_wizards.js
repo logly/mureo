@@ -466,16 +466,55 @@
     return null;
   }
 
+  // Colored ✓ / ✗ status mark as its own element (kept separate from any
+  // data-i18n text node so a locale re-translation can't wipe it). Same
+  // mark as dashboard_setup.js's statusMark; MUREO exposes no shared DOM
+  // helpers, so this file keeps its own five-line copy.
+  function statusMark(ok) {
+    const m = document.createElement("span");
+    m.className = ok ? "mark-ok" : "mark-no";
+    m.textContent = ok ? "✓" : "✗";
+    return m;
+  }
+
+  // "Configured" / "Not set" after a secret field's name — the empty
+  // input alone cannot say whether a value is stored.
+  function secretStatusText(configured) {
+    const key = configured
+      ? "dashboard.credential_secret_configured"
+      : "dashboard.credential_secret_unset";
+    const text = document.createElement("span");
+    text.className = "muted";
+    text.setAttribute("data-i18n", key);
+    text.textContent = MUREO.t(key);
+    return text;
+  }
+
+  // The label head, as on the dashboard card: the field name (+ " *" when
+  // required), wrapped as "[✓|✗] name  status" for a secret field.
+  // data-i18n sits on the status span only, never on the mark's parent.
+  function buildFieldLabelHead(field) {
+    const labelText = document.createElement("span");
+    labelText.textContent = field.display_name + (field.required ? " *" : "");
+    if (!field.secret) return labelText;
+    const head = document.createElement("span");
+    head.appendChild(statusMark(field.configured));
+    head.appendChild(document.createTextNode(" "));
+    head.appendChild(labelText);
+    head.appendChild(document.createTextNode(" "));
+    head.appendChild(secretStatusText(field.configured));
+    return head;
+  }
+
   // One input per declared field. Mirrors the dashboard card's rules: a
-  // secret never round-trips, so a configured secret shows the
-  // leave-blank-to-keep placeholder; a non-secret pre-fills its stored
-  // value so a resumed wizard shows the current config.
+  // secret never round-trips, so its label carries the configured mark, a
+  // configured secret shows the leave-blank-to-keep placeholder and an
+  // unset one asks for a value; a non-secret pre-fills its stored value so
+  // a resumed wizard shows the current config.
   function appendDeclaredField(host, field, inputs) {
     const label = document.createElement("label");
     label.style.display = "block";
-    const labelText = document.createElement("span");
-    labelText.textContent = field.display_name + (field.required ? " *" : "");
-    label.appendChild(labelText);
+    label.appendChild(buildFieldLabelHead(field));
 
     const input = document.createElement("input");
     input.name = field.key;
@@ -484,7 +523,8 @@
     if (field.secret) {
       input.placeholder = field.configured
         ? MUREO.t("dashboard.plugin_credentials_secret_placeholder")
-        : field.placeholder || "";
+        : field.placeholder ||
+          MUREO.t("dashboard.plugin_credentials_secret_unset_placeholder");
     } else {
       if (field.value) input.value = field.value;
       if (field.placeholder) input.placeholder = field.placeholder;

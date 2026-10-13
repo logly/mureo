@@ -13,9 +13,10 @@
 // `pluginRenderSeq` is the #223 generation guard: the render is async, and
 // renderAll() runs it twice during init.
 //
-// A secret value is never shipped back to the browser. A configured secret
-// field renders a placeholder keyed off `field.configured`; only a non-secret
-// field is pre-filled from `field.value`.
+// A secret value is never shipped back to the browser. A secret field's label
+// leads with a ✓ / ✗ mark and a "Configured" / "Not set" status keyed off
+// `field.configured`, and its placeholder follows the same flag; only a
+// non-secret field is pre-filled from `field.value`.
 //
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
 // `window.MUREO_DASHBOARD_PLUGINS`. Must load BEFORE dashboard.js.
@@ -109,13 +110,52 @@
     form.appendChild(row);
   }
 
-  // One editable credential input (text or masked secret) + optional hint.
-  function appendCredentialInput(form, field) {
-    const label = document.createElement("label");
+  // Colored ✓ / ✗ status mark as its own element (kept separate from any
+  // data-i18n text node so a locale re-translation can't wipe it). Same
+  // mark as dashboard_setup.js's statusMark; MUREO exposes no shared DOM
+  // helpers, so this file keeps its own five-line copy.
+  function statusMark(ok) {
+    const m = document.createElement("span");
+    m.className = ok ? "mark-ok" : "mark-no";
+    m.textContent = ok ? "✓" : "✗";
+    return m;
+  }
+
+  // "Configured" / "Not set" after a secret field's name. The input itself
+  // is always empty (the value never reaches the browser), so this is the
+  // only place the operator can see whether a value is stored.
+  function secretStatusText(configured) {
+    const key = configured
+      ? "dashboard.credential_secret_configured"
+      : "dashboard.credential_secret_unset";
+    const text = document.createElement("span");
+    text.className = "muted";
+    text.setAttribute("data-i18n", key);
+    text.textContent = MUREO.t(key);
+    return text;
+  }
+
+  // The label head: the field name (+ " *" when required). A secret field
+  // wraps it as "[✓|✗] name  status"; data-i18n sits on the status span
+  // only, never on an element that contains the mark.
+  function buildFieldLabelHead(field) {
     const labelText = document.createElement("span");
     labelText.textContent = field.display_name;
     if (field.required) labelText.textContent += " *";
-    label.appendChild(labelText);
+    if (!field.secret) return labelText;
+    const head = document.createElement("span");
+    head.appendChild(statusMark(field.configured));
+    head.appendChild(document.createTextNode(" "));
+    head.appendChild(labelText);
+    head.appendChild(document.createTextNode(" "));
+    head.appendChild(secretStatusText(field.configured));
+    return head;
+  }
+
+  // One editable credential input (text or masked secret) + optional hint.
+  function appendCredentialInput(form, field) {
+    const label = document.createElement("label");
+    label.appendChild(buildFieldLabelHead(field));
     const input = document.createElement("input");
     input.name = field.key;
     input.type = field.secret ? "password" : "text";
@@ -126,10 +166,12 @@
     if (field.secret) {
       // #224: a secret value never round-trips to the browser — pre-fill
       // only the placeholder. A *configured* secret shows the
-      // leave-blank-to-keep hint; an unset one shows its own placeholder.
+      // leave-blank-to-keep hint; an unset one shows its own placeholder,
+      // or asks for a value when the provider declared none.
       input.placeholder = field.configured
         ? MUREO.t("dashboard.plugin_credentials_secret_placeholder")
-        : field.placeholder || "";
+        : field.placeholder ||
+          MUREO.t("dashboard.plugin_credentials_secret_unset_placeholder");
     } else {
       // #224: pre-fill the stored non-secret value (e.g. base_account_id)
       // so a restart shows the current config instead of a blank form.
@@ -144,6 +186,17 @@
       label.appendChild(hint);
     }
     form.appendChild(label);
+  }
+
+  // #828 — the hint under the callback URL input. A provider-supplied
+  // ``callback_hint`` string replaces the generic "register this exact URL"
+  // text (wrong for a brokered flow, where the operator registers nothing);
+  // an empty string means no hint row at all; absent/null keeps the generic
+  // text. Returned as plain text — the caller sets it via textContent.
+  function callbackHintText(oauth) {
+    const custom = oauth ? oauth.callback_hint : null;
+    if (typeof custom === "string") return custom;
+    return MUREO.t("dashboard.plugin_oauth_callback_hint");
   }
 
   // #216/#217 — OAuth card controls: the operator-supplied loopback
@@ -168,10 +221,13 @@
       (plugin.oauth && plugin.oauth.default_callback_url) ||
       "http://127.0.0.1:8765/oauth/callback";
     cbLabel.appendChild(cbInput);
-    const cbHint = document.createElement("small");
-    cbHint.className = "field-hint";
-    cbHint.textContent = MUREO.t("dashboard.plugin_oauth_callback_hint");
-    cbLabel.appendChild(cbHint);
+    const cbHintText = callbackHintText(plugin.oauth);
+    if (cbHintText) {
+      const cbHint = document.createElement("small");
+      cbHint.className = "field-hint";
+      cbHint.textContent = cbHintText;
+      cbLabel.appendChild(cbHint);
+    }
     form.appendChild(cbLabel);
 
     const authBtn = document.createElement("button");

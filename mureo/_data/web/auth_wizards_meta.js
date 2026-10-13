@@ -377,6 +377,72 @@
     return frame.chooser;
   }
 
+  // The credential rows of the last status snapshot (the same payload the
+  // dashboard's Setup section reads), or {} before one has loaded.
+  function storedEnvVars() {
+    const status = MUREO.state && MUREO.state.status;
+    return (status && status.env_vars) || {};
+  }
+
+  // A stored NON-secret value to pre-fill, or "". status_collector previews
+  // non-secret names in full; anything masked (it contains a bullet) is not
+  // the value and must never be submitted back as one.
+  function storedPlainValue(entry) {
+    if (!entry || !entry.set || typeof entry.value_preview !== "string") {
+      return "";
+    }
+    return entry.value_preview.indexOf("•") === -1 ? entry.value_preview : "";
+  }
+
+  // Colored ✓ / ✗ status mark as its own element (kept separate from any
+  // data-i18n text node so a locale re-translation can't wipe it). Same
+  // mark as dashboard_setup.js's statusMark; MUREO exposes no shared DOM
+  // helpers, so this file keeps its own five-line copy.
+  function statusMark(ok) {
+    const m = document.createElement("span");
+    m.className = ok ? "mark-ok" : "mark-no";
+    m.textContent = ok ? "✓" : "✗";
+    return m;
+  }
+
+  // "Configured" / "Not set", as on the other credential forms.
+  function secretStatusText(configured) {
+    const key = configured
+      ? "dashboard.credential_secret_configured"
+      : "dashboard.credential_secret_unset";
+    const text = document.createElement("span");
+    text.className = "muted";
+    text.setAttribute("data-i18n", key);
+    text.textContent = MUREO.t(key);
+    return text;
+  }
+
+  // The optional App secret: "[✓|✗] App secret (optional)  status" over the
+  // masked input. A blank field keeps a stored secret (the token route
+  // falls back to it), so only a stored one gets the keep-current
+  // placeholder. data-i18n sits on the inner spans, never on the label —
+  // a re-translation would otherwise wipe the mark and the input with it.
+  function buildAppSecretLabel(input, entry) {
+    const configured = Boolean(entry && entry.set);
+    const label = document.createElement("label");
+    label.style.display = "block";
+    const head = document.createElement("span");
+    head.appendChild(statusMark(configured));
+    head.appendChild(document.createTextNode(" "));
+    const name = document.createElement("span");
+    name.textContent = MUREO.t("wizard.auth.meta_token_app_secret_label");
+    name.setAttribute("data-i18n", "wizard.auth.meta_token_app_secret_label");
+    head.appendChild(name);
+    head.appendChild(document.createTextNode(" "));
+    head.appendChild(secretStatusText(configured));
+    label.appendChild(head);
+    input.placeholder = configured
+      ? MUREO.t("dashboard.plugin_credentials_secret_placeholder")
+      : MUREO.t("dashboard.plugin_credentials_secret_unset_placeholder");
+    label.appendChild(input);
+    return label;
+  }
+
   function buildMetaTokenCard(onDone) {
     // Paste a Business Manager system-user token instead of running the
     // browser OAuth. Framework-free — a native <details> element, plain
@@ -431,6 +497,10 @@
     // exchange it for a fresh one before it dies. Without them the card
     // still works exactly as before — the expiry is shown and warned about,
     // and renewing is a manual re-paste.
+    // Both read the stored state off the status snapshot: the App ID is not
+    // a secret, so a stored one is pre-filled; the App secret never reaches
+    // the browser, so its label says whether one is stored instead.
+    const envVars = storedEnvVars();
     const appIdLabel = document.createElement("label");
     appIdLabel.style.display = "block";
     appIdLabel.textContent = MUREO.t("wizard.auth.meta_token_app_id_label");
@@ -438,19 +508,16 @@
     const appIdInput = document.createElement("input");
     appIdInput.type = "text";
     appIdInput.autocomplete = "off";
+    appIdInput.value = storedPlainValue(envVars.META_ADS_APP_ID);
     appIdLabel.appendChild(appIdInput);
     details.appendChild(appIdLabel);
 
-    const appSecretLabel = document.createElement("label");
-    appSecretLabel.style.display = "block";
-    appSecretLabel.textContent = MUREO.t("wizard.auth.meta_token_app_secret_label");
-    appSecretLabel.setAttribute(
-      "data-i18n", "wizard.auth.meta_token_app_secret_label");
     const appSecretInput = document.createElement("input");
     appSecretInput.type = "password";
     appSecretInput.autocomplete = "new-password";
-    appSecretLabel.appendChild(appSecretInput);
-    details.appendChild(appSecretLabel);
+    details.appendChild(
+      buildAppSecretLabel(appSecretInput, envVars.META_ADS_APP_SECRET)
+    );
 
     const appHint = document.createElement("small");
     appHint.className = "field-hint";

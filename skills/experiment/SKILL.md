@@ -2,12 +2,14 @@
 name: experiment
 description: "Design, run, and evaluate a controlled A/B test (split test) on your ad accounts with evidence discipline — one variable, a falsifiable hypothesis, a fixed window, and a per-variant outcome verdict. Use when the user asks to run an A/B test, split test, or experiment, to 'test whether X beats Y', to validate a creative-refresh or learning hunch properly, to validate a breakdown exclusion or reallocation hypothesis before acting on it, or requests A/Bテスト / スプリットテスト設計 / 実験を回したい / どちらが勝ったか評価して / 仮説を検証したい. Forces a designed experiment instead of an ad-hoc change, records the baseline in action_log, and forbids peeking-based decisions before the window closes."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Experiment
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Turn an ad-hoc change into a **designed experiment**. Most "we tried X and CPA moved" claims are noise — one variable was never isolated, the window was never fixed, and the decision was made by peeking. This skill enforces the discipline: a falsifiable hypothesis, exactly **one** variable, a success metric tied to a Goal, a pre-committed duration and sample floor, no peeking, and a per-variant verdict where **inconclusive is a valid outcome**.
 

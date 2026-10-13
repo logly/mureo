@@ -2,12 +2,14 @@
 name: onboard
 description: "Initial account setup — create STRATEGY.md and STATE.json from scratch, import platform data, and establish baseline metrics. Use when the user is starting fresh with mureo, has no STRATEGY.md yet, or asks to set up a new account. Also use when the user asks in Japanese (初期セットアップ / STRATEGY.mdを作成して / mureoを使い始めたい / アカウントの立ち上げ)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Onboard
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Guide me through setting up mureo for a new marketing account.
 

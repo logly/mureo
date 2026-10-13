@@ -2,12 +2,14 @@
 name: competitive-scan
 description: "Scan competitor activity using auction insights and market signals. Use when the user asks about competitors, market dynamics, impression share changes, competitor moves, or competitive positioning. Also use when the user asks in Japanese (競合の動きを調べて / 競合分析 / インプレッションシェアの変化を確認 / 競合にシェアを取られていないか)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Competitive Scan
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Scan the competitive landscape and suggest strategic responses across all channels.
 

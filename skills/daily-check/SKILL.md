@@ -2,12 +2,14 @@
 name: daily-check
 description: "Run a daily health check on all configured ad accounts (Google Ads, Meta Ads, Amazon Ads, TikTok Ads, Search Console, GA4, and any configured plugin platform). Use when the user asks for a daily review, health check, status update, anomaly detection, or 'how are my campaigns doing today'. Reads STRATEGY.md and STATE.json, runs platform-specific health diagnostics, checks goal progress, evaluates pending action_log observations, and reports findings as Healthy / Watch / Action-needed. Also use when the user asks in Japanese (デイリーチェック / 今日のアカウント状況は / 異常がないか確認して / 日次ヘルスチェック)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Daily Check
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Run a daily health check on all marketing accounts using the strategy context.
 

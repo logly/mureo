@@ -1,5 +1,68 @@
 ## [Unreleased]
 
+### Added
+
+- **A plugin can override or suppress the callback-URL hint on its OAuth
+  card.** `AccountOAuthConfig` gains `callback_hint` (and a
+  `callback_hint_i18n` locale table). The configure UI shows that text under
+  the callback URL input instead of the generic "register this exact URL"
+  hint, or no hint at all when it is `""`, so a provider whose flow is
+  brokered no longer tells operators to register a redirect URI they do not
+  own. Providers that leave it unset are unchanged. The list endpoint exposes
+  it as `oauth.callback_hint`.
+- **A plugin platform's label uses the name its provider declares** (#826).
+  The Reports card now labels a `plugin:<distribution>:<provider>` key (and
+  the bare provider name) with the provider class's `display_name`,
+  stripped and followed by ` (plugin)`, instead of title-casing the provider
+  name, so brand casing survives. The name is read from the providers
+  discovery already loaded; a provider that is not loaded, one registered
+  from a different distribution, the legacy `plugin:<distribution>` key and a
+  blank name keep the derived label. Built-in platforms and in-tree bridges
+  are unchanged.
+### Changed
+
+- **Skills treat a namespaced built-in variant as the built-in platform**
+  (#825). A provider whose tools are `<builtin_platform>_<suffix>_<operation>`,
+  with the same operation set and input schemas as the built-in
+  `<builtin_platform>_<operation>` tools, now gets the full workflow and
+  analysis instead of the best-effort plugin path; the skills call its tools
+  with the prefix substituted. The match is derived from the live tool list.
+  When the built-in and a variant are both present, the skills use the one
+  whose credentials are configured and never call both for the same account.
+  `_mureo-shared` defines the rule, every skill that names built-in tools
+  points to it, and `docs/plugin-authoring.md` describes what mirroring a
+  built-in surface requires.
+
+### Fixed
+
+- **The learning-period reset check classifies a namespaced built-in variant
+  like the built-in** (#837). A tool named
+  `<builtin_platform>_<suffix>_<operation>` is now matched against the
+  built-in `<builtin_platform>_<operation>` tool, including its reset triggers
+  and argument rules, so a bid-strategy, budget, keyword or reactivation
+  change made through such a variant reaches the `block_learning_resets` /
+  `block_learning_resets_during_incident` refusal and the post-call notice
+  instead of being reported as a read or as not reset-triggering. A name that
+  only shares a built-in platform prefix, with no built-in operation behind
+  it, is no longer forced to "read": its declared `readOnlyHint` and then the
+  read-only name pattern decide. Meta minor-unit conversion already applied
+  to variants and is unchanged; a test now pins it.
+
+## [0.24.0] - 2026-10-13
+
+### Changed
+
+- **The configure UI shows whether a secret credential field has a stored
+  value.** A secret is never sent to the browser, so its input is always
+  empty; each secret field on the Plugin credentials cards and in the setup
+  wizard now carries a ✓ Configured / ✗ Not set mark next to its name, and an
+  unset one without a provider placeholder reads "(not set — enter a value)".
+  The Creative Studio key form gains the same Configured / Not set text next
+  to its existing mark. The Meta token card marks its optional App Secret the
+  same way and pre-fills a stored App ID, and the Setup tab's mureo
+  Credentials (advanced) form shows the mark for whichever field is selected,
+  updating when the selection changes and after a save.
+
 ## [0.23.1] - 2026-10-13
 
 ### Fixed
@@ -7375,7 +7438,7 @@
   shared-OAuth backend that has not declared its allow-list fail-closes rather
   than leaking. Standalone (single-workspace) installs are unchanged. (#375)
 - **About "Installed packages" now agrees with the update checker.** A
-  `mureo.skills`-only plugin (e.g. `mureo-logly-tools`) could be flagged
+  `mureo.skills`-only plugin (e.g. `mureo-example-skills`) could be flagged
   "update available" yet never appear under Installed; the About list now
   unions the same name-prefixed `mureo`/`mureo-*` set the updater uses. (#365)
 - **Meta Ads budget conversions honor zero-decimal currencies.** Budget amounts

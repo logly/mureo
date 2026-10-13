@@ -20,6 +20,7 @@ and which are not, see [ABI-stability.md](./ABI-stability.md).
 2. [Quick start: a minimal plugin](#2-quick-start-a-minimal-plugin)
 3. [Provider Protocols](#3-provider-protocols)
    - [Reusing the built-in handlers with your own credentials](#reusing-the-built-in-handlers-with-your-own-credentials)
+   - [Mirroring a built-in surface under a namespaced prefix](#mirroring-a-built-in-surface-under-a-namespaced-prefix)
 4. [Capabilities](#4-capabilities)
 5. [Models: frozen dataclasses and enums](#5-models-frozen-dataclasses-and-enums)
 6. [Skill matching](#6-skill-matching)
@@ -262,13 +263,24 @@ Defined in `mureo.core.providers.base`. Three class attributes:
 | Attribute | Type | Contract |
 |---|---|---|
 | `name` | `str` | Snake_case identifier matching `^[a-z][a-z0-9_]*$`. Used as registry key and skill-frontmatter token. |
-| `display_name` | `str` | Non-empty human-readable label (CLI output, error messages). |
+| `display_name` | `str` | Non-empty human-readable label (CLI output, error messages, and the platform label on the Reports card — see below). |
 | `capabilities` | `frozenset[Capability]` | The capabilities the provider declares it can serve. Must be a `frozenset` (not `set`) so it is hashable and cannot be mutated. |
 
 These should be **class attributes** (not instance attributes) so the
 registry and skill matcher can introspect them without instantiating
 the provider. `validate_provider()` and `register_provider_class()`
 both look them up on the class via `getattr`.
+
+The configure UI's Reports card labels your platform with `display_name`,
+stripped and followed by ` (plugin)` (`display_name = "ACME Search-X"` →
+`ACME Search-X (plugin)`), so declare it with the casing you want operators
+to read. It is honoured for the canonical `plugin:<distribution>:<provider>`
+key when the registered provider came from that distribution, and for the
+bare provider name. The label is read from the classes discovery already
+loaded; when your provider is not loaded in the rendering process, the key
+names another distribution, the key is the legacy `plugin:<distribution>`
+form, or `display_name` is blank, the label is derived from the key as
+before (`acme_search_x` → `Acme Search X (plugin)`).
 
 `BaseProvider` declares no methods. Phase 1 keeps it minimal so
 adding required methods later cannot break installed plugins — new
@@ -422,6 +434,11 @@ use the flag to:
 - Choose tighter storage permissions, typically `0o600`, when the
   value lands in a file rather than an injected `SecretStore`.
 
+In `mureo configure` (the **Plugin credentials** cards and the setup
+wizard), each secret field shows ✓ Configured / ✗ Not set next to its
+name, so you can tell whether a value is stored even though the input
+is always empty.
+
 ```python
 account_credential_fields = (
     AccountCredentialField(
@@ -454,6 +471,45 @@ operator or installer that pre-populates the client id and secret does not
 need to retype them. The `target_field` token is never taken from storage, and
 Authenticate still fails with `client_credentials_missing` when either client
 credential is blank and not stored.
+
+#### Callback URL (`callback_port`, `callback_hint`)
+
+The OAuth card asks the operator for the loopback callback URL the consent
+flow redirects back to. Two `AccountOAuthConfig` attributes shape that input:
+
+- `callback_port` (default `None`): a fixed loopback port. When set, the
+  input is pre-filled with `http://127.0.0.1:<callback_port><callback_path>`,
+  for an authorization server that only accepts an exact, pre-registered
+  `redirect_uri`. The operator can still edit it.
+- `callback_hint` (default `None`): the text shown under the input. When
+  unset, the configure UI shows its generic hint, which tells the operator to
+  register that exact URL as the redirect/callback URI in the provider's
+  developer console. Set your own text when that advice does not apply, or
+  `""` to show no hint at all. The text is rendered as plain text, not
+  markup. `callback_hint_i18n` localises it with the same
+  `i18n[locale] → i18n["en"] → callback_hint` chain as field labels; it is
+  only used when `callback_hint` is a non-empty string.
+
+The typical case for `callback_hint` is a brokered flow: the authorization
+server redirects to an intermediate server's own registered callback, and
+that server forwards the result to the operator's loopback URL. The
+operator has nothing to register, so the generic hint would send them to a
+developer console they do not have:
+
+```python
+account_oauth = AccountOAuthConfig(
+    authorize_url="https://broker.example.com/oauth/authorize",
+    token_url="https://broker.example.com/oauth/token",
+    client_id_field="client_id",
+    client_secret_field="client_secret",
+    target_field="refresh_token",
+    callback_hint=(
+        "The sign-in service handles the provider-side redirect. "
+        "You do not need to register this URL; click Authenticate."
+    ),
+    callback_hint_i18n={"ja": "..."},
+)
+```
 
 #### Post-auth account picker (`list_oauth_accounts`)
 
@@ -848,6 +904,34 @@ class MyAdapter:
 If a caller is already inside an event loop, `asyncio.run` raises
 `RuntimeError`. That is the documented Phase 1 behaviour and is
 allowed to propagate.
+
+### Mirroring a built-in surface under a namespaced prefix
+
+The workflow skills name the built-in tools (`meta_ads_campaigns_list`,
+`google_ads_performance_report`, …). A provider that is only a different
+credential source for a built-in platform can have the skills treat it as
+that built-in — full workflow and analysis, not the best-effort plugin path —
+by mirroring the built-in surface under a namespaced prefix. The rule the
+skills apply is defined in `skills/_mureo-shared/SKILL.md` → *Namespaced
+built-in variants*; mirroring means:
+
+- **Name shape.** Every tool is `<builtin_platform>_<suffix>_<operation>`,
+  for example `google_ads_<suffix>_campaigns_list` for the built-in
+  `google_ads_campaigns_list`. The suffix goes after the built-in platform
+  prefix: a name that puts your prefix first (`<suffix>_google_ads_…`, as in
+  the delegation example above) is not recognised as a variant.
+- **Same operations.** The set of `<operation>`s matches the built-in
+  `<builtin_platform>_<operation>` tools.
+- **Same input schemas.** Each tool's `inputSchema` matches the built-in
+  tool's. Re-exporting the built-in `Tool` definitions with only the name
+  changed, and delegating to the built-in handlers as shown above, keeps the
+  two in step.
+
+The skills derive the match from the live tool list; there is nothing to
+register. A surface that adds, drops or reshapes operations is not a variant
+and is treated as a plugin platform. When the built-in and a variant are both
+present, the skills use the one whose credentials are configured and never
+call both for the same account.
 
 ### Exposing operations as MCP tools (`MCPToolProvider`)
 

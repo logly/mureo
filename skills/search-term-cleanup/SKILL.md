@@ -2,12 +2,14 @@
 name: search-term-cleanup
 description: "Audit and clean up search terms (negative keywords, intent classification, query hygiene). Use when the user asks to clean up search queries, add negative keywords, review search term reports, or improve match quality. Cross-references Search Console, GA4, and ad platform data. Also use when the user asks in Japanese (検索語句のクリーンアップ / 除外キーワードを追加して / 無駄な検索クエリを止めたい)."
 metadata:
-  version: 0.23.1
+  version: 0.24.0
 ---
 
 # Search Term Cleanup
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
+
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 Review and clean up search terms and keywords across all platforms.
 
