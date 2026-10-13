@@ -188,6 +188,17 @@
     form.appendChild(label);
   }
 
+  // #828 — the hint under the callback URL input. A provider-supplied
+  // ``callback_hint`` string replaces the generic "register this exact URL"
+  // text (wrong for a brokered flow, where the operator registers nothing);
+  // an empty string means no hint row at all; absent/null keeps the generic
+  // text. Returned as plain text — the caller sets it via textContent.
+  function callbackHintText(oauth) {
+    const custom = oauth ? oauth.callback_hint : null;
+    if (typeof custom === "string") return custom;
+    return MUREO.t("dashboard.plugin_oauth_callback_hint");
+  }
+
   // #216/#217 — OAuth card controls: the operator-supplied loopback
   // callback URL input + a single Authenticate-IS-save submit (no Save).
   function appendOAuthControls(form, plugin) {
@@ -210,10 +221,13 @@
       (plugin.oauth && plugin.oauth.default_callback_url) ||
       "http://127.0.0.1:8765/oauth/callback";
     cbLabel.appendChild(cbInput);
-    const cbHint = document.createElement("small");
-    cbHint.className = "field-hint";
-    cbHint.textContent = MUREO.t("dashboard.plugin_oauth_callback_hint");
-    cbLabel.appendChild(cbHint);
+    const cbHintText = callbackHintText(plugin.oauth);
+    if (cbHintText) {
+      const cbHint = document.createElement("small");
+      cbHint.className = "field-hint";
+      cbHint.textContent = cbHintText;
+      cbLabel.appendChild(cbHint);
+    }
     form.appendChild(cbLabel);
 
     const authBtn = document.createElement("button");

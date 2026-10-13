@@ -460,6 +460,45 @@ need to retype them. The `target_field` token is never taken from storage, and
 Authenticate still fails with `client_credentials_missing` when either client
 credential is blank and not stored.
 
+#### Callback URL (`callback_port`, `callback_hint`)
+
+The OAuth card asks the operator for the loopback callback URL the consent
+flow redirects back to. Two `AccountOAuthConfig` attributes shape that input:
+
+- `callback_port` (default `None`): a fixed loopback port. When set, the
+  input is pre-filled with `http://127.0.0.1:<callback_port><callback_path>`,
+  for an authorization server that only accepts an exact, pre-registered
+  `redirect_uri`. The operator can still edit it.
+- `callback_hint` (default `None`): the text shown under the input. When
+  unset, the configure UI shows its generic hint, which tells the operator to
+  register that exact URL as the redirect/callback URI in the provider's
+  developer console. Set your own text when that advice does not apply, or
+  `""` to show no hint at all. The text is rendered as plain text, not
+  markup. `callback_hint_i18n` localises it with the same
+  `i18n[locale] → i18n["en"] → callback_hint` chain as field labels; it is
+  only used when `callback_hint` is a non-empty string.
+
+The typical case for `callback_hint` is a brokered flow: the authorization
+server redirects to an intermediate server's own registered callback, and
+that server forwards the result to the operator's loopback URL. The
+operator has nothing to register, so the generic hint would send them to a
+developer console they do not have:
+
+```python
+account_oauth = AccountOAuthConfig(
+    authorize_url="https://broker.example.com/oauth/authorize",
+    token_url="https://broker.example.com/oauth/token",
+    client_id_field="client_id",
+    client_secret_field="client_secret",
+    target_field="refresh_token",
+    callback_hint=(
+        "The sign-in service handles the provider-side redirect. "
+        "You do not need to register this URL; click Authenticate."
+    ),
+    callback_hint_i18n={"ja": "..."},
+)
+```
+
 #### Post-auth account picker (`list_oauth_accounts`)
 
 A provider whose `AccountOAuthConfig` names an `accounts_field` can also
