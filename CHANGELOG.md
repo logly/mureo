@@ -1,5 +1,17 @@
 ## [Unreleased]
 
+### Added
+
+- **Every `## Guardrails` field can be edited from `mureo configure`, under a
+  readable name** (#843). The Guardrails card (Advanced) now lists every
+  rule below the currency dropdown with an English / Japanese label and
+  one-line description, its current value, and whether it is not set or
+  being ignored; saving writes only the bullets that changed and leaves the
+  rest of STRATEGY.md byte-identical. New routes `GET` / `POST
+  /api/strategy/guardrails` carry the same labels for web extensions, and
+  `mureo.policy.guardrail_fields.GUARDRAIL_FIELDS` is the field catalog
+  (kind, unit, range, i18n key) both are built from.
+
 ## [0.25.0] - 2026-10-14
 
 ### Added
