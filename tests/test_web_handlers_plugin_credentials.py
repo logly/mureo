@@ -229,6 +229,66 @@ def test_get_returns_empty_list_when_no_plugins(
     assert body == {"plugins": []}
 
 
+def _hinted_entry(name: str, hint: str | None) -> ProviderEntry:
+    """An OAuth provider whose ``callback_hint`` is ``hint`` (#828)."""
+    from mureo.core.providers import AccountOAuthConfig
+
+    cls = _make_class(
+        name,
+        fields=(
+            AccountCredentialField(key="client_id", display_name="Client ID"),
+            AccountCredentialField(
+                key="client_secret", display_name="Client Secret", secret=True
+            ),
+            AccountCredentialField(
+                key="refresh_token", display_name="Refresh Token", secret=True
+            ),
+        ),
+    )
+    cls.account_oauth = AccountOAuthConfig(  # type: ignore[attr-defined]
+        authorize_url="https://example.test/authorize",
+        token_url="https://example.test/token",
+        client_id_field="client_id",
+        client_secret_field="client_secret",
+        target_field="refresh_token",
+        callback_hint=hint,
+        callback_hint_i18n={"ja": "JA hint"} if hint else {},
+    )
+    return ProviderEntry(
+        name=name,
+        display_name=name,
+        capabilities=frozenset(),
+        provider_class=cls,
+        source_distribution=None,
+    )
+
+
+@pytest.mark.unit
+def test_get_exposes_provider_callback_hint(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#828: unset → no key, custom → the locale-resolved text, empty → ""."""
+    monkeypatch.setattr(
+        default_registry,
+        "_entries",
+        {
+            "a_default": _hinted_entry("a_default", None),
+            "b_custom": _hinted_entry("b_custom", "Nothing to register."),
+            "c_suppressed": _hinted_entry("c_suppressed", ""),
+        },
+    )
+    body = json.loads(_get(wizard, "/api/credentials/plugins").read())
+    oauth = {p["provider_name"]: p["oauth"] for p in body["plugins"]}
+    assert "callback_hint" not in oauth["a_default"]
+    assert oauth["b_custom"]["callback_hint"] == "Nothing to register."
+    assert oauth["c_suppressed"]["callback_hint"] == ""
+
+    wizard.session.set_locale("ja")
+    body = json.loads(_get(wizard, "/api/credentials/plugins").read())
+    oauth = {p["provider_name"]: p["oauth"] for p in body["plugins"]}
+    assert oauth["b_custom"]["callback_hint"] == "JA hint"
+
+
 # ---------------------------------------------------------------------------
 # POST /api/credentials/plugins/save
 # ---------------------------------------------------------------------------
