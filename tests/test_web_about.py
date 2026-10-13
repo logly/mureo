@@ -443,7 +443,7 @@ class TestCollectAboutInfo:
         canonical form — so About labels it identically to the update banner."""
         by_group = {
             "mureo.skills": (
-                _FakeEntryPoint(dist=_FakeDist("Mureo_Logly_Tools", "0.3.0")),
+                _FakeEntryPoint(dist=_FakeDist("Mureo_Example_Skills", "0.3.0")),
             ),
         }
         with (
@@ -460,7 +460,7 @@ class TestCollectAboutInfo:
             info = collect_about_info()
         names = [pkg["name"] for pkg in info["packages"]]
         assert names == ["mureo", "mureo-example-skills"]
-        assert "Mureo_Logly_Tools" not in names
+        assert "Mureo_Example_Skills" not in names
 
     def test_every_updater_package_appears_exactly_once(self) -> None:
         """Property of #365: every name the updater discovers is listed here
