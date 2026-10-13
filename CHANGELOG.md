@@ -33,6 +33,21 @@
   points to it, and `docs/plugin-authoring.md` describes what mirroring a
   built-in surface requires.
 
+### Fixed
+
+- **The learning-period reset check classifies a namespaced built-in variant
+  like the built-in** (#837). A tool named
+  `<builtin_platform>_<suffix>_<operation>` is now matched against the
+  built-in `<builtin_platform>_<operation>` tool, including its reset triggers
+  and argument rules, so a bid-strategy, budget, keyword or reactivation
+  change made through such a variant reaches the `block_learning_resets` /
+  `block_learning_resets_during_incident` refusal and the post-call notice
+  instead of being reported as a read or as not reset-triggering. A name that
+  only shares a built-in platform prefix, with no built-in operation behind
+  it, is no longer forced to "read": its declared `readOnlyHint` and then the
+  read-only name pattern decide. Meta minor-unit conversion already applied
+  to variants and is unchanged; a test now pins it.
+
 ## [0.24.0] - 2026-10-13
 
 ### Changed
