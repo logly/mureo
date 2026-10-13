@@ -91,11 +91,12 @@ class TestCatalogMatchesTheDataclass:
 
 @pytest.mark.unit
 class TestRanges:
-    def test_money_is_never_negative_and_has_no_ceiling(self) -> None:
+    def test_money_is_never_negative_and_has_a_sanity_ceiling(self) -> None:
+        """No account's cap is a trillion units; past that it is a typo."""
         for item in GUARDRAIL_FIELDS:
             if item.kind == "money":
                 assert item.minimum == 0, item.key
-                assert item.maximum is None, item.key
+                assert item.maximum == 1e12, item.key
 
     def test_delivery_shares_are_percentages_of_a_whole(self) -> None:
         for key in (
@@ -109,7 +110,7 @@ class TestRanges:
     def test_a_budget_increase_may_exceed_one_hundred_percent(self) -> None:
         item = guardrail_field("max_daily_budget_increase_pct")
         assert item is not None
-        assert (item.kind, item.minimum, item.maximum) == ("percent", 0, None)
+        assert (item.kind, item.minimum, item.maximum) == ("percent", 0, 1e6)
 
     def test_the_window_matches_the_rule_resolver_clamp(self) -> None:
         """The resolver clamps out-of-range windows silently; the editor

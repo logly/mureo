@@ -114,7 +114,7 @@ class TestReadGuardrails:
         assert row["kind"] == "percent"
         assert row["unit"] == "%"
         assert row["min"] == 0
-        assert row["max"] is None
+        assert row["max"] == 1e6
         assert row["label"] == "Max daily budget increase per change (%)"
         assert row["desc"]
 
@@ -370,6 +370,22 @@ class TestContentWithBullets:
             "- max_total_daily_budget: 9\n- x: 2"
         )
 
+    def test_a_trailing_comment_is_not_kept_on_a_rewrite(self) -> None:
+        """The gate cannot read ``5000 # approved`` (it drops the rule), so
+        the rewritten bullet is the bare value and the comment goes."""
+        content = "- max_total_daily_budget: 5000 # approved\n- x: 2"
+        after = content_with_bullets(content, {"max_total_daily_budget": "6000"})
+        assert after == "- max_total_daily_budget: 6000\n- x: 2"
+        gate = guardrails_from_strategy_text(f"## Guardrails\n{after}")
+        assert gate.max_total_daily_budget == 6000
+
+    def test_collapsed_duplicates_match_what_the_gate_reads(self) -> None:
+        content = "- max_total_daily_budget: 1\n- x: 2\n- max_total_daily_budget: 3"
+        after = content_with_bullets(content, {"max_total_daily_budget": "9"})
+        assert after.count("max_total_daily_budget") == 1
+        gate = guardrails_from_strategy_text(f"## Guardrails\n{after}")
+        assert gate.max_total_daily_budget == 9
+
     def test_clearing_drops_every_occurrence(self) -> None:
         content = "- max_total_daily_budget: 1\n- x: 2\n- max_total_daily_budget: 3"
         assert content_with_bullets(content, {"max_total_daily_budget": None}) == (
@@ -549,11 +565,13 @@ class TestResolveLang:
             ("fr", "ja", "ja"),
             (None, "ja", "ja"),
             (None, "de", "en"),
-            ("ja", "en", "ja"),
+            ("ja", "en", "en"),
+            ("en", "ja-JP", "ja"),
+            ("ja", "de", "ja"),
             ("ja;q=0", None, "en"),
         ],
     )
-    def test_header_then_query_then_english(
+    def test_query_then_header_then_english(
         self, header: str | None, query: str | None, expected: str
     ) -> None:
         assert resolve_lang(header, query) == expected
@@ -653,10 +671,10 @@ class TestStrategyGuardrailsRoutes:
         row = _by_key(body)["max_cumulative_delivery_share_removed_pct"]
         assert row["label"] == "除外で削ってよい配信量の累計上限(%)"
 
-    def test_get_falls_back_to_the_lang_query(
+    def test_get_the_lang_query_outranks_accept_language(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _get(wizard, f"{_ROUTE}?lang=ja")
+        body = _get(wizard, f"{_ROUTE}?lang=ja", {"Accept-Language": "en"})
         row = _by_key(body)["max_daily_budget_increase_pct"]
         assert row["label"] == "1 回の変更で許す日予算の増加率(%)"
 
@@ -686,6 +704,7 @@ class TestStrategyGuardrailsRoutes:
             ({"set": {"no_such_rule": 1}}, "unknown_field"),
             ({"set": {"max_total_daily_budget": "lots"}}, "invalid_value"),
             ({"set": {"max_total_daily_budget": -5}}, "out_of_range"),
+            ({"set": {"max_total_daily_budget": 10**400}}, "invalid_value"),
             ({"set": "max_total_daily_budget"}, "invalid_payload"),
         ],
     )
@@ -702,6 +721,25 @@ class TestStrategyGuardrailsRoutes:
         assert excinfo.value.code == 400
         assert json.loads(excinfo.value.read())["error"] == code
         assert path.read_text(encoding="utf-8") == _DOC
+
+    def test_get_survives_a_non_finite_value_in_the_file(
+        self, wizard: ConfigureWizard, workspace: Path
+    ) -> None:
+        _write(
+            workspace / "STRATEGY.md",
+            "# Strategy\n\n## Guardrails\n"
+            "- max_total_daily_budget: nan\n"
+            "- max_daily_budget_per_campaign: 1e999\n"
+            "- exclusion_impact_window_days: inf\n",
+        )
+        rows = _by_key(_get(wizard, _ROUTE))
+        for key in (
+            "max_total_daily_budget",
+            "max_daily_budget_per_campaign",
+            "exclusion_impact_window_days",
+        ):
+            assert rows[key]["value"] is None, key
+            assert rows[key]["recognised"] is False, key
 
     def test_post_names_the_field_it_refused(
         self, wizard: ConfigureWizard, workspace: Path

@@ -56,6 +56,19 @@ _TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9_.:/-]+$")
 
 _CURRENCY_CODES = frozenset(str(option["code"]) for option in CURRENCY_OPTIONS)
 
+#: The numeric strings the editor accepts: ASCII digits only, with commas
+#: allowed solely as three-digit thousands groups. ``1,5`` (a decimal comma
+#: or a typo?), ``1_0`` and full-width digits are refused rather than
+#: guessed at, so the bullet written is the number the operator meant.
+_NUMBER_PATTERNS = tuple(
+    re.compile(pattern, re.ASCII)
+    for pattern in (
+        r"-?\d{1,3}(,\d{3})+(\.\d+)?",
+        r"-?\d+(\.\d+)?",
+        r"-?\d+(\.\d+)?[eE][-+]?\d+",
+    )
+)
+
 #: The key a brand-new bullet is inserted FIRST for, not after the last
 #: bullet — the currency card's rule, because the caps below are in it.
 _LEADING_KEY = "currency"
@@ -85,7 +98,7 @@ def _raw_values(content: str) -> dict[str, str]:
     exactly the rule :func:`~mureo.policy.strategy_gate.parse_guardrails`
     applies, so the card shows the value the gate enforces."""
     found: dict[str, str] = {}
-    for line in content.splitlines():
+    for line in content.split("\n"):
         match = GUARDRAILS_BULLET_RE.match(line)
         if match is not None:
             found[match.group(1).lower()] = match.group(2).strip()
@@ -101,8 +114,18 @@ def _split_list(raw: str) -> list[str]:
     return items
 
 
+def _non_finite(value: Any) -> bool:
+    return isinstance(value, float) and not math.isfinite(value)
+
+
 def _parsed_value(item: GuardrailField, raw: str, parsed: Any) -> Any:
-    """The gate's reading of ``raw``, in a JSON-friendly shape."""
+    """The gate's reading of ``raw``, in a JSON-friendly shape.
+
+    A non-finite number is ``None``: the gate cannot enforce it, and the
+    JSON encoder would emit a bare ``NaN`` no browser parses.
+    """
+    if _non_finite(parsed):
+        return None
     if item.kind == "string_set":
         # The gate holds a frozenset; the written order is the useful one.
         return _split_list(raw)
@@ -119,7 +142,7 @@ def _recognised(item: GuardrailField, raw: str, value: Any) -> bool:
         return bool(value)
     if item.kind == "metric_set":
         return bool(value) and all(metric in METRICS for metric in value)
-    return value is not None
+    return value is not None and not _non_finite(value)
 
 
 def describe_fields(
@@ -162,21 +185,23 @@ def describe_fields(
 # ---------------------------------------------------------------------------
 
 
+def _numeric_text(item: GuardrailField, value: str) -> str:
+    """``value`` without its thousands commas, if it is a number we accept."""
+    text = value.strip()
+    if not any(pattern.fullmatch(text) for pattern in _NUMBER_PATTERNS):
+        raise StrategyGuardrailsError("invalid_value", item.key)
+    return text.replace(",", "")
+
+
 def _number(item: GuardrailField, value: Any) -> float:
     """A finite number from a JSON number or a numeric string."""
-    if isinstance(value, bool):
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
         raise StrategyGuardrailsError("invalid_value", item.key)
-    if isinstance(value, int | float):
-        number = float(value)
-    elif isinstance(value, str):
-        # The gate tolerates thousands separators; so does the editor.
-        text = value.strip().replace(",", "").replace("_", "")
-        try:
-            number = float(text)
-        except ValueError:
-            raise StrategyGuardrailsError("invalid_value", item.key) from None
-    else:
-        raise StrategyGuardrailsError("invalid_value", item.key)
+    try:
+        # An int past float range (``10**400``) raises OverflowError here.
+        number = float(_numeric_text(item, value) if isinstance(value, str) else value)
+    except (OverflowError, ValueError):
+        raise StrategyGuardrailsError("invalid_value", item.key) from None
     if not math.isfinite(number):
         raise StrategyGuardrailsError("invalid_value", item.key)
     return number
@@ -323,7 +348,9 @@ def _insert_at(lines: list[str], key: str) -> int:
 
 
 def _with_bullet(content: str, key: str, value: str | None) -> str:
-    lines = content.splitlines()
+    # ``\n`` only, as the gate reads it: a ``\x85`` or ``\u2028``
+    # inside a prose line must come back unchanged.
+    lines = content.split("\n")
     hits = _hits(lines, key)
     if value is None:
         if not hits:
@@ -353,7 +380,9 @@ def content_with_bullets(content: str, changes: Mapping[str, str | None]) -> str
     Pure and line-surgical: an existing bullet is rewritten where it stands,
     a duplicate collapses to that one line (the gate reads the LAST one, so a
     stale twin would shadow the new value), and every other line comes back
-    as it was. Returns ``content`` itself when nothing changes.
+    as it was. A rewritten bullet is the bare value: a trailing comment on
+    it (``5000 # approved``, which the gate cannot read) is not kept.
+    Returns ``content`` itself when nothing changes.
     """
     result = content
     for key, value in changes.items():

@@ -498,6 +498,26 @@ test.describe("saving the rules", function () {
   });
 });
 
+test.describe("saving the currency next to an edited rule", function () {
+  test.it("leaves the rules table and its typed values alone", async function () {
+    // The currency select and the rules table are saved by two buttons.
+    // Saving the first must not throw away an edit in the second.
+    const page = await openRules();
+    recordPosts(page, { ok: true, body: { status: "ok", currency: "JPY" } });
+    control(page, "max_total_daily_budget").value = "1200";
+    currencySelect(page).value = "JPY";
+    page.root.querySelector("[data-guardrails-save]").click();
+    await settle();
+    assert.equal(control(page, "max_total_daily_budget").value, "1200");
+    assert.deepEqual(
+      page.requests.filter((url) => url.startsWith(GUARDRAILS_ENDPOINT)),
+      [GUARDRAILS_ENDPOINT]
+    );
+    // ...while the currency side is re-read from the server.
+    assert.deepEqual(currencyRequests(page), [CURRENCY_ENDPOINT, CURRENCY_ENDPOINT]);
+  });
+});
+
 test.describe("a number the browser could not read", function () {
   test.it("is refused in place, not sent as a removal", async function () {
     // An <input type="number"> holding text it cannot parse reports an

@@ -16,8 +16,9 @@ that do not explain themselves. This module serves all of them:
 
 The labels are resolved on the server and carried in the payload, so a web
 extension that shows these fields renders the same names without keeping a
-translation table of its own. The language is the request's
-``Accept-Language``, then its ``?lang=``, then English.
+translation table of its own. The language is the request's ``?lang=``
+(an explicit choice, such as a UI language toggle), then its
+``Accept-Language`` (the browser default), then English.
 
 Writes follow the currency module to the letter: the same STRATEGY.md
 (:func:`~mureo.web.strategy_currency.strategy_path_for_client`), the same
@@ -27,7 +28,6 @@ backup before an existing file changes, and no write at all for a no-op.
 
 from __future__ import annotations
 
-import functools
 import json
 import logging
 import urllib.parse
@@ -99,16 +99,27 @@ _CALLER_FAULTS = frozenset(
 # ---------------------------------------------------------------------------
 
 
-@functools.cache
+#: The parsed catalog once it has loaded. A failed load is NOT kept: the
+#: next request tries again instead of serving raw keys until a restart.
+_catalog_cache: dict[str, dict[str, str]] | None = None
+
+
 def _i18n_catalog() -> dict[str, dict[str, str]]:
     """The bundled ``i18n.json`` the browser UI translates from."""
+    global _catalog_cache
+    if _catalog_cache is not None:
+        return _catalog_cache
     ref = resources.files("mureo") / "_data" / "web" / "i18n.json"
     try:
         data = json.loads(ref.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         logger.exception("i18n.json could not be read for the Guardrails labels")
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        logger.error("i18n.json is not an object; the Guardrails labels fall back")
+        return {}
+    _catalog_cache = data
+    return data
 
 
 def _translate(key: str, lang: str) -> str:
@@ -145,15 +156,20 @@ def _header_lang(header: str) -> str | None:
 
 
 def resolve_lang(accept_language: str | None, query_lang: str | None) -> str:
-    """``Accept-Language`` first, then ``?lang=``, then English."""
-    if accept_language:
-        found = _header_lang(accept_language)
-        if found is not None:
-            return found
+    """``?lang=`` first, then ``Accept-Language``, then English.
+
+    The query is an explicit choice (a page following its own language
+    toggle), so it outranks the browser's default. An unsupported value in
+    either is skipped, not an error.
+    """
     if query_lang:
         primary = query_lang.strip().lower().split("-", 1)[0]
         if primary in _SUPPORTED_LANGS:
             return primary
+    if accept_language:
+        found = _header_lang(accept_language)
+        if found is not None:
+            return found
     return _DEFAULT_LANG
 
 
@@ -174,15 +190,19 @@ def _state(entries: list[StrategyEntry], *, exists: bool, lang: str) -> dict[str
 
 def read_guardrails(path: Path, *, lang: str = _DEFAULT_LANG) -> dict[str, Any]:
     """Every field and what ``path`` declares for it. A missing file is the
-    ordinary state of a workspace with no strategy yet, not an error."""
-    if not path.exists():
-        return _state([], exists=False, lang=lang)
+    ordinary state of a workspace with no strategy yet, not an error.
+
+    Describing the values is inside the ``try`` too: whatever a hand-edited
+    file holds, the route answers ``read_failed`` rather than dropping the
+    connection.
+    """
     try:
-        entries = read_strategy_file(path)
+        exists = path.exists()
+        entries = read_strategy_file(path) if exists else []
+        return _state(entries, exists=exists, lang=lang)
     except Exception as exc:  # noqa: BLE001 — every read fault is one code
         logger.exception("STRATEGY.md could not be read for its Guardrails")
         raise StrategyGuardrailsError("read_failed") from exc
-    return _state(entries, exists=True, lang=lang)
 
 
 def _with_changes(

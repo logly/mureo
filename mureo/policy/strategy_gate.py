@@ -132,6 +132,9 @@ from mureo.policy.declarations import (
     reset_read_only_hints,
 )
 
+# How a bullet's number is read (#843) — split out for the file-size budget.
+from mureo.policy.guardrail_numbers import _to_float, _to_int
+
 # The learning-period pre-flight (#548) — "is this change reset-triggering,
 # and is the campaign already learning?". Its own module because the
 # per-platform facts it rests on carry provenance and change over time; this
@@ -335,26 +338,6 @@ class Guardrails:
         )
 
 
-def _to_float(value: str) -> float | None:
-    try:
-        return float(value.replace(",", "").replace("_", "").strip())
-    except (ValueError, AttributeError):
-        return None
-
-
-def _to_int(value: str) -> int | None:
-    """Whole-number bullet value, or ``None`` when it is not one.
-
-    A fractional day count is dropped rather than truncated: silently
-    turning ``30.5`` into ``30`` would report a window the operator did not
-    write.
-    """
-    number = _to_float(value)
-    if number is None or number != int(number):
-        return None
-    return int(number)
-
-
 #: Accepted spellings of "on" for a boolean guardrail. Anything else — including
 #: a typo — reads as OFF, matching the numeric rules' "a malformed value drops
 #: that one rule" behaviour rather than silently enabling a refusal.
@@ -377,9 +360,13 @@ def _to_metrics(value: str) -> tuple[str, ...]:
 
 
 def _bullets(content: str) -> dict[str, str]:
-    """``- key: value`` bullets of a section body, last occurrence winning."""
+    """``- key: value`` bullets of a section body, last occurrence winning.
+
+    Lines end at ``\\n`` only, as the section split in ``parse_strategy``
+    does: a ``\\u2028`` or ``\\x85`` inside a line does not start a new one.
+    """
     found: dict[str, str] = {}
-    for line in content.splitlines():
+    for line in content.split("\n"):
         match = _BULLET_RE.match(line)
         if match is not None:
             found[match.group(1).lower()] = match.group(2).strip()

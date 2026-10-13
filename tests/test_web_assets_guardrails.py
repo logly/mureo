@@ -205,12 +205,13 @@ class TestGuardrailsI18nParity:
         )
 
     def test_japanese_calls_an_ad_account_an_account(self) -> None:
-        """Ad accounts are アカウント in Japanese ad operations; 口座 reads
-        as a bank account and is not used anywhere on the card."""
+        """Japanese ad operations say "akaunto" for an ad account; the
+        bank-account word ("kouza") is not used anywhere on the card."""
+        bank_account_word = "\u53e3\u5ea7"
         ja = json.loads(_read("i18n.json"))["ja"]
         for key, value in ja.items():
             if key.startswith(("dashboard.guardrails_", "guardrails.field.")):
-                assert "口座" not in value, key
+                assert bank_account_word not in value, key
 
     def test_the_retired_nav_key_is_gone_from_both_locales(self) -> None:
         """The card is a sub-card of Advanced now; a stale nav label would

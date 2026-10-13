@@ -61,6 +61,11 @@ _DAYS_UNIT: Final = "days"
 #: two together); spelled here so this module needs no analysis import.
 _MAX_WINDOW_DAYS: Final = 365
 
+#: Sanity ceilings for the open-ended numbers: past these a value is a typo
+#: (an extra run of zeros), not a policy, so the editor refuses it.
+_MAX_MONEY: Final = 1e12
+_MAX_RAISE_PCT: Final = 1e6
+
 _I18N_PREFIX: Final = "guardrails.field"
 
 
@@ -107,14 +112,16 @@ def _row(
 def _money(key: str) -> GuardrailField:
     # A cap of 0 is a legitimate "refuse any positive amount"; a negative
     # cap is a typo the gate would read as "refuse everything" silently.
-    return _row(key, "money", _MONEY_UNIT, 0, None)
+    # The ceiling only catches a slip of the keyboard: no account caps a
+    # day at a trillion units.
+    return _row(key, "money", _MONEY_UNIT, 0, _MAX_MONEY)
 
 
 #: In :class:`~mureo.policy.strategy_gate.Guardrails` field order.
 GUARDRAIL_FIELDS: Final[tuple[GuardrailField, ...]] = (
     _money("max_daily_budget_per_campaign"),
     # A raise can legitimately exceed 100% (doubling a small budget).
-    _row("max_daily_budget_increase_pct", "percent", _PERCENT_UNIT, 0, None),
+    _row("max_daily_budget_increase_pct", "percent", _PERCENT_UNIT, 0, _MAX_RAISE_PCT),
     _money("max_total_daily_budget"),
     _money("max_lifetime_budget_per_campaign"),
     _money("max_bid_amount_per_ad_set"),

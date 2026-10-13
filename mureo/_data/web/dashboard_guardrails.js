@@ -320,7 +320,9 @@
       ? MUREO.t("dashboard.guardrails_saved", { code: code })
       : MUREO.t("dashboard.guardrails_cleared");
     MUREO.toast(msg, "success");
-    await renderGuardrails();
+    // The currency side only: the rules table has its own Save, and
+    // redrawing it here would throw away an edit not yet saved there.
+    await renderCurrency();
     // After the re-render, so the confirmation is not wiped by the
     // unknown-code line this render clears.
     setResult(msg);
