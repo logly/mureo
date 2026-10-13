@@ -18,6 +18,8 @@ metadata:
 > declaration-first guardrails, `action_log` promotion, structural strategy
 > parity for mutations. This file does not repeat any of it.
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 > **Canonical platform key: `plugin:mureo-amazon-ads-bridge:amazon_ads`.** Use it verbatim
 > wherever a mureo surface names a platform — STATE.json `platforms`,
 > `mureo_state_upsert_campaign(platform="plugin:mureo-amazon-ads-bridge:amazon_ads")`,

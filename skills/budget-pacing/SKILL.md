@@ -9,6 +9,8 @@ metadata:
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 Track month-to-date spend against the monthly budget target, project the month-end landing, and raise pace alerts so the month neither blows the budget nor leaves it unspent.
 
 **This is trajectory management, not allocation.** If the question is *"how should I split budget across campaigns?"* that is `/budget-rebalance`. This skill answers *"at this rate, where does total spend land, and how do I steer it onto the target?"* — cross-reference `/budget-rebalance` when the fix is reallocation rather than a total-spend nudge.

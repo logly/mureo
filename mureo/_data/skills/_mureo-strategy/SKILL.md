@@ -13,6 +13,8 @@ metadata:
 # Strategy Context
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 ## Overview
 
 mureo uses two local context files to maintain business strategy and campaign state:
