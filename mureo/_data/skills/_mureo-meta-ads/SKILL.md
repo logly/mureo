@@ -14,6 +14,8 @@ metadata:
 # Meta Ads (Marketing API v26.0)
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 ## Tool Summary
 
 | # | Tool Name | Category | Type | Description |

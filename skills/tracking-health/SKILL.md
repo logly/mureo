@@ -9,6 +9,8 @@ metadata:
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 Preventively audit conversion tracking across every configured platform. Measurement breakage is the costliest **silent** failure in ad ops — spend keeps flowing while the signal the algorithm optimizes toward is wrong or absent — so this skill hunts for it *before* it shows up as a mysterious CPA spike.
 
 ## Prerequisites

@@ -9,6 +9,8 @@ metadata:
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection**.
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 Drive an interactive interview that produces a Meta Instant Form (Lead Ad form) on the user's Facebook Page. The skill is for the first-time creation flow — lifecycle operations (update / archive / duplicate) live in their own paths.
 
 ## Prerequisites

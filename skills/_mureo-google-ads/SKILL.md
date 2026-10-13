@@ -14,6 +14,8 @@ metadata:
 # Google Ads (v25)
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
+> Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
+
 > **There is no `mureo google-ads …` CLI command.** Every operation below is an
 > **MCP tool** (`google_ads_*`). Call the tool directly — never run or suggest a
 > `mureo google-ads campaigns-list`-style shell command (it does not exist and
