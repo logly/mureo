@@ -10,6 +10,15 @@
   brokered no longer tells operators to register a redirect URI they do not
   own. Providers that leave it unset are unchanged. The list endpoint exposes
   it as `oauth.callback_hint`.
+- **A plugin platform's label uses the name its provider declares** (#826).
+  The Reports card now labels a `plugin:<distribution>:<provider>` key (and
+  the bare provider name) with the provider class's `display_name`,
+  stripped and followed by ` (plugin)`, instead of title-casing the provider
+  name, so brand casing survives. The name is read from the providers
+  discovery already loaded; a provider that is not loaded, one registered
+  from a different distribution, the legacy `plugin:<distribution>` key and a
+  blank name keep the derived label. Built-in platforms and in-tree bridges
+  are unchanged.
 
 ## [0.24.0] - 2026-10-13
 
