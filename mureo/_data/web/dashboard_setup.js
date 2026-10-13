@@ -588,6 +588,9 @@
     const envVars = (status && status.env_vars) || {};
     const configured = Boolean(envVars[name] && envVars[name].set);
     if (holder) {
+      // Separates the mark from the "Value" label text before it; the
+      // markup's own whitespace is not relied on.
+      holder.appendChild(document.createTextNode(" "));
       holder.appendChild(statusMark(configured));
       holder.appendChild(document.createTextNode(" "));
       holder.appendChild(secretStatusText(configured));

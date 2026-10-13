@@ -1582,6 +1582,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-weight: 600;
 }
 
+/* The "Configured" / "Not set" text after a credential field's name. It
+   qualifies the mark beside it, so it reads quieter than the name. */
+label .muted,
+[data-env-value-status] .muted {
+  color: var(--muted);
+  font-weight: normal;
+}
+
 /* #239 — red "update available" indicator on the About nav item, plus
    the outdated package rows in the About tab's update area. */
 /* An update being available is something to LOOK at, not something that

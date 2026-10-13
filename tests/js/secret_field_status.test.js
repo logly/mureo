@@ -17,6 +17,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  cascade,
   loadDashboardPage,
   loadAuthWizardPage,
   settle,
@@ -93,6 +94,22 @@ function statusTexts(label) {
     .filter(Boolean);
 }
 
+/**
+ * The status span in `label` must compute to the muted colour from app.css.
+ * `.muted` has no rule of its own, so without the scoped rule it would read
+ * in the label's own colour, as loud as the field name.
+ */
+function assertStatusMuted(label) {
+  const status = label.querySelectorAll("span").find(function (el) {
+    const key = el.getAttribute("data-i18n") || "";
+    return key.indexOf("dashboard.credential_secret_") === 0;
+  });
+  assert.ok(status, "no status span in the label");
+  const color = cascade(status, "color");
+  assert.ok(color, "nothing in app.css colours the status text");
+  assert.equal(color.value, "var(--muted)", "won by " + color.selector);
+}
+
 /** The four cases, asserted against whatever `host` the renderer filled. */
 function assertSecretStatus(host) {
   test.it("marks a stored secret as configured and keeps the keep-current placeholder", function () {
@@ -102,6 +119,7 @@ function assertSecretStatus(host) {
     assert.equal(label.querySelector(".mark-ok").textContent, "✓");
     assert.ok(statusTexts(label).includes("dashboard.credential_secret_configured"));
     assert.ok(label.textContent.includes("Stored Secret *"), "required marker lost");
+    assertStatusMuted(label);
     assert.equal(
       input.placeholder,
       "dashboard.plugin_credentials_secret_placeholder"
@@ -209,6 +227,7 @@ test.describe("creative studio key form", function () {
   test.it("says Configured next to a stored key", function () {
     const { label, input } = labelFor(list, "OPENAI_API_KEY");
     assert.ok(label.querySelector(".mark-ok"));
+    assertStatusMuted(label);
     assert.ok(statusTexts(label).includes("dashboard.credential_secret_configured"));
     assert.equal(
       input.placeholder,
@@ -257,6 +276,7 @@ test.describe("Meta token card's optional app credentials", function () {
     assert.ok(label.querySelector(".mark-ok"));
     assert.equal(label.querySelector(".mark-no"), null);
     assert.ok(statusTexts(label).includes("dashboard.credential_secret_configured"));
+    assertStatusMuted(label);
     assert.equal(input.type, "password");
     assert.equal(input.value, "");
     assert.equal(input.placeholder, "dashboard.plugin_credentials_secret_placeholder");
@@ -330,6 +350,23 @@ test.describe("advanced credentials form", function () {
     assert.ok(label.querySelector(".mark-ok"));
     assert.ok(statusTexts(label).includes("dashboard.credential_secret_configured"));
     assert.equal(input.placeholder, "dashboard.plugin_credentials_secret_placeholder");
+    assertStatusMuted(label);
+  });
+
+  test.it("separates the mark from the Value label text", function () {
+    // The holder follows the "Value" span; without its own leading space
+    // the label read "Value✓ Configured".
+    const { form } = openForm({ META_ADS_APP_SECRET: { set: true } }, "META_ADS_APP_SECRET");
+    const holder = form.querySelector("[data-env-value-status]");
+    assert.ok(
+      holder.textContent.startsWith(" ✓ "),
+      "holder reads " + JSON.stringify(holder.textContent)
+    );
+    const text = valueLabel(form).label.textContent.replace(/\s+/g, " ").trim();
+    assert.ok(
+      text.startsWith("Value ✓ dashboard.credential_secret_configured"),
+      "label reads " + JSON.stringify(text)
+    );
   });
 
   test.it("follows the select when another field is picked", function () {
