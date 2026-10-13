@@ -44,6 +44,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -61,10 +62,18 @@ from mureo.policy.learning_rules import (
 
 logger = logging.getLogger(__name__)
 
-#: Tool-name prefixes mureo owns. For these, the pinned mutating-tool
-#: classifier in :mod:`mureo.core.strategy_reminder` is authoritative, so a
-#: name it does not recognise is a read rather than an unknown mutation.
-_BUILTIN_PREFIXES = ("google_ads_", "meta_ads_", "search_console_", "mureo_")
+#: The built-in ad / search platform tool prefixes. A namespaced built-in
+#: variant (``<builtin_platform>_<suffix>_<operation>``, see
+#: ``_mureo-shared`` -> "Namespaced built-in variants") shares one of these
+#: with the built-in it mirrors, so the prefix alone does not make a name
+#: mureo's own.
+_BUILTIN_PLATFORM_PREFIXES = ("google_ads_", "meta_ads_", "search_console_")
+
+#: The prefix of mureo's own context / analysis tools. Every name under it is
+#: mureo's, so the pinned mutating-tool classifier in
+#: :mod:`mureo.core.strategy_reminder` is authoritative and a name it does not
+#: recognise is a read rather than an unknown mutation.
+_MUREO_PREFIX = "mureo_"
 
 #: The argument key a campaign-scoped mutation carries. Tools keyed on
 #: something else (``google_ads_budget_update`` takes a ``budget_id``) yield
@@ -156,6 +165,59 @@ def _evidence_dict(evidence: Evidence | None) -> dict[str, str] | None:
 # ---------------------------------------------------------------------------
 
 
+@cache
+def _builtin_platform_tool_names() -> frozenset[str]:
+    """Every built-in platform tool name, read from the tool definitions.
+
+    The same ``TOOLS`` lists the MCP server serves, so a built-in tool added
+    there is recognised here with no second list to keep in step. Imported on
+    first use rather than at module import: this module is part of the pure
+    policy layer the server itself imports, and the definitions import no
+    platform SDK.
+    """
+    from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
+    from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
+    from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
+
+    return frozenset(
+        tool.name
+        for family in (GOOGLE_ADS_TOOLS, META_ADS_TOOLS, SEARCH_CONSOLE_TOOLS)
+        for tool in family
+    )
+
+
+def builtin_equivalent(tool_name: str) -> str | None:
+    """The built-in tool ``tool_name`` mirrors, or ``None``.
+
+    An exact built-in platform tool name is its own equivalent. A namespaced
+    variant ``<builtin_platform>_<suffix>_<operation>`` maps to
+    ``<builtin_platform>_<operation>`` when that is a built-in tool name; the
+    longest ``<operation>`` wins, so ``google_ads_<suffix>_negative_keywords_add``
+    maps to ``google_ads_negative_keywords_add``, not ``google_ads_keywords_add``.
+    The match is on the name alone: a variant is defined as carrying the
+    built-in's operation set and input schemas, so it is classified as the
+    built-in is. Anything else, ``mureo_*`` included, is ``None``.
+    """
+    known = _builtin_platform_tool_names()
+    if tool_name in known:
+        return tool_name
+    prefix = next(
+        (p for p in _BUILTIN_PLATFORM_PREFIXES if tool_name.startswith(p)), None
+    )
+    if prefix is None:
+        return None
+    remainder = tool_name[len(prefix) :]
+    # Split after the first ``_`` first: the shortest non-empty <suffix> leaves
+    # the longest <operation>.
+    for index, char in enumerate(remainder):
+        if char != "_" or index == 0:
+            continue
+        candidate = prefix + remainder[index + 1 :]
+        if candidate in known:
+            return candidate
+    return None
+
+
 def _is_mutation(tool_name: str) -> bool:
     """Does ``tool_name`` change platform state?
 
@@ -186,10 +248,19 @@ def _is_mutation(tool_name: str) -> bool:
     agent's mistakes, not against an installed plugin that lies about itself:
     such a plugin already escapes the money pattern-fallback scan the same way
     (#517), and runs arbitrary code besides.
+
+    A namespaced built-in variant is classified as the built-in it mirrors
+    (:func:`builtin_equivalent`, #837). A name that merely starts with a
+    built-in platform prefix but mirrors no built-in operation is not mureo's,
+    so it gets the declaration-then-name rule above rather than a forced
+    "read".
     """
+    equivalent = builtin_equivalent(tool_name)
+    if equivalent is not None:
+        return is_mutating_builtin_tool(equivalent)
     if is_mutating_builtin_tool(tool_name):
         return True
-    if tool_name.startswith(_BUILTIN_PREFIXES):
+    if tool_name.startswith(_MUREO_PREFIX):
         return False
     hint = declared_read_only_hint(tool_name)
     if hint is not None:
@@ -205,7 +276,10 @@ def classify_change(tool_name: str, arguments: dict[str, Any]) -> ChangeAssessme
     (``triggers_are_enumerated``). Everything else is ``UNKNOWN`` — mureo does
     not guess in either direction.
     """
-    rules = rules_for_tool(tool_name)
+    # A namespaced built-in variant is matched against the built-in's own
+    # trigger table, argument rules included; messages keep the called name.
+    matched_name = builtin_equivalent(tool_name) or tool_name
+    rules = rules_for_tool(matched_name)
     platform = rules.platform if rules is not None else ""
     if not _is_mutation(tool_name):
         return ChangeAssessment(
@@ -216,7 +290,7 @@ def classify_change(tool_name: str, arguments: dict[str, Any]) -> ChangeAssessme
         )
     if rules is not None:
         for trigger in rules.triggers:
-            if trigger.matches(tool_name, arguments):
+            if trigger.matches(matched_name, arguments):
                 return ChangeAssessment(
                     platform=platform,
                     risk=ResetRisk.RESETS,
@@ -581,6 +655,7 @@ __all__ = [
     "LearningPreflight",
     "LearningReading",
     "build_preflight",
+    "builtin_equivalent",
     "campaign_id_from",
     "classify_change",
     "learning_reset_denial",
