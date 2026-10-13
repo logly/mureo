@@ -93,13 +93,16 @@ mureo/
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules
 │   ├── _handlers_google_ads.py            # Google Ads base handlers
+│   ├── _google_ads_client.py              # Google Ads client / credential resolution
 │   ├── _handlers_google_ads_extensions.py # Extensions handlers
 │   ├── _handlers_google_ads_analysis.py   # Analysis handlers
 │   ├── tools_meta_ads.py                  # Meta Ads tool definitions (aggregator)
 │   ├── _tools_meta_ads_*.py               # Tool definition sub-modules
 │   ├── _handlers_meta_ads.py              # Meta Ads base handlers
+│   ├── _meta_ads_client.py                # Meta Ads client / credential resolution
 │   ├── _handlers_meta_ads_extended.py     # Extended handlers
 │   ├── _handlers_meta_ads_other.py        # Other handlers
+│   ├── _handlers_meta_ads_creatives.py    # Upload / creative handlers
 │   ├── tools_search_console.py            # Search Console tool definitions
 │   ├── _handlers_search_console.py        # Search Console handlers
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
