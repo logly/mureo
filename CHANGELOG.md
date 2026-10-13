@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+### Added
+
+- **A plugin can override or suppress the callback-URL hint on its OAuth
+  card.** `AccountOAuthConfig` gains `callback_hint` (and a
+  `callback_hint_i18n` locale table). The configure UI shows that text under
+  the callback URL input instead of the generic "register this exact URL"
+  hint, or no hint at all when it is `""`, so a provider whose flow is
+  brokered no longer tells operators to register a redirect URI they do not
+  own. Providers that leave it unset are unchanged. The list endpoint exposes
+  it as `oauth.callback_hint`.
+
 ## [0.24.0] - 2026-10-13
 
 ### Changed

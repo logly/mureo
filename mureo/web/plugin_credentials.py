@@ -44,7 +44,10 @@ from mureo.web._helpers import run_coroutine
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    from mureo.core.providers.credentials import AccountCredentialField
+    from mureo.core.providers.credentials import (
+        AccountCredentialField,
+        AccountOAuthConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -179,13 +182,13 @@ def list_plugin_credential_fields(
                 # OAuth descriptor (#201) — field *keys* only, never
                 # secret values; ``None`` for manual-entry providers so
                 # the UI shows no Authenticate button (regression-free).
-                "oauth": _oauth_to_dict(entry.provider_class),
+                "oauth": _oauth_to_dict(entry.provider_class, locale),
             }
         )
     return result
 
 
-def _oauth_to_dict(provider_class: type) -> dict[str, Any] | None:
+def _oauth_to_dict(provider_class: type, locale: str = "en") -> dict[str, Any] | None:
     """Return the provider's OAuth field-key mapping, or ``None``.
 
     Exposes only the three ``*_field`` key names so the configure UI can
@@ -199,6 +202,10 @@ def _oauth_to_dict(provider_class: type) -> dict[str, Any] | None:
     operator registers the exact loopback redirect URI the provider's
     OAuth server requires. Omitted entirely when no port is declared (the
     #216 default), keeping the block to its original three keys.
+
+    A provider that declares a ``callback_hint`` (#828) additionally gets
+    it, locale-resolved — see :func:`_callback_hint`. Omitted when unset so
+    the dashboard keeps its generic hint.
     """
     config = get_account_oauth_config(provider_class)
     if config is None:
@@ -221,7 +228,34 @@ def _oauth_to_dict(provider_class: type) -> dict[str, Any] | None:
     if config.accounts_field is not None:
         block["accounts_field"] = config.accounts_field
         block["has_account_lister"] = bool(get_oauth_account_lister(provider_class))
+    hint = _callback_hint(config, locale)
+    if hint is not None:
+        block["callback_hint"] = hint
     return block
+
+
+def _callback_hint(config: AccountOAuthConfig, locale: str) -> str | None:
+    """Return the provider's callback-URL hint for ``locale`` (#828).
+
+    ``None`` when the provider leaves ``callback_hint`` unset — or declares
+    a non-string by mistake — so the dashboard keeps its generic hint. ``""``
+    passes through untranslated: it means "render no hint row", and a
+    translation must not bring the row back. Any other string is resolved
+    through ``callback_hint_i18n`` with the same chain as field labels;
+    a non-Mapping table or a non-string entry is ignored.
+    """
+    base = config.callback_hint
+    if not isinstance(base, str):
+        return None
+    if base == "":
+        return ""
+    raw = config.callback_hint_i18n
+    table = (
+        {k: v for k, v in raw.items() if isinstance(v, str)}
+        if isinstance(raw, Mapping)
+        else {}
+    )
+    return _resolve_localized(table, base, locale)
 
 
 def _json_safe(value: Any) -> bool:
