@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+### Changed
+
+- **The configure UI shows whether a secret credential field has a stored
+  value.** A secret is never sent to the browser, so its input is always
+  empty; each secret field on the Plugin credentials cards and in the setup
+  wizard now carries a ✓ Configured / ✗ Not set mark next to its name, and an
+  unset one without a provider placeholder reads "(not set — enter a value)".
+  The Creative Studio key form gains the same Configured / Not set text next
+  to its existing mark. The Meta token card marks its optional App Secret the
+  same way and pre-fills a stored App ID, and the Setup tab's mureo
+  Credentials (advanced) form shows the mark for whichever field is selected,
+  updating when the selection changes and after a save.
+
 ## [0.23.1] - 2026-10-13
 
 ### Fixed
