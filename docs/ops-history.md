@@ -18,6 +18,8 @@ whether the reason and the expected effect are **required**.
 | `decision_id` | Every mutating tool, and `entry.decision_id` on `mureo_state_action_log_append` | Links the change to a `proposed` or `adopted` decision already on record |
 | Decision record | `STATE.json` `decisions` | Created as `adopted` from the call's `reason` and `expected` when no `decision_id` is given |
 | `action_log[].decision_id` | `STATE.json` | Stamped on the change. It always names the **first** record of the decision's `supersedes` chain, so it stays stable when the decision is later updated |
+| `applied_params` | `STATE.json`, on `action_log` entries and on decisions mureo writes for a call | The parameters the call sent, masked like the journal's `args`. Omitted when there were none, or when they exceed 4,000 characters of JSON |
+| `journal_call_id` | `STATE.json`, on decisions mureo writes for a call | The `call_id` of that call's `JOURNAL.jsonl` record. The record carries `call_id` and `decision_id` in turn |
 | `action_log[].evaluation` | `STATE.json`, on `outcome_evaluated` entries | The evaluation table: every metric before and after, with a verdict and a note |
 | `settings.ops_history.enabled` | `STATE.json` | Off by default. When on, `reason` and `expected` are required |
 
@@ -55,23 +57,56 @@ order:
    batch's decision. `mureo_batch_begin` creates it from its own `reason`
    and `expected` (titled `Batch: <label>`), or adopts the `decision_id` it
    is given.
-4. **A `reason`.** A new `adopted` decision is created. Its `rationale` is
+4. **A `reason`, and a decision this session already adopted for the same
+   target.** If exactly one `adopted` decision recorded in the same session
+   names the change's platform and/or campaign (at least one of them, and
+   every one it names must match), sits outside any batch, and nothing has
+   carried out yet, the change joins it. This is what keeps "record the
+   decision, then make the change" from leaving two decisions for one
+   change. With two such decisions, the change gets one of its own.
+5. **A `reason`.** A new `adopted` decision is created. Its `rationale` is
    the reason, its `expected` the call's `expected`, and its `metrics` the
    entry's `metrics_at_action`. The title is derived from the change:
    `google_ads_campaigns_update_status campaign 123: status ENABLED → PAUSED`
    when the entry records the prior value, otherwise the operation and
    target followed by the entry's `display_title` or `summary`.
-5. **Otherwise** the change is recorded without a decision, as before.
+6. **Otherwise** the change is recorded without a decision, as before.
 
 Imported external changes (`origin: "external"`) and rollback entries are
 never linked. An `outcome_evaluated` entry inherits the `decision_id` of
 the entry it evaluates.
 
-Some calls write no `action_log` entry, such as a budget update on a
-native platform, which the agent records itself with
-`mureo_state_action_log_append`. Those calls create no decision. The
-agent's entry creates or links it instead, from its own `reason`,
-`expected` and `decision_id`, so one change never produces two decisions.
+### Calls that write no `action_log` entry
+
+Most changes on a native platform — a budget, bid, keyword or ad change —
+write no `action_log` entry. When such a call succeeds and carries a
+`reason`, mureo records its decision right after the call, by the same
+rules: an explicit `decision_id` adopts that decision, a call inside a batch
+with a decision joins the batch's, and otherwise it joins the session's
+decision as in rule 4 or a new `adopted` decision is created. That makes
+exactly one decision per call, or per batch. One
+`google_ads_budget_update` call with `budget_id: "b1"`, `amount: 12000`, a
+`reason` and `expected` records:
+
+```json
+{"status": "adopted",
+ "title": "google_ads_budget_update budget b1: amount 12,000",
+ "rationale": "<the reason>",
+ "platform": "google_ads",
+ "expected": [{"metric": "spend", "direction": "up"}],
+ "applied_params": {"budget_id": "b1", "amount": 12000},
+ "journal_call_id": "call-…"}
+```
+
+The value before the change is not shown in this title: a budget update
+does not read the budget before changing it. Nothing is recorded for a call
+that failed, and nothing is created in a workspace that has no
+`STATE.json`.
+
+If you also record the change with `mureo_state_action_log_append` (for
+example to give it `metrics_at_action` and an `observation_due` so it is
+evaluated), that entry joins the call's decision by rule 4. Pass the
+decision's id as `entry.decision_id` to make the link explicit.
 
 ## The evaluation table
 
@@ -101,6 +136,10 @@ automatic closure writes an `outcome_evaluated` entry carrying:
   least the noise band, and as regressed when it moved the other way. A
   metric expected to `hold` counts as improved while it stays inside the
   band.
+- Metric names are matched after normalising long forms to the
+  vocabulary above: `cost_per_conversion` and `cost_per_acquisition` match
+  `cpa`, `conversion_rate` matches `cvr`, `cost_per_click` matches `cpc`,
+  and so on.
 - Every other metric is kept as `reference`, judged by the evaluator's
   own rules. A volume metric such as `spend` has no direction of its own
   and is always `inconclusive` there.
@@ -119,12 +158,17 @@ new. Turn it on with:
 - `mureo_state_settings_set` with `{"ops_history_enabled": true}`, or
 - `mureo configure` → **Advanced** → **Ops history**.
 
+Only `mureo configure` can turn it off. The MCP tool refuses `false` with
+`invalid_args`: the requirement is the operator's to lift, not the
+agent's. Setting the value already in force writes nothing.
+
 While it is on:
 
 - A mutating call without `reason`, or without `expected`, is refused with
   `invalid_args`, and the message names the missing parameter. A call that
-  names a `decision_id`, or that runs inside a batch whose decision already
-  has them, satisfies the requirement.
+  runs inside a batch whose decision already has them satisfies the
+  requirement. So does a call that names a `decision_id`, provided that
+  decision declares `expected` or the call passes it.
 - `mureo_state_action_log_append` requires `entry.reason` and
   `entry.expected` the same way, for an entry that would open a new
   decision. An entry with `entry.decision_id`, one recorded inside a batch
@@ -134,6 +178,9 @@ While it is on:
   record.
 - `rollback_apply` and the `mureo_*` tools that write STATE.json or
   STRATEGY.md (other than `mureo_batch_begin`) are not affected.
+- A `STATE.json` that cannot be read counts as off: the call goes through
+  and the fault is logged. A call naming a `decision_id` is refused,
+  because the decision cannot be checked.
 
 Turning it off stops the requirement. It removes nothing that was
 recorded.
@@ -141,16 +188,24 @@ recorded.
 ## Reading it back
 
 - `mureo_history_query` with `sources: ["decisions"]` returns one item per
-  decision: its chain, the changes that carried it out (with before-values,
-  reason and `metrics_at_action`) and their evaluations.
+  decision: its chain, the changes that carried it out (with `before` from
+  `reversible_params`, `after` from `applied_params`, reason and
+  `metrics_at_action`) and their evaluations. Each change appears under
+  one decision only, the one it is stamped with; a decision's
+  `related_actions` add only changes that name no decision, and never an
+  evaluation or a rollback entry. A decision carried out by a call that
+  wrote no entry is `executed` with no actions, and shows the call's
+  `applied_params`.
   `sources: ["ops_history"]` returns the same items, plus one item per
   change that no decision covers.
 - Each item has a derived `state`: `proposed`, `adopted`, `executed`,
   `observing`, `evaluated` (with `verdict`), `skipped`, `rejected` or
   `deferred`. It also has a `rolled_back` flag. Nothing about the state is
   stored, so it can never disagree with the records.
-- `since` / `until` on these two sources compare the item's recorded local
-  date (a decision's first record, or the uncovered change's timestamp).
+- `since` / `until` on these two sources compare the date of the item's
+  timestamp (a decision's first record, or the uncovered change's own),
+  by the same rule the `action_log` source uses. Items are sorted newest
+  first by the full timestamp.
 - For a custom view, `mureo.web.reports.build_ops_history(client, since,
   until)` returns the same items.
 

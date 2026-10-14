@@ -10,14 +10,25 @@
     with directions `up` / `down` / `hold`) is a new optional field on
     `mureo_decision_record` and on decision records in STATE.json.
   - Every mutating tool now takes optional `expected` and `decision_id`
-    parameters, alongside `reason`. A call that writes an `action_log`
-    entry with a `reason` and no `decision_id` creates an `adopted`
-    decision record, with a title derived from the change, and stamps the
-    entry with its `decision_id`. A call or batch writing several entries
-    shares one decision. A `decision_id` names a `proposed` or `adopted`
-    decision to carry out, and a proposed one is adopted.
-    `mureo_state_action_log_append` accepts `entry.expected` and
-    `entry.decision_id` to the same effect.
+    parameters, alongside `reason`. A successful call with a `reason` and
+    no `decision_id` is linked to exactly one decision: its batch's, else
+    the one decision its session adopted for the same target and has not
+    carried out, else a new `adopted` record with a title derived from the
+    change. This holds whether or not the call writes an `action_log`
+    entry; for one that does not (such as a native budget update) the
+    decision is recorded right after the call. A call or batch writing
+    several entries shares one decision. A `decision_id` names a
+    `proposed` or `adopted` decision to carry out, and a proposed one is
+    adopted. `mureo_state_action_log_append` accepts `entry.expected` and
+    `entry.decision_id` to the same effect. `mureo_decision_record` and the
+    shared skill now record a proposal only when proposing first; an
+    approval is the change-making call naming the proposal's
+    `decision_id`.
+  - `action_log` entries and decisions mureo writes for a call carry
+    `applied_params`, the masked parameters the call sent; decisions also
+    carry `journal_call_id`, and the call's `JOURNAL.jsonl` record carries
+    `call_id` and `decision_id`. Expected metrics match long names
+    (`cost_per_conversion` -> `cpa`, `conversion_rate` -> `cvr`, ...).
   - The automatic observation closure stores an `evaluation` table on each
     `outcome_evaluated` entry: `overall`, `basis`, `noise_pct`, `window`,
     and per metric `before` / `after` / `delta_pct` / `verdict` / `note` /
@@ -25,14 +36,17 @@
     verdict. Every other metric is kept as reference. The entry inherits
     the `decision_id`.
   - New workspace setting `settings.ops_history.enabled`, off by default.
-    Set it with the new `mureo_state_settings_set` tool or from
-    `mureo configure` → Advanced → Ops history. When it is on, a mutating
-    call without `reason` or `expected` is refused with `invalid_args`
-    naming the missing parameter, and a proposed or adopted decision must
-    declare `expected`.
+    Turn it on with the new `mureo_state_settings_set` tool or from
+    `mureo configure` → Advanced → Ops history; only `mureo configure` turns
+    it off. When it is on, a mutating call without `reason` or `expected`
+    is refused with `invalid_args` naming the missing parameter, a
+    proposed or adopted decision must declare `expected`, and a call
+    naming a `decision_id` needs `expected` on the call or the decision. A
+    STATE.json that cannot be read counts as off (the call is not
+    blocked, but a `decision_id` is refused).
   - `mureo_history_query` gains two sources: `decisions` and `ops_history`.
-    Both return each decision with its changes, their before-values and
-    evaluation, and a derived state (`proposed` / `adopted` / `executed` /
+    Both return each decision with its changes, their before and after
+    values and evaluation, and a derived state (`proposed` / `adopted` / `executed` /
     `observing` / `evaluated` / `skipped` / `rejected` / `deferred`) plus a
     `rolled_back` flag. `ops_history` also includes the changes that no
     decision covers. `mureo.web.reports.build_ops_history(client, since,

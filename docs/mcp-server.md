@@ -827,8 +827,8 @@ Both read tools carry a **`server_now`** field — the server's clock as ISO 860
 | `mureo_state_workspace_not_collected_set` | Record **why the whole workspace** could not be collected — the run that died before any platform was reached — or clear that note once one succeeds. Takes **no** `platform` and **no** `account_id`: those are exactly what such a failure could not resolve. Nothing else in the document is touched, including any per-platform note, and `last_synced_at` is not re-stamped | *(none)* |
 | `mureo_state_set_conversion_events` | Declare which Meta Insights `action_type` rows count as this account's conversions | `platform`, `account_id` |
 | `mureo_outcome_evaluate` | Deterministically score a logged action's outcome (improved / regressed / inconclusive) from before/after metrics | `before`, `after` |
-| `mureo_decision_record` | Record a **decision** — a proposal, or the operator's answer to one — so the reasoning survives the session. `status` is `proposed` / `adopted` / `rejected` / `deferred`, `title` (≤120) says what is being decided, `rationale` (≤2000) says why, and `metrics` holds the figures it was judged on **as they stood then** (≤20 keys, each value a string / number / boolean / null — a nested object is refused). The section is **append-only**: a status change is a NEW record naming the first in `supersedes`, never an edit, which is what keeps "we proposed this on the 4th and it was turned down" recoverable. `related_actions` names the `action_log` indices the decision produced and `batch_id` the change set it concerns — a **closed** batch is fine, unlike an `action_log` append, because the verdict on a bulk pass is normally recorded after it finished. `decision_id` and `recorded_at` are minted server-side. Over a bound the write is **refused, never truncated**. `display.proposals` is the screen (replaced whole on every dashboard write); this is the record. `expected` (#848) declares the effects the decision should have, `{metric, direction, target?, horizon_days?}`; the automatic evaluation of the changes that carry it out is scored against them, and with ops history on a `proposed` or `adopted` record must declare at least one | `status`, `title`, `rationale` |
-| `mureo_state_settings_set` | Set the workspace settings stored in STATE.json's `settings` section. One setting today: `ops_history_enabled` (default off). On, every mutating call must carry `reason` and `expected`, and a proposed / adopted decision must declare `expected`. Returns the stored `settings`. Also available as **Advanced → Ops history** in `mureo configure`. See [Ops history](ops-history.md) | `ops_history_enabled` |
+| `mureo_decision_record` | Record a **decision** — a proposal, or the operator's answer to one — so the reasoning survives the session. `status` is `proposed` / `adopted` / `rejected` / `deferred`, `title` (≤120) says what is being decided, `rationale` (≤2000) says why, and `metrics` holds the figures it was judged on **as they stood then** (≤20 keys, each value a string / number / boolean / null — a nested object is refused). The section is **append-only**: a status change is a NEW record naming the first in `supersedes`, never an edit, which is what keeps "we proposed this on the 4th and it was turned down" recoverable. `related_actions` names the `action_log` indices the decision produced and `batch_id` the change set it concerns — a **closed** batch is fine, unlike an `action_log` append, because the verdict on a bulk pass is normally recorded after it finished. `decision_id` and `recorded_at` are minted server-side. Over a bound the write is **refused, never truncated**. `display.proposals` is the screen (replaced whole on every dashboard write); this is the record. `expected` (#848) declares the effects the decision should have, `{metric, direction, target?, horizon_days?}`; the automatic evaluation of the changes that carry it out is scored against them, and with ops history on a `proposed` or `adopted` record must declare at least one. Since #848 an approval is not recorded here: the change-making call passes the proposal's `decision_id`, and a change made without a proposal passes `reason` and `expected` and gets its decision from mureo. Writing an `adopted` record for a change afterwards leaves two decisions for it | `status`, `title`, `rationale` |
+| `mureo_state_settings_set` | Set the workspace settings stored in STATE.json's `settings` section. One setting today: `ops_history_enabled` (default off). On, every mutating call must carry `reason` and `expected`, and a proposed / adopted decision must declare `expected`. The tool only switches it **on**: `false` is refused with `invalid_args`, and switching it off is done in `mureo configure` → **Advanced → Ops history**. Repeating the value in force writes nothing. Returns the stored `settings`. See [Ops history](ops-history.md) | `ops_history_enabled` |
 | `mureo_history_query` | Read the **past** — one bounded query over the trails, for any question that reaches beyond what `STATE.json` currently holds. `sources` picks from `action_log`, `journal`, `daily`, `reports`, `decisions` and `ops_history` (default the first two); `since` / `until` bound it by UTC date (with no `since`, `daily` reads back 12 months and says so in its `window`); `platform`, `campaign_id`, the `entity_type` + `entity_id` pair and `batch_id` narrow it; `tool`, `outcome`, `mutations_only` and `failures_only` apply to the `journal` source only. `limit` (default 50, max 200) applies **per source** and each section reports whether more matched than it returned. Read-only, so it takes no `reason`. See [History queries](#history-queries) below | *(none)* |
 
 #### Automatic observation closure (#758, phase 5)
@@ -1024,6 +1024,7 @@ file answers, and a trail of successes cannot answer it.
 | `duration_ms` | Wall-clock milliseconds around gate + validation + preflight + handler |
 | `batch_id` | The batch open at the time, or `null` |
 | `rollback` | `true` only when the call was a rollback's reversal leg |
+| `call_id` / `decision_id` | Present only when the call carried out a decision (#848): the call's own id, which the decision record stores as `journal_call_id`, and the decision's root id |
 | `prev` | SHA-256 of the previous physical line — `""` for the very first line ever written |
 | `h` | SHA-256 of this record serialised without `h`; always the last key |
 
@@ -1071,16 +1072,20 @@ off before the policy gates just like `reason`:
   it). A `rejected` / `deferred` decision, or an id that names nothing, is
   refused.
 
-When the call produces an `action_log` entry and names no `decision_id`, a
-`reason` creates an `adopted` decision record from the reason, `expected`
-and the entry's `metrics_at_action`, with a title derived from the change,
-and the entry is stamped with its `decision_id`. Every entry of one call, and
-every member of a batch opened with a `reason` or `decision_id`, shares one
-decision. Calls that write no entry (for example a native budget update)
-create none; the agent's own `mureo_state_action_log_append` entry does.
-When the workspace's `settings.ops_history.enabled` is on, a call without
-`reason` or `expected` is refused with `invalid_args` naming the missing
-parameter. See [Ops history](ops-history.md).
+When the call names no `decision_id`, a `reason` links the change to a
+decision: the open batch's, else the one decision this session adopted for
+the same target and has not carried out yet, else a new `adopted` record
+built from the reason, `expected` and the entry's `metrics_at_action`, with
+a title derived from the change. The `action_log` entry is stamped with the
+decision's id and with `applied_params`, the masked parameters the call
+sent. A call that writes no entry (a native budget, bid, keyword or ad
+change) gets its decision the same way right after it succeeded, carrying
+`applied_params` and the call's journal `call_id`. Every entry of one call,
+and every member of a batch opened with a `reason` or `decision_id`, shares
+one decision. When the workspace's `settings.ops_history.enabled` is on, a
+call without `reason` or `expected` is refused with `invalid_args` naming
+the missing parameter, and so is a `decision_id` whose decision declares no
+`expected` when the call passes none. See [Ops history](ops-history.md).
 
 **What is never written.** Result bodies and credentials. The journal
 stores the masked arguments and the outcome — never what a tool returned,
@@ -1179,7 +1184,7 @@ Neither changes what STATE.json holds or what the dashboard renders: the documen
 | `journal` | Every tool call and its outcome — including the `denied`, `refused`, `invalid_args` and failed ones that `action_log` correctly never holds | Bounded to the last **20 000** lines of the journal, reported as `scanned_lines`. The rotated files count towards the same bound, spent newest file first, so the cost of a query never grows with the age of the workspace. The `path` is reported even when there is no journal |
 | `daily` | The day-grain series for one platform: the archived months and the days still inside the document, merged into one | Requires `platform`. A day held in both is the **document's** — that is the copy the dashboard renders. With no `since`, read back **12 months** from `until` (or today) instead of over every month the account ever had; the section's `window` reports the `since` / `until` it answered from and whether that floor was `defaulted`. A month file that could not be read is named in `skipped_files` rather than left as a silent gap |
 | `reports` | Every version ever written of one report kind, oldest first | Requires `kind`, and a `kind` without the `reports` source is refused rather than ignored |
-| `decisions` | One item per decision (#848): its `supersedes` chain, the changes that carried it out with their before-values, `reason` and `metrics_at_action`, and their evaluation, plus a derived `state` (`proposed` / `adopted` / `executed` / `observing` / `evaluated` / `skipped` / `rejected` / `deferred`), `verdict` and `rolled_back` | Newest first. `since` / `until` compare the decision's first record by its recorded local date. Carries `matched`. See [Ops history](ops-history.md) |
+| `decisions` | One item per decision (#848): its `supersedes` chain, the changes that carried it out with their before-values, `reason` and `metrics_at_action`, and their evaluation, plus a derived `state` (`proposed` / `adopted` / `executed` / `observing` / `evaluated` / `skipped` / `rejected` / `deferred`), `verdict` and `rolled_back` | Newest first by full timestamp. `since` / `until` compare the date of the decision's first record by the same rule as `action_log`. Carries `matched`. See [Ops history](ops-history.md) |
 | `ops_history` | The same items as `decisions`, plus one item per change no decision covers (`decision: null`) | A change recorded before ops history existed, or without a reason, shows here as such an item, dated by its own timestamp |
 
 `limit` (default 50, maximum 200) applies **per source**, the newest matches are the ones kept, and every section carries `returned` plus `truncated` — a partial answer says so rather than reading as a complete one. `action_log` also carries `matched`, the number before the limit was applied.

@@ -1777,6 +1777,7 @@ Each entry in `action_log` records an action taken by a workflow command, with o
 | `display_summary` | `string` | No | One plain-text sentence under the title (≤120 characters) — no markdown, since `**bold**` is shown to a person as asterisks. It *adds* a rendering: `summary` is still written as fully as the next agent needs, and is what the drill-down shows |
 | `occurred_at` | `string` | No | When the **platform** says an external change happened, which is routinely well before mureo saw it. The one date the server does not stamp — it cannot know it — but history, never a claim about "now". `observation_due` is measured from it, so a change that has been live for three weeks is already past due rather than due in a fortnight |
 | `decision_id` | `string` | No — server-stamped | The decision this change carried out (#848): the `decision_id` of the **first** record of its `supersedes` chain, so it stays stable when the decision is updated. Stamped when the change is linked (see [Ops history](ops-history.md)); supplied explicitly it must name a `proposed` or `adopted` decision. An `outcome_evaluated` entry inherits it from the entry it evaluates |
+| `applied_params` | `object` | No — server-stamped | The parameters the call that made the change sent (#848), masked like the journal's `args`. Stamped when the entry is appended during a mutating call; absent otherwise, and when the masked parameters exceed 4,000 characters of JSON. The ops history view reads it as the change's `after` |
 | `evaluation` | `object` | No — server-written | On an `outcome_evaluated` entry written by the automatic closure: the evaluation table `{overall, basis, noise_pct, window: {from, to}, metrics: [{metric, before, after, delta_pct, verdict, note, role}]}`. The decision's `expected` metrics are `primary` and decide `overall`; every other metric is `reference`. `control` and `skipped_reason` are reserved and not written yet |
 
 An imported (`origin: "external"`) entry deliberately carries **no** `metrics_at_action`: mureo was not present when the change was made, so there is no baseline, and synthesising one from today's numbers would invent a "before" that never existed. Those entries are reviewed qualitatively. Which platforms mureo can import from — and what each feed omits — is in [`docs/change-import.md`](change-import.md).
@@ -1839,6 +1840,8 @@ Each entry in `decisions` is one decision as it stood at one moment (#758, phase
 | `batch_id` | `string` | No | The declared change set this decision concerns. A **closed** batch is accepted here, unlike on an `action_log` append — a decision joins nothing, and the verdict on a bulk pass is normally recorded after it finished |
 | `session_id` | `string` | No — server-stamped | The journal session of the process that wrote the record, so a decision and the changes it produced join on the same id |
 | `client` | `string` | No — server-stamped | The MCP client label, `null` for a CLI or library write |
+| `applied_params` | `object` | No — server-written | On a record mureo writes for a call that carried the decision out (#848): the parameters the call sent, masked |
+| `journal_call_id` | `string` | No — server-written | On the same records: the `call_id` of the call's `JOURNAL.jsonl` record, which names this decision in turn |
 
 Every bound above **refuses** the write rather than truncating it: the caller still holds the sentence and can shorten it, while half a rationale reads as a defect and nobody downstream can tell what was cut. `decision_id` is unique — a second record under an id already on file is refused, because that is what `supersedes` joins on.
 
@@ -1846,11 +1849,11 @@ Every bound above **refuses** the write rather than truncating it: the caller st
 
 The dashboard does not render this section yet — that is a follow-up.
 
-A decision can also be created **automatically** (#848): a mutating call with a `reason` and no `decision_id` that produces an `action_log` entry records an `adopted` decision for it and stamps the entry with its id. See [Ops history](ops-history.md).
+A decision can also be created **automatically** (#848): a mutating call with a `reason` and no `decision_id` records an `adopted` decision for it — in the same write as its `action_log` entry, or right after the call when it writes no entry — unless it joins its batch's decision or the one decision its session adopted for the same target and has not carried out. See [Ops history](ops-history.md).
 
 #### Settings
 
-The `settings` object holds workspace settings (#848). Absent, or any key missing from it, reads as the default, and a malformed value reads as the default rather than refusing the document. Written only through `mureo_state_settings_set` or `mureo configure` → **Advanced** → **Ops history**, under STATE.json's file lock.
+The `settings` object holds workspace settings (#848). Absent, or any key missing from it, reads as the default, and a malformed value reads as the default rather than refusing the document. Written only through `mureo_state_settings_set` (which can only switch ops history on) or `mureo configure` → **Advanced** → **Ops history** (on or off), under STATE.json's file lock. Setting the value already in force writes nothing.
 
 ```json
 "settings": {"ops_history": {"enabled": true}}

@@ -303,7 +303,7 @@ mureo auth check-meta      # Meta広告の認証情報を表示（マスク済�
 
 - **STRATEGY.md**：ペルソナ、USP、ブランドボイス、目標、運用モード。詳細は [docs/strategy-context.md](docs/strategy-context.md)
 - **STATE.json**：キャンペーンのスナップショットと action log。ワークフローコマンドが自動で更新します
-- **運用履歴（Ops history）**：変更ごとに、その理由となった意思決定・期待した効果・その期待に照らした評価を紐づけます。設定でオンにすると、すべての変更に理由と期待効果が必須になります。[docs/ops-history.md](docs/ops-history.md)（英語）を参照
+- **運用履歴（Ops history）**：変更ごとに理由と期待する効果を判断記録として残し、その期待する効果に照らした評価を紐づけます。設定でオンにすると、すべての変更に理由と期待する効果が必須になります（オフに戻せるのは `mureo configure` からのみ）。[docs/ops-history.md](docs/ops-history.md)（英語）を参照
 
 ### Amazon 広告、TikTok 広告、GA4、その他の MCP サーバーの接続
 
