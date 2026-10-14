@@ -410,15 +410,20 @@ def _record_unentried(
     """The decision of a successful call that wrote no ``action_log`` entry.
 
     Skipped without a STATE.json (nothing is created for it), for
-    ``mureo_batch_begin`` (its decision is the batch's) and for a
-    rollback's reversal leg. The change happened, so a failure is logged
-    rather than raised: failing the call would tell the agent a change
-    that went through did not.
+    ``mureo_batch_begin`` (its decision is the batch's), for a rollback's
+    reversal leg, and — without taking the lock — for a call with no
+    reason, no ``decision_id`` and no open batch, which links to nothing.
+    The change happened, so a failure is logged rather than raised:
+    failing the call would tell the agent a change that went through did
+    not.
     """
     from mureo.context.ops_linkage import LinkRequest, record_call_decision
     from mureo.core.clock import server_now_iso
+    from mureo.mcp.journal import _open_batch_id
     from mureo.rollback.executor import is_rollback_dispatch_active
 
+    if reason is None and intent.decision_id is None and _open_batch_id() is None:
+        return
     path = _state_path(name, intent.arguments)
     if name == BATCH_BEGIN_TOOL or is_rollback_dispatch_active() or not path.is_file():
         return

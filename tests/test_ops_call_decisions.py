@@ -1,11 +1,16 @@
-"""Decisions for changes that write no ``action_log`` entry, and the joins
-that keep one change under one decision (#848).
+"""Decisions for changes that write no ``action_log`` entry, and the only
+joins mureo makes without an explicit id (#848).
 
 A budget, bid, keyword or creative change on a native platform writes no
 ``action_log`` entry of its own, so the action-log choke point never sees
 it. The dispatcher records its decision after the call succeeded instead,
 links it to the call's journal record, and stores the parameters the call
 actually sent.
+
+A change is never attached to an earlier decision by guesswork: a wrong
+link is worse than a visible duplicate. Without an explicit id, the one
+join is an agent's own ``action_log`` entry for a no-entry call, matched
+exactly on session, tool and every target id the call sent.
 """
 
 from __future__ import annotations
@@ -19,7 +24,6 @@ from unittest.mock import AsyncMock
 import pytest
 from mcp.types import TextContent
 
-from mureo.context.decision_chain import chain_roots
 from mureo.context.decisions import DecisionRecord
 from mureo.context.models import ActionLogEntry, StateDocument
 from mureo.context.settings import set_ops_history_enabled
@@ -126,6 +130,7 @@ class TestNoEntryCall:
         assert record.applied_params == {"budget_id": "b1", "amount": 12000}
         assert [e.metric for e in record.expected] == ["spend"]
         assert record.platform == "google_ads"
+        assert record.journal_tool == BUDGET_TOOL
 
     async def test_the_journal_record_and_the_decision_name_each_other(
         self, workspace: Path, handler: list[dict[str, Any]]
@@ -233,12 +238,70 @@ class TestAppliedParams:
         assert read_state_file(path).action_log[0].applied_params is None
 
 
-class TestOneChangeOneDecision:
-    """The workflow the tool description used to teach — record the
-    proposal, record its adoption, then make the change with a reason —
-    must not leave two decisions for the one change."""
+def _metrics(doc: StateDocument, decision_id: str | None) -> list[str]:
+    record = next(r for r in doc.decisions if r.decision_id == decision_id)
+    return [e.metric for e in record.expected]
 
-    async def test_the_old_workflow_joins_the_adoption(
+
+class TestNoGuessedJoin:
+    """A reasoned change gets its own decision unless it names one."""
+
+    async def test_a_budget_decision_does_not_absorb_an_unrelated_change(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(reason="Scale.", expected=SPEND_UP))
+        await _call(
+            STATUS_TOOL,
+            {"campaign_id": "999", "status": "PAUSED", "reason": "Unrelated."}
+            | {"expected": CPA_DOWN},
+        )
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 2
+        stamped = doc.action_log[0].decision_id
+        assert stamped == doc.decisions[1].decision_id
+        assert _metrics(doc, stamped) == ["cpa"]
+        assert _journal(workspace)[-1]["decision_id"] == stamped
+
+    async def test_an_adopted_record_does_not_absorb_a_change_on_its_campaign(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(
+            "mureo_decision_record",
+            {"status": "adopted", "title": "Raise budget c123", "rationale": "R."}
+            | {"platform": "google_ads", "campaign_id": "123"}
+            | {"expected": CPA_DOWN},
+        )
+        cost_down = [{"metric": "cost", "direction": "down"}]
+        await _call(
+            STATUS_TOOL, _status(reason="Policy violation.", expected=cost_down)
+        )
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 2
+        stamped = doc.action_log[0].decision_id
+        assert stamped != doc.decisions[0].decision_id
+        assert _metrics(doc, stamped) == ["cost"]
+
+    async def test_a_platform_wide_record_does_not_absorb_a_budget_call(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(
+            "mureo_decision_record",
+            {"status": "adopted", "title": "Account-wide tweak", "rationale": "R."}
+            | {"platform": "google_ads", "expected": CPA_DOWN},
+        )
+        await _call(
+            BUDGET_TOOL,
+            {"budget_id": "b9", "amount": 5, "reason": "Different thing."}
+            | {"expected": SPEND_UP},
+        )
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 2
+        own = _journal(workspace)[-1]["decision_id"]
+        assert own == doc.decisions[1].decision_id
+        assert doc.decisions[1].supersedes is None
+        assert _metrics(doc, own) == ["spend"]
+
+    async def test_the_old_workflow_records_the_change_separately(
         self, workspace: Path, handler: list[dict[str, Any]]
     ) -> None:
         path = workspace / "STATE.json"
@@ -253,100 +316,8 @@ class TestOneChangeOneDecision:
         )
         await _call(STATUS_TOOL, _status(reason="Approved.", expected=CPA_DOWN))
         doc = read_state_file(path)
-        assert [r.decision_id for r in doc.decisions][:2] == ["dec-p", "dec-a"]
-        assert doc.action_log[0].decision_id == "dec-p"
-        assert set(chain_roots(doc).values()) == {"dec-p"}
-
-    async def test_the_old_workflow_joins_for_a_no_entry_call(
-        self, workspace: Path, handler: list[dict[str, Any]]
-    ) -> None:
-        path = workspace / "STATE.json"
-        session = _session()
-        _write_decisions(
-            path,
-            _record("dec-a", "adopted", session_id=session, platform="google_ads"),
-        )
-        await _call(BUDGET_TOOL, _budget(reason="Approved.", expected=SPEND_UP))
-        doc = read_state_file(path)
-        assert len(doc.decisions) == 2
-        assert doc.decisions[1].supersedes == "dec-a"
-        assert doc.decisions[1].applied_params == _budget()
-
-    async def test_the_agents_own_entry_joins_the_calls_decision(
-        self, workspace: Path, handler: list[dict[str, Any]]
-    ) -> None:
-        path = workspace / "STATE.json"
-        await _call(BUDGET_TOOL, _budget(reason="Capped.", expected=SPEND_UP))
-        await _call(
-            "mureo_state_action_log_append",
-            {
-                "entry": {
-                    "action": BUDGET_TOOL,
-                    "platform": "google_ads",
-                    "campaign_id": "123",
-                    "reason": "Capped.",
-                    "expected": SPEND_UP,
-                    "metrics_at_action": {"spend": 10000},
-                }
-            },
-        )
-        doc = read_state_file(path)
-        assert len(doc.decisions) == 1
-        assert doc.action_log[0].decision_id == doc.decisions[0].decision_id
-
-    async def test_another_sessions_decision_is_not_joined(
-        self, workspace: Path, handler: list[dict[str, Any]]
-    ) -> None:
-        path = workspace / "STATE.json"
-        _write_decisions(
-            path,
-            _record("dec-a", "adopted", session_id="other", platform="google_ads"),
-        )
-        await _call(STATUS_TOOL, _status(reason="Fixed.", expected=CPA_DOWN))
-        doc = read_state_file(path)
-        assert len(doc.decisions) == 2
-        assert doc.action_log[0].decision_id != "dec-a"
-
-    async def test_a_decision_for_another_target_is_not_joined(
-        self, workspace: Path, handler: list[dict[str, Any]]
-    ) -> None:
-        path = workspace / "STATE.json"
-        _write_decisions(
-            path,
-            _record(
-                "dec-a",
-                "adopted",
-                session_id=_session(),
-                platform="google_ads",
-                campaign_id="999",
-            ),
-        )
-        await _call(STATUS_TOOL, _status(reason="Fixed.", expected=CPA_DOWN))
-        assert read_state_file(path).action_log[0].decision_id != "dec-a"
-
-    async def test_a_decision_naming_no_target_is_not_joined(
-        self, workspace: Path, handler: list[dict[str, Any]]
-    ) -> None:
-        path = workspace / "STATE.json"
-        _write_decisions(path, _record("dec-a", "adopted", session_id=_session()))
-        await _call(STATUS_TOOL, _status(reason="Fixed.", expected=CPA_DOWN))
-        assert read_state_file(path).action_log[0].decision_id != "dec-a"
-
-    async def test_two_candidates_join_neither(
-        self, workspace: Path, handler: list[dict[str, Any]]
-    ) -> None:
-        path = workspace / "STATE.json"
-        session = _session()
-        _write_decisions(
-            path,
-            _record("dec-a", "adopted", session_id=session, platform="google_ads"),
-            _record("dec-b", "adopted", session_id=session, platform="google_ads"),
-        )
-        await _call(STATUS_TOOL, _status(reason="Fixed.", expected=CPA_DOWN))
-        assert read_state_file(path).action_log[0].decision_id not in {
-            "dec-a",
-            "dec-b",
-        }
+        assert len(doc.decisions) == 3
+        assert doc.action_log[0].decision_id == doc.decisions[2].decision_id
 
     async def test_a_carried_out_decision_is_not_joined_again(
         self, workspace: Path, handler: list[dict[str, Any]]
@@ -357,6 +328,161 @@ class TestOneChangeOneDecision:
         doc = read_state_file(path)
         assert len(doc.decisions) == 2
         assert doc.action_log[0].decision_id != doc.action_log[1].decision_id
+
+
+def _entry(**extra: Any) -> dict[str, Any]:
+    """The agent's own entry for the budget change ``_budget()`` made."""
+    return {
+        "entry": {
+            "action": BUDGET_TOOL,
+            "platform": "google_ads",
+            "entity_type": "budget",
+            "entity_id": "b1",
+            "reason": "Capped.",
+            "metrics_at_action": {"spend": 10000},
+            **extra,
+        }
+    }
+
+
+class TestEntryForANoEntryCall:
+    """Rule (b): the agent's own entry joins the call's decision only on an
+    exact match of session, tool and every target id the call sent."""
+
+    async def test_a_matching_entry_joins_the_calls_decision(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(reason="Capped.", expected=SPEND_UP))
+        await _call("mureo_state_action_log_append", _entry())
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 1
+        assert doc.action_log[0].decision_id == doc.decisions[0].decision_id
+
+    async def test_the_target_may_come_from_reversible_params(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(reason="Capped.", expected=SPEND_UP))
+        path = workspace / "STATE.json"
+        append_action_log(
+            path,
+            ActionLogEntry(
+                timestamp="2026-10-13T10:00:00+00:00",
+                action=BUDGET_TOOL,
+                platform="google_ads",
+                reversible_params={
+                    "operation": BUDGET_TOOL,
+                    "params": {"budget_id": "b1", "amount": 10000},
+                },
+                session_id=_session(),
+            ),
+        )
+        doc = read_state_file(path)
+        assert len(doc.decisions) == 1
+        assert doc.action_log[0].decision_id == doc.decisions[0].decision_id
+
+    async def test_a_mismatching_target_id_gets_its_own_decision(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(reason="Capped.", expected=SPEND_UP))
+        await _call("mureo_state_action_log_append", _entry(entity_id="b2"))
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 2
+        assert doc.action_log[0].decision_id == doc.decisions[1].decision_id
+
+    async def test_another_tool_gets_its_own_decision(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(reason="Capped.", expected=SPEND_UP))
+        await _call("mureo_state_action_log_append", _entry(action=STATUS_TOOL))
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 2
+
+    async def test_a_decision_that_has_an_entry_is_not_joined_again(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(reason="Capped.", expected=SPEND_UP))
+        await _call("mureo_state_action_log_append", _entry())
+        await _call("mureo_state_action_log_append", _entry())
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 2
+        assert doc.action_log[0].decision_id != doc.action_log[1].decision_id
+
+    async def test_another_sessions_call_is_not_joined(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        path = workspace / "STATE.json"
+        _write_decisions(
+            path,
+            _record(
+                "dec-c",
+                "adopted",
+                session_id="other",
+                journal_tool=BUDGET_TOOL,
+                journal_call_id="call-0123456789abcdef",
+                applied_params=_budget(),
+            ),
+        )
+        await _call("mureo_state_action_log_append", _entry())
+        assert read_state_file(path).action_log[0].decision_id != "dec-c"
+
+    async def test_two_matching_calls_join_neither(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(reason="One.", expected=SPEND_UP))
+        await _call(BUDGET_TOOL, _budget(reason="Two.", expected=SPEND_UP))
+        await _call("mureo_state_action_log_append", _entry())
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 3
+        assert doc.action_log[0].decision_id == doc.decisions[2].decision_id
+
+    async def test_a_call_naming_no_target_id_is_not_joined(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        path = workspace / "STATE.json"
+        _write_decisions(
+            path,
+            _record(
+                "dec-c",
+                "adopted",
+                session_id=_session(),
+                journal_tool=BUDGET_TOOL,
+                journal_call_id="call-0123456789abcdef",
+                applied_params={"amount": 12000},
+            ),
+        )
+        await _call("mureo_state_action_log_append", _entry())
+        assert read_state_file(path).action_log[0].decision_id != "dec-c"
+
+
+class TestNoWorkWithoutAReason:
+    async def test_a_bare_call_reads_no_state(
+        self,
+        workspace: Path,
+        handler: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from mureo.context import ops_linkage
+
+        calls: list[str] = []
+
+        def _record(*args: Any, **kwargs: Any) -> None:
+            calls.append(kwargs["tool"])
+
+        monkeypatch.setattr(ops_linkage, "record_call_decision", _record)
+        await _call(BUDGET_TOOL, _budget())
+        assert handler == [_budget()]
+        assert calls == []
+
+    async def test_a_bare_call_in_a_batch_still_joins_it(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(
+            "mureo_batch_begin",
+            {"label": "Budgets", "reason": "Weekly pass.", "expected": SPEND_UP},
+        )
+        await _call(BUDGET_TOOL, _budget())
+        doc = read_state_file(workspace / "STATE.json")
+        assert _journal(workspace)[-1]["decision_id"] == doc.decisions[0].decision_id
 
 
 class TestAdoptionNeedsExpected:

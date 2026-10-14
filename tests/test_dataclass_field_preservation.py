@@ -262,6 +262,7 @@ _DECISION_FIELD_VALUES: dict[str, Any] = {
     ),
     "applied_params": {"budget_id": "b1", "amount": 12000},
     "journal_call_id": "call-0123456789abcdef",
+    "journal_tool": "google_ads_budget_update",
 }
 
 #: One distinctive value per :class:`WorkspaceSettings` field (#848).

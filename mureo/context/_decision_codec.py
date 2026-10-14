@@ -52,6 +52,7 @@ DECISION_COVERAGE: tuple[type, frozenset[str], str] = (
             "expected",
             "applied_params",
             "journal_call_id",
+            "journal_tool",
         }
     ),
     "_decision_codec.parse_decisions / .decision_to_dict",
@@ -129,6 +130,7 @@ def _parse_decision(item: Any) -> DecisionRecord:
         expected=parse_expected(item.get("expected")),
         applied_params=item.get("applied_params"),
         journal_call_id=item.get("journal_call_id"),
+        journal_tool=item.get("journal_tool"),
     )
 
 
@@ -190,6 +192,7 @@ def decision_to_dict(record: DecisionRecord) -> dict[str, Any]:
         "session_id",
         "client",
         "journal_call_id",
+        "journal_tool",
     ):
         value = getattr(record, name)
         if value is not None:

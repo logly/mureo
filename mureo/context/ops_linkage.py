@@ -17,13 +17,19 @@ Which decision an appended entry belongs to, in order:
    decisions are closed and refused.
 4. A decision this call already linked an entry to (one call, one decision).
 5. The decision of the batch the entry belongs to.
-6. With a reason: the one ``adopted`` decision this session recorded for
-   the same target that nothing has carried out yet (see
-   :func:`session_candidate`), so recording a decision and then making the
-   change does not leave two decisions for it.
+6. For an entry appended outside any change-making call: the decision of
+   the one call that wrote no entry of its own and that the entry exactly
+   describes (see :func:`unentried_call_candidate`) — same session, the
+   entry's ``action`` is the call's tool, every target id the call sent
+   appears with the same value in the entry, and no entry has carried
+   that decision out yet.
 7. A new ``adopted`` decision built from the change's reason, its declared
    ``expected`` effects and its ``metrics_at_action``.
 8. Nothing, when the change carries no reason.
+
+Nothing else is joined. A change is never attached to an earlier decision
+because it is "probably" the same one — a wrong link is worse than a
+visible duplicate, which the operator can at least see.
 
 Every entry is stamped with the decision chain's ROOT id, the id that stays
 the same while the chain grows, and with the parameters the call sent.
@@ -52,6 +58,7 @@ from mureo.context.ops_fields import (
     derive_call_title,
     derive_title,
     fit_title,
+    names_same_target,
     project_metrics,
 )
 from mureo.context.ops_intent import current_ops_intent
@@ -86,6 +93,7 @@ class LinkRequest:
     applied_params: The arguments as they may be stored (masked), or
         ``None``.
     call_id: The call's journal ``call_id``, kept on a decision it creates.
+    tool: The call's tool name, set only for a call that wrote no entry.
     slot: The call's shared decision slot; ``None`` outside a call.
     now: Server timestamp for any record written.
     """
@@ -97,6 +105,7 @@ class LinkRequest:
     arguments: Mapping[str, Any] = field(default_factory=dict)
     applied_params: Mapping[str, Any] | None = None
     call_id: str | None = None
+    tool: str | None = None
     slot: CallDecisionSlot | None = None
 
 
@@ -180,6 +189,7 @@ def _successor(
         client=client,
         applied_params=_applied(request),
         journal_call_id=request.call_id,
+        journal_tool=request.tool,
     )
 
 
@@ -250,79 +260,45 @@ def batch_decision_root(doc: StateDocument, batch_id: str | None) -> str | None:
     return None
 
 
-def _open_in_session(
-    records: tuple[DecisionRecord, ...], session: str, for_entry: bool
+def _carried_out_by(
+    records: tuple[DecisionRecord, ...], entry: ActionLogEntry, session: str
 ) -> bool:
-    """Adopted in ``session``, outside any batch, and not yet carried out.
-
-    A decision a no-entry call carried out stays open to the agent's own
-    ``action_log`` entry for that change (``for_entry``), never to a second
-    call.
-    """
+    """The chain's latest record is the call ``entry`` exactly describes."""
     latest = records[-1]
-    if latest.status != ADOPTED or latest.session_id != session:
-        return False
-    if latest.batch_id is not None or any(r.related_actions for r in records):
-        return False
-    return for_entry or not any(
-        r.journal_call_id is not None or r.applied_params is not None for r in records
+    return (
+        latest.status == ADOPTED
+        and latest.batch_id is None
+        and latest.session_id == session
+        and latest.journal_tool is not None
+        and latest.journal_tool == entry.action
+        and not any(r.related_actions for r in records)
+        and names_same_target(latest.applied_params, entry)
     )
 
 
-def _same_target(
-    record: DecisionRecord, platform: str | None, campaign_id: str | None
-) -> bool:
-    """The record names a target, and every part it names is the change's."""
-    named = [
-        (mine, theirs)
-        for mine, theirs in (
-            (record.platform, platform),
-            (record.campaign_id, campaign_id),
-        )
-        if mine is not None
-    ]
-    return bool(named) and all(mine == theirs for mine, theirs in named)
+def unentried_call_candidate(doc: StateDocument, entry: ActionLogEntry) -> str | None:
+    """The decision of the one no-entry call ``entry`` records, or ``None``.
 
-
-def session_candidate(
-    doc: StateDocument,
-    *,
-    session: str | None,
-    platform: str | None,
-    campaign_id: str | None,
-    for_entry: bool,
-) -> str | None:
-    """The one decision a reasoned change without a ``decision_id`` joins.
-
-    An ``adopted`` decision recorded in the same session, for the same
-    platform / campaign (it must name at least one), that no entry or call
-    has carried out yet. Only when exactly one fits: with two, the change
-    cannot be attributed and gets a decision of its own.
+    Only when exactly one decision fits; with two, the entry cannot be
+    attributed and gets a decision of its own.
     """
+    session = entry.session_id
     if session is None:
         return None
     carried = {e.decision_id for e in doc.action_log if e.decision_id is not None}
     found = [
         root
         for root, records in group_chains(doc).items()
-        if root not in carried
-        and _open_in_session(records, session, for_entry)
-        and _same_target(records[-1], platform, campaign_id)
+        if root not in carried and _carried_out_by(records, entry, session)
     ]
     return found[0] if len(found) == 1 else None
 
 
-def _join_session(
+def _join_call(
     doc: StateDocument, entry: ActionLogEntry, request: LinkRequest
 ) -> tuple[StateDocument, ActionLogEntry] | None:
-    """Rule 6; ``None`` when no decision fits."""
-    root = session_candidate(
-        doc,
-        session=entry.session_id,
-        platform=entry.platform,
-        campaign_id=entry.campaign_id,
-        for_entry=True,
-    )
+    """Rule 6; ``None`` when no call's decision fits exactly."""
+    root = unentried_call_candidate(doc, entry)
     if root is None:
         return None
     latest = latest_in_chain(doc, root)
@@ -408,8 +384,8 @@ def link_entry(
     batch_root = batch_decision_root(doc, entry.batch_id)
     if linked is None and batch_root is not None:
         linked = doc, _stamp(entry, batch_root)
-    if linked is None and request.reason is not None:
-        linked = _join_session(doc, entry, request)
+    if linked is None and request.slot is None:
+        linked = _join_call(doc, entry, request)
     if linked is not None or request.reason is None:
         return linked or (doc, entry)
     record = _new_decision(entry, request)
@@ -462,13 +438,6 @@ def _call_decision(
     session, client = _actor()
     campaign_id = request.arguments.get("campaign_id")
     campaign = None if campaign_id is None else str(campaign_id)
-    root = session_candidate(
-        doc, session=session, platform=platform, campaign_id=campaign, for_entry=False
-    )
-    latest = None if root is None else latest_in_chain(doc, root)
-    if root is not None and latest is not None:
-        record = _successor(doc, latest, request)
-        return replace(doc, decisions=(*doc.decisions, record)), root
     record = DecisionRecord(
         decision_id=new_decision_id(request.now),
         recorded_at=request.now,
@@ -482,6 +451,7 @@ def _call_decision(
         client=client,
         applied_params=_applied(request),
         journal_call_id=request.call_id,
+        journal_tool=tool,
     )
     return replace(doc, decisions=(*doc.decisions, record)), record.decision_id
 
@@ -501,6 +471,7 @@ def record_call_decision(
     from mureo.context.state import _locked_state_mutation
 
     linked: list[str] = []
+    request = replace(request, tool=tool)
 
     def _build(doc: StateDocument) -> StateDocument | None:
         updated, root = _call_decision(doc, request, tool, platform)
@@ -526,5 +497,5 @@ __all__ = [
     "link_entry",
     "project_metrics",
     "record_call_decision",
-    "session_candidate",
+    "unentried_call_candidate",
 ]

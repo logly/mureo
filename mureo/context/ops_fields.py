@@ -38,6 +38,9 @@ _ID_KEYS: Final[frozenset[str]] = frozenset({"id", "customer_id", "account_id"})
 #: The suffix that marks a parameter as naming its target.
 ID_SUFFIX: Final = "_id"
 
+#: The suffix that marks a parameter as naming several targets.
+IDS_SUFFIX: Final = "_ids"
+
 
 def _format_value(value: Any) -> str:
     """A figure as an operator reads it: ``10000`` is ``10,000``."""
@@ -166,12 +169,74 @@ def project_metrics(raw: Mapping[str, Any] | None) -> dict[str, Any] | None:
     return kept or None
 
 
+def target_ids(params: Any) -> dict[str, Any]:
+    """The ids a parameter map names its target by, not its account.
+
+    ``budget_id``, ``campaign_id``, ``ad_group_id``, ``keyword_ids`` …;
+    never ``id`` / ``customer_id`` / ``account_id``, which name the
+    account the call ran against rather than what it changed.
+    """
+    if not isinstance(params, dict):
+        return {}
+    return {
+        key: value
+        for key, value in params.items()
+        if isinstance(key, str)
+        and key not in _ID_KEYS
+        and (key.endswith(ID_SUFFIX) or key.endswith(IDS_SUFFIX))
+    }
+
+
+def entry_target_ids(entry: ActionLogEntry) -> dict[str, Any]:
+    """Every target id an ``action_log`` entry records.
+
+    From its ``reversible_params`` and ``applied_params``, then its own
+    ``campaign_id`` / ``ad_id`` and ``entity_type`` + ``entity_id`` (a
+    ``budget`` entity is ``budget_id``), which win where they overlap.
+    """
+    reversible = entry.reversible_params or {}
+    found = {
+        **target_ids(reversible.get("params")),
+        **target_ids(entry.applied_params),
+    }
+    for key, value in (("campaign_id", entry.campaign_id), ("ad_id", entry.ad_id)):
+        if value is not None:
+            found[key] = value
+    if entry.entity_type is not None and entry.entity_id is not None:
+        found[f"{entry.entity_type}{ID_SUFFIX}"] = entry.entity_id
+    return found
+
+
+def _id_value(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return [str(item) for item in value]
+    return str(value)
+
+
+def names_same_target(sent: Any, entry: ActionLogEntry) -> bool:
+    """Every target id ``sent`` names appears with the same value in ``entry``.
+
+    ``False`` when ``sent`` names none: an untargeted call cannot be
+    matched to an entry, only guessed at.
+    """
+    wanted = target_ids(sent)
+    have = entry_target_ids(entry)
+    return bool(wanted) and all(
+        key in have and _id_value(have[key]) == _id_value(value)
+        for key, value in wanted.items()
+    )
+
+
 __all__ = [
     "ARROW",
     "ELLIPSIS",
+    "IDS_SUFFIX",
     "ID_SUFFIX",
     "derive_call_title",
     "derive_title",
+    "entry_target_ids",
     "fit_title",
+    "names_same_target",
     "project_metrics",
+    "target_ids",
 ]
