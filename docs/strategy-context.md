@@ -1842,6 +1842,7 @@ Each entry in `decisions` is one decision as it stood at one moment (#758, phase
 | `client` | `string` | No — server-stamped | The MCP client label, `null` for a CLI or library write |
 | `applied_params` | `object` | No — server-written | On a record mureo writes for a call that carried the decision out (#848): the parameters the call sent, masked |
 | `journal_call_id` | `string` | No — server-written | On the same records: the `call_id` of the call's `JOURNAL.jsonl` record, which names this decision in turn |
+| `journal_tool` | `string` | No — server-written | On a record written for a call that wrote no `action_log` entry: the call's tool name |
 
 Every bound above **refuses** the write rather than truncating it: the caller still holds the sentence and can shorten it, while half a rationale reads as a defect and nobody downstream can tell what was cut. `decision_id` is unique — a second record under an id already on file is refused, because that is what `supersedes` joins on.
 
@@ -1849,7 +1850,7 @@ Every bound above **refuses** the write rather than truncating it: the caller st
 
 The dashboard does not render this section yet — that is a follow-up.
 
-A decision can also be created **automatically** (#848): a mutating call with a `reason` and no `decision_id` records an `adopted` decision for it — in the same write as its `action_log` entry, or right after the call when it writes no entry — unless it joins its batch's decision or the one decision its session adopted for the same target and has not carried out. See [Ops history](ops-history.md).
+A decision can also be created **automatically** (#848): a mutating call with a `reason` and no `decision_id` records an `adopted` decision for it — in the same write as its `action_log` entry, or right after the call when it writes no entry — unless it joins its batch's decision. An entry appended for a call that wrote none joins that call's decision only on an exact match of session, tool and target ids. See [Ops history](ops-history.md).
 
 #### Settings
 

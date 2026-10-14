@@ -20,6 +20,7 @@ whether the reason and the expected effect are **required**.
 | `action_log[].decision_id` | `STATE.json` | Stamped on the change. It always names the **first** record of the decision's `supersedes` chain, so it stays stable when the decision is later updated |
 | `applied_params` | `STATE.json`, on `action_log` entries and on decisions mureo writes for a call | The parameters the call sent, masked like the journal's `args`. Omitted when there were none, or when they exceed 4,000 characters of JSON |
 | `journal_call_id` | `STATE.json`, on decisions mureo writes for a call | The `call_id` of that call's `JOURNAL.jsonl` record. The record carries `call_id` and `decision_id` in turn |
+| `journal_tool` | `STATE.json`, on decisions mureo writes for a call that wrote no entry | The call's tool name, which rule 4 matches against an entry's `action` |
 | `action_log[].evaluation` | `STATE.json`, on `outcome_evaluated` entries | The evaluation table: every metric before and after, with a verdict and a note |
 | `settings.ops_history.enabled` | `STATE.json` | Off by default. When on, `reason` and `expected` are required |
 
@@ -44,10 +45,11 @@ whether the reason and the expected effect are **required**.
 
 ## How a change is linked
 
-When a mutating call produces an `action_log` entry, these rules apply in
-order:
+When an `action_log` entry is recorded — by a mutating call, or by
+`mureo_state_action_log_append` — these rules apply in order:
 
-1. **An explicit `decision_id`.** The change joins that decision. A
+1. **An explicit `decision_id`** (on the call, or as `entry.decision_id`).
+   The change joins that decision. A
    `proposed` decision is adopted first, with a new `adopted` record that
    names it in `supersedes`. A `rejected` or `deferred` decision, or an id
    that names nothing, is refused.
@@ -57,21 +59,25 @@ order:
    batch's decision. `mureo_batch_begin` creates it from its own `reason`
    and `expected` (titled `Batch: <label>`), or adopts the `decision_id` it
    is given.
-4. **A `reason`, and a decision this session already adopted for the same
-   target.** A decision is a candidate when all four hold:
-   1. its latest record was written in the same MCP session as the change;
-   2. that record is `adopted` and belongs to no batch;
-   3. nothing has carried it out yet: no change is stamped with it and no
-      record of it names `related_actions`. A decision recorded for a call
-      that wrote no `action_log` entry stays open only to an
-      `action_log` entry appended for that change, never to another call;
-   4. that record names the change's platform and/or campaign — at least
-      one of the two — and every one it names equals the change's.
+4. **An entry you append for a call that wrote none.** An entry written
+   with `mureo_state_action_log_append`, outside any change-making call,
+   joins the decision mureo recorded for such a call (see below) only when
+   all of these hold:
+   1. the decision was recorded in the same MCP session as the entry;
+   2. the decision stores the call's tool name, and the entry's `action`
+      equals it;
+   3. every target id the call sent — `budget_id`, `campaign_id`,
+      `ad_group_id`, `ad_id`, `keyword_ids` and any other `*_id` /
+      `*_ids` parameter except `id`, `customer_id` and `account_id` —
+      appears with the same value in the entry, in its `campaign_id`,
+      `ad_id`, `entity_type` + `entity_id` (`budget` + `b1` is
+      `budget_id: b1`) or `reversible_params.params`. A call that sent no
+      target id never matches;
+   4. no `action_log` entry has carried the decision out yet;
+   5. exactly one decision meets 1–4.
 
-   If exactly one decision is a candidate, the change joins it. With two or
-   more, the change gets a decision of its own (rule 5). This is what keeps
-   "record the decision, then make the change" from leaving two decisions
-   for one change.
+   Otherwise the entry is linked by the rules below, and may get a decision
+   of its own.
 5. **A `reason`.** A new `adopted` decision is created. Its `rationale` is
    the reason, its `expected` the call's `expected`, and its `metrics` the
    entry's `metrics_at_action`. The title is derived from the change:
@@ -84,15 +90,23 @@ Imported external changes (`origin: "external"`) and rollback entries are
 never linked. An `outcome_evaluated` entry inherits the `decision_id` of
 the entry it evaluates.
 
+Nothing else is joined. A change is never attached to an earlier decision
+because it looks related — same session, same campaign or same platform is
+not enough. A wrong link is worse than a duplicate the operator can see:
+recording a decision with `mureo_decision_record` and then making the
+change with only a `reason` leaves two decisions. To link a change to a
+decision you recorded, pass its `decision_id` on the change-making call.
+
 ### Calls that write no `action_log` entry
 
 Most changes on a native platform — a budget, bid, keyword or ad change —
 write no `action_log` entry. When such a call succeeds and carries a
 `reason`, mureo records its decision right after the call, by the same
 rules: an explicit `decision_id` adopts that decision, a call inside a batch
-with a decision joins the batch's, and otherwise it joins the session's
-decision as in rule 4 or a new `adopted` decision is created. That makes
-exactly one decision per call, or per batch. One
+with a decision joins the batch's, and otherwise a new `adopted` decision
+is created. That makes exactly one decision per call, or per batch. A call
+with no `reason`, no `decision_id` and no open batch is not looked at at
+all. One
 `google_ads_budget_update` call with `budget_id: "b1"`, `amount: 12000`, a
 `reason` and `expected` records:
 
@@ -103,7 +117,8 @@ exactly one decision per call, or per batch. One
  "platform": "google_ads",
  "expected": [{"metric": "spend", "direction": "up"}],
  "applied_params": {"budget_id": "b1", "amount": 12000},
- "journal_call_id": "call-…"}
+ "journal_call_id": "call-…",
+ "journal_tool": "google_ads_budget_update"}
 ```
 
 The value before the change is not shown in this title: a budget update
@@ -113,8 +128,10 @@ that failed, and nothing is created in a workspace that has no
 
 If you also record the change with `mureo_state_action_log_append` (for
 example to give it `metrics_at_action` and an `observation_due` so it is
-evaluated), that entry joins the call's decision by rule 4. Pass the
-decision's id as `entry.decision_id` to make the link explicit.
+evaluated), give the entry `action: "google_ads_budget_update"` and the
+target (`entity_type: "budget"`, `entity_id: "b1"`): it then joins the
+call's decision by rule 4. Passing the decision's id as
+`entry.decision_id` links it whatever else the entry says.
 
 On the mutating tools, `expected` is advertised as an array whose shape
 and vocabulary are given in its description rather than as a nested JSON

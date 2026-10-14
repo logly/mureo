@@ -1075,14 +1075,16 @@ off before the policy gates just like `reason`:
   refused.
 
 When the call names no `decision_id`, a `reason` links the change to a
-decision: the open batch's, else the one decision this session adopted for
-the same target and has not carried out yet, else a new `adopted` record
-built from the reason, `expected` and the entry's `metrics_at_action`, with
-a title derived from the change. The `action_log` entry is stamped with the
+decision: the open batch's, else a new `adopted` record built from the
+reason, `expected` and the entry's `metrics_at_action`, with a title
+derived from the change. A change is never joined to an earlier decision
+by similarity (same session, campaign or platform). The `action_log` entry is stamped with the
 decision's id and with `applied_params`, the masked parameters the call
 sent. A call that writes no entry (a native budget, bid, keyword or ad
 change) gets its decision the same way right after it succeeded, carrying
-`applied_params` and the call's journal `call_id`. Every entry of one call,
+`applied_params`, the call's journal `call_id` and its tool name; an entry
+the agent later appends with `mureo_state_action_log_append` joins it only
+on an exact match of session, tool and every target id. Every entry of one call,
 and every member of a batch opened with a `reason` or `decision_id`, shares
 one decision. When the workspace's `settings.ops_history.enabled` is on, a
 call without `reason` or `expected` is refused with `invalid_args` naming

@@ -12,11 +12,12 @@
   - Every mutating tool now takes optional `expected` and `decision_id`
     parameters, alongside `reason`. A successful call with a `reason` and
     no `decision_id` is linked to exactly one decision: its batch's, else
-    the one decision its session adopted for the same target and has not
-    carried out, else a new `adopted` record with a title derived from the
-    change. This holds whether or not the call writes an `action_log`
-    entry; for one that does not (such as a native budget update) the
-    decision is recorded right after the call. A call or batch writing
+    a new `adopted` record with a title derived from the change. This
+    holds whether or not the call writes an `action_log` entry; for one
+    that does not (such as a native budget update) the decision is
+    recorded right after the call. A change is never joined to an earlier
+    decision by similarity; an entry later appended for such a call joins
+    its decision only on an exact match of session, tool and target ids. A call or batch writing
     several entries shares one decision. A `decision_id` names a
     `proposed` or `adopted` decision to carry out, and a proposed one is
     adopted. `mureo_state_action_log_append` accepts `entry.expected` and
@@ -26,7 +27,8 @@
     `decision_id`.
   - `action_log` entries and decisions mureo writes for a call carry
     `applied_params`, the masked parameters the call sent; decisions also
-    carry `journal_call_id`, and the call's `JOURNAL.jsonl` record carries
+    carry `journal_call_id` (and `journal_tool` for a call that wrote no
+    entry), and the call's `JOURNAL.jsonl` record carries
     `call_id` and `decision_id`. Expected metrics match long names
     (`cost_per_conversion` -> `cpa`, `conversion_rate` -> `cvr`, ...).
   - On the mutating tools, `expected` is advertised without an item schema

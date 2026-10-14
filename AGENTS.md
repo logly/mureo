@@ -194,10 +194,12 @@ mureo/
 │   ├── _decision_codec.py # That section's two codec halves. Strict like action_log's,
 │   │                    #   not tolerant like batches': a decision record IS history
 │   ├── expected.py, settings.py, decision_chain.py, ops_intent.py,
-│   │   ops_linkage.py, ops_fields.py, ops_history_view.py
+│   │   ops_linkage.py, ops_fields.py, ops_history_view.py,
+│   │   ops_history_query.py
 │   │                    #   Ops history (#848): expected effects, the settings section,
-│   │                    #   linking entries to decisions inside the locked append, and
-│   │                    #   the derived decision → actions → evaluation view. See
+│   │                    #   linking entries to decisions inside the locked append, the
+│   │                    #   derived decision → actions → evaluation view, and the
+│   │                    #   date-bounded read both MCP and the dashboard use. See
 │   │                    #   docs/ops-history.md
 │   ├── daily.py         # The day-grain history write MINUS the file (#690/#710):
 │   │                    #   `with_platform_daily(doc, ...)` (guard + per-date merge +
