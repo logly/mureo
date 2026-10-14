@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import enum
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -49,6 +50,43 @@ RAW_HEADING_TYPE = "raw_heading"
 
 # h2 heading pattern
 _H2_PATTERN = re.compile(r"^##\s+(.+)$")
+
+# Title written when a file has no preamble of its own (new file, or one
+# that starts directly at a ``## `` section).
+_DEFAULT_PREAMBLE_LINES: tuple[str, ...] = ("# Strategy", "")
+
+
+class _Keep(enum.Enum):
+    KEEP = "keep"
+
+
+# Default for ``write_strategy_file(preamble=...)``: keep whatever precedes
+# the first section in the file being replaced (issue #845).
+KEEP: Final = _Keep.KEEP
+
+
+def strategy_preamble(text: str) -> str:
+    """Return the text before the first ``## `` heading, verbatim.
+
+    That is the title and any prose above the first section, including its
+    trailing newlines. A text that starts with a section, or is empty, has
+    no preamble (``""``); a text with no section at all is all preamble.
+    """
+    offset = 0
+    for line in text.split("\n"):
+        if _H2_PATTERN.match(line):
+            return text[:offset]
+        offset += len(line) + 1
+    return text
+
+
+def _kept_preamble(text: str) -> str | None:
+    """The preamble of ``text`` to write back, or ``None`` for the default.
+
+    A missing, empty or whitespace-only preamble gets the default title.
+    """
+    preamble = strategy_preamble(text)
+    return preamble if preamble.strip() else None
 
 
 def parse_strategy(text: str) -> list[StrategyEntry]:
@@ -109,17 +147,24 @@ def _resolve_heading(heading: str) -> tuple[str, str]:
     return RAW_HEADING_TYPE, heading
 
 
-def render_strategy(entries: list[StrategyEntry]) -> str:
-    """Generate a Markdown string from a list of StrategyEntry."""
-    lines: list[str] = ["# Strategy", ""]
+def render_strategy(entries: list[StrategyEntry], preamble: str | None = None) -> str:
+    """Generate a Markdown string from a list of StrategyEntry.
 
+    ``preamble`` is written verbatim before the first section (a newline is
+    added if it does not end with one); ``""`` writes nothing there. ``None``
+    writes the default ``# Strategy`` title.
+    """
+    section_lines: list[str] = []
     for entry in entries:
-        heading = _make_heading(entry)
-        lines.append(f"## {heading}")
-        lines.append(entry.content)
-        lines.append("")
+        section_lines.append(f"## {_make_heading(entry)}")
+        section_lines.append(entry.content)
+        section_lines.append("")
 
-    return "\n".join(lines)
+    if preamble is None:
+        return "\n".join([*_DEFAULT_PREAMBLE_LINES, *section_lines])
+    if preamble and not preamble.endswith("\n"):
+        preamble += "\n"
+    return preamble + "\n".join(section_lines)
 
 
 def _make_heading(entry: StrategyEntry) -> str:
@@ -141,19 +186,35 @@ def read_strategy_file(path: Path) -> list[StrategyEntry]:
 
     Returns an empty list if the file does not exist.
     """
+    return parse_strategy(_read_strategy_text(path))
+
+
+def _read_strategy_text(path: Path) -> str:
+    """The raw text of ``path``; ``""`` if the file does not exist."""
     if not path.exists():
-        return []
+        return ""
     try:
-        text = path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8")
     except PermissionError as exc:
         raise ContextFileError(f"No read permission for STRATEGY.md: {path}") from exc
-    return parse_strategy(text)
 
 
-def write_strategy_file(path: Path, entries: list[StrategyEntry]) -> None:
-    """Atomically write a list of StrategyEntry to a STRATEGY.md file."""
-    text = render_strategy(entries)
-    _atomic_write(path, text)
+def write_strategy_file(
+    path: Path,
+    entries: list[StrategyEntry],
+    preamble: str | None | _Keep = KEEP,
+) -> None:
+    """Atomically write a list of StrategyEntry to a STRATEGY.md file.
+
+    With the default ``KEEP`` the existing file's title and preamble (the
+    text before its first ``## `` section) are kept byte-for-byte; a missing
+    file, or one with no preamble, gets the default ``# Strategy`` title.
+    ``None`` forces the default title; a string is written as given (see
+    :func:`render_strategy`).
+    """
+    if preamble is KEEP:
+        preamble = _kept_preamble(_read_strategy_text(path))
+    _atomic_write(path, render_strategy(entries, preamble=preamble))
 
 
 def _strategy_lock_path(path: Path) -> Path:
@@ -178,6 +239,9 @@ def mutate_strategy_file(
     ``mureo.context.state._locked_state_mutation`` — STATE.json was already
     protected (issue #115) while STRATEGY.md was not.
 
+    The file is read once under the lock: its entries go to ``mutate`` and
+    its title and preamble are written back unchanged (issue #845).
+
     ``mutate`` must be PURE with respect to its argument: it returns the new
     list rather than editing the one it was handed. It runs while the lock is
     held, so anything it does besides deciding the new entries (taking a
@@ -188,8 +252,9 @@ def mutate_strategy_file(
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(_strategy_lock_path(path)):
-        entries = mutate(read_strategy_file(path))
-        write_strategy_file(path, entries)
+        text = _read_strategy_text(path)
+        entries = mutate(parse_strategy(text))
+        write_strategy_file(path, entries, preamble=_kept_preamble(text))
     return entries
 
 

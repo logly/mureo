@@ -45,6 +45,7 @@ from mureo.context.strategy import (
     read_strategy_file,
     remove_strategy_entry,
     render_strategy,
+    strategy_preamble,
     write_strategy_file,
 )
 
@@ -86,6 +87,7 @@ __all__ = [
     "read_strategy_file",
     "remove_strategy_entry",
     "render_strategy",
+    "strategy_preamble",
     "write_strategy_file",
     # state
     "append_action_log",

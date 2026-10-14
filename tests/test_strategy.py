@@ -12,10 +12,12 @@ from mureo.context.errors import ContextFileError
 from mureo.context.models import StrategyEntry
 from mureo.context.strategy import (
     add_strategy_entry,
+    mutate_strategy_file,
     parse_strategy,
     read_strategy_file,
     remove_strategy_entry,
     render_strategy,
+    strategy_preamble,
     write_strategy_file,
 )
 
@@ -445,3 +447,176 @@ class TestGoalSection:
         assert parsed[1].context_type == "goal"
         assert parsed[1].title == "Reduce CPA"
         assert parsed[1].content == original[1].content
+
+
+# ============================================================
+# Title and preamble preservation (#845)
+# ============================================================
+
+_TITLED = "# 戦略\nIntro paragraph.\n\n## Persona\n30代男性\n\n## USP\n業界最安値\n"
+
+
+class TestStrategyPreamble:
+    """Text before the first ``## `` heading."""
+
+    @pytest.mark.unit
+    def test_preamble_is_the_text_before_the_first_section(self) -> None:
+        assert strategy_preamble(_TITLED) == "# 戦略\nIntro paragraph.\n\n"
+
+    @pytest.mark.unit
+    def test_text_starting_with_a_section_has_no_preamble(self) -> None:
+        assert strategy_preamble("## Persona\nx\n") == ""
+
+    @pytest.mark.unit
+    def test_empty_text_has_no_preamble(self) -> None:
+        assert strategy_preamble("") == ""
+
+    @pytest.mark.unit
+    def test_text_without_any_section_is_all_preamble(self) -> None:
+        assert strategy_preamble("# Title\nIntro.") == "# Title\nIntro."
+
+    @pytest.mark.unit
+    def test_round_trip_is_byte_identical(self) -> None:
+        rendered = render_strategy(
+            parse_strategy(_TITLED), preamble=strategy_preamble(_TITLED)
+        )
+        assert rendered == _TITLED
+
+    @pytest.mark.unit
+    def test_a_preamble_without_a_trailing_newline_gets_one(self) -> None:
+        entries = [StrategyEntry("persona", "Persona", "x")]
+        assert render_strategy(entries, preamble="# Title") == (
+            "# Title\n## Persona\nx\n"
+        )
+
+    @pytest.mark.unit
+    def test_an_empty_preamble_writes_nothing_before_the_first_section(
+        self,
+    ) -> None:
+        entries = [StrategyEntry("persona", "Persona", "x")]
+        assert render_strategy(entries, preamble="") == "## Persona\nx\n"
+
+    @pytest.mark.unit
+    def test_default_render_is_unchanged(self) -> None:
+        entries = [StrategyEntry("persona", "Persona", "x")]
+        assert render_strategy(entries) == "# Strategy\n\n## Persona\nx\n"
+        assert render_strategy([]) == "# Strategy\n"
+
+
+class TestWriteKeepsPreamble:
+    """Every writer keeps the existing title and preamble."""
+
+    @pytest.mark.unit
+    def test_write_keeps_an_existing_custom_title(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        fp.write_text(_TITLED, encoding="utf-8")
+        write_strategy_file(fp, [StrategyEntry("usp", "USP", "new")])
+        assert fp.read_text(encoding="utf-8") == (
+            "# 戦略\nIntro paragraph.\n\n## USP\nnew\n"
+        )
+
+    @pytest.mark.unit
+    def test_write_to_a_missing_file_uses_the_default_title(
+        self, tmp_path: Path
+    ) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        write_strategy_file(fp, [StrategyEntry("usp", "USP", "new")])
+        assert fp.read_text(encoding="utf-8") == "# Strategy\n\n## USP\nnew\n"
+
+    @pytest.mark.unit
+    def test_write_to_an_empty_file_uses_the_default_title(
+        self, tmp_path: Path
+    ) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        fp.write_text("", encoding="utf-8")
+        write_strategy_file(fp, [StrategyEntry("usp", "USP", "new")])
+        assert fp.read_text(encoding="utf-8") == "# Strategy\n\n## USP\nnew\n"
+
+    @pytest.mark.unit
+    def test_write_to_a_file_starting_at_a_section_uses_the_default_title(
+        self, tmp_path: Path
+    ) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        fp.write_text("## Persona\nold\n", encoding="utf-8")
+        write_strategy_file(fp, [StrategyEntry("usp", "USP", "new")])
+        assert fp.read_text(encoding="utf-8") == "# Strategy\n\n## USP\nnew\n"
+
+    @pytest.mark.unit
+    def test_explicit_none_forces_the_default_title(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        fp.write_text(_TITLED, encoding="utf-8")
+        write_strategy_file(fp, [StrategyEntry("usp", "USP", "new")], preamble=None)
+        assert fp.read_text(encoding="utf-8") == "# Strategy\n\n## USP\nnew\n"
+
+    @pytest.mark.unit
+    def test_explicit_string_is_used_as_given(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        fp.write_text(_TITLED, encoding="utf-8")
+        write_strategy_file(
+            fp, [StrategyEntry("usp", "USP", "new")], preamble="# Other\n\n"
+        )
+        assert fp.read_text(encoding="utf-8") == "# Other\n\n## USP\nnew\n"
+
+    @pytest.mark.unit
+    def test_mutation_leaves_the_preamble_lines_byte_identical(
+        self, tmp_path: Path
+    ) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        fp.write_text(_TITLED, encoding="utf-8")
+
+        def mutate(entries: list[StrategyEntry]) -> list[StrategyEntry]:
+            return [
+                (
+                    StrategyEntry(e.context_type, e.title, "changed")
+                    if e.context_type == "usp"
+                    else e
+                )
+                for e in entries
+            ]
+
+        mutate_strategy_file(fp, mutate)
+        before = _TITLED.split("\n")
+        after = fp.read_text(encoding="utf-8").split("\n")
+        assert after[:6] == before[:6]
+        assert after[6:] == ["## USP", "changed", ""]
+
+    @pytest.mark.unit
+    def test_mutation_reads_the_file_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The preamble comes from the text read under the lock, not a re-read."""
+        fp = tmp_path / "STRATEGY.md"
+        fp.write_text(_TITLED, encoding="utf-8")
+        calls: list[Path] = []
+        original = Path.read_text
+
+        def counting(self: Path, *args: object, **kwargs: object) -> str:
+            if self == fp:
+                calls.append(self)
+            return original(self, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Path, "read_text", counting)
+        mutate_strategy_file(fp, lambda entries: entries)
+        assert len(calls) == 1
+
+    @pytest.mark.unit
+    def test_add_entry_keeps_the_title(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        fp.write_text(_TITLED, encoding="utf-8")
+        add_strategy_entry(fp, StrategyEntry("operation_mode", "Operation Mode", "x"))
+        assert fp.read_text(encoding="utf-8") == (_TITLED + "\n## Operation Mode\nx\n")
+
+    @pytest.mark.unit
+    def test_add_entry_to_a_missing_file_uses_the_default_title(
+        self, tmp_path: Path
+    ) -> None:
+        fp = tmp_path / "STRATEGY.md"
+        add_strategy_entry(fp, StrategyEntry("usp", "USP", "x"))
+        assert fp.read_text(encoding="utf-8") == "# Strategy\n\n## USP\nx\n"
+
+    @pytest.mark.unit
+    def test_strategy_preamble_is_exported(self) -> None:
+        import mureo.context as ctx
+
+        assert ctx.strategy_preamble is strategy_preamble
+        assert "strategy_preamble" in ctx.__all__

@@ -1,5 +1,19 @@
 ## [Unreleased]
 
+### Fixed
+
+- **STRATEGY.md writes keep the operator's title and preamble** (#845).
+  Every writer (`write_strategy_file`, `mutate_strategy_file`,
+  `add_strategy_entry`, `remove_strategy_entry`, the state store, the
+  configure Guardrails card and `mureo_strategy_set`) used to replace the
+  file's title with `# Strategy` and drop any text before the first `## `
+  section. That text is now kept byte-for-byte; only a file with no preamble
+  (a new file, or one that starts at a section) gets the default title.
+  `mureo_strategy_set` keeps the title of the markdown it is given.
+  `render_strategy` gains an optional `preamble`, `write_strategy_file` a
+  `preamble` that defaults to keeping the existing file's, and the new
+  `strategy_preamble(text)` returns the text before the first section.
+
 ## [0.25.0] - 2026-10-14
 
 ### Added

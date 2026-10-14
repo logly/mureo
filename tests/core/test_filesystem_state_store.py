@@ -60,6 +60,21 @@ def test_write_then_read_strategy_round_trip(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_write_strategy_keeps_the_existing_title(tmp_path: Path) -> None:
+    """The store's full write keeps the file's own title and preamble (#845)."""
+    (tmp_path / "STRATEGY.md").write_text(
+        "# 戦略\nIntro.\n\n## Persona\nold\n", encoding="utf-8"
+    )
+    store = FilesystemStateStore(workspace=tmp_path)
+    store.write_strategy(
+        [StrategyEntry(context_type="persona", title="Persona", content="new")]
+    )
+    assert (tmp_path / "STRATEGY.md").read_text(encoding="utf-8") == (
+        "# 戦略\nIntro.\n\n## Persona\nnew\n"
+    )
+
+
+@pytest.mark.unit
 def test_read_strategy_returns_isolated_snapshot(tmp_path: Path) -> None:
     store = FilesystemStateStore(workspace=tmp_path)
     store.write_strategy(

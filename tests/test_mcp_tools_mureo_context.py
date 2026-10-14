@@ -187,6 +187,28 @@ async def test_strategy_set_backs_up_before_overwrite(cwd_to_tmp) -> None:
     assert "old persona" in backups[0].read_text(encoding="utf-8")
 
 
+async def test_strategy_set_keeps_the_submitted_title(cwd_to_tmp) -> None:
+    """The operator's own title and preamble survive the round trip (#845)."""
+    mod = _import_tools()
+    md = "# Acme paid media\nIntro.\n\n## Persona\n30s\n"
+    result = await mod.handle_tool("mureo_strategy_set", {"markdown": md})
+    written = (cwd_to_tmp / "STRATEGY.md").read_text(encoding="utf-8")
+    assert written == md
+    assert json.loads(result[0].text)["markdown"] == md
+
+
+async def test_strategy_set_without_a_title_gets_the_default(cwd_to_tmp) -> None:
+    """A markdown that starts at a section is written under the default title,
+    even over a file that had its own title: the call is a full replacement."""
+    (cwd_to_tmp / "STRATEGY.md").write_text(
+        "# Old title\n\n## USP\nold\n", encoding="utf-8"
+    )
+    mod = _import_tools()
+    await mod.handle_tool("mureo_strategy_set", {"markdown": "## Persona\n30s\n"})
+    written = (cwd_to_tmp / "STRATEGY.md").read_text(encoding="utf-8")
+    assert written == "# Strategy\n\n## Persona\n30s\n"
+
+
 async def test_strategy_set_preserves_unknown_heading(cwd_to_tmp) -> None:
     """An unrecognized heading round-trips and is reported, not dropped."""
     mod = _import_tools()
