@@ -86,7 +86,12 @@ from mureo.context.state import (
     set_workspace_not_collected,
     upsert_campaign,
 )
-from mureo.context.strategy import RAW_HEADING_TYPE, parse_strategy, write_strategy_file
+from mureo.context.strategy import (
+    RAW_HEADING_TYPE,
+    parse_strategy,
+    strategy_preamble,
+    write_strategy_file,
+)
 from mureo.core.clock import server_now_iso
 from mureo.fsutil import backup_file
 from mureo.mcp._auto_evaluation_hook import _auto_evaluate
@@ -163,7 +168,10 @@ async def handle_strategy_set(arguments: dict[str, Any]) -> list[TextContent]:
     # Keep a timestamped .bak before this full replacement so a bad
     # round-trip is recoverable.
     backup_file(path, timestamped=True)
-    write_strategy_file(path, entries)
+    # Keep the title and preamble the caller submitted (issue #845); a
+    # markdown that starts at a section gets the default title, as before.
+    preamble = strategy_preamble(markdown)
+    write_strategy_file(path, entries, preamble=preamble if preamble.strip() else None)
     rewritten = path.read_text(encoding="utf-8")
     unrecognized = sum(1 for e in entries if e.context_type == RAW_HEADING_TYPE)
     return _json_result(

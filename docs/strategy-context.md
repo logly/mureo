@@ -69,7 +69,7 @@ Key selling points extracted from the 2024 product deck.
 - Fixed sections (`Persona`, `USP`, etc.) use exact heading matches.
 - Variable sections (`Custom`, `Deep Research`, `Sales Material`) use the `Prefix: Title` format.
 - Unknown section headings are logged as warnings and skipped during parsing.
-- The `# Strategy` top-level heading is generated automatically by the renderer.
+- The `# Strategy` top-level heading is written by the renderer only when the file has no title of its own; an existing title and any text before the first `## ` section are kept.
 
 ### `## Tracking Convention` (opt-in)
 
@@ -102,7 +102,7 @@ Every money cap (`max_daily_budget_per_campaign`, `max_total_daily_budget`, `max
 
 Meta is the exception that `currency` exists for (#783). Its write tools carry `daily_budget`, `lifetime_budget` and `bid_amount` in the account currency's **minor units** (cents for USD/EUR, whole yen for JPY), and the policy gate is synchronous, pure and I/O-free by contract — it cannot ask Meta what the account currency is. The `currency` bullet (an ISO 4217 code, case-insensitive) is how the operator tells it, and mureo then divides those three arguments by the currency's Meta offset before comparing them with the caps. The bullet **enforces nothing on its own**: a `## Guardrails` section containing only `currency` leaves the gate fail-open, and an unrecognized code is dropped with one warning.
 
-The bullet can also be picked from a dropdown in the **Advanced** section of `mureo configure` (the **Guardrails** card), which upserts this one line (backing the file up first) and leaves the rest of STRATEGY.md untouched. It is the **active workspace's** file and no other: a backend that keeps a client roster is served no card at all, because there the currency is a per-client setting and belongs on the client's own edit form (#790).
+The bullet can also be picked from a dropdown in the **Advanced** section of `mureo configure` (the **Guardrails** card), which upserts this one line (backing the file up first) and leaves the rest of STRATEGY.md untouched. Like every STRATEGY.md write, it keeps the file's title and any text before the first section byte-for-byte (#845). It is the **active workspace's** file and no other: a backend that keeps a client roster is served no card at all, because there the currency is a per-client setting and belongs on the client's own edit form (#790).
 
 The same card edits **every other `## Guardrails` field** too (#843). Below the currency dropdown it lists each rule by a readable name with a one-line description (English and Japanese), its current value in an input, and what the file says about it: *Not set (no limit)* for an undeclared rule, or *Ignored* for a line that is there but cannot be read (a non-number cap, an unknown metric) and is therefore not enforced. **Save rules** writes only the rules you changed — one bullet replaced, added after the section's last bullet, or removed — and leaves every other line of STRATEGY.md byte-identical; an emptied input removes the bullet and is never written as `0`. A missing `## Guardrails` section is created at the end of the file. The card redraws from what the server re-read after the write.
 

@@ -157,6 +157,17 @@ class TestWriteCurrency:
         assert after.startswith(before)
         assert after == before + "\n## Guardrails\n- currency: EUR\n"
 
+    def test_the_operator_s_title_and_preamble_are_kept(self, tmp_path: Path) -> None:
+        """Only the bullet changes: the title line is not replaced (#845)."""
+        path = tmp_path / "STRATEGY.md"
+        before = "# 戦略\nIntro.\n\n## Guardrails\n- currency: JPY\n"
+        path.write_text(before, encoding="utf-8")
+        write_currency(path, "EUR")
+        after = path.read_text(encoding="utf-8").split("\n")
+        assert after[:4] == before.split("\n")[:4]
+        assert after[0] == "# 戦略"
+        assert after[4:] == ["- currency: EUR", ""]
+
     def test_the_bullet_goes_first_and_the_caps_are_untouched(
         self, tmp_path: Path
     ) -> None:
