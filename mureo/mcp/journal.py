@@ -235,6 +235,8 @@ def build_record(
     rationale: str | None = None,
     source: str | None = None,
     rollback: bool = False,
+    call_id: str | None = None,
+    decision_id: str | None = None,
 ) -> dict[str, Any]:
     """Assemble one journal record. Key order is part of the format."""
     client = client_info()
@@ -266,11 +268,28 @@ def build_record(
         # jsonschema message, and jsonschema embeds the rejected INSTANCE in
         # it — the size of this string is the size of the caller's arguments.
         record["reason"] = scrub_capped(str(reason), MAX_REASON_CHARS)
-    record["duration_ms"] = int(duration_ms)
-    record["batch_id"] = _open_batch_id()
+    return {**record, **_trailer(duration_ms, rollback, call_id, decision_id)}
+
+
+def _trailer(
+    duration_ms: int, rollback: bool, call_id: str | None, decision_id: str | None
+) -> dict[str, Any]:
+    """The record's closing keys, in order.
+
+    ``call_id`` / ``decision_id`` (#848) are emitted only when the call
+    carried out a decision: the decision record names the call by
+    ``call_id``, and this record names the decision.
+    """
+    trailer: dict[str, Any] = {
+        "duration_ms": int(duration_ms),
+        "batch_id": _open_batch_id(),
+    }
     if rollback:
-        record["rollback"] = True
-    return record
+        trailer["rollback"] = True
+    if call_id is not None and decision_id is not None:
+        trailer["call_id"] = call_id[:MAX_FIELD_CHARS]
+        trailer["decision_id"] = decision_id[:MAX_FIELD_CHARS]
+    return trailer
 
 
 def record_call(
@@ -285,6 +304,8 @@ def record_call(
     rationale: str | None = None,
     source: str | None = None,
     rollback: bool = False,
+    call_id: str | None = None,
+    decision_id: str | None = None,
 ) -> None:
     """Append one journal line for a completed tool call. Never raises.
 
@@ -313,6 +334,8 @@ def record_call(
             rationale=rationale,
             source=source,
             rollback=rollback,
+            call_id=call_id,
+            decision_id=decision_id,
         )
         chain_append(journal_path(), record)
     except Exception:  # noqa: BLE001 — the journal must never break a call

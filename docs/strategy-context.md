@@ -1721,6 +1721,7 @@ so it opens its one client's report either way.
 | `batches` | `array` | Declared bulk change sets (see below). Absent until the first `mureo_batch_begin` |
 | `display` | `object \| null` | The write-guarded surface the dashboard renders (see [The display contract](#the-display-contract-706)). Absent until one is written, and absent again once it is cleared |
 | `decisions` | `array` | The append-only reasoning trail (see below). Absent until the first `mureo_decision_record` |
+| `settings` | `object \| null` | Workspace settings (see [Settings](#settings)). Absent until one is written; absent reads as every default |
 | `customer_id` | `string \| null` | Legacy v1 field (kept for backward compatibility) |
 | `campaigns` | `array` | Legacy v1 field (kept for backward compatibility) |
 
@@ -1775,6 +1776,9 @@ Each entry in `action_log` records an action taken by a workflow command, with o
 | `display_title` | `string` | No | What this action was, in a few words an operator reads on a dashboard row (≤40 characters). Over the bound the append is **refused**, never truncated |
 | `display_summary` | `string` | No | One plain-text sentence under the title (≤120 characters) — no markdown, since `**bold**` is shown to a person as asterisks. It *adds* a rendering: `summary` is still written as fully as the next agent needs, and is what the drill-down shows |
 | `occurred_at` | `string` | No | When the **platform** says an external change happened, which is routinely well before mureo saw it. The one date the server does not stamp — it cannot know it — but history, never a claim about "now". `observation_due` is measured from it, so a change that has been live for three weeks is already past due rather than due in a fortnight |
+| `decision_id` | `string` | No — server-stamped | The decision this change carried out (#848): the `decision_id` of the **first** record of its `supersedes` chain, so it stays stable when the decision is updated. Stamped when the change is linked (see [Ops history](ops-history.md)); supplied explicitly it must name a `proposed` or `adopted` decision. An `outcome_evaluated` entry inherits it from the entry it evaluates |
+| `applied_params` | `object` | No — server-stamped | The parameters the call that made the change sent (#848), masked like the journal's `args`. Stamped when the entry is appended during a mutating call; absent otherwise, and when the masked parameters exceed 4,000 characters of JSON. The ops history view reads it as the change's `after` |
+| `evaluation` | `object` | No — server-written | On an `outcome_evaluated` entry written by the automatic closure: the evaluation table `{overall, basis, noise_pct, window: {from, to}, metrics: [{metric, before, after, delta_pct, verdict, note, role}]}`. The decision's `expected` metrics are `primary` and decide `overall`; every other metric is `reference`. `control` and `skipped_reason` are reserved and not written yet |
 
 An imported (`origin: "external"`) entry deliberately carries **no** `metrics_at_action`: mureo was not present when the change was made, so there is no baseline, and synthesising one from today's numbers would invent a "before" that never existed. Those entries are reviewed qualitatively. Which platforms mureo can import from — and what each feed omits — is in [`docs/change-import.md`](change-import.md).
 
@@ -1832,15 +1836,33 @@ Each entry in `decisions` is one decision as it stood at one moment (#758, phase
 | `entity_type` / `entity_id` | `string` | No | Sub-campaign identity (ad group, ad set, placement). A pair, under the same rule `action_log` follows — half an identity names nothing |
 | `related_actions` | `array` | No | Positional indices into the full, append-only `action_log` of the entries this decision produced. At most 50 — a decision that names more changes than that is a batch, and a batch has `batch_id`. Validated at write time; an index past the end of the log is refused |
 | `supersedes` | `string` | No | The `decision_id` of the record this one updates. Validated: it must name a decision already on record |
+| `expected` | `array` | No | The effects the decision should have (#848): `{metric, direction, target?, horizon_days?}`, `metric` from the outcome evaluator's vocabulary, `direction` `up` / `down` / `hold`, one entry per metric. The evaluation of the changes that carry the decision out is scored against the newest record in the chain that declares it. Required on a `proposed` / `adopted` record while ops history is on |
 | `batch_id` | `string` | No | The declared change set this decision concerns. A **closed** batch is accepted here, unlike on an `action_log` append — a decision joins nothing, and the verdict on a bulk pass is normally recorded after it finished |
 | `session_id` | `string` | No — server-stamped | The journal session of the process that wrote the record, so a decision and the changes it produced join on the same id |
 | `client` | `string` | No — server-stamped | The MCP client label, `null` for a CLI or library write |
+| `applied_params` | `object` | No — server-written | On a record mureo writes for a call that carried the decision out (#848): the parameters the call sent, masked |
+| `journal_call_id` | `string` | No — server-written | On the same records: the `call_id` of the call's `JOURNAL.jsonl` record, which names this decision in turn |
+| `journal_tool` | `string` | No — server-written | On a record written for a call that wrote no `action_log` entry: the call's tool name |
 
 Every bound above **refuses** the write rather than truncating it: the caller still holds the sentence and can shorten it, while half a rationale reads as a defect and nobody downstream can tell what was cut. `decision_id` is unique — a second record under an id already on file is refused, because that is what `supersedes` joins on.
 
 **Free text is cleaned on the way in.** `title`, `rationale` and every string `metrics` value pass through the same `scrub_text` boundary an `action_log` reason crosses, so a secret-shaped substring (`api_key=sk-live-…`) is redacted before it reaches the file: a model that quotes the failing request into its reasoning must not leak the key into a file the operator commits. C0/C1 control characters are **stripped** rather than refused — they are not content, and losing a rationale over an invisible byte nobody meant to send would cost more than it saves, while leaving an ESC sequence in a field the CLI and the dashboard print back is a real hazard. TAB and newline survive, so a rationale may be a short paragraph.
 
 The dashboard does not render this section yet — that is a follow-up.
+
+A decision can also be created **automatically** (#848): a mutating call with a `reason` and no `decision_id` records an `adopted` decision for it — in the same write as its `action_log` entry, or right after the call when it writes no entry — unless it joins its batch's decision. An entry appended for a call that wrote none joins that call's decision only on an exact match of session, tool and target ids. See [Ops history](ops-history.md).
+
+#### Settings
+
+The `settings` object holds workspace settings (#848). Absent, or any key missing from it, reads as the default, and a malformed value reads as the default rather than refusing the document. Written only through `mureo_state_settings_set` (which can only switch ops history on) or `mureo configure` → **Advanced** → **Ops history** (on or off), under STATE.json's file lock. Setting the value already in force writes nothing.
+
+```json
+"settings": {"ops_history": {"enabled": true}}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `ops_history.enabled` | `boolean` | `false` | When `true`, every mutating call must carry `reason` and `expected`, and a `proposed` / `adopted` decision must declare `expected`. Only a literal `true` turns it on. See [Ops history](ops-history.md) |
 
 ### Python API
 

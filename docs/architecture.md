@@ -105,6 +105,8 @@ The journal answers "what did this agent actually try"; `action_log` answers "wh
 
 One part of the `action_log` trail closes itself (#758 phase 5). An entry with an `observation_due` used to stay open until an agent remembered to append an `evaluation_of` record for it, and a forgotten one was re-evaluated on every run while the pending set grew. Where the verdict is fully determined by the document — a campaign-level action with a numeric baseline, on a platform whose campaign metrics were collected on or after the due date — `mureo_state_get` now scores it with the same deterministic `evaluate_outcome` an agent would call and appends the closure record itself, with the writing session's id and a machine-built `reason`. Everything it cannot decide (an external change, a missing baseline, metrics that predate the window) is reported back as a skip with its reason and still owes a manual evaluation. The write faces the same policy gates an `action_log` append does, so a read-only deployment skips it rather than bypassing them — see [mcp-server.md](mcp-server.md#automatic-observation-closure-758-phase-5).
 
+**Ops history (#848)** joins the two trails. A mutating call's `reason` and `expected` become an `adopted` decision record (or join the batch's; nothing is joined by similarity), and the `action_log` entry it produces is stamped with that decision's id. This happens inside the same locked write as the append, in `mureo/context/ops_linkage.py`, so an entry and its decision cannot be written apart. A call that writes no entry gets its decision in one locked write right after it succeeds, linked to its `JOURNAL.jsonl` record by `call_id`. The automatic closure then scores the change against the decision's `expected` metrics and stores the full evaluation table on the `outcome_evaluated` entry. `settings.ops_history.enabled` makes `reason` and `expected` required. The `decisions` and `ops_history` sources of `mureo_history_query` read the join back with a derived state, and nothing about that state is stored. See [ops-history.md](ops-history.md).
+
 mureo's value increases — not decreases — as official MCPs ship.
 
 ## Package Structure
@@ -191,6 +193,14 @@ mureo/
 │   │                        #   dashboard write and so cannot be a history
 │   ├── _decision_codec.py   # That section's two codec halves — strict like action_log's,
 │   │                        #   because a decision record IS history
+│   ├── expected.py          # `expected` effects (#848): {metric, direction, target?, horizon_days?}
+│   ├── settings.py          # The `settings` section: ops_history.enabled (#848)
+│   ├── decision_chain.py    # A decision's `supersedes` chain: root, latest, expected
+│   ├── ops_intent.py        # The call's expected / decision_id, bound by the dispatcher
+│   ├── ops_linkage.py       # Linking an action_log entry / batch to its decision (#848),
+│   │                        #   inside the append's locked write
+│   ├── ops_fields.py        # Title and metrics of an automatically created decision
+│   ├── ops_history_view.py  # Decision → actions → evaluation join with derived states
 │   ├── display_codec.py     # The `display` section's two codec halves (#706) — tolerant on
 │   │                        #   read, because every bound on that surface is a WRITE rule
 │   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)
@@ -538,7 +548,7 @@ The Amazon bridge is the reason mureo sits in the request path rather than letti
 
 ## Command-Based Workflow System
 
-In addition to the 228 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 229 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 

@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from mureo.context.decisions import DecisionRecord
+    from mureo.context.settings import WorkspaceSettings
+
+#: The #848 ``ActionLogEntry`` maps, refused unless they are objects.
+_OBJECT_FIELDS: tuple[str, ...] = ("evaluation", "applied_params")
 
 #: ``ActionLogEntry.origin`` value for a change mureo OBSERVED rather than
 #: performed (#545). ``origin is None`` — every entry written before this
@@ -288,6 +292,10 @@ class ActionLogEntry:
         was serving, or ``None`` for a CLI or library write — which is an
         honest answer, not a gap: nothing there had a client. Documents the
         writer, like ``session_id``, and is stamped alongside it.
+    decision_id / evaluation / applied_params: Ops history (#848, see
+        :mod:`mureo.context.ops_linkage`): the decision carried out, the
+        evaluation table of an ``outcome_evaluated`` record, and the masked
+        parameters the call sent. ``None`` on every older entry.
     """
 
     timestamp: str
@@ -319,6 +327,10 @@ class ActionLogEntry:
     reason: str | None = None
     session_id: str | None = None
     client: str | None = None
+    # Appended after every pre-#848 field, same positional-compatibility rule.
+    decision_id: str | None = None
+    evaluation: dict[str, Any] | None = None
+    applied_params: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
@@ -337,14 +349,12 @@ class ActionLogEntry:
                 raise ValueError("entity_id must be a non-empty string")
             object.__setattr__(self, "entity_type", self.entity_type.strip())
             object.__setattr__(self, "entity_id", self.entity_id.strip())
-        if self.metrics_at_action is not None:
-            object.__setattr__(
-                self, "metrics_at_action", copy.deepcopy(self.metrics_at_action)
-            )
-        if self.reversible_params is not None:
-            object.__setattr__(
-                self, "reversible_params", copy.deepcopy(self.reversible_params)
-            )
+        for name in ("metrics_at_action", "reversible_params", *_OBJECT_FIELDS):
+            value = getattr(self, name)
+            if name in _OBJECT_FIELDS and not isinstance(value, (dict, type(None))):
+                raise ValueError(f"{name} must be an object")
+            if value is not None:
+                object.__setattr__(self, name, copy.deepcopy(value))
 
     def _validate_actor(self) -> None:
         """Enforce the #758 rationale/identity invariants.
@@ -367,7 +377,7 @@ class ActionLogEntry:
             # The LENGTH bound lives on the write path (see the field
             # docstring), not here: an entry already on disk is history.
             object.__setattr__(self, "reason", self.reason.strip() or None)
-        for name in ("session_id", "client"):
+        for name in ("session_id", "client", "decision_id"):
             value = getattr(self, name)
             if value is None:
                 continue
@@ -767,6 +777,8 @@ class StateDocument:
     # Empty by default and emitted only when non-empty, so a STATE.json
     # written before this section existed parses unchanged and gains no key.
     decisions: tuple[DecisionRecord, ...] = field(default_factory=tuple)
+    # #848, see :mod:`mureo.context.settings`; ``None`` reads as the defaults.
+    settings: WorkspaceSettings | None = None
 
     def __post_init__(self) -> None:
         """Defensive copies for mutable fields."""

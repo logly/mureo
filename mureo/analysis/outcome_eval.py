@@ -92,6 +92,14 @@ def _direction(metric: str) -> _Direction:
     return _METRIC_DIRECTION.get(metric.strip().lower(), _Direction.NEUTRAL)
 
 
+def is_directional(metric: str) -> bool:
+    """Whether ``metric`` has an inherent good/bad direction (CPA, CTR, ...).
+
+    Volume metrics (cost, clicks, ...) and unknown names do not.
+    """
+    return _direction(metric) is not _Direction.NEUTRAL
+
+
 def _coerce_float(value: object) -> float | None:
     """Best-effort float coercion; ``bool`` is rejected (it is an ``int``)."""
     if isinstance(value, bool) or value is None:

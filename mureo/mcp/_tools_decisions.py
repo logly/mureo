@@ -32,6 +32,7 @@ from mureo.context.decisions import (
     DECISION_TITLE_MAX_CHARS,
 )
 from mureo.mcp._handlers_decisions import DECISIONS_SCOPES, handle_decision_record
+from mureo.mcp._ops_history_param import expected_schema
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -81,17 +82,20 @@ DECISIONS_SCOPE_PROPERTY: dict[str, Any] = {
 }
 
 _DESCRIPTION = (
-    "Record a decision — a proposal, or the operator's answer to one — so "
-    "the reasoning survives the session. Call it BEFORE you surface a "
-    "proposal to the operator, with status='proposed', the figures you "
-    "judged it on in `metrics`, and your reasoning in `rationale`. When the "
-    "operator answers, call it AGAIN with status='adopted' / 'rejected' / "
-    "'deferred' and `supersedes` set to the first record's `decision_id`: "
-    "the section is APPEND-ONLY, so a status change is a new record, never "
-    "an edit — that is what keeps 'we proposed this on the 4th and it was "
-    "turned down' recoverable. After you carry a decision out, record it "
-    "once more (or name the entries in `related_actions`) so the change and "
-    "the reason for it are joined. `display.proposals` is the SCREEN — one "
+    "Record a decision so the reasoning survives the session. Use it only "
+    "when you want to PROPOSE first: record status='proposed' BEFORE you "
+    "surface the proposal, with the figures you judged it on in `metrics`, "
+    "your reasoning in `rationale` and the effect you expect in `expected`. "
+    "When the operator approves, make the change and pass the proposal's "
+    "`decision_id` on the change-making call: it becomes adopted and is "
+    "linked to the change. When the operator turns it down or postpones it, "
+    "record status='rejected' / 'deferred' with `supersedes` set to the "
+    "proposal's `decision_id` — the section is APPEND-ONLY, so a status "
+    "change is a new record, never an edit. A change made without a "
+    "proposal needs no record here: pass `reason` and `expected` on the "
+    "change-making call and mureo records the decision itself. Never write "
+    "an 'adopted' record for a change afterwards — that leaves two "
+    "decisions for one change. `display.proposals` is the SCREEN — one "
     "moment, replaced whole on every dashboard write; this is the RECORD. "
     "`decision_id` and `recorded_at` are minted by the server; do not "
     "compute either. Every bound below refuses the write rather than "
@@ -111,10 +115,12 @@ TOOLS: list[Tool] = [
                     "enum": list(DECISION_STATUSES),
                     "description": (
                         "Where the decision stands. 'proposed' before the "
-                        "operator has answered; 'adopted' / 'rejected' / "
-                        "'deferred' afterwards, with `supersedes` set. "
-                        "'deferred' is not 'rejected' — 'not now' and 'no' "
-                        "call for different behaviour next week."
+                        "operator has answered; 'rejected' / 'deferred' "
+                        "afterwards, with `supersedes` set. An approval is "
+                        "recorded by passing the proposal's `decision_id` on "
+                        "the change-making call, not here. 'deferred' is not "
+                        "'rejected' — 'not now' and 'no' call for different "
+                        "behaviour next week."
                     ),
                 },
                 "title": {
@@ -206,6 +212,14 @@ TOOLS: list[Tool] = [
                         "is normally recorded after it finished."
                     ),
                 },
+                "expected": expected_schema(
+                    "What the decision should move, judged when the change "
+                    'it leads to is evaluated (e.g. [{"metric": "cpa", '
+                    '"direction": "down", "target": 4500}]). Its '
+                    "metrics are the primary ones in that evaluation. "
+                    "Required for 'proposed' / 'adopted' when ops history is "
+                    "enabled."
+                ),
                 "path": _PATH_PROPERTY,
             },
             "required": ["status", "title", "rationale"],

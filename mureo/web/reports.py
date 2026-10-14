@@ -81,12 +81,15 @@ The import direction is one-way — ``reports`` to ``report_document`` to
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 # "Which observations are still owed a review" — the rule that already
 # defines ``mureo_state_get(action_log="pending")``, read here rather than
 # restated (#651).
 from mureo.context.observations import due_observation_dates
+from mureo.context.ops_history_query import ops_history_items
+from mureo.context.settings import ops_history_enabled
 from mureo.core import clock
 
 # The client seam. Imported (not re-implemented) and re-exported through
@@ -153,6 +156,7 @@ __all__ = [
     "CONFLICT_DUPLICATE_ACCOUNT",
     "CONFLICT_UNRECOGNIZED_KEY",
     "ClientArchiveError",
+    "build_ops_history",
     "build_report_summary",
     "list_report_clients",
     "report_clients_payload",
@@ -446,4 +450,67 @@ def _action_row(entry: ActionLogEntry) -> dict[str, Any]:
         "observation_due": entry.observation_due,
         "display_title": entry.display_title,
         "display_summary": entry.display_summary,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Ops history (#848)
+# ---------------------------------------------------------------------------
+
+
+def _as_day(value: date | str | None, name: str) -> date | None:
+    """A ``since`` / ``until`` bound as a date; ``YYYY-MM-DD`` or a date."""
+    if value is None or isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a YYYY-MM-DD date; got {value!r}") from exc
+
+
+def build_ops_history(
+    client: str | None = None,
+    since: date | str | None = None,
+    until: date | str | None = None,
+) -> dict[str, Any]:
+    """Decisions joined to their changes and evaluations, for one client.
+
+    The data feed for the ops history section (#848): one item per decision
+    — its chain, the changes that carried it out with their before-values,
+    reason and ``metrics_at_action``, and their evaluation — plus one item
+    per change no decision covers. Each item's ``state`` / ``verdict`` /
+    ``rolled_back`` is derived, never stored; see
+    :mod:`mureo.context.ops_history_view`. Newest first, bounded by the
+    date of the item's timestamp (a decision's first record, or the
+    uncovered change's own) by the rule every history source uses,
+    inclusive.
+
+    ``enabled`` echoes the workspace's ops history switch; the items are
+    returned either way, so a change recorded while it was off still shows,
+    as "no decision".
+
+    Never raises on a missing or malformed STATE.json (an empty list), the
+    same rule as :func:`build_report_summary`.
+
+    Raises:
+        ValueError: ``since`` / ``until`` is not a date, or ``until`` is
+            before ``since``.
+    """
+    start, end = _as_day(since, "since"), _as_day(until, "until")
+    if start is not None and end is not None and end < start:
+        raise ValueError(f"until ({end}) is before since ({start})")
+    doc = _read_state_safe(state_store_for_client(client))
+    today = clock.server_now().date()
+    items = (
+        []
+        if doc is None
+        else ops_history_items(doc, today=today, since=start, until=end)
+    )
+    return {
+        "client": client or _active_workspace_id(_active_state_store()),
+        "since": start.isoformat() if start else None,
+        "until": end.isoformat() if end else None,
+        "server_today": today.isoformat(),
+        "enabled": ops_history_enabled(doc),
+        "items": items,
     }

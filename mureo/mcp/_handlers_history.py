@@ -56,6 +56,8 @@ from typing import TYPE_CHECKING, Any, Final
 
 from mureo.context.history import read_daily_archive, read_report_history
 from mureo.context.models import DAILY_DATE_KEY_PATTERN
+from mureo.context.ops_history_query import in_window as _in_window
+from mureo.context.ops_history_query import iso_date as _iso_date
 from mureo.context.state import read_state_file, render_state
 from mureo.core import clock
 from mureo.core.platform_keys import is_plugin_platform_key, plugin_distribution
@@ -63,6 +65,7 @@ from mureo.core.report_kinds import REPORT_KINDS
 from mureo.core.rotation import sibling_files
 from mureo.mcp import journal
 from mureo.mcp._helpers import _json_result, resolve_workspace_path
+from mureo.mcp._history_ops import decisions_section, ops_history_section
 from mureo.mcp._journal_hook import JOURNAL_OUTCOMES
 from mureo.mcp.journal_read import (
     JOURNAL_SCAN_LINES,
@@ -82,6 +85,10 @@ HISTORY_SOURCES: Final[tuple[str, ...]] = (
     "journal",
     "daily",
     "reports",
+    # #848 — decisions joined to the changes that carried them out and
+    # their evaluation; see mureo.mcp._history_ops.
+    "decisions",
+    "ops_history",
 )
 
 #: What a query with no ``sources`` asks for: the two trails that answer
@@ -288,38 +295,6 @@ def build_history_query(arguments: dict[str, Any]) -> HistoryQuery:
         mutations_only=bool(arguments.get("mutations_only", False)),
         failures_only=bool(arguments.get("failures_only", False)),
     )
-
-
-def _in_window(day: date | None, query: HistoryQuery) -> bool:
-    """Whether ``day`` falls inside the query's inclusive bounds.
-
-    An undatable record passes an unbounded query and fails a bounded one:
-    it cannot be SHOWN to fall inside a window, and a record placed in one
-    it might not belong to is worse than one left out of it.
-    """
-    if query.since is None and query.until is None:
-        return True
-    if day is None:
-        return False
-    return (query.since is None or day >= query.since) and (
-        query.until is None or day <= query.until
-    )
-
-
-def _iso_date(value: Any) -> date | None:
-    """The UTC date of an ISO 8601 timestamp, or ``None`` if unreadable.
-
-    ``Z`` is normalised by hand: ``fromisoformat`` only learned to read it
-    in 3.11 and mureo still supports 3.10, where an unconverted ``Z``
-    would drop the record out of every bounded query.
-    """
-    if not isinstance(value, str) or not value:
-        return None
-    text = f"{value[:-1]}+00:00" if value.endswith("Z") else value
-    try:
-        return datetime.fromisoformat(text).date()
-    except ValueError:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -586,6 +561,8 @@ _SECTIONS: dict[str, Callable[[Path, HistoryQuery], dict[str, Any]]] = {
     "journal": _journal_section,
     "daily": _daily_section,
     "reports": _reports_section,
+    "decisions": decisions_section,
+    "ops_history": ops_history_section,
 }
 
 

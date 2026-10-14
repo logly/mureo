@@ -22,6 +22,7 @@ from mureo.context.batch import BatchError
 from mureo.context.decisions import DecisionRecord, append_decision, new_decision_id
 from mureo.core.clock import server_now_iso
 from mureo.mcp._helpers import _json_result, _opt, _require, resolve_workspace_path
+from mureo.mcp._ops_history_records import require_decision_expected
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -60,6 +61,7 @@ def _build_record(arguments: dict[str, Any]) -> DecisionRecord:
         related_actions=_opt(arguments, "related_actions") or (),
         supersedes=_opt(arguments, "supersedes"),
         batch_id=_opt(arguments, "batch_id"),
+        expected=_opt(arguments, "expected"),
     )
 
 
@@ -77,6 +79,7 @@ async def handle_decision_record(arguments: dict[str, Any]) -> list[TextContent]
     """
     path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     record = _build_record(arguments)
+    require_decision_expected(path, record)
     try:
         doc, index = append_decision(path, record)
     except BatchError as exc:

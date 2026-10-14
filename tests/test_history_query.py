@@ -221,10 +221,10 @@ def _spy_on_archive(monkeypatch) -> list[tuple[Any, Any]]:
 
 
 class TestTheToolIsServedAndReadOnly:
-    def test_the_context_family_now_exports_fifteen_tools(self) -> None:
+    def test_the_context_family_now_exports_sixteen_tools(self) -> None:
         from mureo.mcp import tools_mureo_context
 
-        assert len(tools_mureo_context.TOOLS) == 15
+        assert len(tools_mureo_context.TOOLS) == 16
         assert _TOOL in {tool.name for tool in tools_mureo_context.TOOLS}
 
     def test_it_is_not_classified_as_a_mutation(self) -> None:

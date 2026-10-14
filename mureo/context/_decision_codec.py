@@ -23,6 +23,7 @@ import logging
 from typing import Any
 
 from mureo.context.decisions import DecisionRecord
+from mureo.context.expected import expected_to_list, parse_expected
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,10 @@ DECISION_COVERAGE: tuple[type, frozenset[str], str] = (
             "batch_id",
             "session_id",
             "client",
+            "expected",
+            "applied_params",
+            "journal_call_id",
+            "journal_tool",
         }
     ),
     "_decision_codec.parse_decisions / .decision_to_dict",
@@ -121,6 +126,11 @@ def _parse_decision(item: Any) -> DecisionRecord:
         batch_id=item.get("batch_id"),
         session_id=item.get("session_id"),
         client=item.get("client"),
+        # #848 — absent on every record written before ops history.
+        expected=parse_expected(item.get("expected")),
+        applied_params=item.get("applied_params"),
+        journal_call_id=item.get("journal_call_id"),
+        journal_tool=item.get("journal_tool"),
     )
 
 
@@ -181,12 +191,18 @@ def decision_to_dict(record: DecisionRecord) -> dict[str, Any]:
         "batch_id",
         "session_id",
         "client",
+        "journal_call_id",
+        "journal_tool",
     ):
         value = getattr(record, name)
         if value is not None:
             result[name] = value
     if record.related_actions:
         result["related_actions"] = list(record.related_actions)
+    if record.expected:
+        result["expected"] = expected_to_list(record.expected)
+    if record.applied_params is not None:
+        result["applied_params"] = copy.deepcopy(record.applied_params)
     return result
 
 

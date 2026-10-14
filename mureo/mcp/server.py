@@ -57,6 +57,13 @@ from mureo.core.actor import bind_call_reason
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp._helpers import is_error_result
 from mureo.mcp._journal_hook import capture_client_info, journal_call, take_rationale
+from mureo.mcp._ops_history_param import (
+    enforce_ops_call,
+    inject_ops_params,
+    ops_call_scope,
+    ops_scope,
+    take_ops_params,
+)
 from mureo.mcp._plugin_declarations import (
     _register_bridged_money_declarations,
     _register_plugin_bid_declarations,
@@ -357,6 +364,9 @@ _register_plugin_pattern_fallbacks(_PLUGIN_SEMANTICS)
 _ALL_TOOLS, _REASON_TOOLS = inject_reason_params(
     _ALL_TOOLS, mutating_predicate(_PLUGIN_NAMES, _PLUGIN_SEMANTICS)
 )
+# ``expected`` / ``decision_id`` on every change-making tool (#848) — see
+# _ops_history_param. Same rebinding rule as ``reason`` above.
+_ALL_TOOLS, _OPS_TOOLS = inject_ops_params(_ALL_TOOLS, ops_scope(_REASON_TOOLS))
 
 
 # Server-side ``inputSchema`` enforcement lives in
@@ -817,6 +827,9 @@ async def _gated_dispatch(
     # passes it on. Bound to the task further down, where append_action_log
     # reads it without any of the five recorders having to forward it.
     reason, handler_args = take_rationale(call, name, arguments, _REASON_TOOLS)
+    # #848: ``expected`` / ``decision_id`` come off the same way, for the
+    # same reason; bound to the task below next to the rationale.
+    ops, handler_args = take_ops_params(call, name, handler_args, _OPS_TOOLS)
     decision = _evaluate_policy_gates(name, handler_args)
     if decision is not None:
         call.denied(decision.reason)
@@ -831,6 +844,7 @@ async def _gated_dispatch(
     except ValueError as exc:
         call.invalid_args(exc)
         raise
+    enforce_ops_call(call, name, reason, ops, handler_args, _OPS_TOOLS)
     # #547: size a bulk exclusion / block / negative-keyword batch against the
     # account's own recent delivery before it is applied. Runs here rather than
     # in a PolicyGate because it needs one AWAITED platform read and the gate
@@ -838,7 +852,10 @@ async def _gated_dispatch(
     # lands before any mutation. No-ops (and issues no read) for every tool
     # that is not a registered exclusion surface, and for an operator who wrote
     # no exclusion rule in STRATEGY.md ## Guardrails.
-    with bind_call_reason(reason):
+    with (
+        bind_call_reason(reason),
+        ops_call_scope(call, name, ops, handler_args, _OPS_TOOLS, reason),
+    ):
         preflight = await exclusion_impact_preflight(name, handler_args)
         if preflight.refusal_reason is not None:
             call.refused(preflight.refusal_reason)
@@ -846,6 +863,13 @@ async def _gated_dispatch(
         result = append_exclusion_impact_notice(
             call.completed(await _dispatch_tool(name, handler_args)), preflight
         )
+    return _append_result_notices(name, handler_args, result)
+
+
+def _append_result_notices(
+    name: str, handler_args: dict[str, Any], result: list[Any]
+) -> list[Any]:
+    """The notices a dispatched call's result carries on its way out."""
     # #548: a change that restarts an automated bid strategy's learning period
     # says so in its own result, so the next change in a troubleshooting
     # sequence is not made blind. No-op for everything else.

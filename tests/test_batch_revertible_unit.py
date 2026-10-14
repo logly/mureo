@@ -288,6 +288,11 @@ _ENTRY_FIELD_VALUES: dict[str, Any] = {
     "reason": "All 12 spent with no conversions for 30 days.",
     "session_id": "0123456789abcdef0123456789abcdef",
     "client": "Claude Code/1.4.2",
+    # #848 — ops history. ``evaluation_of`` is set above, so the linkage
+    # keeps an explicit ``decision_id`` as it is rather than resolving it.
+    "decision_id": "dec-20260807T100000-a1b2c3d4",
+    "evaluation": {"overall": "improved", "basis": "default", "metrics": []},
+    "applied_params": {"campaign_id": "c1", "status": "PAUSED"},
     # The one field the round-trip is ALLOWED to change: it arrives unset and
     # comes back carrying the open batch.
     "batch_id": None,
