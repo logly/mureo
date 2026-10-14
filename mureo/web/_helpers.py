@@ -13,6 +13,7 @@ import contextlib
 import json
 import logging
 import secrets as _secrets
+import urllib.parse
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
@@ -175,6 +176,19 @@ def send_bytes(
     handler.end_headers()
     with contextlib.suppress(BrokenPipeError, ConnectionResetError):
         handler.wfile.write(body)
+
+
+def flatten_query(path: str) -> dict[str, str]:
+    """Parse a URL's query string into ``{key: first_value}``.
+
+    Multi-value handlers can still reach the raw query via
+    ``request.path`` — this helper is the lightweight default the
+    extension API contract documents.
+    """
+    if "?" not in path:
+        return {}
+    parsed = urllib.parse.parse_qs(path.split("?", 1)[1], keep_blank_values=True)
+    return {k: v[0] for k, v in parsed.items() if v}
 
 
 def send_error_json(handler: BaseHTTPRequestHandler, status: int, message: str) -> None:

@@ -5284,7 +5284,6 @@ label .muted,
 }
 
 .ops-history-empty,
-.ops-history-error,
 .ops-history-skipped {
   margin: 0;
   color: var(--ink-soft);

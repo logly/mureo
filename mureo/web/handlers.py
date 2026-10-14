@@ -89,6 +89,7 @@ from mureo.oauth_authcode import parse_loopback_callback_url
 from mureo.web._helpers import (
     SOCKET_READ_TIMEOUT_SECONDS,
     compare_csrf,
+    flatten_query,
     host_header_ok,
     parse_json_body,
     read_body,
@@ -416,19 +417,6 @@ def _find_extension_static(
         if asset.filename == filename:
             return asset
     return None
-
-
-def _flatten_query(path: str) -> dict[str, str]:
-    """Parse a URL's query string into ``{key: first_value}``.
-
-    Multi-value handlers can still reach the raw query via
-    ``request.path`` — this helper is the lightweight default the
-    extension API contract documents.
-    """
-    if "?" not in path:
-        return {}
-    parsed = urllib.parse.parse_qs(path.split("?", 1)[1], keep_blank_values=True)
-    return {k: v[0] for k, v in parsed.items() if v}
 
 
 def _resolve_static_body(wizard: ConfigureWizard, filename: str) -> bytes | None:
@@ -1326,7 +1314,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         (Agency seam) and forward a window hint. Read-only, Host-gated, and
         secret-free; the builder never raises on a missing/empty STATE.json.
         """
-        query = _flatten_query(self.path)
+        query = flatten_query(self.path)
         client = query.get("client") or None
         period = query.get("period") or None
         send_json(self, build_report_summary(client=client, period=period))
@@ -1373,7 +1361,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         (filenames + a whitelisted manifest summary); the builder never
         raises on a missing gallery directory.
         """
-        query = _flatten_query(self.path)
+        query = flatten_query(self.path)
         send_json(self, list_creative_runs(query.get("client") or None))
 
     def _serve_creative_image(self) -> None:
@@ -1385,7 +1373,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         distinguishes the refusal reason nor touches the filesystem
         outside the gallery tree.
         """
-        query = _flatten_query(self.path)
+        query = flatten_query(self.path)
         run_id = query.get("run", "")
         filename = query.get("file", "")
         if not run_id or not filename:
@@ -2292,10 +2280,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if route is None:
             send_error_json(self, 404, "not_found")
             return
-        if method == "GET":
-            handler_payload = _flatten_query(self.path)
-        else:
-            handler_payload = payload or {}
+        handler_payload = flatten_query(self.path) if method == "GET" else payload or {}
         try:
             route.handler(self, handler_payload)
         except Exception:  # noqa: BLE001 — per-extension fault isolation

@@ -46,7 +46,8 @@
   //: "CPA above target for two weeks", not for "Too high.".
   const WEAK_RATIONALE_MIN_CHARS = 20;
 
-  //: The period choices, in days back from the server's today.
+  //: The period choices: that many calendar days ending on the server's
+  //: today, today included (the server's own window rule).
   const PERIOD_DAYS = [7, 30, 90];
   //: The default period — the server's default window, so the first fetch
   //: carries no dates and the client card's counts cover the same days.
@@ -80,6 +81,9 @@
     "eval_note",
   ];
   const NO_VALUE = "—";
+  //: The longest a single before / after value is printed. A nested value is
+  //: shown as JSON and cut here, so one deep parameter cannot fill the row.
+  const VALUE_TEXT_MAX_CHARS = 80;
   const ARROW = " → ";
   const DAY_MS = 86400000;
 
@@ -244,7 +248,8 @@
   function feedUrl(client, period, today) {
     const params = [];
     if (client) params.push("client=" + encodeURIComponent(client));
-    const since = period !== DEFAULT_PERIOD_DAYS && today ? shiftDay(today, period) : null;
+    const since =
+      period !== DEFAULT_PERIOD_DAYS && today ? shiftDay(today, period - 1) : null;
     if (since) params.push("since=" + since, "until=" + today);
     return FEED_URL + (params.length ? "?" + params.join("&") : "");
   }
@@ -443,11 +448,21 @@
     return wrap;
   }
 
+  function bounded(text) {
+    if (text.length <= VALUE_TEXT_MAX_CHARS) return text;
+    return text.slice(0, VALUE_TEXT_MAX_CHARS - 1) + "…";
+  }
+
+  function valueText(v) {
+    if (isNumber(v)) return formatNumber(v);
+    if (v && typeof v === "object") return bounded(JSON.stringify(v));
+    return bounded(String(v));
+  }
+
   function valuesText(values) {
     if (!values || typeof values !== "object") return NO_VALUE;
     const pairs = Object.keys(values).map(function (key) {
-      const v = values[key];
-      return key + ": " + (isNumber(v) ? formatNumber(v) : String(v));
+      return key + ": " + valueText(values[key]);
     });
     return pairs.length ? pairs.join(", ") : NO_VALUE;
   }
@@ -632,15 +647,6 @@
     return section;
   }
 
-  function drawFailure() {
-    const section = newSection();
-    section.appendChild(el("h3", null, t("title")));
-    const p = el("p", "ops-history-error", t("load_failed"));
-    p.setAttribute("data-ops-history-error", "");
-    section.appendChild(p);
-    placeSection(section);
-  }
-
   function drawSection(focusPeriod) {
     const body = view.body;
     const section = newSection();
@@ -690,10 +696,13 @@
       const res = await fetch(url, { credentials: "same-origin" });
       if (!res.ok) throw new Error("HTTP " + res.status);
       body = await res.json();
-    } catch (_err) {
+    } catch (err) {
+      // Whether ops history is even on is unknown here, and a workspace with
+      // it off must have no section at all — so none is drawn.
       if (seq !== view.seq) return;
       view = Object.assign({}, view, { body: null });
-      drawFailure();
+      removeSection();
+      console.warn("ops history could not be loaded", err);
       return;
     }
     if (seq !== view.seq) return;

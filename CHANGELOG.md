@@ -70,8 +70,9 @@
   `GET /api/reports/ops-history?client=&since=&until=` (last 30 days by
   default). Where a client registry supplies the clients, each summary
   carries an `ops_history` count for the last 30 days, shown as one line on
-  the client card, and a client with a regressed change raises an
-  attention finding in the triage list. The shared skill and
+  the client card, and a client with a regressed change that was not
+  rolled back raises an attention finding in the triage list. The shared
+  skill and
   `/daily-check` now ask for `reason` and `expected` on every change and
   for `expected` in every proposal. See `docs/ops-history.md`.
 

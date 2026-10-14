@@ -15,6 +15,8 @@ What is counted:
   ``proposed`` / ``adopted`` with no change, or ``rejected`` / ``deferred``,
   changed nothing and is not a change.
 - ``improved`` / ``regressed``: evaluated items with that verdict.
+- ``regressed_open``: the regressed ones not rolled back — what the triage
+  finding counts, since a reverted change needs nothing more.
 - ``inconclusive``: evaluated items with any other verdict, including none.
 - ``observing``: items whose observation window is still open.
 
@@ -41,7 +43,8 @@ if TYPE_CHECKING:
 
     from mureo.context.models import StateDocument
 
-#: The window the client card counts over, and the detail section's default.
+#: The window the client card counts over, and the detail section's default:
+#: this many calendar days ending today, today included.
 OPS_HISTORY_WINDOW_DAYS: Final = 30
 
 #: The states in which something was changed.
@@ -58,9 +61,15 @@ def _zero() -> dict[str, int]:
         "changes": 0,
         "improved": 0,
         "regressed": 0,
+        "regressed_open": 0,
         "inconclusive": 0,
         "observing": 0,
     }
+
+
+def window_start(today: date, window_days: int) -> date:
+    """The first day of ``window_days`` calendar days ending ``today``."""
+    return today - timedelta(days=window_days - 1)
 
 
 def count_ops_history_items(items: Iterable[dict[str, Any]]) -> dict[str, int]:
@@ -77,6 +86,8 @@ def count_ops_history_items(items: Iterable[dict[str, Any]]) -> dict[str, int]:
             verdict = item.get("verdict")
             key = verdict if verdict in (_IMPROVED, _REGRESSED) else "inconclusive"
             counts[key] += 1
+            if key == _REGRESSED and not item.get("rolled_back"):
+                counts["regressed_open"] += 1
     return counts
 
 
@@ -88,14 +99,14 @@ def ops_history_counts(
 ) -> dict[str, Any]:
     """The client card's aggregate for ``doc`` over the last ``window_days``.
 
-    ``since`` is ``today - window_days`` and ``until`` is ``today``, both
-    inclusive — the detail section's default window. While ops history is
-    off nothing is read and every count is zero.
+    ``window_days`` calendar days ending ``today``, both ends included
+    (:func:`window_start`) — the detail section's default window. While ops
+    history is off nothing is read and every count is zero.
     """
     enabled = ops_history_enabled(doc)
     counts = _zero()
     if enabled and doc is not None:
-        since = today - timedelta(days=window_days)
+        since = window_start(today, window_days)
         items = ops_history_items(doc, today=today, since=since, until=today)
         counts = count_ops_history_items(items)
     return {"enabled": enabled, "window_days": window_days, **counts}
@@ -106,4 +117,5 @@ __all__ = [
     "OPS_HISTORY_WINDOW_DAYS",
     "count_ops_history_items",
     "ops_history_counts",
+    "window_start",
 ]

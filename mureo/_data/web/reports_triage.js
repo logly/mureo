@@ -339,7 +339,9 @@
     };
   }
 
-  // How many of the client's changes regressed in the last 30 days, or null.
+  // How many of the client's changes regressed in the last 30 days and were
+  // not rolled back (`regressed_open`), or null. A reverted change needs
+  // nothing more, so it raises nothing; the card line still counts it.
   //
   // The server's count (`summary.ops_history`, #849), present only where the
   // client registry supplies clients and only meaningful while ops history is
@@ -347,7 +349,7 @@
   function opsRegressed(summary) {
     const ops = summary && summary.ops_history;
     if (!ops || typeof ops !== "object" || ops.enabled !== true) return null;
-    const count = ops.regressed;
+    const count = ops.regressed_open;
     if (typeof count !== "number" || !isFinite(count) || count < 1) return null;
     return count;
   }
@@ -557,7 +559,12 @@
       case "unrecognized_key":
         return MUREO.t("dashboard.reports_triage_unknown_key", { keys: row.keys });
       case "ops_regressed":
-        return MUREO.t("ops_history_section.triage_text", { n: row.count });
+        return MUREO.t(
+          row.count === 1
+            ? "ops_history_section.regressed_one"
+            : "ops_history_section.regressed_other",
+          { n: row.count }
+        );
       case "observation_due":
         return MUREO.t("dashboard.reports_triage_observation_due", {
           n: row.count,

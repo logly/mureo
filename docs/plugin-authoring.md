@@ -2733,7 +2733,7 @@ dispatch (`NAME_PATTERN` / `SUBPATH_PATTERN` / `FILENAME_PATTERN` in
 `..`, double-slash, trailing slash, `?`, or `#`, and filenames
 containing directory separators or starting with a dot. Real query
 strings appear AFTER the URL path and are handled by the dispatcher's
-`_flatten_query` helper (first-value-wins).
+`flatten_query` helper in `mureo.web._helpers` (first-value-wins).
 
 ### Security model
 
