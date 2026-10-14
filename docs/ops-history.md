@@ -71,8 +71,11 @@ When an `action_log` entry is recorded — by a mutating call, or by
       `*_ids` parameter except `id`, `customer_id` and `account_id` —
       appears with the same value in the entry, in its `campaign_id`,
       `ad_id`, `entity_type` + `entity_id` (`budget` + `b1` is
-      `budget_id: b1`) or `reversible_params.params`. A call that sent no
-      target id never matches;
+      `budget_id: b1`) or `reversible_params.params`. The entry's own target
+      must in turn be one the call sent: its `entity_type` + `entity_id`
+      when it declares them, otherwise every target id it records — an
+      entry about ad group 9 never joins a call that sent only
+      `campaign_id`. A call that sent no target id never matches;
    4. no `action_log` entry has carried the decision out yet;
    5. exactly one decision meets 1–4.
 

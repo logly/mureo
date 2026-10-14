@@ -454,6 +454,70 @@ class TestEntryForANoEntryCall:
         assert read_state_file(path).action_log[0].decision_id != "dec-c"
 
 
+CAMPAIGN_TOOL = "google_ads_campaigns_update"
+
+
+class TestEntryTargetMustBeNamedByTheCall:
+    """The entry's own target must be among the ids the call sent: a call
+    on campaign 1 is not joined by an entry about ad group 9 inside it."""
+
+    @staticmethod
+    def _campaign_call(path: Path) -> None:
+        _write_decisions(
+            path,
+            _record(
+                "dec-c",
+                "adopted",
+                session_id=_session(),
+                journal_tool=CAMPAIGN_TOOL,
+                journal_call_id="call-0123456789abcdef",
+                applied_params={"campaign_id": "1", "status": "PAUSED"},
+            ),
+        )
+
+    @staticmethod
+    def _append(path: Path, **fields: Any) -> str | None:
+        append_action_log(
+            path,
+            ActionLogEntry(
+                timestamp="2026-10-13T10:00:00+00:00",
+                action=CAMPAIGN_TOOL,
+                platform="google_ads",
+                session_id=_session(),
+                **fields,
+            ),
+        )
+        return read_state_file(path).action_log[-1].decision_id
+
+    def test_an_entry_about_the_campaign_joins(self, workspace: Path) -> None:
+        path = workspace / "STATE.json"
+        self._campaign_call(path)
+        assert self._append(path, campaign_id="1") == "dec-c"
+
+    def test_an_entity_inside_the_campaign_is_not_joined(self, workspace: Path) -> None:
+        path = workspace / "STATE.json"
+        self._campaign_call(path)
+        stamped = self._append(
+            path, campaign_id="1", entity_type="ad_group", entity_id="9"
+        )
+        assert stamped != "dec-c"
+
+    def test_an_extra_target_id_on_the_entry_is_not_joined(
+        self, workspace: Path
+    ) -> None:
+        path = workspace / "STATE.json"
+        self._campaign_call(path)
+        stamped = self._append(
+            path,
+            campaign_id="1",
+            reversible_params={
+                "operation": CAMPAIGN_TOOL,
+                "params": {"campaign_id": "1", "ad_group_id": "9"},
+            },
+        )
+        assert stamped != "dec-c"
+
+
 class TestNoWorkWithoutAReason:
     async def test_a_bare_call_reads_no_state(
         self,

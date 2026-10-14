@@ -213,17 +213,41 @@ def _id_value(value: Any) -> Any:
     return str(value)
 
 
-def names_same_target(sent: Any, entry: ActionLogEntry) -> bool:
-    """Every target id ``sent`` names appears with the same value in ``entry``.
+def _all_named(ids: dict[str, Any], by: dict[str, Any]) -> bool:
+    """Every id in ``ids`` appears in ``by`` with the same value."""
+    return all(
+        key in by and _id_value(by[key]) == _id_value(value)
+        for key, value in ids.items()
+    )
 
+
+def _own_target(entry: ActionLogEntry, have: dict[str, Any]) -> dict[str, Any]:
+    """The ids naming what ``entry`` itself changed.
+
+    Its ``entity_type`` + ``entity_id`` when declared; otherwise every
+    target id it records, so an entry naming more than the call did (an
+    ad group inside the call's campaign) is never read as the call's.
+    """
+    if entry.entity_type is not None and entry.entity_id is not None:
+        key = f"{entry.entity_type}{ID_SUFFIX}"
+        return {key: have[key]}
+    return have
+
+
+def names_same_target(sent: Any, entry: ActionLogEntry) -> bool:
+    """``sent`` and ``entry`` name the same target, exactly.
+
+    Every target id ``sent`` names appears with the same value in
+    ``entry``, and the entry's own target is among the ids ``sent`` names.
     ``False`` when ``sent`` names none: an untargeted call cannot be
     matched to an entry, only guessed at.
     """
     wanted = target_ids(sent)
     have = entry_target_ids(entry)
-    return bool(wanted) and all(
-        key in have and _id_value(have[key]) == _id_value(value)
-        for key, value in wanted.items()
+    return (
+        bool(wanted)
+        and _all_named(wanted, have)
+        and _all_named(_own_target(entry, have), wanted)
     )
 
 
