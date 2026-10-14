@@ -123,6 +123,61 @@ class TestGuardrailsAssetWiring:
         )
 
 
+#: The rules table (#843): the hooks the module renders into and reads from.
+_RULES_ATTRIBUTES = (
+    "data-guardrails-fields",
+    "data-guardrails-rows",
+    "data-guardrails-fields-save",
+    "data-guardrails-fields-result",
+)
+
+
+@pytest.mark.unit
+class TestGuardrailsRulesTable:
+    def test_the_table_hooks_are_in_the_card(self) -> None:
+        from mureo.web.app_html import GUARDRAILS_CARD_END, GUARDRAILS_CARD_START
+
+        html = _read("app.html")
+        start = html.index(GUARDRAILS_CARD_START)
+        end = html.index(GUARDRAILS_CARD_END)
+        for attribute in _RULES_ATTRIBUTES:
+            assert start < html.index(attribute) < end, attribute
+
+    def test_the_table_sits_below_the_currency_select(self) -> None:
+        html = _read("app.html")
+        assert html.index("data-guardrails-currency") < html.index(
+            "data-guardrails-fields"
+        )
+
+    def test_stripping_the_card_takes_the_table_too(self) -> None:
+        from mureo.web.app_html import strip_guardrails_card
+
+        stripped = strip_guardrails_card(_read("app.html"))
+        for attribute in _RULES_ATTRIBUTES:
+            assert attribute not in stripped, attribute
+
+    def test_the_module_reads_and_writes_the_rules_endpoint(self) -> None:
+        js = _read("dashboard_guardrails.js")
+        assert '"/api/strategy/guardrails"' in js
+        for attribute in (
+            "data-guardrails-row",
+            "data-guardrails-field",
+            "data-guardrails-label",
+            "data-guardrails-desc",
+            "data-guardrails-state",
+        ):
+            assert attribute in js, attribute
+
+    def test_the_module_names_rules_from_the_field_catalog_keys(self) -> None:
+        """The label keys are built from the field key, so the catalog
+        test over ``guardrails.field.<key>.label|desc`` covers them."""
+        js = _read("dashboard_guardrails.js")
+        assert '"guardrails.field." + field.key' in js
+
+    def test_the_table_has_its_own_style(self) -> None:
+        assert ".dashboard-guardrails-table" in _read("app.css")
+
+
 _KEY_RE = re.compile(r"dashboard\.guardrails_[a-z_]+")
 
 
@@ -148,6 +203,15 @@ class TestGuardrailsI18nParity:
         assert i18n["en"]["dashboard.guardrails_title"] != (
             i18n["ja"]["dashboard.guardrails_title"]
         )
+
+    def test_japanese_calls_an_ad_account_an_account(self) -> None:
+        """Japanese ad operations say "akaunto" for an ad account; the
+        bank-account word ("kouza") is not used anywhere on the card."""
+        bank_account_word = "\u53e3\u5ea7"
+        ja = json.loads(_read("i18n.json"))["ja"]
+        for key, value in ja.items():
+            if key.startswith(("dashboard.guardrails_", "guardrails.field.")):
+                assert bank_account_word not in value, key
 
     def test_the_retired_nav_key_is_gone_from_both_locales(self) -> None:
         """The card is a sub-card of Advanced now; a stale nav label would

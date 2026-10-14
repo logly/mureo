@@ -1,7 +1,29 @@
 ## [Unreleased]
 
+### Added
+
+- **Every `## Guardrails` field can be edited from `mureo configure`, under a
+  readable name** (#843). The Guardrails card (Advanced) now lists every
+  rule below the currency dropdown with an English / Japanese label and
+  one-line description, its current value, and whether it is not set or
+  being ignored; saving writes only the bullets that changed and leaves the
+  rest of STRATEGY.md byte-identical. New routes `GET` / `POST
+  /api/strategy/guardrails` carry the same labels for web extensions, and
+  `mureo.policy.guardrail_fields.GUARDRAIL_FIELDS` is the field catalog
+  (kind, unit, range, i18n key) both are built from.
+
 ### Fixed
 
+- **A non-finite `## Guardrails` number is read as not declared** (#843).
+  A cap written as `nan`, `inf` or `1e999` used to parse as a float the
+  gate compared against (`nan > cap` is always False, so a `nan` cap
+  silently allowed everything). The same value in
+  `exclusion_impact_window_days` made the section parse raise, and the
+  gate, which fails open on a load error, then enforced none of the
+  section's rules. Such a value now drops that one rule like any other
+  unreadable number. Bullet lines are also split at `\n` only, as the
+  section parser already did, so a `U+2028` or `\x85` inside a prose line
+  no longer starts a bullet.
 - **STRATEGY.md writes keep the operator's title and preamble** (#845).
   Every writer (`write_strategy_file`, `mutate_strategy_file`,
   `add_strategy_entry`, `remove_strategy_entry`, the state store, the
