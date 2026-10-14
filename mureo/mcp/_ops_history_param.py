@@ -21,13 +21,24 @@ than making one, and is recorded as such (``rollback_of``).
 **Enforcement.** Only when the workspace switched ops history on
 (``settings.ops_history.enabled``): a call in scope must carry ``reason``
 and ``expected`` — unless it joins a decision that already has them (an
-explicit ``decision_id``, or the open batch's decision). Refused as
-``invalid_args`` naming the missing parameter. Off, nothing is refused.
+explicit ``decision_id`` whose decision declares ``expected``, or the open
+batch's decision). Refused as ``invalid_args`` naming the missing
+parameter. Off, nothing is refused — and a STATE.json that cannot be read
+counts as off.
+
+**A call that writes no entry.** Most changes on a native platform (budget,
+bid, keyword, creative) leave no ``action_log`` entry, so the action-log
+choke point never links them. After such a call succeeds,
+:func:`ops_call_scope` records its decision with
+:func:`mureo.context.ops_linkage.record_call_decision`: one per call, or
+the batch's, carrying the parameters the call sent and the ``call_id`` of
+its journal record, which in turn names the decision.
 """
 
 from __future__ import annotations
 
 import copy
+import json
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -50,6 +61,7 @@ if TYPE_CHECKING:
 
     from mureo.context.expected import ExpectedEffect
     from mureo.context.models import StateDocument
+    from mureo.context.ops_intent import OpsIntent
     from mureo.mcp._journal_hook import JournalledCall
 
 logger = logging.getLogger(__name__)
@@ -63,6 +75,15 @@ _BOOKKEEPING_PREFIX: Final = "mureo_"
 #: Longest ``decision_id`` accepted. Minted ids are ~30 characters.
 DECISION_ID_MAX_CHARS: Final = 128
 
+#: Largest masked parameter set kept as ``applied_params``, in JSON
+#: characters. A bulk call over it is still recorded, without its values.
+APPLIED_PARAMS_MAX_CHARS: Final = 4000
+
+#: Journal families whose name is also the platform a change was made on.
+_PLATFORM_FAMILIES: Final[frozenset[str]] = frozenset(
+    {"google_ads", "meta_ads", "search_console"}
+)
+
 REASON_REQUIRED: Final = (
     "reason is required while ops history is enabled for this workspace: "
     "say why this change is being made."
@@ -71,18 +92,18 @@ EXPECTED_REQUIRED: Final = (
     "expected is required while ops history is enabled for this workspace: "
     "declare at least one {metric, direction} the change should move."
 )
+ADOPTION_EXPECTED_REQUIRED: Final = (
+    "expected is required while ops history is enabled for this workspace: "
+    "the decision named by decision_id declares none, so pass expected on "
+    "this call."
+)
 
 #: The ``expected`` property. Read-only; copied per tool on injection.
 EXPECTED_PROPERTY: Mapping[str, Any] = MappingProxyType(
     {
         "type": "array",
         "maxItems": EXPECTED_MAX_ITEMS,
-        "description": (
-            "What this change should move, judged when its observation window "
-            'closes: e.g. [{"metric": "cpa", "direction": "down", '
-            '"target": 4500, "horizon_days": 14}]. With reason, it becomes '
-            "the decision record mureo writes for this change."
-        ),
+        "description": "Metrics this change should move; recorded with reason.",
         "items": {
             "type": "object",
             "properties": {
@@ -107,11 +128,7 @@ DECISION_ID_PROPERTY: Mapping[str, Any] = MappingProxyType(
         "type": "string",
         "minLength": 1,
         "maxLength": DECISION_ID_MAX_CHARS,
-        "description": (
-            "Optional. The decision_id of an earlier proposed decision "
-            "(mureo_decision_record) this change carries out; it becomes "
-            "adopted. Omit it otherwise — mureo creates the decision itself."
-        ),
+        "description": "A proposed decision this change carries out.",
     }
 )
 
@@ -253,21 +270,21 @@ def _readable_state(
 ) -> StateDocument | None:
     """The workspace's document, or ``None`` when there is none to read.
 
-    A STATE.json that exists but cannot be read does not refuse the call:
-    the setting lives in that file, so it cannot be known to be on, and a
+    A STATE.json that exists but cannot be read — unparseable, not UTF-8,
+    or valid JSON of the wrong shape — does not refuse the call: the
+    setting lives in that file, so it cannot be known to be on, and a
     change accepted before ops history existed must not start failing here.
-    The fault is logged, and the action-log append reports it in its own
-    right. An explicit ``decision_id`` cannot be checked against such a
-    file, so that call is refused.
+    Any read fault counts, whatever its type. The fault is logged, and the
+    action-log append reports it in its own right. An explicit
+    ``decision_id`` cannot be checked against such a file, so that call is
+    refused.
 
     Raises:
         ValueError: ``decision_id`` was given and the file is unreadable.
     """
-    from mureo.context.errors import ContextFileError
-
     try:
         return _read(_state_path(name, handler_args))
-    except ContextFileError as exc:
+    except Exception as exc:  # noqa: BLE001 — every read fault means "off"
         if params.decision_id is not None:
             raise ValueError(
                 "decision_id cannot be checked: STATE.json could not be read"
@@ -299,16 +316,21 @@ def check_ops_call(
         ValueError: the decision is not linkable, or ops history is on and
             ``reason`` / ``expected`` is missing.
     """
+    from mureo.context.decision_chain import chain_expected
     from mureo.context.models import StateDocument as _Doc
     from mureo.context.ops_linkage import check_linkable
     from mureo.context.settings import ops_history_enabled
 
     doc = _readable_state(name, params, handler_args)
     if params.decision_id is not None:
-        check_linkable(doc or _Doc(version="2"), params.decision_id)
+        root = check_linkable(doc or _Doc(version="2"), params.decision_id)
     if doc is None or not ops_history_enabled(doc):
         return
-    if params.decision_id is not None or _joins_batch_decision(doc, name):
+    if params.decision_id is not None:
+        if not params.expected and not chain_expected(doc, root):
+            raise ValueError(ADOPTION_EXPECTED_REQUIRED)
+        return
+    if _joins_batch_decision(doc, name):
         return
     if reason is None:
         raise ValueError(REASON_REQUIRED)
@@ -329,38 +351,77 @@ def enforce_ops_call(
     Skipped for the reversal leg of a rollback: that call re-enters the
     dispatcher on mureo's behalf and carries no parameters of its own.
     """
+    from mureo.mcp._tools_settings import check_settings_call
     from mureo.rollback.executor import is_rollback_dispatch_active
 
-    if name not in injected or is_rollback_dispatch_active():
-        return
     try:
+        check_settings_call(name, handler_args)
+        if name not in injected or is_rollback_dispatch_active():
+            return
         check_ops_call(name, reason, params, handler_args)
     except ValueError as exc:
         call.invalid_args(exc)
         raise
 
 
-def _adopt_unrecorded(
-    name: str, params: OpsParams, linked: str | None, handler_args: Mapping[str, Any]
-) -> None:
-    """Adopt the named proposal when the call recorded no entry for it.
+def applied_params_of(arguments: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The call's parameters as they may be stored, or ``None``.
 
-    The change happened, so a failure here is logged rather than raised:
-    failing the call would tell the agent a change that went through did not.
+    Masked exactly as the journal masks ``args`` (the same function), so
+    the two stores cannot disagree about what a secret is; ``None`` for an
+    empty set or one over :data:`APPLIED_PARAMS_MAX_CHARS`.
     """
-    if params.decision_id is None or linked is not None or name == BATCH_BEGIN_TOOL:
-        return
-    from mureo.context.ops_linkage import adopt_decision
+    from mureo.mcp.plugin_audit import mask_arguments
 
+    masked = mask_arguments(dict(arguments))
+    if not masked or not isinstance(masked, dict):
+        return None
+    size = len(json.dumps(masked, ensure_ascii=False, default=str))
+    return masked if size <= APPLIED_PARAMS_MAX_CHARS else None
+
+
+def _platform_of(name: str) -> str | None:
+    from mureo.mcp._journal_hook import tool_family
+
+    family = tool_family(name)
+    return family if family in _PLATFORM_FAMILIES else None
+
+
+def _record_unentried(
+    call: JournalledCall, name: str, intent: OpsIntent, reason: str | None
+) -> None:
+    """The decision of a successful call that wrote no ``action_log`` entry.
+
+    Skipped without a STATE.json (nothing is created for it), for
+    ``mureo_batch_begin`` (its decision is the batch's) and for a
+    rollback's reversal leg. The change happened, so a failure is logged
+    rather than raised: failing the call would tell the agent a change
+    that went through did not.
+    """
+    from mureo.context.ops_linkage import LinkRequest, record_call_decision
+    from mureo.core.clock import server_now_iso
+    from mureo.rollback.executor import is_rollback_dispatch_active
+
+    path = _state_path(name, intent.arguments)
+    if name == BATCH_BEGIN_TOOL or is_rollback_dispatch_active() or not path.is_file():
+        return
+    request = LinkRequest(
+        reason=reason,
+        now=server_now_iso(),
+        expected=intent.expected,
+        explicit_id=intent.decision_id,
+        arguments=intent.arguments,
+        applied_params=intent.applied_params,
+        call_id=intent.call_id,
+    )
     try:
-        adopt_decision(_state_path(name, handler_args), params.decision_id)
-    except Exception:  # noqa: BLE001 — the change itself already succeeded
-        logger.warning(
-            "could not adopt decision %r after %r",
-            params.decision_id,
-            name,
-            exc_info=True,
+        root = record_call_decision(
+            path, request, tool=name, platform=_platform_of(name)
         )
+    except Exception:  # noqa: BLE001 — the change itself already succeeded
+        logger.warning("could not record the decision of %r", name, exc_info=True)
+        return
+    call.decision_id = root
 
 
 @contextmanager
@@ -370,11 +431,14 @@ def ops_call_scope(
     params: OpsParams,
     handler_args: Mapping[str, Any],
     injected: Collection[str],
+    reason: str | None = None,
 ) -> Iterator[None]:
-    """Bind the call's intent around dispatch, then finish a no-entry adoption.
+    """Bind the call's intent around dispatch, then link what it carried out.
 
     Outside scope this binds nothing, so a read-only call or a bookkeeping
-    tool never links an entry to a decision through a stale intent.
+    tool never links an entry to a decision through a stale intent. After
+    a successful call the journal record is given the decision's id; a
+    call that wrote no entry gets its decision recorded here.
     """
     if name not in injected:
         yield
@@ -385,18 +449,27 @@ def ops_call_scope(
         expected=params.expected,
         decision_id=params.decision_id,
         arguments=handler_args,
+        applied_params=applied_params_of(handler_args),
+        call_id=call.call_id,
     ) as intent:
         yield
-    if call.outcome == "ok":
-        _adopt_unrecorded(name, params, intent.slot.decision_id, handler_args)
+    if call.outcome != "ok":
+        return
+    if intent.slot.decision_id is not None:
+        call.decision_id = intent.slot.decision_id
+        return
+    _record_unentried(call, name, intent, reason)
 
 
 __all__ = [
+    "ADOPTION_EXPECTED_REQUIRED",
+    "APPLIED_PARAMS_MAX_CHARS",
     "DECISION_ID_PROPERTY",
     "EXPECTED_PROPERTY",
     "EXPECTED_REQUIRED",
     "REASON_REQUIRED",
     "OpsParams",
+    "applied_params_of",
     "check_ops_call",
     "decision_id_schema",
     "enforce_ops_call",

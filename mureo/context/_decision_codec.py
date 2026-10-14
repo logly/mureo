@@ -50,6 +50,8 @@ DECISION_COVERAGE: tuple[type, frozenset[str], str] = (
             "session_id",
             "client",
             "expected",
+            "applied_params",
+            "journal_call_id",
         }
     ),
     "_decision_codec.parse_decisions / .decision_to_dict",
@@ -125,6 +127,8 @@ def _parse_decision(item: Any) -> DecisionRecord:
         client=item.get("client"),
         # #848 — absent on every record written before ops history.
         expected=parse_expected(item.get("expected")),
+        applied_params=item.get("applied_params"),
+        journal_call_id=item.get("journal_call_id"),
     )
 
 
@@ -185,6 +189,7 @@ def decision_to_dict(record: DecisionRecord) -> dict[str, Any]:
         "batch_id",
         "session_id",
         "client",
+        "journal_call_id",
     ):
         value = getattr(record, name)
         if value is not None:
@@ -193,6 +198,8 @@ def decision_to_dict(record: DecisionRecord) -> dict[str, Any]:
         result["related_actions"] = list(record.related_actions)
     if record.expected:
         result["expected"] = expected_to_list(record.expected)
+    if record.applied_params is not None:
+        result["applied_params"] = copy.deepcopy(record.applied_params)
     return result
 
 

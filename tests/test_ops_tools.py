@@ -182,12 +182,35 @@ class TestDecisionRecord:
 
 
 class TestSettingsSet:
-    async def test_switches_it_on_and_off(self, workspace: Path) -> None:
+    async def test_switches_it_on(self, workspace: Path) -> None:
         payload = await _call("mureo_state_settings_set", {"ops_history_enabled": True})
         assert payload == {"settings": {"ops_history": {"enabled": True}}}
         assert ops_history_enabled(read_state_file(workspace / "STATE.json"))
-        await _call("mureo_state_settings_set", {"ops_history_enabled": False})
-        assert not ops_history_enabled(read_state_file(workspace / "STATE.json"))
+
+    async def test_switching_it_off_is_refused(self, workspace: Path) -> None:
+        path = workspace / "STATE.json"
+        set_ops_history_enabled(path, True)
+        with pytest.raises(ValueError, match="mureo configure"):
+            await _call("mureo_state_settings_set", {"ops_history_enabled": False})
+        assert ops_history_enabled(read_state_file(path))
+        line = (workspace / "J.jsonl").read_text().splitlines()[-1]
+        assert json.loads(line)["outcome"] == "invalid_args"
+
+    async def test_switching_it_off_creates_no_file(self, workspace: Path) -> None:
+        with pytest.raises(ValueError, match="mureo configure"):
+            await _call("mureo_state_settings_set", {"ops_history_enabled": False})
+        assert not (workspace / "STATE.json").exists()
+
+    async def test_repeating_the_value_writes_nothing(self, workspace: Path) -> None:
+        path = workspace / "STATE.json"
+        await _call("mureo_state_settings_set", {"ops_history_enabled": True})
+        before = path.stat().st_mtime_ns
+        await _call("mureo_state_settings_set", {"ops_history_enabled": True})
+        assert path.stat().st_mtime_ns == before
+
+    def test_an_unchanged_value_never_creates_the_file(self, workspace: Path) -> None:
+        set_ops_history_enabled(workspace / "STATE.json", False)
+        assert not (workspace / "STATE.json").exists()
 
     async def test_a_non_boolean_is_refused(self, workspace: Path) -> None:
         with pytest.raises(ValueError):

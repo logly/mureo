@@ -292,6 +292,7 @@ _ENTRY_FIELD_VALUES: dict[str, Any] = {
     # keeps an explicit ``decision_id`` as it is rather than resolving it.
     "decision_id": "dec-20260807T100000-a1b2c3d4",
     "evaluation": {"overall": "improved", "basis": "default", "metrics": []},
+    "applied_params": {"campaign_id": "c1", "status": "PAUSED"},
     # The one field the round-trip is ALLOWED to change: it arrives unset and
     # comes back carrying the open batch.
     "batch_id": None,

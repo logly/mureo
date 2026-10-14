@@ -854,7 +854,7 @@ async def _gated_dispatch(
     # no exclusion rule in STRATEGY.md ## Guardrails.
     with (
         bind_call_reason(reason),
-        ops_call_scope(call, name, ops, handler_args, _OPS_TOOLS),
+        ops_call_scope(call, name, ops, handler_args, _OPS_TOOLS, reason),
     ):
         preflight = await exclusion_impact_preflight(name, handler_args)
         if preflight.refusal_reason is not None:

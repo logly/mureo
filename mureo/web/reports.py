@@ -88,7 +88,6 @@ from typing import TYPE_CHECKING, Any
 # defines ``mureo_state_get(action_log="pending")``, read here rather than
 # restated (#651).
 from mureo.context.observations import due_observation_dates
-from mureo.context.ops_history_view import build_ops_history_items
 from mureo.context.settings import ops_history_enabled
 from mureo.core import clock
 
@@ -481,8 +480,9 @@ def build_ops_history(
     per change no decision covers. Each item's ``state`` / ``verdict`` /
     ``rolled_back`` is derived, never stored; see
     :mod:`mureo.context.ops_history_view`. Newest first, bounded by the
-    item's date (a decision's first record, or the uncovered change's own
-    timestamp), inclusive.
+    date of the item's timestamp (a decision's first record, or the
+    uncovered change's own) by the rule every history source uses,
+    inclusive.
 
     ``enabled`` echoes the workspace's ops history switch; the items are
     returned either way, so a change recorded while it was off still shows,
@@ -495,6 +495,8 @@ def build_ops_history(
         ValueError: ``since`` / ``until`` is not a date, or ``until`` is
             before ``since``.
     """
+    from mureo.mcp._history_ops import ops_history_items
+
     start, end = _as_day(since, "since"), _as_day(until, "until")
     if start is not None and end is not None and end < start:
         raise ValueError(f"until ({end}) is before since ({start})")
@@ -503,7 +505,7 @@ def build_ops_history(
     items = (
         []
         if doc is None
-        else build_ops_history_items(doc, today=today, since=start, until=end)
+        else ops_history_items(doc, today=today, since=start, until=end)
     )
     return {
         "client": client or _active_workspace_id(_active_state_store()),

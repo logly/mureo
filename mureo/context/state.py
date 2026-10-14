@@ -70,7 +70,12 @@ from mureo.context.models import (
     PlatformState,
     StateDocument,
 )
-from mureo.context.ops_linkage import call_request, link_batch, link_entry
+from mureo.context.ops_linkage import (
+    call_request,
+    commit_slot,
+    link_batch,
+    link_entry,
+)
 from mureo.context.platform_accounts import (
     UNKNOWN_ACCOUNT_ID,
     account_ids_match,
@@ -177,9 +182,12 @@ def _state_lock_path(path: Path) -> Path:
 
 
 def _locked_state_mutation(
-    path: Path, build: Callable[[StateDocument], StateDocument]
+    path: Path, build: Callable[[StateDocument], StateDocument | None]
 ) -> StateDocument:
     """Run a read -> ``build`` -> write cycle as one critical section.
+
+    ``build`` returning ``None`` means "nothing to change": the document as
+    read is returned and nothing is written (#848).
 
     ``_atomic_write`` only makes the file *replace* atomic; the surrounding
     read-modify-write is not. Holding the cross-process ``file_lock`` across
@@ -192,6 +200,8 @@ def _locked_state_mutation(
     with file_lock(_state_lock_path(path)):
         doc = read_state_file(path)
         new_doc = build(doc)
+        if new_doc is None:
+            return doc
         write_state_file(path, new_doc, previous=doc)
     return new_doc
 
@@ -554,7 +564,10 @@ def append_action_log(
         # enumerates the untouched fields by hand.
         return replace(doc, action_log=(*doc.action_log, stamped))
 
-    return _locked_state_mutation(path, _build)
+    written = _locked_state_mutation(path, _build)
+    # Only now, with the entry on disk, may the call's later appends join it.
+    commit_slot(request, written.action_log[-1])
+    return written
 
 
 def begin_batch(path: Path, *, label: str) -> BatchRecord:

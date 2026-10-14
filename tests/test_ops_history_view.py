@@ -102,6 +102,14 @@ def _items(**kwargs: Any) -> dict[str, dict[str, Any]]:
     }
 
 
+def _items_of(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    doc = parse_state(json.dumps(document))
+    return {
+        (i["decision"]["decision_id"] if i["decision"] else "orphan"): i
+        for i in build_ops_history_items(doc, today=TODAY)
+    }
+
+
 class TestDerivedState:
     def test_every_state(self) -> None:
         items = _items()
@@ -155,8 +163,13 @@ class TestDerivedState:
         assert firsts == ["A", "C", "B", "D", "o", "E"]
 
     def test_window(self) -> None:
-        items = _items(since=date(2026, 10, 1), until=date(2026, 10, 5))
-        assert set(items) == {"B", "C"}
+        from mureo.mcp._history_ops import ops_history_items
+
+        doc = parse_state(json.dumps(_document()))
+        items = ops_history_items(
+            doc, today=TODAY, since=date(2026, 10, 1), until=date(2026, 10, 5)
+        )
+        assert {i["decision"]["decision_id"] for i in items} == {"B", "C"}
 
     def test_related_actions_link_an_unstamped_change(self) -> None:
         document = _document()
@@ -168,6 +181,82 @@ class TestDerivedState:
         by_id = {i["decision"]["decision_id"]: i for i in items if i["decision"]}
         assert [a["index"] for a in by_id["F"]["actions"]] == [5]
         assert all(i["decision"] is not None for i in items)
+
+    def test_a_stamped_change_stays_under_its_own_decision(self) -> None:
+        document = _document()
+        document["decisions"].append(
+            _decision("F", "adopted", "2026-09-16", related_actions=[0, 2, 5])
+        )
+        doc = parse_state(json.dumps(document))
+        items = build_ops_history_items(doc, today=TODAY)
+        by_id = {i["decision"]["decision_id"]: i for i in items if i["decision"]}
+        assert [a["index"] for a in by_id["F"]["actions"]] == [5]
+        assert [a["index"] for a in by_id["C"]["actions"]] == [0]
+        indices = [a["index"] for item in items for a in item["actions"]]
+        assert len(indices) == len(set(indices))
+
+    def test_before_and_after(self) -> None:
+        document = _document()
+        document["action_log"][1]["applied_params"] = {
+            "budget_id": "b1",
+            "amount": 12000,
+        }
+        doc = parse_state(json.dumps(document))
+        items = build_ops_history_items(doc, today=TODAY)
+        action = next(a for i in items for a in i["actions"] if a["index"] == 1)
+        assert action["before"] == {"amount": 10000}
+        assert action["after"] == {"amount": 12000}
+        assert (
+            next(a for i in items for a in i["actions"] if a["index"] == 0)["after"]
+            is None
+        )
+
+    def test_newest_first_by_the_full_timestamp(self) -> None:
+        document = {
+            "version": "2",
+            "action_log": [
+                _action(timestamp="2026-10-01T09:00:00+00:00", summary="early"),
+                _action(timestamp="2026-10-01T18:00:00+00:00", summary="late"),
+            ],
+        }
+        items = build_ops_history_items(parse_state(json.dumps(document)), today=TODAY)
+        assert [i["actions"][0]["summary"] for i in items] == ["late", "early"]
+
+    def test_the_items_are_copies(self) -> None:
+        document = _document()
+        document["decisions"][4]["metrics"] = {"cpa": 100}
+        doc = parse_state(json.dumps(document))
+        item = next(
+            i
+            for i in build_ops_history_items(doc, today=TODAY)
+            if i["decision"] and i["decision"]["decision_id"] == "D"
+        )
+        action = item["actions"][0]
+        action["metrics_at_action"]["cpa"] = 0
+        action["evaluation"]["table"]["overall"] = "x"
+        item["decision"]["metrics"]["cpa"] = 0
+        assert doc.action_log[1].metrics_at_action == {"cpa": 100}
+        assert doc.action_log[2].evaluation["overall"] == "regressed"
+        assert doc.decisions[4].metrics == {"cpa": 100}
+
+    def test_a_decision_carried_out_by_a_call_is_executed(self) -> None:
+        document = _document()
+        document["decisions"].append(
+            _decision(
+                "G",
+                "adopted",
+                "2026-10-12",
+                applied_params={"budget_id": "b1", "amount": 12000},
+                journal_call_id="call-1",
+            )
+        )
+        items = _items_of(document)
+        assert items["G"]["state"] == "executed"
+        assert items["G"]["decision"]["applied_params"] == {
+            "budget_id": "b1",
+            "amount": 12000,
+        }
+        assert items["G"]["decision"]["journal_call_id"] == "call-1"
 
     def test_an_empty_document(self) -> None:
         assert build_ops_history_items(parse_state("{}"), today=TODAY) == []
@@ -252,3 +341,33 @@ class TestHistoryQuerySources:
         )
         ids = [i["decision"]["decision_id"] for i in payload["decisions"]["items"]]
         assert ids == ["C", "D"]
+
+
+class TestWindowMatchesActionLog:
+    """The two ops sources bound by date exactly as ``action_log`` does."""
+
+    @pytest.fixture
+    def boundary(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        from mureo.core.runtime_context import reset_runtime_context
+
+        monkeypatch.chdir(tmp_path)
+        reset_runtime_context()
+        monkeypatch.setattr(journal, "journal_path", lambda: tmp_path / "J.jsonl")
+        document = {
+            "version": "2",
+            "action_log": [_action(timestamp="2026-10-14T08:00:00+09:00")],
+        }
+        (tmp_path / "STATE.json").write_text(json.dumps(document), encoding="utf-8")
+        yield tmp_path
+        reset_runtime_context()
+
+    @pytest.mark.parametrize("day", ["2026-10-13", "2026-10-14"])
+    async def test_the_boundary(self, boundary: Path, day: str) -> None:
+        from mureo.mcp.server import handle_call_tool
+
+        result = await handle_call_tool(
+            "mureo_history_query",
+            {"sources": ["action_log", "ops_history"], "since": day, "until": day},
+        )
+        payload = json.loads(result[0].text)
+        assert payload["ops_history"]["matched"] == payload["action_log"]["matched"]

@@ -88,6 +88,9 @@ def ops_history_enabled(doc: StateDocument | None) -> bool:
 def set_ops_history_enabled(path: Path, enabled: Any) -> StateDocument:
     """Switch ops history on or off for the workspace at ``path``.
 
+    A value that is already in force writes nothing — in particular, "off"
+    for a workspace with no STATE.json does not create one.
+
     Raises:
         ValueError: ``enabled`` is not a boolean. Refused before the file
             is opened, so a bad call never creates or touches STATE.json.
@@ -95,7 +98,11 @@ def set_ops_history_enabled(path: Path, enabled: Any) -> StateDocument:
     if not isinstance(enabled, bool):
         raise ValueError(f"enabled must be a boolean; got {enabled!r}")
     # Lazy, for the import cycle ``mureo.context.batch`` documents.
-    from mureo.context.state import _locked_state_mutation
+    from mureo.context.state import _locked_state_mutation, read_state_file
+
+    current_doc = read_state_file(path)
+    if ops_history_enabled(current_doc) == enabled:
+        return current_doc
 
     def _build(doc: StateDocument) -> StateDocument:
         current = doc.settings or WorkspaceSettings()

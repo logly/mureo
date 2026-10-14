@@ -42,6 +42,16 @@ def chain_roots(doc: StateDocument) -> dict[str, str]:
     return roots
 
 
+def group_chains(doc: StateDocument) -> dict[str, tuple[DecisionRecord, ...]]:
+    """Every chain's records keyed by its root, in write order, in one pass."""
+    roots = chain_roots(doc)
+    grouped: dict[str, list[DecisionRecord]] = {}
+    for record in doc.decisions:
+        root = roots.get(record.decision_id, record.decision_id)
+        grouped.setdefault(root, []).append(record)
+    return {root: tuple(records) for root, records in grouped.items()}
+
+
 def chain_root(doc: StateDocument, decision_id: str) -> str | None:
     """The root of the chain ``decision_id`` belongs to, or ``None``."""
     return chain_roots(doc).get(decision_id.strip())
@@ -83,5 +93,6 @@ __all__ = [
     "chain_records",
     "chain_root",
     "chain_roots",
+    "group_chains",
     "latest_in_chain",
 ]

@@ -178,6 +178,7 @@ _ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
             }
         ],
     },
+    "applied_params": {"budget_id": "b1", "amount": 12000},
 }
 
 #: One distinctive value per display model (#706). The nested maps exist for
@@ -259,6 +260,8 @@ _DECISION_FIELD_VALUES: dict[str, Any] = {
     "expected": (
         ExpectedEffect(metric="cpa", direction="down", target=4500, horizon_days=14),
     ),
+    "applied_params": {"budget_id": "b1", "amount": 12000},
+    "journal_call_id": "call-0123456789abcdef",
 }
 
 #: One distinctive value per :class:`WorkspaceSettings` field (#848).

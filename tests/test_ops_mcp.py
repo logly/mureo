@@ -135,6 +135,13 @@ class TestSchema:
         assert items["properties"]["direction"]["enum"] == ["up", "down", "hold"]
         assert items["additionalProperties"] is False
 
+    def test_the_injected_descriptions_are_one_short_sentence(self) -> None:
+        schema = self._served()[STATUS_TOOL].inputSchema["properties"]
+        for name in (EXPECTED_PARAM, DECISION_ID_PARAM):
+            text = schema[name]["description"]
+            assert len(text) <= 120, name
+            assert text.count(". ") == 0, name
+
 
 class TestSplit:
     def test_both_are_popped_from_a_copy(self) -> None:
@@ -305,6 +312,37 @@ class TestUnreadableState:
         (workspace / "STATE.json").write_text("{not json", encoding="utf-8")
         await _call(BUDGET_TOOL, {"budget_id": "b1", "amount": 12000})
         assert handler == [{"budget_id": "b1", "amount": 12000}]
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            b"[]",
+            b'{"platforms": []}',
+            b'{"platforms": {"google_ads": "x"}}',
+            b'{"version": "2", "action_log": [], "note": "\xff\xfe"}',
+        ],
+        ids=["list", "platforms-list", "platform-string", "invalid-utf8"],
+    )
+    async def test_a_malformed_document_does_not_block_a_change(
+        self, workspace: Path, handler: list[dict[str, Any]], content: bytes
+    ) -> None:
+        (workspace / "STATE.json").write_bytes(content)
+        await _call(BUDGET_TOOL, {"budget_id": "b1", "amount": 12000})
+        assert handler == [{"budget_id": "b1", "amount": 12000}]
+        record = json.loads((workspace / "J.jsonl").read_text().splitlines()[-1])
+        assert record["outcome"] == "ok"
+
+    @pytest.mark.parametrize("content", [b"[]", b"\xff\xfe{}"])
+    async def test_a_malformed_document_refuses_a_decision_id(
+        self, workspace: Path, handler: list[dict[str, Any]], content: bytes
+    ) -> None:
+        (workspace / "STATE.json").write_bytes(content)
+        with pytest.raises(ValueError, match="could not be read"):
+            await _call(
+                BUDGET_TOOL,
+                {"budget_id": "b1", "amount": 12000, "decision_id": "dec-p"},
+            )
+        assert handler == []
 
     async def test_an_explicit_decision_id_is_refused(
         self, workspace: Path, handler: list[dict[str, Any]]

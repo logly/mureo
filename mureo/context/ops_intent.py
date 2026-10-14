@@ -53,12 +53,17 @@ class OpsIntent:
         adopt), validated by the dispatcher before the call ran.
     arguments: A copy of the call's own arguments, so a derived title can
         say what the change set a value TO.
+    applied_params: The same arguments as they may be STORED — masked and
+        bounded by the dispatcher — or ``None`` when they cannot be.
+    call_id: The id of the call's journal record, for the decision record.
     slot: See :class:`CallDecisionSlot`.
     """
 
     expected: tuple[ExpectedEffect, ...] = ()
     decision_id: str | None = None
     arguments: Mapping[str, Any] = field(default_factory=dict)
+    applied_params: Mapping[str, Any] | None = None
+    call_id: str | None = None
     slot: CallDecisionSlot = field(default_factory=CallDecisionSlot)
 
 
@@ -71,6 +76,8 @@ def bind_ops_intent(
     expected: tuple[ExpectedEffect, ...] = (),
     decision_id: str | None = None,
     arguments: Mapping[str, Any] | None = None,
+    applied_params: Mapping[str, Any] | None = None,
+    call_id: str | None = None,
 ) -> Iterator[OpsIntent]:
     """Bind an intent to the current task for the duration of the block.
 
@@ -81,6 +88,10 @@ def bind_ops_intent(
         expected=tuple(expected),
         decision_id=decision_id,
         arguments=copy.deepcopy(dict(arguments or {})),
+        applied_params=(
+            None if applied_params is None else copy.deepcopy(dict(applied_params))
+        ),
+        call_id=call_id,
     )
     token = _intent.set(intent)
     try:

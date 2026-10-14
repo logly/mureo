@@ -23,10 +23,11 @@ from mureo.context.expected import ExpectedEffect, parse_expected
 from mureo.context.models import ActionLogEntry, StateDocument
 from mureo.context.ops_intent import bind_ops_intent, current_ops_intent
 from mureo.context.ops_linkage import (
-    adopt_decision,
+    LinkRequest,
     check_linkable,
     derive_title,
     project_metrics,
+    record_call_decision,
 )
 from mureo.context.state import (
     append_action_log,
@@ -297,10 +298,15 @@ class TestExplicitDecisionId:
         with pytest.raises(ValueError, match="no recorded decision"):
             check_linkable(doc, "x")
 
-    def test_adopt_decision_without_an_entry(self, tmp_path: Path) -> None:
+    def test_a_call_without_an_entry_adopts_the_proposal(self, tmp_path: Path) -> None:
         path = _state(tmp_path, (_proposal(),))
-        assert adopt_decision(path, "dec-p") is True
-        assert adopt_decision(path, "dec-p") is False
+        request = LinkRequest(
+            reason=None, now="2026-10-14T01:00:00+00:00", explicit_id="dec-p"
+        )
+        assert record_call_decision(path, request, tool="x", platform=None) == "dec-p"
+        written = path.stat().st_mtime_ns
+        assert record_call_decision(path, request, tool="x", platform=None) == "dec-p"
+        assert path.stat().st_mtime_ns == written
         doc = read_state_file(path)
         assert [r.status for r in doc.decisions] == ["proposed", "adopted"]
 

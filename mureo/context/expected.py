@@ -42,7 +42,28 @@ EXPECTED_METRICS: Final[tuple[str, ...]] = (
 
 #: Which way the metric should move. ``hold`` is a real expectation — "the
 #: budget shift must not cost conversions" — and is judged as such.
-EXPECTED_DIRECTIONS: Final[tuple[str, ...]] = ("up", "down", "hold")
+DIRECTION_UP: Final = "up"
+DIRECTION_DOWN: Final = "down"
+DIRECTION_HOLD: Final = "hold"
+EXPECTED_DIRECTIONS: Final[tuple[str, ...]] = (
+    DIRECTION_UP,
+    DIRECTION_DOWN,
+    DIRECTION_HOLD,
+)
+
+#: Long-form metric names a snapshot may use, mapped to the one spelling
+#: above. Applied when a declared metric is matched against measured ones,
+#: so ``cost_per_conversion`` in the figures meets ``cpa`` in ``expected``.
+METRIC_ALIASES: Final[dict[str, str]] = {
+    "cost_per_conversion": "cpa",
+    "cost_per_acquisition": "cpa",
+    "cost_per_click": "cpc",
+    "cost_per_lead": "cpl",
+    "cost_per_mille": "cpm",
+    "conversion_rate": "cvr",
+    "click_through_rate": "ctr",
+    "return_on_ad_spend": "roas",
+}
 
 #: One entry per metric at most, so the vocabulary size is the bound.
 EXPECTED_MAX_ITEMS: Final[int] = len(EXPECTED_METRICS)
@@ -183,12 +204,23 @@ def expected_to_list(effects: tuple[ExpectedEffect, ...]) -> list[dict[str, Any]
     return rendered
 
 
+def canonical_metric(name: str) -> str:
+    """``name`` trimmed, lower-cased and mapped through :data:`METRIC_ALIASES`."""
+    key = name.strip().lower()
+    return METRIC_ALIASES.get(key, key)
+
+
 __all__ = [
+    "DIRECTION_DOWN",
+    "DIRECTION_HOLD",
+    "DIRECTION_UP",
     "EXPECTED_DIRECTIONS",
     "EXPECTED_HORIZON_MAX_DAYS",
     "EXPECTED_MAX_ITEMS",
     "EXPECTED_METRICS",
+    "METRIC_ALIASES",
     "ExpectedEffect",
+    "canonical_metric",
     "expected_to_list",
     "parse_expected",
 ]

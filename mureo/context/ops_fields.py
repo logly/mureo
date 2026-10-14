@@ -34,7 +34,9 @@ ARROW: Final = " → "
 
 #: Parameter names that identify the target rather than describe the change.
 _ID_KEYS: Final[frozenset[str]] = frozenset({"id", "customer_id", "account_id"})
-_ID_SUFFIX: Final = "_id"
+
+#: The suffix that marks a parameter as naming its target.
+ID_SUFFIX: Final = "_id"
 
 
 def _format_value(value: Any) -> str:
@@ -60,7 +62,7 @@ def _target(entry: ActionLogEntry) -> str:
 
 
 def _is_identity(key: str) -> bool:
-    return key in _ID_KEYS or key.endswith(_ID_SUFFIX)
+    return key in _ID_KEYS or key.endswith(ID_SUFFIX)
 
 
 def _changes(entry: ActionLogEntry, arguments: Mapping[str, Any]) -> list[str]:
@@ -108,6 +110,33 @@ def derive_title(entry: ActionLogEntry, arguments: Mapping[str, Any]) -> str:
     return fit_title(f"{head}: {detail}" if detail else head)
 
 
+def _is_scalar(value: Any) -> bool:
+    return value is not None and not isinstance(value, (dict, list, tuple))
+
+
+def derive_call_title(tool: str, arguments: Mapping[str, Any]) -> str:
+    """A title for a change that left no ``action_log`` entry to describe it.
+
+    The operation, the target its ``*_id`` parameters name, and the values
+    it set: ``google_ads_budget_update budget b1: amount 12,000``. The value
+    before the change is not known here, so none is shown.
+    """
+    target: list[str] = []
+    values: list[str] = []
+    for key, value in arguments.items():
+        if not isinstance(key, str) or not _is_scalar(value):
+            continue
+        if key in _ID_KEYS:
+            continue
+        if key.endswith(ID_SUFFIX):
+            target.append(f"{key[: -len(ID_SUFFIX)].replace('_', ' ')} {value}")
+        else:
+            values.append(f"{key} {_format_value(value)}")
+    head = " ".join([tool, *target])
+    detail = "; ".join(values)
+    return fit_title(f"{head}: {detail}" if detail else head)
+
+
 def _storable(value: Any) -> bool:
     if value is None or isinstance(value, (bool, int)):
         return True
@@ -137,4 +166,12 @@ def project_metrics(raw: Mapping[str, Any] | None) -> dict[str, Any] | None:
     return kept or None
 
 
-__all__ = ["ARROW", "ELLIPSIS", "derive_title", "fit_title", "project_metrics"]
+__all__ = [
+    "ARROW",
+    "ELLIPSIS",
+    "ID_SUFFIX",
+    "derive_call_title",
+    "derive_title",
+    "fit_title",
+    "project_metrics",
+]

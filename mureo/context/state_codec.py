@@ -157,6 +157,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "client",
                 "decision_id",
                 "evaluation",
+                "applied_params",
             }
         ),
         "_parse_action_log_entry / _action_log_entry_to_dict",
@@ -591,6 +592,7 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         # #848 ops history. Absent on every older entry.
         decision_id=e.get("decision_id"),
         evaluation=e.get("evaluation"),
+        applied_params=e.get("applied_params"),
     )
 
 
@@ -761,6 +763,8 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["decision_id"] = e.decision_id
     if e.evaluation is not None:
         result["evaluation"] = copy.deepcopy(e.evaluation)
+    if e.applied_params is not None:
+        result["applied_params"] = copy.deepcopy(e.applied_params)
     return result
 
 

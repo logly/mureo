@@ -32,6 +32,7 @@ answered from the reloaded module, not from a stale snapshot.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
@@ -87,6 +88,14 @@ JOURNAL_OUTCOMES: tuple[str, ...] = (
 UNKNOWN_FAMILY = "unknown"
 
 _PLUGIN_FAMILY = "plugin"
+
+#: Random bytes in a journal ``call_id``.
+_CALL_ID_BYTES = 8
+
+
+def new_call_id() -> str:
+    """Mint the id one tool call's journal record is named by (#848)."""
+    return f"call-{secrets.token_hex(_CALL_ID_BYTES)}"
 
 
 def take_rationale(
@@ -183,10 +192,24 @@ class JournalledCall:
     record either way.
     """
 
-    __slots__ = ("arguments", "outcome", "rationale", "reason", "tool", "_started")
+    __slots__ = (
+        "arguments",
+        "call_id",
+        "decision_id",
+        "outcome",
+        "rationale",
+        "reason",
+        "tool",
+        "_started",
+    )
 
     def __init__(self, tool: str, arguments: dict[str, Any]) -> None:
         self.tool = tool
+        # #848: the id a decision record carried out by this call names it
+        # by, and that decision's id once known. Written to the record only
+        # when both are set.
+        self.call_id = new_call_id()
+        self.decision_id: str | None = None
         # Snapshot at entry: the journal records what was REQUESTED. A
         # handler that normalises, defaults or pops its arguments in place
         # would otherwise rewrite the trail an operator reads to find out
@@ -273,6 +296,8 @@ class JournalledCall:
                     plugin_source_of(self.tool) if family == _PLUGIN_FAMILY else None
                 ),
                 rollback=is_rollback_dispatch_active(),
+                call_id=self.call_id,
+                decision_id=self.decision_id,
             )
         except Exception:  # noqa: BLE001 — journaling never breaks a call
             logger.warning("journal hook failed for tool %r", self.tool, exc_info=True)
@@ -306,6 +331,7 @@ __all__ = [
     "JournalledCall",
     "capture_client_info",
     "journal_call",
+    "new_call_id",
     "plugin_source_of",
     "take_rationale",
     "tool_family",

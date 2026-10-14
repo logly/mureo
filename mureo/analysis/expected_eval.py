@@ -38,6 +38,12 @@ from mureo.analysis.outcome_eval import (
     evaluate_outcome,
     is_directional,
 )
+from mureo.context.expected import (
+    DIRECTION_DOWN,
+    DIRECTION_HOLD,
+    DIRECTION_UP,
+    canonical_metric,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -88,17 +94,17 @@ def _expected_verdict(
     """Judge one metric against the direction the decision declared."""
     if outcome.delta_pct is None:
         return Verdict.INCONCLUSIVE
-    if effect.direction == "hold":
+    if effect.direction == DIRECTION_HOLD:
         return _hold_verdict(outcome.delta_pct, noise_pct)
-    sign = 1 if effect.direction == "up" else -1
+    sign = 1 if effect.direction == DIRECTION_UP else -1
     return _directed_verdict(outcome.delta_pct, noise_pct, sign)
 
 
 def _target_reached(after: float, effect: ExpectedEffect, noise_pct: float) -> bool:
     target = float(effect.target or 0)
-    if effect.direction == "up":
+    if effect.direction == DIRECTION_UP:
         return after >= target
-    if effect.direction == "down":
+    if effect.direction == DIRECTION_DOWN:
         return after <= target
     return abs(after - target) <= abs(target) * noise_pct / 100
 
@@ -155,7 +161,7 @@ def _expected_rows(
     """Declared metrics primary and re-judged; the rest reference."""
     rows: list[dict[str, Any]] = []
     for outcome in outcomes:
-        effect = by_metric.get(outcome.metric.strip().lower())
+        effect = by_metric.get(canonical_metric(outcome.metric))
         if effect is None:
             rows.append(_row(outcome, outcome.verdict, outcome.note, ROLE_REFERENCE))
             continue
@@ -222,9 +228,9 @@ def evaluation_from_report(
 
     ``noise_pct`` must be the band the report was scored with.
     """
-    by_metric = {e.metric: e for e in expected}
-    present = {o.metric.strip().lower() for o in report.metrics}
-    missing = [e.metric for e in expected if e.metric not in present]
+    by_metric = {canonical_metric(e.metric): e for e in expected}
+    present = {canonical_metric(o.metric) for o in report.metrics}
+    missing = [e.metric for e in expected if canonical_metric(e.metric) not in present]
     table: dict[str, Any] = {
         "noise_pct": float(noise_pct),
         "window": {"from": window_from, "to": window_to},

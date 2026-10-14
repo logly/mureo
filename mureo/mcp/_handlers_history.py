@@ -52,7 +52,7 @@ import json
 import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from mureo.context.history import read_daily_archive, read_report_history
 from mureo.context.models import DAILY_DATE_KEY_PATTERN
@@ -295,7 +295,17 @@ def build_history_query(arguments: dict[str, Any]) -> HistoryQuery:
     )
 
 
-def _in_window(day: date | None, query: HistoryQuery) -> bool:
+class DateBounds(Protocol):
+    """The inclusive bounds :func:`_in_window` reads (a :class:`HistoryQuery`)."""
+
+    @property
+    def since(self) -> date | None: ...
+
+    @property
+    def until(self) -> date | None: ...
+
+
+def _in_window(day: date | None, query: DateBounds) -> bool:
     """Whether ``day`` falls inside the query's inclusive bounds.
 
     An undatable record passes an unbounded query and fails a bounded one:

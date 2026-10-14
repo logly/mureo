@@ -153,6 +153,30 @@ class TestBuildEvaluationWithExpected:
         )
         assert _rows(result.table)["CPA"]["role"] == "primary"
 
+    @pytest.mark.parametrize(
+        ("stored", "declared"),
+        [
+            ("cost_per_conversion", "cpa"),
+            ("cpa", "cpa"),
+            ("conversion_rate", "cvr"),
+            ("cvr", "cvr"),
+            ("Cost_Per_Click", "cpc"),
+        ],
+    )
+    def test_metric_aliases_match(self, stored: str, declared: str) -> None:
+        direction = "up" if declared == "cvr" else "down"
+        result = build_evaluation(
+            {stored: 100},
+            {stored: 80 if direction == "down" else 120},
+            parse_expected([{"metric": declared, "direction": direction}]),
+            window_from=None,
+            window_to=None,
+        )
+        assert result.table["basis"] == "expected"
+        assert _rows(result.table)[stored]["role"] == "primary"
+        assert "expected_missing" not in result.table
+        assert result.overall == "improved"
+
 
 # ---------------------------------------------------------------------------
 # Integration with the automatic closure

@@ -29,6 +29,7 @@ lazily, for the import-cycle reason :mod:`mureo.context.batch` documents.
 
 from __future__ import annotations
 
+import copy
 import math
 import re
 import secrets
@@ -161,6 +162,10 @@ class DecisionRecord:
     expected: What the decision should move, as structured effects (#848,
         :mod:`mureo.context.expected`) — the metrics the later evaluation
         treats as primary. Empty means nothing was declared.
+    applied_params / journal_call_id: Set when mureo wrote the record for a
+        call that carried the decision out (#848): the parameters the call
+        sent (masked), and the ``call_id`` of that call's ``JOURNAL.jsonl``
+        record. ``None`` on a record written by ``mureo_decision_record``.
 
     Every bound below is enforced on the WRITE path and **refused, never
     truncated** (the #706 rule): the caller still holds the sentence and can
@@ -184,6 +189,8 @@ class DecisionRecord:
     session_id: str | None = None
     client: str | None = None
     expected: tuple[ExpectedEffect, ...] = field(default_factory=tuple)
+    applied_params: dict[str, Any] | None = None
+    journal_call_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate every bound and take a defensive copy of ``metrics``."""
@@ -192,6 +199,12 @@ class DecisionRecord:
         self._validate_metrics()
         self._validate_related_actions()
         object.__setattr__(self, "expected", parse_expected(self.expected))
+        if self.applied_params is not None:
+            if not isinstance(self.applied_params, dict):
+                raise ValueError("applied_params must be an object")
+            object.__setattr__(
+                self, "applied_params", copy.deepcopy(self.applied_params)
+            )
 
     def _validate_required_text(self) -> None:
         """The four fields a record cannot be honest without."""
@@ -212,7 +225,7 @@ class DecisionRecord:
         """Blank is refused, not read as absent — see ``ActionLogEntry``."""
         for name in ("platform", "campaign_id", "supersedes", "batch_id"):
             _optional_label(self, name)
-        for name in ("session_id", "client"):
+        for name in ("session_id", "client", "journal_call_id"):
             _optional_label(self, name)
         if (self.entity_type is None) != (self.entity_id is None):
             raise ValueError("entity_type and entity_id must be provided together")
