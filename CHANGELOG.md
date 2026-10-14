@@ -1,5 +1,46 @@
 ## [Unreleased]
 
+### Added
+
+- **Ops history: expected effects, auto-linked decisions and evaluation
+  tables** (#848, phase 1). Every change can now carry the effect it is
+  expected to have, is linked to the decision behind it, and is evaluated
+  against that expectation. See `docs/ops-history.md`.
+  - `expected` (an array of `{metric, direction, target?, horizon_days?}`,
+    with directions `up` / `down` / `hold`) is a new optional field on
+    `mureo_decision_record` and on decision records in STATE.json.
+  - Every mutating tool now takes optional `expected` and `decision_id`
+    parameters, alongside `reason`. A call that writes an `action_log`
+    entry with a `reason` and no `decision_id` creates an `adopted`
+    decision record, with a title derived from the change, and stamps the
+    entry with its `decision_id`. A call or batch writing several entries
+    shares one decision. A `decision_id` names a `proposed` or `adopted`
+    decision to carry out, and a proposed one is adopted.
+    `mureo_state_action_log_append` accepts `entry.expected` and
+    `entry.decision_id` to the same effect.
+  - The automatic observation closure stores an `evaluation` table on each
+    `outcome_evaluated` entry: `overall`, `basis`, `noise_pct`, `window`,
+    and per metric `before` / `after` / `delta_pct` / `verdict` / `note` /
+    `role`. The decision's expected metrics are primary and decide the
+    verdict. Every other metric is kept as reference. The entry inherits
+    the `decision_id`.
+  - New workspace setting `settings.ops_history.enabled`, off by default.
+    Set it with the new `mureo_state_settings_set` tool or from
+    `mureo configure` → Advanced → Ops history. When it is on, a mutating
+    call without `reason` or `expected` is refused with `invalid_args`
+    naming the missing parameter, and a proposed or adopted decision must
+    declare `expected`.
+  - `mureo_history_query` gains two sources: `decisions` and `ops_history`.
+    Both return each decision with its changes, their before-values and
+    evaluation, and a derived state (`proposed` / `adopted` / `executed` /
+    `observing` / `evaluated` / `skipped` / `rejected` / `deferred`) plus a
+    `rolled_back` flag. `ops_history` also includes the changes that no
+    decision covers. `mureo.web.reports.build_ops_history(client, since,
+    until)` returns the same items for a custom view.
+  - Backward compatible: every new field is optional. A STATE.json written
+    before this release reads and writes unchanged, and with the setting
+    off no call is refused that was accepted before.
+
 ## [0.26.0] - 2026-10-14
 
 ### Added

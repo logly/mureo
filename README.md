@@ -305,7 +305,7 @@ Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distin
 
 ### MCP server & tool list
 
-mureo exposes **228 MCP tools** over stdio: Google Ads (92), Meta Ads (90), Search Console (10), plus rollback, batch (group a bulk change into one revertible unit), change import (record changes made outside mureo), anomaly detection, delivery-collapse detection and diagnosis, exclusion delivery-impact preview, tracking-parameter consistency, strategy/state context, analytics registry, learning, learning-period reset pre-flight, and Creative Studio. When Amazon Ads is configured, the bridged Amazon tools are added on top from the local manifest (their names and count are Amazon's, not mureo's — see [docs/amazon-ads.md](docs/amazon-ads.md)). Any MCP-compatible client can connect:
+mureo exposes **229 MCP tools** over stdio: Google Ads (92), Meta Ads (90), Search Console (10), plus rollback, batch (group a bulk change into one revertible unit), change import (record changes made outside mureo), anomaly detection, delivery-collapse detection and diagnosis, exclusion delivery-impact preview, tracking-parameter consistency, strategy/state context, analytics registry, learning, learning-period reset pre-flight, and Creative Studio. When Amazon Ads is configured, the bridged Amazon tools are added on top from the local manifest (their names and count are Amazon's, not mureo's — see [docs/amazon-ads.md](docs/amazon-ads.md)). Any MCP-compatible client can connect:
 
 ```json
 {
@@ -338,6 +338,7 @@ Two local files drive strategy-aware operations. Run `/onboard` to generate them
 
 - **STRATEGY.md** -- Persona, USP, Brand Voice, Goals, Operation Mode. See [docs/strategy-context.md](docs/strategy-context.md).
 - **STATE.json** -- Campaign snapshots, action log. Updated automatically by workflow commands.
+- **Ops history** -- Each change links to the decision behind it, with the effect it was expected to have and an evaluation scored against that expectation. Opt in to require a reason and an expected effect on every change. See [docs/ops-history.md](docs/ops-history.md).
 
 ### Connecting Amazon Ads, TikTok Ads, GA4, and other MCP servers
 

@@ -270,7 +270,7 @@ STATE.jsonから接続媒体を検出:
 
 ### MCP サーバーとツール一覧
 
-mureo は **228 の MCP ツール** を stdio で公開します。Google広告（92）、Meta広告（90）、Search Console（10）に加え、rollback、バッチ（一括変更を1つの取り消し単位にまとめる）、変更インポート（mureo の外で行われた変更の記録）、異常検知、配信停止の検知と診断、除外の配信インパクトプレビュー、トラッキングパラメータ整合性、戦略と状態のコンテキスト、分析モジュールレジストリ、学習、学習期間リセットのプリフライト、Creative Studio を含みます。Amazon 広告を設定している場合は、ローカルのマニフェストからブリッジされた Amazon のツールがこれに加わります（ツール名も本数も Amazon 側のもので、mureo が定義するものではありません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。MCP 対応クライアントなら何からでも接続できます。
+mureo は **229 の MCP ツール** を stdio で公開します。Google広告（92）、Meta広告（90）、Search Console（10）に加え、rollback、バッチ（一括変更を1つの取り消し単位にまとめる）、変更インポート（mureo の外で行われた変更の記録）、異常検知、配信停止の検知と診断、除外の配信インパクトプレビュー、トラッキングパラメータ整合性、戦略と状態のコンテキスト、分析モジュールレジストリ、学習、学習期間リセットのプリフライト、Creative Studio を含みます。Amazon 広告を設定している場合は、ローカルのマニフェストからブリッジされた Amazon のツールがこれに加わります（ツール名も本数も Amazon 側のもので、mureo が定義するものではありません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。MCP 対応クライアントなら何からでも接続できます。
 
 ```json
 {
@@ -303,6 +303,7 @@ mureo auth check-meta      # Meta広告の認証情報を表示（マスク済�
 
 - **STRATEGY.md**：ペルソナ、USP、ブランドボイス、目標、運用モード。詳細は [docs/strategy-context.md](docs/strategy-context.md)
 - **STATE.json**：キャンペーンのスナップショットと action log。ワークフローコマンドが自動で更新します
+- **運用履歴（Ops history）**：変更ごとに、その理由となった意思決定・期待した効果・その期待に照らした評価を紐づけます。設定でオンにすると、すべての変更に理由と期待効果が必須になります。[docs/ops-history.md](docs/ops-history.md)（英語）を参照
 
 ### Amazon 広告、TikTok 広告、GA4、その他の MCP サーバーの接続
 

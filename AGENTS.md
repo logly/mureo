@@ -130,12 +130,19 @@ mureo/
 │   │                                      #   (#758 phase 5): the `auto_evaluate` switch, the
 │   │                                      #   policy-gate check that decides whether the write
 │   │                                      #   may happen, and the response fragment
+│   ├── _tools_settings.py                 # mureo_state_settings_set (#848) — workspace settings,
+│   │                                      #   another PARTIAL of the mureo_context family
+│   ├── _ops_history_param.py              # `expected` / `decision_id` on mutating tools (#848):
+│   │                                      #   schema injection, the requirement check, the binding
+│   ├── _ops_history_records.py            # The same requirement on the two recording tools
+│   ├── _history_ops.py                    # The `decisions` / `ops_history` history sources
 │   ├── _handlers_decisions.py             # Its handler: mints the id + timestamp, appends
 │   ├── _tools_history.py                  # mureo_history_query (#758 phase 4b) — another PARTIAL
 │   │                                      #   of the mureo_context family; READ-ONLY, so the
 │   │                                      #   dispatcher injects no `reason` into its schema
 │   ├── _handlers_history.py               # Its handler: the filters, and one bounded section per
-│   │                                      #   source (action_log / journal / daily / reports)
+│   │                                      #   source (action_log / journal / daily / reports /
+│   │                                      #   decisions / ops_history)
 │   ├── journal_read.py                    # Reading JOURNAL.jsonl back — the parse, the date, the
 │   │                                      #   filter and the tail reader, shared with `mureo journal`.
 │   │                                      #   The *_files forms walk the rotated siblings as one record
@@ -186,6 +193,12 @@ mureo/
 │   │                    #   be a history
 │   ├── _decision_codec.py # That section's two codec halves. Strict like action_log's,
 │   │                    #   not tolerant like batches': a decision record IS history
+│   ├── expected.py, settings.py, decision_chain.py, ops_intent.py,
+│   │   ops_linkage.py, ops_fields.py, ops_history_view.py
+│   │                    #   Ops history (#848): expected effects, the settings section,
+│   │                    #   linking entries to decisions inside the locked append, and
+│   │                    #   the derived decision → actions → evaluation view. See
+│   │                    #   docs/ops-history.md
 │   ├── daily.py         # The day-grain history write MINUS the file (#690/#710):
 │   │                    #   `with_platform_daily(doc, ...)` (guard + per-date merge +
 │   │                    #   trim) and `capped_platform_daily(daily)` (the 35-day
@@ -390,7 +403,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
-| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_display_set`, `mureo_state_platform_metrics_set`, `mureo_state_platform_daily_set`, `mureo_state_platform_not_collected_set`, `mureo_state_workspace_not_collected_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate`, `mureo_decision_record`, `mureo_history_query` |
+| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_display_set`, `mureo_state_platform_metrics_set`, `mureo_state_platform_daily_set`, `mureo_state_platform_not_collected_set`, `mureo_state_workspace_not_collected_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate`, `mureo_decision_record`, `mureo_history_query`, `mureo_state_settings_set` |
 
 ## Design Constraints
 
