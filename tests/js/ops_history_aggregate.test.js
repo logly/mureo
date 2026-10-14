@@ -22,6 +22,7 @@ function opsHistory(enabled, counts) {
       changes: 0,
       improved: 0,
       regressed: 0,
+      regressed_open: 0,
       inconclusive: 0,
       observing: 0,
     },
@@ -69,7 +70,14 @@ const ROSTER = [
 const SUMMARIES = {
   alpha: summaryFor(
     "alpha",
-    opsHistory(true, { changes: 5, improved: 2, regressed: 1, inconclusive: 1, observing: 1 })
+    opsHistory(true, {
+      changes: 5,
+      improved: 2,
+      regressed: 1,
+      regressed_open: 1,
+      inconclusive: 1,
+      observing: 1,
+    })
   ),
   bravo: summaryFor("bravo", opsHistory(false)),
   carol: summaryFor("carol", opsHistory(true)),
@@ -143,7 +151,7 @@ test.describe("a regressed change in the triage layer", function () {
     assert.equal(layer.triageItemSeverity(found[0]), "attention");
     assert.equal(
       layer.triageItemText(found[0]),
-      "ops_history_section.triage_text|n=1"
+      "ops_history_section.regressed_one|n=1"
     );
     assert.equal(layer.triageItemTag(found[0]), "ops_history_section.triage_tag");
     assert.equal(layer.triageItemNextStep(found[0]), "ops_history_section.triage_next");
@@ -160,6 +168,31 @@ test.describe("a regressed change in the triage layer", function () {
       [off, clean]
     );
     assert.equal(built.items.length, 0);
+  });
+
+  test.it("counts only regressions that were not rolled back", async function () {
+    const page = await openIndex();
+    const layer = triage(page);
+    const reverted = summaryFor(
+      "x",
+      opsHistory(true, { changes: 1, regressed: 1, regressed_open: 0 })
+    );
+    const built = layer.buildReportsTriage([{ slug: "x" }], [reverted]);
+    assert.equal(built.items.length, 0);
+  });
+
+  test.it("says more than one regression in the plural", async function () {
+    const page = await openIndex();
+    const layer = triage(page);
+    const two = summaryFor(
+      "x",
+      opsHistory(true, { changes: 3, regressed: 2, regressed_open: 2 })
+    );
+    const built = layer.buildReportsTriage([{ slug: "x" }], [two]);
+    assert.equal(
+      layer.triageItemText(built.items[0]),
+      "ops_history_section.regressed_other|n=2"
+    );
   });
 
   test.it("ranks by the table, like every other finding", async function () {

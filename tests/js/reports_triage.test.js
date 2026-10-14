@@ -166,6 +166,7 @@ function opsRegressedSummary() {
     changes: 2,
     improved: 1,
     regressed: 1,
+    regressed_open: 1,
     inconclusive: 0,
     observing: 0,
   };

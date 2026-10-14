@@ -134,7 +134,8 @@ class TestEndpoint:
     ) -> None:
         _write(workspace, _document(enabled=True))
         body = _get(wizard, ENDPOINT)
-        assert body["since"] == "2026-09-14"
+        # Thirty calendar days ending today, both ends included.
+        assert body["since"] == "2026-09-15"
         assert body["until"] == "2026-10-14"
         assert body["server_today"] == "2026-10-14"
         assert body["enabled"] is True
@@ -159,6 +160,9 @@ class TestEndpoint:
             ("since=yesterday", "since"),
             ("until=2026-13-01", "until"),
             ("since=2026-10-05&until=2026-10-01", "before"),
+            # Forms date.fromisoformat accepts on 3.11+ but the API does not.
+            ("since=20261005", "since"),
+            ("until=2026-W41-1", "until"),
         ],
     )
     def test_a_bad_date_is_a_400_with_a_plain_message(
@@ -244,6 +248,7 @@ _ZERO_COUNTS = {
     "changes": 0,
     "improved": 0,
     "regressed": 0,
+    "regressed_open": 0,
     "inconclusive": 0,
     "observing": 0,
 }
@@ -261,6 +266,7 @@ class TestSummaryAggregate:
             "changes": 3,
             "improved": 1,
             "regressed": 1,
+            "regressed_open": 1,
             "inconclusive": 0,
             "observing": 1,
         }
@@ -347,8 +353,9 @@ class TestAssets:
         """It is built by the module, so a disabled workspace has none."""
         assert "data-ops-history-section" not in _read("app.html")
 
-    def test_free_text_never_goes_through_inner_html(self) -> None:
-        assert "innerHTML" not in _read(_MODULE)
+    @pytest.mark.parametrize("sink", ["innerHTML", "outerHTML", "insertAdjacentHTML"])
+    def test_free_text_never_goes_through_an_html_sink(self, sink: str) -> None:
+        assert sink not in _read(_MODULE)
 
     def test_the_weak_rationale_threshold_is_one_documented_constant(self) -> None:
         assert "WEAK_RATIONALE_MIN_CHARS = 20" in _read(_MODULE)

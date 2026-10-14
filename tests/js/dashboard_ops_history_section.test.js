@@ -364,8 +364,85 @@ test.describe("the ops history section", function () {
     change(period, "7");
     await settle();
     const asked = page.requests.filter((url) => url.startsWith(FEED));
-    assert.equal(asked[asked.length - 1], FEED + "?client=alpha&since=2026-10-07&until=2026-10-14");
+    // Seven calendar days ending today, today included.
+    assert.equal(asked[asked.length - 1], FEED + "?client=alpha&since=2026-10-08&until=2026-10-14");
     assert.equal(section(page).querySelector("[data-ops-history-period]").value, "7");
+  });
+
+  test.it("draws no section when the feed cannot be read", async function () {
+    const page = await openDetail(() => {
+      throw new Error("unreadable");
+    });
+    assert.ok(page.requests.some((url) => url.startsWith(FEED)));
+    assert.equal(section(page), null);
+  });
+
+  test.it("puts the weak-rationale boundary at twenty characters", async function () {
+    const nineteen = "a".repeat(19);
+    const items = [
+      item("short", "2026-10-02", { state: "executed", rationale: "  **" + nineteen + "**  " }),
+      item("exact", "2026-10-01", { state: "executed", rationale: " **" + nineteen + "b** " }),
+    ];
+    const page = await openDetail(feed(true, items));
+    const weak = section(page)
+      .querySelectorAll("[data-ops-history-row]")
+      .filter((row) => row.hasAttribute("data-ops-history-weak"))
+      .map((row) => row.getAttribute("data-decision"));
+    assert.deepEqual(weak, ["short"]);
+  });
+
+  test.it("puts a title carrying markup on the page as text", async function () {
+    const items = [item("x", "2026-10-02", { state: "executed" })];
+    items[0].decision.title = "</script><b>bold</b>";
+    const page = await openDetail(feed(true, items));
+    const title = section(page).querySelector("[data-ops-history-title]");
+    assert.equal(title.textContent, "</script><b>bold</b>");
+    assert.equal(title.querySelectorAll("b").length, 0);
+  });
+
+  test.it("falls back to the primary row, then to the first row", async function () {
+    const roles = [
+      { metric: "clicks", before: 900, after: 950, delta_pct: 5.6, verdict: "inconclusive", role: "reference" },
+      { metric: "ctr", before: 2, after: 2.5, delta_pct: 25, verdict: "improved", role: "primary" },
+    ];
+    const firstOnly = [
+      { metric: "clicks", before: 900, after: 950, delta_pct: 5.6, verdict: "inconclusive", role: "reference" },
+      { metric: "cvr", before: 1.5, after: 1.2, delta_pct: -20, verdict: "regressed", role: "reference" },
+    ];
+    const items = [
+      item("primary", "2026-10-03", {
+        state: "evaluated",
+        verdict: "improved",
+        expected: [{ metric: "cpa", direction: "down" }],
+        evaluation: evaluation("improved", roles),
+      }),
+      item("first", "2026-10-02", {
+        state: "evaluated",
+        verdict: "improved",
+        expected: [],
+        evaluation: evaluation("improved", firstOnly),
+      }),
+    ];
+    const page = await openDetail(feed(true, items));
+    const cells = section(page).querySelectorAll("[data-ops-history-metric]");
+    const byRow = {};
+    rowIds(page).forEach((id, i) => (byRow[id] = cells[i].textContent));
+    assert.equal(byRow.primary, "CTR 2 → 2.5 ▲25%");
+    assert.equal(byRow.first, "Clicks 900 → 950 ▲6%");
+  });
+
+  test.it("states a nested value as bounded JSON, never as [object Object]", async function () {
+    const items = [item("n", "2026-10-02", { state: "executed" })];
+    items[0].actions[0].before = { nested: { a: 1 } };
+    items[0].actions[0].after = { nested: { a: 2 }, long: "x".repeat(200) };
+    const page = await openDetail(feed(true, items));
+    const row = section(page).querySelector("[data-ops-history-row]");
+    row.click();
+    const ops = row.nextSibling.querySelector("[data-ops-history-operations]").textContent;
+    assert.doesNotMatch(ops, /object Object/);
+    assert.match(ops, /nested: \{"a":1\} → nested: \{"a":2\}/);
+    assert.match(ops, /long: x{79}…/);
+    assert.doesNotMatch(ops, /x{81}/);
   });
 
   test.it("puts writer text on the page as text", async function () {
