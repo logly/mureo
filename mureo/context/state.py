@@ -70,6 +70,7 @@ from mureo.context.models import (
     PlatformState,
     StateDocument,
 )
+from mureo.context.ops_linkage import call_request, link_batch, link_entry
 from mureo.context.platform_accounts import (
     UNKNOWN_ACCOUNT_ID,
     account_ids_match,
@@ -440,7 +441,11 @@ def upsert_campaign(
 
 
 def append_action_log(
-    path: Path, entry: ActionLogEntry, *, join_active_batch: bool = True
+    path: Path,
+    entry: ActionLogEntry,
+    *,
+    join_active_batch: bool = True,
+    expected: Any = None,
 ) -> StateDocument:
     """Append an action log entry to STATE.json.
 
@@ -482,6 +487,15 @@ def append_action_log(
             ``rollback_of`` record does, because a reversal joining the batch
             it reverses would grow that batch and make the next plan offer the
             reversals as things still to reverse.
+        expected: The change's declared effects (#848), for a caller that
+            states them on the entry rather than on the call. ``None`` falls
+            back to the ones bound to the running call.
+
+    It is also where the entry is linked to its DECISION (#848, see
+    :mod:`mureo.context.ops_linkage`): a reasoned change gets an ``adopted``
+    decision record written in the same locked write, an explicit
+    ``decision_id`` adopts the earlier proposal it names, and the entry is
+    stamped with the decision's id.
 
     Returns:
         Updated StateDocument
@@ -494,13 +508,16 @@ def append_action_log(
             :data:`~mureo.core.actor.ACTION_REASON_MAX_CHARS` (#758). Refused,
             never truncated, and refused BEFORE the file is opened — so a
             rejected append leaves the log exactly as it was and the caller
-            still holds the sentence it can shorten.
+            still holds the sentence it can shorten. Also raised for an
+            invalid ``expected``, and for an ``entry.decision_id`` that names
+            no decision or a rejected / deferred one.
     """
     # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
     # ``state_store`` -> this module, so a module-level import would be a cycle
     # (the same reason ``metrics_windows`` and ``report_summary`` are imported
     # inside their callers below).
     from mureo.core.actor import current_call_reason, normalize_reason
+    from mureo.core.clock import server_now_iso
     from mureo.core.display_contract import validate_action_log_display
 
     # Outside the lock: the dashboard's one-line rendering is a WRITE rule, so
@@ -518,6 +535,7 @@ def append_action_log(
     # before the file is opened, exactly like the display fields.
     inherited = None if entry.origin is not None else current_call_reason()
     reason = normalize_reason(entry.reason if entry.reason is not None else inherited)
+    request = call_request(reason, server_now_iso(), expected)
 
     def _build(doc: StateDocument) -> StateDocument:
         if entry.batch_id is not None:
@@ -528,6 +546,7 @@ def append_action_log(
         # with the automatic observation closure (#758 phase 5), which writes
         # entries of its own inside one locked document write.
         stamped = stamp_actor(stamped, reason)
+        doc, stamped = link_entry(doc, stamped, request)
         # ``last_synced_at`` is deliberately NOT re-stamped: appending an action
         # is not a sync, and the dashboard's "Synced N ago" freshness must keep
         # reflecting the last real sync. Every other section is carried over by
@@ -550,14 +569,23 @@ def begin_batch(path: Path, *, label: str) -> BatchRecord:
     Returns:
         The opened :class:`~mureo.context.models.BatchRecord`.
 
+    A reason bound to the call opens the decision every member will share,
+    and a bound ``decision_id`` adopts that decision for the batch (#848,
+    :func:`mureo.context.ops_linkage.link_batch`).
+
     Raises:
         BatchError: A batch is already open. Refused rather than nested: two
             change sets merged into one cannot be told apart afterwards.
-        ValueError: ``label`` is blank.
+        ValueError: ``label`` is blank, or a bound ``decision_id`` is not
+            linkable.
     """
+    from mureo.core.actor import current_call_reason, normalize_reason
+    from mureo.core.clock import server_now_iso
+
     cleaned = label.strip() if isinstance(label, str) else ""
     if not cleaned:
         raise ValueError("label must be a non-empty string")
+    request = call_request(normalize_reason(current_call_reason()), server_now_iso())
 
     opened: list[BatchRecord] = []
 
@@ -575,7 +603,7 @@ def begin_batch(path: Path, *, label: str) -> BatchRecord:
             started_at=started_at,
         )
         opened.append(batch)
-        return replace(doc, batches=(*doc.batches, batch))
+        return link_batch(replace(doc, batches=(*doc.batches, batch)), batch, request)
 
     _locked_state_mutation(path, _build)
     return opened[0]

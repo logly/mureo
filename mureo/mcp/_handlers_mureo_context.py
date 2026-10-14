@@ -97,6 +97,8 @@ from mureo.fsutil import backup_file
 from mureo.mcp._auto_evaluation_hook import _auto_evaluate
 from mureo.mcp._handlers_decisions import apply_decisions_scope
 from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
+from mureo.mcp._ops_history_param import parse_decision_id
+from mureo.mcp._ops_history_records import require_entry_fields
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -391,9 +393,13 @@ async def handle_state_action_log_append(
         # is for an entry whose rationale is NOT this call's (a backfill, an
         # imported change), and wins over the stamped one.
         reason=raw.get("reason"),
+        # #848: an earlier decision this change carried out (validated, and a
+        # proposal adopted, inside ``append_action_log``'s lock).
+        decision_id=parse_decision_id(raw.get("decision_id")),
     )
+    require_entry_fields(path, entry, raw.get("expected"))
     try:
-        doc = append_action_log(path, entry)
+        doc = append_action_log(path, entry, expected=raw.get("expected"))
     except BatchError as exc:
         # A refused batch_id is caller error, not a server fault: report it as
         # the tool's own refusal rather than as an unhandled exception.

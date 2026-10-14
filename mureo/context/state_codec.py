@@ -64,6 +64,7 @@ from mureo.context.models import (
     PlatformState,
     StateDocument,
 )
+from mureo.context.settings import SETTINGS_COVERAGE, parse_settings, settings_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "batches",
                 "display",
                 "decisions",
+                "settings",
             }
         ),
         "parse_state / render_state",
@@ -153,6 +155,8 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "reason",
                 "session_id",
                 "client",
+                "decision_id",
+                "evaluation",
             }
         ),
         "_parse_action_log_entry / _action_log_entry_to_dict",
@@ -232,6 +236,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
         "display_codec._parse_stated_values / ._stated_value_to_dict",
     ),
     DECISION_COVERAGE,
+    SETTINGS_COVERAGE,
 )
 
 
@@ -545,6 +550,7 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
         # refusing to read it would only delete that.
         display=parse_display_contract(data.get("display")),
         decisions=parse_decisions(data.get("decisions"), strict=strict),
+        settings=parse_settings(data.get("settings")),
     )
 
 
@@ -582,6 +588,9 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         reason=e.get("reason"),
         session_id=e.get("session_id"),
         client=e.get("client"),
+        # #848 ops history. Absent on every older entry.
+        decision_id=e.get("decision_id"),
+        evaluation=e.get("evaluation"),
     )
 
 
@@ -627,7 +636,6 @@ def render_state(doc: StateDocument) -> str:
     else:
         data["platforms"] = None
 
-    # v2: action_log
     data["action_log"] = [_action_log_entry_to_dict(e) for e in doc.action_log]
 
     # Optional reports section (stage-c forward-ready): emit only when present
@@ -657,6 +665,8 @@ def render_state(doc: StateDocument) -> str:
         data["display"] = display_contract_to_dict(doc.display)
     if doc.decisions:
         data["decisions"] = [decision_to_dict(d) for d in doc.decisions]
+    if doc.settings is not None:
+        data["settings"] = settings_to_dict(doc.settings)
 
     return json.dumps(data, ensure_ascii=False, indent=2)
 
@@ -747,6 +757,10 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["session_id"] = e.session_id
     if e.client is not None:
         result["client"] = e.client
+    if e.decision_id is not None:
+        result["decision_id"] = e.decision_id
+    if e.evaluation is not None:
+        result["evaluation"] = copy.deepcopy(e.evaluation)
     return result
 
 

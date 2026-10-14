@@ -63,6 +63,7 @@ from mureo.core.report_kinds import REPORT_KINDS
 from mureo.core.rotation import sibling_files
 from mureo.mcp import journal
 from mureo.mcp._helpers import _json_result, resolve_workspace_path
+from mureo.mcp._history_ops import decisions_section, ops_history_section
 from mureo.mcp._journal_hook import JOURNAL_OUTCOMES
 from mureo.mcp.journal_read import (
     JOURNAL_SCAN_LINES,
@@ -82,6 +83,10 @@ HISTORY_SOURCES: Final[tuple[str, ...]] = (
     "journal",
     "daily",
     "reports",
+    # #848 — decisions joined to the changes that carried them out and
+    # their evaluation; see mureo.mcp._history_ops.
+    "decisions",
+    "ops_history",
 )
 
 #: What a query with no ``sources`` asks for: the two trails that answer
@@ -586,6 +591,8 @@ _SECTIONS: dict[str, Callable[[Path, HistoryQuery], dict[str, Any]]] = {
     "journal": _journal_section,
     "daily": _daily_section,
     "reports": _reports_section,
+    "decisions": decisions_section,
+    "ops_history": ops_history_section,
 }
 
 

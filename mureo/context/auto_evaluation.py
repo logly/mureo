@@ -49,8 +49,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.analysis.expected_eval import evaluation_from_report
 from mureo.analysis.outcome_eval import evaluate_outcome
 from mureo.context.actor_stamp import stamp_actor
+from mureo.context.decision_chain import chain_expected
 from mureo.context.models import ActionLogEntry
 from mureo.context.observations import closed_observation_indices, parse_due_date
 
@@ -59,7 +61,7 @@ if TYPE_CHECKING:
     from datetime import date
     from pathlib import Path
 
-    from mureo.analysis.outcome_eval import OutcomeReport
+    from mureo.analysis.expected_eval import EvaluationResult
     from mureo.context.models import StateDocument
 
 #: The ``action`` of the entry an automatic closure appends. One string, so a
@@ -251,13 +253,16 @@ def _comparable_metrics(
 
 
 def _closure_entry(
-    entry: ActionLogEntry, index: int, report: OutcomeReport, after: dict[str, Any]
+    entry: ActionLogEntry,
+    index: int,
+    result: EvaluationResult,
+    after: dict[str, Any],
 ) -> ActionLogEntry:
     """Build the ``evaluation_of`` record for a decided closure.
 
     ``after`` is the WHOLE snapshot, ``period`` and ``fetched_at`` included:
-    the record has to say which days it scored, or a reader coming back to it
-    cannot check the verdict against anything.
+    the record has to say which days it scored. ``evaluation`` is the table
+    the verdict was read off and ``decision_id`` the evaluated entry's (#848).
 
     ``batch_id`` stays ``None`` and the entry is written outside
     ``append_action_log``'s batch stamping: an automatic record joining
@@ -273,15 +278,14 @@ def _closure_entry(
     and every other ``reason`` that reaches STATE.json crosses this boundary
     (:func:`mureo.core.actor.normalize_reason`), so this one does too.
     """
-    # Lazy, for the cycle ``mureo.context.state`` documents: importing
-    # anything from ``mureo.core`` at module level runs its ``__init__``,
-    # which reaches back into this package through ``state_store``.
+    # Lazy, for the cycle ``mureo.context.state`` documents: ``mureo.core``'s
+    # ``__init__`` reaches back into this package through ``state_store``.
     from mureo.core.actor import ACTION_REASON_MAX_CHARS
     from mureo.core.clock import server_now_iso
     from mureo.core.scrub import scrub_text
 
     reason = scrub_text(
-        f"Automatic observation closure ({report.overall.value}): {report.summary}"
+        f"Automatic observation closure ({result.overall}): {result.summary}"
     )
     return ActionLogEntry(
         timestamp=server_now_iso(),
@@ -291,10 +295,12 @@ def _closure_entry(
         ad_id=entry.ad_id,
         entity_type=entry.entity_type,
         entity_id=entry.entity_id,
-        summary=report.summary,
+        summary=result.summary,
         metrics_at_action=dict(after),
         evaluation_of=index,
         reason=reason[:ACTION_REASON_MAX_CHARS],
+        decision_id=entry.decision_id,
+        evaluation=result.table,
     )
 
 
@@ -317,21 +323,46 @@ def plan_closure(doc: StateDocument, index: int, today: date) -> ClosurePlan | A
     after = _comparable_metrics(doc, entry)
     if isinstance(after, str):
         return AutoSkip(index=index, reason=after)
+    result = _evaluate(doc, entry, after)
+    # No scored metric at all — the baseline and the current snapshot share no
+    # numeric key. ``Verdict`` has no "unknown" member: INCONCLUSIVE is a real
+    # verdict ("moved less than the noise band") and is closed like any other.
+    if result.scored == 0:
+        return AutoSkip(index=index, reason=SKIP_NO_COMPARABLE_METRIC)
+    return ClosurePlan(
+        index=index,
+        entry=_closure_entry(entry, index, result, after),
+        overall=result.overall,
+        summary=result.summary,
+    )
+
+
+def _iso_day(value: Any) -> str | None:
+    day = parse_due_date(value)
+    return day.isoformat() if day is not None else None
+
+
+def _evaluate(
+    doc: StateDocument, entry: ActionLogEntry, after: dict[str, Any]
+) -> EvaluationResult:
+    """Score the entry's baseline against ``after`` into the stored table.
+
+    The linked decision's ``expected`` effects (#848), when it declared any,
+    are the primary metrics; without them the verdict is the evaluator's
+    default one, unchanged. The window runs from the day of the change to
+    the day the snapshot was collected.
+    """
+    expected = chain_expected(doc, entry.decision_id) if entry.decision_id else ()
     # Stripped for the SCORING only. The record keeps the whole snapshot.
     report = evaluate_outcome(
         before=_scored_metrics(entry.metrics_at_action or {}),
         after=_scored_metrics(after),
     )
-    # No scored metric at all — the baseline and the current snapshot share no
-    # numeric key. ``Verdict`` has no "unknown" member: INCONCLUSIVE is a real
-    # verdict ("moved less than the noise band") and is closed like any other.
-    if not report.metrics:
-        return AutoSkip(index=index, reason=SKIP_NO_COMPARABLE_METRIC)
-    return ClosurePlan(
-        index=index,
-        entry=_closure_entry(entry, index, report, after),
-        overall=report.overall.value,
-        summary=report.summary,
+    return evaluation_from_report(
+        report,
+        expected,
+        window_from=_iso_day(entry.timestamp),
+        window_to=_iso_day(after.get("fetched_at")),
     )
 
 

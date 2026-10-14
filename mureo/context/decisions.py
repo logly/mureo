@@ -36,6 +36,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final
 
 from mureo.context.batch import ID_ENTROPY_BYTES, BatchError, find_batch
+from mureo.context.expected import ExpectedEffect, parse_expected
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -157,6 +158,9 @@ class DecisionRecord:
         journal session and the connected MCP client label. Stamped by
         :func:`append_decision`, exactly as on an ``action_log`` entry, so
         the two trails join on the same id.
+    expected: What the decision should move, as structured effects (#848,
+        :mod:`mureo.context.expected`) — the metrics the later evaluation
+        treats as primary. Empty means nothing was declared.
 
     Every bound below is enforced on the WRITE path and **refused, never
     truncated** (the #706 rule): the caller still holds the sentence and can
@@ -179,6 +183,7 @@ class DecisionRecord:
     batch_id: str | None = None
     session_id: str | None = None
     client: str | None = None
+    expected: tuple[ExpectedEffect, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         """Validate every bound and take a defensive copy of ``metrics``."""
@@ -186,6 +191,7 @@ class DecisionRecord:
         self._validate_optional_text()
         self._validate_metrics()
         self._validate_related_actions()
+        object.__setattr__(self, "expected", parse_expected(self.expected))
 
     def _validate_required_text(self) -> None:
         """The four fields a record cannot be honest without."""

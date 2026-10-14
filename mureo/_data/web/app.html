@@ -741,6 +741,23 @@
                 <button type="button" class="btn btn-primary" data-guardrails-fields-save data-i18n="dashboard.guardrails_fields_save">Save rules</button>
                 <p class="dashboard-guardrails-result" data-guardrails-fields-result role="status" aria-live="polite"></p>
               </div>
+              <!-- Ops history (#848): the same scope as the Guardrails card
+                   above, the ACTIVE workspace's STATE.json, so it sits inside
+                   the same markers and is cut with it. -->
+              <div class="dashboard-section" data-dashboard-ops-history>
+                <h2 data-i18n="dashboard.ops_history_title">Ops history</h2>
+                <p data-i18n="dashboard.ops_history_desc">Record why each change was made and what it should move. While this is on, every change made through mureo must carry a reason and at least one expected effect, and is refused without them; each change is linked to a decision record and its evaluation is scored against that expectation.</p>
+                <label>
+                  <span data-i18n="dashboard.ops_history_label">Ops history</span>
+                  <select data-ops-history-enabled>
+                    <option value="off" data-i18n="dashboard.ops_history_off">Off</option>
+                    <option value="on" data-i18n="dashboard.ops_history_on">On</option>
+                  </select>
+                </label>
+                <button type="button" class="btn btn-primary" data-ops-history-save data-i18n="dashboard.ops_history_save">Save</button>
+                <p class="dashboard-guardrails-result" data-ops-history-result role="status" aria-live="polite"></p>
+                <small class="field-hint" data-ops-history-path></small>
+              </div>
               <!-- guardrails-card:end -->
             </div>
           </div>
@@ -905,6 +922,7 @@
   <script src="/static/dashboard_setup.js"></script>
   <script src="/static/dashboard_workspace.js"></script>
   <script src="/static/dashboard_guardrails.js"></script>
+  <script src="/static/dashboard_ops_history.js"></script>
   <script src="/static/dashboard_about.js"></script>
   <script src="/static/dashboard_advisors.js"></script>
   <script src="/static/dashboard_reports_state.js"></script>

@@ -32,6 +32,7 @@ from mureo.context.decisions import (
     DECISION_TITLE_MAX_CHARS,
 )
 from mureo.mcp._handlers_decisions import DECISIONS_SCOPES, handle_decision_record
+from mureo.mcp._ops_history_param import expected_schema
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -206,6 +207,14 @@ TOOLS: list[Tool] = [
                         "is normally recorded after it finished."
                     ),
                 },
+                "expected": expected_schema(
+                    "What the decision should move, judged when the change "
+                    'it leads to is evaluated (e.g. [{"metric": "cpa", '
+                    '"direction": "down", "target": 4500}]). Its '
+                    "metrics are the primary ones in that evaluation. "
+                    "Required for 'proposed' / 'adopted' when ops history is "
+                    "enabled."
+                ),
                 "path": _PATH_PROPERTY,
             },
             "required": ["status", "title", "rationale"],

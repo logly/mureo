@@ -62,11 +62,14 @@ from mureo.mcp._handlers_mureo_context import (
     handle_strategy_get,
     handle_strategy_set,
 )
+from mureo.mcp._ops_history_param import decision_id_schema, expected_schema
 from mureo.mcp._tools_decisions import DECISIONS_SCOPE_PROPERTY
 from mureo.mcp._tools_decisions import HANDLERS as DECISION_HANDLERS
 from mureo.mcp._tools_decisions import TOOLS as DECISION_TOOLS
 from mureo.mcp._tools_history import HANDLERS as HISTORY_HANDLERS
 from mureo.mcp._tools_history import TOOLS as HISTORY_TOOLS
+from mureo.mcp._tools_settings import HANDLERS as SETTINGS_HANDLERS
+from mureo.mcp._tools_settings import TOOLS as SETTINGS_TOOLS
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -136,7 +139,8 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "mureo did NOT make (see those fields), display_title / "
         "display_summary — the one line the dashboard shows for this entry — "
         "and reason — WHY the change was made, which only this call can "
-        "supply (see the field)."
+        "supply (see the field). Ops history: expected (what the change "
+        "should move) and decision_id (an earlier proposal it carried out)."
     ),
     "properties": {
         "timestamp": {
@@ -294,6 +298,18 @@ _ACTION_LOG_ENTRY_PROPERTY = {
                 "truncated when over the bound."
             ),
         },
+        "expected": expected_schema(
+            'What the recorded change should move (e.g. [{"metric": "cpa", '
+            '"direction": "down"}]). With reason, mureo writes the '
+            "decision record for this change and links the entry to it. "
+            "Required with reason when ops history is enabled and the entry "
+            "opens a new decision."
+        ),
+        "decision_id": decision_id_schema(
+            "Optional. The decision_id of an earlier proposed or adopted "
+            "decision this change carried out; a proposal becomes adopted. "
+            "Omit it otherwise — mureo creates the decision itself."
+        ),
     },
     "required": ["action", "platform"],
     "dependentRequired": {
@@ -1427,6 +1443,7 @@ TOOLS: list[Tool] = [
     ),
     *DECISION_TOOLS,
     *HISTORY_TOOLS,
+    *SETTINGS_TOOLS,
 ]
 
 
@@ -1448,6 +1465,7 @@ _HANDLERS = {
     "mureo_outcome_evaluate": handle_outcome_evaluate,
     **DECISION_HANDLERS,
     **HISTORY_HANDLERS,
+    **SETTINGS_HANDLERS,
 }
 
 

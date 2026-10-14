@@ -42,6 +42,8 @@ Routes
 ``POST /api/strategy/currency``  → set/clear the Guardrails currency bullet
 ``GET  /api/strategy/guardrails`` → every Guardrails field, labelled, with its value
 ``POST /api/strategy/guardrails`` → set/clear Guardrails bullets
+``GET  /api/settings/ops_history`` → the ops history switch (#848)
+``POST /api/settings/ops_history`` → switch ops history on/off
 ``GET  /api/reports/clients``    → selectable reporting clients (Agency seam)
 ``GET  /api/reports/summary``    → read-only STATE.json report summary
 ``POST /api/reports/clients/archive`` → archive/un-archive one client (seam)
@@ -123,6 +125,10 @@ from mureo.web.extensions import (
 )
 from mureo.web.instance import PING_APP_NAME
 from mureo.web.native_picker import pick_directory, pick_file
+from mureo.web.ops_history_setting import (
+    post_ops_history_setting,
+    serve_ops_history_setting,
+)
 from mureo.web.plugin_credentials import (
     AccountListingError,
     InvalidFieldValueError,
@@ -310,6 +316,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "dashboard_setup.js",
     "dashboard_workspace.js",
     "dashboard_guardrails.js",
+    "dashboard_ops_history.js",
     "dashboard_about.js",
     "dashboard_advisors.js",
     "dashboard_reports_state.js",
@@ -717,6 +724,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/strategy/guardrails":
             serve_strategy_guardrails(self)
+            return
+        if path == "/api/settings/ops_history":
+            serve_ops_history_setting(self)
             return
         if path == "/api/reports/clients":
             self._serve_reports_clients()
@@ -2332,6 +2342,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             self, payload
         ),
         "/api/strategy/guardrails": lambda self, payload: post_strategy_guardrails(
+            self, payload
+        ),
+        "/api/settings/ops_history": lambda self, payload: post_ops_history_setting(
             self, payload
         ),
         "/api/shutdown": _post_shutdown,

@@ -96,6 +96,10 @@
     return sectionModule("MUREO_DASHBOARD_GUARDRAILS", "dashboard_guardrails.js");
   }
 
+  function opsHistorySection() {
+    return sectionModule("MUREO_DASHBOARD_OPS_HISTORY", "dashboard_ops_history.js");
+  }
+
   // The section renderers, under their original names. renderAll() below is
   // unchanged from when they were defined in this file.
   function renderHostSection(status) {
@@ -132,6 +136,10 @@
 
   function renderGuardrails() {
     return guardrailsSection().renderGuardrails();
+  }
+
+  function renderOpsHistory() {
+    return opsHistorySection().renderOpsHistory();
   }
 
   function renderAbout() {
@@ -182,6 +190,10 @@
 
   function wireGuardrails() {
     return guardrailsSection().wireGuardrails();
+  }
+
+  function wireOpsHistory() {
+    return opsHistorySection().wireOpsHistory();
   }
 
   function wireByodClear() {
@@ -329,6 +341,7 @@
     loadDemoScenarios();
     renderByodStatus();
     renderGuardrails();
+    renderOpsHistory();
     renderAdvisors();
     renderReports();
     renderCreativeGallery();
@@ -344,6 +357,7 @@
     wireDemoCreate();
     wireByodImport();
     wireGuardrails();
+    wireOpsHistory();
     wireByodClear();
     wireAdvisorForm();
     wireReportsBackButton();

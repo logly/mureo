@@ -23,6 +23,7 @@ import logging
 from typing import Any
 
 from mureo.context.decisions import DecisionRecord
+from mureo.context.expected import expected_to_list, parse_expected
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ DECISION_COVERAGE: tuple[type, frozenset[str], str] = (
             "batch_id",
             "session_id",
             "client",
+            "expected",
         }
     ),
     "_decision_codec.parse_decisions / .decision_to_dict",
@@ -121,6 +123,8 @@ def _parse_decision(item: Any) -> DecisionRecord:
         batch_id=item.get("batch_id"),
         session_id=item.get("session_id"),
         client=item.get("client"),
+        # #848 — absent on every record written before ops history.
+        expected=parse_expected(item.get("expected")),
     )
 
 
@@ -187,6 +191,8 @@ def decision_to_dict(record: DecisionRecord) -> dict[str, Any]:
             result[name] = value
     if record.related_actions:
         result["related_actions"] = list(record.related_actions)
+    if record.expected:
+        result["expected"] = expected_to_list(record.expected)
     return result
 
 
