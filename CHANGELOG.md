@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-14
+
 ### Added
 
 - **Every `## Guardrails` field can be edited from `mureo configure`, under a
