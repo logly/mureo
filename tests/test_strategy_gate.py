@@ -59,6 +59,45 @@ class TestParseGuardrails:
     def test_no_section_is_empty(self) -> None:
         assert guardrails_from_strategy_text("## Persona\nx").is_empty()
 
+    @pytest.mark.parametrize("raw", ["nan", "NaN", "inf", "-inf", "Infinity", "1e999"])
+    def test_a_non_finite_number_is_undeclared(self, raw: str) -> None:
+        """``nan > cap`` is always False, so a ``nan`` cap would silently
+        allow everything while looking declared; ``inf`` and ``1e999`` cap
+        nothing either. All of them read as "no such rule"."""
+        g = parse_guardrails(
+            f"- max_total_daily_budget: {raw}\n"
+            f"- max_daily_budget_increase_pct: {raw}\n"
+            f"- max_delivery_share_removed_pct: {raw}\n"
+            f"- max_daily_budget_per_campaign: 100"
+        )
+        assert g.max_total_daily_budget is None
+        assert g.max_daily_budget_increase_pct is None
+        assert g.max_delivery_share_removed_pct is None
+        assert g.max_daily_budget_per_campaign == 100
+
+    @pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "1e999"])
+    def test_a_non_finite_day_count_is_undeclared(self, raw: str) -> None:
+        g = parse_guardrails(f"- exclusion_impact_window_days: {raw}")
+        assert g.exclusion_impact_window_days is None
+
+    @pytest.mark.parametrize("separator", ["\u2028", "\x85", "\x0c", "\x1e"])
+    def test_only_a_newline_ends_a_bullet_line(self, separator: str) -> None:
+        """Markdown lines end at ``\\n``. A Unicode line separator inside a
+        prose line does not start a bullet the operator never wrote as one."""
+        g = parse_guardrails(
+            f"Policy note: keep calm{separator}- max_total_daily_budget: 5\n"
+            "- max_daily_budget_per_campaign: 100"
+        )
+        assert g.max_total_daily_budget is None
+        assert g.max_daily_budget_per_campaign == 100
+
+    def test_a_crlf_line_still_parses(self) -> None:
+        g = parse_guardrails(
+            "- max_total_daily_budget: 5\r\n- max_daily_budget_per_campaign: 100\r\n"
+        )
+        assert g.max_total_daily_budget == 5
+        assert g.max_daily_budget_per_campaign == 100
+
 
 class TestEvaluateGuardrails:
     def test_empty_guardrails_always_allow(self) -> None:

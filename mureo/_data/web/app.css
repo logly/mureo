@@ -1016,6 +1016,76 @@ input[type="checkbox"] {
   max-width: 560px;
 }
 
+/* The Guardrails rules table (#843). Three columns that are read across: a
+ * rule's name with its one-line description, the input, and what
+ * STRATEGY.md currently says. The description is what makes a key such as
+ * `max_cumulative_delivery_share_removed_pct` usable, so it gets the widest
+ * column; the state column is muted when nothing is declared and turns to
+ * the danger colour for a line mureo is ignoring. */
+.dashboard-guardrails-table {
+  margin: 8px 0 14px;
+}
+
+.dashboard-guardrails-table th,
+.dashboard-guardrails-table td {
+  padding: 10px 14px 10px 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.dashboard-guardrails-table th {
+  color: var(--muted);
+  font-size: var(--type-caption-size);
+  font-weight: 600;
+}
+
+.dashboard-guardrails-name {
+  width: 48%;
+}
+
+.dashboard-guardrails-name .field-hint {
+  margin-bottom: 0;
+}
+
+.dashboard-guardrails-value {
+  width: 30%;
+  white-space: nowrap;
+}
+
+.dashboard-guardrails-value input[type="number"],
+.dashboard-guardrails-value select {
+  width: 11em;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: var(--type-body-size);
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+}
+
+.dashboard-guardrails-unit {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: var(--type-caption-size);
+}
+
+.dashboard-guardrails-state {
+  color: var(--ink-soft);
+  font-size: var(--type-caption-size);
+}
+
+.dashboard-guardrails-state.is-unset {
+  color: var(--muted);
+}
+
+.dashboard-guardrails-state.is-ignored {
+  color: var(--danger);
+}
+
 .dashboard-group > .dashboard-section:first-child {
   margin-top: 0;
   padding-top: 0;

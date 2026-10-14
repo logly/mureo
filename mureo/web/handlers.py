@@ -40,6 +40,8 @@ Routes
 ``GET  /api/byod/status``        → per-platform byod/live status
 ``GET  /api/strategy/currency``  → Guardrails currency + the code options
 ``POST /api/strategy/currency``  → set/clear the Guardrails currency bullet
+``GET  /api/strategy/guardrails`` → every Guardrails field, labelled, with its value
+``POST /api/strategy/guardrails`` → set/clear Guardrails bullets
 ``GET  /api/reports/clients``    → selectable reporting clients (Agency seam)
 ``GET  /api/reports/summary``    → read-only STATE.json report summary
 ``POST /api/reports/clients/archive`` → archive/un-archive one client (seam)
@@ -157,6 +159,10 @@ from mureo.web.setup_actions import (
 )
 from mureo.web.status_collector import collect_status
 from mureo.web.strategy_currency import post_strategy_currency, serve_strategy_currency
+from mureo.web.strategy_guardrails import (
+    post_strategy_guardrails,
+    serve_strategy_guardrails,
+)
 from mureo.web.upgrade_action import run_upgrade_all
 from mureo.web.version_check import get_update_status, request_update_refresh
 
@@ -708,6 +714,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/strategy/currency":
             serve_strategy_currency(self)
+            return
+        if path == "/api/strategy/guardrails":
+            serve_strategy_guardrails(self)
             return
         if path == "/api/reports/clients":
             self._serve_reports_clients()
@@ -2320,6 +2329,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/byod/clear": _post_byod_clear,
         "/api/reports/clients/archive": _post_reports_client_archive,
         "/api/strategy/currency": lambda self, payload: post_strategy_currency(
+            self, payload
+        ),
+        "/api/strategy/guardrails": lambda self, payload: post_strategy_guardrails(
             self, payload
         ),
         "/api/shutdown": _post_shutdown,

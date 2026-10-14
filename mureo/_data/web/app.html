@@ -726,6 +726,20 @@
                 <button type="button" class="btn btn-primary" data-guardrails-save data-i18n="dashboard.guardrails_save">Save</button>
                 <p class="dashboard-guardrails-result" data-guardrails-result role="status" aria-live="polite"></p>
                 <small class="field-hint" data-guardrails-path></small>
+                <h3 data-i18n="dashboard.guardrails_fields_title">Rules</h3>
+                <p data-i18n="dashboard.guardrails_fields_desc">Every rule in the Guardrails section of STRATEGY.md. An empty value means the rule is not declared, so it limits nothing. Only the rules you change are written.</p>
+                <table class="dashboard-guardrails-table" data-guardrails-fields>
+                  <thead>
+                    <tr>
+                      <th data-i18n="dashboard.guardrails_col_rule">Rule</th>
+                      <th data-i18n="dashboard.guardrails_col_value">Value</th>
+                      <th data-i18n="dashboard.guardrails_col_state">In STRATEGY.md</th>
+                    </tr>
+                  </thead>
+                  <tbody data-guardrails-rows></tbody>
+                </table>
+                <button type="button" class="btn btn-primary" data-guardrails-fields-save data-i18n="dashboard.guardrails_fields_save">Save rules</button>
+                <p class="dashboard-guardrails-result" data-guardrails-fields-result role="status" aria-live="polite"></p>
               </div>
               <!-- guardrails-card:end -->
             </div>
