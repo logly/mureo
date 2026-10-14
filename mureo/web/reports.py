@@ -88,6 +88,7 @@ from typing import TYPE_CHECKING, Any
 # defines ``mureo_state_get(action_log="pending")``, read here rather than
 # restated (#651).
 from mureo.context.observations import due_observation_dates
+from mureo.context.ops_history_counts import ops_history_counts
 from mureo.context.ops_history_query import ops_history_items
 from mureo.context.settings import ops_history_enabled
 from mureo.core import clock
@@ -237,6 +238,12 @@ def build_report_summary(
       action-log ``timestamp``. It is what lets the multi-client index say
       which logged actions happened *today* without the browser guessing in
       its own timezone.
+    - ``ops_history``: **only where the Agency client seam is declared**
+      (#849) — the client card's counts for the last 30 days,
+      ``{enabled, window_days, changes, improved, regressed, inconclusive,
+      observing}``, all zero while ops history is off. Counted from the
+      document already read here; see
+      :func:`~mureo.context.ops_history_counts.ops_history_counts`.
 
     Period selection
     ----------------
@@ -307,6 +314,11 @@ def build_report_summary(
         # against (see :func:`_build_observations_due`) is asking the client
         # registry once per card, and this asks nothing.
         summary["server_today"] = clock.server_now().date().isoformat()
+        # The client card's ops history line (#849), from the document
+        # already parsed above — no second read of STATE.json per card.
+        summary["ops_history"] = ops_history_counts(
+            doc, today=clock.server_now().date()
+        )
     return summary
 
 

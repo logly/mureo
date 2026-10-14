@@ -56,6 +56,9 @@
   //     about mureo's grip on the data. It ranks below the withholding kinds
   //     because a finding drawn from figures mureo cannot vouch for has to
   //     wait for figures it can.
+  //   ops_regressed — changes in the last 30 days the evaluator judged as
+  //     regressed (#849). About the advertising too, but about what was
+  //     DONE to it: the change may need undoing.
   //   not_collected — a collection failed and said why. It has not aged the
   //     figures out yet, and that is the cheapest moment to fix it.
   //   unrecognized_key — an entry mureo cannot resolve to a platform. It
@@ -70,6 +73,7 @@
     "totals_double_counted",
     "totals_stale",
     "report_flag",
+    "ops_regressed",
     "not_collected",
     "unrecognized_key",
     "observation_due",
@@ -113,6 +117,7 @@
     // resolves "conversions have gone to zero". So the next step is to go
     // read it, which is a real step and not a placeholder.
     report_flag: "dashboard.reports_triage_next_report",
+    ops_regressed: "ops_history_section.triage_next",
     not_collected: "dashboard.reports_triage_next_not_collected",
     unrecognized_key: "dashboard.reports_conflict_repair_hint",
     observation_due: "dashboard.reports_triage_next_observations",
@@ -145,6 +150,8 @@
     totals_double_counted: "attention",
     totals_stale: "attention",
     report_flag: "watch",
+    // A change that made things worse may need undoing today.
+    ops_regressed: "attention",
     not_collected: "watch",
     unrecognized_key: "watch",
     observation_due: "watch",
@@ -154,6 +161,7 @@
     totals_double_counted: "dashboard.reports_triage_tag_double_counted",
     totals_stale: "dashboard.reports_triage_tag_stale",
     report_flag: "dashboard.reports_triage_tag_report_flag",
+    ops_regressed: "ops_history_section.triage_tag",
     not_collected: "dashboard.reports_triage_tag_not_collected",
     unrecognized_key: "dashboard.reports_triage_tag_unknown_key",
     observation_due: "dashboard.reports_triage_tag_observation_due",
@@ -331,6 +339,19 @@
     };
   }
 
+  // How many of the client's changes regressed in the last 30 days, or null.
+  //
+  // The server's count (`summary.ops_history`, #849), present only where the
+  // client registry supplies clients and only meaningful while ops history is
+  // on. Absent, off or not a real number is "mureo did not say", never zero.
+  function opsRegressed(summary) {
+    const ops = summary && summary.ops_history;
+    if (!ops || typeof ops !== "object" || ops.enabled !== true) return null;
+    const count = ops.regressed;
+    if (typeof count !== "number" || !isFinite(count) || count < 1) return null;
+    return count;
+  }
+
   // Every finding one client raises, unranked (buildReportsTriage ranks).
   //
   // Defensive about every argument: this runs mid-render over a payload
@@ -438,6 +459,11 @@
       }
     );
 
+    const regressed = opsRegressed(summary);
+    if (regressed !== null) {
+      items.push(item("ops_regressed", client, index, { count: regressed }));
+    }
+
     const due = observationsDue(summary);
     if (due) {
       items.push(
@@ -530,6 +556,8 @@
         });
       case "unrecognized_key":
         return MUREO.t("dashboard.reports_triage_unknown_key", { keys: row.keys });
+      case "ops_regressed":
+        return MUREO.t("ops_history_section.triage_text", { n: row.count });
       case "observation_due":
         return MUREO.t("dashboard.reports_triage_observation_due", {
           n: row.count,
@@ -805,6 +833,9 @@
         break;
       case "observation_due":
         what = String(row.count) + "\u0002" + String(row.oldest_due || "");
+        break;
+      case "ops_regressed":
+        what = String(row.count);
         break;
       default:
         what = "";

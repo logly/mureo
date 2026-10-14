@@ -5106,6 +5106,200 @@ label .muted,
   color: var(--muted);
 }
 
+/* ---- ops history (#849) ------------------------------------------------ */
+/* The detail section under the recent actions, and the one line on each
+   client card. Built from the same table, chip and badge vocabulary as the
+   rest of the report: red is a regressed change (the triage layer calls it
+   attention), green an improved one, and everything not yet judged stays
+   grey so it does not read as either. */
+.ops-history-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ops-history-note {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  color: var(--ink-soft);
+}
+
+.ops-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+/* Scoped under .dashboard-section to win over its generic label / select /
+   li rules, which lay out forms and settings lists, not a toolbar. */
+.dashboard-section .ops-history-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  font-size: var(--type-caption-size);
+  color: var(--ink-soft);
+}
+
+.dashboard-section .ops-history-select {
+  width: auto;
+  max-width: 220px;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+}
+
+.ops-history-table td {
+  vertical-align: top;
+}
+
+.ops-history-row {
+  cursor: pointer;
+}
+
+.ops-history-row:hover td,
+.ops-history-row.is-open td {
+  background: var(--surface-2);
+}
+
+.ops-history-date,
+.ops-history-metric {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ops-history-nowrap {
+  white-space: nowrap;
+}
+
+.ops-history-no-verdict {
+  color: var(--muted);
+}
+
+.ops-history-title {
+  font-weight: var(--type-card-title-weight);
+  overflow-wrap: anywhere;
+}
+
+.ops-history-title.is-muted {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.ops-history-weak {
+  display: inline-block;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.ops-history-verdict {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: var(--type-caption-size);
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+}
+
+.ops-history-verdict.is-regressed {
+  background: var(--status-alert-bg);
+  border-color: var(--status-alert-line);
+  color: var(--status-alert);
+}
+
+.ops-history-verdict.is-improved {
+  background: var(--status-ok-bg);
+  border-color: var(--status-ok-line);
+  color: var(--status-ok);
+}
+
+.ops-history-expand-cell {
+  width: 1%;
+  text-align: right;
+}
+
+.ops-history-expand {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  color: var(--ink-soft);
+  font: inherit;
+  line-height: 1;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.ops-history-row.is-open .ops-history-expand {
+  transform: rotate(90deg);
+}
+
+.ops-history-detail-cell {
+  background: var(--surface-2);
+}
+
+.ops-history-detail-cell > * + * {
+  margin-top: 12px;
+}
+
+.ops-history-detail-block h4 {
+  margin: 0 0 4px;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.ops-history-detail-block p,
+.ops-history-detail-block ul {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-section .ops-history-detail-block ul {
+  list-style: disc;
+  padding-left: 18px;
+}
+
+.dashboard-section .ops-history-detail-block li {
+  display: list-item;
+  padding: 2px 0;
+  border-bottom: 0;
+}
+
+.ops-history-detail-block .is-muted,
+.ops-history-op-due,
+.ops-history-op-values {
+  color: var(--muted);
+  font-size: var(--type-caption-size);
+}
+
+.ops-history-op-reason {
+  color: var(--ink-soft);
+}
+
+.ops-history-empty,
+.ops-history-error,
+.ops-history-skipped {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* The client card's line: quiet, like the withheld-figures line above it. */
+.reports-client-card-ops {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  line-height: 1.45;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
 /* ---- stated values, as chips --------------------------------------- */
 .reports-stated {
   margin-bottom: 16px;

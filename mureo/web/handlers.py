@@ -46,6 +46,7 @@ Routes
 ``POST /api/settings/ops_history`` → switch ops history on/off
 ``GET  /api/reports/clients``    → selectable reporting clients (Agency seam)
 ``GET  /api/reports/summary``    → read-only STATE.json report summary
+``GET  /api/reports/ops-history`` → one client's ops history items (#849)
 ``POST /api/reports/clients/archive`` → archive/un-archive one client (seam)
 ``POST /api/byod/import``        → import a Sheet bundle XLSX
 ``POST /api/byod/remove``        → drop one platform's BYOD data
@@ -125,6 +126,7 @@ from mureo.web.extensions import (
 )
 from mureo.web.instance import PING_APP_NAME
 from mureo.web.native_picker import pick_directory, pick_file
+from mureo.web.ops_history_api import serve_ops_history
 from mureo.web.ops_history_setting import (
     post_ops_history_setting,
     serve_ops_history_setting,
@@ -324,6 +326,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "dashboard_reports_changes.js",
     "dashboard_reports_chart.js",
     "dashboard_reports_detail.js",
+    "dashboard_ops_history_section.js",
     "dashboard_reports_overview.js",
     "dashboard_reports_hero.js",
     "dashboard_reports_cards.js",
@@ -733,6 +736,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/reports/summary":
             self._serve_reports_summary()
+            return
+        if path == "/api/reports/ops-history":
+            serve_ops_history(self)
             return
         if path == "/api/creative/clients":
             # Same picker source as reports — clients are clients (#409).
