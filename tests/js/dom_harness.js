@@ -575,6 +575,7 @@ const DASHBOARD_FILES = [
   "dashboard_reports_changes.js",
   "dashboard_reports_chart.js",
   "dashboard_reports_detail.js",
+  "dashboard_ops_history_section.js",
   "dashboard_reports_overview.js",
   "dashboard_reports_hero.js",
   "dashboard_reports_cards.js",

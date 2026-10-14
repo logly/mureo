@@ -72,11 +72,12 @@ _LEGACY_SUMMARY_KEYS = [
 ]
 
 
-# The keys the Agency seam ADDS, and the only ones it may. Both are
-# multi-client facts: how many reviews are overdue, and what day it is on the
-# machine that stamped the action log. Neither exists on a single workspace,
+# The keys the Agency seam ADDS, and the only ones it may. All are
+# multi-client facts: how many reviews are overdue, what day it is on the
+# machine that stamped the action log, and the client card's ops history
+# counts (#849). None exists on a single workspace,
 # where the summary is byte-identical to what it was before #651.
-_SEAM_ONLY_KEYS = {"observations_due", "server_today"}
+_SEAM_ONLY_KEYS = {"observations_due", "server_today", "ops_history"}
 
 
 @pytest.fixture(autouse=True)

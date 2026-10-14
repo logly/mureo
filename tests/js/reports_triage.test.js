@@ -157,6 +157,22 @@ function observationsDueSummary() {
   return s;
 }
 
+/** A client whose last 30 days hold a change that regressed (#849). */
+function opsRegressedSummary() {
+  const s = healthySummary();
+  s.ops_history = {
+    enabled: true,
+    window_days: 30,
+    changes: 2,
+    improved: 1,
+    regressed: 1,
+    regressed_open: 1,
+    inconclusive: 0,
+    observing: 0,
+  };
+  return s;
+}
+
 /** Kinds present in a built layer, in the order the layer renders them. */
 function kinds(built) {
   return built.items.map(function (i) {
@@ -203,6 +219,9 @@ test.describe("the ranking is stated in code", function () {
       // data-integrity rest, because it is the only kind here about the
       // advertising rather than about mureo's grip on the data.
       "report_flag",
+      // #849. A change mureo made that regressed is also about the
+      // advertising, read off the evaluation rather than off the figures.
+      "ops_regressed",
       "not_collected",
       "unrecognized_key",
       "observation_due",
@@ -247,6 +266,7 @@ test.describe("the ranking is stated in code", function () {
     const cases = [
       ["totals_double_counted", doubleCountedSummary()],
       ["totals_stale", staleSummary()],
+      ["ops_regressed", opsRegressedSummary()],
       ["not_collected", notCollectedSummary()],
       ["unrecognized_key", unknownKeySummary()],
       ["observation_due", observationsDueSummary()],
@@ -292,6 +312,7 @@ test.describe("every item says what to do next", function () {
     doubleCountedSummary(),
     staleSummary(),
     flaggedSummary("action"),
+    opsRegressedSummary(),
     notCollectedSummary(),
     unknownKeySummary(),
     observationsDueSummary(),
@@ -563,6 +584,8 @@ test.describe("a finding's severity", function () {
       // with no item behind it, and a flag's worth is the flag's, not the
       // kind's — see the #699 block below, which drives it from real items.
       "watch",
+      // ops_regressed (#849): a change that made things worse is act-now.
+      "attention",
       "watch",
       "watch",
       "watch",

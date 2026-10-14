@@ -244,6 +244,71 @@ recorded.
 - For a custom view, `mureo.web.reports.build_ops_history(client, since,
   until)` returns the same items.
 
+## Dashboard
+
+While the setting is on, the dashboard shows ops history in two places.
+While it is off, neither appears.
+
+### The detail section
+
+A client's detail view has an **Ops history** section directly below the
+recent actions. It reads
+`GET /api/reports/ops-history?client=&since=&until=`, which returns the
+same items as `build_ops_history`. `since` and `until` are `YYYY-MM-DD`
+and inclusive. They default to the last 30 calendar days ending today,
+today included, by the server's clock (`since` is today minus 29 days,
+`until` is today). A date that is not exactly `YYYY-MM-DD`, or an `until`
+before `since`, is a 400. The response always carries `enabled`, so the
+browser can leave the section out while the setting is off. If the feed
+cannot be read, the section is left out too.
+
+- **One row per item**: its date, the decision's title, the platform, the
+  state, the primary metric before and after with its change
+  (`CPA 1,840 → 1,520 ▼17%`), and the verdict. The primary metric is the
+  first `expected` metric, or else the evaluation table's primary row, or
+  else its first row; a change not yet evaluated shows `—`.
+- **Order**: regressed first, then observing, then everything else, then
+  improved. Newest first within each group.
+- **A change with no decision** is titled "(no decision recorded)".
+- **Weak rationale**: a decision whose rationale is shorter than
+  `WEAK_RATIONALE_MIN_CHARS` (20) characters, after markdown emphasis is
+  stripped and whitespace trimmed, carries a "weak rationale" chip. The
+  constant is in `dashboard_ops_history_section.js`.
+- **Expanding a row** shows the rationale, the expected effects, the
+  operations sent (tool, target, before → after, reason; a nested value is
+  shown as JSON, cut at 80 characters), the observation
+  deadline, the evaluation table (metric, before, after, change, verdict,
+  note), the reason a change was not evaluated, and whether it was rolled
+  back.
+- **Filters**: the period (the last 7, 30 or 90 days, today included, 30 by
+  default) fetches again;
+  platform, state and verdict filter the rows already fetched. The
+  platform list is the platforms the items name.
+- A permanent note says the before/after comparison is indicative and
+  includes market and seasonal effects.
+
+All writer text is set as text, never as HTML.
+
+### The client list
+
+Where a client registry supplies the clients, the per-client summary
+(`/api/reports/summary`) carries an `ops_history` object:
+`{enabled, window_days, changes, improved, regressed, regressed_open,
+inconclusive, observing}`, counted over the last 30 days, today included
+(the detail section's default window). `changes` counts items in state
+`executed`, `observing`, `evaluated` or `skipped`. An evaluated item whose
+verdict is neither improved nor regressed counts as inconclusive.
+`regressed_open` counts the regressed changes that were not rolled back. A
+single-workspace summary does not carry the key.
+
+- Each client card shows one line when the setting is on and the window
+  holds at least one change: "Last 30 days: N changes · a improved ·
+  b regressed · c inconclusive · d observing".
+- A client with at least one regressed change that was not rolled back
+  (`regressed_open`) raises an attention finding in the triage list
+  ("1 regressed change", "N regressed changes"). It ranks after analysis
+  findings and before collection failures.
+
 ## Compatibility
 
 Every new field is optional, and a document written before ops history

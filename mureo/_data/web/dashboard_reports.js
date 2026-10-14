@@ -127,6 +127,15 @@
   // property of the ENTRY (no display line), not of the client.
   const renderReportsActions = R_DETAIL.renderActions;
 
+  // The ops history section under the log (#849).
+  const R_OPS = window.MUREO_DASHBOARD_OPS_HISTORY_SECTION;
+  if (!R_OPS) {
+    throw new Error(
+      "dashboard_reports.js needs MUREO_DASHBOARD_OPS_HISTORY_SECTION — load " +
+        "dashboard_ops_history_section.js BEFORE dashboard_reports.js"
+    );
+  }
+
   // dashboard_reports_overview.js's exports, bound by their original names so every call
   // site below reads exactly as it did when this was one file.
   const R_OVERVIEW = window.MUREO_DASHBOARD_REPORTS_OVERVIEW;
@@ -588,6 +597,7 @@
       // leave the PREVIOUS client's screen up.
       R_DETAIL.renderReportsDetail(null, {});
       renderReportsActions(null);
+      R_OPS.clearOpsHistorySection();
       if (empty) empty.hidden = false;
       return;
     }
@@ -647,6 +657,7 @@
     // The log FIRST: a row's shape is decided by the entry, not by the
     // contract, so it must not sit downstream of the screen that is.
     renderReportsActions(summary.recent_actions);
+    R_OPS.renderOpsHistorySection(client, summary);
     const drewContract = R_DETAIL.renderReportsDetail(summary, {
       platformKey: REPORTS_VIEW_STATE.reportsPlatformKey,
       onPlatform: function (key) {

@@ -60,6 +60,21 @@
   - Backward compatible: every new field is optional. A STATE.json written
     before this release reads and writes unchanged, and with the setting
     off no call is refused that was accepted before.
+- **Ops history on the dashboard** (#849, phase 2). While the setting is
+  on, a client's detail view shows an Ops history section below the recent
+  actions: one row per change with its primary metric before and after and
+  its verdict, regressed changes first, filters for period, platform,
+  state and verdict, and each row expanding into its rationale, expected
+  effects, operations and evaluation table. A rationale shorter than 20
+  characters is marked "weak rationale". The section reads the new
+  `GET /api/reports/ops-history?client=&since=&until=` (last 30 days by
+  default). Where a client registry supplies the clients, each summary
+  carries an `ops_history` count for the last 30 days, shown as one line on
+  the client card, and a client with a regressed change that was not
+  rolled back raises an attention finding in the triage list. The shared
+  skill and
+  `/daily-check` now ask for `reason` and `expected` on every change and
+  for `expected` in every proposal. See `docs/ops-history.md`.
 
 ## [0.26.0] - 2026-10-14
 

@@ -455,6 +455,17 @@
         )
       );
     }
+    // The ops history line (#849): the server's counts, said once. Resolved
+    // per call — the section module is optional to this one.
+    const opsSection = window.MUREO_DASHBOARD_OPS_HISTORY_SECTION;
+    const opsLine = opsSection ? opsSection.opsHistoryAggregateText(summary) : null;
+    if (opsLine) {
+      const line = document.createElement("p");
+      line.className = "reports-client-card-ops";
+      line.setAttribute("data-ops-history-aggregate", "");
+      line.textContent = opsLine;
+      card.appendChild(line);
+    }
 
     // Where this client's spend went, as one bar. It is drawn only from the
     // rows mureo is willing to state (reports_overview.js returns nothing

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
-from mureo.context.ops_history_view import build_ops_history_items, item_timestamp
+from mureo.context.ops_history_view import build_ops_history_items
 
 if TYPE_CHECKING:
     from datetime import date
@@ -82,13 +82,19 @@ def ops_history_items(
     since: date | None = None,
     until: date | None = None,
 ) -> list[dict[str, Any]]:
-    """The ops history items dated inside ``[since, until]``, newest first."""
+    """The ops history items dated inside ``[since, until]``, newest first.
+
+    The window is applied before an item is derived, by the same rule as
+    every other history source (:func:`in_window` over the date of
+    :func:`~mureo.context.ops_history_view.item_timestamp`), so an item
+    outside it costs nothing (#849).
+    """
     bounds = _Bounds(since=since, until=until)
-    return [
-        item
-        for item in build_ops_history_items(doc, today=today)
-        if in_window(iso_date(item_timestamp(item)), bounds)
-    ]
+
+    def keep(stamp: str | None) -> bool:
+        return in_window(iso_date(stamp), bounds)
+
+    return build_ops_history_items(doc, today=today, keep=keep)
 
 
 __all__ = ["DateBounds", "in_window", "iso_date", "ops_history_items"]

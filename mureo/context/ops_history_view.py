@@ -34,9 +34,11 @@ carry flags and tokens). An action's ``before`` comes from
 ``reversible_params``, the only place a prior value is recorded, and its
 ``after`` from ``applied_params``, what the call sent.
 
-Not filtered by date here: the two read surfaces bound items by the same
-rule as the other history sources (:mod:`mureo.context.ops_history_query`), using
-:func:`item_timestamp`.
+The date RULE is not here: the read surfaces bound items by the same rule
+as the other history sources (:mod:`mureo.context.ops_history_query`), using
+:func:`item_timestamp`. They pass it in as ``keep`` so an item outside the
+window is skipped before anything about it is derived (#849) — deriving an
+overdue change plans its closure, which is the expensive part.
 """
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ from mureo.context.observations import parse_due_date
 from mureo.context.ops_fields import ID_SUFFIX
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import date
 
     from mureo.context.decisions import DecisionRecord
@@ -244,6 +247,15 @@ def item_timestamp(item: dict[str, Any]) -> str | None:
     return stamp if isinstance(stamp, str) else None
 
 
+def _stamp(value: Any) -> str | None:
+    """A record's timestamp as :func:`item_timestamp` would report it."""
+    return value if isinstance(value, str) else None
+
+
+def _keep_all(_stamp_value: str | None) -> bool:
+    return True
+
+
 def _sort_key(item: dict[str, Any]) -> datetime:
     """The item's full timestamp, comparable across offsets."""
     stamp = item_timestamp(item) or ""
@@ -277,8 +289,19 @@ def _owners(doc: StateDocument, roots: dict[str, str]) -> dict[int, str]:
     return owner
 
 
-def build_ops_history_items(doc: StateDocument, *, today: date) -> list[dict[str, Any]]:
-    """Every item, newest first by :func:`item_timestamp`."""
+def build_ops_history_items(
+    doc: StateDocument,
+    *,
+    today: date,
+    keep: Callable[[str | None], bool] | None = None,
+) -> list[dict[str, Any]]:
+    """Every item, newest first by :func:`item_timestamp`.
+
+    ``keep``, when given, is asked with the timestamp :func:`item_timestamp`
+    would return for an item (its decision's first record, or the change's
+    own) BEFORE the item is derived; an item it refuses is never built.
+    """
+    wanted = keep if keep is not None else _keep_all
     links = _links(doc)
     owner = _owners(doc, chain_roots(doc))
     by_root: dict[str, list[int]] = {}
@@ -286,12 +309,16 @@ def build_ops_history_items(doc: StateDocument, *, today: date) -> list[dict[str
         by_root.setdefault(owner[index], []).append(index)
     items: list[dict[str, Any]] = []
     for root, records in group_chains(doc).items():
+        if not wanted(_stamp(records[0].recorded_at)):
+            continue
         actions = [_action_row(doc, i, links, today) for i in by_root.get(root, [])]
         decision = _decision_dict(records)
         derived = _derive(decision["status"], actions, _carried_out_by_call(records))
         items.append({"decision": decision, "actions": actions, **derived})
     for index, entry in enumerate(doc.action_log):
         if _is_change(entry) and index not in owner:
+            if not wanted(_stamp(entry.timestamp)):
+                continue
             actions = [_action_row(doc, index, links, today)]
             items.append(
                 {"decision": None, "actions": actions, **_derive(None, actions)}
