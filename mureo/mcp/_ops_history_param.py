@@ -98,7 +98,7 @@ ADOPTION_EXPECTED_REQUIRED: Final = (
     "this call."
 )
 
-#: The ``expected`` property. Read-only; copied per tool on injection.
+#: The full ``expected`` schema, for the recording tools. Read-only.
 EXPECTED_PROPERTY: Mapping[str, Any] = MappingProxyType(
     {
         "type": "array",
@@ -119,6 +119,23 @@ EXPECTED_PROPERTY: Mapping[str, Any] = MappingProxyType(
             "required": ["metric", "direction"],
             "additionalProperties": False,
         },
+    }
+)
+
+#: The ``expected`` property injected into every mutating tool. Read-only;
+#: copied per tool on injection. No item schema: repeated across every
+#: mutating tool it would dominate the tool list, so the shape and the
+#: vocabulary live in the one-sentence description and every item is
+#: validated by :func:`split_ops_params` on the server instead.
+INJECTED_EXPECTED_PROPERTY: Mapping[str, Any] = MappingProxyType(
+    {
+        "type": "array",
+        "maxItems": EXPECTED_MAX_ITEMS,
+        "description": (
+            "Expected effects [{metric, direction, target?, horizon_days?}]; "
+            f"metric {'/'.join(EXPECTED_METRICS)}; "
+            f"direction {'/'.join(EXPECTED_DIRECTIONS)}."
+        ),
     }
 )
 
@@ -181,7 +198,7 @@ def with_ops_properties(tool: Tool) -> Tool:
     if EXPECTED_PARAM in properties or DECISION_ID_PARAM in properties:
         return tool
     injected = copy.deepcopy(schema)
-    injected["properties"][EXPECTED_PARAM] = copy.deepcopy(dict(EXPECTED_PROPERTY))
+    injected["properties"][EXPECTED_PARAM] = dict(INJECTED_EXPECTED_PROPERTY)
     injected["properties"][DECISION_ID_PARAM] = dict(DECISION_ID_PROPERTY)
     return tool.model_copy(update={"inputSchema": injected})
 
@@ -467,6 +484,7 @@ __all__ = [
     "DECISION_ID_PROPERTY",
     "EXPECTED_PROPERTY",
     "EXPECTED_REQUIRED",
+    "INJECTED_EXPECTED_PROPERTY",
     "REASON_REQUIRED",
     "OpsParams",
     "applied_params_of",

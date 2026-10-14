@@ -16,6 +16,7 @@ import pytest
 from mcp.types import TextContent
 
 from mureo.context.decisions import DecisionRecord
+from mureo.context.expected import EXPECTED_DIRECTIONS, EXPECTED_METRICS
 from mureo.context.models import StateDocument
 from mureo.context.settings import set_ops_history_enabled
 from mureo.context.state import read_state_file, write_state_file
@@ -128,19 +129,32 @@ class TestSchema:
 
         assert name not in server._OPS_TOOLS
 
-    def test_the_metric_vocabulary_is_an_enum(self) -> None:
+    def test_the_injected_expected_has_no_item_schema(self) -> None:
         schema = self._served()[STATUS_TOOL].inputSchema["properties"]
-        items = schema[EXPECTED_PARAM]["items"]
+        assert schema[EXPECTED_PARAM]["type"] == "array"
+        assert "items" not in schema[EXPECTED_PARAM]
+
+    def test_the_description_states_the_shape_and_vocabulary(self) -> None:
+        text = self._served()[STATUS_TOOL].inputSchema["properties"][EXPECTED_PARAM][
+            "description"
+        ]
+        assert "[{metric, direction, target?, horizon_days?}]" in text
+        for word in (*EXPECTED_METRICS, *EXPECTED_DIRECTIONS):
+            assert word in text, word
+        assert text.count(". ") == 0
+
+    def test_the_decision_id_description_is_one_short_sentence(self) -> None:
+        schema = self._served()[STATUS_TOOL].inputSchema["properties"]
+        text = schema[DECISION_ID_PARAM]["description"]
+        assert len(text) <= 120
+        assert text.count(". ") == 0
+
+    def test_the_recording_tools_keep_the_full_item_schema(self) -> None:
+        tool = self._served()["mureo_decision_record"]
+        items = tool.inputSchema["properties"][EXPECTED_PARAM]["items"]
         assert "cpa" in items["properties"]["metric"]["enum"]
         assert items["properties"]["direction"]["enum"] == ["up", "down", "hold"]
         assert items["additionalProperties"] is False
-
-    def test_the_injected_descriptions_are_one_short_sentence(self) -> None:
-        schema = self._served()[STATUS_TOOL].inputSchema["properties"]
-        for name in (EXPECTED_PARAM, DECISION_ID_PARAM):
-            text = schema[name]["description"]
-            assert len(text) <= 120, name
-            assert text.count(". ") == 0, name
 
 
 class TestSplit:
@@ -219,6 +233,24 @@ class TestEnabled:
         assert str(caught.value) == message
         assert handler == []
         assert read_state_file(workspace / "STATE.json").action_log == ()
+        record = json.loads((workspace / "J.jsonl").read_text().splitlines()[-1])
+        assert record["outcome"] == "invalid_args"
+
+    @pytest.mark.parametrize(
+        "item",
+        [
+            {"metric": "cpa_7d", "direction": "down"},
+            {"metric": "cpa", "direction": "lower"},
+            {"metric": "cpa", "direction": "down", "horizon": 7},
+            "cpa",
+        ],
+    )
+    async def test_a_malformed_item_is_refused_by_the_server(
+        self, workspace: Path, handler: list[dict[str, Any]], item: Any
+    ) -> None:
+        with pytest.raises(ValueError):
+            await _call(STATUS_TOOL, _status_args(reason="R.", expected=[item]))
+        assert handler == []
         record = json.loads((workspace / "J.jsonl").read_text().splitlines()[-1])
         assert record["outcome"] == "invalid_args"
 
