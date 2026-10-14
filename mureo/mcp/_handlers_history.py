@@ -52,10 +52,12 @@ import json
 import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final
 
 from mureo.context.history import read_daily_archive, read_report_history
 from mureo.context.models import DAILY_DATE_KEY_PATTERN
+from mureo.context.ops_history_query import in_window as _in_window
+from mureo.context.ops_history_query import iso_date as _iso_date
 from mureo.context.state import read_state_file, render_state
 from mureo.core import clock
 from mureo.core.platform_keys import is_plugin_platform_key, plugin_distribution
@@ -293,48 +295,6 @@ def build_history_query(arguments: dict[str, Any]) -> HistoryQuery:
         mutations_only=bool(arguments.get("mutations_only", False)),
         failures_only=bool(arguments.get("failures_only", False)),
     )
-
-
-class DateBounds(Protocol):
-    """The inclusive bounds :func:`_in_window` reads (a :class:`HistoryQuery`)."""
-
-    @property
-    def since(self) -> date | None: ...
-
-    @property
-    def until(self) -> date | None: ...
-
-
-def _in_window(day: date | None, query: DateBounds) -> bool:
-    """Whether ``day`` falls inside the query's inclusive bounds.
-
-    An undatable record passes an unbounded query and fails a bounded one:
-    it cannot be SHOWN to fall inside a window, and a record placed in one
-    it might not belong to is worse than one left out of it.
-    """
-    if query.since is None and query.until is None:
-        return True
-    if day is None:
-        return False
-    return (query.since is None or day >= query.since) and (
-        query.until is None or day <= query.until
-    )
-
-
-def _iso_date(value: Any) -> date | None:
-    """The UTC date of an ISO 8601 timestamp, or ``None`` if unreadable.
-
-    ``Z`` is normalised by hand: ``fromisoformat`` only learned to read it
-    in 3.11 and mureo still supports 3.10, where an unconverted ``Z``
-    would drop the record out of every bounded query.
-    """
-    if not isinstance(value, str) or not value:
-        return None
-    text = f"{value[:-1]}+00:00" if value.endswith("Z") else value
-    try:
-        return datetime.fromisoformat(text).date()
-    except ValueError:
-        return None
 
 
 # ---------------------------------------------------------------------------

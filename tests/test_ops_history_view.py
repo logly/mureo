@@ -163,7 +163,7 @@ class TestDerivedState:
         assert firsts == ["A", "C", "B", "D", "o", "E"]
 
     def test_window(self) -> None:
-        from mureo.mcp._history_ops import ops_history_items
+        from mureo.context.ops_history_query import ops_history_items
 
         doc = parse_state(json.dumps(_document()))
         items = ops_history_items(
@@ -371,3 +371,18 @@ class TestWindowMatchesActionLog:
         )
         payload = json.loads(result[0].text)
         assert payload["ops_history"]["matched"] == payload["action_log"]["matched"]
+
+
+def test_the_dashboard_feed_does_not_reach_into_the_mcp_layer() -> None:
+    import ast
+    import inspect
+
+    from mureo.web import reports
+
+    tree = ast.parse(inspect.getsource(reports))
+    modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert not any(m.startswith("mureo.mcp") for m in modules)

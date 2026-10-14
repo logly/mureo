@@ -88,6 +88,7 @@ from typing import TYPE_CHECKING, Any
 # defines ``mureo_state_get(action_log="pending")``, read here rather than
 # restated (#651).
 from mureo.context.observations import due_observation_dates
+from mureo.context.ops_history_query import ops_history_items
 from mureo.context.settings import ops_history_enabled
 from mureo.core import clock
 
@@ -495,8 +496,6 @@ def build_ops_history(
         ValueError: ``since`` / ``until`` is not a date, or ``until`` is
             before ``since``.
     """
-    from mureo.mcp._history_ops import ops_history_items
-
     start, end = _as_day(since, "since"), _as_day(until, "until")
     if start is not None and end is not None and end < start:
         raise ValueError(f"until ({end}) is before since ({start})")

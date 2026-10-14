@@ -35,7 +35,7 @@ carry flags and tokens). An action's ``before`` comes from
 ``after`` from ``applied_params``, what the call sent.
 
 Not filtered by date here: the two read surfaces bound items by the same
-rule as the other history sources (:mod:`mureo.mcp._history_ops`), using
+rule as the other history sources (:mod:`mureo.context.ops_history_query`), using
 :func:`item_timestamp`.
 """
 

@@ -8,9 +8,9 @@ that have one. An agent reads them to learn how its earlier decisions
 turned out before it proposes the next one.
 
 ``since`` / ``until`` bound an item by the date of its timestamp exactly
-as they bound an ``action_log`` entry — the same two helpers of
-:mod:`mureo.mcp._handlers_history`, imported at call time because that
-module imports this one.
+as they bound an ``action_log`` entry, through
+:func:`mureo.context.ops_history_query.ops_history_items`, which the
+dashboard feed reads too.
 
 Kept out of :mod:`mureo.mcp._handlers_history`, which is near the repo's
 file-size limit.
@@ -18,47 +18,16 @@ file-size limit.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from mureo.context.ops_history_view import build_ops_history_items, item_timestamp
+from mureo.context.ops_history_query import ops_history_items
 from mureo.context.state import read_state_file
 from mureo.core import clock
 
 if TYPE_CHECKING:
-    from datetime import date
     from pathlib import Path
 
-    from mureo.context.models import StateDocument
     from mureo.mcp._handlers_history import HistoryQuery
-
-
-@dataclass(frozen=True)
-class _Bounds:
-    since: date | None
-    until: date | None
-
-
-def ops_history_items(
-    doc: StateDocument,
-    *,
-    today: date,
-    since: date | None = None,
-    until: date | None = None,
-) -> list[dict[str, Any]]:
-    """The ops history items dated inside ``[since, until]``, newest first.
-
-    Shared with the dashboard feed, so the two surfaces cannot disagree
-    about which items a window holds.
-    """
-    from mureo.mcp._handlers_history import _in_window, _iso_date
-
-    bounds = _Bounds(since=since, until=until)
-    return [
-        item
-        for item in build_ops_history_items(doc, today=today)
-        if _in_window(_iso_date(item_timestamp(item)), bounds)
-    ]
 
 
 def _values(item: dict[str, Any], key: str) -> set[Any]:
@@ -117,4 +86,4 @@ def decisions_section(path: Path, query: HistoryQuery) -> dict[str, Any]:
     return _section(path, query, decided_only=True)
 
 
-__all__ = ["decisions_section", "ops_history_items", "ops_history_section"]
+__all__ = ["decisions_section", "ops_history_section"]
