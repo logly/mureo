@@ -60,9 +60,9 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_fifteen_tools() -> None:
+def test_tools_module_exports_sixteen_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 15
+    assert len(mod.TOOLS) == 16
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
@@ -85,6 +85,8 @@ def test_tools_module_exports_fifteen_tools() -> None:
         # #758 phase 4b — the read side of the same story: one bounded
         # query over action_log, the journal and the history/ archives.
         "mureo_history_query",
+        # #848 — the ops history switch (settings section of STATE.json).
+        "mureo_state_settings_set",
     }
     assert {t.name for t in mod.TOOLS} == expected
 

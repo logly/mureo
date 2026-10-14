@@ -87,6 +87,7 @@ def test_schema_is_closed_and_requires_the_three_fields() -> None:
         "related_actions",
         "supersedes",
         "batch_id",
+        "expected",
         "path",
     }
 

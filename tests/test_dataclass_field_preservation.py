@@ -74,6 +74,7 @@ import pytest
 from mureo.analysis.anomaly_detector import CampaignMetrics
 from mureo.analytics.builtin._live_clients import _merge_campaign_metrics
 from mureo.context.decisions import DecisionRecord
+from mureo.context.expected import ExpectedEffect
 from mureo.context.models import (
     EXTERNAL_ORIGIN,
     ActionLogEntry,
@@ -89,6 +90,7 @@ from mureo.context.models import (
     PlatformState,
     StateDocument,
 )
+from mureo.context.settings import WorkspaceSettings
 from mureo.context.state import (
     append_action_log,
     parse_state,
@@ -156,6 +158,26 @@ _ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
     "reason": "Brand Search hit its cap every afternoon for nine days.",
     "session_id": "0123456789abcdef0123456789abcdef",
     "client": "Claude Code/1.4.2",
+    # #848 — ops history: the decision this change carried out, and the
+    # stored evaluation table on an ``outcome_evaluated`` record.
+    "decision_id": "dec-20260808T093000-a1b2c3d4",
+    "evaluation": {
+        "overall": "improved",
+        "basis": "expected",
+        "noise_pct": 10.0,
+        "window": {"from": "2026-08-08", "to": "2026-08-22"},
+        "metrics": [
+            {
+                "metric": "cpa",
+                "before": 5200.0,
+                "after": 4300.0,
+                "delta_pct": -17.3,
+                "verdict": "improved",
+                "note": "expected down; -17.3%",
+                "role": "primary",
+            }
+        ],
+    },
 }
 
 #: One distinctive value per display model (#706). The nested maps exist for
@@ -234,7 +256,13 @@ _DECISION_FIELD_VALUES: dict[str, Any] = {
     "batch_id": "B-20260808-093000-a1b2",
     "session_id": "sess-decision",
     "client": "claude-code/1.2",
+    "expected": (
+        ExpectedEffect(metric="cpa", direction="down", target=4500, horizon_days=14),
+    ),
 }
+
+#: One distinctive value per :class:`WorkspaceSettings` field (#848).
+_SETTINGS_FIELD_VALUES: dict[str, Any] = {"ops_history_enabled": True}
 
 #: One distinctive value per :class:`CampaignSnapshot` field, minus the id the
 #: caller varies.
@@ -289,6 +317,7 @@ _DOCUMENT_FIELD_VALUES: dict[str, Any] = {
     "batches": (BatchRecord(**_BATCH_FIELD_VALUES),),
     "display": DisplayContract(**_DISPLAY_FIELD_VALUES),
     "decisions": (DecisionRecord(**_DECISION_FIELD_VALUES),),
+    "settings": WorkspaceSettings(**_SETTINGS_FIELD_VALUES),
 }
 
 #: Every model the STATE.json codec maps, with the map that must cover it.
@@ -308,6 +337,7 @@ _CODEC_MODELS: tuple[tuple[type, dict[str, Any]], ...] = (
     (DisplayBreakdownRow, _DISPLAY_BREAKDOWN_ROW_FIELD_VALUES),
     (DisplayStatedValue, _DISPLAY_STATED_VALUE_FIELD_VALUES),
     (DecisionRecord, _DECISION_FIELD_VALUES),
+    (WorkspaceSettings, _SETTINGS_FIELD_VALUES),
 )
 
 
