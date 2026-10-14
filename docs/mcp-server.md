@@ -1065,8 +1065,10 @@ off before the policy gates just like `reason`:
 - `expected` is an array of `{metric, direction, target?, horizon_days?}`.
   `metric` is one of `cpa`, `cpc`, `cpl`, `cpm`, `conversions`, `cvr`,
   `ctr`, `roas`, `cost`, `spend`, `clicks`, `impressions`. `direction` is
-  `up` / `down` / `hold`. A malformed value is refused with `invalid_args`
-  before anything is written.
+  `up` / `down` / `hold`. The tool schema states this shape in the
+  property's description and leaves the items unconstrained; mureo
+  validates each item on the server, and a malformed value is refused
+  with `invalid_args` before anything is written.
 - `decision_id` names a `proposed` or `adopted` decision this change carries
   out. A proposed one is adopted (a new `adopted` record that supersedes
   it). A `rejected` / `deferred` decision, or an id that names nothing, is

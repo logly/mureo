@@ -29,6 +29,10 @@
     carry `journal_call_id`, and the call's `JOURNAL.jsonl` record carries
     `call_id` and `decision_id`. Expected metrics match long names
     (`cost_per_conversion` -> `cpa`, `conversion_rate` -> `cvr`, ...).
+  - On the mutating tools, `expected` is advertised without an item schema
+    (its description states the shape and vocabulary), adding about 30 KB
+    to the tool list rather than about 80 KB. Items are validated on the
+    server as before.
   - The automatic observation closure stores an `evaluation` table on each
     `outcome_evaluated` entry: `overall`, `basis`, `noise_pct`, `window`,
     and per metric `before` / `after` / `delta_pct` / `verdict` / `note` /

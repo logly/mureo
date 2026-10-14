@@ -58,12 +58,20 @@ order:
    and `expected` (titled `Batch: <label>`), or adopts the `decision_id` it
    is given.
 4. **A `reason`, and a decision this session already adopted for the same
-   target.** If exactly one `adopted` decision recorded in the same session
-   names the change's platform and/or campaign (at least one of them, and
-   every one it names must match), sits outside any batch, and nothing has
-   carried out yet, the change joins it. This is what keeps "record the
-   decision, then make the change" from leaving two decisions for one
-   change. With two such decisions, the change gets one of its own.
+   target.** A decision is a candidate when all four hold:
+   1. its latest record was written in the same MCP session as the change;
+   2. that record is `adopted` and belongs to no batch;
+   3. nothing has carried it out yet: no change is stamped with it and no
+      record of it names `related_actions`. A decision recorded for a call
+      that wrote no `action_log` entry stays open only to an
+      `action_log` entry appended for that change, never to another call;
+   4. that record names the change's platform and/or campaign — at least
+      one of the two — and every one it names equals the change's.
+
+   If exactly one decision is a candidate, the change joins it. With two or
+   more, the change gets a decision of its own (rule 5). This is what keeps
+   "record the decision, then make the change" from leaving two decisions
+   for one change.
 5. **A `reason`.** A new `adopted` decision is created. Its `rationale` is
    the reason, its `expected` the call's `expected`, and its `metrics` the
    entry's `metrics_at_action`. The title is derived from the change:
@@ -107,6 +115,13 @@ If you also record the change with `mureo_state_action_log_append` (for
 example to give it `metrics_at_action` and an `observation_due` so it is
 evaluated), that entry joins the call's decision by rule 4. Pass the
 decision's id as `entry.decision_id` to make the link explicit.
+
+On the mutating tools, `expected` is advertised as an array whose shape
+and vocabulary are given in its description rather than as a nested JSON
+Schema, which keeps the tool list small. mureo validates every item on the
+server and refuses a malformed one with `invalid_args`. The recording
+tools (`mureo_decision_record`, `mureo_state_action_log_append`) keep the
+full schema.
 
 ## The evaluation table
 
