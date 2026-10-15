@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-16
+
 ### Added
 
 - **Ops history: expected effects, auto-linked decisions and evaluation
