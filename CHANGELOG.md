@@ -8,7 +8,8 @@
   outside mureo that the change carries out, and
   `mureo_state_action_log_append` accepts `entry.approval`. It is stored
   on the `action_log` entry and on the decision records the change
-  writes (including the decision of a call that wrote no entry), returned
+  writes (including the decision of a call that wrote no entry, which an
+  approval records even without a `reason`), returned
   as `approval` on ops history actions and decisions, and shown on the
   dashboard as "Approved by X on D (ref R)". mureo records and shows it
   and verifies nothing about it; it is never required. A malformed value

@@ -20,12 +20,14 @@ from mcp.types import TextContent, Tool
 
 from mureo.context.approval import parse_approval
 from mureo.context.decisions import DecisionRecord
-from mureo.context.models import StateDocument
+from mureo.context.models import ActionLogEntry, StateDocument
+from mureo.context.ops_linkage import LinkRequest, link_entry
 from mureo.context.settings import set_ops_history_enabled
 from mureo.context.state import read_state_file, write_state_file
 from mureo.mcp import journal
 from mureo.mcp._ops_history_param import (
     APPROVAL_PARAM,
+    APPROVAL_PROPERTY,
     split_ops_params,
     with_ops_properties,
 )
@@ -171,6 +173,26 @@ class TestSchema:
         assert tool.inputSchema["properties"] == {APPROVAL_PARAM: own}
 
 
+class TestBounds:
+    def test_the_schema_states_each_length_limit(self) -> None:
+        props = APPROVAL_PROPERTY["properties"]
+        assert props["reference"]["maxLength"] == 128
+        assert props["approved_by"]["maxLength"] == 80
+        assert props["approved_at"]["maxLength"] == 64
+
+    def test_the_limits_match_the_server_side_bounds(self) -> None:
+        from mureo.context.approval import (
+            APPROVAL_AT_MAX_CHARS,
+            APPROVAL_BY_MAX_CHARS,
+            APPROVAL_REFERENCE_MAX_CHARS,
+        )
+
+        props = APPROVAL_PROPERTY["properties"]
+        assert props["reference"]["maxLength"] == APPROVAL_REFERENCE_MAX_CHARS
+        assert props["approved_by"]["maxLength"] == APPROVAL_BY_MAX_CHARS
+        assert props["approved_at"]["maxLength"] == APPROVAL_AT_MAX_CHARS
+
+
 class TestSplit:
     def test_it_is_popped_from_a_copy(self) -> None:
         args = _status(approval=APPROVAL)
@@ -261,6 +283,30 @@ class TestCallWithoutEntry:
         doc = read_state_file(path)
         assert [r.status for r in doc.decisions] == ["proposed", "adopted"]
         assert doc.decisions[1].approval == parse_approval(APPROVAL)
+
+    async def test_without_a_reason_it_still_gets_a_decision(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(approval=APPROVAL))
+        assert handler == [_budget()]
+        doc = read_state_file(workspace / "STATE.json")
+        assert doc.action_log == ()
+        assert len(doc.decisions) == 1
+        record = doc.decisions[0]
+        assert record.status == "adopted"
+        assert record.approval == parse_approval(APPROVAL)
+        # A decision needs a rationale; with none stated, it says which
+        # approval the change carried out, and nothing it cannot know.
+        assert record.rationale == "Carried out under external approval REQ-42."
+        assert record.journal_tool == BUDGET_TOOL
+        assert record.applied_params == _budget()
+        assert _last_journal(workspace)["decision_id"] == record.decision_id
+
+    async def test_without_a_reason_or_an_approval_it_records_nothing(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget())
+        assert read_state_file(workspace / "STATE.json").decisions == ()
 
     async def test_a_batch_opened_with_it_carries_it(
         self, workspace: Path, handler: list[dict[str, Any]]
@@ -357,3 +403,64 @@ class TestActionLogAppend:
                 {"entry": _entry(approval=value)},
             )
         assert read_state_file(workspace / "STATE.json").action_log == ()
+
+
+class TestLinkEntry:
+    NOW = "2026-10-17T10:00:00+09:00"
+
+    def _entry(self, **extra: Any) -> ActionLogEntry:
+        fields: dict[str, Any] = {
+            "timestamp": self.NOW,
+            "action": STATUS_TOOL,
+            "platform": "google_ads",
+            "campaign_id": "123",
+            "reason": "Policy fixed.",
+            **extra,
+        }
+        return ActionLogEntry(**fields)
+
+    def test_the_entrys_own_approval_wins_on_entry_and_decision(self) -> None:
+        own = parse_approval({**APPROVAL, "reference": "REQ-own"})
+        call = parse_approval(APPROVAL)
+        request = LinkRequest(reason="Policy fixed.", now=self.NOW, approval=call)
+        doc, linked = link_entry(
+            StateDocument(version="2"), self._entry(approval=own), request
+        )
+        assert linked.approval == own
+        assert [r.approval for r in doc.decisions] == [own]
+
+    def test_without_its_own_the_entry_takes_the_calls(self) -> None:
+        call = parse_approval(APPROVAL)
+        request = LinkRequest(reason="Policy fixed.", now=self.NOW, approval=call)
+        doc, linked = link_entry(StateDocument(version="2"), self._entry(), request)
+        assert linked.approval == call
+        assert [r.approval for r in doc.decisions] == [call]
+
+
+class TestJoiningACallsDecision:
+    """Rule 6: an entry that records a no-entry call's change joins that
+    call's decision. The decision was written by the call; an approval only
+    the entry states stays on the entry (documented current behaviour)."""
+
+    async def test_the_entrys_approval_is_not_added_to_the_decision(
+        self, workspace: Path, handler: list[dict[str, Any]]
+    ) -> None:
+        await _call(BUDGET_TOOL, _budget(reason="Capped.", expected=CPA_DOWN))
+        await _call(
+            "mureo_state_action_log_append",
+            {
+                "entry": {
+                    "action": BUDGET_TOOL,
+                    "platform": "google_ads",
+                    "entity_type": "budget",
+                    "entity_id": "b1",
+                    "reason": "Capped.",
+                    "approval": APPROVAL,
+                }
+            },
+        )
+        doc = read_state_file(workspace / "STATE.json")
+        assert len(doc.decisions) == 1
+        assert doc.action_log[0].decision_id == doc.decisions[0].decision_id
+        assert doc.action_log[0].approval == parse_approval(APPROVAL)
+        assert doc.decisions[0].approval is None

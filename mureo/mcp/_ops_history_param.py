@@ -9,10 +9,10 @@ too: a reference to a sign-off made outside mureo (#854,
 :mod:`mureo.context.approval`), recorded and shown, never verified, and
 never required whatever the setting.
 
-Injected exactly as ``reason`` is, and under the same three rules: a tool
-that declares any of the three names itself is left alone, the registry's ``Tool``
-objects are never mutated, and a schema without a ``properties`` map is
-returned unchanged.
+Injected exactly as ``reason`` is, and under the same three rules: a
+tool that declares any of the three names itself is left alone, the
+registry's ``Tool`` objects are never mutated, and a schema without a
+``properties`` map is returned unchanged.
 
 **Scope.** The tools that change something on a platform: every
 reason-taking tool except mureo's own bookkeeping (``mureo_*``) and
@@ -48,7 +48,12 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
-from mureo.context.approval import parse_approval
+from mureo.context.approval import (
+    APPROVAL_AT_MAX_CHARS,
+    APPROVAL_BY_MAX_CHARS,
+    APPROVAL_REFERENCE_MAX_CHARS,
+    parse_approval,
+)
 from mureo.context.expected import (
     EXPECTED_DIRECTIONS,
     EXPECTED_HORIZON_MAX_DAYS,
@@ -163,9 +168,10 @@ DECISION_ID_PROPERTY: Mapping[str, Any] = MappingProxyType(
 )
 
 
-#: The ``approval`` property: the shape only. Every bound is checked by
-#: :func:`mureo.context.approval.parse_approval` on the server, so a
-#: limit is stated once. Read-only; copied per tool on injection.
+#: The ``approval`` property. The lengths are stated for the agent; every
+#: bound, these included, is checked by
+#: :func:`mureo.context.approval.parse_approval` on the server, whose
+#: constants they come from. Read-only; copied per tool on injection.
 APPROVAL_PROPERTY: Mapping[str, Any] = MappingProxyType(
     {
         "type": "object",
@@ -174,9 +180,12 @@ APPROVAL_PROPERTY: Mapping[str, Any] = MappingProxyType(
             "(recorded and shown, never verified)"
         ),
         "properties": {
-            "reference": {"type": "string"},
-            "approved_by": {"type": "string"},
-            "approved_at": {"type": "string"},
+            "reference": {
+                "type": "string",
+                "maxLength": APPROVAL_REFERENCE_MAX_CHARS,
+            },
+            "approved_by": {"type": "string", "maxLength": APPROVAL_BY_MAX_CHARS},
+            "approved_at": {"type": "string", "maxLength": APPROVAL_AT_MAX_CHARS},
         },
         "required": ["reference", "approved_by", "approved_at"],
         "additionalProperties": False,
@@ -457,7 +466,10 @@ def _record_unentried(
     Skipped without a STATE.json (nothing is created for it), for
     ``mureo_batch_begin`` (its decision is the batch's), for a rollback's
     reversal leg, and — without taking the lock — for a call with no
-    reason, no ``decision_id`` and no open batch, which links to nothing.
+    reason, no ``approval``, no ``decision_id`` and no open batch, which
+    links to nothing. An ``approval`` alone is recorded like a reason
+    (#854): it is the caller's explicit statement about this change, and
+    with no entry the decision is the only place it can be kept.
     The change happened, so a failure is logged rather than raised:
     failing the call would tell the agent a change that went through did
     not.
@@ -467,7 +479,12 @@ def _record_unentried(
     from mureo.mcp.journal import _open_batch_id
     from mureo.rollback.executor import is_rollback_dispatch_active
 
-    if reason is None and intent.decision_id is None and _open_batch_id() is None:
+    if (
+        reason is None
+        and intent.approval is None
+        and intent.decision_id is None
+        and _open_batch_id() is None
+    ):
         return
     path = _state_path(name, intent.arguments)
     if name == BATCH_BEGIN_TOOL or is_rollback_dispatch_active() or not path.is_file():
@@ -526,6 +543,8 @@ def ops_call_scope(
         return
     if intent.slot.decision_id is not None:
         call.decision_id = intent.slot.decision_id
+        return
+    if intent.slot.wrote_entry:
         return
     _record_unentried(call, name, intent, reason)
 

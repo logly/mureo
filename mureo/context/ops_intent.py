@@ -37,12 +37,17 @@ class CallDecisionSlot:
     under ONE decision, and the second append cannot learn the first one's
     id any other way: a ``ContextVar`` set on a worker thread does not
     propagate back. The slot lives exactly as long as the call's binding.
+
+    ``wrote_entry`` says the call wrote a change entry at all, linked or
+    not, so the dispatcher never records a no-entry decision for a call
+    whose entry already holds what it stated (#854).
     """
 
-    __slots__ = ("decision_id",)
+    __slots__ = ("decision_id", "wrote_entry")
 
     def __init__(self) -> None:
         self.decision_id: str | None = None
+        self.wrote_entry = False
 
 
 @dataclass(frozen=True)

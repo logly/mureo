@@ -249,7 +249,10 @@ def commit_slot(request: LinkRequest, entry: ActionLogEntry) -> None:
     never stored.
     """
     slot = request.slot
-    if slot is not None and entry.decision_id is not None and _is_change(entry):
+    if slot is None or not _is_change(entry):
+        return
+    slot.wrote_entry = True
+    if entry.decision_id is not None:
         slot.decision_id = entry.decision_id
 
 
@@ -449,15 +452,30 @@ def link_batch(
     return replace(doc, decisions=(*doc.decisions, record))
 
 
+def _approval_rationale(request: LinkRequest) -> str:
+    """The rationale of a decision recorded for an approval alone.
+
+    A decision record requires one. It states only what is known — which
+    approval the change carried out — and not why, which nobody said.
+    """
+    reference = None if request.approval is None else request.approval.reference
+    return f"Carried out under external approval {reference}."
+
+
 def _call_decision(
     doc: StateDocument, request: LinkRequest, tool: str, platform: str | None
 ) -> tuple[StateDocument, str | None]:
-    """The decision a call that wrote no entry carried out, by the entry rules."""
+    """The decision a call that wrote no entry carried out, by the entry rules.
+
+    One difference: an ``approval`` without a reason still creates the
+    decision (#854), with :func:`_approval_rationale`. An entry keeps the
+    call's approval itself; a call without one has only this record.
+    """
     if request.explicit_id is not None:
         return _join(doc, request.explicit_id, request)
     batch = active_batch(doc)
     batch_root = batch_decision_root(doc, None if batch is None else batch.batch_id)
-    if batch_root is not None or request.reason is None:
+    if batch_root is not None or (request.reason is None and request.approval is None):
         return doc, batch_root
     session, client = _actor()
     campaign_id = request.arguments.get("campaign_id")
@@ -467,7 +485,7 @@ def _call_decision(
         recorded_at=request.now,
         status=ADOPTED,
         title=derive_call_title(tool, request.arguments),
-        rationale=request.reason,
+        rationale=request.reason or _approval_rationale(request),
         platform=platform,
         campaign_id=campaign,
         expected=request.expected,

@@ -92,10 +92,21 @@ Where it lands:
   entry gets right after it succeeded (see below). A batch opened by a
   `mureo_batch_begin` call that carries one stores it on the batch's
   decision.
-- A call that joins a decision without writing a record (a member of a
-  batch, or a second call naming an already adopted decision) leaves it
-  only in its own entry, if it writes one, and in its `JOURNAL.jsonl`
-  record's masked `args`.
+- A call that writes no entry needs no `reason` for this: an `approval`
+  alone records the call's decision, so the value is never kept only in
+  the journal. With no reason stated, the decision's `rationale` reads
+  `Carried out under external approval <reference>.` A call that wrote
+  an entry without a `reason` gets no decision; the entry keeps the
+  value.
+- Two paths store a supplied approval on no decision record:
+  - A call that joins a decision without writing a record (a member of
+    a batch with a decision, or a second call naming an already adopted
+    decision) leaves it only in its own entry, if it writes one, and in
+    its `JOURNAL.jsonl` record's masked `args`.
+  - An entry appended with `mureo_state_action_log_append` that joins
+    the decision of a call that wrote no entry (rule 4 below) keeps its
+    approval on the entry only. That decision was written by the call
+    and is not changed; it carries the call's own approval, if any.
 - Imported external changes and rollback entries never carry one.
 - A malformed value already in `STATE.json` (hand-edited, say) is
   refused when a write reads the file, like any other malformed field.
@@ -163,12 +174,13 @@ decision you recorded, pass its `decision_id` on the change-making call.
 
 Most changes on a native platform — a budget, bid, keyword or ad change —
 write no `action_log` entry. When such a call succeeds and carries a
-`reason`, mureo records its decision right after the call, by the same
+`reason` (or an `approval`, see [External approval](#external-approval)),
+mureo records its decision right after the call, by the same
 rules: an explicit `decision_id` adopts that decision, a call inside a batch
 with a decision joins the batch's, and otherwise a new `adopted` decision
 is created. That makes exactly one decision per call, or per batch. A call
-with no `reason`, no `decision_id` and no open batch is not looked at at
-all. One
+with no `reason`, no `approval`, no `decision_id` and no open batch is not
+looked at at all. One
 `google_ads_budget_update` call with `budget_id: "b1"`, `amount: 12000`, a
 `reason` and `expected` records:
 
