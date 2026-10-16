@@ -468,13 +468,20 @@
   }
 
   // #854: the external approval a change carried out, exactly as it was
-  // stated (mureo verified nothing about it). Drawn only when it is the
-  // three strings; anything else draws no line rather than a broken one.
+  // stated (mureo verified nothing about it). Not run through clean():
+  // emphasis stripping would change a reference such as REQ__1__x, and the
+  // line is set as text, so nothing in a value is interpreted. Drawn only
+  // when it is the three strings; anything else draws no line rather than a
+  // broken one.
+  function stated(value) {
+    return typeof value === "string" && value.trim() ? value : null;
+  }
+
   function approvalLine(approval) {
     if (!approval || typeof approval !== "object") return null;
-    const name = clean(approval.approved_by);
-    const reference = clean(approval.reference);
-    const at = clean(approval.approved_at);
+    const name = stated(approval.approved_by);
+    const reference = stated(approval.reference);
+    const at = stated(approval.approved_at);
     if (!name || !reference || !at) return null;
     const text = t("approved_by", { name: name, date: at.slice(0, 10), reference: reference });
     const line = el("p", "ops-history-op-approval", text);

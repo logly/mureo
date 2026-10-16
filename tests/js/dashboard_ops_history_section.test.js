@@ -538,4 +538,19 @@ test.describe("the external approval line", function () {
     assert.match(line.textContent, /name=<img src=x onerror=alert\(1\)>/);
     assert.equal(line.querySelectorAll("img").length, 0);
   });
+
+  test.it("shows the three values exactly as stated, emphasis marks included", async function () {
+    const items = [item("a", "2026-10-16", { state: "executed" })];
+    items[0].actions[0].approval = {
+      reference: "REQ__1__x",
+      approved_by: "**Jane** _Operator_",
+      approved_at: "2026-10-16",
+    };
+    const ops = await expandFirst(items);
+    const line = ops.querySelector(".ops-history-op-approval");
+    assert.equal(
+      line.textContent,
+      "ops_history_section.approved_by|name=**Jane** _Operator_,date=2026-10-16,reference=REQ__1__x"
+    );
+  });
 });
