@@ -60,6 +60,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.report_flags import normalize_flags
+from mureo.context.approval import parse_approval
 from mureo.context.batch import BatchError
 from mureo.context.errors import ContextFileError
 from mureo.context.models import (
@@ -396,6 +397,9 @@ async def handle_state_action_log_append(
         # #848: an earlier decision this change carried out (validated, and a
         # proposal adopted, inside ``append_action_log``'s lock).
         decision_id=parse_decision_id(raw.get("decision_id")),
+        # #854: an external approval this change carried out; recorded and
+        # shown, never verified.
+        approval=parse_approval(raw.get("approval")),
     )
     require_entry_fields(path, entry, raw.get("expected"))
     try:

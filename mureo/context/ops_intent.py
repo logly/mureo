@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
+    from mureo.context.approval import ApprovalRef
     from mureo.context.expected import ExpectedEffect
 
 
@@ -56,6 +57,8 @@ class OpsIntent:
     applied_params: The same arguments as they may be STORED — masked and
         bounded by the dispatcher — or ``None`` when they cannot be.
     call_id: The id of the call's journal record, for the decision record.
+    approval: The external approval the call stated (#854), validated by
+        the dispatcher; ``None`` when none was given.
     slot: See :class:`CallDecisionSlot`.
     """
 
@@ -64,6 +67,7 @@ class OpsIntent:
     arguments: Mapping[str, Any] = field(default_factory=dict)
     applied_params: Mapping[str, Any] | None = None
     call_id: str | None = None
+    approval: ApprovalRef | None = None
     slot: CallDecisionSlot = field(default_factory=CallDecisionSlot)
 
 
@@ -78,6 +82,7 @@ def bind_ops_intent(
     arguments: Mapping[str, Any] | None = None,
     applied_params: Mapping[str, Any] | None = None,
     call_id: str | None = None,
+    approval: ApprovalRef | None = None,
 ) -> Iterator[OpsIntent]:
     """Bind an intent to the current task for the duration of the block.
 
@@ -92,6 +97,7 @@ def bind_ops_intent(
             None if applied_params is None else copy.deepcopy(dict(applied_params))
         ),
         call_id=call_id,
+        approval=approval,
     )
     token = _intent.set(intent)
     try:
