@@ -73,6 +73,7 @@ import pytest
 
 from mureo.analysis.anomaly_detector import CampaignMetrics
 from mureo.analytics.builtin._live_clients import _merge_campaign_metrics
+from mureo.context.approval import ApprovalRef
 from mureo.context.decisions import DecisionRecord
 from mureo.context.expected import ExpectedEffect
 from mureo.context.models import (
@@ -179,6 +180,11 @@ _ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
         ],
     },
     "applied_params": {"budget_id": "b1", "amount": 12000},
+    "approval": ApprovalRef(
+        reference="REQ-entry-1",
+        approved_by="Entry Approver",
+        approved_at="2026-04-01T09:00:00+09:00",
+    ),
 }
 
 #: One distinctive value per display model (#706). The nested maps exist for
@@ -263,6 +269,11 @@ _DECISION_FIELD_VALUES: dict[str, Any] = {
     "applied_params": {"budget_id": "b1", "amount": 12000},
     "journal_call_id": "call-0123456789abcdef",
     "journal_tool": "google_ads_budget_update",
+    "approval": ApprovalRef(
+        reference="REQ-decision-1",
+        approved_by="Decision Approver",
+        approved_at="2026-04-02",
+    ),
 }
 
 #: One distinctive value per :class:`WorkspaceSettings` field (#848).

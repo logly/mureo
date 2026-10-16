@@ -6,7 +6,10 @@ import copy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from mureo.context.approval import parse_approval
+
 if TYPE_CHECKING:
+    from mureo.context.approval import ApprovalRef
     from mureo.context.decisions import DecisionRecord
     from mureo.context.settings import WorkspaceSettings
 
@@ -296,6 +299,9 @@ class ActionLogEntry:
         :mod:`mureo.context.ops_linkage`): the decision carried out, the
         evaluation table of an ``outcome_evaluated`` record, and the masked
         parameters the call sent. ``None`` on every older entry.
+    approval: The external approval this change carried out (#854): recorded
+        and shown, never verified. ``None`` on every older entry, so old
+        STATE.json files parse unchanged and gain no new key on the next write.
     """
 
     timestamp: str
@@ -331,9 +337,12 @@ class ActionLogEntry:
     decision_id: str | None = None
     evaluation: dict[str, Any] | None = None
     applied_params: dict[str, Any] | None = None
+    # Appended after every pre-#854 field, same positional-compatibility rule.
+    approval: ApprovalRef | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
+        object.__setattr__(self, "approval", parse_approval(self.approval))
         self._validate_origin()
         self._validate_actor()
         if self.batch_id is not None:

@@ -45,6 +45,7 @@ from mureo.context._decision_codec import (
     decision_to_dict,
     parse_decisions,
 )
+from mureo.context.approval import approval_to_dict
 from mureo.context.display_codec import (
     display_contract_to_dict,
     parse_display_contract,
@@ -158,6 +159,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "decision_id",
                 "evaluation",
                 "applied_params",
+                "approval",
             }
         ),
         "_parse_action_log_entry / _action_log_entry_to_dict",
@@ -593,6 +595,8 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         decision_id=e.get("decision_id"),
         evaluation=e.get("evaluation"),
         applied_params=e.get("applied_params"),
+        # #854. Absent on every older entry; the model validates it.
+        approval=e.get("approval"),
     )
 
 
@@ -765,6 +769,8 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["evaluation"] = copy.deepcopy(e.evaluation)
     if e.applied_params is not None:
         result["applied_params"] = copy.deepcopy(e.applied_params)
+    if e.approval is not None:
+        result["approval"] = approval_to_dict(e.approval)
     return result
 
 

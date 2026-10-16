@@ -22,6 +22,7 @@ import copy
 import logging
 from typing import Any
 
+from mureo.context.approval import approval_to_dict
 from mureo.context.decisions import DecisionRecord
 from mureo.context.expected import expected_to_list, parse_expected
 
@@ -53,6 +54,7 @@ DECISION_COVERAGE: tuple[type, frozenset[str], str] = (
             "applied_params",
             "journal_call_id",
             "journal_tool",
+            "approval",
         }
     ),
     "_decision_codec.parse_decisions / .decision_to_dict",
@@ -131,6 +133,8 @@ def _parse_decision(item: Any) -> DecisionRecord:
         applied_params=item.get("applied_params"),
         journal_call_id=item.get("journal_call_id"),
         journal_tool=item.get("journal_tool"),
+        # #854 — absent on every record written before it existed.
+        approval=item.get("approval"),
     )
 
 
@@ -203,6 +207,8 @@ def decision_to_dict(record: DecisionRecord) -> dict[str, Any]:
         result["expected"] = expected_to_list(record.expected)
     if record.applied_params is not None:
         result["applied_params"] = copy.deepcopy(record.applied_params)
+    if record.approval is not None:
+        result["approval"] = approval_to_dict(record.approval)
     return result
 
 
