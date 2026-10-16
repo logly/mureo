@@ -61,9 +61,16 @@ one, on the change itself:
 - `reference` is 1 to 128 characters of `A-Z`, `a-z`, `0-9`, `.`, `_`
   and `-`.
 - `approved_by` is 1 to 80 characters after surrounding whitespace is
-  removed, with no control characters.
-- `approved_at` is an ISO 8601 date or timestamp (at most 64 characters),
-  stored exactly as given.
+  removed, with no control, format or separator characters (Unicode
+  categories Cc, Cf, Zl, Zp, Cs and Co, which covers bidi overrides,
+  zero-width spaces and line separators).
+- `approved_at` is a date, `YYYY-MM-DD`, optionally followed by `T` or
+  a space and a time `HH:MM`, `HH:MM:SS` or `HH:MM:SS.ffffff` (one to
+  six fraction digits), optionally followed by `Z` or an offset
+  `+HH:MM` / `-HH:MM`. It must be a real calendar date and time, is at
+  most 64 characters, and is stored exactly as given. Other ISO 8601
+  forms (basic `20261017`, week dates `2026-W42-1`, an offset without
+  a colon) are refused on every supported Python version.
 - All three keys are required and no other key is accepted. Anything
   else is refused with `invalid_args` naming the field, before the
   platform is called.
@@ -90,6 +97,10 @@ Where it lands:
   only in its own entry, if it writes one, and in its `JOURNAL.jsonl`
   record's masked `args`.
 - Imported external changes and rollback entries never carry one.
+- A malformed value already in `STATE.json` (hand-edited, say) is
+  refused when a write reads the file, like any other malformed field.
+  The read-only dashboard and history reads drop only the `approval`
+  and keep the entry or decision it was on.
 
 ## How a change is linked
 

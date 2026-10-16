@@ -1095,7 +1095,9 @@ the missing parameter, and so is a `decision_id` whose decision declares no
 `{reference, approved_by, approved_at}`: an external approval the change
 carries out, such as a ticket or a change request. `reference` is 1 to 128
 characters of `A-Za-z0-9._-`, `approved_by` 1 to 80 characters without
-control characters, and `approved_at` an ISO 8601 timestamp; anything else
+control, format or separator characters, and `approved_at` an ISO 8601
+date or timestamp in the profile `YYYY-MM-DD[THH:MM[:SS[.ffffff]]][Z|+HH:MM|-HH:MM]`
+(see [Ops history](ops-history.md#external-approval)); anything else
 is refused with `invalid_args` naming the field, before the platform is
 called. It is split off before the policy gates like `reason`, stored on the
 `action_log` entry the call writes and on any decision record the call

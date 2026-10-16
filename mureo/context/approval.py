@@ -12,17 +12,21 @@ into, cannot tell whether the person exists, and does not compare the time
 with anything. It only bounds the shape, so the value is safe to store in
 STATE.json and to put on a dashboard line.
 
-Pure: no I/O. The one shared helper is imported lazily, because
-:mod:`mureo.context.models` imports this module and the helper's module
-imports the models.
+Pure: no I/O. Imported by :mod:`mureo.context.models`, so it imports
+only leaf modules.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Final
+
+from mureo.context.iso_time import iso_date
+
+logger = logging.getLogger(__name__)
 
 #: Longest ``reference``. Ticket and request ids are far shorter; the bound
 #: is what STATE.json and one dashboard line can carry.
@@ -31,9 +35,30 @@ APPROVAL_REFERENCE_MAX_CHARS: Final = 128
 #: Longest ``approved_by``, in code points after stripping.
 APPROVAL_BY_MAX_CHARS: Final = 80
 
-#: Longest ``approved_at``. Any ISO 8601 timestamp fits with room to spare;
-#: the bound only stops a parser that accepts long forms from storing one.
+#: Longest ``approved_at``. Every value the profile below accepts fits with
+#: room to spare; the bound is checked first, before any pattern runs.
 APPROVAL_AT_MAX_CHARS: Final = 64
+
+#: The ``approved_at`` profile: a date, optionally a time to the minute,
+#: second or microsecond, optionally ``Z`` or a ``+HH:MM`` offset. Checked
+#: before ``fromisoformat``, whose accepted forms differ between Python
+#: versions (3.11 added basic and week dates), so every supported version
+#: accepts the same values. ``[0-9]``, not ``\d``, which matches any digit.
+_APPROVED_AT_PATTERN: Final = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    r"(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,6})?)?"
+    r"(?:Z|[+-][0-9]{2}:[0-9]{2})?)?"
+)
+
+#: A fraction of a second, padded to six digits before the calendar check:
+#: ``fromisoformat`` on 3.10 reads only three or six.
+_FRACTION_PATTERN: Final = re.compile(r"\.([0-9]{1,6})")
+
+#: Unicode categories ``approved_by`` refuses: control (Cc), format (Cf,
+#: e.g. bidi overrides and zero-width spaces), line and paragraph
+#: separators (Zl, Zp), surrogates (Cs) and private use (Co). Each can hide
+#: or reorder text on the dashboard line, or is not text at all.
+_REFUSED_NAME_CATEGORIES: Final = frozenset({"Cc", "Cf", "Zl", "Zp", "Cs", "Co"})
 
 #: The keys an approval carries, all required, nothing else accepted.
 APPROVAL_KEYS: Final[tuple[str, ...]] = ("reference", "approved_by", "approved_at")
@@ -70,21 +95,28 @@ def _approved_by(value: Any) -> str:
             f"approval.approved_by must be 1 to {APPROVAL_BY_MAX_CHARS} "
             f"characters; got {len(cleaned)}"
         )
-    if any(unicodedata.category(char) == "Cc" for char in cleaned):
-        raise ValueError("approval.approved_by must not contain control characters")
+    if any(unicodedata.category(char) in _REFUSED_NAME_CATEGORIES for char in cleaned):
+        raise ValueError(
+            "approval.approved_by must not contain control, format or "
+            "separator characters"
+        )
     return cleaned
 
 
 def _approved_at(value: Any) -> str:
-    # Lazy: ``ops_history_query`` imports the models, which import this module.
-    from mureo.context.ops_history_query import iso_date
-
+    # Refusals name the shape, never the value: they reach logs as well as
+    # the agent.
+    hint = (
+        "approval.approved_at must be an ISO 8601 date or timestamp "
+        "(YYYY-MM-DD, optionally THH:MM[:SS[.ffffff]] and Z or +HH:MM)"
+    )
     if not isinstance(value, str) or len(value) > APPROVAL_AT_MAX_CHARS:
-        raise ValueError("approval.approved_at must be an ISO 8601 timestamp")
-    if iso_date(value) is None:
-        raise ValueError(
-            f"approval.approved_at must be an ISO 8601 timestamp; got {value!r}"
-        )
+        raise ValueError(hint)
+    if _APPROVED_AT_PATTERN.fullmatch(value) is None:
+        raise ValueError(hint)
+    padded = _FRACTION_PATTERN.sub(lambda m: "." + m.group(1).ljust(6, "0"), value)
+    if iso_date(padded) is None:
+        raise ValueError(hint)
     return value
 
 
@@ -96,9 +128,10 @@ class ApprovalRef:
         1 to :data:`APPROVAL_REFERENCE_MAX_CHARS` characters of
         ``[A-Za-z0-9._-]``.
     approved_by: Who approved, as that system names them; stripped,
-        1 to :data:`APPROVAL_BY_MAX_CHARS` characters, no control
-        characters.
-    approved_at: When, as an ISO 8601 timestamp. Kept exactly as given.
+        1 to :data:`APPROVAL_BY_MAX_CHARS` characters, no control, format
+        or separator characters.
+    approved_at: When, as an ISO 8601 date or timestamp in the profile of
+        :data:`_APPROVED_AT_PATTERN`. Kept exactly as given.
     """
 
     reference: str
@@ -139,6 +172,24 @@ def parse_approval(value: Any) -> ApprovalRef | None:
     )
 
 
+def tolerant_approval(value: Any, *, strict: bool) -> ApprovalRef | None:
+    """:func:`parse_approval` for a stored value, by the codec's two modes.
+
+    ``strict=True`` (the writer contract) raises exactly as
+    :func:`parse_approval` does. ``strict=False`` (the read-only view)
+    drops a malformed value and keeps the record it is on: the approval is
+    an annotation on the history, not the history itself. Logged at DEBUG
+    without the value, which is free text an operator typed.
+    """
+    if strict:
+        return parse_approval(value)
+    try:
+        return parse_approval(value)
+    except ValueError:
+        logger.debug("dropping a malformed stored approval; the record is kept")
+        return None
+
+
 def approval_to_dict(ref: ApprovalRef) -> dict[str, str]:
     """Serialise an approval: the three keys, as stored."""
     return {
@@ -156,4 +207,5 @@ __all__ = [
     "ApprovalRef",
     "approval_to_dict",
     "parse_approval",
+    "tolerant_approval",
 ]

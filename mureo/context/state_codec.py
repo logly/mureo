@@ -45,7 +45,7 @@ from mureo.context._decision_codec import (
     decision_to_dict,
     parse_decisions,
 )
-from mureo.context.approval import approval_to_dict
+from mureo.context.approval import approval_to_dict, tolerant_approval
 from mureo.context.display_codec import (
     display_contract_to_dict,
     parse_display_contract,
@@ -364,7 +364,7 @@ def _parse_action_log(
     parsed: list[ActionLogEntry] = []
     for e in raw:
         try:
-            parsed.append(_parse_action_log_entry(e))
+            parsed.append(_parse_action_log_entry(e, strict=False))
         except (ValueError, KeyError, TypeError) as exc:
             # DEBUG, not WARNING — see _parse_campaigns: avoid per-render log
             # flood from a STATE.json with many nonconforming action_log entries.
@@ -557,8 +557,14 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     )
 
 
-def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
-    """Create an ActionLogEntry from a dict."""
+def _parse_action_log_entry(
+    e: dict[str, Any], *, strict: bool = True
+) -> ActionLogEntry:
+    """Create an ActionLogEntry from a dict.
+
+    ``strict=False`` drops a malformed ``approval`` and keeps the entry
+    (see :func:`mureo.context.approval.tolerant_approval`).
+    """
     return ActionLogEntry(
         timestamp=e["timestamp"],
         action=e["action"],
@@ -595,8 +601,9 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         decision_id=e.get("decision_id"),
         evaluation=e.get("evaluation"),
         applied_params=e.get("applied_params"),
-        # #854. Absent on every older entry; the model validates it.
-        approval=e.get("approval"),
+        # #854. Absent on every older entry. The read-only view drops a
+        # malformed one rather than the whole entry.
+        approval=tolerant_approval(e.get("approval"), strict=strict),
     )
 
 

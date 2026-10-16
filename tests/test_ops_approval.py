@@ -144,6 +144,73 @@ class TestParse:
         with pytest.raises(ValueError, match=field):
             parse_approval(_approval(**extra))
 
+    @pytest.mark.parametrize(
+        "stamp",
+        [
+            # Accepted by ``fromisoformat`` on 3.11+ only; refused everywhere.
+            "20261017",
+            "2026-W42-1",
+            "2026-10-17x09:30",
+            # Outside the profile on every version.
+            "2026-10-17T09",
+            "2026-10-17T09:30:00.1234567",
+            "2026-10-17T09:30+0900",
+            "2026-10-17T09:30:00Z\n",
+            "２０２６-10-17",
+        ],
+    )
+    def test_approved_at_outside_the_profile_is_refused(self, stamp: str) -> None:
+        with pytest.raises(ValueError, match="approval.approved_at"):
+            parse_approval(_approval(approved_at=stamp))
+
+    @pytest.mark.parametrize(
+        "stamp",
+        [
+            "2026-10-17",
+            "2026-10-17T09:30",
+            "2026-10-17 09:30:00",
+            "2026-10-17T09:30:00.5+09:00",
+            "2026-10-17T09:30:00.123456Z",
+            "2026-10-17T09:30:00-05:00",
+        ],
+    )
+    def test_approved_at_inside_the_profile_is_accepted(self, stamp: str) -> None:
+        ref = parse_approval(_approval(approved_at=stamp))
+        assert ref is not None
+        assert ref.approved_at == stamp
+
+    @pytest.mark.parametrize(
+        "stamp", ["2026-02-30", "2026-10-17T25:00", "2026-10-17T09:30+24:00"]
+    )
+    def test_approved_at_must_be_on_the_calendar(self, stamp: str) -> None:
+        with pytest.raises(ValueError, match="approval.approved_at"):
+            parse_approval(_approval(approved_at=stamp))
+
+    def test_an_approved_at_refusal_does_not_echo_the_value(self) -> None:
+        with pytest.raises(ValueError) as caught:
+            parse_approval(_approval(approved_at="secret-time"))
+        assert "secret" not in str(caught.value)
+
+    @pytest.mark.parametrize(
+        "char",
+        [
+            "\u202e",  # right-to-left override (Cf)
+            "\u2028",  # line separator (Zl)
+            "\u200b",  # zero-width space (Cf)
+            "\u2029",  # paragraph separator (Zp)
+            "\ue000",  # private use (Co)
+        ],
+    )
+    def test_approved_by_refuses_invisible_and_layout_characters(
+        self, char: str
+    ) -> None:
+        with pytest.raises(ValueError, match="approval.approved_by"):
+            parse_approval(_approval(approved_by=f"Jane{char}Doe"))
+
+    def test_approved_by_refuses_a_lone_surrogate(self) -> None:
+        with pytest.raises(ValueError, match="approval.approved_by"):
+            parse_approval(_approval(approved_by="Jane\ud800Doe"))
+
     def test_an_unknown_key_is_refused(self) -> None:
         with pytest.raises(ValueError, match="unknown key.*note"):
             parse_approval(_approval(note="ok"))
@@ -246,14 +313,35 @@ class TestCodec:
         with pytest.raises(ValueError, match="approval"):
             parse_state(text)
 
-    def test_the_read_only_view_skips_it(self) -> None:
-        text = _document(
-            _entry_dict(approval={"reference": "x"}),
-            _record_dict(approval="REQ-1"),
-        )
+    def test_the_read_only_view_keeps_the_entry_without_it(self) -> None:
+        text = _document(_entry_dict(approval={"reference": "x"}), _record_dict())
         doc = parse_state(text, strict=False)
-        assert doc.action_log == ()
-        assert doc.decisions == ()
+        assert len(doc.action_log) == 1
+        assert doc.action_log[0].action == "google_ads_budget_update"
+        assert doc.action_log[0].approval is None
+        assert len(doc.decisions) == 1
+
+    def test_the_read_only_view_keeps_the_decision_without_it(self) -> None:
+        text = _document(_entry_dict(), _record_dict(approval="REQ-1"))
+        doc = parse_state(text, strict=False)
+        assert len(doc.decisions) == 1
+        assert doc.decisions[0].rationale == "Capped by noon for a week."
+        assert doc.decisions[0].approval is None
+        assert len(doc.action_log) == 1
+
+    def test_the_read_only_view_does_not_log_the_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        bad = _approval(approved_at="secret-time")
+        text = _document(_entry_dict(approval=bad), _record_dict(approval=bad))
+        with caplog.at_level("DEBUG"):
+            parse_state(text, strict=False)
+        assert "secret" not in caplog.text
+
+    def test_the_writer_contract_still_refuses_a_bad_decision_value(self) -> None:
+        text = _document(_entry_dict(), _record_dict(approval="REQ-1"))
+        with pytest.raises(ValueError, match="approval"):
+            parse_state(text)
 
 
 class TestAppend:
