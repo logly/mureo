@@ -5274,6 +5274,7 @@ label .muted,
 
 .ops-history-detail-block .is-muted,
 .ops-history-op-due,
+.ops-history-op-approval,
 .ops-history-op-values {
   color: var(--muted);
   font-size: var(--type-caption-size);

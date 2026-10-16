@@ -463,3 +463,79 @@ test.describe("the ops history section", function () {
     assert.equal(rationale.querySelectorAll("img").length, 0);
   });
 });
+
+// #854: an external approval the change carried out, recorded and shown,
+// never verified. On the operation line for a change with an entry, on the
+// "parameters sent" line for a call that wrote none.
+test.describe("the external approval line", function () {
+  const APPROVAL = {
+    reference: "REQ-42",
+    approved_by: "Jane Operator",
+    approved_at: "2026-10-16T09:30:00+09:00",
+  };
+
+  async function expandFirst(items) {
+    const page = await openDetail(feed(true, items));
+    const row = section(page).querySelector("[data-ops-history-row]");
+    row.click();
+    return row.nextSibling.querySelector("[data-ops-history-operations]");
+  }
+
+  test.it("follows the operation of a change that carried one", async function () {
+    const items = [item("a", "2026-10-16", { state: "executed" })];
+    items[0].actions[0].approval = APPROVAL;
+    const ops = await expandFirst(items);
+    const line = ops.querySelector(".ops-history-op-approval");
+    assert.equal(line.tagName, "P");
+    assert.equal(
+      line.textContent,
+      "ops_history_section.approved_by|name=Jane Operator,date=2026-10-16,reference=REQ-42"
+    );
+  });
+
+  test.it("is absent from a change without one", async function () {
+    const items = [item("a", "2026-10-16", { state: "executed" })];
+    const ops = await expandFirst(items);
+    assert.equal(ops.querySelector(".ops-history-op-approval"), null);
+  });
+
+  test.it("is absent when the value is not the three strings", async function () {
+    const items = [item("a", "2026-10-16", { state: "executed" })];
+    items[0].actions[0].approval = { reference: "REQ-42", approved_by: 7 };
+    const ops = await expandFirst(items);
+    assert.equal(ops.querySelector(".ops-history-op-approval"), null);
+  });
+
+  test.it("follows the parameters a call without an entry sent", async function () {
+    const items = [item("b", "2026-10-16", { state: "executed" })];
+    items[0].actions = [];
+    items[0].decision.applied_params = { budget_id: "b1", amount: 12000 };
+    items[0].decision.approval = APPROVAL;
+    const ops = await expandFirst(items);
+    const line = ops.querySelector(".ops-history-op-approval");
+    assert.equal(
+      line.textContent,
+      "ops_history_section.approved_by|name=Jane Operator,date=2026-10-16,reference=REQ-42"
+    );
+    assert.match(ops.textContent, /ops_history_section\.params_sent budget_id: b1, amount: 12,000/);
+  });
+
+  test.it("is absent from a call without an entry and without one", async function () {
+    const items = [item("b", "2026-10-16", { state: "executed" })];
+    items[0].actions = [];
+    items[0].decision.applied_params = { budget_id: "b1", amount: 12000 };
+    const ops = await expandFirst(items);
+    assert.equal(ops.querySelector(".ops-history-op-approval"), null);
+  });
+
+  test.it("puts the approver's name on the page as text", async function () {
+    const items = [item("a", "2026-10-16", { state: "executed" })];
+    items[0].actions[0].approval = Object.assign({}, APPROVAL, {
+      approved_by: "<img src=x onerror=alert(1)>",
+    });
+    const ops = await expandFirst(items);
+    const line = ops.querySelector(".ops-history-op-approval");
+    assert.match(line.textContent, /name=<img src=x onerror=alert\(1\)>/);
+    assert.equal(line.querySelectorAll("img").length, 0);
+  });
+});
