@@ -22,6 +22,7 @@ whether the reason and the expected effect are **required**.
 | `journal_call_id` | `STATE.json`, on decisions mureo writes for a call | The `call_id` of that call's `JOURNAL.jsonl` record. The record carries `call_id` and `decision_id` in turn |
 | `journal_tool` | `STATE.json`, on decisions mureo writes for a call that wrote no entry | The call's tool name, which rule 4 matches against an entry's `action` |
 | `action_log[].evaluation` | `STATE.json`, on `outcome_evaluated` entries | The evaluation table: every metric before and after, with a verdict and a note |
+| `approval` | Every mutating tool, and `entry.approval` on `mureo_state_action_log_append`; stored on `action_log` entries and on decisions | An external approval the change carries out: `{reference, approved_by, approved_at}`. Optional, never required |
 | `settings.ops_history.enabled` | `STATE.json` | Off by default. When on, `reason` and `expected` are required |
 
 ### `expected`
@@ -42,6 +43,75 @@ whether the reason and the expected effect are **required**.
   number of days, from 1 to 365.
 - One entry per metric at most. Anything else is refused with
   `invalid_args`, before anything is written.
+
+### External approval
+
+Some changes are approved by a person outside mureo before they are made:
+a ticket, a change request or an approval queue. `approval` records which
+one, on the change itself:
+
+```json
+"approval": {
+  "reference": "REQ-2026-1017-04",
+  "approved_by": "Jane Operator",
+  "approved_at": "2026-10-17T09:30:00+09:00"
+}
+```
+
+- `reference` is 1 to 128 characters of `A-Z`, `a-z`, `0-9`, `.`, `_`
+  and `-`.
+- `approved_by` is 1 to 80 characters after surrounding whitespace is
+  removed, with no control, format or separator characters (Unicode
+  categories Cc, Cf, Zl, Zp, Cs and Co, which covers bidi overrides,
+  zero-width spaces and line separators).
+- `approved_at` is a date, `YYYY-MM-DD`, optionally followed by `T` or
+  a space and a time `HH:MM`, `HH:MM:SS` or `HH:MM:SS.ffffff` (one to
+  six fraction digits), optionally followed by `Z` or an offset
+  `+HH:MM` / `-HH:MM`. It must be a real calendar date and time, is at
+  most 64 characters, and is stored exactly as given. Other ISO 8601
+  forms (basic `20261017`, week dates `2026-W42-1`, an offset without
+  a colon) are refused on every supported Python version.
+- All three keys are required and no other key is accepted. Anything
+  else is refused with `invalid_args` naming the field, before the
+  platform is called.
+
+The value is **recorded and shown, never verified**. mureo does not look
+the reference up, does not check that the person exists and does not
+compare the time with anything. It is never required, whether or not the
+setting is on.
+
+Where it lands:
+
+- A call that writes an `action_log` entry stores it on the entry, the
+  same way the entry carries the call's `reason`.
+  `mureo_state_action_log_append` has no call-level `approval`; it takes
+  the value as `entry.approval` instead.
+- Every decision record the change writes stores it too, next to
+  `applied_params`: the new `adopted` decision, the record that adopts a
+  proposal named by `decision_id`, and the decision a call that wrote no
+  entry gets right after it succeeded (see below). A batch opened by a
+  `mureo_batch_begin` call that carries one stores it on the batch's
+  decision.
+- A call that writes no entry needs no `reason` for this: an `approval`
+  alone records the call's decision, so the value is never kept only in
+  the journal. With no reason stated, the decision's `rationale` reads
+  `Carried out under external approval <reference>.` A call that wrote
+  an entry without a `reason` gets no decision; the entry keeps the
+  value.
+- Two paths store a supplied approval on no decision record:
+  - A call that joins a decision without writing a record (a member of
+    a batch with a decision, or a second call naming an already adopted
+    decision) leaves it only in its own entry, if it writes one, and in
+    its `JOURNAL.jsonl` record's masked `args`.
+  - An entry appended with `mureo_state_action_log_append` that joins
+    the decision of a call that wrote no entry (rule 4 below) keeps its
+    approval on the entry only. That decision was written by the call
+    and is not changed; it carries the call's own approval, if any.
+- Imported external changes and rollback entries never carry one.
+- A malformed value already in `STATE.json` (hand-edited, say) is
+  refused when a write reads the file, like any other malformed field.
+  The read-only dashboard and history reads drop only the `approval`
+  and keep the entry or decision it was on.
 
 ## How a change is linked
 
@@ -104,12 +174,13 @@ decision you recorded, pass its `decision_id` on the change-making call.
 
 Most changes on a native platform — a budget, bid, keyword or ad change —
 write no `action_log` entry. When such a call succeeds and carries a
-`reason`, mureo records its decision right after the call, by the same
+`reason` (or an `approval`, see [External approval](#external-approval)),
+mureo records its decision right after the call, by the same
 rules: an explicit `decision_id` adopts that decision, a call inside a batch
 with a decision joins the batch's, and otherwise a new `adopted` decision
 is created. That makes exactly one decision per call, or per batch. A call
-with no `reason`, no `decision_id` and no open batch is not looked at at
-all. One
+with no `reason`, no `approval`, no `decision_id` and no open batch is not
+looked at at all. One
 `google_ads_budget_update` call with `budget_id: "b1"`, `amount: 12000`, a
 `reason` and `expected` records:
 
@@ -233,6 +304,9 @@ recorded.
   `applied_params`.
   `sources: ["ops_history"]` returns the same items, plus one item per
   change that no decision covers.
+- Each change carries `approval`, its entry's external approval, and each
+  decision carries `approval`, the newest one stated on its chain. Both
+  are `null` when none was stated.
 - Each item has a derived `state`: `proposed`, `adopted`, `executed`,
   `observing`, `evaluated` (with `verdict`), `skipped`, `rejected` or
   `deferred`. It also has a `rolled_back` flag. Nothing about the state is
@@ -280,6 +354,10 @@ cannot be read, the section is left out too.
   deadline, the evaluation table (metric, before, after, change, verdict,
   note), the reason a change was not evaluated, and whether it was rolled
   back.
+- **An external approval** is shown under the operation it was stated on,
+  "Approved by Jane Operator on 2026-10-17 (ref REQ-2026-1017-04)". For a
+  call that wrote no entry it is shown under the parameters sent, from
+  the decision. The date is the first ten characters of `approved_at`.
 - **Filters**: the period (the last 7, 30 or 90 days, today included, 30 by
   default) fetches again;
   platform, state and verdict filter the rows already fetched. The

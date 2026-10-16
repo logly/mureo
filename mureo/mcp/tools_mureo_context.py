@@ -62,7 +62,11 @@ from mureo.mcp._handlers_mureo_context import (
     handle_strategy_get,
     handle_strategy_set,
 )
-from mureo.mcp._ops_history_param import decision_id_schema, expected_schema
+from mureo.mcp._ops_history_param import (
+    approval_schema,
+    decision_id_schema,
+    expected_schema,
+)
 from mureo.mcp._tools_decisions import DECISIONS_SCOPE_PROPERTY
 from mureo.mcp._tools_decisions import HANDLERS as DECISION_HANDLERS
 from mureo.mcp._tools_decisions import TOOLS as DECISION_TOOLS
@@ -309,6 +313,10 @@ _ACTION_LOG_ENTRY_PROPERTY = {
             "Optional. The decision_id of an earlier proposed or adopted "
             "decision this change carried out; a proposal becomes adopted. "
             "Omit it otherwise — mureo creates the decision itself."
+        ),
+        "approval": approval_schema(
+            "Optional. An external approval this change carried out "
+            "(recorded and shown, never verified)."
         ),
     },
     "required": ["action", "platform"],

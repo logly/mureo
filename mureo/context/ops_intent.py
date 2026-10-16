@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
+    from mureo.context.approval import ApprovalRef
     from mureo.context.expected import ExpectedEffect
 
 
@@ -36,12 +37,17 @@ class CallDecisionSlot:
     under ONE decision, and the second append cannot learn the first one's
     id any other way: a ``ContextVar`` set on a worker thread does not
     propagate back. The slot lives exactly as long as the call's binding.
+
+    ``wrote_entry`` says the call wrote a change entry at all, linked or
+    not, so the dispatcher never records a no-entry decision for a call
+    whose entry already holds what it stated (#854).
     """
 
-    __slots__ = ("decision_id",)
+    __slots__ = ("decision_id", "wrote_entry")
 
     def __init__(self) -> None:
         self.decision_id: str | None = None
+        self.wrote_entry = False
 
 
 @dataclass(frozen=True)
@@ -56,6 +62,8 @@ class OpsIntent:
     applied_params: The same arguments as they may be STORED — masked and
         bounded by the dispatcher — or ``None`` when they cannot be.
     call_id: The id of the call's journal record, for the decision record.
+    approval: The external approval the call stated (#854), validated by
+        the dispatcher; ``None`` when none was given.
     slot: See :class:`CallDecisionSlot`.
     """
 
@@ -64,6 +72,7 @@ class OpsIntent:
     arguments: Mapping[str, Any] = field(default_factory=dict)
     applied_params: Mapping[str, Any] | None = None
     call_id: str | None = None
+    approval: ApprovalRef | None = None
     slot: CallDecisionSlot = field(default_factory=CallDecisionSlot)
 
 
@@ -78,6 +87,7 @@ def bind_ops_intent(
     arguments: Mapping[str, Any] | None = None,
     applied_params: Mapping[str, Any] | None = None,
     call_id: str | None = None,
+    approval: ApprovalRef | None = None,
 ) -> Iterator[OpsIntent]:
     """Bind an intent to the current task for the duration of the block.
 
@@ -92,6 +102,7 @@ def bind_ops_intent(
             None if applied_params is None else copy.deepcopy(dict(applied_params))
         ),
         call_id=call_id,
+        approval=approval,
     )
     token = _intent.set(intent)
     try:

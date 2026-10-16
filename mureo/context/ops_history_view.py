@@ -32,7 +32,9 @@ Pure: a document and a date in, JSON-safe dicts out, copied so a caller
 cannot reach back into the document. ``command`` is never included (it can
 carry flags and tokens). An action's ``before`` comes from
 ``reversible_params``, the only place a prior value is recorded, and its
-``after`` from ``applied_params``, what the call sent.
+``after`` from ``applied_params``, what the call sent. ``approval`` is the
+external approval a change stated (#854): the entry's own on an action,
+the newest on the chain on a decision; recorded and shown, never verified.
 
 The date RULE is not here: the read surfaces bound items by the same rule
 as the other history sources (:mod:`mureo.context.ops_history_query`), using
@@ -48,6 +50,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.context.approval import approval_to_dict
 from mureo.context.auto_evaluation import AutoSkip, plan_closure
 from mureo.context.decision_chain import chain_roots, group_chains
 from mureo.context.expected import expected_to_list
@@ -58,6 +61,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import date
 
+    from mureo.context.approval import ApprovalRef
     from mureo.context.decisions import DecisionRecord
     from mureo.context.models import ActionLogEntry, StateDocument
 
@@ -115,6 +119,10 @@ def _values(params: Any) -> dict[str, Any] | None:
     return copy.deepcopy(kept) or None
 
 
+def _approval(ref: ApprovalRef | None) -> dict[str, str] | None:
+    return None if ref is None else approval_to_dict(ref)
+
+
 def _before_values(entry: ActionLogEntry) -> dict[str, Any] | None:
     return _values((entry.reversible_params or {}).get("params"))
 
@@ -170,6 +178,7 @@ def _action_row(
         "summary": entry.summary,
         "display_title": entry.display_title,
         "reason": entry.reason,
+        "approval": _approval(entry.approval),
         "metrics_at_action": copy.deepcopy(entry.metrics_at_action),
         "before": _before_values(entry),
         "after": _values(entry.applied_params),
@@ -212,6 +221,7 @@ def _decision_dict(records: tuple[DecisionRecord, ...]) -> dict[str, Any]:
         "batch_id": latest.batch_id,
         "applied_params": copy.deepcopy(_newest(records, "applied_params")),
         "journal_call_id": _newest(records, "journal_call_id"),
+        "approval": _approval(_newest(records, "approval")),
         "history": [
             {"decision_id": r.decision_id, "status": r.status, "at": r.recorded_at}
             for r in records

@@ -467,6 +467,28 @@
     return pairs.length ? pairs.join(", ") : NO_VALUE;
   }
 
+  // #854: the external approval a change carried out, exactly as it was
+  // stated (mureo verified nothing about it). Not run through clean():
+  // emphasis stripping would change a reference such as REQ__1__x, and the
+  // line is set as text, so nothing in a value is interpreted. Drawn only
+  // when it is the three strings; anything else draws no line rather than a
+  // broken one.
+  function stated(value) {
+    return typeof value === "string" && value.trim() ? value : null;
+  }
+
+  function approvalLine(approval) {
+    if (!approval || typeof approval !== "object") return null;
+    const name = stated(approval.approved_by);
+    const reference = stated(approval.reference);
+    const at = stated(approval.approved_at);
+    if (!name || !reference || !at) return null;
+    const text = t("approved_by", { name: name, date: at.slice(0, 10), reference: reference });
+    const line = el("p", "ops-history-op-approval", text);
+    line.setAttribute("data-ops-history-approval", "");
+    return line;
+  }
+
   function operationLine(act) {
     const li = el("li", "ops-history-operation");
     const name = clean(act.display_title) || humanizeFlagWords(String(act.action || ""));
@@ -476,6 +498,8 @@
     li.appendChild(el("span", "ops-history-op-values", " " + moved));
     const reason = clean(act.reason);
     if (reason) li.appendChild(el("p", "ops-history-op-reason", reason));
+    const approval = approvalLine(act.approval);
+    if (approval) li.appendChild(approval);
     if (act.observation_due) {
       const due = t("observation_due", { date: act.observation_due });
       li.appendChild(el("p", "ops-history-op-due", due));
@@ -490,6 +514,8 @@
       const params = item.decision && item.decision.applied_params;
       const text = params ? t("params_sent") + " " + valuesText(params) : t("operations_none");
       wrap.appendChild(el("p", "is-muted", text));
+      const approval = approvalLine(item.decision && item.decision.approval);
+      if (approval) wrap.appendChild(approval);
       return wrap;
     }
     const list = el("ul", "ops-history-operations");

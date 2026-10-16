@@ -1,15 +1,18 @@
-"""The ``expected`` and ``decision_id`` parameters of mutating tools (#848).
+"""The ``expected``, ``decision_id`` and ``approval`` parameters (#848, #854).
 
 Ops history links every change to the decision it carried out. The agent
 states two things on the mutating call itself — WHY (``reason``, injected by
 :mod:`mureo.mcp._reason_param`) and WHAT SHOULD MOVE (``expected``, here) —
 and mureo writes the decision record. ``decision_id`` is optional and only
-for carrying out an earlier ``proposed`` decision.
+for carrying out an earlier ``proposed`` decision. ``approval`` is optional
+too: a reference to a sign-off made outside mureo (#854,
+:mod:`mureo.context.approval`), recorded and shown, never verified, and
+never required whatever the setting.
 
-Injected exactly as ``reason`` is, and under the same three rules: a tool
-that declares either name itself is left alone, the registry's ``Tool``
-objects are never mutated, and a schema without a ``properties`` map is
-returned unchanged.
+Injected exactly as ``reason`` is, and under the same three rules: a
+tool that declares any of the three names itself is left alone, the
+registry's ``Tool`` objects are never mutated, and a schema without a
+``properties`` map is returned unchanged.
 
 **Scope.** The tools that change something on a platform: every
 reason-taking tool except mureo's own bookkeeping (``mureo_*``) and
@@ -45,6 +48,12 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.context.approval import (
+    APPROVAL_AT_MAX_CHARS,
+    APPROVAL_BY_MAX_CHARS,
+    APPROVAL_REFERENCE_MAX_CHARS,
+    parse_approval,
+)
 from mureo.context.expected import (
     EXPECTED_DIRECTIONS,
     EXPECTED_HORIZON_MAX_DAYS,
@@ -59,6 +68,7 @@ if TYPE_CHECKING:
 
     from mcp.types import Tool
 
+    from mureo.context.approval import ApprovalRef
     from mureo.context.expected import ExpectedEffect
     from mureo.context.models import StateDocument
     from mureo.context.ops_intent import OpsIntent
@@ -68,6 +78,7 @@ logger = logging.getLogger(__name__)
 
 EXPECTED_PARAM: Final = "expected"
 DECISION_ID_PARAM: Final = "decision_id"
+APPROVAL_PARAM: Final = "approval"
 BATCH_BEGIN_TOOL: Final = "mureo_batch_begin"
 ROLLBACK_APPLY_TOOL: Final = "rollback_apply"
 _BOOKKEEPING_PREFIX: Final = "mureo_"
@@ -78,6 +89,13 @@ DECISION_ID_MAX_CHARS: Final = 128
 #: Largest masked parameter set kept as ``applied_params``, in JSON
 #: characters. A bulk call over it is still recorded, without its values.
 APPLIED_PARAMS_MAX_CHARS: Final = 4000
+
+#: The parameters this module injects; a tool declaring any one is left alone.
+_OPS_PARAMS: Final[tuple[str, ...]] = (
+    EXPECTED_PARAM,
+    DECISION_ID_PARAM,
+    APPROVAL_PARAM,
+)
 
 #: Journal families whose name is also the platform a change was made on.
 _PLATFORM_FAMILIES: Final[frozenset[str]] = frozenset(
@@ -150,6 +168,31 @@ DECISION_ID_PROPERTY: Mapping[str, Any] = MappingProxyType(
 )
 
 
+#: The ``approval`` property. The lengths are stated for the agent; every
+#: bound, these included, is checked by
+#: :func:`mureo.context.approval.parse_approval` on the server, whose
+#: constants they come from. Read-only; copied per tool on injection.
+APPROVAL_PROPERTY: Mapping[str, Any] = MappingProxyType(
+    {
+        "type": "object",
+        "description": (
+            "External approval this change carries out "
+            "(recorded and shown, never verified)"
+        ),
+        "properties": {
+            "reference": {
+                "type": "string",
+                "maxLength": APPROVAL_REFERENCE_MAX_CHARS,
+            },
+            "approved_by": {"type": "string", "maxLength": APPROVAL_BY_MAX_CHARS},
+            "approved_at": {"type": "string", "maxLength": APPROVAL_AT_MAX_CHARS},
+        },
+        "required": ["reference", "approved_by", "approved_at"],
+        "additionalProperties": False,
+    }
+)
+
+
 def expected_schema(description: str) -> dict[str, Any]:
     """A fresh copy of the ``expected`` schema with its own description.
 
@@ -166,18 +209,26 @@ def decision_id_schema(description: str) -> dict[str, Any]:
     return {**dict(DECISION_ID_PROPERTY), "description": description}
 
 
+def approval_schema(description: str) -> dict[str, Any]:
+    """A fresh copy of the ``approval`` schema with its own description."""
+    schema = copy.deepcopy(dict(APPROVAL_PROPERTY))
+    schema["description"] = description
+    return schema
+
+
 @dataclass(frozen=True)
 class OpsParams:
-    """The two parameters as split off one call."""
+    """The ops-history parameters as split off one call."""
 
     expected: tuple[ExpectedEffect, ...] = ()
     decision_id: str | None = None
+    approval: ApprovalRef | None = None
 
 
 def ops_scope(
     reason_tools: Collection[str],
 ) -> Callable[[str], bool]:
-    """Which tools take ``expected`` / ``decision_id`` (see module docstring)."""
+    """Which tools take the ops-history parameters (see module docstring)."""
 
     def _in_scope(name: str) -> bool:
         if name not in reason_tools or name == ROLLBACK_APPLY_TOOL:
@@ -188,25 +239,26 @@ def ops_scope(
 
 
 def with_ops_properties(tool: Tool) -> Tool:
-    """Return ``tool`` with both properties, or ``tool`` itself."""
+    """Return ``tool`` with the three properties, or ``tool`` itself."""
     schema = getattr(tool, "inputSchema", None)
     if not isinstance(schema, dict):
         return tool
     properties = schema.get("properties")
     if not isinstance(properties, dict):
         return tool
-    if EXPECTED_PARAM in properties or DECISION_ID_PARAM in properties:
+    if any(name in properties for name in _OPS_PARAMS):
         return tool
     injected = copy.deepcopy(schema)
     injected["properties"][EXPECTED_PARAM] = dict(INJECTED_EXPECTED_PROPERTY)
     injected["properties"][DECISION_ID_PARAM] = dict(DECISION_ID_PROPERTY)
+    injected["properties"][APPROVAL_PARAM] = copy.deepcopy(dict(APPROVAL_PROPERTY))
     return tool.model_copy(update={"inputSchema": injected})
 
 
 def inject_ops_params(
     tools: Iterable[Tool], in_scope: Callable[[str], bool]
 ) -> tuple[list[Tool], frozenset[str]]:
-    """Add both properties to every tool in scope.
+    """Add the three properties to every tool in scope.
 
     Returns the new tool list and the names that gained them.
     """
@@ -236,20 +288,22 @@ def parse_decision_id(raw: Any) -> str | None:
 def split_ops_params(
     name: str, arguments: dict[str, Any], injected: Collection[str]
 ) -> tuple[OpsParams, dict[str, Any]]:
-    """Separate the two parameters from the arguments the handler gets.
+    """Separate the three parameters from the arguments the handler gets.
 
     Popped from a COPY; a tool outside ``injected`` gets its dict back
     untouched.
 
     Raises:
-        ValueError: either parameter is malformed.
+        ValueError: a parameter is malformed.
     """
     if name not in injected or not isinstance(arguments, dict):
         return OpsParams(), arguments
     rest = dict(arguments)
     expected = parse_expected(rest.pop(EXPECTED_PARAM, None))
     decision_id = parse_decision_id(rest.pop(DECISION_ID_PARAM, None))
-    return OpsParams(expected=expected, decision_id=decision_id), rest
+    approval = parse_approval(rest.pop(APPROVAL_PARAM, None))
+    params = OpsParams(expected=expected, decision_id=decision_id, approval=approval)
+    return params, rest
 
 
 def take_ops_params(
@@ -412,7 +466,10 @@ def _record_unentried(
     Skipped without a STATE.json (nothing is created for it), for
     ``mureo_batch_begin`` (its decision is the batch's), for a rollback's
     reversal leg, and — without taking the lock — for a call with no
-    reason, no ``decision_id`` and no open batch, which links to nothing.
+    reason, no ``approval``, no ``decision_id`` and no open batch, which
+    links to nothing. An ``approval`` alone is recorded like a reason
+    (#854): it is the caller's explicit statement about this change, and
+    with no entry the decision is the only place it can be kept.
     The change happened, so a failure is logged rather than raised:
     failing the call would tell the agent a change that went through did
     not.
@@ -422,7 +479,12 @@ def _record_unentried(
     from mureo.mcp.journal import _open_batch_id
     from mureo.rollback.executor import is_rollback_dispatch_active
 
-    if reason is None and intent.decision_id is None and _open_batch_id() is None:
+    if (
+        reason is None
+        and intent.approval is None
+        and intent.decision_id is None
+        and _open_batch_id() is None
+    ):
         return
     path = _state_path(name, intent.arguments)
     if name == BATCH_BEGIN_TOOL or is_rollback_dispatch_active() or not path.is_file():
@@ -435,6 +497,7 @@ def _record_unentried(
         arguments=intent.arguments,
         applied_params=intent.applied_params,
         call_id=intent.call_id,
+        approval=intent.approval,
     )
     try:
         root = record_call_decision(
@@ -473,6 +536,7 @@ def ops_call_scope(
         arguments=handler_args,
         applied_params=applied_params_of(handler_args),
         call_id=call.call_id,
+        approval=params.approval,
     ) as intent:
         yield
     if call.outcome != "ok":
@@ -480,12 +544,16 @@ def ops_call_scope(
     if intent.slot.decision_id is not None:
         call.decision_id = intent.slot.decision_id
         return
+    if intent.slot.wrote_entry:
+        return
     _record_unentried(call, name, intent, reason)
 
 
 __all__ = [
     "ADOPTION_EXPECTED_REQUIRED",
     "APPLIED_PARAMS_MAX_CHARS",
+    "APPROVAL_PARAM",
+    "APPROVAL_PROPERTY",
     "DECISION_ID_PROPERTY",
     "EXPECTED_PROPERTY",
     "EXPECTED_REQUIRED",
@@ -493,6 +561,7 @@ __all__ = [
     "REASON_REQUIRED",
     "OpsParams",
     "applied_params_of",
+    "approval_schema",
     "check_ops_call",
     "decision_id_schema",
     "enforce_ops_call",

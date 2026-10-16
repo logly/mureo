@@ -29,6 +29,7 @@ from typing import Any
 
 import pytest
 
+from mureo.context.approval import ApprovalRef
 from mureo.context.batch import (
     STALE_AFTER_HOURS,
     BatchError,
@@ -293,6 +294,12 @@ _ENTRY_FIELD_VALUES: dict[str, Any] = {
     "decision_id": "dec-20260807T100000-a1b2c3d4",
     "evaluation": {"overall": "improved", "basis": "default", "metrics": []},
     "applied_params": {"campaign_id": "c1", "status": "PAUSED"},
+    # #854 — an external approval, recorded and never verified.
+    "approval": ApprovalRef(
+        reference="REQ-2026-0807",
+        approved_by="Batch Approver",
+        approved_at="2026-08-07T09:00:00+09:00",
+    ),
     # The one field the round-trip is ALLOWED to change: it arrives unset and
     # comes back carrying the open batch.
     "batch_id": None,

@@ -36,12 +36,14 @@ import secrets
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.context.approval import parse_approval
 from mureo.context.batch import ID_ENTROPY_BYTES, BatchError, find_batch
 from mureo.context.expected import ExpectedEffect, parse_expected
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from mureo.context.approval import ApprovalRef
     from mureo.context.models import StateDocument
 
 #: What a record may say about the decision it holds. A closed vocabulary,
@@ -168,6 +170,11 @@ class DecisionRecord:
         of that call's ``JOURNAL.jsonl`` record (the tool only for a call
         that wrote no ``action_log`` entry). ``None`` on a record written by
         ``mureo_decision_record``.
+    approval: The external approval stated by the call that carried the
+        decision out (#854, :mod:`mureo.context.approval`): recorded and
+        shown, never verified. The newest record's wins, like
+        ``applied_params``. ``None`` on every record written before it
+        existed, which therefore gains no key on the next write.
 
     Every bound below is enforced on the WRITE path and **refused, never
     truncated** (the #706 rule): the caller still holds the sentence and can
@@ -194,9 +201,11 @@ class DecisionRecord:
     applied_params: dict[str, Any] | None = None
     journal_call_id: str | None = None
     journal_tool: str | None = None
+    approval: ApprovalRef | None = None
 
     def __post_init__(self) -> None:
         """Validate every bound and take a defensive copy of ``metrics``."""
+        object.__setattr__(self, "approval", parse_approval(self.approval))
         self._validate_required_text()
         self._validate_optional_text()
         self._validate_metrics()

@@ -22,6 +22,7 @@ import copy
 import logging
 from typing import Any
 
+from mureo.context.approval import approval_to_dict, tolerant_approval
 from mureo.context.decisions import DecisionRecord
 from mureo.context.expected import expected_to_list, parse_expected
 
@@ -53,6 +54,7 @@ DECISION_COVERAGE: tuple[type, frozenset[str], str] = (
             "applied_params",
             "journal_call_id",
             "journal_tool",
+            "approval",
         }
     ),
     "_decision_codec.parse_decisions / .decision_to_dict",
@@ -93,7 +95,7 @@ def _record_label(item: Any) -> str:
     return f"<no decision_id, {type(item).__name__}>"
 
 
-def _parse_decision(item: Any) -> DecisionRecord:
+def _parse_decision(item: Any, *, strict: bool = True) -> DecisionRecord:
     """Build one :class:`DecisionRecord` from its stored dict.
 
     Only names the keys: every bound and vocabulary is enforced by the
@@ -102,6 +104,8 @@ def _parse_decision(item: Any) -> DecisionRecord:
 
     Refusals name the shape, not the value, because these messages reach
     the log by way of :func:`parse_decisions` — see :func:`_record_label`.
+    ``strict=False`` drops a malformed ``approval`` and keeps the record
+    (see :func:`mureo.context.approval.tolerant_approval`).
     """
     if not isinstance(item, dict):
         raise ValueError(
@@ -131,6 +135,9 @@ def _parse_decision(item: Any) -> DecisionRecord:
         applied_params=item.get("applied_params"),
         journal_call_id=item.get("journal_call_id"),
         journal_tool=item.get("journal_tool"),
+        # #854 — absent on every record written before it existed. The
+        # read-only view drops a malformed one rather than the record.
+        approval=tolerant_approval(item.get("approval"), strict=strict),
     )
 
 
@@ -154,7 +161,7 @@ def parse_decisions(raw: Any, *, strict: bool) -> tuple[DecisionRecord, ...]:
     parsed: list[DecisionRecord] = []
     for item in raw:
         try:
-            parsed.append(_parse_decision(item))
+            parsed.append(_parse_decision(item, strict=False))
         except (ValueError, KeyError, TypeError) as exc:
             # DEBUG, not WARNING: the read-only Reports view re-parses on
             # every poll, so a per-record warning would flood the log.
@@ -203,6 +210,8 @@ def decision_to_dict(record: DecisionRecord) -> dict[str, Any]:
         result["expected"] = expected_to_list(record.expected)
     if record.applied_params is not None:
         result["applied_params"] = copy.deepcopy(record.applied_params)
+    if record.approval is not None:
+        result["approval"] = approval_to_dict(record.approval)
     return result
 
 

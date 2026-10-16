@@ -33,6 +33,8 @@ visible duplicate, which the operator can at least see.
 
 Every entry is stamped with the decision chain's ROOT id, the id that stays
 the same while the chain grows, and with the parameters the call sent.
+An external ``approval`` the call stated (#854) is stamped the same way, and
+lands on every decision record the change writes, like ``applied_params``.
 
 A call that writes no entry at all (a budget update on a native platform)
 gets its decision from :func:`record_call_decision`, by the same rules,
@@ -67,6 +69,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from mureo.context.approval import ApprovalRef
     from mureo.context.expected import ExpectedEffect
     from mureo.context.models import ActionLogEntry, BatchRecord, StateDocument
     from mureo.context.ops_intent import CallDecisionSlot
@@ -93,6 +96,8 @@ class LinkRequest:
     applied_params: The arguments as they may be stored (masked), or
         ``None``.
     call_id: The call's journal ``call_id``, kept on a decision it creates.
+    approval: The external approval the call or the entry stated (#854),
+        kept on the entry and on a decision record it writes.
     tool: The call's tool name, set only for a call that wrote no entry.
     slot: The call's shared decision slot; ``None`` outside a call.
     now: Server timestamp for any record written.
@@ -105,6 +110,7 @@ class LinkRequest:
     arguments: Mapping[str, Any] = field(default_factory=dict)
     applied_params: Mapping[str, Any] | None = None
     call_id: str | None = None
+    approval: ApprovalRef | None = None
     tool: str | None = None
     slot: CallDecisionSlot | None = None
 
@@ -131,6 +137,7 @@ def call_request(reason: str | None, now: str, expected: Any = None) -> LinkRequ
         arguments=intent.arguments,
         applied_params=intent.applied_params,
         call_id=intent.call_id,
+        approval=intent.approval,
         slot=intent.slot,
     )
 
@@ -190,6 +197,7 @@ def _successor(
         applied_params=_applied(request),
         journal_call_id=request.call_id,
         journal_tool=request.tool,
+        approval=request.approval,
     )
 
 
@@ -241,7 +249,10 @@ def commit_slot(request: LinkRequest, entry: ActionLogEntry) -> None:
     never stored.
     """
     slot = request.slot
-    if slot is not None and entry.decision_id is not None and _is_change(entry):
+    if slot is None or not _is_change(entry):
+        return
+    slot.wrote_entry = True
+    if entry.decision_id is not None:
         slot.decision_id = entry.decision_id
 
 
@@ -329,6 +340,7 @@ def _new_decision(entry: ActionLogEntry, request: LinkRequest) -> DecisionRecord
         client=entry.client,
         applied_params=_applied(request),
         journal_call_id=request.call_id,
+        approval=request.approval,
     )
 
 
@@ -364,6 +376,19 @@ def _with_applied(entry: ActionLogEntry, request: LinkRequest) -> ActionLogEntry
     return replace(entry, applied_params=_applied(request))
 
 
+def _with_approval(
+    entry: ActionLogEntry, request: LinkRequest
+) -> tuple[ActionLogEntry, LinkRequest]:
+    """Stamp the call's approval on ``entry``; the entry's own one wins.
+
+    The request then carries the entry's, so every decision record this
+    change writes states the same approval as the entry.
+    """
+    if entry.approval is None and request.approval is not None:
+        entry = replace(entry, approval=request.approval)
+    return entry, replace(request, approval=entry.approval)
+
+
 def link_entry(
     doc: StateDocument, entry: ActionLogEntry, request: LinkRequest
 ) -> tuple[StateDocument, ActionLogEntry]:
@@ -377,6 +402,7 @@ def link_entry(
     if entry.origin is not None or entry.rollback_of is not None:
         return doc, entry
     entry = _with_applied(entry, request)
+    entry, request = _with_approval(entry, request)
     if entry.decision_id is not None:
         doc, root = _join(doc, entry.decision_id, request)
         return doc, _stamp(entry, root)
@@ -421,19 +447,35 @@ def link_batch(
         session_id=session,
         client=client,
         journal_call_id=request.call_id,
+        approval=request.approval,
     )
     return replace(doc, decisions=(*doc.decisions, record))
+
+
+def _approval_rationale(request: LinkRequest) -> str:
+    """The rationale of a decision recorded for an approval alone.
+
+    A decision record requires one. It states only what is known — which
+    approval the change carried out — and not why, which nobody said.
+    """
+    reference = None if request.approval is None else request.approval.reference
+    return f"Carried out under external approval {reference}."
 
 
 def _call_decision(
     doc: StateDocument, request: LinkRequest, tool: str, platform: str | None
 ) -> tuple[StateDocument, str | None]:
-    """The decision a call that wrote no entry carried out, by the entry rules."""
+    """The decision a call that wrote no entry carried out, by the entry rules.
+
+    One difference: an ``approval`` without a reason still creates the
+    decision (#854), with :func:`_approval_rationale`. An entry keeps the
+    call's approval itself; a call without one has only this record.
+    """
     if request.explicit_id is not None:
         return _join(doc, request.explicit_id, request)
     batch = active_batch(doc)
     batch_root = batch_decision_root(doc, None if batch is None else batch.batch_id)
-    if batch_root is not None or request.reason is None:
+    if batch_root is not None or (request.reason is None and request.approval is None):
         return doc, batch_root
     session, client = _actor()
     campaign_id = request.arguments.get("campaign_id")
@@ -443,7 +485,7 @@ def _call_decision(
         recorded_at=request.now,
         status=ADOPTED,
         title=derive_call_title(tool, request.arguments),
-        rationale=request.reason,
+        rationale=request.reason or _approval_rationale(request),
         platform=platform,
         campaign_id=campaign,
         expected=request.expected,
@@ -452,6 +494,7 @@ def _call_decision(
         applied_params=_applied(request),
         journal_call_id=request.call_id,
         journal_tool=tool,
+        approval=request.approval,
     )
     return replace(doc, decisions=(*doc.decisions, record)), record.decision_id
 

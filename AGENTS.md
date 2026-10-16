@@ -184,6 +184,7 @@ mureo/
 │   ├── strategy.py      # STRATEGY.md parser/writer
 │   ├── state.py         # STATE.json parser/writer
 │   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
+│   ├── display_models.py # The display contract models (#706), re-exported by models.py
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
 │   ├── decisions.py     # The `decisions` section (#758 phase 3): DecisionRecord, its
 │   │                    #   bounds, append_decision and the pure queries. Append-only
@@ -193,7 +194,7 @@ mureo/
 │   │                    #   be a history
 │   ├── _decision_codec.py # That section's two codec halves. Strict like action_log's,
 │   │                    #   not tolerant like batches': a decision record IS history
-│   ├── expected.py, settings.py, decision_chain.py, ops_intent.py,
+│   ├── expected.py, approval.py, iso_time.py, settings.py, decision_chain.py, ops_intent.py,
 │   │   ops_linkage.py, ops_fields.py, ops_history_view.py,
 │   │   ops_history_query.py
 │   │                    #   Ops history (#848): expected effects, the settings section,

@@ -16,9 +16,9 @@ importing the server's handlers.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
+from mureo.context.iso_time import iso_date
 from mureo.context.ops_history_view import build_ops_history_items
 
 if TYPE_CHECKING:
@@ -57,22 +57,6 @@ def in_window(day: date | None, bounds: DateBounds) -> bool:
     return (bounds.since is None or day >= bounds.since) and (
         bounds.until is None or day <= bounds.until
     )
-
-
-def iso_date(value: Any) -> date | None:
-    """The date of an ISO 8601 timestamp in its own offset, or ``None``.
-
-    ``Z`` is normalised by hand: ``fromisoformat`` only learned to read it
-    in 3.11 and mureo still supports 3.10, where an unconverted ``Z``
-    would drop the record out of every bounded query.
-    """
-    if not isinstance(value, str) or not value:
-        return None
-    text = f"{value[:-1]}+00:00" if value.endswith("Z") else value
-    try:
-        return datetime.fromisoformat(text).date()
-    except ValueError:
-        return None
 
 
 def ops_history_items(
