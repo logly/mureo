@@ -193,7 +193,7 @@ mureo/
 │   │                    #   be a history
 │   ├── _decision_codec.py # That section's two codec halves. Strict like action_log's,
 │   │                    #   not tolerant like batches': a decision record IS history
-│   ├── expected.py, settings.py, decision_chain.py, ops_intent.py,
+│   ├── expected.py, approval.py, settings.py, decision_chain.py, ops_intent.py,
 │   │   ops_linkage.py, ops_fields.py, ops_history_view.py,
 │   │   ops_history_query.py
 │   │                    #   Ops history (#848): expected effects, the settings section,
