@@ -992,6 +992,25 @@ input[type="checkbox"] {
   max-width: 760px;
 }
 
+/* The flow above has one hazard: a button appended straight after the
+ * fields is inline too, so whenever the last row has room for it (a single
+ * field, or an odd count at two-up) it is laid into that row, top-aligned
+ * beside the field instead of below the form. An action control ends the
+ * flow: it starts a row of its own, sized to its text. */
+.dashboard-section label + .btn:not([hidden]) {
+  display: flex;
+  width: fit-content;
+}
+
+/* Several controls that belong together (a button and the status it
+ * reports into, Browse beside Create) share one such row. */
+.dashboard-section .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
 /* A table follows the frame too. Left to itself it shrinks to its contents
  * and hugs the left edge, which is the one shape this width must not
  * produce. */

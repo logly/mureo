@@ -230,14 +230,20 @@
     }
     form.appendChild(cbLabel);
 
+    // The button and its status line share one row below the fields
+    // (app.css `.form-actions`); appended bare, the inline button would
+    // be laid beside the last field whenever that row had room.
+    const actions = document.createElement("div");
+    actions.className = "form-actions";
     const authBtn = document.createElement("button");
     authBtn.type = "submit";
     authBtn.className = "btn btn-primary";
     authBtn.textContent = MUREO.t("dashboard.plugin_oauth_authenticate");
-    form.appendChild(authBtn);
+    actions.appendChild(authBtn);
     const status = document.createElement("span");
     status.className = "plugin-oauth-status muted";
-    form.appendChild(status);
+    actions.appendChild(status);
+    form.appendChild(actions);
 
     form.addEventListener("submit", function (evt) {
       evt.preventDefault();
@@ -425,12 +431,14 @@
     }
     form.appendChild(label);
 
+    const actions = document.createElement("div");
+    actions.className = "form-actions";
     const loadBtn = document.createElement("button");
     loadBtn.type = "button";
     loadBtn.className = "btn";
     loadBtn.textContent = MUREO.t("dashboard.plugin_accounts_load");
     loadBtn.disabled = !authConfigured;
-    form.appendChild(loadBtn);
+    actions.appendChild(loadBtn);
 
     const status = document.createElement("span");
     status.className = "plugin-accounts-status muted";
@@ -438,7 +446,8 @@
     if (!authConfigured) {
       status.textContent = MUREO.t("dashboard.plugin_accounts_authenticate_first");
     }
-    form.appendChild(status);
+    actions.appendChild(status);
+    form.appendChild(actions);
 
     const options = document.createElement("div");
     options.className = "plugin-accounts-options";
