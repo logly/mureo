@@ -156,11 +156,16 @@
       "dashboard.amazon_exchange_button"
     );
     exchangeBtn.type = "button";
-    box.appendChild(exchangeBtn);
+    // The button and its status line share one row below the field
+    // (app.css `.form-actions`), as the plugin card's OAuth controls do.
+    const actions = document.createElement("div");
+    actions.className = "form-actions";
+    actions.appendChild(exchangeBtn);
 
     const status = document.createElement("span");
     status.className = "plugin-amazon-authorize-status muted";
-    box.appendChild(status);
+    actions.appendChild(status);
+    box.appendChild(actions);
 
     authorizeBtn.addEventListener("click", function () {
       openConsent(authorizeBtn, status);

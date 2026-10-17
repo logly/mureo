@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Dashboard forms: action buttons laid beside the last field.** The
+  Save / Authenticate / Save keys / Browse buttons under Settings and
+  Advanced settings (plugin credentials, Creative Studio, Ops history,
+  Demo, BYOD) were laid into the fields' row and top-aligned beside the
+  last field whenever that row had room for them (a single field, or an
+  odd number at two-up), so the button sat above the form it submits. A
+  button that follows the fields now starts a row of its own below them;
+  a button and its status line share one row.
+
 ## [0.28.0] - 2026-10-17
 
 ### Added
