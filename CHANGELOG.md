@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-17
+
 ### Added
 
 - **Ops history: external approval reference** (#854). Every mutating
