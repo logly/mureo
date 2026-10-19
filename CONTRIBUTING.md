@@ -293,6 +293,19 @@ Configuration is in `pyproject.toml`:
 - API client methods should raise `RuntimeError` with user-facing messages.
 - Log technical details with the `logging` module, not `print()`.
 
+### Consistency
+
+Shape drifts before logic breaks. Keep the shape the codebase already has (see also **Consistency Rules** in `AGENTS.md`):
+
+- **Failures have one shape per boundary.** MCP tool handlers fail through `mureo/mcp/_helpers.py` (`api_error_handler`, the `API error:` envelope, the `auth_error` result, `_json_result`); web handlers fail through `send_error_json`. Never add a new error shape, status word or `{"error": ...}` variant — extend the existing helper in one place instead, and keep `is_error_result` in step with it.
+- **Search before you write a helper.** Look for one with the same purpose, not only the same name, and diff the bodies. If one exists, reuse it.
+- **Do not add a function-local import to break an import cycle.** Fix the dependency direction. If an import inside a function is unavoidable, comment why on the import itself.
+- **One name per concept.** Reuse the existing parameter and field names (`period`, `customer_id`, `account_id`, `platform`, …).
+- **Broad excepts need a reason.** `except Exception` carries a `noqa: BLE001` with the reason, or narrows the type.
+- **Update the docs in the same PR** — `docs/architecture.md`, skill files, `CHANGELOG.md` — whenever the change touches what they describe.
+
+Reviewers check the diff for a new helper, a new failure shape, a new lazy import or a new name, and ask for a justification before approving.
+
 ### No Hardcoded Secrets
 
 Never commit credentials, API keys, or tokens. Use environment variables or `~/.mureo/credentials.json`.

@@ -434,6 +434,21 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 - Linter: **ruff** (select: E, F, I, N, W, UP, B, A, SIM, TCH)
 - Type checker: **mypy** (strict mode)
 
+## Consistency Rules
+
+Structure drifts before logic breaks: a second error envelope, a helper that duplicates another, a new name for an existing concept, a function-local import added to dodge a cycle. The 2026-10 structural audit found all four here (#862–#866). These rules exist so that a change decided by one person and written by another — or by an agent — keeps the shape the codebase already has.
+
+- **One failure shape per boundary.** MCP tools fail through the helpers `mureo/mcp/_helpers.py` provides (`api_error_handler`, the `API error:` envelope, the `auth_error` result, `_json_result`); web handlers fail through `send_error_json`. Do not add a new error shape, status word or `{"error": ...}` variant. If the existing helper cannot express a case, extend the helper in one place and update `is_error_result` with it (#862, #864).
+- **Reuse before writing.** Before adding a helper, search for one with the same purpose — not only the same name — and diff the bodies. A byte-identical or near-identical copy is a defect; mixin type stubs that resolve to one implementation are not.
+- **No function-local imports to break an import cycle.** Fix the dependency direction instead. If one is unavoidable, comment the reason on the import and open an issue (#863). Startup-cost deferrals stay documented as such.
+- **One name per concept.** Check the existing vocabulary (`period`, `customer_id`, `account_id`, `platform`, …) before introducing a parameter, field or key name.
+- **No silent broad excepts.** `except Exception` carries a `noqa: BLE001` with the reason, or narrows the type (#865).
+- **Docs move with the code.** `docs/architecture.md`, `AGENTS.md`, skill files and `CHANGELOG.md` are updated in the same PR as the change they describe.
+- **Review the structure, not only the logic.** A review rejects, or asks for a justification of, any new helper, new failure shape, new lazy import or new name that the diff introduces. "Tests green" does not settle it.
+- **Limits belong in lint.** The 50-line function and 800-line file limits above are rules for lint to enforce (tracked with #865), not for reviewers to remember; until the lint rule lands, review checks them and an overrun needs an issue.
+
+The same checklist is re-run as a structural audit after each major release, scored A–D per dimension with `path:line` evidence.
+
 ## Commit Workflow
 
 **Before EVERY code commit, run a code-review agent — no exceptions, including fixup and review-response commits.**
