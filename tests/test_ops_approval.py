@@ -306,12 +306,15 @@ class TestCodec:
         assert "approval" not in written["action_log"][0]
         assert "approval" not in written["decisions"][0]
 
-    def test_a_malformed_stored_value_is_refused_by_the_writer_contract(
-        self,
-    ) -> None:
-        text = _document(_entry_dict(approval={"reference": "x"}), _record_dict())
-        with pytest.raises(ValueError, match="approval"):
-            parse_state(text)
+    def test_a_malformed_stored_value_keeps_its_entry_opaque(self) -> None:
+        # #859: the writer contract no longer refuses the whole document over
+        # one action_log entry. The entry is kept opaque and its approval is
+        # written back exactly as stored.
+        bad = _entry_dict(approval={"reference": "x"})
+        doc = parse_state(_document(bad, _record_dict()))
+        assert len(doc.action_log) == 1
+        assert doc.action_log[0].approval is None
+        assert json.loads(render_state(doc))["action_log"][0] == bad
 
     def test_the_read_only_view_keeps_the_entry_without_it(self) -> None:
         text = _document(_entry_dict(approval={"reference": "x"}), _record_dict())

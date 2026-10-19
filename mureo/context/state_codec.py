@@ -26,12 +26,14 @@ Each tolerant branch documents its own reasoning below.
 
 ``action_log`` is the exception to "nonconforming raises" (#859). The log is
 the operator's append-only history and its indices are positional
-(``rollback_of`` / ``evaluation_of``), so an entry missing a required key
-(``timestamp`` / ``action`` / ``platform``) or carrying keys the codec does not
-know is kept IN PLACE in both modes — missing fields read as ``""`` — and
-written back verbatim from :attr:`ActionLogEntry.raw`. Strict mode still
-refuses what is structurally invalid there: invalid JSON, an entry that is not
-an object, and a malformed ``approval``.
+(``rollback_of`` / ``evaluation_of``), so no object entry can block a write.
+An entry missing a required key (``timestamp`` / ``action`` / ``platform``),
+holding a non-string one, or carrying keys the codec does not know is kept IN
+PLACE in both modes — those required fields read as ``""`` — and written back
+verbatim from :attr:`ActionLogEntry.raw`. An entry the model refuses (a
+malformed ``approval`` included) is kept OPAQUE: only its three required keys
+are read, and it too is written back verbatim. Strict mode refuses only an
+entry that is not an object (and invalid JSON, before any of this).
 
 Dependency-free beyond stdlib and the frozen ``mureo.context.models``
 dataclasses — the same discipline :mod:`mureo.context.platform_accounts`
@@ -379,19 +381,15 @@ def _parse_action_log(
 ) -> tuple[ActionLogEntry, ...]:
     """Parse the action_log list.
 
-    Both modes keep an entry missing a required field (``timestamp`` /
-    ``action`` / ``platform``) or carrying unknown keys IN PLACE (#859): the
-    log is append-only and ``rollback_of`` / ``evaluation_of`` are positional,
-    so the writer and the read-only view must see the same indices. Such an
-    entry reads with the missing fields as ``""`` and is written back verbatim
-    (see :func:`_parse_action_log_entry`).
+    Both modes keep every object entry IN PLACE (#859): the log is
+    append-only and ``rollback_of`` / ``evaluation_of`` are positional, so the
+    writer and the read-only view must see the same indices. An entry the
+    codec cannot represent is written back verbatim (see
+    :func:`_parse_action_log_entry`).
 
-    ``strict=True`` (the writer contract) still raises on an entry that is not
-    an object, carries a malformed ``approval``, or holds a value the model
-    refuses (see :class:`ActionLogEntry`). ``strict=False`` skips such an
-    entry, logging it, so one cannot blank out a whole document in the
-    read-only Reports view; a malformed ``approval`` alone is dropped and its
-    entry kept (:func:`mureo.context.approval.tolerant_approval`).
+    ``strict=True`` (the writer contract) raises only on an entry that is not
+    an object. ``strict=False`` skips such an entry, logging it, so one cannot
+    blank out a whole document in the read-only Reports view.
     """
     if strict:
         return tuple(_parse_action_log_entry(e) for e in raw)
@@ -525,13 +523,13 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     ``strict`` controls campaign-list, action_log AND platform validation:
     ``True`` (default) preserves the strict writer contract (raises on a missing
     required campaign field or platform ``account_id``, and on an action_log
-    entry that is not an object or carries a malformed ``approval``);
-    ``False`` tolerantly skips such campaign entries and non-object action_log
-    entries, drops a malformed ``approval`` (keeping its entry), and defaults
-    a missing platform ``account_id`` to ``""`` for the read-only Reports view.
-    An action_log entry missing ``timestamp`` / ``action`` / ``platform`` or
-    carrying unknown keys is kept in place in BOTH modes and re-emitted
-    verbatim by :func:`render_state` (#859). Invalid JSON always raises
+    entry that is not an object); ``False`` tolerantly skips such campaign
+    and action_log entries and defaults a missing platform ``account_id`` to
+    ``""`` for the read-only Reports view. Every action_log entry that IS an
+    object is kept in place in BOTH modes (#859): one missing or holding a
+    non-string ``timestamp`` / ``action`` / ``platform``, carrying unknown
+    keys, or refused by the model (a malformed ``approval`` included) is
+    re-emitted verbatim by :func:`render_state`. Invalid JSON always raises
     regardless of ``strict``.
 
     Unknown top-level keys are ignored (and :func:`render_state` emits only
@@ -601,13 +599,31 @@ def _parse_action_log_entry(
 ) -> ActionLogEntry:
     """Create an ActionLogEntry from a dict (``TypeError`` if it is not one).
 
-    ``strict=False`` drops a malformed ``approval`` and keeps the entry
-    (see :func:`mureo.context.approval.tolerant_approval`). A missing or null
-    required key reads as ``""`` in both modes, and an entry the codec cannot
-    re-emit from its fields alone keeps its dict as ``raw`` (#859).
+    A missing, null or non-string required key reads as ``""``, and an entry
+    the codec cannot re-emit from its fields alone keeps its dict as ``raw``
+    (#859). An entry the model refuses — a value ``ActionLogEntry`` rejects,
+    or a malformed ``approval`` under ``strict=True`` — is kept OPAQUE in both
+    modes: only the required keys are read and ``raw`` carries the rest, so it
+    is written back verbatim instead of blocking the write. ``strict=False``
+    drops a malformed ``approval`` and keeps the entry's other fields (see
+    :func:`mureo.context.approval.tolerant_approval`).
     """
     if not isinstance(e, dict):
         raise TypeError(f"action_log entry must be an object, got {type(e).__name__}")
+    raw = e if _action_log_unrepresentable(e) else None
+    try:
+        return _action_log_entry_from_dict(e, strict=strict, raw=raw)
+    except (ValueError, TypeError):
+        # DEBUG, not WARNING — the flood reason in _parse_campaigns. The value
+        # is not logged: it is free text an operator typed.
+        logger.debug("keeping a refused action_log entry opaque")
+        return ActionLogEntry(**_action_log_required(e), raw=e)
+
+
+def _action_log_entry_from_dict(
+    e: dict[str, Any], *, strict: bool, raw: dict[str, Any] | None
+) -> ActionLogEntry:
+    """Build the entry from every field ``e`` holds; the model may refuse it."""
     return ActionLogEntry(
         **_action_log_required(e),
         campaign_id=e.get("campaign_id"),
@@ -645,23 +661,34 @@ def _parse_action_log_entry(
         # #854. Absent on every older entry. The read-only view drops a
         # malformed one rather than the whole entry.
         approval=tolerant_approval(e.get("approval"), strict=strict),
-        raw=e if _action_log_unrepresentable(e) else None,
+        raw=raw,
     )
 
 
-def _action_log_required(e: dict[str, Any]) -> dict[str, Any]:
-    """The required keys of an action_log entry, missing / null read as ``""``."""
-    return {k: "" if e.get(k) is None else e[k] for k in _ACTION_LOG_REQUIRED_KEYS}
+def _action_log_refused(raw: Mapping[str, Any]) -> bool:
+    """Whether the model refuses ``raw`` — i.e. it was parsed as an opaque entry."""
+    try:
+        _action_log_entry_from_dict(dict(raw), strict=True, raw=None)
+    except (ValueError, TypeError):
+        return True
+    return False
+
+
+def _action_log_required(e: dict[str, Any]) -> dict[str, str]:
+    """The required keys of an action_log entry; anything but a string is ``""``."""
+    return {
+        k: e[k] if isinstance(e.get(k), str) else "" for k in _ACTION_LOG_REQUIRED_KEYS
+    }
 
 
 def _action_log_unrepresentable(e: dict[str, Any]) -> bool:
     """Whether the codec cannot re-emit ``e`` from its fields alone (#859).
 
-    True when a required key is absent or null (re-emitting it as ``""``
-    would invent a value) or when ``e`` carries a key the codec does not
-    know (re-emitting the fields would drop it).
+    True when a required key is absent, null or not a string (re-emitting it
+    as ``""`` would invent or lose a value) or when ``e`` carries a key the
+    codec does not know (re-emitting the fields would drop it).
     """
-    if any(e.get(k) is None for k in _ACTION_LOG_REQUIRED_KEYS):
+    if any(not isinstance(e.get(k), str) for k in _ACTION_LOG_REQUIRED_KEYS):
         return True
     return any(k not in _ACTION_LOG_KNOWN_KEYS for k in e)
 
@@ -788,7 +815,9 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
     canonical = _canonical_action_log_dict(e)
     if e.raw is None:
         return canonical
-    return _preserved_action_log_dict(e.raw, canonical)
+    return _preserved_action_log_dict(
+        e.raw, canonical, opaque=_action_log_refused(e.raw)
+    )
 
 
 def _canonical_action_log_dict(e: ActionLogEntry) -> dict[str, Any]:
@@ -806,12 +835,14 @@ def _canonical_action_log_dict(e: ActionLogEntry) -> dict[str, Any]:
 
 
 def _preserved_action_log_dict(
-    raw: Mapping[str, Any], canonical: dict[str, Any]
+    raw: Mapping[str, Any], canonical: dict[str, Any], *, opaque: bool
 ) -> dict[str, Any]:
     """Re-emit a preserved entry in its on-disk key order (#859).
 
     A known key carries the entry's CURRENT value, so a mutation lands; one
-    whose field is now unset is left out, so a cleared field stays cleared.
+    whose field is now unset is left out, so a cleared field stays cleared —
+    except on an ``opaque`` entry (one the model refused), whose optional
+    fields were never read, so an unset one is emitted as found.
     A required key whose current value is empty is emitted exactly as found
     (absent stays absent, null stays null) rather than as an invented ``""``.
     An unknown key is copied through. Known fields set on the entry but not
@@ -826,6 +857,8 @@ def _preserved_action_log_dict(
             result[key] = copy.deepcopy(raw_value)
         elif key in canonical:
             result[key] = canonical[key]
+        elif opaque:
+            result[key] = copy.deepcopy(raw_value)
     for key, value in canonical.items():
         if key in raw or (key in _ACTION_LOG_REQUIRED_KEYS and not value):
             continue

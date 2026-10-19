@@ -1427,11 +1427,12 @@ class TestActionLogRationaleAndActor:
             self._entry(**{field: "  "})
 
     @pytest.mark.unit
-    def test_a_document_with_a_non_string_reason_is_refused_cleanly(
+    def test_a_document_with_a_non_string_reason_is_kept_opaque(
         self, tmp_path: Path
     ) -> None:
-        """A hand-edited STATE.json reaches the dataclass through the codec:
-        the operator gets the field name, not an ``AttributeError``."""
+        """A hand-edited STATE.json entry the dataclass refuses no longer
+        blocks the document (#859): the codec keeps it OPAQUE — only its
+        required keys are read — in both modes, and writes it back as found."""
         fp = tmp_path / "STATE.json"
         fp.write_text(
             json.dumps(
@@ -1449,13 +1450,13 @@ class TestActionLogRationaleAndActor:
             ),
             encoding="utf-8",
         )
-        # A raw ``ValueError`` out of the dataclass, exactly like a bad
-        # ``batch_id``: ``ContextFileError`` is this module's name for "the
-        # FILE could not be read", which is not what went wrong here.
-        with pytest.raises(ValueError, match="reason must be a string"):
-            read_state_file(fp)
-        # ...and the tolerant read still returns the rest of the document.
-        assert read_state_file(fp, strict=False).action_log == ()
+        doc = read_state_file(fp)
+        assert len(doc.action_log) == 1
+        assert doc.action_log[0].reason is None
+        assert doc.action_log[0].raw is not None
+        assert doc.action_log[0].raw["reason"] == 123
+        assert read_state_file(fp, strict=False).action_log == doc.action_log
+        assert json.loads(render_state(doc))["action_log"][0]["reason"] == 123
 
 
 class TestSetReport:

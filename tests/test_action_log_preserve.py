@@ -15,8 +15,10 @@ The contract pinned here:
   share one index space;
 - it is written back verbatim: unknown keys survive, absent required keys
   stay absent, and a mutation mureo makes (``batch_id``) still lands;
-- strict mode still refuses what is structurally invalid (a non-object entry,
-  a malformed ``approval``).
+- an entry the model refuses (a non-string ``reason``, a malformed
+  ``approval``, ...) is kept OPAQUE — only its required keys are read — and
+  written back verbatim, so no object entry can block a write;
+- strict mode refuses only an entry that is not an object.
 """
 
 from __future__ import annotations
@@ -293,7 +295,7 @@ class TestWritersSucceed:
 
 
 @pytest.mark.unit
-class TestStrictStillRefusesStructuralFaults:
+class TestOnlyANonObjectEntryIsRefused:
     def test_a_non_object_entry_raises_in_strict_and_is_skipped_tolerantly(
         self,
     ) -> None:
@@ -306,21 +308,80 @@ class TestStrictStillRefusesStructuralFaults:
         tolerant = parse_state(text, strict=False)
         assert [e.action for e in tolerant.action_log] == [_CONFORMING_FIRST["action"]]
 
-    def test_a_malformed_approval_raises_in_strict_and_is_dropped_tolerantly(
-        self,
-    ) -> None:
-        bad = {**_CONFORMING_LAST, "approval": {"reference": "REQ-1"}}
+    def test_a_malformed_approval_is_kept_opaque_in_strict(self) -> None:
+        bad = {
+            **_CONFORMING_LAST,
+            "campaign_id": "C-9",
+            "approval": {"reference": "REQ-1"},
+        }
         data = _document()
-        data["action_log"] = [bad]
+        data["action_log"] = [_CONFORMING_FIRST, bad]
         text = _text(data)
 
-        with pytest.raises(ValueError):
-            parse_state(text, strict=True)
+        doc = parse_state(text, strict=True)
+
+        assert len(doc.action_log) == 2
+        opaque = doc.action_log[1]
+        assert opaque.action == bad["action"]
+        assert opaque.approval is None
+        assert opaque.campaign_id is None, "an opaque entry reads no optional field"
+        assert opaque.raw == bad
+        # The approval key, and every other key, is written back as found.
+        assert render_state(doc) == text
+        assert json.loads(render_state(doc))["action_log"][1]["approval"] == {
+            "reference": "REQ-1"
+        }
         # The tolerant view keeps the record and drops only the annotation
         # (unchanged behaviour, see ``tolerant_approval``).
         tolerant = parse_state(text, strict=False)
-        assert len(tolerant.action_log) == 1
-        assert tolerant.action_log[0].approval is None
+        assert len(tolerant.action_log) == 2
+        assert tolerant.action_log[1].approval is None
+
+    def test_a_value_the_model_refuses_is_kept_opaque(self, state_file: Path) -> None:
+        refused = {**_CONFORMING_LAST, "campaign_id": "C-9", "reason": 123}
+        data = _document()
+        data["action_log"] = [_CONFORMING_FIRST, refused]
+        text = _text(data)
+        state_file.write_text(text, encoding="utf-8")
+
+        doc = read_state_file(state_file, strict=True)
+
+        assert [e.action for e in doc.action_log] == [
+            _CONFORMING_FIRST["action"],
+            refused["action"],
+        ]
+        assert doc.action_log[1].reason is None
+        assert doc.action_log[1].raw == refused
+        assert read_state_file(state_file, strict=False).action_log == doc.action_log
+        assert render_state(doc) == text
+
+        append_action_log(
+            state_file,
+            ActionLogEntry(
+                timestamp="2026-09-08T09:00:00+09:00",
+                action="google_ads_status_update",
+                platform="google_ads",
+            ),
+        )
+        log = _on_disk_log(state_file)
+        assert len(log) == 3
+        assert log[1] == refused
+        assert list(log[1]) == list(refused)
+
+    def test_a_non_string_required_value_reads_empty_and_round_trips(
+        self,
+    ) -> None:
+        entry = {"timestamp": 123, "action": "x", "platform": "google_ads"}
+        data = _document()
+        data["action_log"] = [entry]
+        text = _text(data)
+
+        doc = parse_state(text)
+
+        assert doc.action_log[0].timestamp == ""
+        assert doc.action_log[0].raw == entry
+        assert render_state(doc) == text
+        assert json.loads(render_state(doc))["action_log"][0]["timestamp"] == 123
 
 
 @pytest.mark.unit
