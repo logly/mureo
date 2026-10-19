@@ -66,6 +66,7 @@ Neither substitutes for the other.
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+from json import loads as parse_json
 from pathlib import Path
 from typing import Any
 
@@ -186,6 +187,26 @@ _ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
         approved_at="2026-04-01T09:00:00+09:00",
     ),
 }
+
+
+def _with_raw(values: dict[str, Any]) -> dict[str, Any]:
+    """``values`` plus a ``raw`` that is a fixed point of the codec (#859).
+
+    ``raw`` is not an independent field the way the others are: the parser
+    sets it to the WHOLE on-disk dict whenever that dict carries a key the
+    codec does not know. So the distinctive value here is the entry exactly
+    as rendered, plus one unknown key — the shape a round trip produces.
+    A codec that stopped keeping ``raw`` (it comes back ``None``) or stopped
+    re-emitting unknown keys (the marker is lost, so ``raw`` comes back
+    ``None``) fails the same equality the other fields are held to.
+    """
+    rendered = parse_json(
+        render_state(StateDocument(action_log=(ActionLogEntry(**values),)))
+    )["action_log"][0]
+    return {**values, "raw": {**rendered, "raw_marker": "raw-value"}}
+
+
+_ACTION_LOG_FIELD_VALUES = _with_raw(_ACTION_LOG_FIELD_VALUES)
 
 #: One distinctive value per display model (#706). The nested maps exist for
 #: the same reason as ``AdState``'s: a model the codec touches and this test
@@ -880,7 +901,7 @@ class TestCodecRoundTrip:
         """#545 adds three fields to this codec pair — the gap closes first.
 
         Declaring a field in ``_CODEC_COVERAGE`` while wiring neither half of
-        ``_parse_action_log_entry`` / ``_action_log_entry_to_dict`` passes the
+        ``parse_action_log_entry`` / ``action_log_entry_to_dict`` passes the
         import-time check, because that check asserts declaration only. It is
         this assertion that catches the loss — but only because every field in
         the fixture carries a distinctive NON-DEFAULT value, so a dropped one
@@ -897,7 +918,7 @@ class TestCodecRoundTrip:
             ), (
                 f"action_log field {field.name!r} did not survive the round "
                 "trip — naming it in _CODEC_COVERAGE is not enough, BOTH "
-                "_parse_action_log_entry and _action_log_entry_to_dict must "
+                "parse_action_log_entry and action_log_entry_to_dict must "
                 "handle it."
             )
 

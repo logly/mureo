@@ -239,8 +239,9 @@ def _pending_action_log(
     Each returned entry gains an ``index`` field — its position in the FULL
     log — so a caller working from the pending subset can close it (append an
     entry with ``evaluation_of=<index>``) without loading the whole history.
-    ``index`` is a response-only field: ``_parse_action_log_entry`` never reads
-    it, so an echoed copy is dropped on the next write.
+    ``index`` is a response-only field: ``parse_action_log_entry`` never reads
+    it. An entry hand-copied back into STATE.json with it keeps it as an
+    unknown key (#859), which nothing reads.
     """
     closed = _closed_indices(entries)
     result: list[dict[str, Any]] = []

@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from mureo.context.state_codec import _action_log_entry_to_dict
+from mureo.context._action_log_codec import action_log_entry_to_dict
 from mureo.fsutil import backup_file
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ def _rendered(entries: tuple[ActionLogEntry, ...]) -> list[dict[str, object]]:
     entry whose reason, metrics or observation window was replaced is the
     same count of entries and a different record.
     """
-    return [_action_log_entry_to_dict(entry) for entry in entries]
+    return [action_log_entry_to_dict(entry) for entry in entries]
 
 
 def _previous_document(path: Path) -> StateDocument | None:

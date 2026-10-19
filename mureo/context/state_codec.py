@@ -24,6 +24,21 @@ The read side has two modes and the distinction is load-bearing:
 
 Each tolerant branch documents its own reasoning below.
 
+``action_log`` is the exception to "nonconforming raises" (#859). The log is
+the operator's append-only history and its indices are positional
+(``rollback_of`` / ``evaluation_of``), so no object entry can block a write.
+Both modes build every object entry the same way (see
+:mod:`mureo.context._action_log_codec`): an entry missing a required key
+(``timestamp`` / ``action`` / ``platform``), holding a non-string one, or
+carrying keys the codec does not know is kept IN PLACE — those required
+fields read as ``""`` — and its unknown and required keys are written back as
+found (known keys are normalised by the model exactly as before). An entry
+the model refuses (a malformed ``approval`` included) is kept OPAQUE: only its
+required keys and linking fields are read, and it is written back verbatim
+in full. Strict mode refuses only an entry that is not an object and
+tolerant mode skips only that (invalid JSON is refused before any of this,
+in both).
+
 Dependency-free beyond stdlib and the frozen ``mureo.context.models``
 dataclasses — the same discipline :mod:`mureo.context.platform_accounts`
 keeps, and for the same reason: ``mureo.core.__init__`` ->
@@ -40,12 +55,16 @@ import logging
 from dataclasses import fields as dataclass_fields
 from typing import Any
 
+from mureo.context._action_log_codec import (
+    ACTION_LOG_KNOWN_KEYS,
+    action_log_entry_to_dict,
+    parse_action_log_entry,
+)
 from mureo.context._decision_codec import (
     DECISION_COVERAGE,
     decision_to_dict,
     parse_decisions,
 )
-from mureo.context.approval import approval_to_dict, tolerant_approval
 from mureo.context.display_codec import (
     display_contract_to_dict,
     parse_display_contract,
@@ -131,38 +150,9 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
     ),
     (
         ActionLogEntry,
-        frozenset(
-            {
-                "timestamp",
-                "action",
-                "platform",
-                "campaign_id",
-                "ad_id",
-                "entity_type",
-                "entity_id",
-                "summary",
-                "command",
-                "metrics_at_action",
-                "observation_due",
-                "reversible_params",
-                "rollback_of",
-                "evaluation_of",
-                "batch_id",
-                "origin",
-                "external_id",
-                "occurred_at",
-                "display_title",
-                "display_summary",
-                "reason",
-                "session_id",
-                "client",
-                "decision_id",
-                "evaluation",
-                "applied_params",
-                "approval",
-            }
-        ),
-        "_parse_action_log_entry / _action_log_entry_to_dict",
+        # ``raw`` is not an on-disk key: it IS the on-disk dict (#859).
+        ACTION_LOG_KNOWN_KEYS | {"raw"},
+        "_action_log_codec.parse_action_log_entry / .action_log_entry_to_dict",
     ),
     (
         CampaignSnapshot,
@@ -353,19 +343,23 @@ def _parse_action_log(
 ) -> tuple[ActionLogEntry, ...]:
     """Parse the action_log list.
 
-    ``strict=True`` (the writer contract) raises on the first entry missing a
-    required field (``timestamp`` / ``action`` / ``platform``). ``strict=False``
-    skips such entries, logging each — used only by the read-only Reports view
-    so a single old / hand-authored entry (e.g. one written before those fields
-    were required) cannot blank out a whole document.
+    Both modes keep every object entry IN PLACE (#859): the log is
+    append-only and ``rollback_of`` / ``evaluation_of`` are positional, so the
+    writer and the read-only view must see the same indices, and both build
+    each entry identically (see
+    :func:`mureo.context._action_log_codec.parse_action_log_entry`).
+
+    ``strict=True`` (the writer contract) raises only on an entry that is not
+    an object. ``strict=False`` skips such an entry, logging it, so one cannot
+    blank out a whole document in the read-only Reports view.
     """
     if strict:
-        return tuple(_parse_action_log_entry(e) for e in raw)
+        return tuple(parse_action_log_entry(e) for e in raw)
     parsed: list[ActionLogEntry] = []
     for e in raw:
         try:
-            parsed.append(_parse_action_log_entry(e, strict=False))
-        except (ValueError, KeyError, TypeError) as exc:
+            parsed.append(parse_action_log_entry(e))
+        except TypeError as exc:
             # DEBUG, not WARNING — see _parse_campaigns: avoid per-render log
             # flood from a STATE.json with many nonconforming action_log entries.
             logger.debug("skipping unparseable action_log entry: %s", exc)
@@ -490,10 +484,16 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
 
     ``strict`` controls campaign-list, action_log AND platform validation:
     ``True`` (default) preserves the strict writer contract (raises on a missing
-    required field, including a platform ``account_id``); ``False`` tolerantly
-    skips nonconforming campaign / action_log entries and defaults a missing
-    platform ``account_id`` to ``""`` for the read-only Reports view. Invalid
-    JSON always raises regardless of ``strict``.
+    required campaign field or platform ``account_id``, and on an action_log
+    entry that is not an object); ``False`` tolerantly skips such campaign
+    and action_log entries and defaults a missing platform ``account_id`` to
+    ``""`` for the read-only Reports view. Every action_log entry that IS an
+    object is kept in place and built identically in BOTH modes (#859): one
+    missing or holding a non-string ``timestamp`` / ``action`` / ``platform``
+    or carrying unknown keys keeps those keys as found on write; one refused
+    by the model (a malformed ``approval`` included) is kept opaque and
+    re-emitted verbatim by :func:`render_state`. Invalid JSON always raises
+    regardless of ``strict``.
 
     Unknown top-level keys are ignored (and :func:`render_state` emits only
     the known ones), which is what keeps the ``mureo_state_get`` response
@@ -557,56 +557,6 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     )
 
 
-def _parse_action_log_entry(
-    e: dict[str, Any], *, strict: bool = True
-) -> ActionLogEntry:
-    """Create an ActionLogEntry from a dict.
-
-    ``strict=False`` drops a malformed ``approval`` and keeps the entry
-    (see :func:`mureo.context.approval.tolerant_approval`).
-    """
-    return ActionLogEntry(
-        timestamp=e["timestamp"],
-        action=e["action"],
-        platform=e["platform"],
-        campaign_id=e.get("campaign_id"),
-        ad_id=e.get("ad_id"),
-        entity_type=e.get("entity_type"),
-        entity_id=e.get("entity_id"),
-        batch_id=e.get("batch_id"),
-        summary=e.get("summary"),
-        command=e.get("command"),
-        metrics_at_action=e.get("metrics_at_action"),
-        observation_due=e.get("observation_due"),
-        reversible_params=e.get("reversible_params"),
-        rollback_of=e.get("rollback_of"),
-        evaluation_of=e.get("evaluation_of"),
-        # #545 provenance. Absent on every entry written before it existed,
-        # which is exactly what "mureo made this change" looks like.
-        origin=e.get("origin"),
-        external_id=e.get("external_id"),
-        occurred_at=e.get("occurred_at"),
-        # #706 — the operator-facing line. Absent on every entry written
-        # before it existed, which is what "this entry has no display line"
-        # looks like.
-        display_title=e.get("display_title"),
-        display_summary=e.get("display_summary"),
-        # #758 phase 2 — the rationale and the writing session. Absent on
-        # every entry written before they existed, which is what "nobody
-        # recorded why, and we cannot say who" looks like.
-        reason=e.get("reason"),
-        session_id=e.get("session_id"),
-        client=e.get("client"),
-        # #848 ops history. Absent on every older entry.
-        decision_id=e.get("decision_id"),
-        evaluation=e.get("evaluation"),
-        applied_params=e.get("applied_params"),
-        # #854. Absent on every older entry. The read-only view drops a
-        # malformed one rather than the whole entry.
-        approval=tolerant_approval(e.get("approval"), strict=strict),
-    )
-
-
 def _parse_campaign(c: dict[str, Any], *, strict: bool = True) -> CampaignSnapshot:
     """Create a CampaignSnapshot from a dict (with required field validation)."""
     for field_name in _CAMPAIGN_REQUIRED_FIELDS:
@@ -649,7 +599,7 @@ def render_state(doc: StateDocument) -> str:
     else:
         data["platforms"] = None
 
-    data["action_log"] = [_action_log_entry_to_dict(e) for e in doc.action_log]
+    data["action_log"] = [action_log_entry_to_dict(e) for e in doc.action_log]
 
     # Optional reports section (stage-c forward-ready): emit only when present
     # so old STATE.json files don't gain a new key.
@@ -713,71 +663,6 @@ def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
     # a cleared note leaves no key behind to be read as a live one.
     if ps.not_collected:
         result["not_collected"] = copy.deepcopy(ps.not_collected)
-    return result
-
-
-def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
-    """Convert an ActionLogEntry to a dictionary."""
-    result: dict[str, Any] = {
-        "timestamp": e.timestamp,
-        "action": e.action,
-        "platform": e.platform,
-    }
-    if e.campaign_id is not None:
-        result["campaign_id"] = e.campaign_id
-    if e.ad_id is not None:
-        result["ad_id"] = e.ad_id
-    if e.entity_type is not None:
-        result["entity_type"] = e.entity_type
-    if e.entity_id is not None:
-        result["entity_id"] = e.entity_id
-    if e.batch_id is not None:
-        result["batch_id"] = e.batch_id
-    if e.summary is not None:
-        result["summary"] = e.summary
-    if e.command is not None:
-        result["command"] = e.command
-    if e.metrics_at_action is not None:
-        result["metrics_at_action"] = copy.deepcopy(e.metrics_at_action)
-    if e.observation_due is not None:
-        result["observation_due"] = e.observation_due
-    if e.reversible_params is not None:
-        result["reversible_params"] = copy.deepcopy(e.reversible_params)
-    if e.rollback_of is not None:
-        result["rollback_of"] = e.rollback_of
-    if e.evaluation_of is not None:
-        result["evaluation_of"] = e.evaluation_of
-    # #545: emitted only when set, so a STATE.json written by a mureo-driven
-    # run round-trips byte-identically and gains no new key.
-    if e.origin is not None:
-        result["origin"] = e.origin
-    if e.external_id is not None:
-        result["external_id"] = e.external_id
-    if e.occurred_at is not None:
-        result["occurred_at"] = e.occurred_at
-    # #706: emitted only when set, so an entry written before the dashboard
-    # had a line of its own round-trips byte-identically and gains no key.
-    if e.display_title is not None:
-        result["display_title"] = e.display_title
-    if e.display_summary is not None:
-        result["display_summary"] = e.display_summary
-    # #758 phase 2: emitted only when set, so an entry written before the
-    # rationale and actor existed round-trips byte-identically and gains no
-    # key on the next write.
-    if e.reason is not None:
-        result["reason"] = e.reason
-    if e.session_id is not None:
-        result["session_id"] = e.session_id
-    if e.client is not None:
-        result["client"] = e.client
-    if e.decision_id is not None:
-        result["decision_id"] = e.decision_id
-    if e.evaluation is not None:
-        result["evaluation"] = copy.deepcopy(e.evaluation)
-    if e.applied_params is not None:
-        result["applied_params"] = copy.deepcopy(e.applied_params)
-    if e.approval is not None:
-        result["approval"] = approval_to_dict(e.approval)
     return result
 
 

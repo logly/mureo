@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -324,6 +325,19 @@ class ActionLogEntry:
     approval: The external approval this change carried out (#854): recorded
         and shown, never verified. ``None`` on every older entry, so old
         STATE.json files parse unchanged and gain no new key on the next write.
+    raw: The entry's on-disk dict, kept only when the codec could not
+        represent it fully (#859) — a required key (``timestamp`` /
+        ``action`` / ``platform``) was absent, null or not a string, the dict
+        carried keys the codec does not know, or this model refused a value
+        on it (a malformed ``approval`` included; the entry is then opaque:
+        only its timestamp / action / platform and its linking fields
+        ``rollback_of`` / ``evaluation_of`` / ``origin`` / ``external_id``
+        are read). ``None`` on every entry mureo itself constructs. Used by
+        :func:`mureo.context.state_codec.render_state` to write the unknown
+        and required keys back as found (absent stays absent) while known
+        keys carry the current, model-normalised value — or, for an opaque
+        entry, the whole dict verbatim — so a whole-document write neither
+        drops operator data nor invents it.
     """
 
     timestamp: str
@@ -361,10 +375,16 @@ class ActionLogEntry:
     applied_params: dict[str, Any] | None = None
     # Appended after every pre-#854 field, same positional-compatibility rule.
     approval: ApprovalRef | None = None
+    # Appended after every pre-#859 field, same positional-compatibility rule.
+    raw: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
         object.__setattr__(self, "approval", parse_approval(self.approval))
+        if self.raw is not None:
+            if not isinstance(self.raw, Mapping):
+                raise ValueError("raw must be an object")
+            object.__setattr__(self, "raw", copy.deepcopy(dict(self.raw)))
         self._validate_origin()
         self._validate_actor()
         if self.batch_id is not None:
