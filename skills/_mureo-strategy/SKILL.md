@@ -825,7 +825,7 @@ its judgement on screen under your name, and you cannot vouch for it.
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/_mureo-learning/SKILL.md` for the decision framework.
 
-Record entries with `mureo_state_action_log_append`, which stamps `timestamp` and requires `platform`; do not write them into STATE.json by hand. An entry missing `timestamp`, `action` or `platform`, or holding a value mureo refuses (a malformed `approval`, say), is kept in place and written back verbatim, but it may show with an empty timestamp / platform, and automatic evaluation and rollback skip it when the fields they need are missing or unread.
+Record entries with `mureo_state_action_log_append`, which stamps `timestamp` and requires `platform`; do not write them into STATE.json by hand. An entry missing `timestamp`, `action` or `platform` is kept in place (its required and unknown keys written back as found), and one holding a value mureo refuses (a malformed `approval`, say) is kept as an opaque record written back verbatim; but either may show with an empty timestamp / platform, and automatic evaluation and rollback skip it when the platform or the metrics they need are missing or unread.
 
 ### State Lifecycle
 

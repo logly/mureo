@@ -27,14 +27,17 @@ Each tolerant branch documents its own reasoning below.
 ``action_log`` is the exception to "nonconforming raises" (#859). The log is
 the operator's append-only history and its indices are positional
 (``rollback_of`` / ``evaluation_of``), so no object entry can block a write.
-An entry missing a required key (``timestamp`` / ``action`` / ``platform``),
-holding a non-string one, or carrying keys the codec does not know is kept IN
-PLACE in both modes — those required fields read as ``""`` — and written back
-verbatim from :attr:`ActionLogEntry.raw`. An entry the model refuses (a
-malformed ``approval`` included) is kept OPAQUE: only its three required keys
-are read, and it too is written back verbatim. Strict mode refuses only an
-entry that is not an object and tolerant mode skips only that (invalid JSON
-is refused before any of this, in both).
+Both modes build every object entry the same way (see
+:mod:`mureo.context._action_log_codec`): an entry missing a required key
+(``timestamp`` / ``action`` / ``platform``), holding a non-string one, or
+carrying keys the codec does not know is kept IN PLACE — those required
+fields read as ``""`` — and its unknown and required keys are written back as
+found (known keys are normalised by the model exactly as before). An entry
+the model refuses (a malformed ``approval`` included) is kept OPAQUE: only its
+required keys and linking fields are read, and it is written back verbatim
+in full. Strict mode refuses only an entry that is not an object and
+tolerant mode skips only that (invalid JSON is refused before any of this,
+in both).
 
 Dependency-free beyond stdlib and the frozen ``mureo.context.models``
 dataclasses — the same discipline :mod:`mureo.context.platform_accounts`
@@ -50,14 +53,18 @@ import copy
 import json
 import logging
 from dataclasses import fields as dataclass_fields
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from mureo.context._action_log_codec import (
+    ACTION_LOG_KNOWN_KEYS,
+    action_log_entry_to_dict,
+    parse_action_log_entry,
+)
 from mureo.context._decision_codec import (
     DECISION_COVERAGE,
     decision_to_dict,
     parse_decisions,
 )
-from mureo.context.approval import approval_to_dict, tolerant_approval
 from mureo.context.display_codec import (
     display_contract_to_dict,
     parse_display_contract,
@@ -78,9 +85,6 @@ from mureo.context.models import (
     StateDocument,
 )
 from mureo.context.settings import SETTINGS_COVERAGE, parse_settings, settings_to_dict
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -106,49 +110,6 @@ logger = logging.getLogger(__name__)
 # This verifies DECLARATION, not behaviour — that the field is known here, not
 # that it survives. Behaviour is the round-trip test's job
 # (tests/test_dataclass_field_preservation.py::TestCodecRoundTrip).
-
-#: The ``action_log`` keys every entry must carry. Read with ``.get`` (#859):
-#: a missing or null value reads as ``""`` and the entry keeps its ``raw``
-#: dict, so it is written back without the key rather than with an invented
-#: one.
-_ACTION_LOG_REQUIRED_KEYS: tuple[str, ...] = ("timestamp", "action", "platform")
-
-#: The optional ``action_log`` keys, in the order ``_action_log_entry_to_dict``
-#: emits them. Each is emitted only when set, so an entry written before a key
-#: existed round-trips byte-identically and gains no new key on the next write.
-_ACTION_LOG_OPTIONAL_KEYS: tuple[str, ...] = (
-    "campaign_id",
-    "ad_id",
-    "entity_type",
-    "entity_id",
-    "batch_id",
-    "summary",
-    "command",
-    "metrics_at_action",
-    "observation_due",
-    "reversible_params",
-    "rollback_of",
-    "evaluation_of",
-    "origin",
-    "external_id",
-    "occurred_at",
-    "display_title",
-    "display_summary",
-    "reason",
-    "session_id",
-    "client",
-    "decision_id",
-    "evaluation",
-    "applied_params",
-    "approval",
-)
-
-#: Every on-disk key the codec reads. Any other key on an entry is unknown and
-#: makes the parser keep the entry's ``raw`` dict (#859). ``_CODEC_COVERAGE``
-#: is built from this set, so a model field missing here fails at import.
-_ACTION_LOG_KNOWN_KEYS: frozenset[str] = frozenset(
-    (*_ACTION_LOG_REQUIRED_KEYS, *_ACTION_LOG_OPTIONAL_KEYS)
-)
 
 _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
     (
@@ -190,8 +151,8 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
     (
         ActionLogEntry,
         # ``raw`` is not an on-disk key: it IS the on-disk dict (#859).
-        _ACTION_LOG_KNOWN_KEYS | {"raw"},
-        "_parse_action_log_entry / _action_log_entry_to_dict",
+        ACTION_LOG_KNOWN_KEYS | {"raw"},
+        "_action_log_codec.parse_action_log_entry / .action_log_entry_to_dict",
     ),
     (
         CampaignSnapshot,
@@ -384,21 +345,21 @@ def _parse_action_log(
 
     Both modes keep every object entry IN PLACE (#859): the log is
     append-only and ``rollback_of`` / ``evaluation_of`` are positional, so the
-    writer and the read-only view must see the same indices. An entry the
-    codec cannot represent is written back verbatim (see
-    :func:`_parse_action_log_entry`).
+    writer and the read-only view must see the same indices, and both build
+    each entry identically (see
+    :func:`mureo.context._action_log_codec.parse_action_log_entry`).
 
     ``strict=True`` (the writer contract) raises only on an entry that is not
     an object. ``strict=False`` skips such an entry, logging it, so one cannot
     blank out a whole document in the read-only Reports view.
     """
     if strict:
-        return tuple(_parse_action_log_entry(e) for e in raw)
+        return tuple(parse_action_log_entry(e) for e in raw)
     parsed: list[ActionLogEntry] = []
     for e in raw:
         try:
-            parsed.append(_parse_action_log_entry(e, strict=False))
-        except (ValueError, KeyError, TypeError) as exc:
+            parsed.append(parse_action_log_entry(e))
+        except TypeError as exc:
             # DEBUG, not WARNING — see _parse_campaigns: avoid per-render log
             # flood from a STATE.json with many nonconforming action_log entries.
             logger.debug("skipping unparseable action_log entry: %s", exc)
@@ -527,9 +488,10 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     entry that is not an object); ``False`` tolerantly skips such campaign
     and action_log entries and defaults a missing platform ``account_id`` to
     ``""`` for the read-only Reports view. Every action_log entry that IS an
-    object is kept in place in BOTH modes (#859): one missing or holding a
-    non-string ``timestamp`` / ``action`` / ``platform``, carrying unknown
-    keys, or refused by the model (a malformed ``approval`` included) is
+    object is kept in place and built identically in BOTH modes (#859): one
+    missing or holding a non-string ``timestamp`` / ``action`` / ``platform``
+    or carrying unknown keys keeps those keys as found on write; one refused
+    by the model (a malformed ``approval`` included) is kept opaque and
     re-emitted verbatim by :func:`render_state`. Invalid JSON always raises
     regardless of ``strict``.
 
@@ -595,111 +557,6 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     )
 
 
-def _parse_action_log_entry(
-    e: dict[str, Any], *, strict: bool = True
-) -> ActionLogEntry:
-    """Create an ActionLogEntry from a dict (``TypeError`` if it is not one).
-
-    A missing, null or non-string required key reads as ``""``, and an entry
-    the codec cannot re-emit from its fields alone keeps its dict as ``raw``
-    (#859). An entry the model refuses — a value ``ActionLogEntry`` rejects,
-    or a malformed ``approval`` under ``strict=True`` — is kept OPAQUE in both
-    modes: only the required keys are read and ``raw`` carries the rest, so it
-    is written back verbatim instead of blocking the write. ``strict=False``
-    drops a malformed ``approval`` and keeps the entry's other fields (see
-    :func:`mureo.context.approval.tolerant_approval`).
-    """
-    if not isinstance(e, dict):
-        raise TypeError(f"action_log entry must be an object, got {type(e).__name__}")
-    raw = e if _action_log_unrepresentable(e) else None
-    try:
-        return _action_log_entry_from_dict(e, strict=strict, raw=raw)
-    except ValueError:
-        # DEBUG, not WARNING — the flood reason in _parse_campaigns. The value
-        # is not logged: it is free text an operator typed.
-        logger.debug("keeping a refused action_log entry opaque")
-        required = _action_log_required(e)
-        return ActionLogEntry(
-            timestamp=required["timestamp"],
-            action=required["action"],
-            platform=required["platform"],
-            raw=e,
-        )
-
-
-def _action_log_entry_from_dict(
-    e: dict[str, Any], *, strict: bool, raw: dict[str, Any] | None
-) -> ActionLogEntry:
-    """Build the entry from every field ``e`` holds; the model may refuse it."""
-    return ActionLogEntry(
-        **_action_log_required(e),
-        campaign_id=e.get("campaign_id"),
-        ad_id=e.get("ad_id"),
-        entity_type=e.get("entity_type"),
-        entity_id=e.get("entity_id"),
-        batch_id=e.get("batch_id"),
-        summary=e.get("summary"),
-        command=e.get("command"),
-        metrics_at_action=e.get("metrics_at_action"),
-        observation_due=e.get("observation_due"),
-        reversible_params=e.get("reversible_params"),
-        rollback_of=e.get("rollback_of"),
-        evaluation_of=e.get("evaluation_of"),
-        # #545 provenance. Absent on every entry written before it existed,
-        # which is exactly what "mureo made this change" looks like.
-        origin=e.get("origin"),
-        external_id=e.get("external_id"),
-        occurred_at=e.get("occurred_at"),
-        # #706 — the operator-facing line. Absent on every entry written
-        # before it existed, which is what "this entry has no display line"
-        # looks like.
-        display_title=e.get("display_title"),
-        display_summary=e.get("display_summary"),
-        # #758 phase 2 — the rationale and the writing session. Absent on
-        # every entry written before they existed, which is what "nobody
-        # recorded why, and we cannot say who" looks like.
-        reason=e.get("reason"),
-        session_id=e.get("session_id"),
-        client=e.get("client"),
-        # #848 ops history. Absent on every older entry.
-        decision_id=e.get("decision_id"),
-        evaluation=e.get("evaluation"),
-        applied_params=e.get("applied_params"),
-        # #854. Absent on every older entry. The read-only view drops a
-        # malformed one rather than the whole entry.
-        approval=tolerant_approval(e.get("approval"), strict=strict),
-        raw=raw,
-    )
-
-
-def _action_log_refused(raw: Mapping[str, Any]) -> bool:
-    """Whether the model refuses ``raw`` — i.e. it was parsed as an opaque entry."""
-    try:
-        _action_log_entry_from_dict(dict(raw), strict=True, raw=None)
-    except ValueError:
-        return True
-    return False
-
-
-def _action_log_required(e: dict[str, Any]) -> dict[str, str]:
-    """The required keys of an action_log entry; anything but a string is ``""``."""
-    return {
-        k: e[k] if isinstance(e.get(k), str) else "" for k in _ACTION_LOG_REQUIRED_KEYS
-    }
-
-
-def _action_log_unrepresentable(e: dict[str, Any]) -> bool:
-    """Whether the codec cannot re-emit ``e`` from its fields alone (#859).
-
-    True when a required key is absent, null or not a string (re-emitting it
-    as ``""`` would invent or lose a value) or when ``e`` carries a key the
-    codec does not know (re-emitting the fields would drop it).
-    """
-    if any(not isinstance(e.get(k), str) for k in _ACTION_LOG_REQUIRED_KEYS):
-        return True
-    return any(k not in _ACTION_LOG_KNOWN_KEYS for k in e)
-
-
 def _parse_campaign(c: dict[str, Any], *, strict: bool = True) -> CampaignSnapshot:
     """Create a CampaignSnapshot from a dict (with required field validation)."""
     for field_name in _CAMPAIGN_REQUIRED_FIELDS:
@@ -742,7 +599,7 @@ def render_state(doc: StateDocument) -> str:
     else:
         data["platforms"] = None
 
-    data["action_log"] = [_action_log_entry_to_dict(e) for e in doc.action_log]
+    data["action_log"] = [action_log_entry_to_dict(e) for e in doc.action_log]
 
     # Optional reports section (stage-c forward-ready): emit only when present
     # so old STATE.json files don't gain a new key.
@@ -806,70 +663,6 @@ def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
     # a cleared note leaves no key behind to be read as a live one.
     if ps.not_collected:
         result["not_collected"] = copy.deepcopy(ps.not_collected)
-    return result
-
-
-def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
-    """Convert an ActionLogEntry to a dictionary.
-
-    An entry without ``raw`` — every entry mureo constructs — is emitted from
-    its fields alone: the three required keys, then each optional key that is
-    set (#545 / #706 / #758 / #848 / #854: an entry written before a key
-    existed round-trips byte-identically and gains no new key). An entry WITH
-    ``raw`` is re-emitted verbatim (#859), see
-    :func:`_preserved_action_log_dict`.
-    """
-    canonical = _canonical_action_log_dict(e)
-    if e.raw is None:
-        return canonical
-    return _preserved_action_log_dict(
-        e.raw, canonical, opaque=_action_log_refused(e.raw)
-    )
-
-
-def _canonical_action_log_dict(e: ActionLogEntry) -> dict[str, Any]:
-    """The entry's fields in the codec's order, optional keys only when set."""
-    result: dict[str, Any] = {key: getattr(e, key) for key in _ACTION_LOG_REQUIRED_KEYS}
-    for key in _ACTION_LOG_OPTIONAL_KEYS:
-        value = getattr(e, key)
-        if value is None:
-            continue
-        if key == "approval":
-            result[key] = approval_to_dict(value)
-        else:
-            result[key] = copy.deepcopy(value)
-    return result
-
-
-def _preserved_action_log_dict(
-    raw: Mapping[str, Any], canonical: dict[str, Any], *, opaque: bool
-) -> dict[str, Any]:
-    """Re-emit a preserved entry in its on-disk key order (#859).
-
-    A known key carries the entry's CURRENT value, so a mutation lands; one
-    whose field is now unset is left out, so a cleared field stays cleared —
-    except on an ``opaque`` entry (one the model refused), whose optional
-    fields were never read, so an unset one is emitted as found.
-    A required key whose current value is empty is emitted exactly as found
-    (absent stays absent, null stays null) rather than as an invented ``""``.
-    An unknown key is copied through. Known fields set on the entry but not
-    on disk (e.g. a stamped ``batch_id``) follow, in the codec's order.
-    """
-    result: dict[str, Any] = {}
-    for key, raw_value in raw.items():
-        if key in _ACTION_LOG_REQUIRED_KEYS:
-            current = canonical[key]
-            result[key] = current if current else copy.deepcopy(raw_value)
-        elif key not in _ACTION_LOG_KNOWN_KEYS:
-            result[key] = copy.deepcopy(raw_value)
-        elif key in canonical:
-            result[key] = canonical[key]
-        elif opaque:
-            result[key] = copy.deepcopy(raw_value)
-    for key, value in canonical.items():
-        if key in raw or (key in _ACTION_LOG_REQUIRED_KEYS and not value):
-            continue
-        result[key] = value
     return result
 
 

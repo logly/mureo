@@ -901,7 +901,7 @@ class TestCodecRoundTrip:
         """#545 adds three fields to this codec pair — the gap closes first.
 
         Declaring a field in ``_CODEC_COVERAGE`` while wiring neither half of
-        ``_parse_action_log_entry`` / ``_action_log_entry_to_dict`` passes the
+        ``parse_action_log_entry`` / ``action_log_entry_to_dict`` passes the
         import-time check, because that check asserts declaration only. It is
         this assertion that catches the loss — but only because every field in
         the fixture carries a distinctive NON-DEFAULT value, so a dropped one
@@ -918,7 +918,7 @@ class TestCodecRoundTrip:
             ), (
                 f"action_log field {field.name!r} did not survive the round "
                 "trip — naming it in _CODEC_COVERAGE is not enough, BOTH "
-                "_parse_action_log_entry and _action_log_entry_to_dict must "
+                "parse_action_log_entry and action_log_entry_to_dict must "
                 "handle it."
             )
 

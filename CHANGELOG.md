@@ -8,18 +8,22 @@
   `mureo_state_action_log_append`) made every writer refuse the whole
   document: the ops history switch, `append_action_log`, campaign
   upserts, decision records, automatic evaluation and change import all
-  failed. Such an entry is now kept at its position in the log, reads
-  with the missing fields empty, and is written back verbatim; the
-  read-only view and the writers see the same list, so an index from
-  `mureo_state_get` / `mureo_history_query` is the one `rollback_apply`
-  resolves. Keys mureo does not know on any `action_log` entry are no
-  longer dropped by a whole-document write, and a change mureo makes to
-  such an entry (a stamped `batch_id`, say) still lands. An entry
-  holding a value mureo refuses (a non-string `reason`, a malformed
-  `approval`, ...) is likewise kept in place as an opaque record — only
-  its `timestamp` / `action` / `platform` are read — and written back
-  verbatim. Only an entry that is not an object is still refused by the
-  writers (and skipped by the read-only view). See
+  failed. Such an entry is now kept at its position in the log and reads
+  with the missing fields empty; its required keys and any keys mureo
+  does not know are written back as found, while the keys mureo knows
+  are normalized exactly as before. The read-only view and the writers
+  build the same list, so an index from `mureo_state_get` /
+  `mureo_history_query` is the one `rollback_apply` resolves. Unknown
+  keys on any `action_log` entry are no longer dropped by a
+  whole-document write, and a change mureo makes to such an entry (a
+  stamped `batch_id`, say) still lands. An entry holding a value mureo
+  refuses (a non-string `reason`, a malformed `approval`, ...) is kept
+  in place as an opaque record: only its `timestamp` / `action` /
+  `platform` and its link to another entry (`rollback_of`,
+  `evaluation_of`, `origin` / `external_id`) are read, so it still
+  blocks a second rollback and closes its observation, and it is
+  written back verbatim in full. Only an entry that is not an object is
+  still refused by the writers (and skipped by the read-only view). See
   `docs/strategy-context.md`.
 - **Dashboard forms: action buttons laid beside the last field.** The
   Save / Authenticate / Save keys / Browse buttons under Settings and

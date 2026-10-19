@@ -316,12 +316,21 @@ class TestCodec:
         assert doc.action_log[0].approval is None
         assert json.loads(render_state(doc))["action_log"][0] == bad
 
-    def test_the_read_only_view_keeps_the_entry_without_it(self) -> None:
-        text = _document(_entry_dict(approval={"reference": "x"}), _record_dict())
+    def test_the_read_only_view_keeps_the_entry_opaque_like_the_writer(
+        self,
+    ) -> None:
+        # #859: both read modes build an action_log entry the same way, so the
+        # read-only view no longer drops just the approval — it keeps the
+        # same opaque entry the writer does, approval re-emitted as stored.
+        bad = _entry_dict(approval={"reference": "x"})
+        text = _document(bad, _record_dict())
         doc = parse_state(text, strict=False)
         assert len(doc.action_log) == 1
         assert doc.action_log[0].action == "google_ads_budget_update"
         assert doc.action_log[0].approval is None
+        assert doc.action_log[0].raw == bad
+        assert doc.action_log == parse_state(text).action_log
+        assert json.loads(render_state(doc))["action_log"][0] == bad
         assert len(doc.decisions) == 1
 
     def test_the_read_only_view_keeps_the_decision_without_it(self) -> None:

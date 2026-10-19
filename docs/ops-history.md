@@ -396,10 +396,13 @@ have no `decision_id`, and show up as changes without a decision.
 Record changes with `mureo_state_action_log_append`, which stamps
 `timestamp` and requires `platform`. An `action_log` entry written into
 STATE.json by hand should carry `timestamp` (ISO 8601), `action` and
-`platform`. One that is missing any of them is kept in place and written
-back verbatim (unknown keys included), so it never blocks a write; it
+`platform`. One that is missing any of them is kept in place, so it
+never blocks a write: its required and unknown keys are written back as
+found, and the keys mureo knows are normalized exactly as before. It
 shows with an empty timestamp / platform, sorts as undated, and automatic
-evaluation and rollback skip it when the fields they need are missing. An
-entry holding a value mureo refuses (a malformed `approval`, say) is kept
-the same way, with only its `timestamp` / `action` / `platform` read. Only
-an entry that is not an object is refused.
+evaluation and rollback skip it when the platform or the metrics they
+need are missing. An entry holding a value mureo refuses (a malformed
+`approval`, say) is kept in place as an opaque record, written back
+verbatim in full, with only its `timestamp` / `action` / `platform` and
+its link to another entry (`rollback_of`, `evaluation_of`, `origin` /
+`external_id`) read. Only an entry that is not an object is refused.

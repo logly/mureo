@@ -13,12 +13,16 @@ The contract pinned here:
   occupies on disk — the log is append-only and ``rollback_of`` /
   ``evaluation_of`` are positional, so the strict and tolerant views must
   share one index space;
-- it is written back verbatim: unknown keys survive, absent required keys
-  stay absent, and a mutation mureo makes (``batch_id``) still lands;
+- it is written back in its on-disk shape: unknown keys survive, absent
+  required keys stay absent, and a mutation mureo makes (``batch_id``)
+  still lands;
 - an entry the model refuses (a non-string ``reason``, a malformed
-  ``approval``, ...) is kept OPAQUE — only its required keys are read — and
-  written back verbatim, so no object entry can block a write;
-- strict mode refuses only an entry that is not an object.
+  ``approval``, ...) is kept OPAQUE — only its required keys and its links
+  (``rollback_of`` / ``evaluation_of`` / ``origin`` / ``external_id``) are
+  read — and written back verbatim, so no object entry can block a write
+  and none fails open;
+- both read modes build the same entries; strict refuses only an entry
+  that is not an object, tolerant skips only that.
 """
 
 from __future__ import annotations
@@ -31,8 +35,14 @@ from typing import Any
 
 import pytest
 
+from mureo.change_import.dedupe import imported_change_ids
+from mureo.context._action_log_codec import (
+    action_log_entry_to_dict,
+    parse_action_log_entry,
+)
 from mureo.context.auto_evaluation import due_candidates, plan_closure
 from mureo.context.models import ActionLogEntry
+from mureo.context.observations import closed_observation_indices
 from mureo.context.ops_history_view import build_ops_history_items
 from mureo.context.settings import set_ops_history_enabled
 from mureo.context.state import (
@@ -42,6 +52,7 @@ from mureo.context.state import (
 )
 from mureo.context.state_codec import parse_state, render_state
 from mureo.mcp._handlers_history import _rendered_action_log
+from mureo.rollback.executor import RollbackExecutionError, execute_rollback
 from mureo.web.ops_history_setting import write_setting
 
 _CONFORMING_FIRST: dict[str, Any] = {
@@ -331,11 +342,9 @@ class TestOnlyANonObjectEntryIsRefused:
         assert json.loads(render_state(doc))["action_log"][1]["approval"] == {
             "reference": "REQ-1"
         }
-        # The tolerant view keeps the record and drops only the annotation
-        # (unchanged behaviour, see ``tolerant_approval``).
-        tolerant = parse_state(text, strict=False)
-        assert len(tolerant.action_log) == 2
-        assert tolerant.action_log[1].approval is None
+        # The read-only view builds the very same entry: one construction
+        # for both modes, so render-time opacity agrees with parse time.
+        assert parse_state(text, strict=False).action_log == doc.action_log
 
     def test_a_value_the_model_refuses_is_kept_opaque(self, state_file: Path) -> None:
         refused = {**_CONFORMING_LAST, "campaign_id": "C-9", "reason": 123}
@@ -423,7 +432,7 @@ class TestOnlyANonObjectEntryIsRefused:
         data = _document()
         data["action_log"] = [refused]
 
-        with caplog.at_level("DEBUG", logger="mureo.context.state_codec"):
+        with caplog.at_level("DEBUG", logger="mureo.context._action_log_codec"):
             parse_state(_text(data), strict=True)
 
         records = [r for r in caplog.records if "opaque" in r.getMessage()]
@@ -445,11 +454,16 @@ class TestConsumersTolerateOpaqueEntries:
         "observation_due": "2026-09-14",
         "reason": 123,
     }
+    _DUE: dict[str, Any] = {
+        **_CONFORMING_FIRST,
+        "metrics_at_action": {"cpa": 5000},
+        "observation_due": "2026-09-08",
+    }
 
     @pytest.fixture
     def opaque_file(self, state_file: Path) -> Path:
         data = _document()
-        data["action_log"] = [_CONFORMING_FIRST, self._OPAQUE, _CONFORMING_LAST]
+        data["action_log"] = [self._DUE, self._OPAQUE, _CONFORMING_LAST]
         state_file.write_text(_text(data), encoding="utf-8")
         return state_file
 
@@ -459,24 +473,194 @@ class TestConsumersTolerateOpaqueEntries:
         assert rendered == _on_disk_log(opaque_file)
         assert rendered[1] == self._OPAQUE
 
-    def test_ops_history_items(self, opaque_file: Path) -> None:
+    def test_ops_history_lists_it_with_its_required_fields(
+        self, opaque_file: Path
+    ) -> None:
         doc = read_state_file(opaque_file)
 
         items = build_ops_history_items(doc, today=date(2026, 10, 1))
 
-        assert isinstance(items, list)
+        rows = [a for item in items for a in item["actions"] if a["index"] == 1]
+        assert len(rows) == 1
+        row = rows[0]
+        assert (row["timestamp"], row["action"], row["platform"]) == (
+            self._OPAQUE["timestamp"],
+            self._OPAQUE["action"],
+            self._OPAQUE["platform"],
+        )
+        assert row["campaign_id"] is None, "an opaque entry reads no optional field"
+        assert row["reason"] is None
 
-    def test_auto_evaluation_does_not_select_it(self, opaque_file: Path) -> None:
+    def test_auto_evaluation_selects_the_due_entry_but_not_it(
+        self, opaque_file: Path
+    ) -> None:
         doc = read_state_file(opaque_file)
         today = date(2026, 10, 1)
 
         candidates = due_candidates(doc, today)
 
-        # Its optional fields (observation_due included) were never read, so
-        # it is not an open observation mureo could close.
-        assert 1 not in candidates
-        for index in candidates:
-            plan_closure(doc, index, today)
+        # Its observation_due was never read, so it is not an open
+        # observation mureo could close; the conforming due entry is.
+        assert candidates == [0]
+        plan_closure(doc, 0, today)
+
+
+@pytest.mark.unit
+class TestOpaqueEntriesKeepTheirLinks:
+    """A refused record still links to the entry it reverses or closes.
+
+    Leaving ``rollback_of`` / ``evaluation_of`` / ``external_id`` unread on an
+    opaque entry would fail OPEN: a second rollback of an already reversed
+    change, an observation re-evaluated forever, a change imported twice.
+    """
+
+    _CHANGE: dict[str, Any] = {
+        "timestamp": "2026-09-01T09:00:00+09:00",
+        "action": "google_ads_budget_update",
+        "platform": "google_ads",
+        "campaign_id": "C-1",
+        "metrics_at_action": {"cpa": 5000},
+        "observation_due": "2026-09-08",
+        "reversible_params": {
+            "operation": "google_ads_budget_update",
+            "params": {"budget_id": "B1", "amount": 1000},
+        },
+    }
+
+    def _parse(self, record: dict[str, Any]) -> tuple[ActionLogEntry, str, Any]:
+        data = _document()
+        data["action_log"] = [self._CHANGE, record]
+        text = _text(data)
+        doc = parse_state(text, strict=True)
+        assert doc.action_log[1].raw == record
+        assert render_state(doc) == text
+        assert parse_state(text, strict=False).action_log == doc.action_log
+        return doc.action_log[1], text, doc
+
+    def test_a_refused_rollback_record_keeps_rollback_of(self) -> None:
+        record = {**_CONFORMING_LAST, "rollback_of": 0, "reason": 5}
+
+        entry, _, doc = self._parse(record)
+
+        assert entry.rollback_of == 0
+        assert entry.reason is None
+        assert 0 in closed_observation_indices(doc.action_log)
+
+    @pytest.mark.asyncio
+    async def test_the_executor_refuses_a_second_rollback(
+        self, state_file: Path
+    ) -> None:
+        record = {**_CONFORMING_LAST, "rollback_of": 0, "reason": 5}
+        data = _document()
+        data["action_log"] = [self._CHANGE, record]
+        state_file.write_text(_text(data), encoding="utf-8")
+        calls: list[str] = []
+
+        async def dispatcher(name: str, arguments: dict[str, Any]) -> list[Any]:
+            calls.append(name)
+            return [{"ok": True}]
+
+        with pytest.raises(RollbackExecutionError, match="already rolled back"):
+            await execute_rollback(
+                state_file=state_file, index=0, confirm=True, dispatcher=dispatcher
+            )
+        assert calls == [], "nothing may reach the ad platform"
+
+    def test_a_refused_evaluation_record_closes_its_observation(self) -> None:
+        record = {**_CONFORMING_LAST, "evaluation_of": 0, "session_id": ""}
+
+        entry, _, doc = self._parse(record)
+
+        assert entry.evaluation_of == 0
+        assert 0 in closed_observation_indices(doc.action_log)
+        assert due_candidates(doc, date(2026, 10, 1)) == []
+
+    def test_a_refused_imported_change_keeps_its_external_id(self) -> None:
+        record = {
+            **_CONFORMING_LAST,
+            "origin": "external",
+            "external_id": "google_ads|sha256:abc",
+            "occurred_at": 5,
+        }
+
+        entry, _, doc = self._parse(record)
+
+        assert entry.origin == "external"
+        assert entry.external_id == "google_ads|sha256:abc"
+        assert entry.occurred_at is None
+        assert imported_change_ids(doc) == frozenset({"google_ads|sha256:abc"})
+
+    @pytest.mark.parametrize(
+        ("extra", "expected"),
+        [
+            pytest.param(
+                {"rollback_of": True, "reason": 5},
+                (None, None, None, None),
+                id="bool-index",
+            ),
+            pytest.param(
+                {"evaluation_of": "0", "reason": 5},
+                (None, None, None, None),
+                id="string-index",
+            ),
+            pytest.param(
+                {"origin": "external ", "external_id": "X-1", "reason": 5},
+                (None, None, None, None),
+                id="padded-origin",
+            ),
+            pytest.param(
+                {"origin": "import", "external_id": "X-1"},
+                (None, None, "import", None),
+                id="external_id-beside-another-origin",
+            ),
+        ],
+    )
+    def test_a_link_the_model_would_change_or_refuse_is_left_unread(
+        self, extra: dict[str, Any], expected: tuple[Any, ...]
+    ) -> None:
+        entry, _, _ = self._parse({**_CONFORMING_LAST, **extra})
+
+        assert (
+            entry.rollback_of,
+            entry.evaluation_of,
+            entry.origin,
+            entry.external_id,
+        ) == expected
+
+
+@pytest.mark.unit
+class TestBothModesAgree:
+    _MALFORMED_APPROVAL: dict[str, Any] = {
+        **_CONFORMING_LAST,
+        "approval": {"reference": "REQ-1"},
+    }
+
+    def test_a_whole_document_write_over_a_refused_entry_is_not_a_shrink(
+        self, state_file: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        data = _document()
+        data["action_log"] = [_CONFORMING_FIRST, self._MALFORMED_APPROVAL]
+        text = _text(data)
+        state_file.write_text(text, encoding="utf-8")
+
+        with caplog.at_level("WARNING"):
+            write_state_file(state_file, read_state_file(state_file))
+
+        assert list(state_file.parent.glob("*.bak*")) == []
+        assert "shortened" not in caplog.text
+        assert state_file.read_text(encoding="utf-8") == text
+
+    def test_raw_is_isolated_from_the_source_and_the_rendered_dict(self) -> None:
+        source = {**_CONFORMING_LAST, "note": {"tags": ["a"]}}
+
+        entry = parse_action_log_entry(source)
+        source["note"]["tags"].append("b")
+        source["extra"] = 1
+        rendered = action_log_entry_to_dict(entry)
+        rendered["note"]["tags"].append("c")
+
+        assert entry.raw == {**_CONFORMING_LAST, "note": {"tags": ["a"]}}
+        assert action_log_entry_to_dict(entry)["note"] == {"tags": ["a"]}
 
 
 @pytest.mark.unit
@@ -486,7 +670,8 @@ class TestConsumersTolerateEmptyFields:
 
         items = build_ops_history_items(doc, today=date(2026, 10, 1))
 
-        assert isinstance(items, list)
+        listed = {a["index"] for item in items for a in item["actions"]}
+        assert set(_PRESERVED_INDICES) <= listed
 
     def test_auto_evaluation_candidates_are_planned_without_raising(
         self, state_file: Path
