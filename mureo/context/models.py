@@ -328,12 +328,13 @@ class ActionLogEntry:
     raw: The entry's on-disk dict, kept only when the codec could not
         represent it fully (#859) — a required key (``timestamp`` /
         ``action`` / ``platform``) was absent, null or not a string, the dict
-        carried keys the codec does not know, or this model refused it (then
-        the entry is opaque: only the three required keys are read). ``None``
-        on every entry mureo itself constructs. Used by :func:`mureo.context.state_codec.render_state` to
-        re-emit the entry verbatim (unknown keys and absent required keys
-        included), so a whole-document write neither drops operator data nor
-        invents it.
+        carried keys the codec does not know, or this model refused a value
+        on it (a malformed ``approval`` included; the entry is then opaque:
+        only its timestamp / action / platform are read). ``None`` on every
+        entry mureo itself constructs. Used by
+        :func:`mureo.context.state_codec.render_state` to re-emit the entry
+        verbatim (unknown keys and absent required keys included), so a
+        whole-document write neither drops operator data nor invents it.
     """
 
     timestamp: str

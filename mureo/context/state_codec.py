@@ -33,7 +33,8 @@ PLACE in both modes — those required fields read as ``""`` — and written bac
 verbatim from :attr:`ActionLogEntry.raw`. An entry the model refuses (a
 malformed ``approval`` included) is kept OPAQUE: only its three required keys
 are read, and it too is written back verbatim. Strict mode refuses only an
-entry that is not an object (and invalid JSON, before any of this).
+entry that is not an object and tolerant mode skips only that (invalid JSON
+is refused before any of this, in both).
 
 Dependency-free beyond stdlib and the frozen ``mureo.context.models``
 dataclasses — the same discipline :mod:`mureo.context.platform_accounts`
@@ -613,11 +614,17 @@ def _parse_action_log_entry(
     raw = e if _action_log_unrepresentable(e) else None
     try:
         return _action_log_entry_from_dict(e, strict=strict, raw=raw)
-    except (ValueError, TypeError):
+    except ValueError:
         # DEBUG, not WARNING — the flood reason in _parse_campaigns. The value
         # is not logged: it is free text an operator typed.
         logger.debug("keeping a refused action_log entry opaque")
-        return ActionLogEntry(**_action_log_required(e), raw=e)
+        required = _action_log_required(e)
+        return ActionLogEntry(
+            timestamp=required["timestamp"],
+            action=required["action"],
+            platform=required["platform"],
+            raw=e,
+        )
 
 
 def _action_log_entry_from_dict(
@@ -669,7 +676,7 @@ def _action_log_refused(raw: Mapping[str, Any]) -> bool:
     """Whether the model refuses ``raw`` — i.e. it was parsed as an opaque entry."""
     try:
         _action_log_entry_from_dict(dict(raw), strict=True, raw=None)
-    except (ValueError, TypeError):
+    except ValueError:
         return True
     return False
 

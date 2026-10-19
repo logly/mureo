@@ -14,8 +14,12 @@
   `mureo_state_get` / `mureo_history_query` is the one `rollback_apply`
   resolves. Keys mureo does not know on any `action_log` entry are no
   longer dropped by a whole-document write, and a change mureo makes to
-  such an entry (a stamped `batch_id`, say) still lands. A non-object
-  entry and a malformed `approval` are still refused. See
+  such an entry (a stamped `batch_id`, say) still lands. An entry
+  holding a value mureo refuses (a non-string `reason`, a malformed
+  `approval`, ...) is likewise kept in place as an opaque record — only
+  its `timestamp` / `action` / `platform` are read — and written back
+  verbatim. Only an entry that is not an object is still refused by the
+  writers (and skipped by the read-only view). See
   `docs/strategy-context.md`.
 - **Dashboard forms: action buttons laid beside the last field.** The
   Save / Authenticate / Save keys / Browse buttons under Settings and

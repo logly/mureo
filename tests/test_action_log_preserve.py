@@ -383,6 +383,101 @@ class TestOnlyANonObjectEntryIsRefused:
         assert render_state(doc) == text
         assert json.loads(render_state(doc))["action_log"][0]["timestamp"] == 123
 
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            pytest.param({"entity_type": "keyword"}, id="entity_type-without-id"),
+            pytest.param({"batch_id": 7}, id="non-string-batch_id"),
+            pytest.param({"batch_id": "  "}, id="blank-batch_id"),
+            pytest.param({"external_id": "X-1"}, id="external_id-without-origin"),
+            pytest.param({"session_id": ""}, id="blank-session_id"),
+            pytest.param({"evaluation": [1, 2]}, id="non-object-evaluation"),
+            pytest.param({"approval": "REQ-1"}, id="non-object-approval"),
+        ],
+    )
+    def test_every_model_refusal_is_kept_opaque_at_its_index(
+        self, extra: dict[str, Any]
+    ) -> None:
+        refused = {**_CONFORMING_LAST, "campaign_id": "C-9", **extra}
+        data = _document()
+        data["action_log"] = [_CONFORMING_FIRST, refused, _CONFORMING_LAST]
+        text = _text(data)
+
+        doc = parse_state(text, strict=True)
+
+        assert len(doc.action_log) == 3
+        opaque = doc.action_log[1]
+        assert (opaque.timestamp, opaque.action, opaque.platform) == (
+            refused["timestamp"],
+            refused["action"],
+            refused["platform"],
+        )
+        assert opaque.campaign_id is None
+        assert opaque.raw == refused
+        assert render_state(doc) == text
+
+    def test_an_opaque_entry_is_logged_at_debug_without_its_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        refused = {**_CONFORMING_LAST, "client": 987654321}
+        data = _document()
+        data["action_log"] = [refused]
+
+        with caplog.at_level("DEBUG", logger="mureo.context.state_codec"):
+            parse_state(_text(data), strict=True)
+
+        records = [r for r in caplog.records if "opaque" in r.getMessage()]
+        assert records, "the fallback is logged"
+        assert all(r.levelname == "DEBUG" for r in records)
+        assert "987654321" not in caplog.text
+
+
+@pytest.mark.unit
+class TestConsumersTolerateOpaqueEntries:
+    """An opaque entry is visible at its on-disk index and breaks no reader."""
+
+    _OPAQUE: dict[str, Any] = {
+        "timestamp": "2026-09-07T09:00:00+09:00",
+        "action": "google_ads_budget_update",
+        "platform": "google_ads",
+        "campaign_id": "C-9",
+        "metrics_at_action": {"cpa": 4100},
+        "observation_due": "2026-09-14",
+        "reason": 123,
+    }
+
+    @pytest.fixture
+    def opaque_file(self, state_file: Path) -> Path:
+        data = _document()
+        data["action_log"] = [_CONFORMING_FIRST, self._OPAQUE, _CONFORMING_LAST]
+        state_file.write_text(_text(data), encoding="utf-8")
+        return state_file
+
+    def test_history_query_shows_it_at_its_disk_index(self, opaque_file: Path) -> None:
+        rendered = _rendered_action_log(opaque_file)
+
+        assert rendered == _on_disk_log(opaque_file)
+        assert rendered[1] == self._OPAQUE
+
+    def test_ops_history_items(self, opaque_file: Path) -> None:
+        doc = read_state_file(opaque_file)
+
+        items = build_ops_history_items(doc, today=date(2026, 10, 1))
+
+        assert isinstance(items, list)
+
+    def test_auto_evaluation_does_not_select_it(self, opaque_file: Path) -> None:
+        doc = read_state_file(opaque_file)
+        today = date(2026, 10, 1)
+
+        candidates = due_candidates(doc, today)
+
+        # Its optional fields (observation_due included) were never read, so
+        # it is not an open observation mureo could close.
+        assert 1 not in candidates
+        for index in candidates:
+            plan_closure(doc, index, today)
+
 
 @pytest.mark.unit
 class TestConsumersTolerateEmptyFields:

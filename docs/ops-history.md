@@ -399,4 +399,7 @@ STATE.json by hand should carry `timestamp` (ISO 8601), `action` and
 `platform`. One that is missing any of them is kept in place and written
 back verbatim (unknown keys included), so it never blocks a write; it
 shows with an empty timestamp / platform, sorts as undated, and automatic
-evaluation and rollback skip it when the fields they need are missing.
+evaluation and rollback skip it when the fields they need are missing. An
+entry holding a value mureo refuses (a malformed `approval`, say) is kept
+the same way, with only its `timestamp` / `action` / `platform` read. Only
+an entry that is not an object is refused.
