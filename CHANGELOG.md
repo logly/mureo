@@ -2,6 +2,21 @@
 
 ### Fixed
 
+- **STATE.json: a hand-written `action_log` entry no longer blocks every
+  write** (#859). An entry missing `timestamp`, `action` or `platform`
+  (for example one written into the file directly rather than through
+  `mureo_state_action_log_append`) made every writer refuse the whole
+  document: the ops history switch, `append_action_log`, campaign
+  upserts, decision records, automatic evaluation and change import all
+  failed. Such an entry is now kept at its position in the log, reads
+  with the missing fields empty, and is written back verbatim; the
+  read-only view and the writers see the same list, so an index from
+  `mureo_state_get` / `mureo_history_query` is the one `rollback_apply`
+  resolves. Keys mureo does not know on any `action_log` entry are no
+  longer dropped by a whole-document write, and a change mureo makes to
+  such an entry (a stamped `batch_id`, say) still lands. A non-object
+  entry and a malformed `approval` are still refused. See
+  `docs/strategy-context.md`.
 - **Dashboard forms: action buttons laid beside the last field.** The
   Save / Authenticate / Save keys / Browse buttons under Settings and
   Advanced settings (plugin credentials, Creative Studio, Ops history,

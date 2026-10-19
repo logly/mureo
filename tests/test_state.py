@@ -527,7 +527,9 @@ class TestStateFileErrorHandling:
         it is graceful degradation. Pin DEBUG so the noise never returns."""
         data = {
             "campaigns": [{"id": "x", "name": "variant, no campaign_id/_name"}],
-            "action_log": [{"summary": "legacy, no timestamp/action/platform"}],
+            # Not an object: the one action_log shape the tolerant view still
+            # skips (#859 keeps an entry that is merely missing fields).
+            "action_log": ["legacy, not an object"],
         }
         with caplog.at_level(logging.DEBUG, logger="mureo.context.state_codec"):
             parse_state(json.dumps(data), strict=False)
@@ -538,12 +540,14 @@ class TestStateFileErrorHandling:
         assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
     @pytest.mark.unit
-    def test_parse_state_strict_false_skips_malformed_action_log(self) -> None:
-        """``strict=False`` drops action_log entries missing a required field
-        (timestamp / action / platform) instead of raising, and keeps the rest
-        of the document. The read-only Reports view relies on this — an old /
-        hand-authored entry written before those fields were required (e.g. one
-        with only a `summary`) must not blank a whole STATE.json."""
+    def test_parse_state_strict_false_keeps_action_log_missing_fields(
+        self,
+    ) -> None:
+        """``strict=False`` keeps an action_log entry missing a required field
+        (timestamp / action / platform) IN PLACE, with the missing fields read
+        as ``""`` (#859). Skipping it would shift every later index away from
+        the one the writer view reports, and ``rollback_of`` /
+        ``evaluation_of`` are positional."""
         data = {
             "version": "2",
             "action_log": [
@@ -559,19 +563,25 @@ class TestStateFileErrorHandling:
         }
         doc = parse_state(json.dumps(data), strict=False)
 
-        # The conforming entry survives; the field-less one is dropped.
-        assert [e.action for e in doc.action_log] == ["budget_update"]
+        # Both entries survive, in place; the field-less one reads as empty.
+        assert [e.action for e in doc.action_log] == ["", "budget_update"]
+        assert doc.action_log[0].timestamp == ""
+        assert doc.action_log[0].summary == "old entry, no timestamp/action/platform"
         assert doc.reports == {"daily": {"verdict": "Healthy"}}
 
     @pytest.mark.unit
-    def test_parse_state_strict_true_raises_on_action_log_missing_timestamp(
+    def test_parse_state_strict_true_keeps_action_log_missing_timestamp(
         self,
     ) -> None:
-        """The default (strict) path still hard-fails on an action_log entry
-        missing a required field — the writer contract is unchanged."""
+        """The strict (writer) path keeps an action_log entry missing a
+        required field instead of raising (#859): one hand-authored entry used
+        to block every write of the document. It is written back without the
+        key rather than with an invented one."""
         data = {"action_log": [{"action": "x", "platform": "google_ads"}]}
-        with pytest.raises(KeyError):
-            parse_state(json.dumps(data))
+        doc = parse_state(json.dumps(data))
+        assert doc.action_log[0].timestamp == ""
+        rendered = json.loads(render_state(doc))
+        assert rendered["action_log"] == [{"action": "x", "platform": "google_ads"}]
 
 
 class TestAtomicWrite:

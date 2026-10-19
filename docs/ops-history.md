@@ -392,3 +392,11 @@ single-workspace summary does not carry the key.
 Every new field is optional, and a document written before ops history
 existed reads and writes unchanged. Entries recorded before this feature
 have no `decision_id`, and show up as changes without a decision.
+
+Record changes with `mureo_state_action_log_append`, which stamps
+`timestamp` and requires `platform`. An `action_log` entry written into
+STATE.json by hand should carry `timestamp` (ISO 8601), `action` and
+`platform`. One that is missing any of them is kept in place and written
+back verbatim (unknown keys included), so it never blocks a write; it
+shows with an empty timestamp / platform, sorts as undated, and automatic
+evaluation and rollback skip it when the fields they need are missing.

@@ -24,6 +24,15 @@ The read side has two modes and the distinction is load-bearing:
 
 Each tolerant branch documents its own reasoning below.
 
+``action_log`` is the exception to "nonconforming raises" (#859). The log is
+the operator's append-only history and its indices are positional
+(``rollback_of`` / ``evaluation_of``), so an entry missing a required key
+(``timestamp`` / ``action`` / ``platform``) or carrying keys the codec does not
+know is kept IN PLACE in both modes — missing fields read as ``""`` — and
+written back verbatim from :attr:`ActionLogEntry.raw`. Strict mode still
+refuses what is structurally invalid there: invalid JSON, an entry that is not
+an object, and a malformed ``approval``.
+
 Dependency-free beyond stdlib and the frozen ``mureo.context.models``
 dataclasses — the same discipline :mod:`mureo.context.platform_accounts`
 keeps, and for the same reason: ``mureo.core.__init__`` ->
@@ -38,7 +47,7 @@ import copy
 import json
 import logging
 from dataclasses import fields as dataclass_fields
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mureo.context._decision_codec import (
     DECISION_COVERAGE,
@@ -67,6 +76,9 @@ from mureo.context.models import (
 )
 from mureo.context.settings import SETTINGS_COVERAGE, parse_settings, settings_to_dict
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 logger = logging.getLogger(__name__)
 
 
@@ -91,6 +103,49 @@ logger = logging.getLogger(__name__)
 # This verifies DECLARATION, not behaviour — that the field is known here, not
 # that it survives. Behaviour is the round-trip test's job
 # (tests/test_dataclass_field_preservation.py::TestCodecRoundTrip).
+
+#: The ``action_log`` keys every entry must carry. Read with ``.get`` (#859):
+#: a missing or null value reads as ``""`` and the entry keeps its ``raw``
+#: dict, so it is written back without the key rather than with an invented
+#: one.
+_ACTION_LOG_REQUIRED_KEYS: tuple[str, ...] = ("timestamp", "action", "platform")
+
+#: The optional ``action_log`` keys, in the order ``_action_log_entry_to_dict``
+#: emits them. Each is emitted only when set, so an entry written before a key
+#: existed round-trips byte-identically and gains no new key on the next write.
+_ACTION_LOG_OPTIONAL_KEYS: tuple[str, ...] = (
+    "campaign_id",
+    "ad_id",
+    "entity_type",
+    "entity_id",
+    "batch_id",
+    "summary",
+    "command",
+    "metrics_at_action",
+    "observation_due",
+    "reversible_params",
+    "rollback_of",
+    "evaluation_of",
+    "origin",
+    "external_id",
+    "occurred_at",
+    "display_title",
+    "display_summary",
+    "reason",
+    "session_id",
+    "client",
+    "decision_id",
+    "evaluation",
+    "applied_params",
+    "approval",
+)
+
+#: Every on-disk key the codec reads. Any other key on an entry is unknown and
+#: makes the parser keep the entry's ``raw`` dict (#859). ``_CODEC_COVERAGE``
+#: is built from this set, so a model field missing here fails at import.
+_ACTION_LOG_KNOWN_KEYS: frozenset[str] = frozenset(
+    (*_ACTION_LOG_REQUIRED_KEYS, *_ACTION_LOG_OPTIONAL_KEYS)
+)
 
 _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
     (
@@ -131,37 +186,8 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
     ),
     (
         ActionLogEntry,
-        frozenset(
-            {
-                "timestamp",
-                "action",
-                "platform",
-                "campaign_id",
-                "ad_id",
-                "entity_type",
-                "entity_id",
-                "summary",
-                "command",
-                "metrics_at_action",
-                "observation_due",
-                "reversible_params",
-                "rollback_of",
-                "evaluation_of",
-                "batch_id",
-                "origin",
-                "external_id",
-                "occurred_at",
-                "display_title",
-                "display_summary",
-                "reason",
-                "session_id",
-                "client",
-                "decision_id",
-                "evaluation",
-                "applied_params",
-                "approval",
-            }
-        ),
+        # ``raw`` is not an on-disk key: it IS the on-disk dict (#859).
+        _ACTION_LOG_KNOWN_KEYS | {"raw"},
         "_parse_action_log_entry / _action_log_entry_to_dict",
     ),
     (
@@ -353,11 +379,19 @@ def _parse_action_log(
 ) -> tuple[ActionLogEntry, ...]:
     """Parse the action_log list.
 
-    ``strict=True`` (the writer contract) raises on the first entry missing a
-    required field (``timestamp`` / ``action`` / ``platform``). ``strict=False``
-    skips such entries, logging each — used only by the read-only Reports view
-    so a single old / hand-authored entry (e.g. one written before those fields
-    were required) cannot blank out a whole document.
+    Both modes keep an entry missing a required field (``timestamp`` /
+    ``action`` / ``platform``) or carrying unknown keys IN PLACE (#859): the
+    log is append-only and ``rollback_of`` / ``evaluation_of`` are positional,
+    so the writer and the read-only view must see the same indices. Such an
+    entry reads with the missing fields as ``""`` and is written back verbatim
+    (see :func:`_parse_action_log_entry`).
+
+    ``strict=True`` (the writer contract) still raises on an entry that is not
+    an object, carries a malformed ``approval``, or holds a value the model
+    refuses (see :class:`ActionLogEntry`). ``strict=False`` skips such an
+    entry, logging it, so one cannot blank out a whole document in the
+    read-only Reports view; a malformed ``approval`` alone is dropped and its
+    entry kept (:func:`mureo.context.approval.tolerant_approval`).
     """
     if strict:
         return tuple(_parse_action_log_entry(e) for e in raw)
@@ -490,10 +524,15 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
 
     ``strict`` controls campaign-list, action_log AND platform validation:
     ``True`` (default) preserves the strict writer contract (raises on a missing
-    required field, including a platform ``account_id``); ``False`` tolerantly
-    skips nonconforming campaign / action_log entries and defaults a missing
-    platform ``account_id`` to ``""`` for the read-only Reports view. Invalid
-    JSON always raises regardless of ``strict``.
+    required campaign field or platform ``account_id``, and on an action_log
+    entry that is not an object or carries a malformed ``approval``);
+    ``False`` tolerantly skips such campaign entries and non-object action_log
+    entries, drops a malformed ``approval`` (keeping its entry), and defaults
+    a missing platform ``account_id`` to ``""`` for the read-only Reports view.
+    An action_log entry missing ``timestamp`` / ``action`` / ``platform`` or
+    carrying unknown keys is kept in place in BOTH modes and re-emitted
+    verbatim by :func:`render_state` (#859). Invalid JSON always raises
+    regardless of ``strict``.
 
     Unknown top-level keys are ignored (and :func:`render_state` emits only
     the known ones), which is what keeps the ``mureo_state_get`` response
@@ -560,15 +599,17 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
 def _parse_action_log_entry(
     e: dict[str, Any], *, strict: bool = True
 ) -> ActionLogEntry:
-    """Create an ActionLogEntry from a dict.
+    """Create an ActionLogEntry from a dict (``TypeError`` if it is not one).
 
     ``strict=False`` drops a malformed ``approval`` and keeps the entry
-    (see :func:`mureo.context.approval.tolerant_approval`).
+    (see :func:`mureo.context.approval.tolerant_approval`). A missing or null
+    required key reads as ``""`` in both modes, and an entry the codec cannot
+    re-emit from its fields alone keeps its dict as ``raw`` (#859).
     """
+    if not isinstance(e, dict):
+        raise TypeError(f"action_log entry must be an object, got {type(e).__name__}")
     return ActionLogEntry(
-        timestamp=e["timestamp"],
-        action=e["action"],
-        platform=e["platform"],
+        **_action_log_required(e),
         campaign_id=e.get("campaign_id"),
         ad_id=e.get("ad_id"),
         entity_type=e.get("entity_type"),
@@ -604,7 +645,25 @@ def _parse_action_log_entry(
         # #854. Absent on every older entry. The read-only view drops a
         # malformed one rather than the whole entry.
         approval=tolerant_approval(e.get("approval"), strict=strict),
+        raw=e if _action_log_unrepresentable(e) else None,
     )
+
+
+def _action_log_required(e: dict[str, Any]) -> dict[str, Any]:
+    """The required keys of an action_log entry, missing / null read as ``""``."""
+    return {k: "" if e.get(k) is None else e[k] for k in _ACTION_LOG_REQUIRED_KEYS}
+
+
+def _action_log_unrepresentable(e: dict[str, Any]) -> bool:
+    """Whether the codec cannot re-emit ``e`` from its fields alone (#859).
+
+    True when a required key is absent or null (re-emitting it as ``""``
+    would invent a value) or when ``e`` carries a key the codec does not
+    know (re-emitting the fields would drop it).
+    """
+    if any(e.get(k) is None for k in _ACTION_LOG_REQUIRED_KEYS):
+        return True
+    return any(k not in _ACTION_LOG_KNOWN_KEYS for k in e)
 
 
 def _parse_campaign(c: dict[str, Any], *, strict: bool = True) -> CampaignSnapshot:
@@ -717,67 +776,60 @@ def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
 
 
 def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
-    """Convert an ActionLogEntry to a dictionary."""
-    result: dict[str, Any] = {
-        "timestamp": e.timestamp,
-        "action": e.action,
-        "platform": e.platform,
-    }
-    if e.campaign_id is not None:
-        result["campaign_id"] = e.campaign_id
-    if e.ad_id is not None:
-        result["ad_id"] = e.ad_id
-    if e.entity_type is not None:
-        result["entity_type"] = e.entity_type
-    if e.entity_id is not None:
-        result["entity_id"] = e.entity_id
-    if e.batch_id is not None:
-        result["batch_id"] = e.batch_id
-    if e.summary is not None:
-        result["summary"] = e.summary
-    if e.command is not None:
-        result["command"] = e.command
-    if e.metrics_at_action is not None:
-        result["metrics_at_action"] = copy.deepcopy(e.metrics_at_action)
-    if e.observation_due is not None:
-        result["observation_due"] = e.observation_due
-    if e.reversible_params is not None:
-        result["reversible_params"] = copy.deepcopy(e.reversible_params)
-    if e.rollback_of is not None:
-        result["rollback_of"] = e.rollback_of
-    if e.evaluation_of is not None:
-        result["evaluation_of"] = e.evaluation_of
-    # #545: emitted only when set, so a STATE.json written by a mureo-driven
-    # run round-trips byte-identically and gains no new key.
-    if e.origin is not None:
-        result["origin"] = e.origin
-    if e.external_id is not None:
-        result["external_id"] = e.external_id
-    if e.occurred_at is not None:
-        result["occurred_at"] = e.occurred_at
-    # #706: emitted only when set, so an entry written before the dashboard
-    # had a line of its own round-trips byte-identically and gains no key.
-    if e.display_title is not None:
-        result["display_title"] = e.display_title
-    if e.display_summary is not None:
-        result["display_summary"] = e.display_summary
-    # #758 phase 2: emitted only when set, so an entry written before the
-    # rationale and actor existed round-trips byte-identically and gains no
-    # key on the next write.
-    if e.reason is not None:
-        result["reason"] = e.reason
-    if e.session_id is not None:
-        result["session_id"] = e.session_id
-    if e.client is not None:
-        result["client"] = e.client
-    if e.decision_id is not None:
-        result["decision_id"] = e.decision_id
-    if e.evaluation is not None:
-        result["evaluation"] = copy.deepcopy(e.evaluation)
-    if e.applied_params is not None:
-        result["applied_params"] = copy.deepcopy(e.applied_params)
-    if e.approval is not None:
-        result["approval"] = approval_to_dict(e.approval)
+    """Convert an ActionLogEntry to a dictionary.
+
+    An entry without ``raw`` — every entry mureo constructs — is emitted from
+    its fields alone: the three required keys, then each optional key that is
+    set (#545 / #706 / #758 / #848 / #854: an entry written before a key
+    existed round-trips byte-identically and gains no new key). An entry WITH
+    ``raw`` is re-emitted verbatim (#859), see
+    :func:`_preserved_action_log_dict`.
+    """
+    canonical = _canonical_action_log_dict(e)
+    if e.raw is None:
+        return canonical
+    return _preserved_action_log_dict(e.raw, canonical)
+
+
+def _canonical_action_log_dict(e: ActionLogEntry) -> dict[str, Any]:
+    """The entry's fields in the codec's order, optional keys only when set."""
+    result: dict[str, Any] = {key: getattr(e, key) for key in _ACTION_LOG_REQUIRED_KEYS}
+    for key in _ACTION_LOG_OPTIONAL_KEYS:
+        value = getattr(e, key)
+        if value is None:
+            continue
+        if key == "approval":
+            result[key] = approval_to_dict(value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def _preserved_action_log_dict(
+    raw: Mapping[str, Any], canonical: dict[str, Any]
+) -> dict[str, Any]:
+    """Re-emit a preserved entry in its on-disk key order (#859).
+
+    A known key carries the entry's CURRENT value, so a mutation lands; one
+    whose field is now unset is left out, so a cleared field stays cleared.
+    A required key whose current value is empty is emitted exactly as found
+    (absent stays absent, null stays null) rather than as an invented ``""``.
+    An unknown key is copied through. Known fields set on the entry but not
+    on disk (e.g. a stamped ``batch_id``) follow, in the codec's order.
+    """
+    result: dict[str, Any] = {}
+    for key, raw_value in raw.items():
+        if key in _ACTION_LOG_REQUIRED_KEYS:
+            current = canonical[key]
+            result[key] = current if current else copy.deepcopy(raw_value)
+        elif key not in _ACTION_LOG_KNOWN_KEYS:
+            result[key] = copy.deepcopy(raw_value)
+        elif key in canonical:
+            result[key] = canonical[key]
+    for key, value in canonical.items():
+        if key in raw or (key in _ACTION_LOG_REQUIRED_KEYS and not value):
+            continue
+        result[key] = value
     return result
 
 

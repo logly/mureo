@@ -1784,6 +1784,8 @@ An imported (`origin: "external"`) entry deliberately carries **no** `metrics_at
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. When an action's observation window has passed, the agent compares current metrics against `metrics_at_action` to assess the action's impact. See `skills/_mureo-learning/SKILL.md` for the evidence-based decision framework.
 
+**Hand-written entries (#859).** Record entries through `mureo_state_action_log_append`, which stamps `timestamp` and requires `platform`. An entry written into STATE.json directly should still carry `timestamp` (ISO 8601), `action` and `platform`. One that does not is neither refused nor dropped: it is kept at its position in the log and written back verbatim, unknown keys included, on every later write of the document. It reads with the missing fields empty, so it shows with an empty timestamp / platform, and automatic evaluation and rollback skip it when the fields they need are missing.
+
 #### Display Contract
 
 The `display` object is what the dashboard renders for this client (#706) —

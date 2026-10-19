@@ -303,6 +303,8 @@ _ENTRY_FIELD_VALUES: dict[str, Any] = {
     # The one field the round-trip is ALLOWED to change: it arrives unset and
     # comes back carrying the open batch.
     "batch_id": None,
+    # #859 — an unknown on-disk key the entry carries back verbatim.
+    "raw": {"raw_marker": "raw-value"},
 }
 
 
@@ -389,8 +391,13 @@ class TestJoiningABatchPreservesTheEntry:
 
         stored = read_state_file(state_file).action_log[0]
         assert stored.batch_id == batch.batch_id
+        # ``raw`` comes back as the WHOLE on-disk dict (#859): the parser keeps
+        # it because of the unknown key, so it also holds the stamped batch and
+        # every other field. What must survive is the unknown key itself.
+        assert stored.raw is not None
+        assert stored.raw["raw_marker"] == "raw-value"
         for field in fields(ActionLogEntry):
-            if field.name == "batch_id":
+            if field.name in ("batch_id", "raw"):
                 continue
             expected = (
                 None

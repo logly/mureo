@@ -489,11 +489,10 @@ def test_summary_tolerates_action_log_entry_missing_required_fields(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """A STATE.json whose action_log holds an old / hand-authored entry missing
-    `timestamp` / `platform` must NOT blank the dashboard. The strict read
-    raises a KeyError on that entry, so the read-only view re-reads tolerantly,
-    skips it, and still surfaces platform totals + the conforming recent
-    actions. Regression for the field report where a pre-v2 action_log entry
-    crashed the Reports parse with a `timestamp` KeyError."""
+    `timestamp` / `platform` must NOT blank the dashboard. Regression for the
+    field report where a pre-v2 action_log entry crashed the Reports parse
+    with a `timestamp` KeyError. Since #859 the entry is kept in place (its
+    missing fields read as empty) rather than skipped, so it is listed too."""
     _use_workspace(monkeypatch, tmp_path)
     raw = {
         "version": "2",
@@ -522,9 +521,11 @@ def test_summary_tolerates_action_log_entry_missing_required_fields(
     by_key = {p["key"]: p for p in summary["platforms"]}
     assert "google_ads" in by_key, "platform blanked by a bad action_log entry"
     assert by_key["google_ads"]["totals"] == {"spend": 1000.0}
-    # The conforming action survives; the field-less one is skipped.
+    # Both entries are listed, most recent first; the field-less one is empty.
     actions = summary["recent_actions"]
-    assert [a.get("action") for a in actions] == ["budget_update"]
+    assert [a.get("action") for a in actions] == ["budget_update", ""]
+    assert actions[1]["timestamp"] == ""
+    assert actions[1]["platform"] == ""
 
 
 # ---------------------------------------------------------------------------
