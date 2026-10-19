@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.28.1] - 2026-10-19
+
 ### Fixed
 
 - **STATE.json: a hand-written `action_log` entry no longer blocks every
