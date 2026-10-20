@@ -662,7 +662,7 @@ class TestFailureEnvelopeNormalization:
     """#528 — an Amazon-declared failure becomes the canonical ``API error:``.
 
     Amazon returns a platform-side failure as ordinary content, so
-    ``mureo.mcp._helpers.is_error_result`` — which knows only mureo's own
+    ``mureo.core.tool_failure.is_error_result`` — which knows only mureo's own
     ``API error:`` prefix — said False and a mutation that never happened was
     promoted into ``STATE.json``'s ``action_log``.
 

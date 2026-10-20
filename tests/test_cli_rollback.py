@@ -6,13 +6,26 @@ a temp STATE.json written with real action_log entries.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import sys
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from typer.testing import CliRunner
 
+from mureo.cli.main import app
+from tests._measurement_child import run_in_fresh_interpreter
+from tests._reversal_probe import (
+    REVERSAL_PROBE_ACTION,
+    REVERSAL_PROBE_TOOL,
+    reversal_probe_discover,
+)
+from tests._server_reload import reloaded_server
+
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 runner = CliRunner()
@@ -346,3 +359,84 @@ class TestStateFileDefault:
         result = runner.invoke(app, ["rollback", "list"])
         assert result.exit_code == 0, result.output
         assert "from_workspace" in result.output
+
+
+@contextlib.contextmanager
+def _probe_plugin_installed_server_not_loaded() -> Iterator[None]:
+    """What a fresh ``mureo rollback`` process sees (#863).
+
+    The probe plugin is installed (discovery patched), but nothing has imported
+    ``mureo.mcp.server`` yet, so the planner's plugin reversal registry is
+    empty. Whatever the command imports re-runs the server module from scratch
+    under the patched discovery. Everything is undone before
+    ``reloaded_server`` restores the clean server.
+    """
+    with (
+        reloaded_server(reversal_probe_discover) as server,
+        pytest.MonkeyPatch.context() as m,
+    ):
+        m.setattr("mureo.mcp.server", server)
+        m.delitem(sys.modules, "mureo.mcp.server")
+        m.setattr("mureo.rollback.planner._PLUGIN_REVERSAL_KEYS", MappingProxyType({}))
+        yield
+
+
+def _probe_state(tmp_path: Path) -> Path:
+    state = tmp_path / "STATE.json"
+    _make_state(
+        state,
+        [
+            {
+                "timestamp": "2026-04-15T10:00:00",
+                "action": REVERSAL_PROBE_ACTION,
+                "platform": "reversal_probe",
+                "campaign_id": "111",
+                "reversible_params": {
+                    "operation": REVERSAL_PROBE_TOOL,
+                    "params": {"campaign_id": "111"},
+                },
+            },
+        ],
+    )
+    return state
+
+
+@pytest.mark.unit
+class TestPluginReversalsAreLoaded:
+    """The planner's plugin reversal registry is published by the MCP server
+    (#863); the rollback commands load it before planning, so a plugin-tool
+    entry reads as supported in the CLI exactly as it does over MCP."""
+
+    def test_list_shows_a_plugin_reversal_as_supported(self, tmp_path: Path) -> None:
+        state = _probe_state(tmp_path)
+        with _probe_plugin_installed_server_not_loaded():
+            result = runner.invoke(
+                app, ["rollback", "list", "--state-file", str(state)]
+            )
+        assert result.exit_code == 0, result.output
+        assert REVERSAL_PROBE_ACTION in result.output
+        assert "not_supported" not in result.output
+        assert "supported" in result.output
+
+    def test_show_plans_a_plugin_reversal(self, tmp_path: Path) -> None:
+        state = _probe_state(tmp_path)
+        with _probe_plugin_installed_server_not_loaded():
+            result = runner.invoke(
+                app, ["rollback", "show", "--state-file", str(state), "0"]
+            )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["status"] == "supported"
+        assert payload["operation"] == REVERSAL_PROBE_TOOL
+        assert payload["params"] == {"campaign_id": "111"}
+
+    def test_cli_import_does_not_load_the_server(self) -> None:
+        """Every ``mureo`` command imports ``mureo.cli.main``; the server is
+        loaded by the rollback commands only when they run (#486)."""
+        proc = run_in_fresh_interpreter(
+            "import sys\n"
+            "import mureo.cli.main\n"
+            "print('mureo.mcp.server' in sys.modules)\n"
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == "False"

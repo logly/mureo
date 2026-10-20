@@ -347,7 +347,7 @@ def record_native_mutation(
     captured before-state, or from ``result`` for the Google exclusion add);
     otherwise records an audit-only entry (``reversible_params`` ``None``)
     so the change is still visible. Skips recording when ``result`` is a
-    failure envelope (:func:`mureo.mcp._helpers.is_error_result`): the
+    failure envelope (:func:`mureo.core.tool_failure.is_error_result`): the
     ``API error:`` text, the ``auth_error`` JSON of a missing or rejected
     credential, and the ``refused`` / ``error`` JSON failure envelope are
     all skipped, so a mutation that did not happen does not pollute the

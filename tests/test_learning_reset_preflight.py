@@ -102,6 +102,7 @@ def _write_strategy(path: Path, guardrails: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("builtin_platform_tool_names")
 class TestChangeClassification:
     def test_google_budget_update_is_reset_triggering(self) -> None:
         a = classify_change("google_ads_budget_update", {"budget_id": "B", "amount": 1})
@@ -297,6 +298,7 @@ class TestGuardrailParsing:
         assert g.block_learning_resets is False
 
 
+@pytest.mark.usefixtures("builtin_platform_tool_names")
 class TestGateEnforcement:
     def _pre(self, tool: str, args: dict[str, Any], status: str | None):
         return build_preflight(tool, args, _state_with(status))

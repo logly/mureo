@@ -7,6 +7,8 @@ not-supported action types.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from mureo.context.models import ActionLogEntry
@@ -15,6 +17,19 @@ from mureo.rollback import (
     RollbackStatus,
     plan_rollback,
 )
+from tests._reversal_probe import (
+    REVERSAL_PROBE_ACTION,
+    REVERSAL_PROBE_TOOL,
+    reversal_probe_discover,
+)
+from tests._server_reload import reloaded_server
+
+
+def _reversal_probe_entry(params: dict[str, Any]) -> ActionLogEntry:
+    return _entry(
+        action=REVERSAL_PROBE_ACTION,
+        reversible_params={"operation": REVERSAL_PROBE_TOOL, "params": params},
+    )
 
 
 def _entry(
@@ -317,9 +332,9 @@ class TestPluginReversalEscapeHatch:
     def test_reversal_naming_builtin_tool_is_not_a_plugin_op(self) -> None:
         """Cross-namespace boundary: a plugin reversal whose ``operation``
         names a *built-in* tool not in the static allow-list is refused — the
-        real ``_plugin_reversal_keys`` lazily resolves it against the live
-        server and returns ``(False, None)`` because built-in names are never
-        in ``_PLUGIN_NAMES``. No monkeypatch — exercises the real lazy import.
+        registry the loaded server published holds plugin tools only, so the
+        real ``_plugin_reversal_keys`` returns ``(False, None)``. No
+        monkeypatch — exercises the real registry path (#863).
         """
         entry = _entry(
             action="acme_pause",
@@ -329,6 +344,34 @@ class TestPluginReversalEscapeHatch:
                 "params": {"campaign_id": "123"},
             },
         )
+        with reloaded_server():
+            plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED
+        assert "allow-list" in plan.notes
+
+    def test_registered_plugin_reversal_is_planned_from_the_registry(self) -> None:
+        """The server publishes its plugin tools at load; the planner reads
+        that registry, bounding params by the tool's ``inputSchema`` (#863)."""
+        with reloaded_server(reversal_probe_discover):
+            plan = plan_rollback(_reversal_probe_entry({"campaign_id": "123"}))
+            smuggled = plan_rollback(
+                _reversal_probe_entry({"campaign_id": "123", "smuggled": "x"})
+            )
+        assert plan is not None
+        assert plan.status == RollbackStatus.SUPPORTED
+        assert plan.operation == REVERSAL_PROBE_TOOL
+        assert smuggled is not None
+        assert smuggled.status == RollbackStatus.NOT_SUPPORTED
+        assert "unexpected params" in smuggled.notes
+
+    def test_reload_without_the_plugin_unregisters_its_reversal(self) -> None:
+        """A reload that no longer serves the plugin replaces the whole
+        registry, so its reversal stops being planned (#863, #760)."""
+        entry = _reversal_probe_entry({"campaign_id": "123"})
+        with reloaded_server(reversal_probe_discover):
+            assert plan_rollback(entry).status == RollbackStatus.SUPPORTED
+        # ``reloaded_server`` has reloaded the server with discovery restored.
         plan = plan_rollback(entry)
         assert plan is not None
         assert plan.status == RollbackStatus.NOT_SUPPORTED

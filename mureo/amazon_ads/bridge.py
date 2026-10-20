@@ -54,6 +54,7 @@ from mureo.amazon_ads.session_auth import (
 from mureo.auth import AmazonAdsCredentials, load_amazon_ads_credentials
 from mureo.core.control_flow import STOP_EXCEPTIONS
 from mureo.core.providers.credentials import AccountCredentialField
+from mureo.core.tool_failure import API_ERROR_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ def _is_validation_failure(content: list[Any]) -> bool:
 def _normalize_failure(content: list[Any], *, is_error: bool) -> list[Any]:
     """Rewrite an Amazon-declared failure into mureo's ``API error:`` envelope.
 
-    ``mureo.mcp._helpers.is_error_result`` — the single detector both
+    ``mureo.core.tool_failure.is_error_result`` — the single detector both
     promotion paths use to skip recording a mutation that did not happen —
     knows exactly one shape: the ``API error:`` prefix mureo's own
     ``api_error_handler`` stamps. Bridged tools never pass through that
@@ -143,13 +144,6 @@ def _normalize_failure(content: list[Any], *, is_error: bool) -> list[Any]:
     """
     if not (is_error or _is_validation_failure(content)):
         return content
-    # Call-time import for the same load-bearing reason as ``scrub_secrets``:
-    # this module is reached from ``mureo.mcp.server``'s import-time plugin
-    # collection, so a module-level ``mureo.mcp.*`` import would re-enter a
-    # partially-initialized bridge. By dispatch time ``mureo.mcp._helpers`` is
-    # long since imported — the dispatcher that calls us imports it itself.
-    from mureo.mcp._helpers import API_ERROR_PREFIX
-
     return [
         TextContent(type="text", text=f"{API_ERROR_PREFIX} {_failure_text(content)}")
     ]

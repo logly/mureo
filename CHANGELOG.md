@@ -37,6 +37,21 @@
   `mureo/context/` are top-level again. The remaining function-local
   imports inside `mureo/context/` belong to a cycle within that package
   and are addressed in a later stage.
+- **`mureo.rollback`, `mureo.policy`, `mureo.amazon_ads` and `mureo.core`
+  no longer import `mureo.mcp`** (#863). The failure-envelope reader
+  (`failure_of`, `is_error_result`, `is_auth_error_result`, `Failure`,
+  `FAILURE_STATUSES`, `API_ERROR_PREFIX`, `API_ERROR_CODE`) now lives in
+  `mureo.core.tool_failure`; every name is still importable from
+  `mureo.mcp._helpers` as the same object. `mureo.mcp.server.plugin_reversal_param_keys`
+  is removed: the server publishes its plugin reversal keys to the rollback
+  registry through `mureo.rollback.planner.set_plugin_reversal_keys` at load,
+  so a caller outside the server that plans plugin reversals must import
+  `mureo.mcp.server` first (`mureo rollback list` / `show` do, only when they
+  run).
+  The built-in platform tool names the learning-reset pre-flight uses are
+  likewise published to `mureo.policy.learning_reset` by the server
+  (`set_builtin_platform_tool_names`); reading them before the server has
+  loaded raises instead of answering with an empty set.
 
 ### Fixed
 

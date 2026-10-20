@@ -129,6 +129,29 @@ def fake_home(tmp_path: Path) -> Path:
     return make_fake_home(tmp_path)
 
 
+@pytest.fixture
+def builtin_platform_tool_names() -> None:
+    """Publish the built-in platform tool names, as ``mureo.mcp.server`` does.
+
+    ``mureo.policy.learning_reset`` never imports ``mureo.mcp`` (#863): the
+    server publishes the names at load, and an unpublished read raises. A test
+    that drives the learning-reset classification without the server asks for
+    this fixture, which publishes from the same three ``TOOLS`` lists — never
+    a copy of them. Imported here rather than at module level so that loading
+    this conftest does not load the MCP server for every test.
+    """
+    from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
+    from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
+    from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
+    from mureo.policy.learning_reset import set_builtin_platform_tool_names
+
+    set_builtin_platform_tool_names(
+        tool.name
+        for family in (GOOGLE_ADS_TOOLS, META_ADS_TOOLS, SEARCH_CONSOLE_TOOLS)
+        for tool in family
+    )
+
+
 #: Opt-in switch for the exhaustive lanes (``pytest.mark.slow``). An
 #: environment variable rather than an inspection of ``-m``: the lanes used to
 #: ask whether ``"slow" in markexpr``, which is true of ``-m "not slow"`` as

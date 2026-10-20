@@ -44,9 +44,8 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.core.tool_names import is_read_only_tool_name
@@ -59,6 +58,9 @@ from mureo.policy.learning_rules import (
     platform_learning_rules,
     rules_for_tool,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -165,25 +167,39 @@ def _evidence_dict(evidence: Evidence | None) -> dict[str, str] | None:
 # ---------------------------------------------------------------------------
 
 
-@cache
-def _builtin_platform_tool_names() -> frozenset[str]:
-    """Every built-in platform tool name, read from the tool definitions.
+#: Every built-in platform tool name, published by ``mureo.mcp.server`` at
+#: load through :func:`set_builtin_platform_tool_names` (#863). ``None`` until
+#: then — which :func:`_builtin_platform_tool_names` refuses rather than reads
+#: as "no built-in tools".
+_BUILTIN_PLATFORM_TOOL_NAMES: frozenset[str] | None = None
 
-    The same ``TOOLS`` lists the MCP server serves, so a built-in tool added
-    there is recognised here with no second list to keep in step. Imported on
-    first use rather than at module import: this module is part of the pure
-    policy layer the server itself imports, and the definitions import no
-    platform SDK.
+
+def set_builtin_platform_tool_names(names: Iterable[str]) -> None:
+    """Publish every built-in platform tool name (whole set, not a merge).
+
+    The MCP server calls this at load with the names of the same ``TOOLS``
+    lists it serves, so a built-in tool added there is recognised here with no
+    second list to keep in step — and this pure policy layer never imports
+    ``mureo.mcp`` (#863), the way plugin read-only hints reach it through
+    :mod:`mureo.policy.declarations`.
     """
-    from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
-    from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
-    from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
+    global _BUILTIN_PLATFORM_TOOL_NAMES
+    _BUILTIN_PLATFORM_TOOL_NAMES = frozenset(names)
 
-    return frozenset(
-        tool.name
-        for family in (GOOGLE_ADS_TOOLS, META_ADS_TOOLS, SEARCH_CONSOLE_TOOLS)
-        for tool in family
-    )
+
+def _builtin_platform_tool_names() -> frozenset[str]:
+    """Every built-in platform tool name the server published.
+
+    Fails closed: an empty answer would make :func:`builtin_equivalent` return
+    ``None`` for every built-in tool and silently drop the learning-reset
+    verdicts, so a read before the server published raises instead.
+    """
+    if _BUILTIN_PLATFORM_TOOL_NAMES is None:
+        raise RuntimeError(
+            "built-in platform tool names were not published; "
+            "mureo.mcp.server publishes them at load"
+        )
+    return _BUILTIN_PLATFORM_TOOL_NAMES
 
 
 def builtin_equivalent(tool_name: str) -> str | None:
@@ -663,4 +679,5 @@ __all__ = [
     "load_state_document",
     "preflight_notice",
     "read_learning_state",
+    "set_builtin_platform_tool_names",
 ]

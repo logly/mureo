@@ -14,8 +14,8 @@ apart (one site catching two of the three, the next reader copying the
 shorter one).
 
 Deliberately stdlib-only, so it can be imported at module level from anywhere
-— including ``mureo.amazon_ads.bridge``, which must not reach into
-``mureo.mcp.*`` at import time (see ``bridge._normalize_failure``).
+— including ``mureo.amazon_ads.bridge``, which never imports ``mureo.mcp.*``
+(#863).
 """
 
 from __future__ import annotations

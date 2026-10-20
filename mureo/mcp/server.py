@@ -134,7 +134,9 @@ from mureo.mcp.tools_rollback import TOOLS as ROLLBACK_TOOLS
 from mureo.mcp.tools_rollback import handle_tool as handle_rollback_tool
 from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
 from mureo.mcp.tools_search_console import handle_tool as handle_search_console_tool
+from mureo.policy.learning_reset import set_builtin_platform_tool_names
 from mureo.rollback.executor import is_rollback_dispatch_active
+from mureo.rollback.planner import set_plugin_reversal_keys
 from mureo.throttle import PLUGIN_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -194,6 +196,18 @@ _BUILTIN_FAMILIES: tuple[tuple[Sequence[Tool], bool], ...] = (
 _ALL_TOOLS: list[Tool] = [
     tool for family, enabled in _BUILTIN_FAMILIES if enabled for tool in family
 ]
+
+# The learning-reset pre-flight maps a namespaced built-in variant to the
+# built-in it mirrors by these names (#837). Published here, at load and before
+# anything can dispatch, because ``mureo.policy`` never imports ``mureo.mcp``
+# (#863). The three family lists themselves, gates ignored: a variant mirrors a
+# built-in whether or not this run serves it.
+set_builtin_platform_tool_names(
+    tool.name
+    for family in (GOOGLE_ADS_TOOLS, META_ADS_TOOLS, SEARCH_CONSOLE_TOOLS)
+    for tool in family
+)
+
 _GOOGLE_ADS_NAMES: frozenset[str] = (
     frozenset(t.name for t in GOOGLE_ADS_TOOLS) if _GOOGLE_ADS_ENABLED else frozenset()
 )
@@ -415,34 +429,14 @@ _PLUGIN_REVERSAL_KEYS: dict[str, frozenset[str] | None] = {
     t.name: _plugin_schema_property_keys(t) for t in _PLUGIN_TOOLS
 }
 
-
-def plugin_reversal_param_keys(operation: str) -> tuple[bool, frozenset[str] | None]:
-    """Resolve a plugin reversal operation for the rollback planner (GAP C).
-
-    The planner calls this (lazily, to avoid an import cycle) when a reversal
-    ``operation`` is not in its static built-in allow-list, to decide whether
-    a plugin-declared reversal is executable.
-
-    Returns:
-        ``(False, None)`` when ``operation`` is not a registered plugin tool
-        — the planner then refuses it exactly as before (an arbitrary,
-        unregistered operation is never auto-reversible).
-
-        ``(True, frozenset(keys))`` when ``operation`` is a registered plugin
-        tool that declares an object ``inputSchema`` — the planner bounds the
-        reversal params to ``keys`` (defense-in-depth against an injected
-        agent smuggling extra params), mirroring the built-in key-set check.
-
-        ``(True, None)`` when ``operation`` is a registered plugin tool with
-        no usable schema — the planner applies no plan-time key restriction.
-        The reversal is still gated by the planner's destructive-verb refusal,
-        and at execution the dispatcher re-runs policy gates + ``inputSchema``
-        validation against the live tool, so an unbounded plan cannot bypass
-        the forward-action guardrails.
-    """
-    if operation not in _PLUGIN_NAMES:
-        return (False, None)
-    return (True, _PLUGIN_REVERSAL_KEYS.get(operation))
+# Published to the planner's registry (#863): membership is "a plugin tool this
+# server dispatches" (``_PLUGIN_NAMES``), the bound is the schema keys above.
+# The whole map is replaced on every load, so a reload that drops a plugin
+# drops its reversal with it. An operation outside it answers ``(False, None)``
+# and the planner refuses it exactly as an unregistered operation.
+set_plugin_reversal_keys(
+    {name: _PLUGIN_REVERSAL_KEYS.get(name) for name in _PLUGIN_NAMES}
+)
 
 
 # ---------------------------------------------------------------------------

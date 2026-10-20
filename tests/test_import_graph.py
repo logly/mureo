@@ -11,6 +11,9 @@ by object reference, and these tests pin the direction:
 
 * importing ``mureo.core`` alone loads nothing from ``mureo.context``;
 * either package can be imported first;
+* ``rollback`` / ``policy`` / ``amazon_ads`` / ``core`` never import
+  ``mureo.mcp``, not even function-locally — the server publishes what they
+  need at load;
 * ``pytest -m slow``: every module under ``mureo/`` imports on its own, as the
   first import of a fresh interpreter.
 
@@ -21,7 +24,9 @@ fixture), so nothing the parent has imported can warm a cycle for them.
 
 from __future__ import annotations
 
+import ast
 import json
+import pathlib
 import pkgutil
 
 import pytest
@@ -30,6 +35,8 @@ import mureo
 import mureo.context
 import mureo.core
 import mureo.core.state_store
+import mureo.core.tool_failure as tool_failure
+import mureo.mcp._helpers as helpers
 from mureo.context.state_store import FilesystemStateStore
 from tests._measurement_child import (
     StandaloneSweep,
@@ -110,3 +117,157 @@ def test_every_mureo_module_imports_as_the_first_import(
 ) -> None:
     returncode, stderr = standalone_sweep.result(module, ALL_MUREO_MODULES)
     assert_imports_alone(module, returncode, stderr)
+
+
+# ---------------------------------------------------------------------------
+# rollback / policy / amazon_ads / core never import ``mureo.mcp`` (#863)
+# ---------------------------------------------------------------------------
+
+#: Packages below ``mureo.mcp``. ``mureo/mcp/__init__`` loads the whole server,
+#: so any ``mureo.mcp.*`` import from here — even a function-local one — reaches
+#: back up through every tool module.
+_BELOW_MCP = ("rollback", "policy", "amazon_ads", "core")
+
+#: Child: import the lower layers and nothing else, run the two call paths
+#: that used to reach ``mureo.mcp`` at call time (the plugin reversal lookup,
+#: the Amazon failure rewrite), then report which ``mureo.mcp`` modules came
+#: with them (the third-party ``mcp`` SDK is fine).
+_LOWER_LAYERS_ALONE = (
+    "import json, sys\n"
+    "import mureo.rollback, mureo.policy.learning_reset\n"
+    "import mureo.amazon_ads.bridge, mureo.core.tool_failure\n"
+    "from mureo.amazon_ads.bridge import _normalize_failure\n"
+    "from mureo.rollback.planner import _plugin_reversal_keys\n"
+    "_plugin_reversal_keys('some_plugin_tool')\n"
+    "_normalize_failure([], is_error=True)\n"
+    "print(json.dumps(sorted(m for m in sys.modules"
+    " if m == 'mureo.mcp' or m.startswith('mureo.mcp.'))))\n"
+)
+
+#: The failure-envelope reader moved to ``mureo.core.tool_failure``;
+#: ``mureo.mcp._helpers`` re-exports the same objects.
+_ENVELOPE_READER_NAMES = (
+    "FAILURE_STATUSES",
+    "API_ERROR_PREFIX",
+    "API_ERROR_CODE",
+    "is_auth_error_result",
+    "Failure",
+    "failure_of",
+    "is_error_result",
+)
+
+
+def _is_type_checking_guard(node: ast.If) -> bool:
+    test = node.test
+    if isinstance(test, ast.Name):
+        return test.id == "TYPE_CHECKING"
+    return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+
+
+def _is_mcp(name: str) -> bool:
+    return name == "mureo.mcp" or name.startswith("mureo.mcp.")
+
+
+def _from_import_targets(node: ast.ImportFrom, package: str) -> list[str]:
+    """The ``mureo.mcp*`` modules one ``from ... import ...`` reaches.
+
+    A relative import is resolved against ``package`` (the importing file's
+    package), and ``from mureo import mcp`` names the subpackage through an
+    alias, so both are checked as the absolute module they load.
+    """
+    module = node.module or ""
+    if node.level:
+        base = package.rsplit(".", node.level - 1)[0] if node.level > 1 else package
+        module = f"{base}.{module}" if module else base
+    if _is_mcp(module):
+        return [module]
+    return [
+        f"{module}.{alias.name}"
+        for alias in node.names
+        if _is_mcp(f"{module}.{alias.name}")
+    ]
+
+
+def _mcp_imports(tree: ast.AST, package: str) -> list[tuple[int, str]]:
+    """Every ``mureo.mcp*`` import in ``tree``, outside ``if TYPE_CHECKING:``.
+
+    ``package`` is the dotted package of the file ``tree`` was parsed from,
+    for resolving relative imports.
+    """
+    found: list[tuple[int, str]] = []
+    pending: list[ast.AST] = [tree]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, ast.If) and _is_type_checking_guard(node):
+            pending.extend(node.orelse)
+            continue
+        if isinstance(node, ast.ImportFrom):
+            names = _from_import_targets(node, package)
+        elif isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names if _is_mcp(alias.name)]
+        else:
+            names = []
+        found.extend((node.lineno, name) for name in names)  # type: ignore[attr-defined]
+        pending.extend(ast.iter_child_nodes(node))
+    return sorted(found)
+
+
+def _package_of(path: pathlib.Path) -> str:
+    """The dotted package a module file belongs to (its directory).
+
+    ``rollback/planner.py`` and ``rollback/__init__.py`` -> ``mureo.rollback``.
+    """
+    parts = path.relative_to(pathlib.Path(mureo.__file__).parent.parent).parts
+    return ".".join(parts[:-1])
+
+
+@pytest.mark.unit
+def test_lower_layers_load_nothing_from_mcp() -> None:
+    proc = run_in_fresh_interpreter(_LOWER_LAYERS_ALONE)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("package", _BELOW_MCP)
+def test_lower_layer_source_never_imports_mcp(package: str) -> None:
+    """Function-local imports included: one that runs only after the server
+    has loaded is still an upward dependency, and the next caller to reach it
+    without the server gets the cycle."""
+    root = pathlib.Path(mureo.__file__).parent / package
+    offenders = [
+        f"{path.relative_to(root.parent)}:{lineno} imports {name}"
+        for path in sorted(root.rglob("*.py"))
+        for lineno, name in _mcp_imports(
+            ast.parse(path.read_text("utf-8")), _package_of(path)
+        )
+    ]
+    assert offenders == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", _ENVELOPE_READER_NAMES)
+def test_envelope_reader_is_one_object_on_both_paths(name: str) -> None:
+    assert getattr(helpers, name) is getattr(tool_failure, name)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("source", "flagged"),
+    [
+        ("import mureo.mcp.server\n", ["mureo.mcp.server"]),
+        ("from mureo.mcp._helpers import failure_of\n", ["mureo.mcp._helpers"]),
+        ("from mureo import mcp\n", ["mureo.mcp"]),
+        ("from mureo import context, mcp\n", ["mureo.mcp"]),
+        ("from .. import mcp\n", ["mureo.mcp"]),
+        ("from ..mcp.server import x\n", ["mureo.mcp.server"]),
+        ("def f():\n    from ..mcp import _helpers\n", ["mureo.mcp"]),
+        ("if TYPE_CHECKING:\n    from mureo.mcp.server import x\n", []),
+        ("import mcp.types\nfrom mcp import types\n", []),
+        ("from mureo import mcpx\nfrom . import mcp\n", []),
+    ],
+)
+def test_mcp_imports_sees_every_spelling(source: str, flagged: list[str]) -> None:
+    """``_mcp_imports`` as if ``source`` were a module of ``mureo.rollback``."""
+    found = _mcp_imports(ast.parse(source), "mureo.rollback")
+    assert [name for _, name in found] == flagged

@@ -11,6 +11,7 @@ from mcp.types import TextContent, Tool, ToolAnnotations
 
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import ProviderEntry
+from mureo.rollback.planner import _plugin_reversal_keys
 from tests._server_reload import reloaded_server
 
 
@@ -677,29 +678,25 @@ class TestGapBPluginStrategyReminder:
 
 @pytest.mark.unit
 class TestGapCPluginReversalParamKeys:
-    async def test_registered_tool_returns_schema_keys(
-        self, server_with_plugin
-    ) -> None:
+    """The server publishes its plugin reversal keys to the rollback planner's
+    registry at load (#863); the planner's reader answers from it."""
+
+    @pytest.mark.usefixtures("server_with_plugin")
+    async def test_registered_tool_returns_schema_keys(self) -> None:
         # wired_plugin_echo declares {"msg": {...}} → keys = {"msg"}.
-        is_plugin, keys = server_with_plugin.plugin_reversal_param_keys(
-            "wired_plugin_echo"
-        )
+        is_plugin, keys = _plugin_reversal_keys("wired_plugin_echo")
         assert is_plugin is True
         assert keys == frozenset({"msg"})
 
-    async def test_unregistered_operation_returns_false(
-        self, server_with_plugin
-    ) -> None:
-        assert server_with_plugin.plugin_reversal_param_keys("not_a_real_tool") == (
-            False,
-            None,
-        )
+    @pytest.mark.usefixtures("server_with_plugin")
+    async def test_unregistered_operation_returns_false(self) -> None:
+        assert _plugin_reversal_keys("not_a_real_tool") == (False, None)
 
     def test_schemaless_plugin_tool_returns_true_none(self) -> None:
         # _ReadOnlyPlugin's tool declares empty properties → (True, None):
         # registered but no plan-time key restriction.
-        with reloaded_server(_disc_for(_ReadOnlyPlugin)) as mod:
-            assert mod.plugin_reversal_param_keys("ro_plugin_report") == (True, None)
+        with reloaded_server(_disc_for(_ReadOnlyPlugin)):
+            assert _plugin_reversal_keys("ro_plugin_report") == (True, None)
 
 
 # ---------------------------------------------------------------------------
