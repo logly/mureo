@@ -1285,11 +1285,11 @@ mureo-specific Protocol method:
     the actual target is something else. Declare identity when your provider
     uses different names so daily-check can suppress repeated changes to the
     same target on the same platform while its observation window is open.
-  - `"budget": {"daily": "<key>", "lifetime": "<key>",
+  - `"budget": {"daily": "<key or path>", "lifetime": "<key or path>",
     "current": "<key>", "unit": "currency"|"micros"}` — **declare where
     your tool carries its budget so `STRATEGY.md` `## Guardrails` caps
     are enforced on your platform too** (#414). See the next section.
-  - `"bid": {"bid_amount": "<key>", "cpc_bid": "<key>",
+  - `"bid": {"bid_amount": "<key or path>", "cpc_bid": "<key or path>",
     "unit": "currency"|"micros"}` — the bid twin of `budget`: **declare
     where your tool carries its proposed bid so the `max_bid_amount_per_ad_set`
     / `max_cpc_bid_per_ad_group` caps are enforced on your platform too**.
@@ -1350,6 +1350,71 @@ Tool(
   should not declare `current: "current_daily_budget"` alongside
   `unit: "micros"`, which would divide that baseline by 1e6 and report a
   ¥10,000 → ¥15,000 raise as a 149,999,900% one.
+
+###### Nested arguments
+
+A tool that takes the platform's request object under one argument carries
+its budget below the top level. Name that budget by **path** (#868):
+
+```python
+Tool(
+    name="acme_ads_update_campaign_native",
+    description="Update a campaign with the platform's own request body.",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "campaign_id": {"type": "string"},
+            "body": {"type": "object"},
+        },
+        "required": ["campaign_id", "body"],
+    },
+    _meta={
+        "mureo": {
+            "budget": {
+                "daily": "body.daily_budget_micros",
+                "lifetime": "body.spending_limit_micros",
+                "unit": "micros",
+            }
+        }
+    },
+)
+```
+
+- **Syntax.** `.` steps into an object by exact key; a `[]` suffix on a
+  segment steps into every item of that array (`body.campaigns[].budget`);
+  a `*` segment steps into every value of an object whose keys are data
+  (`body.budgets.*.amount`). A channel may also take a list of paths
+  (`"daily": ["body.budget.amount", "body.daily_budget"]`) — alternatives
+  for the one channel. Across every path and every array item, the
+  **largest** amount found is the one compared against the cap.
+- **`current` is flat only.** A path or a list there rejects the whole
+  declaration.
+- **A path that reaches an object or an array makes the gate deny**, exactly
+  as a flat key holding a nested object does. A path that reaches nothing,
+  or `null` / a blank string, means "no budget proposed on that channel".
+- **A path declaration replaces the built-in scan exactly as a flat key
+  does** — every semantic in the list below applies to it unchanged.
+- A malformed path (`"body..daily"`, a stray bracket such as `"items[0]"`,
+  `*` glued to a name, whitespace inside a segment such as `"body. daily"`)
+  rejects the whole declaration.
+- A key containing `.`, `[`, `]`, `*` or whitespace is read as a path: a key
+  named `"daily.budget"` is read as `daily` → `budget`. It is **also** still
+  matched literally at the top level, so a declaration written before paths
+  existed, for an argument really named `"daily.budget"`, keeps its cap.
+
+**A path that matches nothing is "no budget proposed"** — the same as a flat
+key that is absent. Because the declaration *replaces* the scan, a typo in a
+path silently removes the cap for that tool. Pin every declared path in your
+own test suite — **test an over-cap call**:
+
+1. Write a temporary `STRATEGY.md` carrying a `## Guardrails` cap
+   (`- max_daily_budget_per_campaign: 50000`) and run the test from its
+   directory.
+2. With your plugin installed, import `mureo.mcp.server` (it registers your
+   `_meta` declarations at import) and call
+   `StrategyPolicyGate().evaluate("acme_ads_update_campaign_native", {"body": {"daily_budget_micros": 60_000_000_000}})`.
+3. Assert the decision's `allowed` is `False`; repeat for every channel and
+   every alternative path you declared.
 
 Semantics worth knowing before you declare:
 
@@ -1444,28 +1509,30 @@ The rest of the semantics match a budget declaration:
 - **A malformed declaration is rejected whole**, never half-applied, and
   undeclared tools keep today's behavior byte-identical.
 
-A bid whose value is nested (inside a request `body`) or derived is outside
-what a top-level-key declaration can express — use the normalize-and-delegate
-`mureo.policy_gates` gate below for those, exactly as for a nested budget.
+A bid nested inside a request `body` is declared by path, with the same
+syntax and the same rules as a budget (see *Nested arguments* above):
+`"cpc_bid": "body.bid.cpc_micros"`, or a list of alternative paths.
 
-##### When a declaration cannot reach your budget
+##### When a declaration cannot express your rule
 
-A declaration names a **top-level argument key**. Two shapes are outside
-what that can express, and both are ordinary plugin designs (#417):
+A declaration names where your tool carries a figure — a top-level key or,
+for a nested budget or bid, a path (see *Nested arguments* above). Declare
+by path first: a native passthrough tool that takes the platform's raw
+request body declares `"daily": "body.daily_budget"` and needs no gate of
+its own. Two shapes remain outside what a declaration can express (#417):
 
-- **The budget is nested.** A native passthrough tool takes the platform's
-  raw request body, so the budget lives at `body.daily_budget`, not at a
-  top-level key. Declaring `body` does not help — a key holding a dict is
-  *unreadable*, and the gate fails closed, refusing every call including
-  the legal ones.
 - **The budget is derived.** Your mapper computes a figure the caller never
   typed (say `monthly = daily × multiplier`) and sends it to the platform.
-  It is not an argument at all, so no key can name it — and it is real
-  spend, so a cap must reach it.
+  It is not an argument at all, so no key or path can name it — and it is
+  real spend, so a cap must reach it.
+- **The rule is not a cap on a figure.** A write can lift spend without
+  naming an amount — say, an update that clears a campaign's spending limit.
+  A declaration reads a cleared (`null`) value as "no budget proposed", so no
+  cap fires; refusing that write is a rule of its own.
 
-For these, register a gate on the `mureo.policy_gates` entry-point that
-**normalizes and delegates**: project your budget onto the canonical keys
-mureo already reads, and hand the decision straight back to
+For these, register a gate on the `mureo.policy_gates` entry-point. For a
+derived figure it **normalizes and delegates**: project your budget onto the
+canonical keys mureo already reads, and hand the decision straight back to
 `StrategyPolicyGate`. Your gate supplies **keys, not a policy** — cap
 comparison, `STRATEGY.md` parsing, the TTL cache and the fail-closed rules
 keep a single owner, so upstream fixes to guardrail semantics reach your
@@ -1480,9 +1547,8 @@ from mureo.core.policy import PolicyDecision
 
 logger = logging.getLogger(__name__)
 
-# The keys mureo's built-in scan reads. Normalise to the operator's currency
+# The key mureo's built-in scan reads. Normalise to the operator's currency
 # units, so a refusal quotes figures they recognise.
-_CANONICAL_DAILY = "daily_budget"
 _CANONICAL_PERIOD = "lifetime_budget"
 
 
@@ -1495,15 +1561,15 @@ def normalize_budget_arguments(
     no budget (a read, a bid change, a partial update that leaves the budget
     alone) so the gate abstains rather than inventing a figure to judge.
     """
-    if tool_name != "acme_ads_update_campaign_native":
+    if tool_name != "acme_ads_update_campaign":
         return {}
-    body = arguments.get("body")
-    if not isinstance(body, dict):
-        return {}
-    daily = body.get("daily_budget")
-    if isinstance(daily, bool) or not isinstance(daily, (int, float)):
-        return {}
-    return {_CANONICAL_DAILY: float(daily)}
+    daily = arguments.get("daily_budget")
+    multiplier = arguments.get("pacing_multiplier")
+    for value in (daily, multiplier):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return {}
+    # The mapper sends the platform a period budget the caller never typed.
+    return {_CANONICAL_PERIOD: float(daily) * float(multiplier)}
 
 
 class AcmeBudgetPolicyGate:
@@ -1538,9 +1604,11 @@ acme_budget = "mureo_acme_ads.policy:AcmeBudgetPolicyGate"
 
 Rules for a gate of this kind:
 
-- **Supply keys, never a policy.** Do not re-implement cap comparison or
-  refusal messages. The moment your gate decides anything itself, mureo's
-  guardrail semantics are forked and upstream fixes stop reaching you.
+- **Supply keys, never a cap comparison.** Do not re-implement cap
+  comparison or its refusal messages. The moment your gate compares a figure
+  against a cap itself, mureo's guardrail semantics are forked and upstream
+  fixes stop reaching you. A rule that is not a cap (refusing a write that
+  clears a limit) is the one thing such a gate decides on its own.
 - **Pure and fast.** It runs on *every* tool call. No network, no
   credential access — so a cap needing a figure your tool does not carry
   and you cannot compute offline (`max_daily_budget_increase_pct` wants the
@@ -1555,9 +1623,11 @@ Rules for a gate of this kind:
   (an ergonomic wrapper and its native twin), normalize both. A refusal
   names the cap it hit, so an agent refused on one tool will otherwise
   retry through the other and commit the identical body.
-- **Do not also declare.** A declaration replaces the built-in scan for the
-  proposed budgets, which would switch off the very keys your gate injects.
-  Pick one mechanism per tool, and pin the choice with a test.
+- **Do not also declare the figure you inject.** A declaration replaces the
+  built-in scan for the proposed budgets, which would switch off the very
+  keys a normalize-and-delegate gate injects. Pick one mechanism per tool,
+  and pin the choice with a test. A gate that only refuses a non-cap write
+  injects nothing, so it sits alongside a declaration.
 - **Your module is imported once; your class is constructed per call.**
   mureo enumerates and `load()`s the entry point on the first dispatch and
   memoizes the class (#633), so module-level work happens once — but

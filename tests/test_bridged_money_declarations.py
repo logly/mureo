@@ -237,8 +237,12 @@ class TestPathResolution:
         """Shape drift, not content garbage: the number moved deeper. Reported
         as "not found" so the caller can degrade to the best-effort scan and
         cap the amount actually proposed, rather than refuse a call whose money
-        nobody looked at."""
-        assert self._read("a.b", {"a": {"b": {"amount": 25_000}}}) is None
+        nobody looked at. That is the bridged table's behaviour, so it rides on
+        its ``scan_floor`` flag (#868)."""
+        from mureo.policy.declarations import _declared_amount
+
+        paths, payload = ArgumentPaths.parse("a.b"), {"a": {"b": {"amount": 25_000}}}
+        assert _declared_amount(payload, paths, micros=False, scan_floor=True) is None
 
     def test_micros_are_divided_like_a_flat_declared_key(self) -> None:
         from mureo.policy.declarations import _declared_amount

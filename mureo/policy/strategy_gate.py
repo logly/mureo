@@ -31,11 +31,11 @@ Three ways a budget/bid reaches a cap
    below (``daily_budget``, ``amount_micros``, ``bid_amount``,
    ``cpc_bid_micros``, …).
 2. An **exact declaration** (:mod:`mureo.policy.declarations`) — a plugin
-   names the keys its tools carry, in standard MCP metadata; or, for a
-   bridged surface that cannot carry metadata at all, mureo names the exact
-   nested PATHS itself (:class:`~mureo.policy.declarations.ArgumentPaths`,
-   #527). Authoritative: it REPLACES the built-in scan for the channels it
-   covers.
+   names the keys **or nested paths**
+   (:class:`~mureo.policy.declarations.ArgumentPaths`, #868) its tools carry,
+   in standard MCP metadata; or, for a bridged surface that cannot carry
+   metadata at all, mureo names the exact nested PATHS itself (#527).
+   Authoritative: it REPLACES the built-in scan for the channels it covers.
 3. The **pattern fallback** (:mod:`mureo.policy.pattern_scan`) — for a
    registered MUTATING plugin tool that declared nothing, budget-shaped and
    bid-shaped argument keys are read heuristically (recursively, micros-aware)
@@ -47,21 +47,23 @@ it can miss a budget spelled without the word (and it can over-block a
 budget-named field that is not a proposal). It exists because a bridged tool
 surface — someone else's tool definitions, forwarded verbatim — declares
 nothing of its own, and "no declaration" must not mean "no cap" where real
-money moves. A **flat-key declaration takes precedence**: for a channel that
-has one, the scan is not consulted — the plugin owns the argument names of
-tools it authors itself.
+money moves. A **plugin's declaration takes precedence**, flat key or path:
+for a channel that has one, the scan is not consulted — the plugin owns its
+tool schema and ships tests for it, so a declaration that stops matching is a
+plugin bug that its own tests catch.
 
-A **PATH declaration is different, and deliberately so** (#527): it raises the
-FLOOR rather than replacing the scan. mureo writes those paths for a surface
-it does not own, from a manifest snapshot, so whenever a family is declared by
-path the scan runs too and the larger figure per channel wins — however much
-the declaration resolved. The invariant is *never check less than the scan
-alone would have checked*: several declared tools carry two independent money
-fields in one channel, so a rule like "suppress the scan once the declaration
-resolves something" let a drifted SIBLING field go completely unchecked. See
-:func:`~mureo.policy.declarations.raise_to_scan_floor`. What a path
-declaration buys — exactness in the deny message, a DENY on an unreadable
-declared leaf, drift visibility — needs no suppression to work.
+A **declaration with ``scan_floor`` is different, and deliberately so**
+(#527): it raises the FLOOR rather than replacing the scan. Only mureo's own
+table sets it — paths mureo writes against a manifest snapshot it does not
+control — so for that table the scan runs too and the larger figure
+per channel wins, however much the declaration resolved; a plugin's path does
+not get the floor. The invariant for the table is *never check less than the
+scan alone would have checked*: several declared tools carry two independent
+money fields in one channel, so a rule like "suppress the scan once the
+declaration resolves something" let a drifted SIBLING field go completely
+unchecked. See :func:`~mureo.policy.declarations.raise_to_scan_floor`. What
+such a declaration buys — exactness in the deny message, a DENY on an
+unreadable declared leaf, drift visibility — needs no suppression to work.
 """
 
 from __future__ import annotations
