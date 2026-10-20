@@ -30,6 +30,11 @@ metadata — no new mureo Protocol surface:
       ``{"campaign_id": "campaignId", "entity_type": "placement",
       "entity_id": "placementId"}``. Common argument names are also detected
       when this declaration is absent.
+    - ``budget`` / ``bid``: where the tool carries its proposed budget / bid,
+      so the built-in guardrail gate can cap it (#414). Each proposal channel
+      names a flat argument key or a nested path in the
+      :class:`~mureo.policy.declarations.ArgumentPaths` syntax (``.``, ``[]``,
+      ``*``), or a list of alternative paths (#868).
 
 Known property of the undeclared-identity fallback
 --------------------------------------------------
@@ -68,7 +73,12 @@ from typing import TYPE_CHECKING, Any
 from mureo.core import clock
 from mureo.core.platform_keys import plugin_platform_key
 from mureo.core.tool_names import is_read_only_tool_name
-from mureo.policy.declarations import BidDeclaration, BudgetDeclaration
+from mureo.policy.declarations import (
+    ArgumentPaths,
+    BidDeclaration,
+    BudgetDeclaration,
+    is_path_spec,
+)
 from mureo.throttle import ThrottleConfig
 
 if TYPE_CHECKING:
@@ -161,13 +171,68 @@ def _parse_identity(raw: Any) -> IdentityDeclaration | None:
     return declaration
 
 
+def _channel_specs(raw: dict[str, Any], name: str) -> tuple[str, ...] | None:
+    """The stripped spec strings one ``budget`` / ``bid`` channel declares.
+
+    Absent → ``None``; a non-blank ``str`` → one spec; a non-empty ``list``
+    of non-blank ``str`` → one spec per item. Anything else is present but
+    unusable and raises ``ValueError``.
+    """
+    if name not in raw:
+        return None
+    value = raw[name]
+    if isinstance(value, str) and value.strip():
+        return (value.strip(),)
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(spec, str) and spec.strip() for spec in value)
+    ):
+        return tuple(spec.strip() for spec in value)
+    raise ValueError(f"{name}: not a key, a path or a list of paths")
+
+
+def _parse_flat_channel(raw: dict[str, Any], name: str) -> str | None:
+    """Read a channel that only takes a flat argument key (``current``).
+
+    Absent → ``None``; a string that is not a path (see
+    :func:`~mureo.policy.declarations.is_path_spec`) → the key. A path or a
+    list — even a list of one key — raises ``ValueError``.
+    """
+    specs = _channel_specs(raw, name)
+    if specs is None:
+        return None
+    if isinstance(raw[name], list) or is_path_spec(specs[0]):
+        raise ValueError(f"{name}: takes a flat argument key, not a path")
+    return specs[0]
+
+
+def _parse_channel(raw: dict[str, Any], name: str) -> str | ArgumentPaths | None:
+    """Read one ``budget`` / ``bid`` proposal channel (#414, #868).
+
+    Absent → ``None``; one spec that is not a path (see
+    :func:`~mureo.policy.declarations.is_path_spec`) → the flat key;
+    otherwise the specs compile to :class:`ArgumentPaths`, alternatives for
+    the one channel. A present-but-unusable value or a path that does not
+    compile raises ``ValueError``, which the caller turns into a rejection
+    of the WHOLE declaration.
+    """
+    specs = _channel_specs(raw, name)
+    if specs is None:
+        return None
+    if len(specs) == 1 and not is_path_spec(specs[0]):
+        return specs[0]
+    return ArgumentPaths.parse(*specs)
+
+
 def _parse_budget(raw: Any) -> BudgetDeclaration | None:
     """Parse ``meta["mureo"]["budget"]``, or ``None`` when unusable (#414).
 
     A malformed hint is rejected WHOLE rather than half-applied: a partial
     declaration would re-create the exact silent-underenforcement the seam
     exists to remove. Requires a dict carrying at least one of ``daily`` /
-    ``lifetime`` as a non-blank string key name; ``current`` is optional;
+    ``lifetime``, each a flat key, a nested path or a list of paths (see
+    :func:`_parse_channel`, #868); ``current`` is optional and flat only;
     ``unit`` is ``currency`` (default) or ``micros``.
     """
     if not isinstance(raw, dict):
@@ -175,27 +240,21 @@ def _parse_budget(raw: Any) -> BudgetDeclaration | None:
     unit = raw.get("unit", "currency")
     if not isinstance(unit, str) or unit not in _BUDGET_UNITS:
         return None
-
-    def _key(name: str) -> str | None:
-        value = raw.get(name)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+    try:
+        daily = _parse_channel(raw, "daily")
+        lifetime = _parse_channel(raw, "lifetime")
+        current = _parse_flat_channel(raw, "current")
+    except ValueError:
+        # A declared-but-unusable channel is a mistake, not an omission —
+        # refuse the whole declaration so it surfaces in testing rather than
+        # silently dropping one cap.
         return None
-
-    daily = _key("daily")
-    lifetime = _key("lifetime")
     if daily is None and lifetime is None:
         return None
-    # A declared-but-unusable key name (non-str) is a mistake, not an
-    # omission — refuse the whole declaration so it surfaces in testing
-    # rather than silently dropping one cap.
-    for name in ("daily", "lifetime", "current"):
-        if name in raw and _key(name) is None:
-            return None
     return BudgetDeclaration(
         daily_key=daily,
         lifetime_key=lifetime,
-        current_key=_key("current"),
+        current_key=current,
         micros=_BUDGET_UNITS[unit],
     )
 
@@ -206,31 +265,25 @@ def _parse_bid(raw: Any) -> BidDeclaration | None:
     The bid twin of :func:`_parse_budget`, held to the identical whole-or-
     nothing discipline: a partial declaration would re-create the exact silent
     underenforcement this seam exists to remove. Requires a dict carrying at
-    least one of ``bid_amount`` / ``cpc_bid`` as a non-blank string key name;
-    ``unit`` is ``currency`` (default) or ``micros``.
+    least one of ``bid_amount`` / ``cpc_bid``, each a flat key, a nested path
+    or a list of paths (see :func:`_parse_channel`, #868); ``unit`` is
+    ``currency`` (default) or ``micros``.
     """
     if not isinstance(raw, dict):
         return None
     unit = raw.get("unit", "currency")
     if not isinstance(unit, str) or unit not in _BID_UNITS:
         return None
-
-    def _key(name: str) -> str | None:
-        value = raw.get(name)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+    try:
+        bid_amount = _parse_channel(raw, "bid_amount")
+        cpc_bid = _parse_channel(raw, "cpc_bid")
+    except ValueError:
+        # A declared-but-unusable channel is a mistake, not an omission —
+        # refuse the whole declaration so it surfaces in testing rather than
+        # silently dropping one cap.
         return None
-
-    bid_amount = _key("bid_amount")
-    cpc_bid = _key("cpc_bid")
     if bid_amount is None and cpc_bid is None:
         return None
-    # A declared-but-unusable key name (non-str) is a mistake, not an
-    # omission — refuse the whole declaration so it surfaces in testing
-    # rather than silently dropping one cap.
-    for name in ("bid_amount", "cpc_bid"):
-        if name in raw and _key(name) is None:
-            return None
     return BidDeclaration(
         bid_amount_key=bid_amount,
         cpc_bid_key=cpc_bid,

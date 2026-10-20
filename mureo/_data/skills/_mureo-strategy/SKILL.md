@@ -179,7 +179,7 @@ entirely (**no gate at all**). In detail:
   `cpc_bid_micros`, …). This is the hard, deterministic case.
 - **Plugin / bridged platforms** routed through mureo (including **Amazon
   Ads**, `plugin:mureo-amazon-ads-bridge:amazon_ads`) — **declaration first, pattern
-  second**. A tool that declares its budget / bid keys in its MCP metadata is
+  second**. A tool that declares its budget / bid keys or nested argument paths in its MCP metadata is
   matched **exactly** and that declaration takes precedence. So is the *known*
   bridged money surface, which mureo declares itself: the **13 money-carrying
   Amazon tools** (campaign / ad-group / portfolio budgets, per-country budget

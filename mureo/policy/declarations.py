@@ -13,9 +13,10 @@ builds on:
   vocabulary differs from the built-in Google/Meta spellings.
 - :class:`ArgumentPaths` — the same declaration, for money that does not sit
   at a top-level argument key but NESTED, through objects, arrays and dynamic
-  maps (#527). A bridged tool surface (someone else's tool definitions,
-  forwarded verbatim) cannot carry ``_meta`` at all, so mureo declares those
-  paths itself; a channel field accepts either a flat key (unchanged) or this.
+  maps (#527, #868). A plugin declares those paths in ``_meta`` exactly as it
+  declares a flat key; a bridged tool surface (someone else's tool
+  definitions, forwarded verbatim) cannot carry ``_meta`` at all, so mureo
+  declares its paths itself. A channel field accepts either a flat key or this.
 - Their process-wide registries and register / lookup / reset helpers,
   populated by ``mureo.mcp.server`` from plugin tool metadata at import so the
   pure decision layer stays I/O-free and needs no plugin imports. They are
@@ -54,6 +55,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+#: Separates the segments of a declared argument path (``body.daily_budget``).
+_PATH_SEPARATOR = "."
+
 #: A path segment suffix meaning "descend every item of this array".
 ARRAY_SUFFIX = "[]"
 
@@ -85,18 +89,23 @@ def _parse_path(spec: str) -> tuple[_Step, ...]:
     "countryMonetaryBudgetSettings", VALUES, "value")``.
 
     Raises ``ValueError`` on a malformed spec (an empty segment, a stray
-    bracket, a ``*`` glued to a name). The table that uses this is in-tree and
-    compiled at import, so a typo must fail loudly in testing rather than
-    quietly resolve to nothing — a path that silently never matches is an
-    unenforced cap.
+    bracket, a ``*`` glued to a name, whitespace inside a segment). Every
+    declaration that uses this is compiled once — mureo's own table at import,
+    a plugin's ``_meta`` when its tools are collected — so a typo must fail
+    loudly in testing rather than quietly resolve to nothing: a path that
+    silently never matches is an unenforced cap.
     """
     steps: list[_Step] = []
-    for raw in spec.split("."):
+    for raw in spec.split(_PATH_SEPARATOR):
         if raw == WILDCARD:
             steps.append(_Descent.VALUES)
             continue
         name = raw[: -len(ARRAY_SUFFIX)] if raw.endswith(ARRAY_SUFFIX) else raw
-        if not name or any(c in name for c in "[]*"):
+        if (
+            not name
+            or any(c in name for c in ARRAY_SUFFIX + WILDCARD)
+            or any(c.isspace() for c in name)
+        ):
             raise ValueError(f"malformed declared argument path segment: {raw!r}")
         steps.append(name)
         if raw.endswith(ARRAY_SUFFIX):
@@ -104,6 +113,20 @@ def _parse_path(spec: str) -> tuple[_Step, ...]:
     if not steps:
         raise ValueError("empty declared argument path")
     return tuple(steps)
+
+
+def is_path_spec(spec: str) -> bool:
+    """True when ``spec`` must go through :func:`_parse_path`: it contains the
+    ``.`` separator, a ``[`` or ``]``, :data:`WILDCARD`, or any whitespace.
+
+    The one place that decides whether a declared channel string is a nested
+    path or a flat argument key (#868). A malformed bracket or inner
+    whitespace counts as a path on purpose, so it reaches the parser and is
+    rejected there instead of becoming a flat key that never matches.
+    """
+    return any(c in spec for c in _PATH_SEPARATOR + ARRAY_SUFFIX + WILDCARD) or any(
+        c.isspace() for c in spec
+    )
 
 
 def _resolve_path(arguments: dict[str, Any], steps: tuple[_Step, ...]) -> list[Any]:
@@ -146,15 +169,20 @@ def _resolve_path(arguments: dict[str, Any], steps: tuple[_Step, ...]) -> list[A
 class ArgumentPaths:
     """One money channel's declared NESTED argument paths (#527).
 
-    A :class:`BudgetDeclaration` / :class:`BidDeclaration` channel normally
-    names a flat argument key. That is all a plugin authoring its own tools
-    needs, but it cannot express where a BRIDGED surface carries money: the
-    tools are someone else's, forwarded verbatim, and their amounts sit under
-    arrays and dynamic maps, e.g.::
+    A :class:`BudgetDeclaration` / :class:`BidDeclaration` channel can name a
+    flat argument key, but a flat key cannot express money that sits under
+    objects, arrays and dynamic maps, e.g.::
 
         body.campaigns[].budgets[].budgetValue.monetaryBudgetValue.monetaryBudget.value
         body.campaigns[].budgetCaps.countryMonetaryBudgetSettings.*.value
         body.targets[].bid.bid
+
+    Two kinds of tool carry money that way. A plugin whose tool takes the
+    platform's request object under one argument (``body``) declares its paths
+    through ``_meta`` the same way it would declare a flat key (#868). A
+    BRIDGED surface — someone else's tools, forwarded verbatim — cannot carry
+    ``_meta``, so mureo writes its paths itself
+    (:mod:`mureo.amazon_ads.money_paths`).
 
     So a channel accepts either a flat key (``str``, behaviour unchanged) or
     this — one or more dotted path specs, all read as the SAME channel, the
@@ -232,25 +260,35 @@ class BudgetDeclaration:
     standard (#419).
 
     Either PROPOSAL channel may instead name :class:`ArgumentPaths` — nested
-    paths, for a bridged surface whose money is not at a top-level key (#527).
-    Everything above holds unchanged for a path; the two differences are in
-    :func:`_declared_amount` (a path fans out over arrays and takes the
-    largest match) and in the gate, where a path declaration is joined by the
-    best-effort scan acting as a FLOOR (see :func:`raise_to_scan_floor`) — a
-    flat key cannot drift, a bridged schema can.
+    paths, for money that is not at a top-level key (#527, #868). Everything
+    above holds unchanged for a path, which REPLACES the scan exactly as a
+    flat key does; the one difference is in :func:`_declared_amount` (a path
+    fans out over arrays and takes the largest match).
+
+    :attr:`scan_floor` is what changes the gate's behaviour, not the shape of
+    the key: with it set, the best-effort scan runs too and acts as a FLOOR
+    (see :func:`raise_to_scan_floor`). A plugin owns its tool schema and ships
+    tests for it, so a declaration that stops matching is a plugin bug that
+    its own tests catch (see the "test an over-cap call" recipe in
+    ``docs/plugin-authoring.md``). mureo's table in
+    :mod:`mureo.amazon_ads.money_paths` is written against a manifest snapshot
+    mureo does not control, which is why only it keeps the scan as a floor.
 
     ``current_key`` is deliberately NOT path-capable. It names the *existing*
     budget, which is caller-supplied context rather than something the call
     proposes, so it is outside both the drift story and the floor: the scan
-    never contributes to it (a baseline is not a proposal) and
-    :func:`declares_paths` therefore never inspects it. Allowing a path there
-    would create the one channel resolved with no floor under it.
+    never contributes to it (a baseline is not a proposal), so even with
+    :attr:`scan_floor` set it is resolved with no floor under it.
     """
 
     daily_key: str | ArgumentPaths | None = None
     lifetime_key: str | ArgumentPaths | None = None
     current_key: str | None = None
     micros: bool = False
+    #: The best-effort scan also runs for this declaration and the larger
+    #: figure per channel wins. Only ``mureo/amazon_ads/money_paths.py`` sets
+    #: it; a plugin's ``_meta`` declaration never does.
+    scan_floor: bool = False
 
 
 def _log_conflicting_registration(
@@ -373,13 +411,18 @@ class BidDeclaration:
     choke point the built-in scan uses — see :func:`_declared_amount`.
 
     Like its budget twin, a channel may instead name :class:`ArgumentPaths`
-    for a bridged tool whose bid is nested (``body.targets[].bid.bid``) —
-    see :class:`BudgetDeclaration` for what that changes (#527).
+    for a tool whose bid is nested (``body.targets[].bid.bid``), and
+    :attr:`scan_floor` decides whether the scan runs underneath — see
+    :class:`BudgetDeclaration` for both (#527, #868).
     """
 
     bid_amount_key: str | ArgumentPaths | None = None
     cpc_bid_key: str | ArgumentPaths | None = None
     micros: bool = False
+    #: The best-effort scan also runs for this declaration and the larger
+    #: figure per channel wins. Only ``mureo/amazon_ads/money_paths.py`` sets
+    #: it; a plugin's ``_meta`` declaration never does.
+    scan_floor: bool = False
 
 
 # Tool name → bid declaration. Populated by the MCP server from plugin tool
@@ -470,19 +513,6 @@ class _Unreadable:
 _UNREADABLE = _Unreadable()
 
 
-def declares_paths(*keys: str | ArgumentPaths | None) -> bool:
-    """Is any of ``keys`` a nested-path declaration rather than a flat key?
-
-    The gate's seam for the one behaviour that differs (#527): a path
-    declaration that resolves nothing may fall back to the best-effort scan,
-    because a bridged schema can move under mureo's feet. A flat key names an
-    argument of a tool the declaring plugin owns, so its absence means "this
-    call proposes nothing on that channel" — never drift — and that path stays
-    byte-identical to what it has always done.
-    """
-    return any(isinstance(key, ArgumentPaths) for key in keys)
-
-
 def unreadable_key_label(
     sentinel: _Unreadable, declared: str | ArgumentPaths | None
 ) -> str:
@@ -517,7 +547,11 @@ def _saturate(value: int | float) -> float:
 
 
 def _declared_amount(
-    arguments: dict[str, Any], key: str | ArgumentPaths | None, *, micros: bool
+    arguments: dict[str, Any],
+    key: str | ArgumentPaths | None,
+    *,
+    micros: bool,
+    scan_floor: bool = False,
 ) -> float | _Unreadable | None:
     """Read one declared budget key — or path (#527) — as currency units.
 
@@ -538,10 +572,11 @@ def _declared_amount(
 
     An :class:`ArgumentPaths` channel takes the same three outcomes through
     :func:`_path_amount`, with the array/wildcard fan-out resolved to its
-    largest match first.
+    largest match first. ``scan_floor`` is the declaration's own flag, passed
+    through to decide what a path that lands on a container means there.
     """
     if isinstance(key, ArgumentPaths):
-        return _path_amount(arguments, key, micros=micros)
+        return _path_amount(arguments, key, micros=micros, scan_floor=scan_floor)
     if not key or key not in arguments:
         return None
     return _scalar_amount(arguments[key], micros=micros)
@@ -576,37 +611,47 @@ def _scalar_amount(raw: Any, *, micros: bool) -> float | _Unreadable | None:
 
 
 def _path_amount(
-    arguments: dict[str, Any], declared: ArgumentPaths, *, micros: bool
+    arguments: dict[str, Any],
+    declared: ArgumentPaths,
+    *,
+    micros: bool,
+    scan_floor: bool,
 ) -> float | _Unreadable | None:
     """The LARGEST amount ``declared``'s paths reach in ``arguments`` (#527).
 
     Same three outcomes as :func:`_declared_amount`, resolved across every
     path and every array/wildcard element:
 
-    - ``None`` — no path resolved to a readable amount. Either the call
-      carries no money on this channel, or the tool's schema has drifted
-      since the table was written; the two are indistinguishable from here,
-      which is one reason the gate never lets a path declaration stand alone
-      — see :func:`raise_to_scan_floor`.
-    - ``float`` — the maximum across every match, because a cap must be
-      checked against the biggest amount the call proposes (the same contract
-      the pattern scan reports).
-    - :class:`_Unreadable` — a path reached a SCALAR that is garbage, naming
-      that path. Content garbage is a fault worth denying on, exactly as on a
-      flat declared key.
+    - ``None`` — no path resolved to a readable amount: no money on this
+      channel, or (for mureo's own table) a drifted schema. The two are
+      indistinguishable here, which is why a ``scan_floor`` declaration never
+      stands alone — see :func:`raise_to_scan_floor`.
+    - ``float`` — the maximum across every match: a cap is checked against
+      the biggest amount the call proposes (the pattern scan's contract too).
+    - :class:`_Unreadable` — a path reached a garbage SCALAR (or, without
+      ``scan_floor``, a container), naming that path, exactly as on a flat key.
 
-    One deliberate difference from a flat key: a path that lands on a nested
-    object or array is treated as NOT FOUND rather than unreadable. On a flat
-    key that shape is a plugin mis-declaring its own argument; here it is the
-    schema having moved the number deeper, and re-scanning the payload
-    best-effort enforces the cap on the amount actually being proposed, where
-    denying would refuse a call whose money nobody ever looked at.
+    A container leaf without ``scan_floor`` (every plugin declaration) is
+    UNREADABLE, as a flat key holding a nested object is: a path must not be
+    the lenient way to declare. With it (mureo's own table for a schema it
+    does not own) the leaf is NOT FOUND — the schema moved the number deeper,
+    and the scan underneath re-reads the payload and enforces the cap.
+
+    A spec matches the nested path it names AND a top-level argument
+    literally named like it (#868), judged by the same rules: a plugin key
+    spelled with a ``.`` (``"campaign.daily_budget"``) was a flat key before
+    paths existed, and the literal read keeps the cap it always had.
     """
     best: float | None = None
     for spec, steps in zip(declared.specs, declared.steps, strict=True):
-        for leaf in _resolve_path(arguments, steps):
+        leaves = _resolve_path(arguments, steps)
+        if spec in arguments and steps != (spec,):
+            leaves = [*leaves, arguments[spec]]
+        for leaf in leaves:
             if isinstance(leaf, (dict, list)):
-                continue
+                if scan_floor:
+                    continue
+                return _Unreadable(spec)
             amount = _scalar_amount(leaf, micros=micros)
             if isinstance(amount, _Unreadable):
                 return _Unreadable(spec)
@@ -635,10 +680,10 @@ def raise_to_scan_floor(
 ) -> tuple[float | None, float | None]:
     """Raise both proposal channels of one family to the scanned amount (#527).
 
-    **A path declaration raises the FLOOR; it does not replace the scan.**
-    Whenever a family is declared by PATH, the best-effort scan runs too and
-    the larger figure per channel wins — unconditionally, whether or not the
-    declaration resolved anything.
+    **A declaration with ``scan_floor`` raises the FLOOR; it does not replace
+    the scan.** Whenever a family's declaration sets ``scan_floor``, the
+    best-effort scan runs too and the larger figure per channel wins —
+    unconditionally, whether or not the declaration resolved anything.
 
     The invariant that matters where real money moves is *never check less
     than the scan alone would have checked*. Only an additive merge guarantees

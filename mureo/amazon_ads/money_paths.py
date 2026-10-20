@@ -168,15 +168,23 @@ BID_PATHS: dict[str, tuple[str, ...]] = {
 
 
 def _budget_declaration(specs: tuple[str, ...]) -> BudgetDeclaration:
-    """One tool's budget declaration — the same paths on both cap channels."""
+    """One tool's budget declaration — the same paths on both cap channels.
+
+    This table is mureo's, written from a manifest snapshot, so the scan keeps
+    running under it (``scan_floor``).
+    """
     paths = ArgumentPaths.parse(*specs)
-    return BudgetDeclaration(daily_key=paths, lifetime_key=paths)
+    return BudgetDeclaration(daily_key=paths, lifetime_key=paths, scan_floor=True)
 
 
 def _bid_declaration(specs: tuple[str, ...]) -> BidDeclaration:
-    """One tool's bid declaration — the same paths on both cap channels."""
+    """One tool's bid declaration — the same paths on both cap channels.
+
+    This table is mureo's, written from a manifest snapshot, so the scan keeps
+    running under it (``scan_floor``).
+    """
     paths = ArgumentPaths.parse(*specs)
-    return BidDeclaration(bid_amount_key=paths, cpc_bid_key=paths)
+    return BidDeclaration(bid_amount_key=paths, cpc_bid_key=paths, scan_floor=True)
 
 
 #: Full bridged tool name → declaration, ready for the gate's registry.

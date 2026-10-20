@@ -12,7 +12,8 @@ cap are resolved and reconciled:
 
 1. the built-in Google/Meta key scan (the module-level spellings below);
 2. an exact declaration (:mod:`mureo.policy.declarations`) — a plugin's
-   ``_meta`` keys, or mureo's own nested PATHS for a bridged surface;
+   ``_meta`` keys or nested paths, or mureo's own nested PATHS for a bridged
+   surface (the one declaration that sets ``scan_floor``);
 3. the best-effort pattern scan (:mod:`mureo.policy.pattern_scan`).
 
 Both functions return a frozen ``*Inputs`` record whose every channel is
@@ -30,7 +31,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mureo.policy.currency_units import (
     META_MINOR_UNIT_KEYS,
@@ -38,16 +39,19 @@ from mureo.policy.currency_units import (
     to_currency_units,
 )
 from mureo.policy.declarations import (
+    ArgumentPaths,
     BidDeclaration,
     BudgetDeclaration,
     _declared_amount,
     _saturate,
     _Unreadable,
-    declares_paths,
     raise_to_scan_floor,
     unreadable_key_label,
 )
 from mureo.policy.pattern_scan import scan_bid_amount, scan_budget_amount
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = [
     "_BID_AMOUNT_KEYS",
@@ -124,6 +128,31 @@ class _BudgetInputs:
     unreadable_key: str | None = None
 
 
+def _declared_channels(
+    arguments: dict[str, Any],
+    keys: Sequence[str | ArgumentPaths | None],
+    *,
+    micros: bool,
+    scan_floor: bool,
+) -> tuple[list[float | None], str | None]:
+    """Resolve each declared key in order; ``(values, None)`` or, at the first
+    unreadable one, ``([], label)`` with the label ``unreadable_key_label`` gives.
+
+    The one declared-channel loop :func:`_budget_inputs` and :func:`_bid_inputs`
+    share, so both families read a declaration through :func:`_declared_amount`
+    and stop at the same point.
+    """
+    resolved: list[float | None] = []
+    for key in keys:
+        declared = _declared_amount(
+            arguments, key, micros=micros, scan_floor=scan_floor
+        )
+        if isinstance(declared, _Unreadable):
+            return [], unreadable_key_label(declared, key)
+        resolved.append(declared)
+    return resolved, None
+
+
 def _budget_inputs(
     arguments: dict[str, Any],
     declaration: BudgetDeclaration | None,
@@ -195,25 +224,22 @@ def _budget_inputs(
         return _BudgetInputs(
             proposed=proposed, current=current, lifetime=lifetime, total=total
         )
-    resolved: list[float | None] = []
-    for key in (
-        declaration.daily_key,
-        declaration.current_key,
-        declaration.lifetime_key,
-    ):
-        declared = _declared_amount(arguments, key, micros=declaration.micros)
-        if isinstance(declared, _Unreadable):
-            return _BudgetInputs(unreadable_key=unreadable_key_label(declared, key))
-        resolved.append(declared)
+    resolved, unreadable = _declared_channels(
+        arguments,
+        (declaration.daily_key, declaration.current_key, declaration.lifetime_key),
+        micros=declaration.micros,
+        scan_floor=declaration.scan_floor,
+    )
+    if unreadable is not None:
+        return _BudgetInputs(unreadable_key=unreadable)
     proposed, current, lifetime = resolved
-    if pattern_fallback and declares_paths(
-        declaration.daily_key, declaration.lifetime_key
-    ):
-        # A PATH declaration raises the floor, it does not replace the scan
-        # (#527) — unconditionally, whatever it resolved. See
+    if pattern_fallback and declaration.scan_floor:
+        # A declaration mureo wrote itself, into a schema it does not own,
+        # raises the floor rather than replacing the scan (#527) —
+        # unconditionally, whatever it resolved. See
         # :func:`raise_to_scan_floor` for why the earlier "only when nothing
-        # resolved" boundary under-enforced. Flat KEY declarations are
-        # untouched: they keep replacing the scan exactly as they always have.
+        # resolved" boundary under-enforced. A plugin's own declaration, flat
+        # key or path, replaces the scan: it owns that vocabulary (#868).
         scanned = scan_budget_amount(arguments)
         if scanned.unreadable_key is not None:
             # An exhausted scan still fails closed even though the declaration
@@ -404,14 +430,12 @@ def _bid_inputs(
     so the fail-open default is preserved.
 
     ``declaration`` (the bid twin of #414) names a plugin tool's bid argument
-    keys. When given it REPLACES the built-in Meta/Google key scan for that
+    keys or paths and REPLACES the built-in Meta/Google key scan for that
     tool — the plugin owns its argument vocabulary, so a stray ``bid_amount``
-    field cannot false-trip a cap. Unlike budgets there are no caller-supplied
-    convention keys, so a declaration replaces the whole bid scan. Declared keys
-    feed the SAME fail-closed logic as the built-in scan via
-    :func:`_declared_amount`: a present-but-unreadable declared key returns
-    :data:`_UNREADABLE`, collapsing into :attr:`_BidInputs.unreadable_key` so
-    the caller denies once — no second comparison path.
+    cannot false-trip a cap, and with no caller-supplied convention keys it
+    replaces the whole bid scan. Declared keys go through
+    :func:`_declared_channels`, so a present-but-unreadable one collapses into
+    :attr:`_BidInputs.unreadable_key` and the caller denies once.
 
     ``minor_unit_divisor`` (#783) is the budget twin's: it converts Meta's
     minor-unit ``bid_amount`` into currency units on the BUILT-IN path, so
@@ -442,19 +466,17 @@ def _bid_inputs(
                 (bid_amount, cpc_bid), scanned.value
             )
         return _BidInputs(bid_amount=bid_amount, cpc_bid=cpc_bid)
-    resolved: list[float | None] = []
-    for key in (declaration.bid_amount_key, declaration.cpc_bid_key):
-        declared = _declared_amount(arguments, key, micros=declaration.micros)
-        if isinstance(declared, _Unreadable):
-            return _BidInputs(unreadable_key=unreadable_key_label(declared, key))
-        resolved.append(declared)
+    resolved, unreadable = _declared_channels(
+        arguments,
+        (declaration.bid_amount_key, declaration.cpc_bid_key),
+        micros=declaration.micros,
+        scan_floor=declaration.scan_floor,
+    )
+    if unreadable is not None:
+        return _BidInputs(unreadable_key=unreadable)
     bid_amount, cpc_bid = resolved
-    if pattern_fallback and declares_paths(
-        declaration.bid_amount_key, declaration.cpc_bid_key
-    ):
-        # The bid twin of the floor merge in :func:`_budget_inputs` (#527): a
-        # mureo-declared PATH into a bridged schema never checks less than the
-        # best-effort scan alone would have.
+    if pattern_fallback and declaration.scan_floor:
+        # Bid twin of the scan-floor merge in :func:`_budget_inputs` (#527).
         scanned = scan_bid_amount(arguments)
         if scanned.unreadable_key is not None:
             return _BidInputs(unreadable_key=scanned.unreadable_key)

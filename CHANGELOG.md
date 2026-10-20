@@ -1,5 +1,36 @@
 ## [Unreleased]
 
+### Added
+
+- **Plugin budget / bid declarations accept nested argument paths**
+  (#868). A `_meta.mureo.budget` / `_meta.mureo.bid` proposal channel
+  (`daily`, `lifetime`, `bid_amount`, `cpc_bid`) can name a path in the
+  `ArgumentPaths` syntax (`body.daily_budget_micros`, `body.items[].budget`,
+  `body.budgets.*.amount`) or a list of alternative paths, so a tool that
+  takes the platform's request object under one argument gets its
+  `## Guardrails` caps without a gate of its own; the path replaces the
+  built-in scan exactly as a flat key does. `BudgetDeclaration` /
+  `BidDeclaration` gain a `scan_floor` field for the scan-as-floor
+  behaviour. For a plugin declaration, a path that reaches an object or an
+  array makes the gate deny. See `docs/plugin-authoring.md`.
+
+### Changed
+
+- **A flat `_meta` key containing `.`, `[`, `]`, `*` or whitespace is now
+  read as a nested path** (#868). A malformed one (`"items[0]"`, `"a["`,
+  `"x]"`, inner whitespace such as `"body. daily"`) now rejects the whole
+  declaration and the tool falls back to the pattern scan, where before it
+  was accepted as a flat key that matched nothing. A key that is
+  well-formed as a path (`"daily": "budget.daily"`) compiles as a path and
+  is still matched literally against a top-level argument of that exact
+  name, so an existing declaration for an argument really named with a `.`
+  keeps its cap. Migration: none for a well-formed key; a malformed one must
+  become a valid path or a plain key name.
+- **`mureo.policy.declarations.declares_paths` was removed** (#868); the
+  scan-floor behaviour it selected is now the explicit `scan_floor` field
+  on `BudgetDeclaration` / `BidDeclaration`, set only by mureo's own bridged
+  money table.
+
 ## [0.28.1] - 2026-10-19
 
 ### Fixed
