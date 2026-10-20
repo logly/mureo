@@ -21,7 +21,10 @@ from pathlib import Path
 
 import pytest
 
-from mureo.core.skills.parser import parse_skill_md  # noqa: E402 — RED-phase
+from mureo.core.skills.parser import (  # noqa: E402 — RED-phase
+    MAX_SKILL_FILE_BYTES,
+    parse_skill_md,
+)
 
 # Repo root is three parents above this test file:
 # tests/core/skills/test_existing_skills_parse.py
@@ -112,4 +115,24 @@ def test_shipped_skill_md_metadata_captured_in_extra(skill_path: Path) -> None:
         f"{skill_path.parent.name}: expected a top-level 'metadata' key "
         f"in extra (forward-compat preservation), got keys "
         f"{sorted(entry.extra.keys())}"
+    )
+
+
+@pytest.mark.parametrize(
+    "skill_path",
+    _SHIPPED_SKILL_FILES,
+    ids=[p.parent.name for p in _SHIPPED_SKILL_FILES],
+)
+def test_shipped_skill_md_fits_the_size_limit_with_crlf(skill_path: Path) -> None:
+    """A Windows checkout turns every LF into CRLF; the file must still parse.
+
+    The parser rejects files over :data:`MAX_SKILL_FILE_BYTES` before reading
+    them, so a file that fits only with LF line endings fails on Windows CI
+    alone. Checked here so the overrun shows up on every platform.
+    """
+    data = skill_path.read_bytes()
+    crlf_size = len(data) + data.count(b"\n") - data.count(b"\r\n")
+    assert crlf_size <= MAX_SKILL_FILE_BYTES, (
+        f"{skill_path.parent.name}/SKILL.md is {crlf_size} bytes with CRLF line "
+        f"endings; the limit is {MAX_SKILL_FILE_BYTES}"
     )

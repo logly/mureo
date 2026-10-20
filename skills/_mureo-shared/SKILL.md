@@ -497,34 +497,12 @@ All tools return structured JSON via `TextContent`. The format depends on the to
 ### Success Response
 
 ```json
-{
-  "campaigns": [
-    {
-      "campaign_id": "12345",
-      "name": "Brand Search",
-      "status": "ENABLED",
-      "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
-      "daily_budget": 5000.0
-    }
-  ]
-}
+{"campaigns": [{"campaign_id": "12345", "name": "Brand Search", "status": "ENABLED", "daily_budget": 5000.0}]}
 ```
 
 ### Error Response
 
-A platform / API failure is plain text, not JSON:
-
-```text
-API error: <curated message>
-```
-
-A refusal or failure a tool returns as JSON is the shared envelope:
-
-```json
-{"status": "refused", "error": "tracking_preflight_failed", "detail": "The ad was NOT created. ...", "findings": [...]}
-```
-
-`status` is `refused` (mureo declined before touching the platform) or `error`; `error` is a stable code to branch on, `detail` the operator-facing text; extra keys may sit beside them.
+A platform failure is the text `API error: <message>`; a refusal or failure returned as JSON is `{"status": "refused" | "error", "error": "<code>", "detail": "<text>", ...}` (branch on `error`).
 
 ### Authentication Error
 
