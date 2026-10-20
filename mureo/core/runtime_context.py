@@ -29,16 +29,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
-from importlib.metadata import entry_points
+from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from mureo.core.knowledge_store import FilesystemKnowledgeStore, KnowledgeStore
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
-from mureo.core.state_store import FilesystemStateStore, StateStore
 from mureo.core.throttle_store import ProcessLocalThrottleStore, ThrottleStore
 
 if TYPE_CHECKING:
+    from mureo.core.state_store import StateStore
     from mureo.throttle import ThrottleConfig
 
 
@@ -46,6 +46,11 @@ if TYPE_CHECKING:
 #: can compare against the literal without hard-coding it; pinned by
 #: :mod:`tests.core.test_runtime_context` so the value cannot drift.
 DEFAULT_WORKSPACE_ID = "default"
+
+#: Object reference of the default ``StateStore`` implementation, resolved the
+#: way an entry point is. ``mureo.core`` must not import ``mureo.context``
+#: at load time (the file-format layer sits above it, #863).
+DEFAULT_STATE_STORE_REF: Final[str] = "mureo.context.state_store:FilesystemStateStore"
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,16 @@ class RuntimeContext:
 # ---------------------------------------------------------------------------
 
 
+def _load_default_state_store() -> Callable[..., StateStore]:
+    """Resolve :data:`DEFAULT_STATE_STORE_REF` with the entry-point loader."""
+    loaded: Callable[..., StateStore] = EntryPoint(
+        name="state_store",
+        value=DEFAULT_STATE_STORE_REF,
+        group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP,
+    ).load()
+    return loaded
+
+
 def default_runtime_context(
     *,
     workspace: Path | None = None,
@@ -114,15 +129,20 @@ def default_runtime_context(
     ``workspace_knowledge_path`` to enable it.
 
     Note: ``workspace`` here is the state-store directory (passed
-    through to :class:`FilesystemStateStore`), not the
+    through to :class:`~mureo.context.state_store.FilesystemStateStore`), not the
     :attr:`RuntimeContext.workspace_id` identifier. The factory fixes
     ``workspace_id`` at :data:`DEFAULT_WORKSPACE_ID`; callers that need
     a different identifier should construct the ``RuntimeContext``
     directly rather than going through this factory.
+
+    The state store is the one place ``mureo.core`` reaches up to
+    ``mureo.context``: by object reference
+    (:data:`DEFAULT_STATE_STORE_REF`), resolved here at call time, so the
+    import graph stays acyclic (#863).
     """
     return RuntimeContext(
         secret_store=FilesystemSecretStore(path=credentials_path),
-        state_store=FilesystemStateStore(workspace=workspace),
+        state_store=_load_default_state_store()(workspace=workspace),
         knowledge_store=FilesystemKnowledgeStore(
             operator_path=operator_knowledge_path,
             workspace_path=workspace_knowledge_path,

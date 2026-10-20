@@ -86,6 +86,14 @@ from mureo.context.platform_guards import (
     warn_on_duplicate_accounts,
 )
 from mureo.context.state_codec import parse_state, render_state
+from mureo.core.actor import current_call_reason, normalize_reason
+from mureo.core.clock import server_now_iso
+from mureo.core.display_contract import (
+    validate_action_log_display,
+    validate_display_contract,
+)
+from mureo.core.metrics_windows import reject_non_canonical_metrics_window
+from mureo.core.report_summary import validate_report_summary
 from mureo.fsutil import file_lock
 
 #: The retention trim's old private name, kept as an alias (#710).
@@ -522,14 +530,6 @@ def append_action_log(
             invalid ``expected``, and for an ``entry.decision_id`` that names
             no decision or a rejected / deferred one.
     """
-    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
-    # ``state_store`` -> this module, so a module-level import would be a cycle
-    # (the same reason ``metrics_windows`` and ``report_summary`` are imported
-    # inside their callers below).
-    from mureo.core.actor import current_call_reason, normalize_reason
-    from mureo.core.clock import server_now_iso
-    from mureo.core.display_contract import validate_action_log_display
-
     # Outside the lock: the dashboard's one-line rendering is a WRITE rule, so
     # this is the moment to refuse it. An entry already on disk is history and
     # is read back exactly as it is.
@@ -592,9 +592,6 @@ def begin_batch(path: Path, *, label: str) -> BatchRecord:
         ValueError: ``label`` is blank, or a bound ``decision_id`` is not
             linkable.
     """
-    from mureo.core.actor import current_call_reason, normalize_reason
-    from mureo.core.clock import server_now_iso
-
     cleaned = label.strip() if isinstance(label, str) else ""
     if not cleaned:
         raise ValueError("label must be a non-empty string")
@@ -699,8 +696,6 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
         ValueError: if ``summary`` states a narrative over the bound, or a
             headline figure that is not a number.
     """
-    from mureo.core.report_summary import validate_report_summary
-
     validate_report_summary(summary)
     validate_report_kind_path(report)
 
@@ -826,10 +821,6 @@ def set_display(
             vocabulary, states prose where a figure belongs, or states a
             section without a ``source``.
     """
-    # Imported lazily — the ``mureo.core`` -> ``mureo.context.state`` cycle
-    # again (see ``set_platform_metrics``).
-    from mureo.core.display_contract import validate_display_contract
-
     written_at = _now_iso()
     supplied: dict[str, Any] = {
         key: value
@@ -939,11 +930,6 @@ def set_platform_metrics(
             holds (see
             :func:`mureo.context.platform_guards.guard_platform_entry_write`).
     """
-    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
-    # ``state_store`` -> this module, so a module-level import would be a
-    # cycle (same reason as ``platform_guards``).
-    from mureo.core.metrics_windows import reject_non_canonical_metrics_window
-
     # Outside the lock and before the file is opened: a rejected write must
     # leave the document exactly as it was, including its ``last_synced_at``.
     if metrics_period is not None:

@@ -97,7 +97,8 @@ def set_ops_history_enabled(path: Path, enabled: Any) -> StateDocument:
     """
     if not isinstance(enabled, bool):
         raise ValueError(f"enabled must be a boolean; got {enabled!r}")
-    # Lazy, for the import cycle ``mureo.context.batch`` documents.
+    # Lazy: ``mureo.context.state`` ↔ ``mureo.context.settings`` cycle inside
+    # ``context`` (#863, later stage).
     from mureo.context.state import _locked_state_mutation, read_state_file
 
     current_doc = read_state_file(path)

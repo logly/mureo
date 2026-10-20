@@ -19,11 +19,11 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from mureo.context.state_store import FilesystemStateStore
 from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
 )
-from mureo.core.state_store import FilesystemStateStore
 from mureo.web.creative_gallery import list_creative_runs, resolve_gallery_image
 
 if TYPE_CHECKING:

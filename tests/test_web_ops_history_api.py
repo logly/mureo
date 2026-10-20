@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from mureo.core.state_store import FilesystemStateStore
+from mureo.context.state_store import FilesystemStateStore
 from mureo.web.server import ConfigureWizard
 
 if TYPE_CHECKING:

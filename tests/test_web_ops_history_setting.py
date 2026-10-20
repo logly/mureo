@@ -26,7 +26,7 @@ import pytest
 
 from mureo.context.settings import ops_history_enabled
 from mureo.context.state import read_state_file
-from mureo.core.state_store import FilesystemStateStore
+from mureo.context.state_store import FilesystemStateStore
 from mureo.web.ops_history_setting import (
     OpsHistorySettingError,
     read_setting,

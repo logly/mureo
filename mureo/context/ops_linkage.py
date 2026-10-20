@@ -64,6 +64,7 @@ from mureo.context.ops_fields import (
     project_metrics,
 )
 from mureo.context.ops_intent import current_ops_intent
+from mureo.core import actor
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -165,10 +166,7 @@ def check_linkable(doc: StateDocument, decision_id: str) -> str:
 
 
 def _actor() -> tuple[str | None, str | None]:
-    # Lazy, for the ``mureo.core`` import cycle ``mureo.context.state`` documents.
-    from mureo.core.actor import client_info, session_id
-
-    return session_id(), client_info()
+    return actor.session_id(), actor.client_info()
 
 
 def _applied(request: LinkRequest) -> dict[str, Any] | None:
@@ -510,7 +508,8 @@ def record_call_decision(
     Raises:
         ValueError: ``request.explicit_id`` is not linkable.
     """
-    # Lazy, for the import cycle ``mureo.context.batch`` documents.
+    # Lazy: ``mureo.context.state`` ↔ ``mureo.context.ops_linkage`` cycle inside
+    # ``context`` (#863, later stage).
     from mureo.context.state import _locked_state_mutation
 
     linked: list[str] = []

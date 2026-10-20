@@ -41,10 +41,8 @@ in both).
 
 Dependency-free beyond stdlib and the frozen ``mureo.context.models``
 dataclasses — the same discipline :mod:`mureo.context.platform_accounts`
-keeps, and for the same reason: ``mureo.core.__init__`` ->
-``runtime_context`` -> ``state_store`` -> ``mureo.context.state`` is a real
-import chain, so a module inside it that reached back into ``mureo.core``
-would close the cycle.
+keeps, and for the same reason: every consumer can import it without an
+import cycle.
 """
 
 from __future__ import annotations

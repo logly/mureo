@@ -3333,7 +3333,7 @@ class TestWholeDocumentDuplicateWarning:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """The observed producer writes a whole document through the store."""
-        from mureo.core.state_store import FilesystemStateStore
+        from mureo.context.state_store import FilesystemStateStore
 
         store = FilesystemStateStore(workspace=tmp_path)
         with caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"):

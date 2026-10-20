@@ -39,6 +39,7 @@ from mureo.context.state import (
     upsert_campaign,
     write_state_file,
 )
+from mureo.context.state_store import FilesystemStateStore
 from mureo.context.strategy import (
     add_strategy_entry,
     parse_strategy,
@@ -99,4 +100,6 @@ __all__ = [
     "render_state",
     "upsert_campaign",
     "write_state_file",
+    # default StateStore (#863)
+    "FilesystemStateStore",
 ]

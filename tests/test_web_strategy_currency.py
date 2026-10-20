@@ -29,12 +29,12 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from mureo.context.models import StrategyEntry
+from mureo.context.state_store import FilesystemStateStore
 from mureo.context.strategy import (
     mutate_strategy_file,
     parse_strategy,
     read_strategy_file,
 )
-from mureo.core.state_store import FilesystemStateStore
 from mureo.policy.strategy_gate import guardrails_from_strategy_text
 from mureo.web.server import ConfigureWizard
 from mureo.web.strategy_currency import (

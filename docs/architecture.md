@@ -209,6 +209,7 @@ mureo/
 │   │                        #   daily days and every version of every report kind
 │   ├── platform_accounts.py # One ad account, one platform key — the shared account-id join
 │   ├── platform_guards.py   # Write-time guards over that join (refuse / warn on duplicates)
+│   ├── state_store.py       # FilesystemStateStore — the default StateStore (STATE.json / STRATEGY.md)
 │   └── errors.py            # Context-specific exceptions
 ├── cli/                     # Typer CLI (setup + auth + rollback inspection; ad operations are via MCP)
 │   ├── main.py              # Entry point (mureo command) — registers all 12 sub-command groups
@@ -263,6 +264,10 @@ mureo/
 │   ├── tools_learning.py                 # mureo_learning_insights_get / mureo_consult_advisor
 │   └── tools_creative_studio.py          # creative_studio_* (generate / edit / compose)
 ├── core/                    # Provider registry + shared entry-point plumbing (mureo.native_skills group)
+│                            #   and the RuntimeContext store Protocols (StateStore, ...). core never
+│                            #   imports context (#863): the filesystem StateStore default lives in
+│                            #   mureo.context.state_store, and runtime_context reaches it by object
+│                            #   reference (DEFAULT_STATE_STORE_REF); mureo.core still exports the name
 ├── policy/                  # Deterministic policy gate (STRATEGY.md → allow / deny / require-approval)
 ├── providers/              # Official-MCP provider catalog (Google Ads / Meta / GA4 install kits)
 ├── learning/                # /learn knowledge base + advisor federation client

@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.context.state_store import FilesystemStateStore
 from mureo.core.runtime_context import get_runtime_context
 
 if TYPE_CHECKING:
@@ -228,8 +229,6 @@ def _active_state_store() -> StateStore:
         return get_runtime_context().state_store
     except Exception:  # noqa: BLE001 — a broken factory must not 500 the reports view
         logger.exception("runtime context factory failed; using default state store")
-        from mureo.core.state_store import FilesystemStateStore
-
         return FilesystemStateStore()
 
 

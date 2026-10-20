@@ -55,6 +55,7 @@ The mureo plugin ABI consists of exactly the following:
 | Provider name regex (`^[a-z][a-z0-9_]*$`) | `mureo.core.providers.base` | Stable |
 | Skill name regex (`^_?[a-z][a-z0-9_-]*$`) | `mureo.core.skills.models` | Stable |
 | Module-level functions: `discover_providers`, `get_provider`, `list_providers_by_capability`, `register_provider_class`, `parse_capability`, `parse_capabilities`, `validate_provider`, `match_skills`, `providers_for_skill`, `parse_skill_md`, `discover_skills` | `mureo.core.providers`, `mureo.core.skills` | Stable signatures and semantics |
+| `mureo.core` re-exports (its `__all__`). `StateStore` is the Protocol in `mureo.core.state_store`; its default implementation `FilesystemStateStore` lives in `mureo.context.state_store` since #863. `mureo.core.FilesystemStateStore` and `mureo.core.state_store.FilesystemStateStore` still resolve to that same class (on access, so importing `mureo.core` does not import `mureo.context`) and are covered by the same commitment as the other `mureo.core` re-exports. | `mureo.core`, `mureo.core.state_store`, `mureo.context.state_store` | Stable (renames and removals need a deprecation cycle) |
 
 Anything not listed above is an implementation detail and may change
 without notice.

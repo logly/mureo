@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from mureo.context.platform_accounts import account_ids_match
 from mureo.context.state_codec import parse_state
+from mureo.core import runtime_context
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,16 +47,13 @@ def _workspace_state_path() -> Path:
     (``store.state_path`` → ``store.workspace / STATE.json``) via the runtime
     context, so the conversion override is read from the same file it is
     written to — even under an agency / alternate ``StateStore`` where the
-    workspace diverges from the process cwd. ``get_runtime_context`` is
-    imported lazily to avoid an import cycle (``runtime_context`` builds on
-    ``context``). Any failure falls back to the cwd convention.
+    workspace diverges from the process cwd. Any failure falls back to the
+    cwd convention.
     """
     from pathlib import Path as _Path
 
     try:
-        from mureo.core.runtime_context import get_runtime_context
-
-        store = get_runtime_context().state_store
+        store = runtime_context.get_runtime_context().state_store
         attr = getattr(store, "state_path", None)
         if attr is not None:
             return _Path(attr)

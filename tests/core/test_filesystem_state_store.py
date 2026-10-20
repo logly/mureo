@@ -1,4 +1,4 @@
-"""Tests for ``mureo.core.state_store.FilesystemStateStore`` — the
+"""Tests for ``mureo.context.state_store.FilesystemStateStore`` — the
 default in-process implementation that persists ``STATE.json`` /
 ``STRATEGY.md`` to a workspace directory (today: CWD).
 
@@ -15,8 +15,9 @@ from pathlib import Path
 import pytest
 
 from mureo.context.models import ActionLogEntry, StateDocument, StrategyEntry
+from mureo.context.state_store import FilesystemStateStore
 from mureo.core.actor import session_id
-from mureo.core.state_store import FilesystemStateStore, StateStore
+from mureo.core.state_store import StateStore
 
 
 @pytest.mark.unit

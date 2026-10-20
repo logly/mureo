@@ -55,6 +55,8 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.context.errors import ContextFileError
 from mureo.context.models import DAILY_DATE_KEY_PATTERN
+from mureo.core import actor
+from mureo.core.rotation import max_append_bytes, rotate_if_over, sibling_files
 from mureo.fsutil import file_lock, lock_path_for, secure_chmod
 
 if TYPE_CHECKING:
@@ -464,20 +466,14 @@ def append_report_history(state_path: Path, kind: str, summary: dict[str, Any]) 
     Raises:
         ValueError: ``kind`` cannot name a file.
     """
-    # Imported here, not at module scope: ``mureo.core.__init__`` reaches
-    # ``mureo.context.state``, which imports this module, so a module-level
-    # import would close a cycle.
-    from mureo.core.actor import client_info, session_id
-    from mureo.core.rotation import max_append_bytes, rotate_if_over
-
     safe_kind = validate_report_kind_path(kind)
     entry: dict[str, Any] = {
         "v": ARCHIVE_VERSION,
         "kind": safe_kind,
         "recorded_at": _now_iso(),
-        "session_id": session_id(),
+        "session_id": actor.session_id(),
     }
-    client = client_info()
+    client = actor.client_info()
     if client is not None:
         entry["client"] = client
     entry["summary"] = summary
@@ -555,8 +551,6 @@ def read_report_history(
     Raises:
         ValueError: ``kind`` cannot name a file, or ``limit`` is below 1.
     """
-    from mureo.core.rotation import sibling_files
-
     if limit < 1:
         raise ValueError(f"limit must be at least 1; got {limit}")
     path = (

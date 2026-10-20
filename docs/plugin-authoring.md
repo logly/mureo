@@ -3202,7 +3202,7 @@ free-text notices the runtime wants the agent to read:
 | Field | Protocol | File-backed default |
 |---|---|---|
 | `secret_store` | `mureo.core.secret_store.SecretStore` | `FilesystemSecretStore` — `~/.mureo/credentials.json` |
-| `state_store` | `mureo.core.state_store.StateStore` | `FilesystemStateStore` — CWD-relative `STATE.json` / `STRATEGY.md` |
+| `state_store` | `mureo.core.state_store.StateStore` | `FilesystemStateStore` (`mureo.context.state_store`; also exported by `mureo.core`) — CWD-relative `STATE.json` / `STRATEGY.md` |
 | `knowledge_store` | `mureo.core.knowledge_store.KnowledgeStore` | `FilesystemKnowledgeStore` — the `/learn` knowledge file |
 | `throttle_store` | `mureo.core.throttle_store.ThrottleStore` | `ProcessLocalThrottleStore` |
 | `workspace_id` | `str` | `DEFAULT_WORKSPACE_ID` (`"default"`) |

@@ -633,7 +633,7 @@ class TestConventionReadFailures:
     ) -> None:
         """Taken from the store, not rebuilt, so the two cannot drift."""
         import mureo.mcp._tracking_preflight as preflight
-        from mureo.core.state_store import FilesystemStateStore
+        from mureo.context.state_store import FilesystemStateStore
 
         store = FilesystemStateStore(workspace=tmp_path)
         moved = tmp_path / "elsewhere" / "STRATEGY.md"

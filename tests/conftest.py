@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._measurement_child import StandaloneSweep
+
 
 @pytest.fixture(autouse=True)
 def _restore_mureo_package_logger():
@@ -165,3 +167,10 @@ def only_when_asked_for():
     """
     if os.environ.get(EXHAUSTIVE_TESTS_ENV) != EXHAUSTIVE_TESTS_ON:
         pytest.skip(f"exhaustive; run with: {EXHAUSTIVE_TESTS_ENV}=1 pytest -m slow")
+
+
+@pytest.fixture(scope="session")
+def standalone_sweep() -> StandaloneSweep:
+    """One sweeper for the session, so every standalone-import lane shares its
+    children (``test_platform_submodule_imports.py``, ``test_import_graph.py``)."""
+    return StandaloneSweep()

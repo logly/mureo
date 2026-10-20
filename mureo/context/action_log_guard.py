@@ -8,7 +8,7 @@ appends and writes inside one lock.
 The whole-document writers cannot be held to it the same way. A host
 restoring a backup, an agency sync assembling its own
 :class:`~mureo.context.models.StateDocument`,
-:meth:`mureo.core.state_store.FilesystemStateStore.write_state` and
+:meth:`mureo.context.state_store.FilesystemStateStore.write_state` and
 :func:`mureo.context.platform_repair.apply_state_file_repairs` all hand
 :func:`~mureo.context.state.write_state_file` a complete document, and a
 stale or partial one shortens the record with no trace that it did.

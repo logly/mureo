@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from mureo.core import actor
+
 if TYPE_CHECKING:
     from mureo.context.models import ActionLogEntry
 
@@ -41,15 +43,11 @@ def stamp_actor(entry: ActionLogEntry, reason: str | None) -> ActionLogEntry:
     the lock (bounded, and scrubbed where it is caller-supplied), so this is
     the value that has crossed the write boundary.
     """
-    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
-    # ``state_store`` -> ``mureo.context.state``, which imports this module, so
-    # a module-level import would be a cycle. Same reason as the lazy import
-    # this function was extracted from.
-    from mureo.core.actor import client_info, session_id
-
     return replace(
         entry,
         reason=reason,
-        session_id=entry.session_id if entry.session_id is not None else session_id(),
-        client=entry.client if entry.client is not None else client_info(),
+        session_id=(
+            entry.session_id if entry.session_id is not None else actor.session_id()
+        ),
+        client=entry.client if entry.client is not None else actor.client_info(),
     )

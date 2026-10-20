@@ -131,6 +131,12 @@ from mureo.context.platform_accounts import (
     normalize_account_id,
     platform_keys_for_account,
 )
+from mureo.core.platform_keys import (
+    BUILTIN_PLATFORM_DISPLAY_NAMES,
+    PLUGIN_PLATFORM_PREFIX,
+    is_plugin_platform_key,
+)
+from mureo.core.providers.registry import PROVIDERS_ENTRY_POINT_GROUP
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -193,14 +199,6 @@ def reject_unusable_platform_key(platform: str) -> None:
     :func:`reject_unknown_platform_key`'s question (#609). Create-only; see
     :func:`guard_platform_entry_write`.
     """
-    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context`` ->
-    # ``state_store`` -> ``mureo.context.state``, which imports this module —
-    # a module-level import here would be a cycle.
-    from mureo.core.platform_keys import (
-        PLUGIN_PLATFORM_PREFIX,
-        is_plugin_platform_key,
-    )
-
     if not platform.strip():
         raise ValueError("platform must be a non-empty platform key")
     if platform != platform.strip():
@@ -250,7 +248,6 @@ def _provider_entry_points() -> tuple[Any, ...] | None:
     from importlib.metadata import entry_points
 
     from mureo.analytics.registry import ANALYTICS_ENTRY_POINT_GROUP
-    from mureo.core.providers.registry import PROVIDERS_ENTRY_POINT_GROUP
 
     found: list[Any] = []
     for group in (PROVIDERS_ENTRY_POINT_GROUP, ANALYTICS_ENTRY_POINT_GROUP):
@@ -360,12 +357,6 @@ def reject_unknown_platform_key(platform: str) -> None:
     Create-only, and fails open on an unreadable environment; see this module's
     docstring and :func:`guard_platform_entry_write`.
     """
-    from mureo.core.platform_keys import (
-        BUILTIN_PLATFORM_DISPLAY_NAMES,
-        PLUGIN_PLATFORM_PREFIX,
-        is_plugin_platform_key,
-    )
-
     if platform in BUILTIN_PLATFORM_DISPLAY_NAMES or is_plugin_platform_key(platform):
         return
     installed = installed_platform_names()
