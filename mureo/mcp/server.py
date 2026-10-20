@@ -1005,7 +1005,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
             # mutation did not change platform state, so promoting it would
             # log a phantom action (and, via a declared reversal, leave a
             # phantom executable rollback). Mirrors native_reversal's
-            # _is_error_result skip for built-in mutations. The jsonl audit
+            # is_error_result skip for built-in mutations. The jsonl audit
             # (above) still captures the attempt regardless.
             if record_mutations and not is_error_result(result):
                 # Prefer the runtime-correct reversal captured before the

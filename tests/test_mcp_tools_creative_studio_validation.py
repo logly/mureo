@@ -58,8 +58,9 @@ async def test_generate_visual_null_n_returns_error_envelope(
         "creative_studio_generate_visual", {"prompt": "a cat", "n": None}
     )
     payload = _payload(result)
-    assert "error" in payload
-    assert "n must be an integer" in payload["error"]
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
+    assert "n must be an integer" in payload["detail"]
 
 
 @pytest.mark.unit
@@ -71,7 +72,8 @@ async def test_generate_visual_non_numeric_n_returns_error_envelope(
     result = await mod.handle_tool(
         "creative_studio_generate_visual", {"prompt": "a cat", "n": "lots"}
     )
-    assert "error" in _payload(result)
+    assert _payload(result)["status"] == "error"
+    assert _payload(result)["error"] == "invalid_arguments"
 
 
 @pytest.mark.unit
@@ -84,7 +86,8 @@ async def test_generate_visual_out_of_range_n_rejected(
     result = await mod.handle_tool(
         "creative_studio_generate_visual", {"prompt": "a cat", "n": bad_n}
     )
-    assert "error" in _payload(result)
+    assert _payload(result)["status"] == "error"
+    assert _payload(result)["error"] == "invalid_arguments"
 
 
 @pytest.mark.unit
@@ -98,8 +101,9 @@ async def test_generate_visual_unknown_aspect_returns_error_envelope(
         {"prompt": "a cat", "aspect": "diagonal"},
     )
     payload = _payload(result)
-    assert "error" in payload
-    assert "diagonal" in payload["error"]
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
+    assert "diagonal" in payload["detail"]
 
 
 @pytest.mark.unit
@@ -153,8 +157,9 @@ async def test_compose_explicit_empty_formats_rejected(
         {"visual_path": str(visual), "headline": "H", "cta": "C", "formats": []},
     )
     payload = _payload(result)
-    assert "error" in payload
-    assert "non-empty" in payload["error"]
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
+    assert "non-empty" in payload["detail"]
 
 
 @pytest.mark.unit

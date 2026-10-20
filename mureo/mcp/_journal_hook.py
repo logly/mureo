@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp import journal
-from mureo.mcp._helpers import exception_text, is_error_result
+from mureo.mcp._helpers import API_ERROR_CODE, exception_text, failure_of
 from mureo.mcp._reason_param import split_call_reason
 from mureo.rollback.executor import is_rollback_dispatch_active
 
@@ -268,15 +268,25 @@ class JournalledCall:
     def completed(self, result: list[Any]) -> list[Any]:
         """Classify a returned result and pass it straight through.
 
-        A platform refusal arrives as ordinary content in the canonical
-        ``API error:`` envelope — the same signal that stops
-        ``action_log`` promotion — so the journal must not read it as a
-        success for a call that changed nothing. The result BODY is never
-        stored; only this verdict and the envelope's own text.
+        A failure can arrive as ordinary content — the ``API error:`` text,
+        the ``auth_error`` JSON, or the ``refused`` / ``error`` JSON of
+        :func:`mureo.mcp._helpers._failure_result` — the same signal that
+        stops ``action_log`` promotion, so the journal must not read it as
+        a success for a call that changed nothing (#862). A ``refused``
+        envelope is recorded as ``refused``, every other one as
+        ``platform_error``. The result BODY is never stored: the ``API
+        error:`` text keeps its own text as the reason, and a JSON
+        envelope is reduced to ``"<code>: <detail>"``.
         """
-        if is_error_result(result):
-            self.outcome = "platform_error"
-            self.reason = getattr(result[0], "text", "")
+        failure = failure_of(result)
+        if failure is not None:
+            self.outcome = (
+                "refused" if failure.status == "refused" else "platform_error"
+            )
+            api_text = failure.status == "error" and failure.code == API_ERROR_CODE
+            self.reason = (
+                failure.detail if api_text else f"{failure.code}: {failure.detail}"
+            )
         return result
 
     def flush(self) -> None:

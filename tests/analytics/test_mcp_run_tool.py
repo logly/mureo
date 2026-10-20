@@ -296,7 +296,10 @@ async def test_module_failure_is_isolated_into_error_status() -> None:
     )
     payload = json.loads(content.text)
     assert payload["status"] == "error"
+    assert payload["error"] == "module_failed"
     assert payload["error_type"] == "RuntimeError"
+    assert payload["platform"] == "fake_platform"
+    assert payload["capability"] == "detect_anomalies"
     assert "credentials" in payload["detail"]
 
 
@@ -325,6 +328,7 @@ async def test_non_serializable_result_becomes_error_not_raw_exception() -> None
     )
     payload = json.loads(content.text)
     assert payload["status"] == "error"
+    assert payload["error"] == "module_failed"
     assert payload["error_type"] == "TypeError"
 
 

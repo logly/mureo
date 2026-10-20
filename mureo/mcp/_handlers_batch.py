@@ -23,7 +23,12 @@ from mureo.context.batch import (
     stale_batch_warning,
 )
 from mureo.context.state import begin_batch, end_batch, read_state_file
-from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
+from mureo.mcp._helpers import (
+    _failure_result,
+    _json_result,
+    _require,
+    resolve_workspace_path,
+)
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -52,7 +57,7 @@ async def handle_batch_begin(arguments: dict[str, Any]) -> list[TextContent]:
     try:
         record = begin_batch(path, label=label)
     except BatchError as exc:
-        return _json_result({"status": "refused", "error": str(exc)})
+        return _failure_result("batch_refused", str(exc), refused=True)
     return _json_result({"status": "open", **_record_to_dict(record)})
 
 
@@ -70,7 +75,7 @@ async def handle_batch_end(arguments: dict[str, Any]) -> list[TextContent]:
     try:
         record, indices = end_batch(path)
     except BatchError as exc:
-        return _json_result({"status": "refused", "error": str(exc)})
+        return _failure_result("batch_refused", str(exc), refused=True)
     doc = read_state_file(path)
     return _json_result(
         {

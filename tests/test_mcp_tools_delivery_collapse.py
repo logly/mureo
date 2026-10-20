@@ -139,7 +139,8 @@ async def test_check_rejects_a_malformed_date() -> None:
         },
     )
 
-    assert "error" in payload
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
     assert payload["signals"] == []
 
 
@@ -275,8 +276,9 @@ async def test_diagnose_rejects_an_unknown_check_name() -> None:
         },
     )
 
-    assert "error" in payload
-    assert "vibes" in payload["error"]
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
+    assert "vibes" in payload["detail"]
 
 
 @pytest.mark.asyncio
@@ -298,8 +300,9 @@ async def test_diagnose_rejects_a_boolean_window() -> None:
         },
     )
 
-    assert "error" in payload
-    assert "timeline_days" in payload["error"]
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
+    assert "timeline_days" in payload["detail"]
 
 
 @pytest.mark.asyncio

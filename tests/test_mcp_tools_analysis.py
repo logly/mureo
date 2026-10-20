@@ -195,7 +195,9 @@ class TestAnomalyHandler:
             },
         )
         payload = json.loads(result[0].text)
-        assert "error" in payload and "active workspace" in payload["error"]
+        assert payload["status"] == "error"
+        assert payload["error"] == "invalid_arguments"
+        assert "active workspace" in payload["detail"]
 
     @pytest.mark.asyncio
     async def test_ctr_drop_detected_with_history(self, sandboxed_cwd: Path) -> None:
@@ -260,7 +262,8 @@ class TestAnomalyHandler:
             {"current": {"campaign_id": "C1", "cost": 0}, "state_file": "STATE.json"},
         )
         payload = json.loads(result[0].text)
-        assert "error" in payload
+        assert payload["status"] == "error"
+        assert payload["error"] == "invalid_arguments"
 
     @pytest.mark.asyncio
     async def test_min_baseline_entries_zero_refused(self, sandboxed_cwd: Path) -> None:

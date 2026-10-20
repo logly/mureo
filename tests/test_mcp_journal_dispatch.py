@@ -23,6 +23,7 @@ from mureo.core.policy import PolicyDecision, PolicyGate
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import ProviderEntry
 from mureo.mcp import journal
+from mureo.mcp._helpers import _auth_error_result, _failure_result
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -255,6 +256,110 @@ async def test_rollback_leg_is_flagged(log: Path) -> None:
         await handle_call_tool("rollback_plan_get", {"index": 0})
 
     assert _only(log)["rollback"] is True
+
+
+# ---------------------------------------------------------------------------
+# Failures a handler RETURNS instead of raising (#862)
+# ---------------------------------------------------------------------------
+
+
+async def test_a_tracking_preflight_refusal_is_recorded_as_refused(
+    log: Path,
+) -> None:
+    from mureo.mcp.server import handle_call_tool
+
+    refusal = _failure_result(
+        "tracking_preflight_failed",
+        "The ad was NOT created.",
+        refused=True,
+        findings=[{"code": "foreign_campaign_scheme"}],
+    )
+    handler = AsyncMock(return_value=refusal)
+    with patch("mureo.mcp.server.handle_rollback_tool", new=handler):
+        await handle_call_tool("rollback_apply", {"index": 0, "confirm": True})
+
+    record = _only(log)
+    assert record["outcome"] == "refused"
+    assert record["reason"] == "tracking_preflight_failed: The ad was NOT created."
+    # The result body (the findings) is never stored, only the verdict.
+    assert "foreign_campaign_scheme" not in json.dumps(record)
+
+
+async def test_a_rollback_apply_refusal_is_recorded_as_refused(
+    log: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real handler, refusing for want of a STATE.json, is not ``ok``."""
+    from mureo.core.runtime_context import reset_runtime_context
+    from mureo.mcp.server import handle_call_tool
+
+    monkeypatch.chdir(tmp_path)
+    reset_runtime_context()
+    try:
+        result = await handle_call_tool("rollback_apply", {"index": 0, "confirm": True})
+    finally:
+        reset_runtime_context()
+
+    payload = json.loads(result[0].text)
+    assert payload["status"] == "refused"
+    assert payload["error"] == "rollback_refused"
+    record = _only(log)
+    assert record["outcome"] == "refused"
+    assert record["reason"].startswith("rollback_refused: STATE.json not found")
+
+
+async def test_an_error_envelope_is_recorded_as_platform_error(log: Path) -> None:
+    from mureo.mcp.server import handle_call_tool
+
+    failure = _failure_result("rollback_dispatch_failed", "downstream tool failed")
+    handler = AsyncMock(return_value=failure)
+    with patch("mureo.mcp.server.handle_rollback_tool", new=handler):
+        await handle_call_tool("rollback_apply", {"index": 0, "confirm": True})
+
+    record = _only(log)
+    assert record["outcome"] == "platform_error"
+    assert record["reason"] == "rollback_dispatch_failed: downstream tool failed"
+
+
+async def test_an_auth_envelope_is_recorded_as_code_and_detail(log: Path) -> None:
+    """The auth envelope's reason is ``<cause>: <detail>``, not its raw JSON."""
+    from mureo.mcp.server import handle_call_tool
+
+    envelope = _auth_error_result("token_invalid", "the token has expired")
+    handler = AsyncMock(return_value=envelope)
+    with patch("mureo.mcp.server.handle_rollback_tool", new=handler):
+        await handle_call_tool("rollback_plan_get", {"index": 0})
+
+    record = _only(log)
+    assert record["outcome"] == "platform_error"
+    assert record["reason"] == "token_invalid: the token has expired"
+
+
+async def test_an_api_error_text_keeps_its_full_text_as_the_reason(
+    log: Path,
+) -> None:
+    from mureo.mcp.server import handle_call_tool
+
+    envelope = [TextContent(type="text", text="API error: QUOTA_EXCEEDED")]
+    handler = AsyncMock(return_value=envelope)
+    with patch("mureo.mcp.server.handle_rollback_tool", new=handler):
+        await handle_call_tool("rollback_plan_get", {"index": 0})
+
+    record = _only(log)
+    assert record["outcome"] == "platform_error"
+    assert record["reason"] == "API error: QUOTA_EXCEEDED"
+
+
+async def test_a_success_status_word_stays_ok(log: Path) -> None:
+    from mureo.mcp.server import handle_call_tool
+
+    body = [TextContent(type="text", text=json.dumps({"status": "open"}))]
+    handler = AsyncMock(return_value=body)
+    with patch("mureo.mcp.server.handle_rollback_tool", new=handler):
+        await handle_call_tool("rollback_plan_get", {"index": 0})
+
+    record = _only(log)
+    assert record["outcome"] == "ok"
+    assert "reason" not in record
 
 
 # ---------------------------------------------------------------------------

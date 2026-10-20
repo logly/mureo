@@ -3152,8 +3152,9 @@ method credential-lazily, and returns `status: ok` with a JSON-serialized
 - `no_analytics_module` — no module registered for that platform.
 - `capability_not_available` — module registered but does not advertise it
   (includes an `available_capabilities` list).
-- `error` — your method raised (or returned something unserializable); carries
-  `error_type` and `detail`. It is isolated here, never crashing the workflow.
+- `error` — your method raised (or returned something unserializable); the
+  shared failure envelope with `error: "module_failed"`, plus `error_type`
+  and `detail`. It is isolated here, never crashing the workflow.
 
 This is the **only** path skills use to run your analysis. You do not — and
 must not — ship a separate MCP tool to expose it (see below): implement the

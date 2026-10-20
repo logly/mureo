@@ -26,7 +26,12 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.context.errors import ContextFileError
 from mureo.context.state import read_state_file
-from mureo.mcp._helpers import _json_result, _require
+from mureo.mcp._helpers import (
+    _failure_result,
+    _json_result,
+    _require,
+    failure_of,
+)
 from mureo.rollback import (
     RollbackExecutionError,
     execute_rollback,
@@ -179,46 +184,45 @@ def _selector(arguments: dict[str, Any]) -> tuple[str, Any]:
 
 
 async def handle_plan_get(arguments: dict[str, Any]) -> list[TextContent]:
-    """Return the reversal plan for one entry, or for a whole batch, as JSON."""
+    """Return the reversal plan for one entry, or for a whole batch, as JSON.
+
+    No plan is the shared failure envelope (#862): ``{"status": "refused",
+    "error": <code>, "detail": <text>, "plan": null}`` (plus ``index`` for
+    a read-only entry).
+    """
     try:
         state_file = _resolve_state_file(arguments)
         kind, selector = _selector(arguments)
     except ValueError as exc:
-        return _json_result({"plan": None, "reason": str(exc)})
+        return _failure_result("invalid_arguments", str(exc), refused=True, plan=None)
 
     if not state_file.exists():
-        return _json_result(
-            {"plan": None, "reason": f"STATE.json not found: {state_file}"}
-        )
+        detail = f"STATE.json not found: {state_file}"
+        return _failure_result("state_file_not_found", detail, refused=True, plan=None)
     try:
         doc = read_state_file(state_file)
     except ContextFileError as exc:
-        return _json_result({"plan": None, "reason": str(exc)})
+        return _failure_result(
+            "state_file_unreadable", str(exc), refused=True, plan=None
+        )
 
     if kind == "batch_id":
         return _json_result(_batch_plan_payload(plan_batch_rollback(doc, selector)))
 
     index = selector
     if index < 0 or index >= len(doc.action_log):
-        return _json_result(
-            {
-                "plan": None,
-                "reason": (
-                    f"Index {index} is out of range "
-                    f"(action_log has {len(doc.action_log)} entries)."
-                ),
-            }
+        detail = (
+            f"Index {index} is out of range "
+            f"(action_log has {len(doc.action_log)} entries)."
         )
+        return _failure_result("index_out_of_range", detail, refused=True, plan=None)
 
     entry = doc.action_log[index]
     plan = plan_rollback(entry)
     if plan is None:
-        return _json_result(
-            {
-                "index": index,
-                "plan": None,
-                "reason": f"Entry #{index} ({entry.action}) is read-only.",
-            }
+        detail = f"Entry #{index} ({entry.action}) is read-only."
+        return _failure_result(
+            "entry_not_reversible", detail, refused=True, index=index, plan=None
         )
     return _json_result(
         {
@@ -236,48 +240,75 @@ async def handle_plan_get(arguments: dict[str, Any]) -> list[TextContent]:
     )
 
 
+def _apply_outcome(outcome: dict[str, Any]) -> list[TextContent]:
+    """Turn :func:`execute_rollback`'s outcome into the MCP result.
+
+    The outcome's ``result`` is the dispatched tool's ``list[TextContent]``,
+    which JSON cannot carry: a success returns its text(s) instead. An
+    ``error`` outcome — the tool answered with a failure envelope, so no
+    ``rollback_of`` entry was appended — is ``rollback_dispatch_failed``,
+    like a tool that raised, with the tool's own failure text as ``detail``.
+    """
+    if outcome["status"] == "error":
+        failure = failure_of(outcome["result"])
+        return _failure_result(
+            "rollback_dispatch_failed",
+            failure.detail if failure else "the dispatched tool returned a failure",
+            dispatched_tool=outcome["dispatched_tool"],
+            caveats=outcome["caveats"],
+            rollback_of=outcome["rollback_of"],
+        )
+    texts = [c.text for c in outcome["result"] if hasattr(c, "text")]
+    return _json_result({**outcome, "result": texts})
+
+
 async def handle_apply(arguments: dict[str, Any]) -> list[TextContent]:
     """Execute the rollback plan for ``action_log[index]``.
 
-    Pre-dispatch refusals (missing confirm, out-of-range index,
-    unsupported plan, already-rolled-back) return
-    ``{"status": "refused", "error": ...}``. Downstream API errors
-    propagate as ``{"status": "error", "error": ...}``.
+    Success is ``{"status": "applied", "dispatched_tool", "result",
+    "caveats", "rollback_of"}`` with ``result`` the list of texts the
+    dispatched tool returned. Failures use the shared failure envelope
+    (#862), ``error`` a code and ``detail`` the text. Pre-dispatch refusals
+    (bad ``state_file``, missing confirm, out-of-range index, unsupported
+    plan, already-rolled-back) return ``{"status": "refused", "error":
+    "invalid_arguments" | "rollback_refused", "detail": ...}``. A
+    dispatched tool that raises, or that answers with a failure envelope,
+    returns ``{"status": "error", "error": "rollback_dispatch_failed",
+    "detail": ...}`` (the latter with ``dispatched_tool`` / ``caveats`` /
+    ``rollback_of`` beside it).
     """
     try:
         state_file = _resolve_state_file(arguments)
     except ValueError as exc:
-        return _json_result({"status": "refused", "error": str(exc)})
+        return _failure_result("invalid_arguments", str(exc), refused=True)
     index = int(_require(arguments, "index"))
     confirm = _is_truthy_confirm(_require(arguments, "confirm"))
 
     try:
-        result = await execute_rollback(
+        outcome = await execute_rollback(
             state_file=state_file,
             index=index,
             confirm=confirm,
             dispatcher=_get_dispatcher(),
         )
     except RollbackExecutionError as exc:
-        return _json_result({"status": "refused", "error": str(exc)})
+        return _failure_result("rollback_refused", str(exc), refused=True)
     except Exception as exc:
         # Log the full exception (including type and message) server-side
         # only; the MCP response deliberately returns a generic message so
         # raw SDK errors cannot leak tokens or account identifiers to the
         # model context.
         logger.exception("rollback_apply dispatch failed")
-        return _json_result(
-            {
-                "status": "error",
-                "error": (
-                    "The reversal call was dispatched but the downstream "
-                    f"tool failed ({type(exc).__name__}). "
-                    "See server logs for details."
-                ),
-            }
+        return _failure_result(
+            "rollback_dispatch_failed",
+            (
+                "The reversal call was dispatched but the downstream "
+                f"tool failed ({type(exc).__name__}). "
+                "See server logs for details."
+            ),
         )
 
-    return _json_result(result)
+    return _apply_outcome(outcome)
 
 
 __all__ = ["handle_apply", "handle_plan_get"]

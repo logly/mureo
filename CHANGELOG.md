@@ -1,5 +1,49 @@
 ## [Unreleased]
 
+### Changed
+
+- **MCP tool failures returned as JSON now share one envelope** (#862):
+  `{"status": "refused" | "error", "error": <code>, "detail": <text>, ...}`.
+  `refused` means mureo declined before touching the platform; `error`
+  means the call could not be evaluated or the operation failed. `error` is
+  now always a stable snake_case code, and the text moved to `detail`.
+  What an agent can notice:
+  - `tracking_preflight_failed`: `message` is now `detail`, and the payload
+    gains `status: "refused"`; `findings` and `how_to_proceed` are unchanged.
+  - `rollback_plan_get` refusals carry `status: "refused"`, `error: <code>`
+    (`invalid_arguments`, `state_file_not_found`, `state_file_unreadable`,
+    `index_out_of_range`, `entry_not_reversible`) and `detail` in place of
+    `reason`, and keep `plan: null`.
+  - `rollback_apply` and `mureo_batch_begin` / `mureo_batch_end` refusals:
+    `error` is now a code (`invalid_arguments`, `rollback_refused`,
+    `batch_refused`; `rollback_dispatch_failed` for a downstream exception)
+    with the text in `detail`.
+  - `creative_studio_*`, `analysis_delivery_collapse_*` and
+    `analysis_anomalies_check` errors gain `status: "error"` and `detail`;
+    their `error` is now `invalid_arguments`, `provider_unavailable` (no
+    usable image provider, or the `mureo[creative]` extra missing) or
+    `provider_failed`.
+  - `mureo_analytics_run`'s module failure gains `error: "module_failed"`,
+    and its `detail` is the curated exception text.
+  - The journal now records these calls as `refused` / `platform_error`
+    instead of `ok`, with `"<code>: <detail>"` as the reason (the
+    `auth_error` envelope is recorded the same way, in place of its raw
+    JSON body).
+
+### Fixed
+
+- **The journal recorded a refused or failed call as `ok`** (#862). A
+  tracking-preflight refusal, a refused or failed `rollback_apply` and every
+  failure returned in the shared envelope were journalled as successes, and a
+  mutation returning one could be promoted into `action_log`; both now read
+  the shared envelope.
+- **`rollback_apply` crashed on a successful reversal** (#862) with a
+  `TypeError` serializing the dispatched tool's content, and returned a
+  code-less `status: "error"` when the dispatched tool answered with an
+  `API error:` envelope. A success now returns the tool's text(s) as
+  `result`; the failure is the shared envelope with
+  `error: "rollback_dispatch_failed"` and the tool's text as `detail`.
+
 ## [0.29.0] - 2026-10-20
 
 ### Added

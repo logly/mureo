@@ -31,7 +31,7 @@ from mureo.analysis.anomaly_detector import (
 )
 from mureo.context.errors import ContextFileError
 from mureo.context.state import read_state_file
-from mureo.mcp._helpers import _json_result, _opt, _require
+from mureo.mcp._helpers import _failure_result, _json_result, _opt, _require
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -169,7 +169,7 @@ async def handle_anomalies_check(arguments: dict[str, Any]) -> list[TextContent]
     try:
         state_file = _resolve_state_file(arguments)
     except ValueError as exc:
-        return _json_result({"error": str(exc), "anomalies": []})
+        return _failure_result("invalid_arguments", str(exc), anomalies=[])
 
     current_raw = _require(arguments, "current")
     current = _build_current_metrics(current_raw)

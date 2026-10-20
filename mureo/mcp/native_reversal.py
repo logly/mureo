@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from mureo.core import clock
+from mureo.mcp._helpers import is_error_result
 
 logger = logging.getLogger(__name__)
 
@@ -334,18 +335,6 @@ def _status_of(record: Any) -> str | None:
     return None
 
 
-def _is_error_result(result: list[Any] | None) -> bool:
-    """True if ``result`` is an ``api_error_handler`` error envelope.
-
-    Thin module-local alias for :func:`mureo.mcp._helpers.is_error_result`
-    (the one source of truth, kept next to the producer). Retained so the
-    in-module call site and its history stay stable.
-    """
-    from mureo.mcp._helpers import is_error_result
-
-    return is_error_result(result)
-
-
 def record_native_mutation(
     name: str,
     args: dict[str, Any],
@@ -357,15 +346,15 @@ def record_native_mutation(
     Records ``reversible_params`` when a reversal could be built (from the
     captured before-state, or from ``result`` for the Google exclusion add);
     otherwise records an audit-only entry (``reversible_params`` ``None``)
-    so the change is still visible. Skips recording when ``result`` is an
-    ``api_error_handler`` error envelope, so a failed mutation does not
-    pollute the log. (A missing-credentials failure is not that envelope, so
-    it still produces an audit-only entry — harmless, since its reversal is
-    ``None``.) Best-effort: never raises, and no-ops without a STATE.json in
-    cwd.
+    so the change is still visible. Skips recording when ``result`` is a
+    failure envelope (:func:`mureo.mcp._helpers.is_error_result`): the
+    ``API error:`` text, the ``auth_error`` JSON of a missing or rejected
+    credential, and the ``refused`` / ``error`` JSON failure envelope are
+    all skipped, so a mutation that did not happen does not pollute the
+    log. Best-effort: never raises, and no-ops without a STATE.json in cwd.
     """
     platform = _platform_of(name)
-    if platform is None or _is_error_result(result):
+    if platform is None or is_error_result(result):
         return
     try:
         state_path = Path.cwd() / "STATE.json"

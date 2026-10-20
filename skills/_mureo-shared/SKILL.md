@@ -497,27 +497,12 @@ All tools return structured JSON via `TextContent`. The format depends on the to
 ### Success Response
 
 ```json
-{
-  "campaigns": [
-    {
-      "campaign_id": "12345",
-      "name": "Brand Search",
-      "status": "ENABLED",
-      "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
-      "daily_budget": 5000.0
-    }
-  ]
-}
+{"campaigns": [{"campaign_id": "12345", "name": "Brand Search", "status": "ENABLED", "daily_budget": 5000.0}]}
 ```
 
 ### Error Response
 
-```json
-{
-  "error": "Campaign not found: 99999",
-  "error_code": "NOT_FOUND"
-}
-```
+A platform failure is the text `API error: <message>`; a refusal or failure returned as JSON is `{"status": "refused" | "error", "error": "<code>", "detail": "<text>", ...}` (branch on `error`).
 
 ### Authentication Error
 
