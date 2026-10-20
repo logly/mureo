@@ -61,7 +61,7 @@ from mureo.analysis.tracking import (
     preflight_tracking_consistency,
     records_from_google_ads_ads,
 )
-from mureo.mcp._helpers import _json_result
+from mureo.mcp._helpers import _failure_result
 from mureo.mcp.credential_source import (
     active_source_identity,
     current_credential_source,
@@ -191,23 +191,22 @@ def _finding_to_dict(finding: TrackingFinding) -> dict[str, Any]:
 
 
 def _refusal(findings: Sequence[TrackingFinding]) -> list[TextContent]:
-    return _json_result(
-        {
-            "error": "tracking_preflight_failed",
-            "message": (
-                "The ad was NOT created. Its tracking parameters disagree with "
-                "the campaign it would land in — a defect that is silent once "
-                "live, because delivery and spend stay healthy while reporting "
-                "is wrong. Show these findings to the operator and confirm "
-                "which campaign the ad belongs to."
-            ),
-            "findings": [_finding_to_dict(f) for f in findings],
-            "how_to_proceed": (
-                "Fix the final URL, or — if the tagging is deliberate — re-issue "
-                "the same call with acknowledge_tracking_findings=true. Do not "
-                "acknowledge without asking the operator."
-            ),
-        }
+    return _failure_result(
+        "tracking_preflight_failed",
+        (
+            "The ad was NOT created. Its tracking parameters disagree with "
+            "the campaign it would land in — a defect that is silent once "
+            "live, because delivery and spend stay healthy while reporting "
+            "is wrong. Show these findings to the operator and confirm "
+            "which campaign the ad belongs to."
+        ),
+        refused=True,
+        findings=[_finding_to_dict(f) for f in findings],
+        how_to_proceed=(
+            "Fix the final URL, or — if the tagging is deliberate — re-issue "
+            "the same call with acknowledge_tracking_findings=true. Do not "
+            "acknowledge without asking the operator."
+        ),
     )
 
 

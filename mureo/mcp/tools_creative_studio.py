@@ -39,7 +39,13 @@ from mureo.creative_studio.workspace import (
     write_bytes,
     write_manifest,
 )
-from mureo.mcp._helpers import _json_result, _opt, _require
+from mureo.mcp._helpers import (
+    _failure_result,
+    _json_result,
+    _opt,
+    _require,
+    exception_text,
+)
 from mureo.throttle import CREATIVE_STUDIO_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -302,9 +308,14 @@ TOOLS: list[Tool] = [
 ]
 
 
-def _error(message: str) -> list[TextContent]:
-    """Return a JSON error envelope ``{"error": message}``."""
-    return _json_result({"error": message})
+def _error(code: str, message: str) -> list[TextContent]:
+    """Failure envelope (#862), ``status: "error"``, ``message`` as ``detail``.
+
+    ``code``: ``invalid_arguments`` (rejected before a provider ran),
+    ``provider_unavailable`` (no usable provider, or no ``mureo[creative]``
+    extra) or ``provider_failed`` (the provider or the composer failed).
+    """
+    return _failure_result(code, message)
 
 
 def _coerce_count(raw: Any) -> int | None:
@@ -380,27 +391,31 @@ async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent
     # server-side check in ``creative_studio_compose``.
     if template is not None and template not in composer.TEMPLATES:
         valid = ", ".join(composer.TEMPLATES)
-        return _error(f"unknown template {template!r}. Valid templates: {valid}")
+        msg = f"unknown template {template!r}. Valid templates: {valid}"
+        return _error("invalid_arguments", msg)
 
     # Validate ``aspect`` symmetrically: an unknown value would raise ValueError
     # from ``generation_size_for_aspect`` below, escaping the error envelope.
     if aspect not in _ASPECTS:
         valid = ", ".join(_ASPECTS)
-        return _error(f"unknown aspect {aspect!r}. Valid aspects: {valid}")
+        return _error(
+            "invalid_arguments", f"unknown aspect {aspect!r}. Valid aspects: {valid}"
+        )
 
     # Validate ``n`` before it reaches ``int(...)``: ``null`` / non-numeric /
     # out-of-range values must become a structured error, not a raw TypeError.
     n = _coerce_count(_opt(arguments, "n", 2))
     if n is None:
-        return _error("n must be an integer between 1 and 6")
+        return _error("invalid_arguments", "n must be an integer between 1 and 6")
 
     providers = _resolve_providers(provider_arg)
     if not providers:
         return _error(
+            "provider_unavailable",
             "No image provider is configured. Add an API key in the dashboard "
             "'creative_studio' credentials section, or export one of the "
             "environment variables OPENAI_API_KEY, GEMINI_API_KEY, FAL_KEY, "
-            "then retry."
+            "then retry.",
         )
 
     width, height = generation_size_for_aspect(aspect)
@@ -421,7 +436,9 @@ async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent
         )
     except Exception as exc:  # noqa: BLE001 — surface as an error envelope
         logger.warning("creative_studio_generate_visual failed", exc_info=True)
-        return _error(f"visual generation failed: {exc}")
+        return _error(
+            "provider_failed", f"visual generation failed: {exception_text(exc)}"
+        )
 
     model = (
         providers[0].models[0] if len(providers) == 1 and providers[0].models else None
@@ -585,19 +602,21 @@ async def _handle_edit_visual(arguments: dict[str, Any]) -> list[TextContent]:
             allowed_extensions=_ALLOWED_IMAGE_EXTENSIONS,
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _error(f"invalid image path: {exc}")
+        return _error("invalid_arguments", f"invalid image path: {exc}")
 
     provider = _resolve_edit_provider(provider_arg)
     if provider is None:
         if provider_arg:
             return _error(
+                "invalid_arguments",
                 f"provider {provider_arg!r} is not configured. Configure it in "
-                "the dashboard 'creative_studio' credentials section first."
+                "the dashboard 'creative_studio' credentials section first.",
             )
         return _error(
+            "provider_unavailable",
             "No image provider with edit capability is configured. Add an "
             "edit-capable provider's API key (e.g. OPENAI_API_KEY) in the "
-            "'creative_studio' credentials section, then retry."
+            "'creative_studio' credentials section, then retry.",
         )
 
     try:
@@ -605,11 +624,12 @@ async def _handle_edit_visual(arguments: dict[str, Any]) -> list[TextContent]:
         edited = await provider.edit(in_path.read_bytes(), instruction)
     except NotSupportedError as exc:
         return _error(
-            f"provider {provider.name!r} does not support image editing: {exc}"
+            "invalid_arguments",
+            f"provider {provider.name!r} does not support image editing: {exc}",
         )
     except Exception as exc:  # noqa: BLE001 — surface as an error envelope
         logger.warning("creative_studio_edit_visual failed", exc_info=True)
-        return _error(f"image edit failed: {exc}")
+        return _error("provider_failed", f"image edit failed: {exception_text(exc)}")
 
     out_path = write_bytes(_next_free_edit_path(in_path), edited)
     try:
@@ -620,7 +640,7 @@ async def _handle_edit_visual(arguments: dict[str, Any]) -> list[TextContent]:
             allowed_extensions=_ALLOWED_IMAGE_EXTENSIONS,
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _error(f"edited image failed validation: {exc}")
+        return _error("provider_failed", f"edited image failed validation: {exc}")
 
     sha = sha256_of(out_path)
     _studio_audit(
@@ -655,21 +675,25 @@ async def _handle_compose(arguments: dict[str, Any]) -> list[TextContent]:
             allowed_extensions=_COMPOSE_INPUT_EXTENSIONS,
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _error(f"invalid visual path: {exc}")
+        return _error("invalid_arguments", f"invalid visual path: {exc}")
 
     if template not in composer.TEMPLATES:
         valid = ", ".join(composer.TEMPLATES)
-        return _error(f"unknown template {template!r}. Valid templates: {valid}")
+        msg = f"unknown template {template!r}. Valid templates: {valid}"
+        return _error("invalid_arguments", msg)
 
     if not isinstance(formats, list) or not formats:
-        return _error("formats must be a non-empty array of format ids")
+        return _error(
+            "invalid_arguments", "formats must be a non-empty array of format ids"
+        )
     # Defensively dedupe (preserving order): the schema declares uniqueItems,
     # but the handler can be called directly, so never render a format twice.
     formats = list(dict.fromkeys(formats))
     unknown = [f for f in formats if f not in FORMATS_BY_ID]
     if unknown:
         valid = ", ".join(sorted(FORMATS_BY_ID))
-        return _error(f"unknown format id(s): {unknown}. Valid format ids: {valid}")
+        msg = f"unknown format id(s): {unknown}. Valid format ids: {valid}"
+        return _error("invalid_arguments", msg)
 
     brand = load_brand_kit()
     copy = composer.CopySpec(headline=headline, body=body, cta=cta, badge=badge)
@@ -683,10 +707,10 @@ async def _handle_compose(arguments: dict[str, Any]) -> list[TextContent]:
         )
     except RuntimeError as exc:
         # Missing 'creative' extra — surface the pip hint verbatim.
-        return _error(str(exc))
+        return _error("provider_unavailable", str(exc))
     except Exception as exc:  # noqa: BLE001 — surface as an error envelope
         logger.warning("creative_studio_compose failed", exc_info=True)
-        return _error(f"composition failed: {exc}")
+        return _error("provider_failed", f"composition failed: {exception_text(exc)}")
 
     manifest_data: dict[str, Any] = {
         "kind": "compose",

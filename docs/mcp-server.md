@@ -589,7 +589,7 @@ Cross-platform tools for inspecting and applying the reversal of a previously-re
 | `rollback_plan_get` | Inspect the reversal plan for one `action_log` entry (`supported` / `partial` / `not_supported`), its `operation` + `params`, and any caveats — or, with `batch_id` instead, for a whole batch (see below). Read-only. | exactly one of `index` / `batch_id` |
 | `rollback_apply` | Execute the reversal plan for `action_log[index]`. Requires `confirm=true` as a literal boolean. Appends a new log entry tagged `rollback_of=<index>`. | `index`, `confirm` |
 
-Both tools accept an optional `state_file` argument (default `STATE.json`), which is resolved strictly inside the MCP server's current working directory. Path traversal, symlink escape, and `rollback.*` self-recursion are all refused. A second apply of the same index is refused (idempotency is enforced by scanning later log entries for a matching `rollback_of` marker). Downstream SDK exceptions are logged server-side only; the MCP response returns a generic message so tokens and account identifiers cannot leak into model context.
+Both tools accept an optional `state_file` argument (default `STATE.json`), which is resolved strictly inside the MCP server's current working directory. Path traversal, symlink escape, and `rollback.*` self-recursion are all refused. A second apply of the same index is refused (idempotency is enforced by scanning later log entries for a matching `rollback_of` marker). When the dispatched tool **raises**, the exception is logged server-side only and the MCP response returns a generic message, so tokens and account identifiers cannot leak into model context. When it **answers** with the `API error:` or `auth_error` envelope, that envelope's already-curated text is returned as `detail`. Every refusal and failure of either tool is returned as the [refusal and failure envelope](#refusal-and-failure-envelope); `rollback_plan_get` keeps `"plan": null` beside it.
 
 #### Planning a whole batch (#549)
 
@@ -1385,6 +1385,28 @@ API errors (rate limits, invalid parameters, etc.) are caught by the `@api_error
 ```
 
 The text after the prefix is **curated**, never the raw `str(exception)`: a platform exception that carries a structured server-side failure (Google Ads) is rendered as that failure's own message, because formatting such an exception directly prints the transport-level repr — request metadata and credentials included. Every other exception is rendered as its own message (the exception type name when that message is empty).
+
+### Refusal and failure envelope
+
+A tool that declines a call, or whose call fails, without raising returns one JSON envelope (#862). It is a successful tool call, so branch on the payload:
+
+```json
+{
+  "status": "refused",
+  "error": "tracking_preflight_failed",
+  "detail": "The ad was NOT created. Its tracking parameters disagree with the campaign it would land in ...",
+  "findings": [{ "code": "...", "severity": "...", "campaign_id": "123", "message": "..." }],
+  "how_to_proceed": "Fix the final URL, or — if the tagging is deliberate — re-issue the same call with acknowledge_tracking_findings=true. ..."
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `status` | `refused` — mureo declined before touching the platform (a preflight, a batch or rollback precondition). `error` — the call could not be evaluated, or the operation it attempted failed. |
+| `error` | A stable snake_case code to branch on (`tracking_preflight_failed`, `invalid_arguments`, `rollback_refused`, `batch_refused`, `module_failed`, ...). Never a sentence. |
+| `detail` | The operator-facing text. |
+
+Other keys may sit beside the three (`findings`, `plan`, `index`, `signals`, `anomalies`, `platform`, ...); they never replace them. The journal records such a call as `refused` or `platform_error` — never `ok` — with `"<error>: <detail>"` as its reason, and a mutation that returns it is never written to `action_log`. The refusals of the policy gate and the exclusion guardrail, which run before any tool is dispatched, remain plain text and are journalled as `denied` / `refused` by the dispatcher itself. A `status` word that is not a failure (`capability_not_available`, `no_analytics_module`, `no_collapse_detected`, ...) is a success and is journalled as `ok`.
 
 ### Validation Errors
 

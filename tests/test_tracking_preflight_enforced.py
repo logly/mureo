@@ -96,7 +96,11 @@ class TestRefusal:
         )
         assert outcome.refused
         payload = _payload(outcome.refusal)
+        assert payload["status"] == "refused"
         assert payload["error"] == "tracking_preflight_failed"
+        assert "NOT created" in payload["detail"]
+        assert "message" not in payload
+        assert "acknowledge_tracking_findings" in payload["how_to_proceed"]
         assert payload["findings"]
         assert payload["findings"][0]["code"] == "foreign_campaign_scheme"
         assert payload["findings"][0]["evidence"]["owning_campaign_id"] == "campaign-a"

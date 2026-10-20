@@ -47,7 +47,7 @@ from mureo.core.platform_keys import (
     plugin_platform_key_matches,
     plugin_platform_parts,
 )
-from mureo.mcp._helpers import _require
+from mureo.mcp._helpers import _failure_result, _require, exception_text
 
 logger = logging.getLogger(__name__)
 
@@ -422,14 +422,13 @@ async def _handle_analytics_run(arguments: dict[str, Any]) -> list[TextContent]:
     except STOP_EXCEPTIONS:
         raise
     except BaseException as exc:  # noqa: BLE001 — per-module fault isolation
-        return _text(
-            {
-                "status": "error",
-                "platform": platform,
-                "capability": capability.value,
-                "error_type": type(exc).__name__,
-                "detail": str(exc),
-            }
+        # Curated, never ``str(exc)``: see ``_helpers.exception_text``.
+        return _failure_result(
+            "module_failed",
+            exception_text(exc),
+            platform=platform,
+            capability=capability.value,
+            error_type=type(exc).__name__,
         )
 
 

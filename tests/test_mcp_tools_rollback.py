@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from mcp.types import TextContent
 
 from mureo.context.models import ActionLogEntry, StateDocument
 from mureo.context.state import read_state_file, write_state_file
@@ -115,7 +116,43 @@ class TestPlanGetHandler:
         )
         payload = json.loads(result[0].text)
         assert payload["plan"] is None
-        assert "read-only" in payload["reason"].lower()
+        assert payload["status"] == "refused"
+        assert payload["error"] == "entry_not_reversible"
+        assert payload["index"] == 0
+        assert "read-only" in payload["detail"].lower()
+
+
+@pytest.mark.unit
+class TestPlanGetRefusals:
+    """Each refusal is the shared envelope with ``plan: null`` (#862)."""
+
+    @staticmethod
+    async def _plan_get(arguments: dict[str, Any]) -> dict[str, Any]:
+        result = await handle_tool("rollback_plan_get", arguments)
+        payload = json.loads(result[0].text)
+        assert payload["status"] == "refused"
+        assert payload["plan"] is None
+        return payload
+
+    @pytest.mark.asyncio
+    async def test_missing_state_file(self, sandboxed_cwd: Path) -> None:
+        payload = await self._plan_get({"state_file": "MISSING.json", "index": 0})
+        assert payload["error"] == "state_file_not_found"
+        assert "MISSING.json" in payload["detail"]
+
+    @pytest.mark.asyncio
+    async def test_unreadable_state_file(self, sandboxed_cwd: Path) -> None:
+        (sandboxed_cwd / "STATE.json").write_text("{not json", encoding="utf-8")
+        payload = await self._plan_get({"state_file": "STATE.json", "index": 0})
+        assert payload["error"] == "state_file_unreadable"
+        assert payload["detail"]
+
+    @pytest.mark.asyncio
+    async def test_index_out_of_range(self, sandboxed_cwd: Path) -> None:
+        _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
+        payload = await self._plan_get({"state_file": "STATE.json", "index": 5})
+        assert payload["error"] == "index_out_of_range"
+        assert "out of range" in payload["detail"]
 
 
 @pytest.mark.unit
@@ -132,7 +169,8 @@ class TestApplyHandler:
         )
         payload = json.loads(result[0].text)
         assert payload["status"] == "refused"
-        assert "confirm" in payload["error"].lower()
+        assert payload["error"] == "rollback_refused"
+        assert "confirm" in payload["detail"].lower()
 
         doc = read_state_file(sandboxed_cwd / "STATE.json")
         assert len(doc.action_log) == 1  # unchanged
@@ -193,10 +231,9 @@ class TestApplyHandler:
         )
         payload = json.loads(result[0].text)
         # Path validation raises ValueError -> surfaces in response
-        assert (
-            "inside the active workspace" in payload.get("error", "")
-            or payload.get("status") == "refused"
-        )
+        assert payload["status"] == "refused"
+        assert payload["error"] == "invalid_arguments"
+        assert "inside the active workspace" in payload["detail"]
 
     @pytest.mark.asyncio
     async def test_truthy_non_bool_confirm_refused(self, sandboxed_cwd: Path) -> None:
@@ -209,4 +246,60 @@ class TestApplyHandler:
         )
         payload = json.loads(result[0].text)
         assert payload["status"] == "refused"
-        assert "confirm" in payload["error"].lower()
+        assert payload["error"] == "rollback_refused"
+        assert "confirm" in payload["detail"].lower()
+
+
+@pytest.mark.unit
+class TestApplyWithRealToolContent:
+    """The dispatcher returns ``list[TextContent]``, as the real one does."""
+
+    @pytest.mark.asyncio
+    async def test_a_successful_reversal_returns_the_tool_text(
+        self, sandboxed_cwd: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
+
+        async def _dispatcher(name: str, arguments: dict[str, Any]) -> list[Any]:
+            return [TextContent(type="text", text='{"budget_id": "B1"}')]
+
+        monkeypatch.setattr(
+            "mureo.mcp._handlers_rollback._get_dispatcher", lambda: _dispatcher
+        )
+        result = await handle_tool(
+            "rollback_apply",
+            {"state_file": "STATE.json", "index": 0, "confirm": True},
+        )
+        payload = json.loads(result[0].text)
+        assert payload["status"] == "applied"
+        assert payload["result"] == ['{"budget_id": "B1"}']
+        assert payload["dispatched_tool"] == "google_ads_budget_update"
+        doc = read_state_file(sandboxed_cwd / "STATE.json")
+        assert len(doc.action_log) == 2
+        assert doc.action_log[1].rollback_of == 0
+
+    @pytest.mark.asyncio
+    async def test_an_api_error_reversal_is_rollback_dispatch_failed(
+        self, sandboxed_cwd: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
+
+        async def _dispatcher(name: str, arguments: dict[str, Any]) -> list[Any]:
+            return [TextContent(type="text", text="API error: boom")]
+
+        monkeypatch.setattr(
+            "mureo.mcp._handlers_rollback._get_dispatcher", lambda: _dispatcher
+        )
+        result = await handle_tool(
+            "rollback_apply",
+            {"state_file": "STATE.json", "index": 0, "confirm": True},
+        )
+        payload = json.loads(result[0].text)
+        assert payload["status"] == "error"
+        assert payload["error"] == "rollback_dispatch_failed"
+        assert "API error: boom" in payload["detail"]
+        assert payload["dispatched_tool"] == "google_ads_budget_update"
+        assert payload["rollback_of"] == 0
+        assert isinstance(payload["caveats"], list)
+        doc = read_state_file(sandboxed_cwd / "STATE.json")
+        assert len(doc.action_log) == 1  # no rollback_of entry appended

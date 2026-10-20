@@ -512,12 +512,19 @@ All tools return structured JSON via `TextContent`. The format depends on the to
 
 ### Error Response
 
-```json
-{
-  "error": "Campaign not found: 99999",
-  "error_code": "NOT_FOUND"
-}
+A platform / API failure is plain text, not JSON:
+
+```text
+API error: <curated message>
 ```
+
+A refusal or failure a tool returns as JSON is the shared envelope:
+
+```json
+{"status": "refused", "error": "tracking_preflight_failed", "detail": "The ad was NOT created. ...", "findings": [...]}
+```
+
+`status` is `refused` (mureo declined before touching the platform) or `error`; `error` is a stable code to branch on, `detail` the operator-facing text; extra keys may sit beside them.
 
 ### Authentication Error
 

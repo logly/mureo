@@ -908,7 +908,9 @@ class TestRollbackPlanGetBatchMode:
                 await handle_rollback_tool("rollback_plan_get", arguments)
             )
             assert payload["plan"] is None
-            assert "exactly one" in payload["reason"]
+            assert payload["status"] == "refused"
+            assert payload["error"] == "invalid_arguments"
+            assert "exactly one" in payload["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -990,3 +992,22 @@ class TestBatchToolRegistration:
         status = _payload(await handle_batch_tool("mureo_batch_status", {}))
         assert status["active_batch"]["batch_id"] == begin["batch_id"]
         assert status["member_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_batch_refusals_use_the_failure_envelope(
+        self, workspace: Path
+    ) -> None:
+        """A second begin and an end with nothing open are refusals (#862)."""
+        await handle_batch_tool("mureo_batch_begin", {"label": "pass"})
+        again = _payload(
+            await handle_batch_tool("mureo_batch_begin", {"label": "again"})
+        )
+        assert again["status"] == "refused"
+        assert again["error"] == "batch_refused"
+        assert again["detail"]
+
+        await handle_batch_tool("mureo_batch_end", {})
+        idle_end = _payload(await handle_batch_tool("mureo_batch_end", {}))
+        assert idle_end["status"] == "refused"
+        assert idle_end["error"] == "batch_refused"
+        assert idle_end["detail"]

@@ -338,6 +338,23 @@ class TestRecordNativeMutation:
         doc = read_state_file(tmp_path / "STATE.json")
         assert doc.action_log == ()
 
+    def test_skips_recording_on_a_refusal_envelope(self, tmp_path, monkeypatch) -> None:
+        from mureo.context.state import read_state_file
+        from mureo.mcp._helpers import _failure_result
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        # A create refused by the tracking preflight never reached the
+        # platform (#862).
+        nr.record_native_mutation(
+            "google_ads_ads_create",
+            {"ad_group_id": "ag1"},
+            None,
+            _failure_result("tracking_preflight_failed", "not created", refused=True),
+        )
+        doc = read_state_file(tmp_path / "STATE.json")
+        assert doc.action_log == ()
+
     def test_records_on_success_result(self, tmp_path, monkeypatch) -> None:
         from mcp.types import TextContent
 
@@ -362,15 +379,16 @@ class TestRecordNativeMutation:
 
 @pytest.mark.unit
 class TestSharedIsErrorResult:
-    def test_native_alias_delegates_to_helper(self) -> None:
-        # nr._is_error_result is a thin alias for the shared helper.
+    def test_native_path_uses_the_shared_helper(self) -> None:
+        # native_reversal imports the shared helper itself: no local alias (#862).
         from mcp.types import TextContent
 
         from mureo.mcp._helpers import is_error_result
 
         envelope = [TextContent(type="text", text="API error: boom")]
         assert is_error_result(envelope) is True
-        assert nr._is_error_result(envelope) is True
+        assert nr.is_error_result is is_error_result
+        assert not hasattr(nr, "_is_error_result")
 
     def test_empty_and_none_are_not_errors(self) -> None:
         from mureo.mcp._helpers import is_error_result

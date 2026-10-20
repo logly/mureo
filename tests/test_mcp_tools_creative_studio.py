@@ -226,10 +226,11 @@ async def test_generate_visual_no_provider_error_envelope(
         "creative_studio_generate_visual", {"prompt": "a cat"}
     )
     payload = _payload(result)
-    assert "error" in payload
-    assert "creative_studio" in payload["error"]
+    assert payload["status"] == "error"
+    assert payload["error"] == "provider_unavailable"
+    assert "creative_studio" in payload["detail"]
     for env in ("OPENAI_API_KEY", "GEMINI_API_KEY", "FAL_KEY"):
-        assert env in payload["error"]
+        assert env in payload["detail"]
 
 
 @pytest.mark.unit
@@ -365,8 +366,9 @@ async def test_generate_visual_unknown_template_errors(
         {"prompt": "a cat", "template": "bogus", "n": 1},
     )
     payload = _payload(result)
-    assert "error" in payload
-    assert "bogus" in payload["error"]
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
+    assert "bogus" in payload["detail"]
     # No provider call happened — we failed fast on bad input.
     assert fake.calls == []
 
@@ -382,7 +384,8 @@ async def test_generate_visual_named_unconfigured_provider_errors(
         "creative_studio_generate_visual",
         {"prompt": "x", "provider": "fake"},
     )
-    assert "error" in _payload(result)
+    assert _payload(result)["status"] == "error"
+    assert _payload(result)["error"] == "provider_unavailable"
 
 
 @pytest.mark.unit
@@ -580,9 +583,10 @@ async def test_compose_unknown_format_lists_valid_ids(
         {"visual_path": str(visual), "headline": "H", "cta": "C", "formats": ["bogus"]},
     )
     payload = _payload(result)
-    assert "error" in payload
-    assert "bogus" in payload["error"]
-    assert "meta_feed_1x1" in payload["error"]  # valid ids are listed
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
+    assert "bogus" in payload["detail"]
+    assert "meta_feed_1x1" in payload["detail"]  # valid ids are listed
 
 
 @pytest.mark.unit
@@ -606,8 +610,9 @@ async def test_compose_missing_extra_envelope(
         {"visual_path": str(visual), "headline": "H", "cta": "C"},
     )
     payload = _payload(result)
-    assert "error" in payload
-    assert "mureo[creative]" in payload["error"]
+    assert payload["status"] == "error"
+    assert payload["error"] == "provider_unavailable"
+    assert "mureo[creative]" in payload["detail"]
 
 
 @pytest.mark.unit
@@ -622,7 +627,8 @@ async def test_compose_rejects_bad_visual_path(
         "creative_studio_compose",
         {"visual_path": str(bad), "headline": "H", "cta": "C"},
     )
-    assert "error" in _payload(result)
+    assert _payload(result)["status"] == "error"
+    assert _payload(result)["error"] == "invalid_arguments"
 
 
 # ---------------------------------------------------------------------------
@@ -704,7 +710,8 @@ async def test_edit_visual_no_edit_capable_provider(
         "creative_studio_edit_visual",
         {"path": str(img), "instruction": "x"},
     )
-    assert "error" in _payload(result)
+    assert _payload(result)["status"] == "error"
+    assert _payload(result)["error"] == "provider_unavailable"
 
 
 @pytest.mark.unit
@@ -719,7 +726,8 @@ async def test_edit_visual_not_supported_envelope(
         "creative_studio_edit_visual",
         {"path": str(img), "instruction": "x"},
     )
-    assert "error" in _payload(result)
+    assert _payload(result)["status"] == "error"
+    assert _payload(result)["error"] == "invalid_arguments"
 
 
 @pytest.mark.unit
@@ -734,7 +742,8 @@ async def test_edit_visual_rejects_bad_path(
         "creative_studio_edit_visual",
         {"path": str(bad), "instruction": "x"},
     )
-    assert "error" in _payload(result)
+    assert _payload(result)["status"] == "error"
+    assert _payload(result)["error"] == "invalid_arguments"
 
 
 # ---------------------------------------------------------------------------
@@ -814,3 +823,28 @@ def test_module_has_no_second_clock() -> None:
     second answer, and it is invisible to the ``server_now`` test seam."""
     source = Path(mod.__file__).read_text(encoding="utf-8")
     assert "datetime.now(" not in source
+
+
+class _FailingEditProvider(_EditProvider):
+    """An edit-capable provider whose edit call fails."""
+
+    async def edit(self, image: bytes, instruction: str) -> bytes:
+        raise RuntimeError("upstream 500")
+
+
+@pytest.mark.unit
+async def test_edit_visual_provider_failure_is_provider_failed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod, "available_providers", lambda: [_FailingEditProvider()])
+    img = tmp_path / "pic.png"
+    img.write_bytes(b"\x89PNG original")
+    result = await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(img), "instruction": "x"},
+    )
+    payload = _payload(result)
+    assert payload["status"] == "error"
+    assert payload["error"] == "provider_failed"
+    assert "image edit failed: upstream 500" in payload["detail"]

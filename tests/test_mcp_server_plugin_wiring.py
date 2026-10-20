@@ -705,7 +705,7 @@ class TestGapCPluginReversalParamKeys:
 # ---------------------------------------------------------------------------
 # Error-envelope parity: a mutating plugin that returns an api_error_handler
 # -style "API error: ..." TextContent WITHOUT raising must NOT be promoted to
-# STATE.json's action_log (mirrors native_reversal's _is_error_result skip),
+# STATE.json's action_log (mirrors native_reversal's is_error_result skip),
 # so no phantom mutation — and no phantom executable reversal — is recorded.
 # ---------------------------------------------------------------------------
 

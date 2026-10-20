@@ -297,7 +297,7 @@ Configuration is in `pyproject.toml`:
 
 Shape drifts before logic breaks. Keep the shape the codebase already has (see also **Consistency Rules** in `AGENTS.md`):
 
-- **Failures have one shape per boundary.** MCP tool handlers fail through `mureo/mcp/_helpers.py` (`api_error_handler`, the `API error:` envelope, the `auth_error` result, `_json_result`); web handlers fail through `send_error_json`. Never add a new error shape, status word or `{"error": ...}` variant — extend the existing helper in one place instead, and keep `is_error_result` in step with it.
+- **Failures have one shape per boundary.** MCP tool handlers fail through `mureo/mcp/_helpers.py` (`api_error_handler`, the `API error:` envelope, the `auth_error` result, `_json_result`, the `refused` / `error` envelope of `_failure_result`, read back by `failure_of`); web handlers fail through `send_error_json`. Never add a new error shape, status word or `{"error": ...}` variant — extend the existing helper in one place instead, and keep `failure_of` (which `is_error_result` and the journal read) in step with it.
 - **Search before you write a helper.** Look for one with the same purpose, not only the same name, and diff the bodies. If one exists, reuse it.
 - **Do not add a function-local import to break an import cycle.** Fix the dependency direction. If an import inside a function is unavoidable, comment why on the import itself.
 - **One name per concept.** Reuse the existing parameter and field names (`period`, `customer_id`, `account_id`, `platform`, …).
