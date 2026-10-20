@@ -10,10 +10,18 @@ each rename or removal needs a deprecation cycle.
 The pre-existing :mod:`mureo.core.providers` and :mod:`mureo.core.skills`
 sub-packages are not re-exported here; reach them by their fully
 qualified module names as before.
+
+``FilesystemStateStore`` lives in :mod:`mureo.context.state_store` and is
+resolved on first access (PEP 562 ``__getattr__`` below, delegating to
+:mod:`mureo.core.state_store`), so importing this package never imports
+``mureo.context`` (#863).
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+from mureo.core import state_store
 from mureo.core.knowledge_store import FilesystemKnowledgeStore, KnowledgeStore
 from mureo.core.runtime_context import (
     DEFAULT_WORKSPACE_ID,
@@ -25,8 +33,11 @@ from mureo.core.runtime_context import (
     reset_runtime_context,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
-from mureo.core.state_store import FilesystemStateStore, StateStore
+from mureo.core.state_store import StateStore
 from mureo.core.throttle_store import ProcessLocalThrottleStore, ThrottleStore
+
+if TYPE_CHECKING:
+    from mureo.context.state_store import FilesystemStateStore
 
 __all__ = [
     "DEFAULT_WORKSPACE_ID",
@@ -45,3 +56,10 @@ __all__ = [
     "get_runtime_context",
     "reset_runtime_context",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "FilesystemStateStore":
+        # Resolved on access by ``mureo.core.state_store`` (#863).
+        return state_store.FilesystemStateStore
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

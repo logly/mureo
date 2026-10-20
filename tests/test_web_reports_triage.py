@@ -38,8 +38,8 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from mureo.context.models import ActionLogEntry, StateDocument
+from mureo.context.state_store import FilesystemStateStore
 from mureo.core.runtime_context import default_runtime_context, reset_runtime_context
-from mureo.core.state_store import FilesystemStateStore
 from mureo.web.reports import build_report_summary, list_report_clients
 
 if TYPE_CHECKING:

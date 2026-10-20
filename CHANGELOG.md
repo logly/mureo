@@ -29,6 +29,12 @@
     instead of `ok`, with `"<code>: <detail>"` as the reason (the
     `auth_error` envelope is recorded the same way, in place of its raw
     JSON body).
+- **`FilesystemStateStore` moved to `mureo.context.state_store`** (#863);
+  `mureo.core` still exports the name. `mureo.core` no longer imports
+  `mureo.context` at load time, and the 24 function-local imports in
+  `mureo/context/` are top-level again. The remaining function-local
+  imports inside `mureo/context/` belong to a cycle within that package
+  and are addressed in a later stage.
 
 ### Fixed
 

@@ -27,10 +27,7 @@ vocabulary, a note longer than the bound, a value that is not a number —
 all of those are kept exactly as written and handed to the view, which
 decides how to draw something it was not expecting.
 
-It also cannot import :mod:`mureo.core.display_contract` even if it wanted
-to: ``mureo.core.__init__`` → ``runtime_context`` → ``state_store`` →
-``mureo.context.state`` → this module is a real import chain, and reaching
-back into ``mureo.core`` from inside it would close the cycle. The
+It does not import :mod:`mureo.core.display_contract` either: the
 dependency-free rule that keeps ``state_codec`` importable is the same rule
 here.
 """

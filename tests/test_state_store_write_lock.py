@@ -16,7 +16,7 @@ import pytest
 
 from mureo.context.models import StateDocument
 from mureo.context.state import read_state_file
-from mureo.core.state_store import FilesystemStateStore
+from mureo.context.state_store import FilesystemStateStore
 
 
 @pytest.mark.unit

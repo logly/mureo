@@ -32,27 +32,14 @@ from __future__ import annotations
 import ast
 import importlib.util
 import pathlib
-import subprocess
-import sys
-from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING
 
 import pytest
 
-from tests._measurement_child import CHILD_TIMEOUT_SECONDS, measurement_child_env
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+from tests._measurement_child import StandaloneSweep, assert_imports_alone
 
 # Packages whose submodules must each be importable first. Both are mixin-built
 # API clients with the same shape, and both have a lazy ``__init__`` (#807).
 STANDALONE_IMPORT_PACKAGES = ("mureo.google_ads", "mureo.meta_ads")
-
-# Child interpreters to keep in flight. Each one imports one submodule and
-# exits; the work is process startup plus the submodule's own imports, so a
-# handful in parallel keeps the sweep off the suite's critical path without
-# oversubscribing a CI runner.
-_MAX_IN_FLIGHT = 8
 
 
 def _package_submodules(package: str) -> list[str]:
@@ -141,73 +128,23 @@ SIBLING_IMPORTING_SUBMODULES = tuple(_sibling_importing_submodules())
 ALL_SUBMODULES = tuple(_all_submodules())
 
 
-def _import_alone(module: str, env: dict[str, str]) -> tuple[str, int, str]:
-    proc = subprocess.run(
-        [sys.executable, "-c", f"__import__({module!r})"],
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=CHILD_TIMEOUT_SECONDS,
-    )
-    return module, proc.returncode, proc.stderr
-
-
-class _StandaloneSweep:
-    """Imports modules first, each in its own child, once per session."""
-
-    def __init__(self) -> None:
-        self._results: dict[str, tuple[int, str]] = {}
-
-    def result(self, module: str, within: Sequence[str]) -> tuple[int, str]:
-        """Return ``module``'s outcome, sweeping all of ``within`` if needed.
-
-        Taking the whole lane rather than one module keeps the child spawning
-        batched — one pass of ``_MAX_IN_FLIGHT`` at a time instead of one
-        process per test — while the memo means the two lanes never sweep the
-        same module twice.
-        """
-        missing = [name for name in within if name not in self._results]
-        if missing:
-            env = measurement_child_env()
-            with ThreadPoolExecutor(max_workers=_MAX_IN_FLIGHT) as pool:
-                for name, code, stderr in pool.map(
-                    lambda candidate: _import_alone(candidate, env), missing
-                ):
-                    self._results[name] = (code, stderr)
-        return self._results[module]
-
-
-@pytest.fixture(scope="session")
-def standalone_sweep() -> _StandaloneSweep:
-    """One sweeper for the session, so both lanes share their children."""
-    return _StandaloneSweep()
-
-
-def _assert_imports_alone(module: str, returncode: int, stderr: str) -> None:
-    assert returncode == 0, (
-        f"{module} cannot be imported first. Something it imports imports it "
-        f"back — move the shared name into a leaf module instead of relying on "
-        f"a package __init__ to enter the cycle at a lucky point.\n{stderr}"
-    )
-
-
 @pytest.mark.unit
 @pytest.mark.parametrize("module", SIBLING_IMPORTING_SUBMODULES)
 def test_submodule_with_a_sibling_import_imports_as_the_first_import(
-    module: str, standalone_sweep: _StandaloneSweep
+    module: str, standalone_sweep: StandaloneSweep
 ) -> None:
     returncode, stderr = standalone_sweep.result(module, SIBLING_IMPORTING_SUBMODULES)
-    _assert_imports_alone(module, returncode, stderr)
+    assert_imports_alone(module, returncode, stderr)
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("module", ALL_SUBMODULES)
 @pytest.mark.usefixtures("only_when_asked_for")
 def test_every_submodule_imports_as_the_first_import(
-    module: str, standalone_sweep: _StandaloneSweep
+    module: str, standalone_sweep: StandaloneSweep
 ) -> None:
     returncode, stderr = standalone_sweep.result(module, ALL_SUBMODULES)
-    _assert_imports_alone(module, returncode, stderr)
+    assert_imports_alone(module, returncode, stderr)
 
 
 #: The default lane held 33 submodules when this was written (27 Google Ads, 6

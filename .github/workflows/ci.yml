@@ -135,7 +135,9 @@ jobs:
         # here. Its one whole-product test enumerates every guarded command
         # through a real shell: measured at 1 h 56 m on a developer machine,
         # against 77 s idle (2 m 37 s on the same machine under load) for all
-        # 63 other `slow` tests put together. Giving that one a CI budget is a
+        # 63 other `slow` tests put together (the #863 import sweep in
+        # tests/test_import_graph.py has since added 429 cases, about 35 s
+        # more). Giving that one a CI budget is a
         # separate decision from giving the rest one, and it should not be made
         # by a job that was added for the rest. It runs nightly in
         # credential-guard-sweep.yml (#808).

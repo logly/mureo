@@ -181,10 +181,10 @@ def test_notices_reject_blank_or_non_string_items(bad: Any) -> None:
 
 @pytest.mark.unit
 def test_default_factory_wires_all_four_filesystem_defaults(tmp_path: Path) -> None:
+    from mureo.context.state_store import FilesystemStateStore
     from mureo.core.knowledge_store import FilesystemKnowledgeStore
     from mureo.core.runtime_context import default_runtime_context
     from mureo.core.secret_store import FilesystemSecretStore
-    from mureo.core.state_store import FilesystemStateStore
     from mureo.core.throttle_store import ProcessLocalThrottleStore
 
     ctx = default_runtime_context(

@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 import mureo
+from mureo.context.state_store import FilesystemStateStore
 from mureo.core import actor, scrub
 from mureo.core.runtime_context import (
     RuntimeContext,
@@ -27,7 +28,6 @@ from mureo.core.runtime_context import (
     reset_runtime_context,
 )
 from mureo.core.scrub import STRADDLE_MARGIN
-from mureo.core.state_store import FilesystemStateStore
 from mureo.mcp import journal, plugin_audit
 from mureo.mcp.journal_chain import verify_chain
 

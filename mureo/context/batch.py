@@ -46,6 +46,8 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from mureo.core import clock
+
 if TYPE_CHECKING:
     from mureo.context.models import ActionLogEntry, BatchRecord, StateDocument
 
@@ -178,10 +180,6 @@ def batch_open_hours(record: BatchRecord, now: datetime | None = None) -> float 
     unnoticed. Resolved through the MODULE (``clock.server_now()``) rather than
     a bound name, which is what keeps
     ``monkeypatch.setattr(mureo.core.clock, "server_now", …)`` effective.
-
-    The import is deliberately lazy: ``mureo.core.__init__`` → ``runtime_context``
-    → ``state_store`` → ``mureo.context.state`` → this module is a real import
-    chain, so reaching ``mureo.core`` at module load would close the cycle.
     """
     if record.ended_at is not None:
         return None
@@ -189,8 +187,6 @@ def batch_open_hours(record: BatchRecord, now: datetime | None = None) -> float 
     if started is None:
         return None
     if now is None:
-        from mureo.core import clock
-
         now = clock.server_now()
     current = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
     return (current - started).total_seconds() / 3600.0

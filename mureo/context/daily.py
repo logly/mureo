@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.context.models import DAILY_DATE_KEY_PATTERN, StateDocument
 from mureo.context.platform_guards import guard_platform_entry_write
+from mureo.core import clock
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -115,11 +116,6 @@ def _completeness_anchor(as_of_date: date | None) -> tuple[date, str]:
     "now" in a timezone is what produces one; anything else is refused here
     rather than blowing up in a comparison two frames down.
     """
-    # Imported lazily: ``mureo.core.__init__`` pulls in ``runtime_context``
-    # -> ``state_store`` -> ``mureo.context.state`` -> this module, so a
-    # module-level import would be a cycle.
-    from mureo.core import clock
-
     server_today = clock.server_now().date()
     if as_of_date is None:
         return server_today, "server today"
@@ -324,9 +320,10 @@ def with_platform_daily(
             (see :func:`~mureo.context.platform_guards.
             guard_platform_entry_write`).
     """
-    # Imported lazily: ``state`` imports THIS module to re-export it, so a
-    # module-level import back would be a cycle. These three helpers stay
-    # there because every other targeted mutator uses them too.
+    # Lazy: ``mureo.context.state`` ↔ ``mureo.context.daily`` cycle inside
+    # ``context`` (#863, later stage).
+    # These three helpers stay in ``state`` because every other targeted
+    # mutator uses them too.
     from mureo.context.state import _now_iso, _platform_base, _stamp_fetched_at
 
     _reject_unusable_daily_keys(days, as_of_date=as_of_date)

@@ -55,6 +55,9 @@ from mureo.context.actor_stamp import stamp_actor
 from mureo.context.decision_chain import chain_expected
 from mureo.context.models import ActionLogEntry
 from mureo.context.observations import closed_observation_indices, parse_due_date
+from mureo.core.actor import ACTION_REASON_MAX_CHARS
+from mureo.core.clock import server_now_iso
+from mureo.core.scrub import scrub_text
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -278,12 +281,6 @@ def _closure_entry(
     and every other ``reason`` that reaches STATE.json crosses this boundary
     (:func:`mureo.core.actor.normalize_reason`), so this one does too.
     """
-    # Lazy, for the cycle ``mureo.context.state`` documents: ``mureo.core``'s
-    # ``__init__`` reaches back into this package through ``state_store``.
-    from mureo.core.actor import ACTION_REASON_MAX_CHARS
-    from mureo.core.clock import server_now_iso
-    from mureo.core.scrub import scrub_text
-
     reason = scrub_text(
         f"Automatic observation closure ({result.overall}): {result.summary}"
     )

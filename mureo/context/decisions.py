@@ -24,7 +24,8 @@ records a reversal as an entry rather than deleting the entry it reverses.
 
 The pure half lives here with the model and the queries; the writer needs
 STATE.json's file lock and reaches into :mod:`mureo.context.state` for it
-lazily, for the import-cycle reason :mod:`mureo.context.batch` documents.
+lazily: ``mureo.context.state`` ↔ ``mureo.context.decisions`` cycle inside
+``context`` (#863, later stage).
 """
 
 from __future__ import annotations
@@ -39,6 +40,8 @@ from typing import TYPE_CHECKING, Any, Final
 from mureo.context.approval import parse_approval
 from mureo.context.batch import ID_ENTROPY_BYTES, BatchError, find_batch
 from mureo.context.expected import ExpectedEffect, parse_expected
+from mureo.core import actor
+from mureo.core.scrub import scrub_text
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -296,16 +299,7 @@ def _clean_text(value: str) -> str:
     Whitespace is trimmed twice, before and after the control strip, so a
     value that was only ``"\x00 "`` ends up empty and is refused by the
     caller rather than stored as a space.
-
-    The import is deliberately lazy: ``mureo.core.__init__`` ->
-    ``runtime_context`` -> ``state_store`` -> ``mureo.context.state`` ->
-    ``state_codec`` -> ``_decision_codec`` -> this module is a real import
-    chain, so reaching ``mureo.core`` at module load would close the cycle
-    — the same reason :func:`mureo.context.batch.batch_open_hours` imports
-    the clock inside itself.
     """
-    from mureo.core.scrub import scrub_text
-
     return scrub_text(_CONTROL_CHARS.sub("", value.strip()).strip())
 
 
@@ -502,10 +496,9 @@ def append_decision(path: Path, record: DecisionRecord) -> tuple[StateDocument, 
             names no recorded decision.
         BatchError: ``batch_id`` names no declared batch.
     """
-    # Lazy, for the cycle ``mureo.core.__init__`` -> ``runtime_context`` ->
-    # ``state_store`` -> ``mureo.context.state`` closes at module level.
+    # Lazy: ``mureo.context.state`` ↔ ``mureo.context.decisions`` cycle inside
+    # ``context`` (#863, later stage).
     from mureo.context.state import _locked_state_mutation
-    from mureo.core.actor import client_info, session_id
 
     position = -1
 
@@ -518,9 +511,11 @@ def append_decision(path: Path, record: DecisionRecord) -> tuple[StateDocument, 
         stamped = replace(
             record,
             session_id=(
-                record.session_id if record.session_id is not None else session_id()
+                record.session_id
+                if record.session_id is not None
+                else actor.session_id()
             ),
-            client=record.client if record.client is not None else client_info(),
+            client=record.client if record.client is not None else actor.client_info(),
         )
         position = len(doc.decisions)
         # ``replace`` carries every other section across by construction —

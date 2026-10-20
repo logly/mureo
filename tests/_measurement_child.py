@@ -1,8 +1,10 @@
 """Child interpreters the suite measures something in.
 
-Three test modules spawn child interpreters to ask what importing mureo costs or
+Four test modules spawn child interpreters to ask what importing mureo costs or
 drags in (``test_mcp_startup_budget.py``, ``test_mcp_tool_validators.py``,
-``test_platform_submodule_imports.py``). They need the same three things: the
+``test_platform_submodule_imports.py``, ``test_import_graph.py``; the last two
+share :class:`StandaloneSweep` through the ``standalone_sweep`` fixture in
+``conftest.py``). They need the same three things: the
 parent's ``sys.path``, none of the tooling that would make the child measure the
 tooling, and — for the cases that have to be run against an installed plugin —
 a throwaway distribution on one child's path and nowhere else. Shared from here
@@ -35,10 +37,11 @@ import os
 import pathlib
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
 #: Nothing a measurement child does should take minutes; this is a deadlock
 #: backstop, not a budget (the budget is asserted on CPU time, in the child).
@@ -103,3 +106,54 @@ def install_fake_dist(
         f"[{group}]\n{module} = {target}\n", encoding="utf-8"
     )
     return str(root)
+
+
+# Child interpreters to keep in flight. Each one imports one submodule and
+# exits; the work is process startup plus the submodule's own imports, so a
+# handful in parallel keeps the sweep off the suite's critical path without
+# oversubscribing a CI runner.
+_MAX_IN_FLIGHT = 8
+
+
+def _import_alone(module: str, env: dict[str, str]) -> tuple[str, int, str]:
+    proc = subprocess.run(
+        [sys.executable, "-c", f"__import__({module!r})"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=CHILD_TIMEOUT_SECONDS,
+    )
+    return module, proc.returncode, proc.stderr
+
+
+class StandaloneSweep:
+    """Imports modules first, each in its own child, once per session."""
+
+    def __init__(self) -> None:
+        self._results: dict[str, tuple[int, str]] = {}
+
+    def result(self, module: str, within: Sequence[str]) -> tuple[int, str]:
+        """Return ``module``'s outcome, sweeping all of ``within`` if needed.
+
+        Taking the whole lane rather than one module keeps the child spawning
+        batched — one pass of ``_MAX_IN_FLIGHT`` at a time instead of one
+        process per test — while the memo means the two lanes never sweep the
+        same module twice.
+        """
+        missing = [name for name in within if name not in self._results]
+        if missing:
+            env = measurement_child_env()
+            with ThreadPoolExecutor(max_workers=_MAX_IN_FLIGHT) as pool:
+                for name, code, stderr in pool.map(
+                    lambda candidate: _import_alone(candidate, env), missing
+                ):
+                    self._results[name] = (code, stderr)
+        return self._results[module]
+
+
+def assert_imports_alone(module: str, returncode: int, stderr: str) -> None:
+    assert returncode == 0, (
+        f"{module} cannot be imported first. Something it imports imports it "
+        f"back — move the shared name into a leaf module instead of relying on "
+        f"a package __init__ to enter the cycle at a lucky point.\n{stderr}"
+    )

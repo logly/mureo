@@ -185,7 +185,7 @@ class TestTheStateStore:
     def test_a_shortened_log_is_backed_up_and_the_write_proceeds(
         self, tmp_path: Path
     ) -> None:
-        from mureo.core.state_store import FilesystemStateStore
+        from mureo.context.state_store import FilesystemStateStore
 
         path = _state(tmp_path / "STATE.json", 4)
         FilesystemStateStore(workspace=tmp_path).write_state(_doc(1))
