@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 from mureo.context.models import ActionLogEntry
 from mureo.context.state import append_action_log, read_state_file
 from mureo.core.clock import server_now_iso
+from mureo.core.tool_failure import is_error_result
 from mureo.rollback.models import RollbackStatus
 from mureo.rollback.planner import plan_rollback
 
@@ -129,11 +130,6 @@ async def execute_rollback(
         raise RollbackExecutionError(
             f"Rollback not supported for entry #{index}: {plan.notes}"
         )
-    # Lazy import: ``mureo.mcp`` imports the rollback package, so importing the
-    # helper at module load would risk a circular import. ``_helpers`` itself
-    # pulls in nothing from mureo, so this is safe and cheap here.
-    from mureo.mcp._helpers import is_error_result
-
     # Planner guarantees these are populated when status != NOT_SUPPORTED.
     # Use explicit raises (not `assert`) so the contract holds under `python -O`.
     if plan.operation is None or plan.params is None:

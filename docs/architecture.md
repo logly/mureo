@@ -267,7 +267,14 @@ mureo/
 │                            #   and the RuntimeContext store Protocols (StateStore, ...). core never
 │                            #   imports context (#863): the filesystem StateStore default lives in
 │                            #   mureo.context.state_store, and runtime_context reaches it by object
-│                            #   reference (DEFAULT_STATE_STORE_REF); mureo.core still exports the name
+│                            #   reference (DEFAULT_STATE_STORE_REF); mureo.core still exports the name.
+│                            #   tool_failure.py is the MCP failure-envelope reader (failure_of);
+│                            #   the writer stays in mcp/_helpers.py, which re-exports it (#863).
+│                            #   rollback, policy, amazon_ads and core never import mureo.mcp (#863):
+│                            #   the server publishes what they need at load — plugin reversal keys
+│                            #   (rollback.planner.set_plugin_reversal_keys) and built-in tool names
+│                            #   (policy.learning_reset.set_builtin_platform_tool_names) — as it does
+│                            #   for the policy declarations
 ├── policy/                  # Deterministic policy gate (STRATEGY.md → allow / deny / require-approval)
 ├── providers/              # Official-MCP provider catalog (Google Ads / Meta / GA4 install kits)
 ├── learning/                # /learn knowledge base + advisor federation client

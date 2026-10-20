@@ -1408,6 +1408,8 @@ A tool that declines a call, or whose call fails, without raising returns one JS
 
 Other keys may sit beside the three (`findings`, `plan`, `index`, `signals`, `anomalies`, `platform`, ...); they never replace them. The journal records such a call as `refused` or `platform_error` — never `ok` — with `"<error>: <detail>"` as its reason, and a mutation that returns it is never written to `action_log`. The refusals of the policy gate and the exclusion guardrail, which run before any tool is dispatched, remain plain text and are journalled as `denied` / `refused` by the dispatcher itself. A `status` word that is not a failure (`capability_not_available`, `no_analytics_module`, `no_collapse_detected`, ...) is a success and is journalled as `ok`.
 
+In the code, the writer of this envelope (and of the `API error:` and `auth_error` shapes) is `mureo/mcp/_helpers.py`; the one reader of all three, `failure_of` / `is_error_result`, lives in `mureo/core/tool_failure.py` so the layers below the server (rollback, the Amazon bridge) can tell a failure from a success without importing it, and `_helpers` re-exports it (#863).
+
 ### Validation Errors
 
 Missing required parameters raise `ValueError`, which the MCP protocol surfaces to the client:

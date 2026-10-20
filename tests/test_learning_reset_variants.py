@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from mureo.context.models import CampaignSnapshot, PlatformState, StateDocument
+from mureo.policy import learning_reset
 from mureo.policy.learning_reset import (
     build_preflight,
     builtin_equivalent,
@@ -27,7 +28,12 @@ from mureo.policy.learning_rules import LearningState, ResetRisk
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-pytestmark = pytest.mark.unit
+#: Every test here classifies built-in names, which the MCP server
+#: publishes at load (#863); the fixture publishes the same lists.
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.usefixtures("builtin_platform_tool_names"),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -64,6 +70,32 @@ def _google_state(status: str, campaign_id: str = "C1") -> StateDocument:
 # ---------------------------------------------------------------------------
 # The equivalence itself
 # ---------------------------------------------------------------------------
+
+
+class TestUnpublishedNames:
+    """``policy`` never imports ``mcp``; the server publishes the names (#863)."""
+
+    def test_an_unpublished_read_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An empty answer would make every built-in look unknown and drop the
+        # learning-reset verdicts silently, so the read raises instead.
+        monkeypatch.setattr(learning_reset, "_BUILTIN_PLATFORM_TOOL_NAMES", None)
+        with pytest.raises(RuntimeError, match="were not published"):
+            builtin_equivalent("google_ads_budget_update")
+
+    def test_publishing_replaces_the_whole_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            learning_reset,
+            "_BUILTIN_PLATFORM_TOOL_NAMES",
+            learning_reset._BUILTIN_PLATFORM_TOOL_NAMES,
+        )
+        learning_reset.set_builtin_platform_tool_names(["google_ads_budget_update"])
+        learning_reset.set_builtin_platform_tool_names(["meta_ads_ads_pause"])
+        assert builtin_equivalent("meta_ads_ads_pause") == "meta_ads_ads_pause"
+        assert builtin_equivalent("google_ads_budget_update") is None
 
 
 class TestBuiltinEquivalent:

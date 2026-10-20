@@ -31,6 +31,7 @@ tool's ``inputSchema`` before the call runs.
 from __future__ import annotations
 
 import copy
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from mureo.core.tool_names import (
@@ -40,6 +41,8 @@ from mureo.core.tool_names import (
 from mureo.rollback.models import RollbackPlan, RollbackStatus
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from mureo.context.models import ActionLogEntry
 
 # Operation name → frozenset of allowed parameter keys. Only reversals mureo
@@ -143,6 +146,24 @@ def _normalize_separators(name: str) -> str:
     return name.replace("-", "_")
 
 
+#: Plugin tools the running server registered, mapped to the top-level
+#: ``inputSchema`` property names a reversal may carry (``None`` = no usable
+#: schema, no plan-time key bound). Published by ``mureo.mcp.server`` at load;
+#: empty until then, which plans no plugin reversal (#863).
+_PLUGIN_REVERSAL_KEYS: Mapping[str, frozenset[str] | None] = MappingProxyType({})
+
+
+def set_plugin_reversal_keys(keys: Mapping[str, frozenset[str] | None]) -> None:
+    """Replace the published plugin reversal key map (whole map, not a merge).
+
+    Whole-map replacement is what keeps an ``importlib.reload`` of the server
+    from leaving a removed plugin registered (see
+    tests/test_rollback.py::test_reload_without_the_plugin_unregisters_its_reversal).
+    """
+    global _PLUGIN_REVERSAL_KEYS
+    _PLUGIN_REVERSAL_KEYS = MappingProxyType(dict(keys))
+
+
 def _plugin_reversal_keys(operation: str) -> tuple[bool, frozenset[str] | None]:
     """Plugin escape hatch for :func:`plan_rollback` (guardrail parity).
 
@@ -153,18 +174,17 @@ def _plugin_reversal_keys(operation: str) -> tuple[bool, frozenset[str] | None]:
     executable. This hook lets the planner accept it when it names a
     *registered* plugin tool, bounding params by that tool's declared schema.
 
-    Returns ``(is_registered_plugin_tool, allowed_keys_or_None)``. Resolved
-    lazily against the live MCP server to avoid the import cycle
-    ``server → tools_rollback → _handlers_rollback → rollback.planner``. A
-    server-import failure (e.g. this module imported in isolation in a test)
-    degrades safely to ``(False, None)`` — no plugin operation is planned.
-    Tests monkeypatch this function directly.
+    Returns ``(is_registered_plugin_tool, allowed_keys_or_None)``, read from
+    :data:`_PLUGIN_REVERSAL_KEYS` — the registry ``mureo.mcp.server``
+    publishes through :func:`set_plugin_reversal_keys` once it has collected
+    its plugin tools (#863). Before anything is published the registry is
+    empty, so every operation answers ``(False, None)`` and no plugin
+    operation is planned: a caller outside the server that plans plugin
+    reversals must import ``mureo.mcp.server`` first, as ``mureo rollback
+    list`` / ``show`` do (``mureo.cli.rollback_cmd``). Tests monkeypatch this
+    function directly.
     """
-    try:
-        from mureo.mcp.server import plugin_reversal_param_keys
-    except Exception:  # noqa: BLE001 — degrade to "not a plugin op"
-        return (False, None)
-    return plugin_reversal_param_keys(operation)
+    return (operation in _PLUGIN_REVERSAL_KEYS, _PLUGIN_REVERSAL_KEYS.get(operation))
 
 
 def plan_rollback(entry: ActionLogEntry) -> RollbackPlan | None:

@@ -59,6 +59,21 @@ def _platform_filter_matches(entry_platform: str, wanted: str) -> bool:
     return plugin_platform_key_matches(wanted, distribution, provider)
 
 
+def _load_plugin_reversals() -> None:
+    """Load the MCP server so the planner knows the installed plugin tools.
+
+    A plugin-declared reversal is planned only when it names a plugin tool the
+    server registered, and the server publishes that registry when it is
+    imported (#863) — so without this every plugin entry would read
+    ``not_supported`` here while the same entry is executable over MCP.
+    """
+    # Imported here, like the journal readers in ``journal_cmd``: the server
+    # import costs a few tenths of a second of CPU on top of the CLI's own,
+    # and this module is imported by every ``mureo`` command
+    # (``cli/main.py``), so it is paid only when a rollback command runs (#486).
+    import mureo.mcp.server  # noqa: F401, PLC0415
+
+
 def _load_plans(
     state_file: Path,
     *,
@@ -105,6 +120,7 @@ def rollback_list(
     """List action_log entries and whether they can be rolled back."""
     if state_file is None:
         state_file = resolve_default_state_file()
+    _load_plugin_reversals()
     plans = _load_plans(state_file, platform=platform)
     if not plans:
         typer.echo("No reversible actions recorded in the action log.")
@@ -151,6 +167,7 @@ def rollback_show(
         raise typer.Exit(1)
 
     entry = doc.action_log[index]
+    _load_plugin_reversals()
     plan = plan_rollback(entry)
     if plan is None:
         typer.echo(
