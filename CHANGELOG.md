@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-20
+
 ### Changed
 
 - **MCP tool failures returned as JSON now share one envelope** (#862):
