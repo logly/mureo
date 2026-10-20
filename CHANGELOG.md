@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-20
+
 ### Added
 
 - **Plugin budget / bid declarations accept nested argument paths**
