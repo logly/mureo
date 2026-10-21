@@ -43,7 +43,7 @@ def _standalone_google_ads():
     path; the scoped behavior lives in test_account_id_tenant_scope.py.
     """
     with patch(
-        "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+        "mureo.core.account_scope.runtime_google_ads_customer_ids",
         return_value=None,
     ):
         yield

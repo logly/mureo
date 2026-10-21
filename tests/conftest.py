@@ -99,6 +99,9 @@ def _isolate_credential_writes(monkeypatch, tmp_path_factory):
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
+    # ``MUREO_BYOD_DIR`` outranks HOME in ``byod_data_dir``: a developer's own
+    # value would route BYOD checks to a real manifest.
+    monkeypatch.delenv("MUREO_BYOD_DIR", raising=False)
 
     real_entry_points = runtime_context.entry_points
 

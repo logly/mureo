@@ -2,7 +2,7 @@
 and stay consistent after resolution (#435).
 
 ``_open_google_ads_client`` / ``_open_meta_ads_client`` route the caller
-``account_id`` through the same ``_resolve_customer_id`` / ``_resolve_account_id``
+``account_id`` through the same ``resolve_customer_id`` / ``resolve_account_id``
 the MCP handlers use: a non-tenant-scoped run passes it through unchanged; a
 tenant-scoped run refuses an out-of-allow-list id. Per #435 the helpers now
 (1) surface a refusal as :class:`AccountNotAvailableError`, a
@@ -37,22 +37,22 @@ def stub_factories(monkeypatch: pytest.MonkeyPatch):
         calls["meta"] = account_id
         return sentinel_m
 
-    monkeypatch.setattr("mureo.mcp._client_factory.get_google_ads_client", fake_google)
-    monkeypatch.setattr("mureo.mcp._client_factory.get_meta_ads_client", fake_meta)
+    monkeypatch.setattr("mureo.client_factory.get_google_ads_client", fake_google)
+    monkeypatch.setattr("mureo.client_factory.get_meta_ads_client", fake_meta)
     return sentinel_g, sentinel_m, calls
 
 
 def _scope_google(monkeypatch: pytest.MonkeyPatch, allowed) -> None:
 
     monkeypatch.setattr(
-        "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids", lambda: allowed
+        "mureo.core.account_scope.runtime_google_ads_customer_ids", lambda: allowed
     )
 
 
 def _scope_meta(monkeypatch: pytest.MonkeyPatch, allowed) -> None:
 
     monkeypatch.setattr(
-        "mureo.mcp._meta_ads_client.runtime_meta_account_ids", lambda: allowed
+        "mureo.core.account_scope.runtime_meta_account_ids", lambda: allowed
     )
 
 

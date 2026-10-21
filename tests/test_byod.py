@@ -482,7 +482,7 @@ def test_byod_clients_make_no_network_calls(google_ads_xlsx, fake_home, monkeypa
 def test_factory_routes_imported_platform_to_byod(google_ads_xlsx, fake_home):
     from mureo.byod.bundle import import_bundle
     from mureo.byod.clients import ByodGoogleAdsClient
-    from mureo.mcp._client_factory import get_google_ads_client
+    from mureo.client_factory import get_google_ads_client
 
     import_bundle(google_ads_xlsx)
     client = get_google_ads_client(creds=None, customer_id="byod")
@@ -491,8 +491,8 @@ def test_factory_routes_imported_platform_to_byod(google_ads_xlsx, fake_home):
 
 def test_factory_falls_back_to_real_when_not_imported(fake_home, monkeypatch):
     """When BYOD is not active, the factory must NOT return a Byod* client."""
+    from mureo import client_factory
     from mureo.byod.clients import ByodGoogleAdsClient
-    from mureo.mcp import _client_factory
 
     real_called = {}
 
@@ -504,7 +504,7 @@ def test_factory_falls_back_to_real_when_not_imported(fake_home, monkeypatch):
         "mureo.auth.create_google_ads_client", _fake_real, raising=False
     )
 
-    result = _client_factory.get_google_ads_client(creds=None, customer_id="byod")
+    result = client_factory.get_google_ads_client(creds=None, customer_id="byod")
     if result == "REAL_CLIENT_SENTINEL":
         assert real_called.get("yes") is True
     else:
@@ -937,7 +937,7 @@ async def test_live_meta_ads_list_is_not_annotated(fake_home):
             "mureo.mcp._meta_ads_client.load_meta_ads_credentials", return_value=creds
         ),
         patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=frozenset({"act_123"}),
         ),
         patch(

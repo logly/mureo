@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
-from mureo.mcp.credential_source import CredentialSource, use_credential_source
+from mureo.core.credential_source import CredentialSource, use_credential_source
 
 pytestmark = pytest.mark.unit
 
@@ -56,16 +56,16 @@ def _refuse(*_args: Any, **_kwargs: Any) -> Any:
 def _live_unscoped(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
-        "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids", lambda: None
+        "mureo.core.account_scope.runtime_google_ads_customer_ids", lambda: None
     )
     monkeypatch.setattr(
-        "mureo.mcp._meta_ads_client.runtime_meta_account_ids", lambda: None
+        "mureo.core.account_scope.runtime_meta_account_ids", lambda: None
     )
     monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: True)
     monkeypatch.setattr("mureo.auth.load_google_ads_credentials", _refuse)
     monkeypatch.setattr("mureo.auth.load_meta_ads_credentials", _refuse)
-    monkeypatch.setattr("mureo.mcp._client_factory.get_google_ads_client", _refuse)
-    monkeypatch.setattr("mureo.mcp._client_factory.get_meta_ads_client", _refuse)
+    monkeypatch.setattr("mureo.client_factory.get_google_ads_client", _refuse)
+    monkeypatch.setattr("mureo.client_factory.get_meta_ads_client", _refuse)
 
 
 class TestAnalyticsGoogle:
@@ -159,7 +159,7 @@ class TestChangeFeedGoogle:
         from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
 
         monkeypatch.setattr(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             lambda: frozenset({"1"}),
         )
         with (

@@ -48,7 +48,7 @@ def _standalone_meta_ads():
     path; the scoped behavior lives in test_account_id_tenant_scope.py.
     """
     with patch(
-        "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+        "mureo.core.account_scope.runtime_meta_account_ids",
         return_value=None,
     ):
         yield

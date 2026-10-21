@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from mcp.types import TextContent
 
 from mureo.auth import create_search_console_client, load_google_ads_credentials
+from mureo.core.credential_source import call_source, current_google_source
 from mureo.core.runtime_context import runtime_search_console_sites
 from mureo.mcp._helpers import (
     _json_result,
@@ -23,7 +24,6 @@ from mureo.mcp._helpers import (
     api_error_handler,
     register_client_for_cleanup,
 )
-from mureo.mcp.credential_source import call_source, current_google_source
 from mureo.throttle import SEARCH_CONSOLE_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ _throttler = Throttler(SEARCH_CONSOLE_THROTTLE)
 async def _get_client(arguments: dict[str, Any]) -> Any:
     """Load credentials and create a Search Console client.
 
-    An active credential source (:mod:`mureo.mcp.credential_source`, #821)
+    An active credential source (:mod:`mureo.core.credential_source`, #821)
     with a ``google`` entry supplies both the credentials and the
     ``google.auth`` object the client uses; the credentials file is not read.
 

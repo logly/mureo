@@ -17,10 +17,6 @@ if TYPE_CHECKING:
 from mureo.mcp._google_ads_client import _NO_CREDS_MSG as _NO_CREDS_MSG
 from mureo.mcp._google_ads_client import _get_client as _get_client
 from mureo.mcp._google_ads_client import _no_google_creds as _no_google_creds
-from mureo.mcp._google_ads_client import (
-    _normalize_customer_id as _normalize_customer_id,
-)
-from mureo.mcp._google_ads_client import _resolve_customer_id as _resolve_customer_id
 from mureo.mcp._google_ads_client import _throttler as _throttler
 from mureo.mcp._helpers import (
     _json_result,

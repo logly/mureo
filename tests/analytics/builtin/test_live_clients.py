@@ -216,7 +216,7 @@ async def test_fetch_google_ads_metrics_returns_current_and_baseline() -> None:
         patch("mureo.byod.runtime.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=object()),
         patch(
-            "mureo.mcp._client_factory.get_google_ads_client",
+            "mureo.client_factory.get_google_ads_client",
             return_value=fake_client,
         ),
     ):
@@ -258,7 +258,7 @@ async def test_fetch_google_ads_metrics_returns_none_baseline_when_zero_spend() 
         patch("mureo.byod.runtime.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=object()),
         patch(
-            "mureo.mcp._client_factory.get_google_ads_client",
+            "mureo.client_factory.get_google_ads_client",
             return_value=fake_client,
         ),
     ):
@@ -279,7 +279,7 @@ async def test_fetch_google_ads_metrics_uses_byod_when_registered() -> None:
     with (
         patch("mureo.byod.runtime.byod_has", return_value=True),
         patch(
-            "mureo.mcp._client_factory.get_google_ads_client",
+            "mureo.client_factory.get_google_ads_client",
             return_value=fake_client,
         ) as get_client,
     ):
@@ -466,7 +466,7 @@ async def test_fetch_google_ads_per_campaign_metrics_keys_by_campaign() -> None:
         patch("mureo.byod.runtime.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=object()),
         patch(
-            "mureo.mcp._client_factory.get_google_ads_client",
+            "mureo.client_factory.get_google_ads_client",
             return_value=fake_client,
         ),
     ):
@@ -510,7 +510,7 @@ async def test_fetch_google_ads_per_campaign_metrics_baseline_none_for_new_campa
         patch("mureo.byod.runtime.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=object()),
         patch(
-            "mureo.mcp._client_factory.get_google_ads_client",
+            "mureo.client_factory.get_google_ads_client",
             return_value=fake_client,
         ),
     ):
@@ -553,7 +553,7 @@ async def test_fetch_meta_ads_per_campaign_metrics_keys_by_campaign() -> None:
         patch("mureo.byod.runtime.byod_has", return_value=False),
         patch("mureo.auth.load_meta_ads_credentials", return_value=_meta_creds()),
         patch(
-            "mureo.mcp._client_factory.get_meta_ads_client",
+            "mureo.client_factory.get_meta_ads_client",
             return_value=fake_client,
         ),
     ):
@@ -632,7 +632,7 @@ async def test_fetch_meta_ads_metrics_returns_current_and_baseline() -> None:
         patch("mureo.byod.runtime.byod_has", return_value=False),
         patch("mureo.auth.load_meta_ads_credentials", return_value=_meta_creds()),
         patch(
-            "mureo.mcp._client_factory.get_meta_ads_client",
+            "mureo.client_factory.get_meta_ads_client",
             return_value=fake_client,
         ),
     ):

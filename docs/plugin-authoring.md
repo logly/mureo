@@ -549,7 +549,9 @@ The built-in `google_ads_*`, `search_console_*` and `meta_ads_*` handlers
 normally read the operator's credentials file (or the environment). A plugin
 that re-exposes those handlers under its own tool names, and resolves the
 credentials for each call itself, can hand them over with
-`mureo.mcp.credential_source` instead of patching module globals.
+`mureo.core.credential_source` instead of patching module globals. (The old
+path, `mureo.mcp.credential_source`, re-exports the same objects but imports
+the whole MCP server; the new one does not, #863.)
 
 These types make up the surface:
 
@@ -612,7 +614,7 @@ from mcp.types import TextContent
 
 from mureo.auth import GoogleAdsCredentials
 from mureo.mcp import tools_google_ads
-from mureo.mcp.credential_source import CredentialSource, use_credential_source
+from mureo.core.credential_source import CredentialSource, use_credential_source
 
 
 class AcmeGoogleSource:
@@ -695,7 +697,7 @@ under until the entry expires, so that identity cannot be reused by another
 source in the meantime; expired entries are dropped. Reuse one source object
 per tenant to keep the cache effective.
 
-`mureo.mcp.credential_source` is the supported surface. The
+`mureo.core.credential_source` is the supported surface. The
 `mureo.mcp._handlers_*` modules and their module globals remain private and
 may change in any release.
 

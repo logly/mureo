@@ -14,7 +14,8 @@ Two halves are tested here, mirroring test_search_console_tenant_scope.py:
 1. ``runtime_meta_account_ids`` / ``runtime_google_ads_customer_ids`` — the
    store-capability resolvers (fail-closed on a multi-account backend that
    declares nothing).
-2. The handlers' ``_resolve_account_id`` / ``_resolve_customer_id`` and the
+2. ``resolve_account_id`` / ``resolve_customer_id``
+   (:mod:`mureo.core.account_scope`, which the handlers call) and the
    ``_get_client`` wiring — out-of-set ids refused, unconfigured fails
    fast, single-entry default, id normalization (``act_`` prefix, hyphens).
 
@@ -154,20 +155,20 @@ class TestAccountIdResolvers:
 
 
 # ---------------------------------------------------------------------------
-# Meta handler — _resolve_account_id + _get_client wiring
+# Meta handler — resolve_account_id + _get_client wiring
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAccountIdScoping:
     def _resolve(self, requested: str | None, default: str | None) -> str:
-        from mureo.mcp._handlers_meta_ads import _resolve_account_id
+        from mureo.core.account_scope import resolve_account_id
 
-        return _resolve_account_id(requested, default)
+        return resolve_account_id(requested, default)
 
     def test_unscoped_keeps_existing_behavior(self) -> None:
         with patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=None,
         ):
             assert self._resolve("act_222", "act_111") == "act_222"
@@ -178,7 +179,7 @@ class TestMetaAccountIdScoping:
     def test_unconfigured_client_fails_fast(self) -> None:
         with (
             patch(
-                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+                "mureo.core.account_scope.runtime_meta_account_ids",
                 return_value=frozenset(),
             ),
             pytest.raises(ValueError, match="not configured"),
@@ -188,7 +189,7 @@ class TestMetaAccountIdScoping:
     def test_out_of_set_explicit_id_is_refused(self) -> None:
         with (
             patch(
-                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+                "mureo.core.account_scope.runtime_meta_account_ids",
                 return_value=frozenset({"act_111"}),
             ),
             pytest.raises(ValueError, match="refused"),
@@ -200,7 +201,7 @@ class TestMetaAccountIdScoping:
         it may be an operator-level value that does not belong here."""
         with (
             patch(
-                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+                "mureo.core.account_scope.runtime_meta_account_ids",
                 return_value=frozenset({"act_111", "act_222"}),
             ),
             pytest.raises(ValueError, match="refused|required"),
@@ -211,14 +212,14 @@ class TestMetaAccountIdScoping:
         """The common production path: creds default already one of several
         configured accounts, no explicit argument."""
         with patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=frozenset({"act_111", "act_222"}),
         ):
             assert self._resolve(None, "act_111") == "act_111"
 
     def test_in_set_explicit_id_allowed(self) -> None:
         with patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=frozenset({"act_111", "act_222"}),
         ):
             assert self._resolve("act_222", "act_111") == "act_222"
@@ -228,7 +229,7 @@ class TestMetaAccountIdScoping:
         numeric allow-list entry is canonicalized to the act_ form the
         client factory requires."""
         with patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=frozenset({"123456"}),
         ):
             assert self._resolve(None, None) == "act_123456"
@@ -236,7 +237,7 @@ class TestMetaAccountIdScoping:
     def test_prefix_insensitive_membership(self) -> None:
         """act_-prefixed argument matches a bare-numeric allow-list entry."""
         with patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=frozenset({"123456"}),
         ):
             assert self._resolve("act_123456", None) == "act_123456"
@@ -255,7 +256,7 @@ class TestMetaAccountIdScoping:
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+                "mureo.core.account_scope.runtime_meta_account_ids",
                 return_value=frozenset({"act_111"}),
             ),
             patch(
@@ -280,7 +281,7 @@ class TestMetaAccountIdScoping:
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+                "mureo.core.account_scope.runtime_meta_account_ids",
                 return_value=frozenset({"111"}),
             ),
             patch(
@@ -296,20 +297,20 @@ class TestMetaAccountIdScoping:
 
 
 # ---------------------------------------------------------------------------
-# Google Ads handler — _resolve_customer_id + _get_client wiring
+# Google Ads handler — resolve_customer_id + _get_client wiring
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleCustomerIdScoping:
     def _resolve(self, requested: str | None, default: str | None) -> str:
-        from mureo.mcp._handlers_google_ads import _resolve_customer_id
+        from mureo.core.account_scope import resolve_customer_id
 
-        return _resolve_customer_id(requested, default)
+        return resolve_customer_id(requested, default)
 
     def test_unscoped_keeps_existing_behavior(self) -> None:
         with patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=None,
         ):
             assert self._resolve("222", "111") == "222"
@@ -320,7 +321,7 @@ class TestGoogleCustomerIdScoping:
     def test_unconfigured_client_fails_fast(self) -> None:
         with (
             patch(
-                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+                "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=frozenset(),
             ),
             pytest.raises(ValueError, match="not configured"),
@@ -330,7 +331,7 @@ class TestGoogleCustomerIdScoping:
     def test_out_of_set_explicit_id_is_refused(self) -> None:
         with (
             patch(
-                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+                "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=frozenset({"111-222-3333"}),
             ),
             pytest.raises(ValueError, match="refused"),
@@ -340,21 +341,21 @@ class TestGoogleCustomerIdScoping:
     def test_hyphen_insensitive_membership(self) -> None:
         """1112223333 matches the configured 111-222-3333 and vice versa."""
         with patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=frozenset({"111-222-3333"}),
         ):
             assert self._resolve("1112223333", None) == "1112223333"
 
     def test_multi_entry_default_in_set_is_used(self) -> None:
         with patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=frozenset({"111", "222"}),
         ):
             assert self._resolve(None, "111") == "111"
 
     def test_single_entry_defaults_when_omitted(self) -> None:
         with patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=frozenset({"111-222-3333"}),
         ):
             assert self._resolve(None, None) == "111-222-3333"
@@ -363,7 +364,7 @@ class TestGoogleCustomerIdScoping:
         """The shared login_customer_id (MCC) is usually NOT the client's
         account — with one configured id, resolution lands there instead."""
         with patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=frozenset({"111-222-3333"}),
         ):
             assert self._resolve(None, "999-000-1111") == "111-222-3333"
@@ -379,7 +380,7 @@ class TestGoogleCustomerIdScoping:
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+                "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=frozenset({"111"}),
             ),
             patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
@@ -399,7 +400,7 @@ class TestGoogleCustomerIdScoping:
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+                "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=frozenset({"111-222-3333"}),
             ),
             patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,

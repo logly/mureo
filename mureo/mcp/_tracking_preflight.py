@@ -61,11 +61,11 @@ from mureo.analysis.tracking import (
     preflight_tracking_consistency,
     records_from_google_ads_ads,
 )
-from mureo.mcp._helpers import _failure_result
-from mureo.mcp.credential_source import (
+from mureo.core.credential_source import (
     active_source_identity,
     current_credential_source,
 )
+from mureo.mcp._helpers import _failure_result
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

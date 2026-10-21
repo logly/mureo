@@ -45,7 +45,7 @@ def _standalone_google_ads():
     """
     with (
         patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(

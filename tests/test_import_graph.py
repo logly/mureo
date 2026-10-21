@@ -14,6 +14,10 @@ by object reference, and these tests pin the direction:
 * ``rollback`` / ``policy`` / ``amazon_ads`` / ``core`` never import
   ``mureo.mcp``, not even function-locally — the server publishes what they
   need at load;
+* ``analytics`` / ``change_import`` / ``mureo.client_factory`` never import
+  ``mureo.mcp`` either: the credential source, account scoping and the client
+  factory they open live clients with sit below it, and loading them does not
+  load ``mureo.auth`` (deferred to the first client build);
 * ``pytest -m slow``: every module under ``mureo/`` imports on its own, as the
   first import of a fresh interpreter.
 
@@ -34,9 +38,11 @@ import pytest
 import mureo
 import mureo.context
 import mureo.core
+import mureo.core.credential_source as credential_source
 import mureo.core.state_store
 import mureo.core.tool_failure as tool_failure
 import mureo.mcp._helpers as helpers
+import mureo.mcp.credential_source as credential_source_compat
 from mureo.context.state_store import FilesystemStateStore
 from tests._measurement_child import (
     StandaloneSweep,
@@ -120,13 +126,22 @@ def test_every_mureo_module_imports_as_the_first_import(
 
 
 # ---------------------------------------------------------------------------
-# rollback / policy / amazon_ads / core never import ``mureo.mcp`` (#863)
+# rollback / policy / amazon_ads / core / analytics / change_import /
+# client_factory never import ``mureo.mcp`` (#863)
 # ---------------------------------------------------------------------------
 
-#: Packages below ``mureo.mcp``. ``mureo/mcp/__init__`` loads the whole server,
-#: so any ``mureo.mcp.*`` import from here — even a function-local one — reaches
-#: back up through every tool module.
-_BELOW_MCP = ("rollback", "policy", "amazon_ads", "core")
+#: Packages (and top-level modules) below ``mureo.mcp``. ``mureo/mcp/__init__``
+#: loads the whole server, so any ``mureo.mcp.*`` import from here — even a
+#: function-local one — reaches back up through every tool module.
+_BELOW_MCP = (
+    "rollback",
+    "policy",
+    "amazon_ads",
+    "core",
+    "analytics",
+    "change_import",
+    "client_factory.py",
+)
 
 #: Child: import the lower layers and nothing else, run the two call paths
 #: that used to reach ``mureo.mcp`` at call time (the plugin reversal lookup,
@@ -144,6 +159,30 @@ _LOWER_LAYERS_ALONE = (
     " if m == 'mureo.mcp' or m.startswith('mureo.mcp.'))))\n"
 )
 
+#: Platform SDKs a live client is built on. Google Ads uses ``google.ads``;
+#: Meta has no SDK here — ``mureo.meta_ads.client`` talks to the Graph API over
+#: ``httpx`` — so its client module stands in, with ``facebook_business`` (the
+#: official Meta SDK) listed so adopting it cannot slip in unseen.
+_PLATFORM_SDK_MODULES = ("google.ads", "facebook_business", "mureo.meta_ads.client")
+
+#: Child: import the analytics / change-import live-client openers and the
+#: modules they open clients with, then report which ``mureo.mcp`` modules and
+#: platform SDK modules came with them and whether ``mureo.auth`` did (it is
+#: deferred to the first client build for its startup cost, #809).
+_LIVE_CLIENT_OPENERS_ALONE = (
+    "import json, sys\n"
+    "import mureo.analytics.builtin._live_clients\n"
+    "import mureo.change_import.builtin.google_ads\n"
+    "import mureo.core.credential_source, mureo.core.account_scope\n"
+    "import mureo.client_factory\n"
+    f"sdks = {_PLATFORM_SDK_MODULES!r}\n"
+    "print(json.dumps({'mcp': sorted(m for m in sys.modules"
+    " if m == 'mureo.mcp' or m.startswith('mureo.mcp.')),"
+    " 'sdk': sorted(m for m in sys.modules"
+    " if any(m == s or m.startswith(s + '.') for s in sdks)),"
+    " 'auth': 'mureo.auth' in sys.modules}))\n"
+)
+
 #: The failure-envelope reader moved to ``mureo.core.tool_failure``;
 #: ``mureo.mcp._helpers`` re-exports the same objects.
 _ENVELOPE_READER_NAMES = (
@@ -154,6 +193,22 @@ _ENVELOPE_READER_NAMES = (
     "Failure",
     "failure_of",
     "is_error_result",
+)
+
+
+#: The credential-source ABI moved to ``mureo.core.credential_source``;
+#: ``mureo.mcp.credential_source`` re-exports the same objects.
+_CREDENTIAL_SOURCE_NAMES = (
+    "CredentialSource",
+    "CredentialSourceError",
+    "GoogleCredentialSource",
+    "MetaCredentialSource",
+    "active_source_identity",
+    "call_source",
+    "current_credential_source",
+    "current_google_source",
+    "current_meta_source",
+    "use_credential_source",
 )
 
 
@@ -229,15 +284,23 @@ def test_lower_layers_load_nothing_from_mcp() -> None:
 
 
 @pytest.mark.unit
+def test_live_client_openers_load_neither_mcp_nor_auth() -> None:
+    proc = run_in_fresh_interpreter(_LIVE_CLIENT_OPENERS_ALONE)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == {"mcp": [], "sdk": [], "auth": False}
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("package", _BELOW_MCP)
 def test_lower_layer_source_never_imports_mcp(package: str) -> None:
     """Function-local imports included: one that runs only after the server
     has loaded is still an upward dependency, and the next caller to reach it
     without the server gets the cycle."""
     root = pathlib.Path(mureo.__file__).parent / package
+    paths = sorted(root.rglob("*.py")) if root.is_dir() else [root]
     offenders = [
         f"{path.relative_to(root.parent)}:{lineno} imports {name}"
-        for path in sorted(root.rglob("*.py"))
+        for path in paths
         for lineno, name in _mcp_imports(
             ast.parse(path.read_text("utf-8")), _package_of(path)
         )
@@ -249,6 +312,18 @@ def test_lower_layer_source_never_imports_mcp(package: str) -> None:
 @pytest.mark.parametrize("name", _ENVELOPE_READER_NAMES)
 def test_envelope_reader_is_one_object_on_both_paths(name: str) -> None:
     assert getattr(helpers, name) is getattr(tool_failure, name)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", _CREDENTIAL_SOURCE_NAMES)
+def test_credential_source_is_one_object_on_both_paths(name: str) -> None:
+    assert getattr(credential_source_compat, name) is getattr(credential_source, name)
+
+
+@pytest.mark.unit
+def test_credential_source_paths_export_the_same_names() -> None:
+    assert sorted(credential_source.__all__) == sorted(_CREDENTIAL_SOURCE_NAMES)
+    assert credential_source_compat.__all__ == credential_source.__all__
 
 
 @pytest.mark.unit

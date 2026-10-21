@@ -54,7 +54,7 @@ def _standalone_meta_ads():
     assertion for reasons unrelated to this contract.
     """
     with patch(
-        "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+        "mureo.core.account_scope.runtime_meta_account_ids",
         return_value=None,
     ):
         yield
