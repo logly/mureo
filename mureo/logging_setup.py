@@ -256,3 +256,13 @@ def safe_http_log_line(fmt: str, *args: object) -> str:
         # A malformed call must not raise inside a request handler.
         message = fmt
     return scrub_http_log_line(message)
+
+
+def truncate_text(value: str, limit: int) -> str:
+    """``value`` bounded to ``limit`` characters, marked when it was cut."""
+    return value if len(value) <= limit else value[:limit] + "..."
+
+
+def one_log_line(value: str) -> str:
+    """Collapse newlines so platform-authored text cannot forge a log record."""
+    return " ".join(value.split())

@@ -443,7 +443,9 @@ class TestSaveAmazonAccessTokenFollowsRuntimeContext:
         """Point the legacy fallback at a tmp file so the real
         ``~/.mureo/credentials.json`` is never touched by these tests."""
         legacy = tmp_path / "legacy" / "credentials.json"
-        monkeypatch.setattr(auth_mod, "_resolve_default_path", lambda: legacy)
+        monkeypatch.setattr(
+            "mureo.core.runtime_context.default_credentials_path", lambda: legacy
+        )
         return legacy
 
     def test_writes_to_the_store_declared_credentials_write_path(

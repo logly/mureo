@@ -1,7 +1,7 @@
 """Bridging logic for ``mureo.web.oauth_bridge``.
 
 The OAuth bridge spawns a separate ``WebAuthWizard`` (in
-``mureo.cli.web_auth``) per provider, returns the consent URL, and
+``mureo.web.auth_wizard``) per provider, returns the consent URL, and
 runs a watcher thread that updates the parent configure-wizard
 session on completion. Every test in here MUST mock the spawned
 wizard — no real sub-server, no real socket bind, no network.
@@ -71,7 +71,7 @@ class TestOAuthHandoffResult:
 
 
 class _FakeWizard:
-    """Stand-in for ``mureo.cli.web_auth.WebAuthWizard`` — never binds."""
+    """Stand-in for ``mureo.web.auth_wizard.WebAuthWizard`` — never binds."""
 
     def __init__(
         self,
@@ -121,7 +121,9 @@ def patched_wizard_class() -> Iterator[Any]:
         instances.append(w)
         return w
 
-    with patch("mureo.cli.web_auth.WebAuthWizard", side_effect=_factory) as mock_cls:
+    with patch(
+        "mureo.web.oauth_bridge.WebAuthWizard", side_effect=_factory
+    ) as mock_cls:
         mock_cls.instances = instances  # type: ignore[attr-defined]
         yield mock_cls
 
@@ -230,7 +232,7 @@ class TestOAuthBridgeStartTimeout:
         def _factory(**kwargs: Any) -> _FakeWizard:
             return _FakeWizard(ready_timeout=True, **kwargs)
 
-        with patch("mureo.cli.web_auth.WebAuthWizard", side_effect=_factory):
+        with patch("mureo.web.oauth_bridge.WebAuthWizard", side_effect=_factory):
             result = bridge.start(
                 provider="google", configure_wizard=fake_configure_wizard
             )
@@ -249,7 +251,7 @@ class TestOAuthBridgeStartTimeout:
             return w
 
         bridge = OAuthBridge()
-        with patch("mureo.cli.web_auth.WebAuthWizard", side_effect=_factory):
+        with patch("mureo.web.oauth_bridge.WebAuthWizard", side_effect=_factory):
             bridge.start(provider="meta", configure_wizard=fake_configure_wizard)
         assert captured[0].shutdown_called is True
 
@@ -359,7 +361,7 @@ class TestWatcherCompletion:
             return w
 
         bridge = OAuthBridge()
-        with patch("mureo.cli.web_auth.WebAuthWizard", side_effect=_factory):
+        with patch("mureo.web.oauth_bridge.WebAuthWizard", side_effect=_factory):
             bridge.start(
                 provider="google",
                 configure_wizard=fake_configure_wizard,
@@ -386,7 +388,7 @@ class TestWatcherCompletion:
             return w
 
         bridge = OAuthBridge()
-        with patch("mureo.cli.web_auth.WebAuthWizard", side_effect=_factory):
+        with patch("mureo.web.oauth_bridge.WebAuthWizard", side_effect=_factory):
             bridge.start(
                 provider="meta",
                 configure_wizard=fake_configure_wizard,
@@ -414,7 +416,7 @@ class TestWatcherCompletion:
             return w
 
         bridge = OAuthBridge()
-        with patch("mureo.cli.web_auth.WebAuthWizard", side_effect=_factory):
+        with patch("mureo.web.oauth_bridge.WebAuthWizard", side_effect=_factory):
             bridge.start(
                 provider="google",
                 configure_wizard=fake_configure_wizard,
@@ -429,7 +431,7 @@ class TestNoRealSubprocessOrSocket:
         self, fake_configure_wizard: MagicMock
     ) -> None:
         bridge = OAuthBridge()
-        with patch("mureo.cli.web_auth.WebAuthWizard") as mock_cls:
+        with patch("mureo.web.oauth_bridge.WebAuthWizard") as mock_cls:
             fake = _FakeWizard()
             mock_cls.return_value = fake
             bridge.start(provider="google", configure_wizard=fake_configure_wizard)
@@ -611,7 +613,7 @@ class TestStartPluginOAuth:
             return w
 
         bridge = OAuthBridge()
-        with patch("mureo.cli.web_auth.WebAuthWizard", side_effect=_factory):
+        with patch("mureo.web.oauth_bridge.WebAuthWizard", side_effect=_factory):
             result = bridge.start_plugin_oauth(
                 provider="yahoo_ads",
                 configure_wizard=fake_configure_wizard,

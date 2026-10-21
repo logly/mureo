@@ -34,7 +34,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from mureo.core.knowledge_store import FilesystemKnowledgeStore, KnowledgeStore
-from mureo.core.secret_store import FilesystemSecretStore, SecretStore
+from mureo.core.secret_store import (
+    FilesystemSecretStore,
+    SecretStore,
+    default_credentials_path,
+)
 from mureo.core.throttle_store import ProcessLocalThrottleStore, ThrottleStore
 
 if TYPE_CHECKING:
@@ -248,7 +252,7 @@ def reset_runtime_context() -> None:
     _cached_context = None
 
 
-def runtime_credentials_path(default: Path) -> Path:
+def runtime_credentials_path(default: Path | None = None) -> Path:
     """Return the credentials path the active ``RuntimeContext`` uses.
 
     Bridges the path-based configure-UI write functions (which take a
@@ -256,6 +260,17 @@ def runtime_credentials_path(default: Path) -> Path:
     runtime reads from, so an alternate backend registered via
     :data:`RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP` is honored on
     *write* — not only on *read* (#194).
+
+    ``default`` is the caller's fallback location; ``None`` means
+    :func:`~mureo.core.secret_store.default_credentials_path`. Every
+    ``path``-less credentials writer — the two token-refresh writers in
+    ``mureo.auth`` and the setup wizard's ``mureo.auth_setup.save_credentials``
+    — calls this with no argument: the loaders read through the active
+    ``RuntimeContext``'s ``SecretStore``, so a writer that always targeted
+    the legacy default would write where the reader never looks whenever a
+    ``mureo.runtime_context_factory`` relocates that store (#510). The Amazon
+    tool manifest resolves its location the same way, so writer and reader
+    agree on it (#512 / #516).
 
     Resolution (in order):
 
@@ -290,15 +305,16 @@ def runtime_credentials_path(default: Path) -> Path:
     behavior — a packaging mistake is made visible rather than hidden
     behind a silent fall-back to the default location.
     """
+    fallback = default if default is not None else default_credentials_path()
     if not list(entry_points(group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP)):
-        return default
+        return fallback
     store = get_runtime_context().secret_store
     declared = getattr(store, "credentials_write_path", None)
     if isinstance(declared, Path):
         return declared
     if isinstance(store, FilesystemSecretStore):
         return store.path
-    return default
+    return fallback
 
 
 def runtime_multi_account_auth() -> bool:

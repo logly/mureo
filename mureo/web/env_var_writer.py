@@ -14,15 +14,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mureo.core.atomic_json import atomic_write_json, load_existing_json
+from mureo.core.secret_store import default_credentials_path
 from mureo.fsutil import backup_file
 from mureo.web._helpers import read_json_safe
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ def build_provider_env(
 def _resolve_credentials_path(credentials_path: Path | None) -> Path:
     if credentials_path is not None:
         return credentials_path
-    return Path.home() / ".mureo" / "credentials.json"
+    return default_credentials_path()
 
 
 def _clear_stale_refresh_clock(name: str, section_payload: dict[str, Any]) -> None:

@@ -140,9 +140,19 @@ class SecretStore(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def default_credentials_path() -> Path:
+    """The legacy location every file-backed reader and writer falls back to
+    when no runtime context relocates it: ``~/.mureo/credentials.json``.
+
+    The only place that path is spelled out (#863). Resolved on each call,
+    so a changed ``HOME`` is honoured.
+    """
+    return Path.home() / ".mureo" / "credentials.json"
+
+
 class FilesystemSecretStore:
     """Persist credentials in a single JSON file (default
-    ``~/.mureo/credentials.json``).
+    :func:`default_credentials_path`).
 
     The file root is a ``dict[str, dict[str, Any]]`` keyed by platform
     name (``"google_ads"``, ``"meta_ads"``, ``"search_console"``, …).
@@ -154,9 +164,7 @@ class FilesystemSecretStore:
     """
 
     def __init__(self, path: Path | None = None) -> None:
-        self.path = (
-            path if path is not None else Path.home() / ".mureo" / "credentials.json"
-        )
+        self.path = path if path is not None else default_credentials_path()
 
     def load(self, key: str) -> dict[str, Any]:
         data = self._read_root()

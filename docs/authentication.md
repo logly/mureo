@@ -285,7 +285,7 @@ ad creative needs a Live app and the system-user token of Option C.
 
 ### Permissions (OAuth scopes)
 
-`mureo configure` / `mureo auth setup` request the following scopes automatically during sign-in — you do not list them by hand. The full set is the source of truth in `mureo/auth_setup.py` (`_META_OAUTH_SCOPES`):
+`mureo configure` / `mureo auth setup` request the following scopes automatically during sign-in — you do not list them by hand. The full set is the source of truth in `mureo.meta_ads.accounts.META_OAUTH_SCOPES`:
 
 | Scope | Enables |
 | --- | --- |

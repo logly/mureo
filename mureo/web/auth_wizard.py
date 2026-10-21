@@ -81,7 +81,7 @@ logger = logging.getLogger(__name__)
 #: mureo.auth_setup import list_accessible_accounts`` is NOT lazy either — it
 #: *triggers* that module's ``__getattr__`` at import time.
 #:
-#: They stay real module attributes for ``patch("mureo.cli.web_auth.<name>")``
+#: They stay real module attributes for ``patch("mureo.web.auth_wizard.<name>")``
 #: (six existing tests rely on it, one of which asserts the probe is NOT
 #: called and would silently pass if the patch were bypassed) — see
 #: :func:`_reexport`.
@@ -105,7 +105,7 @@ def _reexport(name: str) -> Any:
     Resolved through this module's attribute lookup, never a function-local
     source import: unpatched it falls through to :func:`__getattr__` (still
     lazy), while a patched module attribute shadows ``__getattr__`` so
-    ``patch("mureo.cli.web_auth.<name>")`` intercepts the probe. A
+    ``patch("mureo.web.auth_wizard.<name>")`` intercepts the probe. A
     function-local import would silently bypass the patch and let the real
     networked call run.
     """

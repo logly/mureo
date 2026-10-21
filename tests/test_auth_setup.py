@@ -1722,9 +1722,9 @@ def test_meta_oauth_scopes_do_not_request_pages_manage_posts() -> None:
     (meta_ads_pages_photos_list), which reads with pages_read_engagement +
     pages_show_list. Asking for a write scope the product no longer uses is
     what the review objected to, so the pin runs the other way now."""
-    from mureo.auth_setup import _META_OAUTH_SCOPES
+    from mureo.meta_ads.accounts import META_OAUTH_SCOPES
 
-    scopes = set(_META_OAUTH_SCOPES.split(","))
+    scopes = set(META_OAUTH_SCOPES.split(","))
     assert "pages_manage_posts" not in scopes
     # The reading scopes the replacement flow depends on must stay.
     assert "pages_read_engagement" in scopes
@@ -2136,11 +2136,11 @@ async def test_setup_meta_ads_cancel_selection(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_resolve_default_path() -> None:
+def test_default_credentials_path() -> None:
     """Resolve the default path."""
-    from mureo.auth_setup import _resolve_default_path
+    from mureo.core.secret_store import default_credentials_path
 
-    path = _resolve_default_path()
+    path = default_credentials_path()
     assert path.name == "credentials.json"
     assert ".mureo" in str(path)
 
@@ -2154,7 +2154,7 @@ def test_resolve_default_path() -> None:
 # ``mureo.runtime_context_factory`` relocates that store — the interactive
 # setup wizard's flavour of the same split-brain the token-refresh writers
 # had. ``save_credentials`` now defaults through
-# ``auth_setup._resolve_write_path`` (``runtime_credentials_path``).
+# ``mureo.core.runtime_context.runtime_credentials_path``.
 #
 # Entry-point stubs and the fake stores mirror
 # ``tests/test_web_credentials_runtime_alignment.py``.
@@ -2193,10 +2193,10 @@ def _reset_runtime_ctx() -> Iterator[None]:
 def _pin_legacy_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     """Point the legacy fallback at a tmp file so the real
     ``~/.mureo/credentials.json`` is never touched by these tests."""
-    from mureo import auth_setup
-
     legacy = tmp_path / "legacy" / "credentials.json"
-    monkeypatch.setattr(auth_setup, "_resolve_default_path", lambda: legacy)
+    monkeypatch.setattr(
+        "mureo.core.runtime_context.default_credentials_path", lambda: legacy
+    )
     return legacy
 
 

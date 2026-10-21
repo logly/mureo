@@ -280,7 +280,7 @@ class TestHttpAccessLogScrubbing:
         "module_path",
         [
             "mureo.web.handlers.ConfigureHandler",
-            "mureo.cli.web_auth._WizardHandler",
+            "mureo.web.auth_wizard._WizardHandler",
             "mureo.auth_setup._CallbackHandler",
         ],
     )
@@ -345,3 +345,39 @@ class TestConfigureEntryPointWiring:
             result = CliRunner().invoke(app, ["configure", "--no-browser"])
         assert result.exit_code == 0, result.output
         assert str(logging_setup.configure_log_path()) in result.output
+
+
+@pytest.mark.unit
+class TestLogTextHelpers:
+    """Bounded, single-line renderings of platform-authored text (#605, #863)."""
+
+    def test_truncate_text_keeps_shorter_text(self) -> None:
+        assert logging_setup.truncate_text("abc", 5) == "abc"
+
+    def test_truncate_text_keeps_text_of_exactly_the_limit(self) -> None:
+        assert logging_setup.truncate_text("abcde", 5) == "abcde"
+
+    def test_truncate_text_cuts_and_marks_longer_text(self) -> None:
+        assert logging_setup.truncate_text("abcdef", 5) == "abcde..."
+
+    def test_one_log_line_keeps_clean_text(self) -> None:
+        assert logging_setup.one_log_line("Invalid OAuth token") == (
+            "Invalid OAuth token"
+        )
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("bad\nINFO forged record", "bad INFO forged record"),
+            ("bad\r\nINFO forged", "bad INFO forged"),
+            ("a\rb", "a b"),
+            ("  lead\t\x0b\x0ctrail  ", "lead trail"),
+            ("a\x1cb\x1dc\x1ed\x1fe", "a b c d e"),
+            ("a\x85b c d", "a b c d"),
+            ("\n\r\t", ""),
+        ],
+    )
+    def test_one_log_line_collapses_line_breaks_and_whitespace_controls(
+        self, value: str, expected: str
+    ) -> None:
+        assert logging_setup.one_log_line(value) == expected

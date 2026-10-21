@@ -10,8 +10,9 @@ wizard re-auth dropping a just-refreshed access_token, or the refresh dropping
 a freshly-saved google_ads block). All three paths now hold the same
 cross-process ``credentials.json.lock`` across the whole cycle.
 
-The test instruments ``mureo.core.atomic_json.load_existing_json`` /
-``atomic_write_json`` to count how many read-modify-write cycles are ever
+The test instruments ``load_existing_json`` / ``atomic_write_json`` (from
+``mureo.core.atomic_json``, as ``mureo.auth`` and ``mureo.auth_setup`` bind
+them) to count how many read-modify-write cycles are ever
 in-flight at once and widens the window with a sleep. A correct lock keeps the
 concurrency at exactly 1; removing the lock lets it climb past 1 and the test
 fails. Mirrors ``tests/test_state_concurrency.py``.
@@ -28,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 import mureo.core.atomic_json as atomic_json
+from mureo import auth, auth_setup
 from mureo.auth import (
     GoogleAdsCredentials,
     _save_meta_token,
@@ -76,9 +78,13 @@ class _SectionMonitor:
 
 @pytest.fixture
 def monitor(monkeypatch: pytest.MonkeyPatch) -> _SectionMonitor:
+    """Patched where the writers look the helpers up: both modules import them
+    at load (#863), so patching ``mureo.core.atomic_json`` alone would leave the
+    monitor blind (``max_active`` 0)."""
     mon = _SectionMonitor()
-    monkeypatch.setattr(atomic_json, "load_existing_json", mon.load)
-    monkeypatch.setattr(atomic_json, "atomic_write_json", mon.write)
+    for module in (auth, auth_setup):
+        monkeypatch.setattr(module, "load_existing_json", mon.load)
+        monkeypatch.setattr(module, "atomic_write_json", mon.write)
     return mon
 
 

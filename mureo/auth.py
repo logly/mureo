@@ -23,16 +23,24 @@ import logging
 import os
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 
-from mureo.core.secret_store import FilesystemSecretStore, SecretStore
+from mureo.core.atomic_json import atomic_write_json, load_existing_json
+from mureo.core.runtime_context import get_runtime_context, runtime_credentials_path
+from mureo.core.secret_store import (
+    FilesystemSecretStore,
+    SecretStore,
+    default_credentials_path,
+)
 from mureo.fsutil import file_lock, lock_path_for
+from mureo.logging_setup import one_log_line, truncate_text
 from mureo.meta_ads._api_version import OAUTH_TOKEN_URL
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from google.auth.credentials import Credentials as GoogleAuthCredentials
 
     from mureo.google_ads import GoogleAdsApiClient
@@ -162,7 +170,7 @@ def load_credentials(path: Path | None = None) -> dict[str, Any]:
     Returns:
         Credential dict. Returns empty dict if file is missing or invalid JSON.
     """
-    resolved = path if path is not None else _resolve_default_path()
+    resolved = path if path is not None else default_credentials_path()
 
     if not resolved.exists():
         logger.debug("credentials.json not found: %s", resolved)
@@ -551,16 +559,6 @@ class MetaTokenRefreshError(ValueError):
     """
 
 
-def _truncate(value: str, limit: int) -> str:
-    """``value`` bounded to ``limit`` characters, marked when it was cut."""
-    return value if len(value) <= limit else value[:limit] + "..."
-
-
-def _one_log_line(value: str) -> str:
-    """Collapse newlines so platform-authored text cannot forge a log record."""
-    return " ".join(value.split())
-
-
 def _graph_error_detail(resp: httpx.Response) -> str:
     """A curated, bounded rendering of a Meta Graph error body (#605).
 
@@ -584,12 +582,14 @@ def _graph_error_detail(resp: httpx.Response) -> str:
     message = err.get("message")
     if message:
         parts.append(
-            _truncate(_one_log_line(str(message)), _GRAPH_ERROR_MESSAGE_MAX_CHARS)
+            truncate_text(one_log_line(str(message)), _GRAPH_ERROR_MESSAGE_MAX_CHARS)
         )
     for field_name, label in (("code", "code"), ("error_subcode", "subcode")):
         value = err.get(field_name)
         if value is not None:
-            rendered = _truncate(_one_log_line(str(value)), _GRAPH_ERROR_CODE_MAX_CHARS)
+            rendered = truncate_text(
+                one_log_line(str(value)), _GRAPH_ERROR_CODE_MAX_CHARS
+            )
             parts.append(f"{label}={rendered}")
 
     return " | ".join(parts) if parts else _NO_GRAPH_ERROR_DETAIL
@@ -607,7 +607,7 @@ async def refresh_meta_token_if_needed(
     - Token will expire within 7 days (53+ days old)
 
     ``path=None`` resolves the destination of the resulting write through
-    :func:`_resolve_write_path`, the same seam
+    :func:`~mureo.core.runtime_context.runtime_credentials_path`, the same seam
     :func:`save_amazon_access_token` uses — see that function for why a
     ``path``-less writer must not hardcode the legacy default (#510). An
     explicit ``path`` is never redirected.
@@ -646,7 +646,7 @@ async def refresh_meta_token_if_needed(
             token_expires_at=new_expires_at,
         )
 
-        resolved = path if path is not None else _resolve_write_path()
+        resolved = path if path is not None else runtime_credentials_path()
         try:
             _save_meta_token(resolved, new_token, new_obtained_at, new_expires_at)
         except Exception as exc:
@@ -894,10 +894,6 @@ def _save_meta_token(
     (e.g. a wizard re-auth dropping the just-refreshed access_token, or this
     refresh dropping a freshly-saved google_ads block).
     """
-    # Lazy import mirrors ``auth_setup.save_credentials`` and keeps the
-    # module import graph flat.
-    from mureo.core.atomic_json import atomic_write_json, load_existing_json
-
     path.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(lock_path_for(path)):
         data = load_existing_json(path)
@@ -977,11 +973,7 @@ def save_amazon_access_token(
         ConfigWriteError: the existing credentials.json is malformed;
             nothing is written.
     """
-    # Lazy import mirrors ``_save_meta_token`` and keeps the module import
-    # graph flat.
-    from mureo.core.atomic_json import atomic_write_json, load_existing_json
-
-    resolved = path if path is not None else _resolve_write_path()
+    resolved = path if path is not None else runtime_credentials_path()
     resolved.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(lock_path_for(resolved)):
         data = load_existing_json(resolved)
@@ -1004,40 +996,6 @@ def save_amazon_access_token(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_default_path() -> Path:
-    """Resolve the default credentials.json path."""
-    return Path.home() / ".mureo" / "credentials.json"
-
-
-def _resolve_write_path() -> Path:
-    """Resolve where a ``path``-less credentials write should land.
-
-    The counterpart of :func:`_resolve_secret_store` for writers, shared
-    by the two token-refresh writers in this module
-    (:func:`save_amazon_access_token` and
-    :func:`refresh_meta_token_if_needed`) and mirrored by
-    :func:`mureo.auth_setup._resolve_write_path` for the third writer,
-    the interactive setup wizard's
-    :func:`mureo.auth_setup.save_credentials`: the loaders read through
-    the active ``RuntimeContext``'s ``SecretStore``, so a writer that
-    always targets :func:`_resolve_default_path` would write somewhere
-    the reader never consults whenever a ``mureo.runtime_context_factory``
-    relocates that store (#510).
-
-    Delegates to :func:`mureo.core.runtime_context.runtime_credentials_path`
-    — the same resolver the configure UI's write path goes through — so
-    the store-capability rules (declared ``credentials_write_path`` first,
-    then a built-in ``FilesystemSecretStore``'s ``path``, else the
-    default) have exactly one definition. With no factory registered it
-    returns :func:`_resolve_default_path` unchanged.
-
-    Imported lazily for the same reason as :func:`_resolve_secret_store`.
-    """
-    from mureo.core.runtime_context import runtime_credentials_path
-
-    return runtime_credentials_path(_resolve_default_path())
-
-
 def _resolve_secret_store(path: Path | None) -> SecretStore:
     """Pick the SecretStore that ``load_*_credentials`` should consult.
 
@@ -1050,15 +1008,12 @@ def _resolve_secret_store(path: Path | None) -> SecretStore:
       default file-backed store today, or whatever a registered
       ``mureo.runtime_context_factory`` entry-point returns).
 
-    Imported lazily to keep ``mureo.auth`` decoupled from
-    ``mureo.core.runtime_context``: if the resolver later wants to
-    reference an ``mureo.auth`` type, a top-level import here would
-    create a circular dependency.
+    Its counterpart for writers is
+    :func:`mureo.core.runtime_context.runtime_credentials_path`, which every
+    ``path``-less credentials writer calls (#510).
     """
     if path is not None:
         return FilesystemSecretStore(path=path)
-    from mureo.core.runtime_context import get_runtime_context
-
     return get_runtime_context().secret_store
 
 

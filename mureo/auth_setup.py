@@ -34,6 +34,8 @@ import httpx
 
 from mureo import credential_guard
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
+from mureo.core.atomic_json import atomic_write_json, load_existing_json
+from mureo.core.runtime_context import runtime_credentials_path
 
 # Private alias so existing call sites and test monkeypatches of
 # ``mureo.auth_setup._terminal_fd`` keep working now that the canonical
@@ -41,6 +43,8 @@ from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 from mureo.core.terminal import terminal_fd as _terminal_fd
 from mureo.fsutil import backup_file, file_lock, lock_path_for
 from mureo.logging_setup import safe_http_log_line
+from mureo.meta_ads._api_version import OAUTH_DIALOG_URL, OAUTH_TOKEN_URL
+from mureo.meta_ads.accounts import META_HTTP_TIMEOUT_SECONDS, META_OAUTH_SCOPES
 
 if TYPE_CHECKING:
     from google_auth_oauthlib.flow import Flow
@@ -242,18 +246,7 @@ def _select_account(
         return None
 
 
-# ``_META_GRAPH_API_BASE`` and ``_HTTP_TIMEOUT`` are now defined in
-# :mod:`mureo.meta_ads.accounts` (the public-API home for Meta account
-# discovery). Importing from there keeps a single source of truth so a
-# Graph API version bump only needs to land in one place.
-from mureo.meta_ads._api_version import OAUTH_DIALOG_URL  # noqa: E402
-from mureo.meta_ads.accounts import _HTTP_TIMEOUT, _META_GRAPH_API_BASE  # noqa: E402
-
 _META_AUTH_URL = OAUTH_DIALOG_URL
-_META_OAUTH_SCOPES = (
-    "ads_management,ads_read,business_management,"
-    "pages_show_list,pages_manage_ads,pages_read_engagement,leads_retrieval"
-)
 
 # Input function replaceable for testing
 input_func = input
@@ -621,8 +614,6 @@ def _register_user_scope_mcp() -> Path:
     # hardened atomic, refuse-malformed writer (mkstemp+0o600+fsync+
     # os.replace; raises ConfigWriteError rather than clobbering a
     # corrupt-but-recoverable file) instead of a plain truncating write.
-    from mureo.core.atomic_json import atomic_write_json, load_existing_json
-
     path = _claude_user_config_path()
     existing = load_existing_json(path)  # {} if absent; raises on malformed
     mcp_servers = existing.setdefault("mcpServers", {})
@@ -799,8 +790,6 @@ def install_credential_guard() -> Path | None:
     # Write back (preserve all existing content). Same atomic writer the
     # removal path uses on this file — upgrades now rewrite a populated
     # settings.json, so a crash mid-write must not truncate it.
-    from mureo.core.atomic_json import atomic_write_json
-
     atomic_write_json(existing, settings_path)
 
     logger.info("Credential guard hooks installed: %s", settings_path)
@@ -997,10 +986,10 @@ def save_credentials(
     """Save credentials to credentials.json (merged with existing data).
 
     ``path=None`` resolves the destination through
-    :func:`_resolve_write_path` rather than hardcoding the legacy
-    default, so a runtime that relocates the ``SecretStore`` is honored
-    on write and the wizard stops saving where nobody reads (#510). An
-    explicit ``path`` is never redirected.
+    :func:`~mureo.core.runtime_context.runtime_credentials_path` rather
+    than hardcoding the legacy default, so a runtime that relocates the
+    ``SecretStore`` is honored on write and the wizard stops saving where
+    nobody reads (#510). An explicit ``path`` is never redirected.
 
     Args:
         path: Path to credentials.json. Uses the runtime-resolved
@@ -1010,7 +999,7 @@ def save_credentials(
         customer_id: Google Ads account (login_customer_id)
         account_id: Meta Ads ad account ID
     """
-    resolved = path if path is not None else _resolve_write_path()
+    resolved = path if path is not None else runtime_credentials_path()
 
     # Create directory
     resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -1022,8 +1011,7 @@ def save_credentials(
     # provider's auth on a slightly-corrupt file. ``atomic_write_json`` (tmp +
     # fsync + os.replace + 0o600) replaces the old truncating write so a crash
     # mid-write can't brick all providers.
-    from mureo.core.atomic_json import atomic_write_json, load_existing_json
-
+    #
     # Hold the whole read-modify-write under a cross-process ``file_lock`` so
     # a concurrent Meta 53-day auto-refresh (auth._save_meta_token) or another
     # CLI/web wizard run cannot last-writer-wins away the section this call is
@@ -1168,7 +1156,7 @@ async def setup_google_ads(
     # Report the path ``save_credentials`` actually wrote to — resolving
     # this any other way would print the legacy location while the write
     # went to a runtime-relocated store (#510).
-    print(f"\nCredentials saved: {credentials_path or _resolve_write_path()}")
+    print(f"\nCredentials saved: {credentials_path or runtime_credentials_path()}")
     print("Google Ads setup complete.\n")
 
     return final_creds
@@ -1207,7 +1195,7 @@ def build_meta_auth_url(
     params: dict[str, str] = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
-        "scope": _META_OAUTH_SCOPES,
+        "scope": META_OAUTH_SCOPES,
         "response_type": "code",
         "state": state,
     }
@@ -1262,7 +1250,7 @@ def _generate_meta_auth_url(
     params: dict[str, str] = {
         "client_id": app_id,
         "redirect_uri": f"http://localhost:{port}/callback",
-        "scope": _META_OAUTH_SCOPES,
+        "scope": META_OAUTH_SCOPES,
         "response_type": "code",
     }
     if state is not None:
@@ -1308,9 +1296,9 @@ async def _exchange_code_for_short_token(
         # body, not the URL. Meta's Graph ``/oauth/access_token`` accepts these
         # parameters via POST as well as GET, and httpx logs ``request.url`` at
         # INFO — a GET would leak the secret and code into any INFO-level log.
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=META_HTTP_TIMEOUT_SECONDS) as client:
             response = await client.post(
-                f"{_META_GRAPH_API_BASE}/oauth/access_token",
+                OAUTH_TOKEN_URL,
                 data=params,
             )
             response.raise_for_status()
@@ -1357,9 +1345,9 @@ async def _exchange_short_for_long_token(
         # accepts these parameters via POST as well as GET, and httpx logs
         # ``request.url`` at INFO — a GET would leak the secret and token into
         # any INFO-level log.
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=META_HTTP_TIMEOUT_SECONDS) as client:
             response = await client.post(
-                f"{_META_GRAPH_API_BASE}/oauth/access_token",
+                OAUTH_TOKEN_URL,
                 data=params,
             )
             response.raise_for_status()
@@ -1488,7 +1476,7 @@ async def setup_meta_ads(
     # pre-resolution would silently pin the wizard to the legacy file and
     # bypass a runtime-relocated store (#510).
     resolved_path = (
-        credentials_path if credentials_path is not None else _resolve_write_path()
+        credentials_path if credentials_path is not None else runtime_credentials_path()
     )
 
     # Display guidance
@@ -1564,35 +1552,3 @@ async def setup_meta_ads(
     print(f"Account: {_account_label(selected)}")
 
     return meta_creds
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _resolve_default_path() -> Path:
-    """Resolve the default credentials.json path."""
-    return Path.home() / ".mureo" / "credentials.json"
-
-
-def _resolve_write_path() -> Path:
-    """Resolve where a ``path``-less setup write should land.
-
-    The setup wizard's counterpart of :func:`mureo.auth._resolve_write_path`
-    (see it for the full rationale): ``mureo.auth``'s loaders read through
-    the active ``RuntimeContext``'s ``SecretStore``, so a writer that
-    always targets :func:`_resolve_default_path` saves where the runtime
-    never looks whenever a ``mureo.runtime_context_factory`` relocates
-    that store (#510).
-
-    Delegates to :func:`mureo.core.runtime_context.runtime_credentials_path`
-    so the store-capability rules have exactly one definition; with no
-    factory registered it returns :func:`_resolve_default_path`
-    unchanged. Imported lazily, mirroring this module's other
-    function-local ``mureo.core`` imports, so the CLI startup path does
-    not pay for it.
-    """
-    from mureo.core.runtime_context import runtime_credentials_path
-
-    return runtime_credentials_path(_resolve_default_path())

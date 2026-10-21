@@ -64,7 +64,7 @@ def _stored_token(path: Path) -> str:
 
     Every test below hands ``refresh_meta_token_if_needed`` an explicit
     ``path``: a mocked Graph 200 means the save really runs, and a
-    ``path``-less call resolves through ``auth._resolve_write_path``, which
+    ``path``-less call resolves through ``runtime_credentials_path``, which
     lands on the host's own credentials file whenever a
     ``mureo.runtime_context_factory`` is installed in the interpreter running
     the suite (#739). Reading the file back also pins that the token the

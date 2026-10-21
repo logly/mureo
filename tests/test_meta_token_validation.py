@@ -19,9 +19,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mureo.auth_setup import _META_OAUTH_SCOPES
+from mureo.meta_ads.accounts import META_OAUTH_SCOPES
 
-_REQUIRED = [s.strip() for s in _META_OAUTH_SCOPES.split(",") if s.strip()]
+_REQUIRED = [s.strip() for s in META_OAUTH_SCOPES.split(",") if s.strip()]
 
 
 def _resp(status: int, payload: dict[str, Any]) -> MagicMock:

@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 import httpx
 import pytest
 
-import mureo.auth as auth_mod
 from mureo.auth import (
     MetaAdsCredentials,
     load_meta_ads_credentials,
@@ -399,8 +398,8 @@ async def test_refresh_preserves_other_credential_sections(
 # runtime that relocates the credentials file the 53-day refresh therefore
 # wrote a file nobody reads, so every later process re-refreshed from the
 # same aging stored token until it expired. The destination is now resolved
-# through ``auth._resolve_write_path`` — i.e.
-# ``runtime_credentials_path`` — exactly like the Amazon writer.
+# through ``mureo.core.runtime_context.runtime_credentials_path`` —
+# exactly like the Amazon writer.
 #
 # Entry-point stubs and the fake stores mirror
 # ``tests/test_web_credentials_runtime_alignment.py``.
@@ -440,7 +439,9 @@ def _pin_legacy_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path
     """Point the legacy fallback at a tmp file so the real
     ``~/.mureo/credentials.json`` is never touched by these tests."""
     legacy = tmp_path / "legacy" / "credentials.json"
-    monkeypatch.setattr(auth_mod, "_resolve_default_path", lambda: legacy)
+    monkeypatch.setattr(
+        "mureo.core.runtime_context.default_credentials_path", lambda: legacy
+    )
     return legacy
 
 

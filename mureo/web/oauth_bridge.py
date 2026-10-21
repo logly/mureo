@@ -15,12 +15,12 @@ from mureo.oauth_authcode import (
     parse_loopback_callback_url,
 )
 from mureo.web._helpers import read_json_safe
+from mureo.web.auth_wizard import PluginOAuthSpec, WebAuthWizard
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from mureo.cli.web_auth import WebAuthWizard
     from mureo.core.providers import AccountOAuthConfig
 
 logger = logging.getLogger(__name__)
@@ -144,8 +144,6 @@ class OAuthBridge:
 
         self.cancel(provider)
 
-        from mureo.cli.web_auth import WebAuthWizard
-
         wizard = WebAuthWizard(
             credentials_path=credentials_path,
             multi_account_auth=multi_account_auth,
@@ -239,8 +237,6 @@ class OAuthBridge:
                 provider=provider,
                 error="callback_url_invalid",
             )
-
-        from mureo.cli.web_auth import PluginOAuthSpec, WebAuthWizard
 
         wizard = WebAuthWizard(credentials_path=credentials_path, bind_port=port)
         thread = threading.Thread(target=wizard.serve, daemon=True)

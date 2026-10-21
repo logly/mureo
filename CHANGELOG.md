@@ -28,6 +28,22 @@
   `mureo.core.credential_source`, and `CredentialSource.__module__` (and that
   of the other credential-source classes and functions) is
   `mureo.core.credential_source`.
+- **The configure OAuth wizard moved from `mureo.cli.web_auth` to
+  `mureo.web.auth_wizard`** (#863); the old module path is removed.
+  `mureo.web.oauth_bridge` imports it at load, so code that patched
+  `WebAuthWizard` for the bridge patches `mureo.web.oauth_bridge.WebAuthWizard`.
+  `mureo.meta_ads` no longer imports `mureo.auth` or `mureo.auth_setup`:
+  the Meta OAuth scopes and the Graph HTTP timeout are public as
+  `mureo.meta_ads.accounts.META_OAUTH_SCOPES` /
+  `META_HTTP_TIMEOUT_SECONDS` (replacing the private
+  `mureo.auth_setup._META_OAUTH_SCOPES` and
+  `mureo.meta_ads.accounts._HTTP_TIMEOUT` / `_META_GRAPH_API_BASE`), and the
+  log-line bounding helpers are public as
+  `mureo.logging_setup.truncate_text` / `one_log_line`. The legacy
+  credentials location has one definition,
+  `mureo.core.secret_store.default_credentials_path()`, and
+  `mureo.core.runtime_context.runtime_credentials_path()` now takes an
+  optional default that falls back to it.
 
 ## [0.30.0] - 2026-10-20
 

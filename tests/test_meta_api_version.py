@@ -22,7 +22,6 @@ import pytest
 
 import mureo
 from mureo import auth, auth_setup
-from mureo.meta_ads import accounts
 from mureo.meta_ads._api_version import (
     GRAPH_API_BASE,
     META_GRAPH_API_VERSION,
@@ -64,10 +63,9 @@ def test_derived_urls_carry_the_version() -> None:
 
 @pytest.mark.unit
 def test_every_call_site_speaks_the_pinned_version() -> None:
-    """The four call sites resolve to the constant, not to a copy of it."""
+    """The three call sites resolve to the constant, not to a copy of it."""
     call_sites = {
         "MetaAdsApiClient.BASE_URL": MetaAdsApiClient.BASE_URL,
-        "accounts._META_GRAPH_API_BASE": accounts._META_GRAPH_API_BASE,
         "auth._META_GRAPH_TOKEN_URL": auth._META_GRAPH_TOKEN_URL,
         "auth_setup._META_AUTH_URL": auth_setup._META_AUTH_URL,
     }

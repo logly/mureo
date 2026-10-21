@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mureo.cli.web_auth import PluginOAuthSpec, WebAuthWizard
+from mureo.web.auth_wizard import PluginOAuthSpec, WebAuthWizard
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -78,7 +78,7 @@ def test_plugin_callback_saves_refresh_token(plugin_wizard: Any) -> None:
     from mureo.oauth_authcode import AuthCodeResult
 
     with patch(
-        "mureo.cli.web_auth.exchange_authorization_code",
+        "mureo.web.auth_wizard.exchange_authorization_code",
         return_value=AuthCodeResult(refresh_token="RT-new", access_token="AT"),
     ):
         opener = urllib.request.build_opener(_NoRedirect())
@@ -103,7 +103,8 @@ def test_plugin_callback_rejects_state_mismatch(plugin_wizard: Any) -> None:
         raise AssertionError("token exchange must not run on a state mismatch")
 
     with patch(
-        "mureo.cli.web_auth.exchange_authorization_code", side_effect=_must_not_exchange
+        "mureo.web.auth_wizard.exchange_authorization_code",
+        side_effect=_must_not_exchange,
     ):
         opener = urllib.request.build_opener(_NoRedirect())
         with pytest.raises(urllib.error.HTTPError) as exc:
@@ -122,7 +123,7 @@ def test_plugin_callback_exchange_failure_renders_error(plugin_wizard: Any) -> N
     from mureo.oauth_authcode import OAuthExchangeError
 
     with patch(
-        "mureo.cli.web_auth.exchange_authorization_code",
+        "mureo.web.auth_wizard.exchange_authorization_code",
         side_effect=OAuthExchangeError("nope"),
     ):
         opener = urllib.request.build_opener(_NoRedirect())
@@ -247,7 +248,7 @@ def test_authsave_persists_values_and_token_atomically(authsave_wizard: Any) -> 
     from mureo.oauth_authcode import AuthCodeResult
 
     with patch(
-        "mureo.cli.web_auth.exchange_authorization_code",
+        "mureo.web.auth_wizard.exchange_authorization_code",
         return_value=AuthCodeResult(refresh_token="RT-new", access_token="AT"),
     ):
         opener = urllib.request.build_opener(_NoRedirect())
@@ -273,7 +274,7 @@ def test_authsave_failure_persists_nothing(authsave_wizard: Any) -> None:
     from mureo.oauth_authcode import OAuthExchangeError
 
     with patch(
-        "mureo.cli.web_auth.exchange_authorization_code",
+        "mureo.web.auth_wizard.exchange_authorization_code",
         side_effect=OAuthExchangeError("nope"),
     ):
         opener = urllib.request.build_opener(_NoRedirect())
@@ -328,7 +329,7 @@ def test_plugin_callback_passes_declared_token_auth_style(
     from mureo.oauth_authcode import AuthCodeResult
 
     with patch(
-        "mureo.cli.web_auth.exchange_authorization_code",
+        "mureo.web.auth_wizard.exchange_authorization_code",
         return_value=AuthCodeResult(refresh_token="RT", access_token="AT"),
     ) as mock_exchange:
         opener = urllib.request.build_opener(_NoRedirect())

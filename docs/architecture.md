@@ -230,8 +230,7 @@ mureo/
 │   ├── learn_cmd.py         # mureo learn — append insights to the knowledge base
 │   ├── install_desktop_cmd.py # mureo install-desktop — wire mureo into Claude Desktop chat (macOS)
 │   ├── rollback_cmd.py      # mureo rollback list / show (inspection only; apply routes through MCP)
-│   ├── _tty.py              # TTY-safe helpers (confirm_or_default, is_tty) for non-interactive setup
-│   └── web_auth.py          # OAuth handoff server used by `mureo configure` (Google + Meta) — was `auth setup --web`
+│   └── _tty.py              # TTY-safe helpers (confirm_or_default, is_tty) for non-interactive setup
 ├── mcp/                     # MCP server
 │   ├── __main__.py                        # python -m mureo.mcp entry point
 │   ├── server.py                          # MCP server setup (stdio transport)
@@ -281,7 +280,14 @@ mureo/
 │                            #   account_scope.py (#411 workspace account scoping) sit here, and the
 │                            #   BYOD-or-live client factory is mureo/client_factory.py: all three are
 │                            #   below mcp, so analytics and change import open live clients without
-│                            #   ever importing mureo.mcp (#863)
+│                            #   ever importing mureo.mcp (#863).
+│                            #   meta_ads never imports auth or auth_setup (#863): the Meta OAuth
+│                            #   scopes and Graph timeout are public in mureo.meta_ads.accounts
+│                            #   (META_OAUTH_SCOPES / META_HTTP_TIMEOUT_SECONDS) and auth_setup
+│                            #   imports them. The configure OAuth wizard lives in
+│                            #   mureo.web.auth_wizard. The legacy credentials location has one
+│                            #   definition, core.secret_store.default_credentials_path();
+│                            #   runtime_credentials_path() falls back to it when given no default.
 ├── policy/                  # Deterministic policy gate (STRATEGY.md → allow / deny / require-approval)
 ├── providers/              # Official-MCP provider catalog (Google Ads / Meta / GA4 install kits)
 ├── learning/                # /learn knowledge base + advisor federation client
@@ -298,6 +304,7 @@ mureo/
 ├── adapters/                # BYOD per-platform header-signature adapters
 ├── demo/                    # Synthetic demo workspace scaffolding
 └── web/                     # `mureo configure` local dashboard (stdlib http.server + static assets)
+    └── auth_wizard.py       # OAuth handoff server spawned by web/oauth_bridge.py (Google + Meta)
 
 skills/                          # Native slash skills — deployed to ~/.claude/skills/ and ~/.codex/skills/
 ├── onboard/                     # Account setup + STRATEGY.md generation

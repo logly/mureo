@@ -31,12 +31,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mureo.cli.web_auth import WebAuthWizard
 from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
     runtime_multi_account_auth,
 )
+from mureo.web.auth_wizard import WebAuthWizard
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -193,7 +193,7 @@ def test_oauth_bridge_threads_multi_account_flag(
         def shutdown(self) -> None:
             return None
 
-    monkeypatch.setattr("mureo.cli.web_auth.WebAuthWizard", _FakeWizard)
+    monkeypatch.setattr("mureo.web.oauth_bridge.WebAuthWizard", _FakeWizard)
     bridge = OAuthBridge()
     try:
         bridge.start(
@@ -248,13 +248,14 @@ def test_google_callback_skips_picker_when_multi_account(multi_wizard: Any) -> N
 
     with (
         patch(
-            "mureo.cli.web_auth.exchange_google_code",
+            "mureo.web.auth_wizard.exchange_google_code",
             return_value=OAuthResult(
                 refresh_token="REFRESH_TOKEN", access_token="ACCESS_TOKEN"
             ),
         ),
         patch(
-            "mureo.cli.web_auth.list_accessible_accounts", side_effect=_must_not_probe
+            "mureo.web.auth_wizard.list_accessible_accounts",
+            side_effect=_must_not_probe,
         ),
     ):
         opener = urllib.request.build_opener(_NoRedirect())
@@ -292,10 +293,12 @@ def test_meta_callback_skips_picker_when_multi_account(multi_wizard: Any) -> Non
 
     with (
         patch(
-            "mureo.cli.web_auth.exchange_meta_code",
+            "mureo.web.auth_wizard.exchange_meta_code",
             return_value=MetaOAuthResult(access_token="META_TOKEN", expires_in=0),
         ),
-        patch("mureo.cli.web_auth.list_meta_ad_accounts", side_effect=_must_not_probe),
+        patch(
+            "mureo.web.auth_wizard.list_meta_ad_accounts", side_effect=_must_not_probe
+        ),
     ):
         opener = urllib.request.build_opener(_NoRedirect())
         with pytest.raises(urllib.error.HTTPError) as exc:
