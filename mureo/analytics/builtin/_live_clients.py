@@ -51,6 +51,8 @@ from mureo.core.credential_source import (
     current_google_source,
     current_meta_source,
 )
+from mureo.google_ads._date_ranges import _get_comparison_date_ranges
+from mureo.meta_ads._period import previous_period
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -174,7 +176,9 @@ def _open_google_ads_client(account_id: str) -> tuple[object, str]:
     and ``mureo.client_factory.get_google_ads_client``.
     """
     # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import load_google_ads_credentials
+    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
+        load_google_ads_credentials,
+    )
 
     # Bind the account to the workspace allow-list (#411/#413) before it
     # reaches the client factory; a refusal degrades gracefully (#435).
@@ -210,7 +214,9 @@ def _google_client_from_source(
     precedence as the MCP handlers; ``None`` from it is "no credentials".
     """
     # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import create_google_ads_client
+    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
+        create_google_ads_client,
+    )
 
     creds = call_source("google", google.load_credentials)
     if creds is None:
@@ -238,11 +244,6 @@ async def fetch_google_ads_metrics(
     """
     # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
     client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
-
-    # Local import keeps the registry import cheap (see the module docstring).
-    # ``_date_ranges`` is SDK-free, so this never imports the SDK on the loop,
-    # BYOD included (#809).
-    from mureo.google_ads._date_ranges import _get_comparison_date_ranges
 
     period_token = _GOOGLE_WINDOW_TO_PERIOD.get(window_days, "LAST_7_DAYS")
     # Non-overlapping, equal-length current/previous BETWEEN clauses. The Google
@@ -415,7 +416,6 @@ async def fetch_google_ads_per_campaign_metrics(
     """
     # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
     client, account_id = await asyncio.to_thread(_open_google_ads_client, account_id)
-    from mureo.google_ads._date_ranges import _get_comparison_date_ranges
 
     period_token = _GOOGLE_WINDOW_TO_PERIOD.get(window_days, "LAST_7_DAYS")
     current_period, baseline_period = _get_comparison_date_ranges(period_token)
@@ -509,7 +509,6 @@ async def fetch_meta_ads_per_campaign_metrics(
     :func:`fetch_google_ads_per_campaign_metrics`.
     """
     client, account_id = await _open_meta_ads_client(account_id)
-    from mureo.meta_ads._period import previous_period
 
     current_period = _META_WINDOW_TO_PERIOD.get(window_days, "last_7d")
     baseline_period = previous_period(current_period)
@@ -600,7 +599,10 @@ async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     Protocol cannot silently bypass #411 scoping.
     """
     # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import load_meta_ads_credentials, refresh_meta_token_if_needed
+    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
+        load_meta_ads_credentials,
+        refresh_meta_token_if_needed,
+    )
 
     # Bind the account to the workspace allow-list (#411/#413) before it
     # reaches the client factory; a refusal degrades gracefully (#435).
@@ -642,7 +644,7 @@ def _meta_client_from_source(meta_ads: MetaCredentialSource, account_id: str) ->
     token lifecycle, so no refresh is attempted here.
     """
     # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import create_meta_ads_client
+    from mureo.auth import create_meta_ads_client  # noqa: PLC0415 — startup cost (#809)
 
     creds = call_source("meta_ads", meta_ads.load_credentials)
     if creds is None:
@@ -662,7 +664,6 @@ async def fetch_meta_ads_metrics(
     documented on :func:`fetch_google_ads_metrics`.
     """
     client, account_id = await _open_meta_ads_client(account_id)
-    from mureo.meta_ads._period import previous_period
 
     current_period = _META_WINDOW_TO_PERIOD.get(window_days, "last_7d")
     baseline_period = previous_period(current_period)

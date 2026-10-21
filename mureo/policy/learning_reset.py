@@ -47,6 +47,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mureo.context.models import StateDocument
+from mureo.context.state import read_state_file
+from mureo.core import runtime_context
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.core.tool_names import is_read_only_tool_name
 from mureo.policy.declarations import declared_read_only_hint
@@ -627,9 +630,7 @@ _state_cache: dict[str, tuple[float, Any]] = {}
 
 def _state_path() -> Path:
     try:
-        from mureo.core.runtime_context import get_runtime_context
-
-        store = get_runtime_context().state_store
+        store = runtime_context.get_runtime_context().state_store
         state_path = getattr(store, "state_path", None)
         if state_path is not None:
             return Path(state_path)
@@ -640,8 +641,6 @@ def _state_path() -> Path:
 
 def load_state_document() -> Any:
     """Read STATE.json (TTL-cached). Returns an empty document on any error."""
-    from mureo.context.models import StateDocument
-
     path = _state_path()
     key = str(path)
     now = time.monotonic()
@@ -649,8 +648,6 @@ def load_state_document() -> Any:
     if cached is not None and (now - cached[0]) < _CACHE_TTL_SECONDS:
         return cached[1]
     try:
-        from mureo.context.state import read_state_file
-
         doc = read_state_file(path) if path.exists() else StateDocument()
     except Exception:  # noqa: BLE001 — a pre-flight must never take mureo down
         logger.debug("learning pre-flight: could not read STATE.json", exc_info=True)

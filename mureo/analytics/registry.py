@@ -43,12 +43,11 @@ import warnings
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any
 
+from mureo.analytics.protocol import AnalyticsModule
 from mureo.core.platform_keys import PLUGIN_PLATFORM_PREFIX
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    from mureo.analytics.protocol import AnalyticsModule
 
 ANALYTICS_ENTRY_POINT_GROUP = "mureo.analytics"
 
@@ -103,11 +102,6 @@ def _is_inherited_protocol_stub(method: object, method_name: str) -> bool:
     detecting the inherited stub by qualified name catches that case
     rather than letting a no-op masquerade as an implementation.
     """
-    # Local import to avoid a hard cycle at module import time
-    # (registry.py is imported via the analytics package's __init__,
-    # which would otherwise pull protocol.py twice).
-    from mureo.analytics.protocol import AnalyticsModule
-
     func = getattr(method, "__func__", method)
     qualname = getattr(func, "__qualname__", "")
     expected_stub_qualname = f"{AnalyticsModule.__name__}.{method_name}"
@@ -364,7 +358,7 @@ def default_analytics_registry() -> AnalyticsRegistry:
     if not _BUILTIN_LOADED and not _BUILTIN_LOADING:
         _BUILTIN_LOADING = True
         try:
-            from mureo.analytics.builtin import (
+            from mureo.analytics.builtin import (  # noqa: PLC0415 — import cycle: mureo.analytics.registry -> mureo.analytics.builtin (#879)
                 register_builtin_analytics_modules,
             )
 

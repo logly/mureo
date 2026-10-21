@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from mureo.core.providers.models import minor_units_per_unit
+from mureo.meta_ads._conversion_count import count_conversions_from_actions
 
 
 def _minor_units_to_amount(value: str | int | None, currency: str) -> float:
@@ -56,8 +57,6 @@ def _extract_conversions(actions: list[dict[str, Any]] | None) -> float:
     counter exists to avoid. Kept as a thin wrapper so callers (and third
     parties importing the public ``map_insights``) get the correct count.
     """
-    from mureo.meta_ads._conversion_count import count_conversions_from_actions
-
     return count_conversions_from_actions(actions)
 
 

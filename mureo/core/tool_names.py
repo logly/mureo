@@ -45,6 +45,12 @@ from __future__ import annotations
 
 import unicodedata
 
+# An upward ``core -> byod`` edge, kept for now and tracked in #879: the write
+# vocabulary below is single-sourced from the BYOD client's mutation prefixes,
+# and ``_write_verbs()`` reads it once at import, so this is a load-time
+# dependency on a higher layer wherever the import is written.
+from mureo.byod._client_common import _MUTATION_PREFIXES
+
 __all__ = [
     "READ_ONLY_PREFIXES",
     "WRITE_VERBS",
@@ -95,12 +101,9 @@ def is_read_only_tool_name(name: str) -> bool:
 #: Only ever used to REFUSE a reading, never to assert that a name is a write,
 #: so an omission costs a missed read rather than a missed mutation.
 #:
-#: Computed once at import; the ``_MUTATION_PREFIXES`` import is written inside
-#: the function to keep the module-level import block free of a dependency on
-#: a higher layer, not to defer it.
+#: Computed once at import, from the ``_MUTATION_PREFIXES`` imported at the top
+#: (an upward ``core -> byod`` edge, #879).
 def _write_verbs() -> frozenset[str]:
-    from mureo.byod._client_common import _MUTATION_PREFIXES
-
     return frozenset(p.rstrip("_") for p in _MUTATION_PREFIXES) | {
         "put",
         "post",

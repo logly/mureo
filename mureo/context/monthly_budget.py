@@ -323,10 +323,7 @@ def resolve_monthly_budget(
     if explicit.is_set:
         return explicit
 
-    # Local import, for the same reason the guardrail one below is local: the
-    # explicit section is the common case, and it should not pay for the
-    # registry or the state models.
-    from mureo.context.platform_monthly_budget import (
+    from mureo.context.platform_monthly_budget import (  # noqa: PLC0415 — import cycle: mureo.context.monthly_budget -> mureo.context.platform_monthly_budget (#879)
         platform_configured_monthly_budget,
     )
 
@@ -336,11 +333,11 @@ def resolve_monthly_budget(
     # Whatever answers instead has to carry the reason the sum did not.
     incomplete = configured.incomplete_platforms
 
-    # Local import: the ceiling is a guardrail, and this module stays out of
-    # the policy package's import path for the (far more common) explicit
-    # case. ``strategy_gate`` owns that section's parsing so the two readers
+    # ``strategy_gate`` owns the guardrail section's parsing so the two readers
     # cannot drift onto different spellings of the same rule.
-    from mureo.policy.strategy_gate import guardrails_from_strategy_text
+    from mureo.policy.strategy_gate import (  # noqa: PLC0415 — import cycle: mureo.context.monthly_budget -> mureo.policy.strategy_gate (#879)
+        guardrails_from_strategy_text,
+    )
 
     ceiling = guardrails_from_strategy_text(text).max_total_daily_budget
     if ceiling is None or not math.isfinite(ceiling) or ceiling < 0:

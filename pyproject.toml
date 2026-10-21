@@ -33,7 +33,9 @@ dependencies = [
     "typer>=0.12,<1",
     "rich>=13.0,<14",
     "simple-term-menu>=1.6,<2",
-    "mcp>=1.0,<2",
+    # 1.8.0 is the first release that ships mcp.client.streamable_http, which
+    # mureo.learning.federation imports at module level.
+    "mcp>=1.8.0,<2",
     # jsonschema validates every built-in tool's inputSchema at the MCP
     # dispatch boundary (mureo.mcp.server._validate_tool_input) so declared
     # bounds like budget/bid `minimum` are enforced server-side before a
@@ -78,7 +80,8 @@ dev = [
     "pytest-cov>=4.1,<7",
     "pytest-mock>=3.12,<4",
     "black>=23.12,<25",
-    "ruff>=0.3,<1",
+    # 0.12.0 is the first release where PLC0415 is stable (no --preview).
+    "ruff>=0.12.0,<1",
     "mypy>=1.8,<2",
 ]
 
@@ -113,7 +116,7 @@ line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM", "TCH"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM", "TCH", "PLC0415"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
@@ -151,7 +154,19 @@ known-first-party = ["mureo"]
     "TC001",
     "TC002",
     "TC003",
+    # PLC0415 (import outside the module's top level) guards library code
+    # against imports hidden in function bodies. Tests import inside test
+    # bodies on purpose: patch first and then import the module under test,
+    # skip when an optional dependency is absent, or load a module fresh to
+    # check what its import does. Hoisting those would defeat the test.
+    "PLC0415",
 ]
+# Temporary: cleared by #863 stage 4b (mcp) / 4c (web, cli). Do not add packages here.
+"mureo/mcp/**" = ["PLC0415"]
+# Temporary: cleared by #863 stage 4b (mcp) / 4c (web, cli). Do not add packages here.
+"mureo/web/**" = ["PLC0415"]
+# Temporary: cleared by #863 stage 4b (mcp) / 4c (web, cli). Do not add packages here.
+"mureo/cli/**" = ["PLC0415"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

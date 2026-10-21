@@ -57,7 +57,9 @@ class StateStore(Protocol):
 def __getattr__(name: str) -> Any:
     if name == "FilesystemStateStore":
         # ABI re-export of a higher layer, resolved on access (#863).
-        from mureo.context.state_store import FilesystemStateStore  # noqa: PLC0415
+        from mureo.context.state_store import (  # noqa: PLC0415 — PEP 562 re-export (#863)
+            FilesystemStateStore,
+        )
 
         return FilesystemStateStore
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

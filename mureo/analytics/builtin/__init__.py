@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from mureo.analytics.builtin.google_ads import GoogleAdsAnalyticsModule
 from mureo.analytics.builtin.meta_ads import MetaAdsAnalyticsModule
+from mureo.analytics.registry import register_analytics_module
 
 
 def register_builtin_analytics_modules() -> None:
@@ -34,9 +35,6 @@ def register_builtin_analytics_modules() -> None:
     only on the first interpreter import, leaving cleared test
     registries empty.
     """
-    # Local import keeps the registry module free of an import cycle.
-    from mureo.analytics.registry import register_analytics_module
-
     register_analytics_module(GoogleAdsAnalyticsModule())
     register_analytics_module(MetaAdsAnalyticsModule())
 

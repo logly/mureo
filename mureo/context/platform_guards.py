@@ -122,6 +122,7 @@ must pass the entry's existing id, never ``""`` or a placeholder to mean
 from __future__ import annotations
 
 import logging
+from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
 from mureo.context.platform_accounts import (
@@ -245,14 +246,14 @@ def _provider_entry_points() -> tuple[Any, ...] | None:
     of the process (#633). Isolated as its own function so tests can pin the
     environment rather than monkeypatching ``importlib.metadata``.
     """
-    from importlib.metadata import entry_points
-
-    from mureo.analytics.registry import ANALYTICS_ENTRY_POINT_GROUP
+    from mureo.analytics.registry import (  # noqa: PLC0415 — import cycle: mureo.context.platform_guards -> mureo.analytics.registry (#879)
+        ANALYTICS_ENTRY_POINT_GROUP,
+    )
 
     found: list[Any] = []
     for group in (PROVIDERS_ENTRY_POINT_GROUP, ANALYTICS_ENTRY_POINT_GROUP):
         try:
-            found.extend(entry_points(group=group))
+            found.extend(metadata.entry_points(group=group))
         except Exception as exc:  # noqa: BLE001 — see docstring: fail open
             logger.warning(
                 "platform key check: importlib.metadata.entry_points(group=%r) "

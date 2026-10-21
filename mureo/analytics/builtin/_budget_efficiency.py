@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.analytics.models import BudgetEfficiency
 from mureo.context.state import load_conversion_action_types
+from mureo.meta_ads._conversion_count import count_conversions_from_actions
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -67,13 +68,8 @@ def _extract_cost_and_conversions(
         # Meta Live shape: conversions live inside ``actions``. Count via the
         # canonical exact-match counter (#340) — the old substring scan here
         # double-counted aggregate+component aliases and swept in custom
-        # slugs, skewing the budget-efficiency CPA. Lazy import keeps adapter
-        # registration free of the mureo.meta_ads client weight.
+        # slugs, skewing the budget-efficiency CPA.
         if conversions == 0:
-            from mureo.meta_ads._conversion_count import (
-                count_conversions_from_actions,
-            )
-
             conversions = count_conversions_from_actions(
                 row.get("actions"), conversion_action_types=conversion_action_types
             )

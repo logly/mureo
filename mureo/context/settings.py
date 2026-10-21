@@ -99,7 +99,10 @@ def set_ops_history_enabled(path: Path, enabled: Any) -> StateDocument:
         raise ValueError(f"enabled must be a boolean; got {enabled!r}")
     # Lazy: ``mureo.context.state`` ↔ ``mureo.context.settings`` cycle inside
     # ``context`` (#863, later stage).
-    from mureo.context.state import _locked_state_mutation, read_state_file
+    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.settings -> mureo.context.state (#879)
+        _locked_state_mutation,
+        read_state_file,
+    )
 
     current_doc = read_state_file(path)
     if ops_history_enabled(current_doc) == enabled:

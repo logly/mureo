@@ -21,6 +21,7 @@ from mureo.analysis.delivery_collapse import (
     CollapseThresholds,
     collapse_thresholds_from_strategy_text,
 )
+from mureo.core import runtime_context
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +38,7 @@ def resolve_strategy_path() -> Path:
     reads always come from the same file.
     """
     try:
-        from mureo.core.runtime_context import get_runtime_context
-
-        store = get_runtime_context().state_store
+        store = runtime_context.get_runtime_context().state_store
         strategy_path = getattr(store, "strategy_path", None)
         if strategy_path is not None:
             return Path(strategy_path)

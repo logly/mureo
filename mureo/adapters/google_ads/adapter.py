@@ -183,7 +183,10 @@ class GoogleAdsAdapter:
     )
 
     def __init__(self, client: GoogleAdsApiClient) -> None:
-        from mureo.google_ads.client import GoogleAdsApiClient
+        # Startup cost (~0.7 s CPU): the Google Ads SDK is deferred to the first adapter built (#807).
+        from mureo.google_ads.client import (  # noqa: PLC0415 — startup cost (#807)
+            GoogleAdsApiClient,
+        )
 
         if not isinstance(client, GoogleAdsApiClient):
             raise TypeError(

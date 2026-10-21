@@ -63,7 +63,9 @@ def _previous_document(path: Path) -> StateDocument | None:
     """
     if not path.exists():
         return None
-    from mureo.context.state import read_state_file
+    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.action_log_guard -> mureo.context.state (#879)
+        read_state_file,
+    )
 
     try:
         return read_state_file(path, strict=False)

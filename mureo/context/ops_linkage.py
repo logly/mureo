@@ -510,7 +510,9 @@ def record_call_decision(
     """
     # Lazy: ``mureo.context.state`` ↔ ``mureo.context.ops_linkage`` cycle inside
     # ``context`` (#863, later stage).
-    from mureo.context.state import _locked_state_mutation
+    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.ops_linkage -> mureo.context.state (#879)
+        _locked_state_mutation,
+    )
 
     linked: list[str] = []
     request = replace(request, tool=tool)

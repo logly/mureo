@@ -27,6 +27,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from mcp.client.session import ClientSession
+from mcp.client.sse import sse_client
+from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamablehttp_client
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -74,8 +77,6 @@ async def _open_session(source: InsightSource) -> AsyncIterator[ClientSession]:
     skipping a source.
     """
     if source.transport == "stdio":
-        from mcp.client.stdio import StdioServerParameters, stdio_client
-
         # ``env`` semantics: ``None`` (omitted in config) inherits the
         # parent env; ``{}`` (explicitly empty) yields a sealed
         # subprocess. The dict() copy preserves the {}.
@@ -93,8 +94,6 @@ async def _open_session(source: InsightSource) -> AsyncIterator[ClientSession]:
         return
 
     if source.transport == "sse":
-        from mcp.client.sse import sse_client
-
         async with (
             sse_client(
                 source.url or "",
@@ -107,8 +106,6 @@ async def _open_session(source: InsightSource) -> AsyncIterator[ClientSession]:
         return
 
     if source.transport == "http":
-        from mcp.client.streamable_http import streamablehttp_client
-
         async with (
             streamablehttp_client(
                 source.url or "",

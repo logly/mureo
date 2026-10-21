@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from typing import Protocol
 
+from mureo.analysis.lp_analyzer import LPAnalyzer
 from mureo.core.url_guard import UnsafeUrlError, validate_public_url
 
 _SCREENSHOT_TIMEOUT_MS = 30_000
@@ -75,8 +76,6 @@ class LPScreenshotter:
             RuntimeError: If screenshot capture fails, or a redirect targets an
                 internal host (SSRF protection).
         """
-        from mureo.analysis.lp_analyzer import LPAnalyzer
-
         # SSRF protection: validate the initial URL up front. Redirect hops are
         # re-validated by the route guard below, because ``page.goto``
         # auto-follows redirects and would otherwise navigate to an internal
@@ -84,8 +83,12 @@ class LPScreenshotter:
         LPAnalyzer._validate_url(url)
 
         try:
-            from playwright.async_api import Error as PlaywrightError
-            from playwright.async_api import async_playwright
+            from playwright.async_api import (  # noqa: PLC0415 — optional dependency
+                Error as PlaywrightError,
+            )
+            from playwright.async_api import (  # noqa: PLC0415 — optional dependency
+                async_playwright,
+            )
         except ImportError as exc:
             raise RuntimeError(
                 "Playwright is not available. Run: pip install playwright && playwright install"

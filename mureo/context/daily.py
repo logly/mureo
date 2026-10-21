@@ -324,7 +324,11 @@ def with_platform_daily(
     # ``context`` (#863, later stage).
     # These three helpers stay in ``state`` because every other targeted
     # mutator uses them too.
-    from mureo.context.state import _now_iso, _platform_base, _stamp_fetched_at
+    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.daily -> mureo.context.state (#879)
+        _now_iso,
+        _platform_base,
+        _stamp_fetched_at,
+    )
 
     _reject_unusable_daily_keys(days, as_of_date=as_of_date)
 

@@ -34,7 +34,8 @@ def build_bundle(out_path: Path, scenario: Scenario) -> None:
             checkouts where the user forgot to ``pip install -e .``.
     """
     try:
-        from openpyxl import Workbook
+        # Startup cost (~67 ms CPU): openpyxl is deferred to the first demo bundle build (#863).
+        from openpyxl import Workbook  # noqa: PLC0415 — startup cost (#863)
     except ImportError as exc:
         raise ImportError(
             "openpyxl is required to build the demo bundle. "

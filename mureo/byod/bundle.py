@@ -26,9 +26,13 @@ is.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
+import secrets
 import shutil
+import zipfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mureo.byod.adapters.google_ads import (
@@ -49,8 +53,6 @@ from mureo.byod.runtime import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from openpyxl.workbook.workbook import Workbook
 
 logger = logging.getLogger(__name__)
@@ -75,14 +77,10 @@ def _now_iso() -> str:
 
 def _short_token() -> str:
     """Short random suffix for backup directory names."""
-    import secrets
-
     return secrets.token_hex(4)
 
 
 def _sha256_file(path: Path) -> str:
-    import hashlib
-
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
@@ -106,15 +104,16 @@ def _load_workbook(src: Path) -> Workbook:
     here so the user sees the real cause.
     """
     try:
-        from openpyxl import load_workbook
-        from openpyxl.utils.exceptions import InvalidFileException
+        # Startup cost (~67 ms CPU): openpyxl is deferred to the first bundle import (#863).
+        from openpyxl import load_workbook  # noqa: PLC0415 — startup cost (#863)
+        from openpyxl.utils.exceptions import (  # noqa: PLC0415 — startup cost (#863)
+            InvalidFileException,
+        )
     except ImportError as exc:
         raise BundleImportError(
             "openpyxl is required for bundle import. "
             "Install with: pip install 'openpyxl>=3.1,<4'"
         ) from exc
-
-    import zipfile
 
     size = src.stat().st_size
     if size > _MAX_BUNDLE_BYTES:
@@ -161,9 +160,7 @@ def import_bundle(
             dispatched adapter fails after partial files have been
             written (a rollback is attempted before re-raising).
     """
-    from pathlib import Path as _Path
-
-    src = _Path(src).expanduser().resolve()
+    src = Path(src).expanduser().resolve()
     if not src.is_file():
         raise BundleImportError(f"{src}: file not found")
 

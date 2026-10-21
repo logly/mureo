@@ -51,7 +51,9 @@ def map_negative_placement(
     """
     # Imported here rather than at module import time: the placements mixin
     # imports this module, so a module-level import would close a cycle.
-    from mureo.google_ads._placements import CRITERION_TYPE_TO_KIND
+    from mureo.google_ads._placements import (  # noqa: PLC0415 — import cycle: mureo.google_ads._placement_mappers -> mureo.google_ads._placements (#879)
+        CRITERION_TYPE_TO_KIND,
+    )
 
     criterion_type = map_enum_name(criterion.type_, CRITERION_TYPE_MAP)
     kind = CRITERION_TYPE_TO_KIND.get(criterion_type)

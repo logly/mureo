@@ -233,7 +233,9 @@ def default_change_feed_registry() -> ChangeFeedRegistry:
     if not _BUILTIN_LOADED and not _BUILTIN_LOADING:
         _BUILTIN_LOADING = True
         try:
-            from mureo.change_import.builtin import register_builtin_change_feeds
+            from mureo.change_import.builtin import (  # noqa: PLC0415 — import cycle: mureo.change_import.registry -> mureo.change_import.builtin (#879)
+                register_builtin_change_feeds,
+            )
 
             register_builtin_change_feeds()
         except (KeyboardInterrupt, SystemExit):

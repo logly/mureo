@@ -19,6 +19,7 @@ from typing import Any, cast
 import httpx
 
 from mureo._image_validation import validate_image_file
+from mureo.core.url_guard import UnsafeUrlError, validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -495,8 +496,6 @@ class CreativesMixin:
         Returns:
             {"hash": "...", "url": "..."} or {"error": "..."}
         """
-        from mureo.core.url_guard import UnsafeUrlError, validate_public_url
-
         # SSRF guard: image_url originates from LLM/MCP tool arguments, so a
         # prompt-injection payload could point it at an internal host (e.g. the
         # cloud metadata endpoint) and exfiltrate the bytes into a Meta ad
