@@ -74,6 +74,14 @@ import pytest
 
 from mureo.analysis.anomaly_detector import CampaignMetrics
 from mureo.analytics.builtin._live_clients import _merge_campaign_metrics
+from mureo.context._platform_codec import (
+    ad_state_to_dict,
+    parse_ad,
+    parse_campaign,
+    parse_platform,
+    platform_state_to_dict,
+    snapshot_to_dict,
+)
 from mureo.context.approval import ApprovalRef
 from mureo.context.decisions import DecisionRecord
 from mureo.context.expected import ExpectedEffect
@@ -208,6 +216,26 @@ def _with_raw(values: dict[str, Any]) -> dict[str, Any]:
 
 _ACTION_LOG_FIELD_VALUES = _with_raw(_ACTION_LOG_FIELD_VALUES)
 
+
+def _with_codec_raw(
+    model: type, values: dict[str, Any], to_dict: Any, parse: Any, marker: str
+) -> dict[str, Any]:
+    """``values`` plus a ``raw`` fixed point, as :func:`_with_raw` (#881).
+
+    For the platform / campaign / ad entries: the entry rendered by its own
+    codec half plus an unknown key, read back by the other half — so ``raw``
+    is exactly what a round trip stores (the codec keeps only what it reads
+    back). Built bottom-up, so a nested entry's ``raw`` is part of its
+    parent's rendered shape exactly as a round trip produces it.
+    """
+    entry = parse({**to_dict(model(**values)), "raw_marker": marker})
+    return {**values, "raw": entry.raw}
+
+
+_AD_STATE_FIELD_VALUES = _with_codec_raw(
+    AdState, _AD_STATE_FIELD_VALUES, ad_state_to_dict, parse_ad, "ad-raw"
+)
+
 #: One distinctive value per display model (#706). The nested maps exist for
 #: the same reason as ``AdState``'s: a model the codec touches and this test
 #: leaves at its defaults is a model whose loss compares equal to itself.
@@ -316,6 +344,13 @@ _CAMPAIGN_FIELD_VALUES: dict[str, Any] = {
     "metrics": {"spend": 4200.0, "clicks": 310},
     "ads": (AdState(**_AD_STATE_FIELD_VALUES),),
 }
+_CAMPAIGN_FIELD_VALUES = _with_codec_raw(
+    CampaignSnapshot,
+    _CAMPAIGN_FIELD_VALUES,
+    snapshot_to_dict,
+    parse_campaign,
+    "campaign-raw",
+)
 
 
 def _campaign(campaign_id: str = "C-1") -> CampaignSnapshot:
@@ -336,6 +371,14 @@ _PLATFORM_FIELD_VALUES: dict[str, Any] = {
         "reason": "the Meta access token expired",
     },
 }
+
+_PLATFORM_FIELD_VALUES = _with_codec_raw(
+    PlatformState,
+    _PLATFORM_FIELD_VALUES,
+    platform_state_to_dict,
+    lambda entry: parse_platform(_PLATFORM, entry),
+    "platform-raw",
+)
 
 #: One distinctive value per :class:`StateDocument` field.
 _DOCUMENT_FIELD_VALUES: dict[str, Any] = {
@@ -935,7 +978,7 @@ class TestCodecRoundTrip:
                 original_ads[0], field.name
             ), (
                 f"ads[] field {field.name!r} did not survive the round trip — "
-                "check BOTH _parse_ad and _ad_state_to_dict."
+                "check BOTH _platform_codec.parse_ad and .ad_state_to_dict."
             )
 
     def test_every_display_field_survives_render_and_parse(self) -> None:
@@ -967,7 +1010,7 @@ class TestCodecRoundTrip:
                 doc.campaigns[0], field.name
             ), (
                 f"campaign field {field.name!r} did not survive the round trip "
-                "— check BOTH _parse_campaign and _snapshot_to_dict."
+                "— check BOTH _platform_codec.parse_campaign and .snapshot_to_dict."
             )
 
     def test_round_trip_through_disk(self, tmp_path: Path) -> None:

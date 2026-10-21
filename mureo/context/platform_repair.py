@@ -34,9 +34,10 @@ removal only on one of two answers:
   same ad account and mureo CAN resolve it. The record survives under the key
   the account is really stored under, so this one is a second copy.
 - :data:`DROP_EMPTY_STUB` — the entry stores nothing at all: no campaigns, no
-  ``totals``, no ``periods``, no operator-declared setting and no
-  collection-failure note. There is nothing in it to lose, whoever the key
-  turns out to belong to.
+  ``totals``, no ``periods``, no operator-declared setting, no
+  collection-failure note and no hand-written content mureo keeps without
+  reading (#881). There is nothing in it to lose, whoever the key turns out
+  to belong to.
 
 Everything else unresolvable is reported as a :class:`PlatformKeyFinding` and
 handed back, the way an undecidable duplicate already is. Note what does NOT
@@ -154,6 +155,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
+from mureo.context._platform_codec import carries_unread_content
 from mureo.context.platform_accounts import platform_keys_for_account
 from mureo.context.platform_guards import reject_unknown_platform_key
 
@@ -242,6 +244,11 @@ class PlatformEntryFacts:
     note is the read side's rule (:func:`mureo.web.report_document.
     _platform_not_collected`), while what a removal would take is what the
     entry holds.
+
+    ``has_unread_content`` says the entry carries what the codec keeps
+    without reading (#881): a key it does not know, or a ``campaigns`` value
+    the model cannot hold — an operator's note, a hand-written campaign
+    list. No count above shows it, and no sync restores it.
     """
 
     key: str
@@ -255,13 +262,16 @@ class PlatformEntryFacts:
     conversion_action_types: tuple[str, ...] = ()
     not_collected_reason: str | None = None
     not_collected_attempted_at: str | None = None
+    has_unread_content: bool = False
 
     @property
     def is_empty_stub(self) -> bool:
         """Does this entry store nothing a removal could lose?
 
         No campaigns, no ``totals``, no per-period rollups, no declared
-        conversion allow-list and no collection-failure note. An empty
+        conversion allow-list, no collection-failure note and no content the
+        codec keeps without reading (#881 — ``{"campaigns": "hand written",
+        "operator_note": ...}`` counts no campaign and is not empty). An empty
         ``account_id`` deliberately does NOT count towards this: the shape
         reported from the field carries one, and an entry that declined to
         name its account can still hold every figure a platform has (#616).
@@ -282,6 +292,7 @@ class PlatformEntryFacts:
             or self.rollups
             or self.conversion_action_types
             or self.not_collected_reason
+            or self.has_unread_content
         )
 
 
@@ -392,7 +403,7 @@ def _note_field(note: object, field: str) -> str | None:
 
     Tolerant for the same reason :func:`_rollup_fetched_at` is: the document
     is already known to be wrong in at least one way, and
-    :func:`~mureo.context.state_codec._parse_not_collected` is not the only
+    :func:`~mureo.context._platform_codec.parse_not_collected` is not the only
     way a :class:`~mureo.context.models.PlatformState` can be built.
     """
     if not isinstance(note, dict):
@@ -429,6 +440,7 @@ def describe_platform_entry(key: str, entry: PlatformState) -> PlatformEntryFact
         conversion_action_types=tuple(entry.conversion_action_types or ()),
         not_collected_reason=_note_field(entry.not_collected, "reason"),
         not_collected_attempted_at=_note_field(entry.not_collected, "attempted_at"),
+        has_unread_content=carries_unread_content(entry),
     )
 
 

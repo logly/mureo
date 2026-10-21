@@ -58,8 +58,10 @@ def _previous_document(path: Path) -> StateDocument | None:
 
     A document nobody can read is not evidence that anything was
     shortened, so an unreadable or absent file leaves the write
-    unguarded. ``strict=False``: a nonconforming campaign entry must not
-    cost the backup of the ``action_log`` beside it.
+    unguarded. ``strict=False``: a section the writer contract refuses (a
+    malformed ``decisions`` record, a top-level ``campaigns`` that is not a
+    list of objects) must not cost the backup of the ``action_log`` beside
+    it.
     """
     if not path.exists():
         return None

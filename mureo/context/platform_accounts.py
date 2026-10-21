@@ -22,10 +22,10 @@ This module is the single source of that rule. Reimplementing it in any of the
 three would let the definitions drift, and drift here re-creates the bug.
 
 The join has exactly one subtlety, and it is load-bearing: **an empty
-``account_id`` means UNKNOWN, never a value.** The tolerant read path
-synthesizes ``""`` for a missing ``account_id``
-(:func:`mureo.context.state_codec._platform_account_id`), so treating ``""`` as a
-value would join every id-less entry in a document into one bogus "account".
+``account_id`` means UNKNOWN, never a value.** Both read paths synthesize
+``""`` for a missing ``account_id`` (#881, see
+:mod:`mureo.context._platform_codec`), so treating ``""`` as a value would
+join every id-less entry in a document into one bogus "account".
 
 Deliberately dependency-free — stdlib plus the frozen ``PlatformState`` model
 (for typing only), so every consumer can import it without an import cycle.

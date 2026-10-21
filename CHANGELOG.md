@@ -72,6 +72,26 @@
   patched `mureo.web.service.is_managed_service` for the dashboard's restart
   patches `mureo.web.handlers.is_managed_service`.
 
+### Fixed
+
+- **A hand-edited platform, campaign or ad entry no longer blocks every
+  write to STATE.json** (#881). A platform without `account_id`, a
+  `campaigns` value that is not a list, or a campaign or ad missing a
+  required field made every write to that workspace fail — sync,
+  `action_log` appends, decisions, the ops history switch — while the
+  dashboard kept rendering. Such entries are now read (missing values
+  empty) and written back as found, with mureo's own changes applied on
+  top. Keys mureo does not know on these entries are kept on every write
+  instead of being dropped — except on a campaign in the legacy top-level
+  `campaigns` list matched by an upsert, which is replaced whole as before
+  (that match is platform-blind). The read-only Reports view now shows such
+  a campaign with the missing fields empty instead of skipping it, so its
+  campaign count includes it. `mureo repair` no longer offers an entry
+  holding a hand-written `campaigns` value or unknown keys as an empty stub.
+  A `platforms` value, a platform value or a document that is not a JSON
+  object now fails with a `ValueError` naming the section instead of an
+  `AttributeError`.
+
 ## [0.30.0] - 2026-10-20
 
 ### Changed

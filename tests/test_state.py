@@ -392,32 +392,41 @@ class TestStateFileErrorHandling:
 
     @pytest.mark.unit
     def test_parse_state_missing_required_field_campaign_id(self) -> None:
-        """Missing campaign_id raises ValueError."""
+        """Missing campaign_id reads as "" and stays absent on write (#881)."""
         data = {"campaigns": [{"campaign_name": "Test", "status": "ENABLED"}]}
-        with pytest.raises(ValueError, match="campaign_id"):
-            parse_state(json.dumps(data))
+        doc = parse_state(json.dumps(data))
+        assert doc.campaigns[0].campaign_id == ""
+        rendered = json.loads(render_state(doc))
+        assert rendered["campaigns"][0] == data["campaigns"][0]
 
     @pytest.mark.unit
     def test_parse_state_missing_required_field_campaign_name(self) -> None:
-        """Missing campaign_name raises ValueError."""
+        """Missing campaign_name reads as "" and stays absent on write (#881)."""
         data = {"campaigns": [{"campaign_id": "1", "status": "ENABLED"}]}
-        with pytest.raises(ValueError, match="campaign_name"):
-            parse_state(json.dumps(data))
+        doc = parse_state(json.dumps(data))
+        assert doc.campaigns[0].campaign_name == ""
+        rendered = json.loads(render_state(doc))
+        assert rendered["campaigns"][0] == data["campaigns"][0]
 
     @pytest.mark.unit
     def test_parse_state_missing_required_field_status(self) -> None:
-        """Missing status raises ValueError."""
+        """Missing status reads as "" and stays absent on write (#881)."""
         data = {"campaigns": [{"campaign_id": "1", "campaign_name": "Test"}]}
-        with pytest.raises(ValueError, match="status"):
-            parse_state(json.dumps(data))
+        doc = parse_state(json.dumps(data))
+        assert doc.campaigns[0].status == ""
+        rendered = json.loads(render_state(doc))
+        assert rendered["campaigns"][0] == data["campaigns"][0]
 
     @pytest.mark.unit
-    def test_parse_state_strict_false_skips_malformed_campaigns(self) -> None:
-        """``strict=False`` drops nonconforming campaign entries (top-level
-        AND per-platform) instead of raising, and preserves the rest of the
-        document. The read-only Reports view depends on this so a single
-        variant / hand-authored campaign cannot blank a whole STATE.json
-        whose platforms/totals/reports are perfectly readable."""
+    @pytest.mark.parametrize("strict", [True, False])
+    def test_parse_state_keeps_malformed_campaigns_in_both_modes(
+        self, strict: bool
+    ) -> None:
+        """Both modes keep a nonconforming campaign entry (top-level AND
+        per-platform) with its missing required fields as "" (#881), and
+        preserve the rest of the document — so a single variant /
+        hand-authored campaign neither blanks a whole STATE.json in the
+        read-only Reports view nor blocks a write."""
         data = {
             "version": "2",
             "campaigns": [
@@ -436,24 +445,30 @@ class TestStateFileErrorHandling:
             },
             "reports": {"daily": {"verdict": "Healthy"}},
         }
-        doc = parse_state(json.dumps(data), strict=False)
+        doc = parse_state(json.dumps(data), strict=strict)
 
-        # The one conforming top-level campaign survives; the variant is gone.
-        assert [c.campaign_id for c in doc.campaigns] == ["ok"]
-        # The platform's nonconforming campaign is dropped, the platform kept.
+        # Both top-level campaigns are read; the variant's fields are "".
+        assert [c.campaign_id for c in doc.campaigns] == ["", "ok"]
+        # The platform's nonconforming campaign is kept, the platform too.
         assert doc.platforms is not None
         plat = doc.platforms["logly_ads_context"]
-        assert plat.campaigns == ()
+        assert [(c.campaign_id, c.campaign_name) for c in plat.campaigns] == [
+            ("72804", "")
+        ]
         assert plat.totals == {"spend": 8739.0}
         assert doc.reports == {"daily": {"verdict": "Healthy"}}
 
     @pytest.mark.unit
     def test_parse_state_strict_true_is_default_and_still_raises(self) -> None:
-        """The default (strict) path is unchanged — the writer contract still
-        hard-fails on a nonconforming campaign."""
-        data = {"campaigns": [{"id": "x", "name": "variant"}]}
-        with pytest.raises(ValueError, match="campaign_id"):
+        """The default (strict) path still refuses a top-level ``campaigns``
+        that is not a list of objects — it has no enclosing entry to be kept
+        in (#881) — and names the section, not the content."""
+        data = {"campaigns": [{"id": "x", "name": "variant"}, "secret-ish note"]}
+        with pytest.raises(ValueError, match="top-level 'campaigns'") as excinfo:
             parse_state(json.dumps(data))
+        assert "secret-ish" not in str(excinfo.value)
+        tolerant = parse_state(json.dumps(data), strict=False)
+        assert [c.campaign_id for c in tolerant.campaigns] == [""]
 
     @pytest.mark.unit
     def test_parse_state_strict_false_tolerates_missing_account_id(self) -> None:
@@ -479,13 +494,17 @@ class TestStateFileErrorHandling:
         assert doc.platforms is not None
         plat = doc.platforms["google_ads"]
         assert plat.account_id == ""  # defaulted, not crashed
-        assert plat.campaigns == ()  # `name`-variant campaign skipped (by design)
+        # The `name`-variant campaign is kept, its campaign_name read as "".
+        assert [c.campaign_name for c in plat.campaigns] == [""]
         assert plat.totals == {"spend": 180206.0}  # platform data still rendered
 
     @pytest.mark.unit
-    def test_parse_state_strict_true_raises_on_missing_account_id(self) -> None:
-        """The writer contract is preserved: a platform missing account_id
-        still raises under strict (the default)."""
+    def test_parse_state_strict_true_reads_missing_account_id_as_unknown(
+        self,
+    ) -> None:
+        """A platform missing account_id no longer blocks every write (#881):
+        the writer reads it as "" (unknown), exactly as the read-only view
+        does, and writes the entry back without inventing the key."""
         data = {
             "version": "2",
             "platforms": {
@@ -495,8 +514,12 @@ class TestStateFileErrorHandling:
                 }
             },
         }
-        with pytest.raises(KeyError, match="account_id"):
-            parse_state(json.dumps(data))
+        doc = parse_state(json.dumps(data))
+        assert doc.platforms is not None
+        assert doc.platforms["google_ads"].account_id == ""
+        assert doc == parse_state(json.dumps(data), strict=False)
+        rendered = json.loads(render_state(doc))
+        assert "account_id" not in rendered["platforms"]["google_ads"]
 
     @pytest.mark.unit
     def test_missing_account_id_logs_at_debug_not_warning(self, caplog) -> None:
@@ -507,7 +530,7 @@ class TestStateFileErrorHandling:
             "version": "2",
             "platforms": {"google_ads": {"campaigns": [], "totals": {"spend": 1.0}}},
         }
-        with caplog.at_level(logging.DEBUG, logger="mureo.context.state_codec"):
+        with caplog.at_level(logging.DEBUG, logger="mureo.context._platform_codec"):
             parse_state(json.dumps(data), strict=False)
         assert any(
             "missing 'account_id'" in r.message and r.levelno == logging.DEBUG
@@ -3468,7 +3491,9 @@ class TestAdState:
         assert rendered == legacy
 
     @pytest.mark.unit
-    def test_parse_ads_requires_ad_id(self) -> None:
+    def test_parse_ads_reads_a_missing_ad_id_as_empty(self) -> None:
+        """An ad without ``ad_id`` no longer blocks a write (#881): it reads
+        as "" — matching no fetched ad — and is written back as found."""
         data = {
             "version": "2",
             "campaigns": [
@@ -3480,13 +3505,17 @@ class TestAdState:
                 }
             ],
         }
-        with pytest.raises(ValueError, match="ad_id"):
-            parse_state(json.dumps(data))
+        doc = parse_state(json.dumps(data))
+        ads = doc.campaigns[0].ads
+        assert ads is not None
+        assert ads[0].ad_id == ""
+        rendered = json.loads(render_state(doc))
+        assert rendered["campaigns"][0]["ads"] == [{"name": "no id"}]
 
     @pytest.mark.unit
-    def test_parse_ads_tolerant_mode_skips_malformed_entry(self) -> None:
+    def test_parse_ads_tolerant_mode_keeps_malformed_entry(self) -> None:
         """The read-only Reports view must not blank a whole document over a
-        single hand-authored ad entry."""
+        single hand-authored ad entry, and builds it as the writer does."""
         data = {
             "version": "2",
             "campaigns": [
@@ -3501,7 +3530,8 @@ class TestAdState:
         doc = parse_state(json.dumps(data), strict=False)
         ads = doc.campaigns[0].ads
         assert ads is not None
-        assert [a.ad_id for a in ads] == ["ad_ok"]
+        assert [a.ad_id for a in ads] == ["", "ad_ok"]
+        assert doc == parse_state(json.dumps(data), strict=True)
 
     @pytest.mark.unit
     def test_action_log_entry_carries_ad_id(self) -> None:

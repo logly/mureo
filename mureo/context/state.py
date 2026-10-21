@@ -148,8 +148,11 @@ def read_state_file(path: Path, *, strict: bool = True) -> StateDocument:
 
     Returns a default StateDocument if the file does not exist. ``strict`` is
     forwarded to :func:`parse_state`: pass ``strict=False`` from the read-only
-    Reports view so a nonconforming campaign entry is skipped instead of
-    raising and blanking the whole document.
+    Reports view so a section the writer contract refuses (a malformed
+    ``decisions`` record, an ``action_log`` entry that is not an object, a
+    top-level ``campaigns`` that is not a list of objects) is skipped instead
+    of raising and blanking the whole document. A hand-written platform,
+    campaign or ad entry reads the same in both modes (#881).
     """
     if not path.exists():
         return StateDocument()
@@ -256,12 +259,27 @@ def _upsert_into(
     a collision there matches two unrelated campaigns — and inheriting across
     that blind match would attach one account's ads to another's campaign.
     The flat list therefore keeps plain full-replace semantics.
+
+    The same flag carries the matched entry's on-disk dict (``raw``, #881)
+    onto the replacement, for the same reason and with the same limit: the
+    snapshot's own fields still replace the stored ones, while the keys mureo
+    does not know — an operator's hand-authored notes on that campaign — are
+    written back instead of dropped. That limit is the one stated exception
+    to #881's "unknown keys survive every write": a match in the v1 flat list
+    is platform-blind, so carrying its ``raw`` could attach one platform's
+    hand-written keys to another's campaign, and a matched flat entry's
+    unknown keys are dropped instead.
     """
     result: list[CampaignSnapshot] = []
     found = False
     for c in campaigns:
         if c.campaign_id == campaign.campaign_id:
-            result.append(_merge_ads(c, campaign) if inherit_ads else campaign)
+            merged = campaign
+            if inherit_ads:
+                merged = _merge_ads(c, campaign)
+                if merged.raw is None and c.raw is not None:
+                    merged = replace(merged, raw=c.raw)
+            result.append(merged)
             found = True
         else:
             result.append(c)

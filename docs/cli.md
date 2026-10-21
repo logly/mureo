@@ -449,7 +449,7 @@ A STATE.json mureo cannot read — bad JSON, or valid JSON that does not satisfy
 
 ```
 Error: mureo cannot read STATE.json: /path/to/STATE.json
-       Campaign is missing required field 'campaign_name': {'campaign_id': 'c-1'}
+       decision record is missing required field 'recorded_at'
        Nothing was changed. This command will not repair a document it cannot
        read in full: writing it back would drop whatever the read skipped.
 ```

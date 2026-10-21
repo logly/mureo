@@ -184,11 +184,12 @@ class TestAnUnreadableDocument:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
-                        "account_id": "1234567890",
-                        "campaigns": [{"campaign_id": "c-1"}],
-                    }
+                    "logly_ads": {"account_id": "1234567890", "campaigns": []}
                 },
+                # Still refused by the strict read: a decision record without
+                # its required fields (a campaign without one no longer is,
+                # #881).
+                "decisions": [{"decision_id": "d-1"}],
             },
         )
 
@@ -199,7 +200,7 @@ class TestAnUnreadableDocument:
         assert "Traceback" not in result.output
         assert "Error:" in result.output
         assert str(state) in result.output
-        assert "Campaign is missing required field" in result.output
+        assert "decision record is missing required field" in result.output
 
     def test_apply_on_a_schema_invalid_document_is_an_error_too(
         self, tmp_path: Path
@@ -212,11 +213,12 @@ class TestAnUnreadableDocument:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
-                        "account_id": "1234567890",
-                        "campaigns": [{"campaign_id": "c-1"}],
-                    }
+                    "logly_ads": {"account_id": "1234567890", "campaigns": []}
                 },
+                # Still refused by the strict read: a decision record without
+                # its required fields (a campaign without one no longer is,
+                # #881).
+                "decisions": [{"decision_id": "d-1"}],
             },
         )
         before = state.read_bytes()
@@ -262,12 +264,15 @@ class TestAnUnreadableDocument:
             state,
             {
                 "version": "2",
-                "platforms": {
-                    "logly_ads": {
-                        "account_id": "1234567890",
-                        "campaigns": [{"campaign_id": "c-1\x1b[2J\x07"}],
+                "decisions": [
+                    {
+                        "decision_id": "d-1",
+                        "recorded_at": "2026-10-21T09:00:00+09:00",
+                        "status": "x\x1b[2J\x07",
+                        "title": "t",
+                        "rationale": "r",
                     }
-                },
+                ],
             },
         )
 
