@@ -76,6 +76,20 @@ NOT_COLLECTED_REASON_MAX_CHARS = 500
 DAILY_DATE_KEY_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
 
 
+def _copied_raw(raw: object) -> dict[str, Any] | None:
+    """A ``raw`` field's defensive copy (#859 / #881); refuses a non-object.
+
+    Shared by every model that keeps its on-disk dict: the codec reads ``raw``
+    back at render time, so a caller still holding the source dict must not be
+    able to change what is written.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ValueError("raw must be an object")
+    return copy.deepcopy(dict(raw))
+
+
 @dataclass(frozen=True)
 class StrategyEntry:
     """Immutable data model representing a single section in STRATEGY.md."""
@@ -102,6 +116,13 @@ class AdState:
     makes a stored status auditable: an agent comparing today's fetch against
     the stored one needs to know when the stored one was true, and a
     model-supplied date would reintroduce exactly the drift #460 fixed.
+
+    ``raw`` is the ad's on-disk dict, kept only when the codec could not
+    represent it fully (#881): ``ad_id`` absent, null or not a string (it
+    then reads as ``""``), or a key the codec does not know. ``None`` on every
+    ad mureo constructs. :func:`mureo.context.state_codec.render_state` uses
+    it to write the ad back in its on-disk shape — see
+    :mod:`mureo.context._platform_codec`.
     """
 
     ad_id: str
@@ -109,6 +130,13 @@ class AdState:
     status: str | None = None
     effective_status: str | None = None
     as_of: str | None = None
+    # Appended after every pre-#881 field, same positional-compatibility rule
+    # as ``ActionLogEntry``.
+    raw: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Take a defensive copy of ``raw``."""
+        object.__setattr__(self, "raw", _copied_raw(self.raw))
 
 
 @dataclass(frozen=True)
@@ -117,6 +145,17 @@ class CampaignSnapshot:
 
     frozen=True prevents field reassignment, but dict/list contents are still mutable,
     so __post_init__ takes defensive copies.
+
+    ``raw`` is what the codec needs of the campaign's on-disk dict to write
+    it back — its key order and the values it cannot hold, the rest stored as
+    placeholders — kept only when the codec could not represent it fully
+    (#881): ``campaign_id`` / ``campaign_name`` /
+    ``status`` absent, null or not a string (each then reads as ``""``), a key
+    the codec does not know, or an ``ads`` / ``device_targeting`` value the
+    model cannot hold (not a list, or ``ads`` holding a non-object). ``None``
+    on every campaign mureo constructs. :func:`mureo.context.state_codec.
+    render_state` uses it to write the campaign back in its on-disk shape —
+    see :mod:`mureo.context._platform_codec`.
     """
 
     campaign_id: str
@@ -157,9 +196,13 @@ class CampaignSnapshot:
     # Optional with a None default so old STATE.json files parse unchanged and
     # gain no new key on the next write.
     ads: tuple[AdState, ...] | None = None
+    # Appended after every pre-#881 field, same positional-compatibility rule
+    # as ``ActionLogEntry``.
+    raw: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable fields."""
+        object.__setattr__(self, "raw", _copied_raw(self.raw))
         if self.ads is not None and not isinstance(self.ads, tuple):
             object.__setattr__(self, "ads", tuple(self.ads))
         if self.bidding_details is not None:
@@ -381,10 +424,7 @@ class ActionLogEntry:
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
         object.__setattr__(self, "approval", parse_approval(self.approval))
-        if self.raw is not None:
-            if not isinstance(self.raw, Mapping):
-                raise ValueError("raw must be an object")
-            object.__setattr__(self, "raw", copy.deepcopy(dict(self.raw)))
+        object.__setattr__(self, "raw", _copied_raw(self.raw))
         self._validate_origin()
         self._validate_actor()
         if self.batch_id is not None:
@@ -486,6 +526,16 @@ class PlatformState:
 
     frozen=True prevents field reassignment; __post_init__ takes defensive
     copies of mutable inner contents.
+
+    ``raw`` is what the codec needs of the entry's on-disk dict to write it
+    back — its key order and the values it cannot hold, the rest stored as
+    placeholders — kept only when the codec could not represent it fully
+    (#881): ``account_id`` absent (it then reads as ``""``,
+    i.e. unknown — see :mod:`mureo.context.platform_accounts`), a key the
+    codec does not know, or a ``campaigns`` value the model cannot hold (not a
+    list, or holding a non-object). ``None`` on every entry mureo constructs.
+    :func:`mureo.context.state_codec.render_state` uses it to write the entry
+    back in its on-disk shape — see :mod:`mureo.context._platform_codec`.
     """
 
     account_id: str
@@ -565,9 +615,13 @@ class PlatformState:
     # the contract stops that being written, and the read rule stops it being
     # shown when the contract was not honoured.
     not_collected: dict[str, Any] | None = None
+    # Appended after every pre-#881 field, same positional-compatibility rule
+    # as ``ActionLogEntry``.
+    raw: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Ensure campaigns is a tuple (defensive copy)."""
+        object.__setattr__(self, "raw", _copied_raw(self.raw))
         if not isinstance(self.campaigns, tuple):
             object.__setattr__(self, "campaigns", tuple(self.campaigns))
         if self.totals is not None:

@@ -210,17 +210,20 @@ def _read_state_safe(store: StateStore) -> StateDocument | None:
     an empty summary, never 500.
 
     When the strict read fails, retry tolerantly against the raw file before
-    giving up: ``store.read_state()`` validates the campaign list strictly, so
-    one variant / hand-authored campaign entry (e.g. ``name`` instead of
-    ``campaign_name``) would otherwise blank out a document whose
-    platforms/periods/reports the read-only dashboard can still render.
+    giving up: ``store.read_state()`` applies the writer contract, so one
+    section it refuses (a malformed ``decisions`` record, a top-level
+    ``campaigns`` that is not a list of objects) would otherwise blank out a
+    document whose platforms/periods/reports the read-only dashboard can
+    still render. A hand-authored platform or campaign entry no longer
+    reaches this retry: both modes read it the same way (#881).
     """
     try:
         return store.read_state()
     except Exception:  # noqa: BLE001 — read-only view degrades, never raises
-        # Expected + handled for a STATE.json with nonconforming entries (e.g. a
-        # hand-authored legacy campaign list, or a platform missing account_id):
-        # the tolerant retry below renders the view fine. The read-only
+        # Expected + handled for a STATE.json with a section the writer
+        # contract refuses (e.g. a malformed decision record, or a legacy
+        # top-level campaigns value that is not a list of objects): the
+        # tolerant retry below renders the view fine. The read-only
         # dashboard re-reads on every poll, so log this at DEBUG — a per-render
         # WARNING + traceback would flood the daemon log on every refresh and
         # read as a failure when it is not.
@@ -233,7 +236,7 @@ def _read_state_safe(store: StateStore) -> StateDocument | None:
 
 
 def _read_state_tolerant(store: StateStore) -> StateDocument | None:
-    """Re-read ``store``'s STATE.json skipping nonconforming campaign entries.
+    """Re-read ``store``'s STATE.json skipping what the writer contract refuses.
 
     Needs the backing file path (``state_path``), which the filesystem store —
     including the Agency per-client stores resolved by

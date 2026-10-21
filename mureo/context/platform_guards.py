@@ -398,7 +398,7 @@ def _reject_account_already_taken(
 
     The join lives in :mod:`mureo.context.platform_accounts` — ``act_``
     tolerant, and treating an empty ``account_id`` as UNKNOWN rather than as a
-    value, because the tolerant read path synthesizes ``""`` for a missing one.
+    value, because both read paths synthesize ``""`` for a missing one (#881).
     """
     existing_keys = platform_keys_for_account(platforms, account_id)
     if not existing_keys:

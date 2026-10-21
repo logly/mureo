@@ -192,6 +192,10 @@ mureo/
 │   │                        #   separate fields the type refuses to cross
 │   ├── state.py             # STATE.json read / mutate / atomic write + state lock (re-exports the two below)
 │   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
+│   ├── _platform_codec.py   # The platform / campaign / ad entries' two codec halves (#881) —
+│   │                        #   a hand-authored entry is kept and written back in its own shape
+│   ├── _preserve.py         # The one re-emit rule for an entry kept with its on-disk dict
+│   │                        #   (#859 action_log, #881 platform / campaign / ad)
 │   ├── decisions.py         # The `decisions` section (#758 phase 3): the record, the bounds,
 │   │                        #   the append_decision writer and the pure queries. Append-only,
 │   │                        #   because `display.proposals` is replaced whole on every

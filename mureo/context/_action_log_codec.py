@@ -38,6 +38,7 @@ import copy
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.context._preserve import preserved_dict
 from mureo.context.approval import approval_to_dict, parse_approval
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
 
@@ -244,13 +245,17 @@ def action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
     set (#545 / #706 / #758 / #848 / #854: an entry written before a key
     existed round-trips byte-identically and gains no new key). An entry WITH
     ``raw`` is re-emitted in its on-disk shape (#859), see
-    :func:`_preserved_action_log_dict`.
+    :func:`mureo.context._preserve.preserved_dict`.
     """
     canonical = _canonical_action_log_dict(e)
     if e.raw is None:
         return canonical
-    return _preserved_action_log_dict(
-        e.raw, canonical, opaque=_action_log_refused(e.raw)
+    return preserved_dict(
+        e.raw,
+        canonical,
+        required=_ACTION_LOG_REQUIRED_KEYS,
+        known=ACTION_LOG_KNOWN_KEYS,
+        opaque=_action_log_refused(e.raw),
     )
 
 
@@ -265,39 +270,6 @@ def _canonical_action_log_dict(e: ActionLogEntry) -> dict[str, Any]:
             result[key] = approval_to_dict(value)
         else:
             result[key] = copy.deepcopy(value)
-    return result
-
-
-def _preserved_action_log_dict(
-    raw: Mapping[str, Any], canonical: dict[str, Any], *, opaque: bool
-) -> dict[str, Any]:
-    """Re-emit a preserved entry in its on-disk key order (#859).
-
-    A known key carries the entry's CURRENT value, so a mutation lands (and
-    the model's normalisation applies, as it always has); one whose field is
-    now unset is left out, so a cleared field stays cleared — except on an
-    ``opaque`` entry (one the model refused), whose other optional fields
-    were never read, so an unset one is emitted as found.
-    A required key whose current value is empty is emitted exactly as found
-    (absent stays absent, null stays null) rather than as an invented ``""``.
-    An unknown key is copied through. Known fields set on the entry but not
-    on disk (e.g. a stamped ``batch_id``) follow, in the codec's order.
-    """
-    result: dict[str, Any] = {}
-    for key, raw_value in raw.items():
-        if key in _ACTION_LOG_REQUIRED_KEYS:
-            current = canonical[key]
-            result[key] = current if current else copy.deepcopy(raw_value)
-        elif key not in ACTION_LOG_KNOWN_KEYS:
-            result[key] = copy.deepcopy(raw_value)
-        elif key in canonical:
-            result[key] = canonical[key]
-        elif opaque:
-            result[key] = copy.deepcopy(raw_value)
-    for key, value in canonical.items():
-        if key in raw or (key in _ACTION_LOG_REQUIRED_KEYS and not value):
-            continue
-        result[key] = value
     return result
 
 
