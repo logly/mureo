@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.31.0] - 2026-10-22
+
 ### Changed
 
 - **The `mcp` dependency floor moves to `>=1.8.0`** (#863).
