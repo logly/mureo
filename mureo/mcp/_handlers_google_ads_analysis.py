@@ -15,21 +15,18 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from mcp.types import TextContent
 
-    from mureo.mcp.credential_source import GoogleCredentialSource
+    from mureo.core.credential_source import GoogleCredentialSource
 
+from mureo.core.account_scope import normalize_customer_id
+from mureo.core.credential_source import call_source, current_google_source
 from mureo.core.runtime_context import runtime_google_ads_customer_ids
-from mureo.mcp._handlers_google_ads import (
-    _get_client,
-    _no_google_creds,
-    _normalize_customer_id,
-)
+from mureo.mcp._handlers_google_ads import _get_client, _no_google_creds
 from mureo.mcp._helpers import (
     _json_result,
     _opt,
     _require,
     api_error_handler,
 )
-from mureo.mcp.credential_source import call_source, current_google_source
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +77,7 @@ async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
     the Search Console sites-list filtering (#375). BYOD rows are local
     CSV labels with no shared-auth reach and stay unfiltered.
 
-    An active credential source (:mod:`mureo.mcp.credential_source`, #821)
+    An active credential source (:mod:`mureo.core.credential_source`, #821)
     with a ``google`` entry wins over BYOD mode: both branches then run
     live against the source's credentials, and both are filtered.
     """
@@ -146,7 +143,7 @@ def _filter_accounts_to_allowed(accounts: Any) -> Any:
     allowed = runtime_google_ads_customer_ids()
     if allowed is None:
         return accounts
-    normalized = {_normalize_customer_id(str(entry)) for entry in allowed}
+    normalized = {normalize_customer_id(str(entry)) for entry in allowed}
     if not isinstance(accounts, list):
         return []
     return [
@@ -163,7 +160,7 @@ def _account_row_id(row: dict[str, Any]) -> str:
     prefix = "customers/"
     if raw.startswith(prefix):
         raw = raw[len(prefix) :]
-    return _normalize_customer_id(raw)
+    return normalize_customer_id(raw)
 
 
 @api_error_handler

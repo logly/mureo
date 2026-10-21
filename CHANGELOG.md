@@ -1,5 +1,34 @@
 ## [Unreleased]
 
+### Changed
+
+- **`mureo.rollback`, `mureo.policy`, `mureo.amazon_ads` and `mureo.core`
+  no longer import `mureo.mcp`** (#863). The failure-envelope reader
+  (`failure_of`, `is_error_result`, `is_auth_error_result`, `Failure`,
+  `FAILURE_STATUSES`, `API_ERROR_PREFIX`, `API_ERROR_CODE`) now lives in
+  `mureo.core.tool_failure`; every name is still importable from
+  `mureo.mcp._helpers` as the same object. `mureo.mcp.server.plugin_reversal_param_keys`
+  is removed: the server publishes its plugin reversal keys to the rollback
+  registry through `mureo.rollback.planner.set_plugin_reversal_keys` at load,
+  so a caller outside the server that plans plugin reversals must import
+  `mureo.mcp.server` first (`mureo rollback list` / `show` do, only when they
+  run).
+  The built-in platform tool names the learning-reset pre-flight uses are
+  likewise published to `mureo.policy.learning_reset` by the server
+  (`set_builtin_platform_tool_names`); reading them before the server has
+  loaded raises instead of answering with an empty set.
+- **`mureo.core.credential_source` is the new home of the credential-source
+  API** (#863). The old path, `mureo.mcp.credential_source`, still works and
+  re-exports the same objects (one context variable), but it imports the
+  whole MCP server; the new path does not. Workspace account scoping
+  (`mureo.core.account_scope`) and the BYOD-or-live client factory
+  (`mureo.client_factory`) moved below `mureo.mcp` too, so the analytics
+  adapters and change import no longer load the MCP server to open a client.
+  Visible side effects of the move: the credential-source logger is now named
+  `mureo.core.credential_source`, and `CredentialSource.__module__` (and that
+  of the other credential-source classes and functions) is
+  `mureo.core.credential_source`.
+
 ## [0.30.0] - 2026-10-20
 
 ### Changed
@@ -37,21 +66,6 @@
   `mureo/context/` are top-level again. The remaining function-local
   imports inside `mureo/context/` belong to a cycle within that package
   and are addressed in a later stage.
-- **`mureo.rollback`, `mureo.policy`, `mureo.amazon_ads` and `mureo.core`
-  no longer import `mureo.mcp`** (#863). The failure-envelope reader
-  (`failure_of`, `is_error_result`, `is_auth_error_result`, `Failure`,
-  `FAILURE_STATUSES`, `API_ERROR_PREFIX`, `API_ERROR_CODE`) now lives in
-  `mureo.core.tool_failure`; every name is still importable from
-  `mureo.mcp._helpers` as the same object. `mureo.mcp.server.plugin_reversal_param_keys`
-  is removed: the server publishes its plugin reversal keys to the rollback
-  registry through `mureo.rollback.planner.set_plugin_reversal_keys` at load,
-  so a caller outside the server that plans plugin reversals must import
-  `mureo.mcp.server` first (`mureo rollback list` / `show` do, only when they
-  run).
-  The built-in platform tool names the learning-reset pre-flight uses are
-  likewise published to `mureo.policy.learning_reset` by the server
-  (`set_builtin_platform_tool_names`); reading them before the server has
-  loaded raises instead of answering with an empty set.
 
 ### Fixed
 

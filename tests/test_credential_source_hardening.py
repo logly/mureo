@@ -24,7 +24,7 @@ import pytest
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 from mureo.core.auth_failure import AUTH_ERROR_STATUS, PlatformAuthError
-from mureo.mcp.credential_source import (
+from mureo.core.credential_source import (
     CredentialSource,
     CredentialSourceError,
     active_source_identity,
@@ -102,21 +102,20 @@ def _unscoped_live() -> Iterator[None]:
     """Untenanted, non-BYOD resolution on every platform; no host credentials."""
     with (
         patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(
             "mureo.mcp._handlers_google_ads_analysis.runtime_google_ads_customer_ids",
             return_value=None,
         ),
-        patch("mureo.mcp._meta_ads_client.runtime_meta_account_ids", return_value=None),
+        patch("mureo.core.account_scope.runtime_meta_account_ids", return_value=None),
         patch(
             "mureo.mcp._handlers_search_console.runtime_search_console_sites",
             return_value=None,
         ),
         patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
         patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
-        patch("mureo.byod.runtime.byod_has", return_value=False),
         patch("mureo.mcp._google_ads_client.load_google_ads_credentials", _refuse),
         patch(
             "mureo.mcp._handlers_search_console.load_google_ads_credentials", _refuse

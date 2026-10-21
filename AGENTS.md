@@ -146,7 +146,6 @@ mureo/
 │   ├── journal_read.py                    # Reading JOURNAL.jsonl back — the parse, the date, the
 │   │                                      #   filter and the tail reader, shared with `mureo journal`.
 │   │                                      #   The *_files forms walk the rotated siblings as one record
-│   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
 │   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89)
 ├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair + journal; ad ops are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
@@ -286,6 +285,10 @@ mureo/
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
 │   ├── tool_failure.py  # The MCP failure-envelope READER (failure_of / is_error_result, #863); the
 │   │                    #   writer stays in mcp/_helpers.py, which re-exports these names
+│   ├── credential_source.py # Per-call credential-source ABI (#821); mcp/credential_source.py
+│   │                    #   re-exports the same objects (#863)
+│   ├── account_scope.py # Workspace account scoping (#411): resolve_customer_id / resolve_account_id,
+│   │                    #   called by every platform client opener before it builds a client
 │   └── rotation.py      # Size-bounded append files (#758 phase 6): the one MUREO_JOURNAL_MAX_BYTES
 │                        #   reader, the rotated name, and sibling_files (the whole record, oldest first)
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
@@ -309,6 +312,8 @@ mureo/
 ├── logging_setup.py     # Configure-server logging (#581): rotating ~/.mureo/logs/configure.log,
 │                        #   MUREO_LOG_LEVEL, and the HTTP access-log query scrubber. Installed by
 │                        #   the configure entry point only — never at import time, never on root.
+├── client_factory.py    # Per-platform BYOD-vs-live client factory (MCP handlers, analytics,
+│                        #   change import); below mcp, so none of them loads the server (#863)
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)
 
 skills/                       # Native slash skills — one `<name>/SKILL.md` per skill (migrated from
@@ -573,10 +578,10 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 
 ## BYOD Mode (Bring Your Own Data)
 
-`mureo byod import <file>.xlsx` lets a user analyze their real ad-account data locally without OAuth. The bundle importer (`mureo/byod/bundle.py`) opens the workbook with openpyxl, dispatches recognized adapters by header signature, and writes per-platform CSVs under `~/.mureo/byod/<platform>/`. When `~/.mureo/byod/manifest.json` registers a platform, `mureo/mcp/_client_factory.py` routes that platform's MCP tool calls to a CSV-backed client (`mureo/byod/clients.py`) instead of the live API. Per-platform: imported platforms = BYOD; un-imported = Live API (or `_no_creds` error if no credentials). Supported BYOD platforms: `google_ads`, `meta_ads`. GA4 and Search Console remain on the Live API OAuth path.
+`mureo byod import <file>.xlsx` lets a user analyze their real ad-account data locally without OAuth. The bundle importer (`mureo/byod/bundle.py`) opens the workbook with openpyxl, dispatches recognized adapters by header signature, and writes per-platform CSVs under `~/.mureo/byod/<platform>/`. When `~/.mureo/byod/manifest.json` registers a platform, `mureo/client_factory.py` routes that platform's MCP tool calls to a CSV-backed client (`mureo/byod/clients.py`) instead of the live API. Per-platform: imported platforms = BYOD; un-imported = Live API (or `_no_creds` error if no credentials). Supported BYOD platforms: `google_ads`, `meta_ads`. GA4 and Search Console remain on the Live API OAuth path.
 
 When working on mureo:
-- New ad-platform handlers MUST call `mureo/mcp/_client_factory.get_*_client(...)` for the BYOD path; real-mode dispatch can call `create_*_client` directly to keep test mocks at `mureo.mcp._handlers_*.create_*_client` working.
+- New ad-platform handlers MUST call `mureo/client_factory.get_*_client(...)` for the BYOD path; real-mode dispatch can call `create_*_client` directly to keep test mocks at `mureo.mcp._handlers_*.create_*_client` working.
 - BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`, `boost_`, `end_`, `duplicate_`, `export_`) return `{"status": "skipped_in_byod_readonly"}`. The authoritative list is `_MUTATION_PREFIXES` in `mureo/byod/clients.py` (26 prefixes).
 - New bundle adapters live in `mureo/byod/adapters/<platform>.py` and must implement `has_tab(workbook)` (returns True when the workbook contains the adapter's required sheet/header signature) and `normalize_from_workbook(workbook, dst_dir)` (writes CSVs to `dst_dir`, returns an `ImportResult`). Both adapters (Google Ads and Meta Ads) import the shared helper `sanitize_cell` from `mureo/byod/adapters/_csv_safe.py` and apply it to every user-controlled cell against CSV injection (it prefixes formula triggers `=`, `+`, `-`, `@`, tab, CR with a single quote), then write to the mureo internal schema documented in `docs/byod.md`.
 - Bundle imports MUST never escape `~/.mureo/byod/` — `bundle.py` and `installer.remove_platform` both enforce path-traversal guards.

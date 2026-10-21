@@ -1,6 +1,6 @@
 """The per-call credential source and the factories it feeds (#821).
 
-``mureo.mcp.credential_source`` lets a caller hand the built-in handlers the
+``mureo.core.credential_source`` lets a caller hand the built-in handlers the
 credentials for one call. These tests pin the context-variable contract
 (scope, reset, propagation into worker threads and child tasks) and the
 ``oauth_credentials`` pass-through of the three Google factories. The handler
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mureo.auth import GoogleAdsCredentials
-from mureo.mcp.credential_source import (
+from mureo.core.credential_source import (
     CredentialSource,
     current_credential_source,
     current_google_source,

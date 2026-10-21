@@ -50,16 +50,9 @@ from mureo.mcp._helpers import (
 # re-exported (``as`` form) because sibling modules and callers import them
 # from here.
 from mureo.mcp._meta_ads_client import _NO_CREDS_MSG as _NO_CREDS_MSG
-from mureo.mcp._meta_ads_client import (
-    _canonical_meta_account_id as _canonical_meta_account_id,
-)
 from mureo.mcp._meta_ads_client import _entity_result as _entity_result
 from mureo.mcp._meta_ads_client import _get_client as _get_client
 from mureo.mcp._meta_ads_client import _no_meta_creds as _no_meta_creds
-from mureo.mcp._meta_ads_client import (
-    _normalize_meta_account_id as _normalize_meta_account_id,
-)
-from mureo.mcp._meta_ads_client import _resolve_account_id as _resolve_account_id
 from mureo.mcp._meta_ads_client import _throttler as _throttler
 
 logger = logging.getLogger(__name__)

@@ -37,9 +37,10 @@ import pytest
 def _no_ambient_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Force the live-client credential lookups to resolve as "absent".
 
-    ``_open_google_ads_client`` / ``_open_meta_ads_client`` import these names
-    locally at call time, so patching the module attributes
-    (``mureo.byod.runtime.byod_has`` and the two
+    ``_open_google_ads_client`` / ``_open_meta_ads_client`` read these names
+    from their modules at call time (``mureo.byod.runtime`` through the
+    module, ``mureo.auth`` by a local import), so patching the module
+    attributes (``mureo.byod.runtime.byod_has`` and the two
     ``mureo.auth.load_*_credentials`` functions) is enough to make the live
     fallback raise :class:`NoCredentialsError`. The no-fetcher adapter tests
     can then never reach a real API, no matter what credentials happen to be

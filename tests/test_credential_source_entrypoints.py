@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
-from mureo.mcp.credential_source import CredentialSource, use_credential_source
+from mureo.core.credential_source import CredentialSource, use_credential_source
 
 pytestmark = pytest.mark.unit
 
@@ -82,7 +82,7 @@ def _unscoped() -> Iterator[None]:
     """Run untenanted, so the allow-lists do not filter the stub rows."""
     with (
         patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(
@@ -90,7 +90,7 @@ def _unscoped() -> Iterator[None]:
             return_value=None,
         ),
         patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=None,
         ),
     ):

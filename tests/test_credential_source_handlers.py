@@ -1,6 +1,6 @@
 """Built-in handlers honour an active credential source (#821).
 
-With a :class:`~mureo.mcp.credential_source.CredentialSource` in effect, the
+With a :class:`~mureo.core.credential_source.CredentialSource` in effect, the
 Google Ads, Search Console and Meta Ads paths that resolve credentials during
 a tool call take them from the source — never from the credentials file, and
 ahead of BYOD mode — while the id resolution and allow-list enforcement stay
@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
-from mureo.mcp.credential_source import CredentialSource, use_credential_source
+from mureo.core.credential_source import CredentialSource, use_credential_source
 
 pytestmark = pytest.mark.unit
 
@@ -65,7 +65,7 @@ def _unscoped() -> Iterator[None]:
     """Pin every test to the untenanted resolution unless it patches its own."""
     with (
         patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(
@@ -73,7 +73,7 @@ def _unscoped() -> Iterator[None]:
             return_value=None,
         ),
         patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=None,
         ),
     ):
@@ -126,7 +126,7 @@ class TestGoogleAdsGetClient:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+                "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=frozenset({"1112223333"}),
             ),
             pytest.raises(ValueError, match="refused"),
@@ -185,7 +185,6 @@ class TestAccountsList:
         rows = [{"id": "1112223333"}, {"id": "9990001111"}]
         lister = AsyncMock(return_value=rows)
         with (
-            patch("mureo.byod.runtime.byod_has", return_value=False),
             patch("mureo.auth.load_google_ads_credentials", _refuse),
             patch("mureo.google_ads.list_accessible_accounts", new=lister),
             patch.object(
@@ -204,7 +203,6 @@ class TestAccountsList:
 
         lister = AsyncMock()
         with (
-            patch("mureo.byod.runtime.byod_has", return_value=False),
             patch("mureo.google_ads.list_accessible_accounts", new=lister),
             use_credential_source(CredentialSource(google=_GoogleSource(None))),
         ):

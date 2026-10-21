@@ -23,15 +23,15 @@ from mureo.auth import (
     refresh_meta_token_if_needed,
 )
 from mureo.byod.runtime import byod_freshness, byod_has
-from mureo.core.runtime_context import runtime_meta_account_ids
-from mureo.mcp._client_factory import get_meta_ads_client
+from mureo.client_factory import get_meta_ads_client
+from mureo.core.account_scope import resolve_account_id
+from mureo.core.credential_source import call_source, current_meta_source
 from mureo.mcp._helpers import (
     _json_result,
     _no_creds_result,
     _opt,
     register_client_for_cleanup,
 )
-from mureo.mcp.credential_source import call_source, current_meta_source
 from mureo.throttle import META_ADS_THROTTLE, Throttler
 
 _NO_CREDS_MSG = (
@@ -41,67 +41,6 @@ _NO_CREDS_MSG = (
 )
 
 _throttler = Throttler(META_ADS_THROTTLE)
-
-
-def _normalize_meta_account_id(value: str) -> str:
-    """Strip the ``act_`` prefix so membership checks are prefix-insensitive."""
-    return value[4:] if value.startswith("act_") else value
-
-
-def _canonical_meta_account_id(value: str) -> str:
-    """Ensure the ``act_`` prefix the Meta client factory requires."""
-    return value if value.startswith("act_") else f"act_{value}"
-
-
-def _resolve_account_id(requested: str | None, default: str | None) -> str:
-    """Resolve and workspace-enforce the Meta ``account_id`` (#411).
-
-    Every Meta tool funnels through ``_get_client``, which takes
-    ``account_id`` as a free caller argument while the (possibly shared)
-    credentials can reach every managed ad account. This binds the
-    EFFECTIVE id — explicit argument or credentials default alike — to the
-    active client's allow-list, mirroring Search Console's ``site_url``
-    enforcement (#375):
-
-    - **Not tenant-scoped** (:func:`runtime_meta_account_ids` → ``None``):
-      unchanged — argument wins, credentials default second, missing both
-      is an error.
-    - **Tenant-scoped**: an out-of-set value is refused (fail-closed,
-      prefix-insensitive); no usable value resolves to the single
-      configured account, or is refused when several are configured
-      (ambiguous) or none are (fail-fast).
-    """
-    allowed = runtime_meta_account_ids()
-    if allowed is None:
-        account_id = requested or default
-        if not account_id:
-            raise ValueError(
-                "account_id is required. Provide it as a parameter or "
-                "configure it in ~/.mureo/credentials.json via mureo auth "
-                "setup."
-            )
-        return str(account_id)
-    if not allowed:
-        raise ValueError(
-            "Meta Ads is not configured for this client. Configure the "
-            "client's ad account before querying it."
-        )
-    normalized_allowed = {_normalize_meta_account_id(entry) for entry in allowed}
-    if requested:
-        if _normalize_meta_account_id(str(requested)) not in normalized_allowed:
-            raise ValueError(
-                f"account_id {requested!r} is not one of this client's "
-                "configured ad accounts and was refused."
-            )
-        return _canonical_meta_account_id(str(requested))
-    if default and _normalize_meta_account_id(str(default)) in normalized_allowed:
-        return _canonical_meta_account_id(str(default))
-    if len(allowed) == 1:
-        return _canonical_meta_account_id(next(iter(allowed)))
-    raise ValueError(
-        "account_id is required: this client has multiple configured ad "
-        "accounts — pass one of them explicitly."
-    )
 
 
 async def _get_client(arguments: dict[str, Any]) -> Any:
@@ -138,7 +77,7 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
     # getattr, not attribute access: the default must not be evaluated
     # eagerly against credential objects that lack the field (the old
     # ``or``-chain short-circuited when an explicit id was passed).
-    account_id = _resolve_account_id(
+    account_id = resolve_account_id(
         _opt(arguments, "account_id"), getattr(creds, "account_id", None)
     )
     if not str(account_id).startswith("act_"):

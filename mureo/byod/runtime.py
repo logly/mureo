@@ -1,11 +1,11 @@
-"""BYOD runtime helpers shared by the CLI, the MCP client factory, and tests.
+"""BYOD runtime helpers shared by the CLI, the client factory, and tests.
 
 The single source of truth for "is BYOD active for platform X" is the
 ``manifest.json`` written into ``~/.mureo/byod/`` by ``mureo byod import``.
 
 This module is read-light (one small JSON file) and intentionally has no
 external dependencies so it can be imported from
-``mureo/mcp/_client_factory.py`` without dragging the heavier installer
+``mureo/client_factory.py`` without dragging the heavier installer
 or adapter code into the MCP server's startup path.
 """
 

@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 # Re-exported so ``mureo.byod.clients`` stays the single public import
-# path for the BYOD surface: ``_client_factory``, the bundle adapters and
+# path for the BYOD surface: ``client_factory``, the bundle adapters and
 # the test-suite all reach these names through here.
 from mureo.byod._client_common import (
     _DAILY_DELIVERY_DEFAULT_DAYS,

@@ -121,7 +121,7 @@ def live_google_ads():
             return_value=_creds(),
         ),
         patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=None,
         ),
     ):
@@ -262,9 +262,10 @@ class TestOtherAsyncCallers:
         feed = GoogleAdsChangeFeed()
         with (
             patch("mureo.byod.runtime.byod_has", return_value=False),
+            patch("mureo.client_factory.byod_has", return_value=False),
             patch("mureo.auth.load_google_ads_credentials", return_value=_creds()),
             patch(
-                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+                "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=None,
             ),
             patch("mureo.auth.create_google_ads_client", factory),
@@ -286,9 +287,10 @@ class TestOtherAsyncCallers:
         loop_thread = threading.current_thread()
         with (
             patch("mureo.byod.runtime.byod_has", return_value=False),
+            patch("mureo.client_factory.byod_has", return_value=False),
             patch("mureo.auth.load_google_ads_credentials", return_value=_creds()),
             patch(
-                "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+                "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=None,
             ),
             patch("mureo.auth.create_google_ads_client", factory),

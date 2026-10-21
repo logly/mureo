@@ -32,11 +32,11 @@ def _standalone_account_scoping():
     """
     with (
         patch(
-            "mureo.mcp._google_ads_client.runtime_google_ads_customer_ids",
+            "mureo.core.account_scope.runtime_google_ads_customer_ids",
             return_value=None,
         ),
         patch(
-            "mureo.mcp._meta_ads_client.runtime_meta_account_ids",
+            "mureo.core.account_scope.runtime_meta_account_ids",
             return_value=None,
         ),
     ):

@@ -31,6 +31,7 @@ import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
+from mureo import client_factory
 from mureo.analysis.anomaly_detector import CampaignMetrics
 from mureo.analytics.builtin._common import (
     google_row_metrics as _google_row_metrics,
@@ -38,12 +39,23 @@ from mureo.analytics.builtin._common import (
 from mureo.analytics.builtin._common import (
     meta_row_conversions as _meta_row_conversions,
 )
+from mureo.byod import runtime as byod_runtime
 from mureo.context.state import load_conversion_action_types
+from mureo.core.account_scope import (
+    canonical_meta_account_id,
+    resolve_account_id,
+    resolve_customer_id,
+)
+from mureo.core.credential_source import (
+    call_source,
+    current_google_source,
+    current_meta_source,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mureo.mcp.credential_source import (
+    from mureo.core.credential_source import (
         GoogleCredentialSource,
         MetaCredentialSource,
     )
@@ -144,7 +156,7 @@ def _open_google_ads_client(account_id: str) -> tuple[object, str]:
     :class:`AccountNotAvailableError`.
 
     Workspace scoping (#411/#413): ``account_id`` is bound to the active
-    client's allow-list via ``_resolve_customer_id`` before use — a
+    client's allow-list via ``resolve_customer_id`` before use — a
     non-tenant-scoped run passes it through unchanged, a tenant-scoped run
     refuses an out-of-allow-list id (fail-closed). Enforcing here means a
     future tool that wires a caller-supplied id into the AnalyticsModule
@@ -152,25 +164,22 @@ def _open_google_ads_client(account_id: str) -> tuple[object, str]:
 
     Raises :class:`NoCredentialsError` in live mode when credentials
     are missing. BYOD mode is detected by the client factory itself
-    (``mureo.mcp._client_factory``), so this helper does not re-check
+    (:mod:`mureo.client_factory`), so this helper does not re-check
     ``byod_has`` — keeping the BYOD branching in one place avoids
     drift if the factory's policy changes.
 
-    Local imports defer auth / google_ads SDK loading until first use
-    so the registry import remains cheap. Test patch sites:
-    ``mureo.auth.load_google_ads_credentials`` and
-    ``mureo.mcp._client_factory.get_google_ads_client``.
+    ``mureo.auth`` is imported locally (startup cost). Test patch sites:
+    ``mureo.auth.load_google_ads_credentials``, ``mureo.byod.runtime.byod_has``
+    (this opener's check only — the factory's is ``mureo.client_factory.byod_has``)
+    and ``mureo.client_factory.get_google_ads_client``.
     """
+    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
     from mureo.auth import load_google_ads_credentials
-    from mureo.byod.runtime import byod_has
-    from mureo.mcp._client_factory import get_google_ads_client
-    from mureo.mcp._handlers_google_ads import _resolve_customer_id
-    from mureo.mcp.credential_source import current_google_source
 
     # Bind the account to the workspace allow-list (#411/#413) before it
     # reaches the client factory; a refusal degrades gracefully (#435).
     try:
-        account_id = _resolve_customer_id(account_id, None)
+        account_id = resolve_customer_id(account_id, None)
     except ValueError as exc:
         raise AccountNotAvailableError(str(exc)) from exc
 
@@ -178,13 +187,18 @@ def _open_google_ads_client(account_id: str) -> tuple[object, str]:
     if google is not None:
         return _google_client_from_source(google, account_id), account_id
 
-    if byod_has("google_ads"):
-        return get_google_ads_client(creds=None, customer_id=account_id), account_id
+    # Read through the module (``mureo.byod.runtime.byod_has`` patches apply);
+    # the factory binds its own copy, patched as ``mureo.client_factory.byod_has``.
+    if byod_runtime.byod_has("google_ads"):
+        client = client_factory.get_google_ads_client(
+            creds=None, customer_id=account_id
+        )
+        return client, account_id
 
     creds = load_google_ads_credentials()
     if creds is None:
         raise NoCredentialsError("google_ads credentials not configured")
-    return get_google_ads_client(creds, account_id), account_id
+    return client_factory.get_google_ads_client(creds, account_id), account_id
 
 
 def _google_client_from_source(
@@ -195,8 +209,8 @@ def _google_client_from_source(
     The source wins over BYOD mode and the credentials file, the same
     precedence as the MCP handlers; ``None`` from it is "no credentials".
     """
+    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
     from mureo.auth import create_google_ads_client
-    from mureo.mcp.credential_source import call_source
 
     creds = call_source("google", google.load_credentials)
     if creds is None:
@@ -579,25 +593,19 @@ async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     raises :class:`AccountNotAvailableError`.
 
     Workspace scoping (#411/#413): ``account_id`` is bound to the active
-    client's allow-list via ``_resolve_account_id`` before use — a
+    client's allow-list via ``resolve_account_id`` before use — a
     non-tenant-scoped run passes it through unchanged, a tenant-scoped run
     refuses an out-of-allow-list id (fail-closed). Enforcing here means a
     future tool that wires a caller-supplied id into the AnalyticsModule
     Protocol cannot silently bypass #411 scoping.
     """
+    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
     from mureo.auth import load_meta_ads_credentials, refresh_meta_token_if_needed
-    from mureo.byod.runtime import byod_has
-    from mureo.mcp._client_factory import get_meta_ads_client
-    from mureo.mcp._handlers_meta_ads import (
-        _canonical_meta_account_id,
-        _resolve_account_id,
-    )
-    from mureo.mcp.credential_source import current_meta_source
 
     # Bind the account to the workspace allow-list (#411/#413) before it
     # reaches the client factory; a refusal degrades gracefully (#435).
     try:
-        account_id = _resolve_account_id(account_id, None)
+        account_id = resolve_account_id(account_id, None)
     except ValueError as exc:
         raise AccountNotAvailableError(str(exc)) from exc
 
@@ -605,14 +613,17 @@ async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     # tenant-scoped resolver already does this, but the non-scoped path returns
     # the id verbatim — a bare id would otherwise raise a raw ValueError from
     # the client factory, escaping the adapters' graceful handler (#435).
-    account_id = _canonical_meta_account_id(account_id)
+    account_id = canonical_meta_account_id(account_id)
 
     meta = current_meta_source()
     if meta is not None:
         return _meta_client_from_source(meta, account_id), account_id
 
-    if byod_has("meta_ads"):
-        return get_meta_ads_client(creds=None, account_id=account_id), account_id
+    # Read through the module (``mureo.byod.runtime.byod_has`` patches apply);
+    # the factory binds its own copy, patched as ``mureo.client_factory.byod_has``.
+    if byod_runtime.byod_has("meta_ads"):
+        client = client_factory.get_meta_ads_client(creds=None, account_id=account_id)
+        return client, account_id
 
     creds = load_meta_ads_credentials()
     if creds is None:
@@ -621,7 +632,7 @@ async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     # a failed exchange logs and returns the original credentials, so this
     # never turns a working analytics call into an error.
     creds = await refresh_meta_token_if_needed(creds)
-    return get_meta_ads_client(creds, account_id), account_id
+    return client_factory.get_meta_ads_client(creds, account_id), account_id
 
 
 def _meta_client_from_source(meta_ads: MetaCredentialSource, account_id: str) -> object:
@@ -630,8 +641,8 @@ def _meta_client_from_source(meta_ads: MetaCredentialSource, account_id: str) ->
     The source wins over BYOD mode and the credentials file, and owns the
     token lifecycle, so no refresh is attempted here.
     """
+    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
     from mureo.auth import create_meta_ads_client
-    from mureo.mcp.credential_source import call_source
 
     creds = call_source("meta_ads", meta_ads.load_credentials)
     if creds is None:
