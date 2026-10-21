@@ -219,12 +219,17 @@ def _is_type_checking_guard(node: ast.If) -> bool:
     return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
 
 
-def _is_mcp(name: str) -> bool:
-    return name == "mureo.mcp" or name.startswith("mureo.mcp.")
+#: The ``target`` the ``mureo.mcp`` guards hand the walkers below.
+_MCP_PACKAGE = "mureo.mcp"
 
 
-def _from_import_targets(node: ast.ImportFrom, package: str) -> list[str]:
-    """The ``mureo.mcp*`` modules one ``from ... import ...`` reaches.
+def _is_within(name: str, target: str) -> bool:
+    """``name`` is ``target`` or one of its submodules."""
+    return name == target or name.startswith(f"{target}.")
+
+
+def _from_import_targets(node: ast.ImportFrom, package: str, target: str) -> list[str]:
+    """The ``target*`` modules one ``from ... import ...`` reaches.
 
     A relative import is resolved against ``package`` (the importing file's
     package), and ``from mureo import mcp`` names the subpackage through an
@@ -234,17 +239,17 @@ def _from_import_targets(node: ast.ImportFrom, package: str) -> list[str]:
     if node.level:
         base = package.rsplit(".", node.level - 1)[0] if node.level > 1 else package
         module = f"{base}.{module}" if module else base
-    if _is_mcp(module):
+    if _is_within(module, target):
         return [module]
     return [
         f"{module}.{alias.name}"
         for alias in node.names
-        if _is_mcp(f"{module}.{alias.name}")
+        if _is_within(f"{module}.{alias.name}", target)
     ]
 
 
-def _mcp_imports(tree: ast.AST, package: str) -> list[tuple[int, str]]:
-    """Every ``mureo.mcp*`` import in ``tree``, outside ``if TYPE_CHECKING:``.
+def _imports_of(tree: ast.AST, package: str, target: str) -> list[tuple[int, str]]:
+    """Every ``target*`` import in ``tree``, outside ``if TYPE_CHECKING:``.
 
     ``package`` is the dotted package of the file ``tree`` was parsed from,
     for resolving relative imports.
@@ -257,9 +262,11 @@ def _mcp_imports(tree: ast.AST, package: str) -> list[tuple[int, str]]:
             pending.extend(node.orelse)
             continue
         if isinstance(node, ast.ImportFrom):
-            names = _from_import_targets(node, package)
+            names = _from_import_targets(node, package, target)
         elif isinstance(node, ast.Import):
-            names = [alias.name for alias in node.names if _is_mcp(alias.name)]
+            names = [
+                alias.name for alias in node.names if _is_within(alias.name, target)
+            ]
         else:
             names = []
         found.extend((node.lineno, name) for name in names)  # type: ignore[attr-defined]
@@ -301,8 +308,8 @@ def test_lower_layer_source_never_imports_mcp(package: str) -> None:
     offenders = [
         f"{path.relative_to(root.parent)}:{lineno} imports {name}"
         for path in paths
-        for lineno, name in _mcp_imports(
-            ast.parse(path.read_text("utf-8")), _package_of(path)
+        for lineno, name in _imports_of(
+            ast.parse(path.read_text("utf-8")), _package_of(path), _MCP_PACKAGE
         )
     ]
     assert offenders == []
@@ -343,6 +350,230 @@ def test_credential_source_paths_export_the_same_names() -> None:
     ],
 )
 def test_mcp_imports_sees_every_spelling(source: str, flagged: list[str]) -> None:
-    """``_mcp_imports`` as if ``source`` were a module of ``mureo.rollback``."""
-    found = _mcp_imports(ast.parse(source), "mureo.rollback")
+    """``_imports_of`` as if ``source`` were a module of ``mureo.rollback``."""
+    found = _imports_of(ast.parse(source), "mureo.rollback", _MCP_PACKAGE)
     assert [name for _, name in found] == flagged
+
+
+# ---------------------------------------------------------------------------
+# meta_ads below auth, the OAuth wizard under web, one credentials default
+# path (#863)
+#
+# ``mureo.auth_setup`` and ``mureo.meta_ads.accounts`` used to import each
+# other's private constants, one side function-locally to dodge the cycle;
+# the configure OAuth wizard (``mureo.cli.web_auth``, now
+# ``mureo.web.auth_wizard``) was reachable from ``mureo.web.oauth_bridge``
+# only through function-local imports; and the legacy credentials location
+# was spelled out in six modules. These pin the fixed shape.
+# ---------------------------------------------------------------------------
+
+#: Modules ``mureo.meta_ads`` sits below. The Meta OAuth constants they need
+#: are public in ``mureo.meta_ads.accounts``; the arrow points one way.
+_ABOVE_META_ADS = ("mureo.auth", "mureo.auth_setup")
+
+#: Modules whose ``_``-prefixed names no other mureo module may import.
+_PRIVATE_NAMES_STAY_HOME = ("mureo.meta_ads.accounts", "mureo.auth_setup")
+
+#: The two path segments of the legacy credentials location. Built from parts
+#: so this file does not itself spell the path.
+_CREDENTIALS_DIR, _CREDENTIALS_FILE = ".mureo", "credentials" + ".json"
+
+#: The tail of ``<root> / ".mureo" / "credentials.json"`` as
+#: :func:`ast.unparse` renders it, whatever quotes and spacing the source used.
+_CREDENTIALS_JOIN_TAIL = f" / '{_CREDENTIALS_DIR}' / '{_CREDENTIALS_FILE}'"
+
+#: Every ``(module, enclosing function, root)`` allowed to join that tail, and
+#: why. Only ``default_credentials_path`` roots it at ``Path.home()``.
+_CREDENTIALS_JOIN_SITES = {
+    ("mureo/core/secret_store.py", "default_credentials_path", "Path.home()"): (
+        "the one definition of the legacy default location"
+    ),
+    ("mureo/web/host_paths.py", "_claude_code_paths", "home"): (
+        "rooted at get_host_paths(home=...): an injected home is a sandbox"
+    ),
+    ("mureo/web/host_paths.py", "_claude_desktop_paths", "home"): (
+        "rooted at get_host_paths(home=...): an injected home is a sandbox"
+    ),
+    ("mureo/web/host_paths.py", "_codex_paths", "home"): (
+        "rooted at get_host_paths(home=...): an injected home is a sandbox"
+    ),
+}
+
+
+def _mureo_sources() -> list[pathlib.Path]:
+    return sorted(pathlib.Path(mureo.__file__).parent.rglob("*.py"))
+
+
+def _credentials_join_sites(tree: ast.AST) -> list[tuple[int, str, str]]:
+    """``(line, enclosing function, root)`` of every ``<root> / ".mureo" /
+    "credentials.json"`` in ``tree``; the function is ``""`` at module scope.
+    """
+    found: list[tuple[int, str, str]] = []
+    pending: list[tuple[ast.AST, str]] = [(tree, "")]
+    while pending:
+        node, scope = pending.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = node.name
+        if (
+            isinstance(node, ast.BinOp)
+            and isinstance(node.op, ast.Div)
+            and isinstance(node.left, ast.BinOp)
+            and ast.unparse(node).endswith(_CREDENTIALS_JOIN_TAIL)
+        ):
+            found.append((node.lineno, scope, ast.unparse(node.left.left)))
+        pending.extend((child, scope) for child in ast.iter_child_nodes(node))
+    return sorted(found)
+
+
+def _function_local_mureo_imports(tree: ast.AST, package: str) -> set[tuple[int, str]]:
+    """``mureo*`` imports inside any function body of ``tree``."""
+    return {
+        found
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for found in _imports_of(node, package, target="mureo")
+    }
+
+
+def _private_names_imported(
+    tree: ast.AST, package: str, target: str
+) -> list[tuple[int, str]]:
+    """``from <target> import _name`` in ``tree``, any position, any spelling."""
+    return [
+        (node.lineno, alias.name)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and _from_import_targets(node, package, target)
+        for alias in node.names
+        if alias.name.startswith("_")
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("target", _ABOVE_META_ADS)
+def test_meta_ads_source_never_imports_auth(target: str) -> None:
+    """Function-local imports included — that is how the cycle used to hide."""
+    root = pathlib.Path(mureo.__file__).parent / "meta_ads"
+    offenders = [
+        f"{path.relative_to(root.parent)}:{lineno} imports {name}"
+        for path in sorted(root.rglob("*.py"))
+        for lineno, name in _imports_of(
+            ast.parse(path.read_text("utf-8")), _package_of(path), target=target
+        )
+    ]
+    assert offenders == []
+
+
+@pytest.mark.unit
+def test_oauth_bridge_has_no_function_local_mureo_import() -> None:
+    path = pathlib.Path(mureo.__file__).parent / "web" / "oauth_bridge.py"
+    found = _function_local_mureo_imports(
+        ast.parse(path.read_text("utf-8")), _package_of(path)
+    )
+    assert sorted(found) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("target", _PRIVATE_NAMES_STAY_HOME)
+def test_no_module_imports_private_names_of(target: str) -> None:
+    root = pathlib.Path(mureo.__file__).parent
+    offenders = [
+        f"{path.relative_to(root.parent)}:{lineno} imports {target}.{name}"
+        for path in _mureo_sources()
+        for lineno, name in _private_names_imported(
+            ast.parse(path.read_text("utf-8")), _package_of(path), target
+        )
+    ]
+    assert offenders == []
+
+
+@pytest.mark.unit
+def test_default_credentials_path_is_spelled_once() -> None:
+    """Only ``mureo.core.secret_store.default_credentials_path`` builds it from
+    ``Path.home()``; every other join of the same segments is allow-listed."""
+    root = pathlib.Path(mureo.__file__).parent
+    found = [
+        (path.relative_to(root.parent).as_posix(), lineno, scope, home)
+        for path in _mureo_sources()
+        for lineno, scope, home in _credentials_join_sites(
+            ast.parse(path.read_text("utf-8"))
+        )
+    ]
+    sites = sorted((module, scope, home) for module, _, scope, home in found)
+    assert sites == sorted(_CREDENTIALS_JOIN_SITES), found
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("source", "target", "flagged"),
+    [
+        ("from mureo.auth import x\n", "mureo.auth", ["mureo.auth"]),
+        ("from mureo import auth\n", "mureo.auth", ["mureo.auth"]),
+        ("from .. import auth\n", "mureo.auth", ["mureo.auth"]),
+        ("def f():\n    import mureo.auth\n", "mureo.auth", ["mureo.auth"]),
+        ("from mureo import auth_setup\n", "mureo.auth", []),
+        ("from mureo.auth_setup import x\n", "mureo.auth_setup", ["mureo.auth_setup"]),
+        ("from ..auth_setup import x\n", "mureo.auth_setup", ["mureo.auth_setup"]),
+        ("if TYPE_CHECKING:\n    from mureo.auth import x\n", "mureo.auth", []),
+    ],
+)
+def test_import_walker_sees_every_spelling_of_another_target(
+    source: str, target: str, flagged: list[str]
+) -> None:
+    """``_imports_of`` with ``target`` as if ``source`` were in ``mureo.meta_ads``."""
+    found = _imports_of(ast.parse(source), "mureo.meta_ads", target=target)
+    assert [name for _, name in found] == flagged
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("source", "flagged"),
+    [
+        ("from mureo.auth_setup import _x, y\n", [(1, "_x")]),
+        ("def f():\n    from ..auth_setup import _x\n", [(2, "_x")]),
+        ("from mureo.auth_setup import y\n", []),
+        ("from mureo.auth import _x\n", []),
+    ],
+)
+def test_private_name_walker_sees_every_spelling(
+    source: str, flagged: list[tuple[int, str]]
+) -> None:
+    found = _private_names_imported(ast.parse(source), "mureo.web", "mureo.auth_setup")
+    assert found == flagged
+
+
+@pytest.mark.unit
+def test_function_local_walker_ignores_module_scope() -> None:
+    source = (
+        "import mureo.web\n"
+        "def f():\n    from mureo.web import auth_wizard\n"
+        "async def g():\n    import json\n"
+    )
+    found = _function_local_mureo_imports(ast.parse(source), "mureo.web")
+    assert sorted(found) == [(3, "mureo.web")]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("source", "flagged"),
+    [
+        ('X = Path.home() / "{d}" / "{f}"\n', [(1, "", "Path.home()")]),
+        ("def f(home):\n    return home/'{d}'/'{f}'\n", [(2, "f", "home")]),
+        (
+            'async def g(base):\n    return (\n        base  /  "{d}"\n'
+            '        / "{f}"\n    )\n',
+            [(3, "g", "base")],
+        ),
+        (
+            "def f():\n    def inner(h):\n        return h / '{d}' / '{f}'\n",
+            [(3, "inner", "h")],
+        ),
+        ("p = Path.home() / '{d}' / 'other.json'\n", []),
+        ("p = Path.home() / '{d}'\nq = p / '{f}'\n", []),
+    ],
+)
+def test_credentials_join_walker_sees_every_spelling(
+    source: str, flagged: list[tuple[int, str, str]]
+) -> None:
+    tree = ast.parse(source.format(d=_CREDENTIALS_DIR, f=_CREDENTIALS_FILE))
+    assert _credentials_join_sites(tree) == flagged

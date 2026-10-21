@@ -80,7 +80,7 @@ def _assert_no_noise(result: subprocess.CompletedProcess[str], label: str) -> No
 #:   for ``install_mcp_config`` / ``install_credential_guard``, neither of
 #:   which touches Google. It also re-exports the account-listing helpers for
 #:   backward compatibility, which is what used to drag the SDK in.
-#: - ``mureo.cli.web_auth`` — the ``mureo configure`` OAuth wizard. Deferring
+#: - ``mureo.web.auth_wizard`` — the ``mureo configure`` OAuth wizard. Deferring
 #:   the re-exports behind ``__getattr__`` is not enough on its own here: a
 #:   top-level ``from mureo.auth_setup import list_accessible_accounts``
 #:   *triggers* ``__getattr__`` at import time and loads the SDK anyway.
@@ -88,7 +88,7 @@ _SDK_FREE_MODULES = (
     "mureo.cli.main",
     "mureo.auth",
     "mureo.auth_setup",
-    "mureo.cli.web_auth",
+    "mureo.web.auth_wizard",
 )
 
 

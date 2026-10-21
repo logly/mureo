@@ -22,6 +22,7 @@ These tests cover the core resolver helper and the wizard wiring.
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -31,11 +32,11 @@ from mureo.core.runtime_context import (
     reset_runtime_context,
     runtime_credentials_path,
 )
+from mureo.core.secret_store import default_credentials_path
 from mureo.web.server import ConfigureWizard
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +220,44 @@ def test_runtime_credentials_path_declared_path_wins_over_isinstance(
     _patch_entry_points(monkeypatch, [_FakeEP("dual", lambda: ctx)])
     default = tmp_path / "home" / ".mureo" / "credentials.json"
     assert runtime_credentials_path(default) == declared
+
+
+# ---------------------------------------------------------------------------
+# #863 — ``default`` is optional and falls back to the one legacy location,
+# ``mureo.core.secret_store.default_credentials_path``.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_default_credentials_path_is_under_the_current_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Resolved on each call: ``Path.home()`` reads ``HOME`` on POSIX and
+    ``USERPROFILE`` on Windows."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    assert Path.home() == tmp_path
+    assert default_credentials_path() == tmp_path / ".mureo" / "credentials.json"
+
+
+@pytest.mark.unit
+def test_runtime_credentials_path_without_default_when_no_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_entry_points(monkeypatch, [])
+    assert runtime_credentials_path() == default_credentials_path()
+
+
+@pytest.mark.unit
+def test_runtime_credentials_path_without_default_follows_factory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    custom = tmp_path / "alt" / "creds.json"
+    _patch_entry_points(
+        monkeypatch,
+        [_FakeEP("alt", lambda: default_runtime_context(credentials_path=custom))],
+    )
+    assert runtime_credentials_path() == custom
 
 
 # ---------------------------------------------------------------------------

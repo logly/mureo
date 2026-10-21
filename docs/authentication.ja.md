@@ -285,7 +285,7 @@ Meta のアクセスレベルはロールで線が引かれています。ビジ
 
 ### 権限 (OAuth スコープ)
 
-`mureo configure` / `mureo auth setup` はサインイン時に次のスコープを自動で要求します。手で列挙する必要はありません。完全な一覧の正は `mureo/auth_setup.py` の `_META_OAUTH_SCOPES` です:
+`mureo configure` / `mureo auth setup` はサインイン時に次のスコープを自動で要求します。手で列挙する必要はありません。完全な一覧の正は `mureo.meta_ads.accounts.META_OAUTH_SCOPES` です:
 
 | スコープ | できること |
 | --- | --- |

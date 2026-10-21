@@ -177,8 +177,7 @@ mureo/
 │   ├── _repair_clients.py # Which STATE.json files `--all` sweeps — reuses the Reports tab's
 │   │                    #   optional list_clients / state_store_for_client seam, never a second one
 │   ├── _state_file.py   # The shared `--state-file` option + workspace default (rollback + repair)
-│   ├── _tty.py          # TTY-safe helpers for non-interactive setup + terminal_safe() scrubbing
-│   └── web_auth.py      # Browser-based OAuth wizard spawned by `mureo configure` (per-platform creds)
+│   └── _tty.py          # TTY-safe helpers for non-interactive setup + terminal_safe() scrubbing
 ├── context/             # File-based strategy context (no DB)
 │   ├── strategy.py      # STRATEGY.md parser/writer
 │   ├── state.py         # STATE.json parser/writer
@@ -302,6 +301,7 @@ mureo/
 ├── creative_studio/     # Creator-grade ad-creative (image) generation via pluggable providers
 ├── byod/                # Bring Your Own Data — CSV-backed offline analysis (see BYOD Mode below)
 ├── web/                 # Local `mureo configure` UI — stdlib http.server on 127.0.0.1 (no web framework)
+│   └── auth_wizard.py   # Browser-based OAuth wizard spawned by web/oauth_bridge.py (per-platform creds)
 ├── demo/                # `mureo demo init` synthetic-bundle bootstrap (round-trips through BYOD)
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)

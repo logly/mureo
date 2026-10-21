@@ -62,12 +62,12 @@ def _isolate_credential_writes(monkeypatch, tmp_path_factory):
 
     The two ``path``-less credential writers — ``refresh_meta_token_if_needed``
     and ``save_amazon_access_token`` — resolve their destination through
-    ``mureo.auth._resolve_write_path`` →
     ``mureo.core.runtime_context.runtime_credentials_path``. That resolver has
     two ways of reaching a real file:
 
-    - the fallback is ``Path.home() / ".mureo" / "credentials.json"``, i.e. the
-      contributor's OWN credentials; and
+    - the fallback is ``mureo.core.secret_store.default_credentials_path()``
+      (``~/.mureo/credentials.json``), i.e. the contributor's OWN
+      credentials; and
     - when ANY ``mureo.runtime_context_factory`` entry point is installed in
       the interpreter running the suite, the fallback is ignored entirely and
       the write lands wherever that plugin's ``SecretStore`` points — which on

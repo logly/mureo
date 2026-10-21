@@ -271,7 +271,7 @@ def _list_accessible_accounts_sync(
         # (developer-token, authorization header). A traceback via
         # exc_info=True would put that in the configure log. Callers of this
         # function already log the class only for exactly this reason (see
-        # mureo/cli/web_auth.py); doing it there and not here left the leak
+        # mureo/web/auth_wizard.py); doing it there and not here left the leak
         # in place.
         logger.warning("Failed to retrieve account list (%s)", type(exc).__name__)
         # ``from None`` for the same reason the message carries the class

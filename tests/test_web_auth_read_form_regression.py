@@ -14,7 +14,7 @@ import io
 from types import SimpleNamespace
 from typing import Any
 
-from mureo.cli.web_auth import _WizardHandler
+from mureo.web.auth_wizard import _WizardHandler
 
 
 def _call_read_form(content_length: str | None, body: bytes) -> tuple[Any, io.BytesIO]:

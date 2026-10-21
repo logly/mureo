@@ -19,6 +19,7 @@ from mureo.byod.runtime import (
     byod_data_dir,
     read_manifest,
 )
+from mureo.core.secret_store import default_credentials_path
 
 byod_app = typer.Typer(
     name="byod",
@@ -31,7 +32,7 @@ byod_app = typer.Typer(
 
 
 def _credentials_present() -> bool:
-    return (Path.home() / ".mureo" / "credentials.json").exists()
+    return default_credentials_path().exists()
 
 
 def _print_status_block() -> None:

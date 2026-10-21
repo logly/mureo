@@ -3281,15 +3281,17 @@ idempotent. Keys are platform names (`"google_ads"`, `"meta_ads"`, …).
 The configure-UI credential write functions are path-based, while the
 MCP runtime reads through the pluggable store. Without this capability
 the two can split-brain (#194): a non-default backend reads from one
-place while the UI writes to another. `runtime_credentials_path(default)`
-resolves, in order:
+place while the UI writes to another. `runtime_credentials_path(default=None)`
+takes the caller's fallback location as an optional `default`; omitted or
+`None`, it falls back to `mureo.core.secret_store.default_credentials_path()`
+(`~/.mureo/credentials.json`, resolved on each call). It resolves, in order:
 
-1. No factory registered → `default`, unchanged.
+1. No factory registered → the fallback, unchanged.
 2. Store declares `credentials_write_path` as a `Path` → that path.
 3. Store *is* the built-in `FilesystemSecretStore` → its `path`
    (back-compat; the concrete default store never declares the
    attribute).
-4. Otherwise → `default`.
+4. Otherwise → the fallback.
 
 Declare it when your store is filesystem-backed but not literally a
 `FilesystemSecretStore` — e.g. a composite that layers a per-tenant

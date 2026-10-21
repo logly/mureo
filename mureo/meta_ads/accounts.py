@@ -26,21 +26,26 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Final
 from urllib.parse import urlparse
 
 import httpx
 
+from mureo.logging_setup import one_log_line, truncate_text
 from mureo.meta_ads._api_version import GRAPH_API_BASE
 
 logger = logging.getLogger(__name__)
 
-# Same surface as ``mureo.auth_setup`` — mirrored here so the public
-# module does not depend on private constants in the auth-setup module.
-# Both sides now read the pin from :mod:`mureo.meta_ads._api_version`,
-# so a version bump lands in one file (#770).
-_META_GRAPH_API_BASE = GRAPH_API_BASE
-_HTTP_TIMEOUT = 30.0
+# The single source of the Meta OAuth scopes and the Graph HTTP timeout.
+# ``mureo.auth_setup`` (the interactive wizard) imports both from here, so
+# the dependency points one way: ``meta_ads`` never imports ``auth_setup``
+# or ``auth`` (#863). The Graph API version pin itself lives in
+# :mod:`mureo.meta_ads._api_version` (#770).
+META_OAUTH_SCOPES: Final = (
+    "ads_management,ads_read,business_management,"
+    "pages_show_list,pages_manage_ads,pages_read_engagement,leads_retrieval"
+)
+META_HTTP_TIMEOUT_SECONDS: Final = 30.0
 
 # Largest page size Graph API will accept without truncation for the
 # ``adaccounts`` edge. Defaults to 25 when omitted — too small for any
@@ -178,8 +183,9 @@ class MetaTokenInspectUnavailable(MetaTokenInspectError):  # noqa: N818
 
 
 #: Bounds on platform-authored text that reaches a raised message or a log
-#: record. Same numbers as ``mureo.auth``, whose ``_truncate`` /
-#: ``_one_log_line`` this module reuses — see :func:`_bounded`.
+#: record. Same numbers as ``mureo.auth``; both bound the text with
+#: :func:`mureo.logging_setup.truncate_text` / ``one_log_line`` — see
+#: :func:`_bounded`.
 _GRAPH_ERROR_MESSAGE_MAX_CHARS = 200
 _GRAPH_ERROR_CODE_MAX_CHARS = 32
 
@@ -193,33 +199,21 @@ _TOKEN_TYPE_MAX_CHARS = 200
 def _bounded(value: str, limit: int) -> str:
     """One log line, at most ``limit`` characters.
 
-    Reuses ``mureo.auth._truncate`` / ``_one_log_line`` rather than
-    re-deriving them — one definition of "what mureo does to text a platform
-    wrote" (#605). Imported at call time, not module scope: this module is
-    re-exported by ``mureo.meta_ads`` as a stable public API, and a top-level
-    import would make loading it drag in the whole credential stack. The
-    deferred-import idiom is the same one :func:`_required_oauth_scopes`
-    uses below.
+    Reuses :func:`mureo.logging_setup.truncate_text` /
+    :func:`~mureo.logging_setup.one_log_line` rather than re-deriving them —
+    one definition of "what mureo does to text a platform wrote" (#605),
+    shared with ``mureo.auth``.
     """
-
-    from mureo.auth import _one_log_line, _truncate
-
-    return _truncate(_one_log_line(value), limit)
+    return truncate_text(one_log_line(value), limit)
 
 
 def _required_oauth_scopes() -> list[str]:
     """The OAuth scopes a fully-provisioned Meta token should carry.
 
-    Sourced lazily from :data:`mureo.auth_setup._META_OAUTH_SCOPES` (the
-    single source of truth for the interactive wizard) so this module has
-    exactly one definition of "required scopes". The import is deferred to
-    call time because ``mureo.auth_setup`` imports *this* module at load —
-    a top-level import here would be circular.
+    Read from :data:`META_OAUTH_SCOPES`, the single definition of "required
+    scopes" that the interactive wizard in ``mureo.auth_setup`` requests too.
     """
-
-    from mureo.auth_setup import _META_OAUTH_SCOPES
-
-    return [s.strip() for s in _META_OAUTH_SCOPES.split(",") if s.strip()]
+    return [s.strip() for s in META_OAUTH_SCOPES.split(",") if s.strip()]
 
 
 def _format_graph_error(payload: Any, fallback: str) -> str:
@@ -434,9 +428,9 @@ async def inspect_meta_access_token(
     for http_logger in http_loggers:
         http_logger.addFilter(log_filter)
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=META_HTTP_TIMEOUT_SECONDS) as client:
             response = await client.get(
-                f"{_META_GRAPH_API_BASE}/debug_token",
+                f"{GRAPH_API_BASE}/debug_token",
                 params={"input_token": access_token},
                 # The app access token authenticates the call. In the header,
                 # not the query: the inspected token already has to be in the
@@ -531,9 +525,9 @@ async def validate_meta_access_token(
 
     granted: list[str] = []
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=META_HTTP_TIMEOUT_SECONDS) as client:
             response = await client.get(
-                f"{_META_GRAPH_API_BASE}/me/permissions",
+                f"{GRAPH_API_BASE}/me/permissions",
                 params={"access_token": access_token},
             )
             try:
@@ -636,7 +630,7 @@ async def list_meta_ad_accounts(access_token: str) -> MetaAdAccountList:
             non-2xx response).
     """
     accounts = MetaAdAccountList()
-    next_url: str | None = f"{_META_GRAPH_API_BASE}/me/adaccounts"
+    next_url: str | None = f"{GRAPH_API_BASE}/me/adaccounts"
     # ``params`` is only sent on the first request — subsequent
     # ``paging.next`` URLs already carry every query parameter Graph
     # needs (including ``access_token`` and ``after`` cursor), so
@@ -648,7 +642,7 @@ async def list_meta_ad_accounts(access_token: str) -> MetaAdAccountList:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=META_HTTP_TIMEOUT_SECONDS) as client:
             for _ in range(_MAX_PAGES):
                 if not next_url:
                     break
@@ -696,6 +690,8 @@ async def list_meta_ad_accounts(access_token: str) -> MetaAdAccountList:
 
 
 __all__ = [
+    "META_HTTP_TIMEOUT_SECONDS",
+    "META_OAUTH_SCOPES",
     "MetaAccountFetchError",
     "MetaAdAccountList",
     "MetaTokenInspectError",

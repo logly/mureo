@@ -1,4 +1,4 @@
-"""Tests for mureo.cli.web_auth — the browser-based OAuth wizard.
+"""Tests for mureo.web.auth_wizard — the browser-based OAuth wizard.
 
 The wizard is spawned per-platform by ``mureo.web.oauth_bridge`` on
 behalf of the ``mureo configure`` UI: the user walks through secret-
@@ -27,7 +27,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mureo.cli.web_auth import (  # noqa: I001
+from mureo.meta_ads._api_version import OAUTH_DIALOG_URL
+from mureo.web._helpers import SOCKET_READ_TIMEOUT_SECONDS
+from mureo.web.auth_wizard import (  # noqa: I001
     WebAuthWizard,
     WizardSession,
     _WizardHandler,
@@ -36,8 +38,6 @@ from mureo.cli.web_auth import (  # noqa: I001
     render_meta_account_picker,
     render_meta_secrets_form,
 )
-from mureo.meta_ads._api_version import OAUTH_DIALOG_URL
-from mureo.web._helpers import SOCKET_READ_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from http.client import HTTPResponse
@@ -244,10 +244,10 @@ class TestGoogleAdsSubmitRoute:
 
         with (
             patch(
-                "mureo.cli.web_auth.build_google_flow", return_value=fake_flow
+                "mureo.web.auth_wizard.build_google_flow", return_value=fake_flow
             ) as mock_build,
             patch(
-                "mureo.cli.web_auth.google_auth_url",
+                "mureo.web.auth_wizard.google_auth_url",
                 return_value=(
                     "https://accounts.google.com/o/oauth2/auth?fake=1",
                     "state-xyz",
@@ -291,9 +291,9 @@ class TestGoogleAdsSubmitRoute:
         fake_flow = MagicMock()
 
         with (
-            patch("mureo.cli.web_auth.build_google_flow", return_value=fake_flow),
+            patch("mureo.web.auth_wizard.build_google_flow", return_value=fake_flow),
             patch(
-                "mureo.cli.web_auth.google_auth_url",
+                "mureo.web.auth_wizard.google_auth_url",
                 return_value=(
                     "https://accounts.google.com/o/oauth2/auth?fake=1",
                     "state-xyz",
@@ -388,14 +388,14 @@ class TestGoogleAdsCallbackRoute:
 
         with (
             patch(
-                "mureo.cli.web_auth.exchange_google_code",
+                "mureo.web.auth_wizard.exchange_google_code",
                 return_value=OAuthResult(
                     refresh_token="REFRESH_TOKEN",
                     access_token="ACCESS_TOKEN",
                 ),
             ) as mock_exchange,
             patch(
-                "mureo.cli.web_auth.list_accessible_accounts",
+                "mureo.web.auth_wizard.list_accessible_accounts",
                 side_effect=_fake_list,
             ),
         ):
@@ -445,14 +445,14 @@ class TestGoogleAdsCallbackRoute:
 
         with (
             patch(
-                "mureo.cli.web_auth.exchange_google_code",
+                "mureo.web.auth_wizard.exchange_google_code",
                 return_value=OAuthResult(
                     refresh_token="REFRESH_TOKEN",
                     access_token="ACCESS_TOKEN",
                 ),
             ),
             patch(
-                "mureo.cli.web_auth.list_accessible_accounts",
+                "mureo.web.auth_wizard.list_accessible_accounts",
                 side_effect=_fake_list,
             ),
         ):
@@ -593,7 +593,7 @@ class TestMetaAdsSubmitRoute:
         """Even if build_meta_auth_url is somehow subverted to return a
         non-Facebook URL, the handler refuses to emit a 302 to it."""
         with patch(
-            "mureo.cli.web_auth.build_meta_auth_url",
+            "mureo.web.auth_wizard.build_meta_auth_url",
             return_value="https://evil.example.com/oauth",
         ):
             data = urllib.parse.urlencode(
@@ -614,7 +614,7 @@ class TestMetaAdsSubmitRoute:
         fake_url = f"{OAUTH_DIALOG_URL}?client_id=A"
 
         with patch(
-            "mureo.cli.web_auth.build_meta_auth_url", return_value=fake_url
+            "mureo.web.auth_wizard.build_meta_auth_url", return_value=fake_url
         ) as mock_build:
             data = urllib.parse.urlencode(
                 {
@@ -708,11 +708,11 @@ class TestMetaAdsCallbackRoute:
 
         with (
             patch(
-                "mureo.cli.web_auth.exchange_meta_code",
+                "mureo.web.auth_wizard.exchange_meta_code",
                 side_effect=_fake_exchange,
             ) as mock_exchange,
             patch(
-                "mureo.cli.web_auth.list_meta_ad_accounts",
+                "mureo.web.auth_wizard.list_meta_ad_accounts",
                 side_effect=_fake_list,
             ),
         ):
@@ -759,11 +759,11 @@ class TestMetaAdsCallbackRoute:
 
         with (
             patch(
-                "mureo.cli.web_auth.exchange_meta_code",
+                "mureo.web.auth_wizard.exchange_meta_code",
                 side_effect=_fake_exchange,
             ),
             patch(
-                "mureo.cli.web_auth.list_meta_ad_accounts",
+                "mureo.web.auth_wizard.list_meta_ad_accounts",
                 side_effect=_fake_list,
             ),
         ):

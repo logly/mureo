@@ -176,21 +176,21 @@ async def test_legacy_patch_target_intercepts_meta_wizard(tmp_path: Path) -> Non
 @pytest.mark.unit
 @pytest.mark.parametrize("name", ["list_accessible_accounts", "list_meta_ad_accounts"])
 def test_legacy_patch_target_intercepts_web_auth_probe(name: str) -> None:
-    """``mureo.cli.web_auth`` resolves the probes through its own attribute.
+    """``mureo.web.auth_wizard`` resolves the probes through its own attribute.
 
-    The configure wizard patches ``mureo.cli.web_auth.<name>`` in six tests,
+    The configure wizard patches ``mureo.web.auth_wizard.<name>`` in six tests,
     one of which (``test_web_auth_multi_account``) uses a ``side_effect`` that
     FAILS if called — i.e. it asserts the probe does *not* run. If the module
     resolved the callable via a function-local source import, that patch would
     be bypassed, the assertion would never fire, and the test would pass while
     the real network probe ran. Pin the resolution mechanism directly.
     """
-    from mureo.cli import web_auth
+    from mureo.web import auth_wizard
 
     sentinel = MagicMock(name=name)
-    with patch.object(web_auth, name, sentinel):
-        assert web_auth._reexport(name) is sentinel, (
-            f"mureo.cli.web_auth._reexport({name!r}) bypassed the patched "
+    with patch.object(auth_wizard, name, sentinel):
+        assert auth_wizard._reexport(name) is sentinel, (
+            f"mureo.web.auth_wizard._reexport({name!r}) bypassed the patched "
             "module attribute"
         )
 
