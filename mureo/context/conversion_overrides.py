@@ -91,8 +91,9 @@ def load_conversion_action_types(
         doc = parse_state(state_path.read_text(encoding="utf-8"), strict=False)
     except Exception:  # noqa: BLE001 — never break a live analysis on a bad file.
         # parse_state can raise OSError / ContextFileError / ValueError
-        # (JSONDecodeError) AND AttributeError/TypeError on non-object JSON;
-        # a best-effort override read must swallow all of them.
+        # (JSONDecodeError, or a section that is not an object) AND TypeError
+        # on a malformed action_log; a best-effort override read must swallow
+        # all of them.
         return None
     if doc.platforms is None:
         return None

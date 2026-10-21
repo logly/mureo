@@ -490,14 +490,15 @@ class TestPartialFailure:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {
-                        "account_id": "1234567890",
-                        "campaigns": [{"campaign_id": "c-1"}],
-                    }
+                    "logly_ads": {"account_id": "1234567890", "campaigns": []}
                 },
+                # Still refused by the strict read: a decision record without
+                # its required fields (a campaign without one no longer is,
+                # #881).
+                "decisions": [{"decision_id": "d-1"}],
             },
         )
-        reason = "Campaign is missing required field 'campaign_name'"
+        reason = "decision record is missing required field 'recorded_at'"
 
         single = _run("--state-file", str(state))
 

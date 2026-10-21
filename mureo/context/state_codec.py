@@ -13,18 +13,18 @@ Extracted verbatim from :mod:`mureo.context.state`, which keeps the file /
 lock / merge layer its name promises. Every public name here is re-exported
 from that module, so no caller had to move.
 
-The read side has two modes and the distinction is load-bearing:
+The read side has two modes:
 
-- ``strict=True`` is the **writer contract** — a nonconforming entry raises,
-  exactly as it always has.
-- ``strict=False`` is the **read-only Reports view** — a nonconforming entry
-  is skipped and logged at DEBUG (never WARNING: the dashboard re-parses on
+- ``strict=True`` is the **writer contract** — what is left of
+  "nonconforming raises" (below) raises.
+- ``strict=False`` is the **read-only Reports view** — such an entry is
+  skipped and logged at DEBUG (never WARNING: the dashboard re-parses on
   every poll, so a per-entry warning would flood the daemon log), so one
-  hand-authored campaign cannot blank out a whole document.
+  hand-authored entry cannot blank out a whole document.
 
 Each tolerant branch documents its own reasoning below.
 
-``action_log`` is the exception to "nonconforming raises" (#859). The log is
+``action_log`` was the first exception to "nonconforming raises" (#859). The log is
 the operator's append-only history and its indices are positional
 (``rollback_of`` / ``evaluation_of``), so no object entry can block a write.
 Both modes build every object entry the same way (see
@@ -39,10 +39,19 @@ in full. Strict mode refuses only an entry that is not an object and
 tolerant mode skips only that (invalid JSON is refused before any of this,
 in both).
 
-Dependency-free beyond stdlib and the frozen ``mureo.context.models``
-dataclasses — the same discipline :mod:`mureo.context.platform_accounts`
-keeps, and for the same reason: every consumer can import it without an
-import cycle.
+``platforms`` / ``campaigns`` / ``ads`` entries follow the same rule (#881):
+both modes build every object entry the same way, keep a hand-authored one
+with its on-disk dict and write it back in that shape, and keep a
+``campaigns`` / ``ads`` value the model cannot represent inside the
+enclosing entry, written back verbatim until a mureo writer replaces it —
+see :mod:`mureo.context._platform_codec`. Strict mode still refuses a
+top-level ``campaigns`` that is not a list of objects (there is no enclosing
+entry to keep it in); tolerant mode reads its object entries.
+
+Dependency-free beyond stdlib, the frozen ``mureo.context.models``
+dataclasses and the private codec modules beside it — the same discipline
+:mod:`mureo.context.platform_accounts` keeps, and for the same reason: every
+consumer can import it without an import cycle.
 """
 
 from __future__ import annotations
@@ -63,12 +72,22 @@ from mureo.context._decision_codec import (
     decision_to_dict,
     parse_decisions,
 )
+from mureo.context._platform_codec import (
+    AD_KNOWN_KEYS,
+    CAMPAIGN_KNOWN_KEYS,
+    PLATFORM_KNOWN_KEYS,
+    is_object_list,
+    parse_campaigns,
+    parse_not_collected,
+    parse_platform,
+    platform_state_to_dict,
+    snapshot_to_dict,
+)
 from mureo.context.display_codec import (
     display_contract_to_dict,
     parse_display_contract,
 )
 from mureo.context.models import (
-    NOT_COLLECTED_REASON_MAX_CHARS,
     ActionLogEntry,
     AdState,
     BatchRecord,
@@ -132,19 +151,9 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
     ),
     (
         PlatformState,
-        frozenset(
-            {
-                "account_id",
-                "campaigns",
-                "totals",
-                "metrics_period",
-                "periods",
-                "daily",
-                "conversion_action_types",
-                "not_collected",
-            }
-        ),
-        "parse_state / _platform_state_to_dict",
+        # ``raw`` is not an on-disk key: it IS the on-disk dict (#881).
+        PLATFORM_KNOWN_KEYS | {"raw"},
+        "_platform_codec.parse_platform / .platform_state_to_dict",
     ),
     (
         ActionLogEntry,
@@ -154,28 +163,13 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
     ),
     (
         CampaignSnapshot,
-        frozenset(
-            {
-                "campaign_id",
-                "campaign_name",
-                "status",
-                "bidding_strategy_type",
-                "bidding_details",
-                "daily_budget",
-                "monthly_budget",
-                "device_targeting",
-                "campaign_goal",
-                "notes",
-                "metrics",
-                "ads",
-            }
-        ),
-        "_parse_campaign / _snapshot_to_dict",
+        CAMPAIGN_KNOWN_KEYS | {"raw"},
+        "_platform_codec.parse_campaign / .snapshot_to_dict",
     ),
     (
         AdState,
-        frozenset({"ad_id", "name", "status", "effective_status", "as_of"}),
-        "_parse_ad / _ad_state_to_dict",
+        AD_KNOWN_KEYS | {"raw"},
+        "_platform_codec.parse_ad / .ad_state_to_dict",
     ),
     (
         BatchRecord,
@@ -255,85 +249,47 @@ def _assert_codec_coverage() -> None:
 _assert_codec_coverage()
 
 
-# Required campaign fields
-_CAMPAIGN_REQUIRED_FIELDS: tuple[str, ...] = (
-    "campaign_id",
-    "campaign_name",
-    "status",
-)
+def _parse_top_level_campaigns(
+    raw: Any, *, strict: bool
+) -> tuple[CampaignSnapshot, ...]:
+    """Parse the legacy v1 top-level ``campaigns`` list.
 
-
-def _parse_ad(a: dict[str, Any]) -> AdState:
-    """Create an :class:`AdState` from a dict (``ad_id`` required).
-
-    ``ad_id`` is type-checked, not merely present-checked: it is the key every
-    later run matches on to diff statuses, so a hand-edited numeric id would
-    silently never match the string ids the platforms return.
+    Every object entry is built the same way in both modes (#881, see
+    :func:`mureo.context._platform_codec.parse_campaign`). A value that is
+    not a list of objects has no enclosing entry to be kept in, so
+    ``strict=True`` (the writer contract) refuses it — naming the section,
+    not the content — and ``strict=False`` reads its object entries, logging
+    the rest at DEBUG.
     """
-    if not isinstance(a, dict) or "ad_id" not in a:
-        raise ValueError(f"Ad is missing required field 'ad_id': {a}")
-    if not isinstance(a["ad_id"], str) or not a["ad_id"]:
-        raise ValueError(f"Ad 'ad_id' must be a non-empty string: {a}")
-    return AdState(
-        ad_id=a["ad_id"],
-        name=a.get("name"),
-        status=a.get("status"),
-        effective_status=a.get("effective_status"),
-        as_of=a.get("as_of"),
-    )
+    if is_object_list(raw):
+        return parse_campaigns(raw)
+    if strict:
+        raise ValueError("top-level 'campaigns' must be a list of objects")
+    # DEBUG, not WARNING: the read-only Reports view re-parses on every poll.
+    logger.debug("skipping unparseable top-level 'campaigns' entries")
+    return parse_campaigns(raw)
 
 
-def _parse_ads(raw: Any, *, strict: bool) -> tuple[AdState, ...] | None:
-    """Parse a campaign's ``ads`` list (#468).
+def _parse_platforms(raw: Any) -> dict[str, PlatformState] | None:
+    """Parse the v2 ``platforms`` section; ``None`` when it is absent.
 
-    Returns ``None`` when the key is absent — "ad-level status was never
-    fetched", which must stay distinguishable from ``()`` ("fetched, no ads").
-    ``strict=True`` raises on a nonconforming entry (the writer contract);
-    ``strict=False`` skips it, so one hand-authored ad cannot blank out a
-    whole document for the read-only Reports view.
+    Every object entry is built the same way in both modes (#881, see
+    :func:`mureo.context._platform_codec.parse_platform`). ``platforms``
+    itself, or one of its values, that is not an object has no enclosing
+    entry to be kept in, so it is refused in BOTH modes — naming the section,
+    not the content, as :func:`_parse_top_level_campaigns` does. Keeping it
+    verbatim instead is #882.
     """
     if raw is None:
         return None
-    if not isinstance(raw, list):
-        if strict:
-            raise ValueError(f"Campaign 'ads' must be a list: {raw!r}")
-        logger.debug("skipping non-list campaign 'ads' value: %r", raw)
-        return None
-    if strict:
-        return tuple(_parse_ad(a) for a in raw)
-    parsed: list[AdState] = []
-    for a in raw:
-        try:
-            parsed.append(_parse_ad(a))
-        except (ValueError, KeyError, TypeError) as exc:
-            # DEBUG, not WARNING — see _parse_campaigns.
-            logger.debug("skipping unparseable ad entry: %s", exc)
-    return tuple(parsed)
-
-
-def _parse_campaigns(
-    raw: list[dict[str, Any]], *, strict: bool
-) -> tuple[CampaignSnapshot, ...]:
-    """Parse a campaign list.
-
-    ``strict=True`` (the canonical contract relied on by every writer) raises
-    on the first nonconforming entry. ``strict=False`` skips entries that fail
-    validation, logging each one — used only by the read-only Reports view so a
-    single variant/hand-authored campaign cannot blank out a whole document
-    (whose platforms/periods/reports the dashboard actually renders).
-    """
-    if strict:
-        return tuple(_parse_campaign(c, strict=True) for c in raw)
-    parsed: list[CampaignSnapshot] = []
-    for c in raw:
-        try:
-            parsed.append(_parse_campaign(c, strict=False))
-        except (ValueError, KeyError, TypeError) as exc:
-            # DEBUG, not WARNING: the read-only Reports view re-parses on every
-            # poll, so a per-entry WARNING would flood the log for a STATE.json
-            # with many nonconforming (e.g. legacy / hand-authored) campaigns.
-            logger.debug("skipping unparseable campaign entry: %s", exc)
-    return tuple(parsed)
+    if not isinstance(raw, dict):
+        raise ValueError("'platforms' must be an object")
+    platforms: dict[str, PlatformState] = {}
+    for platform_key, platform_data in raw.items():
+        if not isinstance(platform_data, dict):
+            raise ValueError(f"'platforms'[{platform_key!r}] must be an object")
+        platforms[platform_key] = parse_platform(platform_key, platform_data)
+    return platforms
 
 
 def _parse_action_log(
@@ -358,89 +314,11 @@ def _parse_action_log(
         try:
             parsed.append(parse_action_log_entry(e))
         except TypeError as exc:
-            # DEBUG, not WARNING — see _parse_campaigns: avoid per-render log
-            # flood from a STATE.json with many nonconforming action_log entries.
+            # DEBUG, not WARNING: the read-only Reports view re-parses on
+            # every poll, so a per-entry WARNING would flood the log for a
+            # STATE.json with many nonconforming action_log entries.
             logger.debug("skipping unparseable action_log entry: %s", exc)
     return tuple(parsed)
-
-
-def _platform_account_id(
-    platform_key: str, platform_data: dict[str, Any], *, strict: bool
-) -> str:
-    """Resolve a platform's ``account_id``.
-
-    ``strict=True`` (the writer contract) requires the key — a missing
-    ``account_id`` raises ``KeyError`` exactly as before. ``strict=False``
-    (the read-only Reports view) defaults a missing ``account_id`` to ``""``
-    so an agent-/hand-authored STATE.json that omitted it still renders its
-    platforms/totals/periods instead of blanking the whole dashboard. Logged
-    at DEBUG (expected for non-canonical files; never per-poll WARNING noise).
-    """
-    if strict or "account_id" in platform_data:
-        # KeyError in strict if absent — unchanged writer contract. Annotated
-        # local so mypy treats the dict[str, Any] value as the declared str.
-        account_id: str = platform_data["account_id"]
-        return account_id
-    logger.debug(
-        "platform %r missing 'account_id'; defaulting to '' for the tolerant "
-        "read-only view",
-        platform_key,
-    )
-    return ""
-
-
-def _parse_conversion_action_types(raw: Any) -> tuple[str, ...] | None:
-    """Parse a platform's ``conversion_action_types`` override (#342).
-
-    Returns a tuple of non-empty string action_types, or ``None`` when the
-    field is absent / not a list / has no usable entries (so the counters
-    fall back to the built-in generic set). Tolerant by design — a malformed
-    value degrades to "no override" rather than raising.
-    """
-    if not isinstance(raw, list):
-        return None
-    cleaned = tuple(str(x).strip() for x in raw if isinstance(x, str) and x.strip())
-    return cleaned or None
-
-
-def _parse_not_collected(raw: Any) -> dict[str, Any] | None:
-    """Parse a "why this was not collected" note.
-
-    Both of them: a platform's ``not_collected`` (#638) and the document's
-    ``workspace_not_collected`` (#661). They are the same two fields under the
-    same rules, so they are normalised by one function — two copies is how the
-    two levels would start disagreeing about what a note IS, while an operator
-    reads them side by side. What they mean, and what retires each, is what
-    differs, and that is decided by the readers, not here.
-
-    Returns ``{"attempted_at": ..., "reason": ...}`` (``attempted_at`` only
-    when it is a usable string), or ``None`` when there is no usable note.
-
-    **No reason means no note.** The reason IS the payload: a note carrying
-    only a timestamp tells an operator that something happened and refuses to
-    say what, which is the exact non-answer this field exists to end.
-
-    Tolerant like the other optional platform fields — a hand-edited value
-    costs the note, never the document — and normalising to the two known keys
-    here keeps every reader (dashboard, CLI, a plugin) working from one shape.
-
-    ``reason`` is capped at
-    :data:`~mureo.context.models.NOT_COLLECTED_REASON_MAX_CHARS`, the same
-    bound the write helper and the dashboard apply. Doing it on READ too is
-    what stops a page of API JSON from a hand edit or an outside writer being
-    re-serialised in full on every subsequent write.
-    """
-    if not isinstance(raw, dict):
-        return None
-    reason = raw.get("reason")
-    if not isinstance(reason, str) or not reason.strip():
-        return None
-    note: dict[str, Any] = {}
-    attempted_at = raw.get("attempted_at")
-    if isinstance(attempted_at, str) and attempted_at.strip():
-        note["attempted_at"] = attempted_at.strip()
-    note["reason"] = reason.strip()[:NOT_COLLECTED_REASON_MAX_CHARS]
-    return note
 
 
 def _parse_batches(raw: Any) -> tuple[BatchRecord, ...]:
@@ -480,18 +358,23 @@ def _parse_batches(raw: Any) -> tuple[BatchRecord, ...]:
 def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     """Parse a JSON string and return a StateDocument.
 
-    ``strict`` controls campaign-list, action_log AND platform validation:
-    ``True`` (default) preserves the strict writer contract (raises on a missing
-    required campaign field or platform ``account_id``, and on an action_log
-    entry that is not an object); ``False`` tolerantly skips such campaign
-    and action_log entries and defaults a missing platform ``account_id`` to
-    ``""`` for the read-only Reports view. Every action_log entry that IS an
+    ``strict=True`` (default) is the writer contract: it raises on an
+    action_log entry that is not an object, on a top-level ``campaigns`` that
+    is not a list of objects, and on a malformed ``decisions`` section;
+    ``strict=False`` skips those for the read-only Reports view. Every
+    platform, campaign and ad entry that is an object is built identically in
+    BOTH modes (#881): a missing required key reads as ``""`` and the entry is
+    written back in its on-disk shape, and a ``campaigns`` / ``ads`` value the
+    model cannot represent is written back verbatim (see
+    :mod:`mureo.context._platform_codec`). Every action_log entry that IS an
     object is kept in place and built identically in BOTH modes (#859): one
     missing or holding a non-string ``timestamp`` / ``action`` / ``platform``
     or carrying unknown keys keeps those keys as found on write; one refused
     by the model (a malformed ``approval`` included) is kept opaque and
     re-emitted verbatim by :func:`render_state`. Invalid JSON always raises
-    regardless of ``strict``.
+    regardless of ``strict``, and so does a ``ValueError`` naming the section
+    for a top-level value, a ``platforms`` value or a platform value that is
+    not an object (#881; keeping those verbatim is #882).
 
     Unknown top-level keys are ignored (and :func:`render_state` emits only
     the known ones), which is what keeps the ``mureo_state_get`` response
@@ -500,32 +383,12 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     fossilising a stale "today" (#460).
     """
     data = json.loads(text)
-    campaigns_raw = data.get("campaigns", [])
-    campaigns = _parse_campaigns(campaigns_raw, strict=strict)
+    if not isinstance(data, dict):
+        raise ValueError("STATE.json top level must be an object")
+    campaigns = _parse_top_level_campaigns(data.get("campaigns", []), strict=strict)
 
     # v2: platforms
-    platforms: dict[str, PlatformState] | None = None
-    platforms_raw = data.get("platforms")
-    if platforms_raw is not None:
-        platforms = {}
-        for platform_key, platform_data in platforms_raw.items():
-            platform_campaigns = _parse_campaigns(
-                platform_data.get("campaigns", []), strict=strict
-            )
-            platforms[platform_key] = PlatformState(
-                account_id=_platform_account_id(
-                    platform_key, platform_data, strict=strict
-                ),
-                campaigns=platform_campaigns,
-                totals=platform_data.get("totals"),
-                metrics_period=platform_data.get("metrics_period"),
-                periods=platform_data.get("periods"),
-                daily=platform_data.get("daily"),
-                conversion_action_types=_parse_conversion_action_types(
-                    platform_data.get("conversion_action_types")
-                ),
-                not_collected=_parse_not_collected(platform_data.get("not_collected")),
-            )
+    platforms = _parse_platforms(data.get("platforms"))
 
     # v2: action_log
     action_log_raw = data.get("action_log", [])
@@ -541,7 +404,7 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
         reports=data.get("reports"),
         # #661 — the document-level counterpart of a platform's note, read
         # through the SAME normaliser so the two shapes can never drift.
-        workspace_not_collected=_parse_not_collected(
+        workspace_not_collected=parse_not_collected(
             data.get("workspace_not_collected")
         ),
         batches=_parse_batches(data.get("batches")),
@@ -555,44 +418,19 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     )
 
 
-def _parse_campaign(c: dict[str, Any], *, strict: bool = True) -> CampaignSnapshot:
-    """Create a CampaignSnapshot from a dict (with required field validation)."""
-    for field_name in _CAMPAIGN_REQUIRED_FIELDS:
-        if field_name not in c:
-            raise ValueError(f"Campaign is missing required field '{field_name}': {c}")
-    device_targeting_raw = c.get("device_targeting")
-    device_targeting: tuple[dict[str, Any], ...] | None = None
-    if device_targeting_raw is not None:
-        device_targeting = tuple(device_targeting_raw)
-    return CampaignSnapshot(
-        campaign_id=c["campaign_id"],
-        campaign_name=c["campaign_name"],
-        status=c["status"],
-        bidding_strategy_type=c.get("bidding_strategy_type"),
-        bidding_details=c.get("bidding_details"),
-        daily_budget=c.get("daily_budget"),
-        monthly_budget=c.get("monthly_budget"),
-        device_targeting=device_targeting,
-        campaign_goal=c.get("campaign_goal"),
-        notes=c.get("notes"),
-        metrics=c.get("metrics"),
-        ads=_parse_ads(c.get("ads"), strict=strict),
-    )
-
-
 def render_state(doc: StateDocument) -> str:
     """Generate a JSON string from a StateDocument."""
     data: dict[str, Any] = {
         "version": doc.version,
         "last_synced_at": doc.last_synced_at,
         "customer_id": doc.customer_id,
-        "campaigns": [_snapshot_to_dict(c) for c in doc.campaigns],
+        "campaigns": [snapshot_to_dict(c) for c in doc.campaigns],
     }
 
     # v2: platforms
     if doc.platforms is not None:
         data["platforms"] = {
-            key: _platform_state_to_dict(ps) for key, ps in doc.platforms.items()
+            key: platform_state_to_dict(ps) for key, ps in doc.platforms.items()
         }
     else:
         data["platforms"] = None
@@ -632,38 +470,6 @@ def render_state(doc: StateDocument) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
-def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
-    """Convert a PlatformState to a dictionary."""
-    result: dict[str, Any] = {
-        "account_id": ps.account_id,
-        "campaigns": [_snapshot_to_dict(c) for c in ps.campaigns],
-    }
-    # Optional platform-level rollup: emit only when present.
-    if ps.totals is not None:
-        result["totals"] = copy.deepcopy(ps.totals)
-    if ps.metrics_period is not None:
-        result["metrics_period"] = ps.metrics_period
-    # Per-period rollups: emit only when non-empty so legacy files (and
-    # entries with no per-period data) stay byte-stable on round-trip.
-    if ps.periods:
-        result["periods"] = copy.deepcopy(ps.periods)
-    # #690 — day-grain history: emit only when non-empty, on the same rule as
-    # ``periods``, so an entry that has never accumulated a day stays
-    # byte-stable on round-trip and gains no key.
-    if ps.daily:
-        result["daily"] = copy.deepcopy(ps.daily)
-    # #342 — operator conversion override: emit only when set, as a JSON list,
-    # so legacy entries stay byte-stable.
-    if ps.conversion_action_types:
-        result["conversion_action_types"] = list(ps.conversion_action_types)
-    # #638 — why the figures did not move: emit only when there is a note, so
-    # a document that has never had a failed collection stays byte-stable, and
-    # a cleared note leaves no key behind to be read as a live one.
-    if ps.not_collected:
-        result["not_collected"] = copy.deepcopy(ps.not_collected)
-    return result
-
-
 def _batch_record_to_dict(b: BatchRecord) -> dict[str, Any]:
     """Convert a :class:`BatchRecord` to a dictionary.
 
@@ -677,57 +483,6 @@ def _batch_record_to_dict(b: BatchRecord) -> dict[str, Any]:
     }
     if b.ended_at is not None:
         result["ended_at"] = b.ended_at
-    return result
-
-
-def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
-    """Convert a CampaignSnapshot to a dictionary."""
-    device_targeting: list[dict[str, Any]] | None = None
-    if c.device_targeting is not None:
-        device_targeting = list(c.device_targeting)
-    result: dict[str, Any] = {
-        "campaign_id": c.campaign_id,
-        "campaign_name": c.campaign_name,
-        "status": c.status,
-        "bidding_strategy_type": c.bidding_strategy_type,
-        "bidding_details": c.bidding_details,
-        "daily_budget": c.daily_budget,
-        "device_targeting": device_targeting,
-        "campaign_goal": c.campaign_goal,
-        "notes": c.notes,
-    }
-    # The campaign's own monthly budget (#656): emit only where the platform
-    # has that concept and it was read, so a per-day campaign stays
-    # byte-stable and an absent figure is never written as a 0.
-    if c.monthly_budget is not None:
-        result["monthly_budget"] = c.monthly_budget
-    # Optional metrics: emit only when present so old STATE.json files don't
-    # gain a new key (no diff churn / bloat).
-    if c.metrics is not None:
-        result["metrics"] = copy.deepcopy(c.metrics)
-    # Ad-level state (#468): emit only when it was actually fetched, so a
-    # campaign that predates this field stays byte-stable on round-trip.
-    if c.ads is not None:
-        result["ads"] = [_ad_state_to_dict(a) for a in c.ads]
-    return result
-
-
-def _ad_state_to_dict(a: AdState) -> dict[str, Any]:
-    """Convert an :class:`AdState` to a dictionary.
-
-    Optional fields are emitted only when set: an absent ``effective_status``
-    must stay absent rather than becoming an empty string a later run could
-    read as an observed value.
-    """
-    result: dict[str, Any] = {"ad_id": a.ad_id}
-    for key, value in (
-        ("name", a.name),
-        ("status", a.status),
-        ("effective_status", a.effective_status),
-        ("as_of", a.as_of),
-    ):
-        if value is not None:
-            result[key] = value
     return result
 
 
