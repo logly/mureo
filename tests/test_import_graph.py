@@ -18,6 +18,9 @@ by object reference, and these tests pin the direction:
   ``mureo.mcp`` either: the credential source, account scoping and the client
   factory they open live clients with sit below it, and loading them does not
   load ``mureo.auth`` (deferred to the first client build);
+* ``mureo.web`` and its leaf modules (``instance``, ``service``) load no
+  configure server, so ``cli`` imports them at top level; ``web`` imports no
+  ``_``-prefixed ``cli`` name;
 * ``pytest -m slow``: every module under ``mureo/`` imports on its own, as the
   first import of a fresh interpreter.
 
@@ -43,6 +46,9 @@ import mureo.core.state_store
 import mureo.core.tool_failure as tool_failure
 import mureo.mcp._helpers as helpers
 import mureo.mcp.credential_source as credential_source_compat
+import mureo.web
+import mureo.web.instance
+import mureo.web.server
 from mureo.context.state_store import FilesystemStateStore
 from tests._measurement_child import (
     StandaloneSweep,
@@ -425,13 +431,15 @@ def _credentials_join_sites(tree: ast.AST) -> list[tuple[int, str, str]]:
     return sorted(found)
 
 
-def _function_local_mureo_imports(tree: ast.AST, package: str) -> set[tuple[int, str]]:
-    """``mureo*`` imports inside any function body of ``tree``."""
+def _function_local_imports_of(
+    tree: ast.AST, package: str, target: str
+) -> set[tuple[int, str]]:
+    """``target*`` imports inside any function body of ``tree``."""
     return {
         found
         for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        for found in _imports_of(node, package, target="mureo")
+        for found in _imports_of(node, package, target=target)
     }
 
 
@@ -467,8 +475,8 @@ def test_meta_ads_source_never_imports_auth(target: str) -> None:
 @pytest.mark.unit
 def test_oauth_bridge_has_no_function_local_mureo_import() -> None:
     path = pathlib.Path(mureo.__file__).parent / "web" / "oauth_bridge.py"
-    found = _function_local_mureo_imports(
-        ast.parse(path.read_text("utf-8")), _package_of(path)
+    found = _function_local_imports_of(
+        ast.parse(path.read_text("utf-8")), _package_of(path), target="mureo"
     )
     assert sorted(found) == []
 
@@ -549,7 +557,7 @@ def test_function_local_walker_ignores_module_scope() -> None:
         "def f():\n    from mureo.web import auth_wizard\n"
         "async def g():\n    import json\n"
     )
-    found = _function_local_mureo_imports(ast.parse(source), "mureo.web")
+    found = _function_local_imports_of(ast.parse(source), "mureo.web", "mureo")
     assert sorted(found) == [(3, "mureo.web")]
 
 
@@ -577,3 +585,119 @@ def test_credentials_join_walker_sees_every_spelling(
 ) -> None:
     tree = ast.parse(source.format(d=_CREDENTIALS_DIR, f=_CREDENTIALS_FILE))
     assert _credentials_join_sites(tree) == flagged
+
+
+# ---------------------------------------------------------------------------
+# web <-> cli (#863)
+#
+# ``mureo/web/__init__`` used to import the configure server, and
+# ``mureo.web.service`` imported it for one port constant — so every
+# ``mureo.web.*`` import loaded the server, the server imports ``cli`` helper
+# modules, and ``cli`` could reach ``web`` only function-locally. The layer
+# rule now: ``web`` imports ``cli`` helper modules by public names; ``cli``
+# imports only ``web`` leaf modules (plus the ``configure`` entry command);
+# importing a ``web`` submodule loads the server only when it needs it.
+# ---------------------------------------------------------------------------
+
+#: The configure server and its request handler: what a leaf import must not
+#: drag in.
+_WEB_SERVER_MODULES = ("mureo.web.server", "mureo.web.handlers")
+
+#: Child: import the ``web`` leaves and the ``cli`` modules that use them, then
+#: report which of the server modules came with them.
+_WEB_LEAVES_ALONE = (
+    "import json, sys\n"
+    "import mureo.web.service, mureo.web.instance, mureo.installed_packages\n"
+    "import mureo.cli.skill_status, mureo.cli.upgrade_cmd\n"
+    f"print(json.dumps(sorted(m for m in {_WEB_SERVER_MODULES!r}"
+    " if m in sys.modules)))\n"
+)
+
+#: Modules that may not import a function-local ``mureo.web*``: each one's
+#: former lazy imports existed only to dodge the server cycle.
+_NO_LAZY_WEB_IMPORT = ("mureo/web/handlers.py", "mureo/cli/upgrade_cmd.py")
+
+_WEB_PACKAGE = "mureo.web"
+_CLI_PACKAGE = "mureo.cli"
+
+#: The ``web`` modules any ``cli`` module may import (each with its
+#: submodules): leaves that do not load the configure server.
+_WEB_LEAVES_FOR_CLI = (
+    "mureo.web.instance",
+    "mureo.web.service",
+    "mureo.web.report_clients",
+)
+
+#: ``(cli module, web module)`` pairs allowed beyond the leaves: the
+#: ``configure`` entry command imports ``run_configure_wizard`` from the
+#: package, which loads the server on access.
+_CLI_WEB_ENTRY_IMPORTS = {("mureo/cli/configure_cmd.py", "mureo.web")}
+
+
+@pytest.mark.unit
+def test_web_leaves_and_their_cli_users_load_no_server() -> None:
+    proc = run_in_fresh_interpreter(_WEB_LEAVES_ALONE)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("mureo.web", "mureo.cli.upgrade_cmd"), ("mureo.cli.upgrade_cmd", "mureo.web")],
+)
+def test_web_and_upgrade_cmd_import_in_either_order(first: str, second: str) -> None:
+    proc = run_in_fresh_interpreter(f"import {first}\nimport {second}\n")
+    assert proc.returncode == 0, proc.stderr
+
+
+@pytest.mark.unit
+def test_web_imports_no_private_cli_name() -> None:
+    root = pathlib.Path(mureo.__file__).parent
+    offenders = [
+        f"{path.relative_to(root.parent)}:{lineno} imports {name} from {_CLI_PACKAGE}"
+        for path in sorted((root / "web").rglob("*.py"))
+        for lineno, name in _private_names_imported(
+            ast.parse(path.read_text("utf-8")), _package_of(path), _CLI_PACKAGE
+        )
+    ]
+    assert offenders == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("module", _NO_LAZY_WEB_IMPORT)
+def test_no_function_local_web_import_in(module: str) -> None:
+    path = pathlib.Path(mureo.__file__).parent.parent / module
+    found = _function_local_imports_of(
+        ast.parse(path.read_text("utf-8")), _package_of(path), _WEB_PACKAGE
+    )
+    assert sorted(found) == []
+
+
+@pytest.mark.unit
+def test_cli_imports_only_web_leaves() -> None:
+    """Function-local imports included; ``if TYPE_CHECKING:`` ones are not."""
+    root = pathlib.Path(mureo.__file__).parent
+    offenders = [
+        f"{rel}:{lineno} imports {name}"
+        for path in sorted((root / "cli").rglob("*.py"))
+        for rel in [path.relative_to(root.parent).as_posix()]
+        for lineno, name in _imports_of(
+            ast.parse(path.read_text("utf-8")), _package_of(path), _WEB_PACKAGE
+        )
+        if not any(_is_within(name, leaf) for leaf in _WEB_LEAVES_FOR_CLI)
+        and (rel, name) not in _CLI_WEB_ENTRY_IMPORTS
+    ]
+    assert offenders == []
+
+
+@pytest.mark.unit
+def test_web_reexports_resolve_to_the_server_objects() -> None:
+    assert mureo.web.ConfigureWizard is mureo.web.server.ConfigureWizard
+    assert mureo.web.run_configure_wizard is mureo.web.server.run_configure_wizard
+    assert (
+        mureo.web.server.DEFAULT_CONFIGURE_PORT
+        is mureo.web.instance.DEFAULT_CONFIGURE_PORT
+    )
+    with pytest.raises(AttributeError):
+        _ = mureo.web.NoSuchName

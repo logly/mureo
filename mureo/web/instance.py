@@ -34,6 +34,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# #241 — fixed default port for `mureo configure`. Chosen high in the
+# IANA dynamic/private range (49152-65535-ish neighbourhood) and not
+# registered to any common service, so a fresh machine almost always
+# finds it free → a stable, bookmarkable ``http://127.0.0.1:7613/``.
+# When it IS taken, the bind logic falls back to an ephemeral port (and
+# single-instance reuse re-opens an already-running mureo), so the fixed
+# value is a convenience default, never a hard requirement. 7613 spells
+# "MURO" on a phone keypad (6-8-7-6 ≈ m-u-r-o) — a small mnemonic.
+DEFAULT_CONFIGURE_PORT = 7613
+
 #: The value :func:`probe_mureo_instance` matches on. Returned verbatim by
 #: ``GET /api/ping`` so a foreign process on the same port is never
 #: mistaken for a mureo instance.

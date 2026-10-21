@@ -14,18 +14,20 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from mureo.web.host_paths import HostPaths
-from mureo.web.status_collector import (
-    MUREO_NATIVE_ID,
+from mureo.cli.skill_status import (
     SKILLS_CURRENT,
     SKILLS_MISSING,
     SKILLS_STALE,
     SkillsStatus,
-    StatusSnapshot,
-    _detect_workflow_skills,
-    _mask_value,
     _read_skill_version,
     _shipped_skill_versions,
+    detect_workflow_skills,
+)
+from mureo.web.host_paths import HostPaths
+from mureo.web.status_collector import (
+    MUREO_NATIVE_ID,
+    StatusSnapshot,
+    _mask_value,
     collect_status,
 )
 
@@ -790,7 +792,7 @@ class TestWorkflowSkillFreshness:
         skills_dir = tmp_path / "skills"
         _install_all_skills(skills_dir)
 
-        status = _detect_workflow_skills(skills_dir)
+        status = detect_workflow_skills(skills_dir)
 
         assert isinstance(status, SkillsStatus)
         assert status.state == SKILLS_CURRENT
@@ -800,7 +802,7 @@ class TestWorkflowSkillFreshness:
         skills_dir = tmp_path / "skills"
         _install_all_skills(skills_dir, version="0.10.39")
 
-        status = _detect_workflow_skills(skills_dir)
+        status = detect_workflow_skills(skills_dir)
 
         assert status.state == SKILLS_STALE
         assert status.installed_version == "0.10.39"
@@ -814,7 +816,7 @@ class TestWorkflowSkillFreshness:
             _skill_md("0.10.39"), encoding="utf-8"
         )
 
-        status = _detect_workflow_skills(skills_dir)
+        status = detect_workflow_skills(skills_dir)
 
         assert status.state == SKILLS_STALE
         assert status.installed_versions[victim] == "0.10.39"
@@ -827,7 +829,7 @@ class TestWorkflowSkillFreshness:
         victim = sorted(_shipped_skill_versions())[0]
         (skills_dir / victim / "SKILL.md").write_text(_skill_md(None), encoding="utf-8")
 
-        status = _detect_workflow_skills(skills_dir)
+        status = detect_workflow_skills(skills_dir)
 
         assert status.state == SKILLS_STALE
         assert status.installed_versions[victim] is None
@@ -842,12 +844,12 @@ class TestWorkflowSkillFreshness:
         victim = sorted(_shipped_skill_versions())[0]
         shutil.rmtree(skills_dir / victim)
 
-        assert _detect_workflow_skills(skills_dir).state == SKILLS_MISSING
+        assert detect_workflow_skills(skills_dir).state == SKILLS_MISSING
 
     def test_empty_dir_reads_missing(self, tmp_path: Path) -> None:
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
-        assert _detect_workflow_skills(skills_dir).state == SKILLS_MISSING
+        assert detect_workflow_skills(skills_dir).state == SKILLS_MISSING
 
     def test_unreadable_package_data_never_claims_installed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -855,12 +857,12 @@ class TestWorkflowSkillFreshness:
         """Nothing shipped means nothing can be verified — say missing rather
         than ✓ off an empty comparison."""
         monkeypatch.setattr(
-            "mureo.web.status_collector._shipped_skill_versions", lambda: {}
+            "mureo.cli.skill_status._shipped_skill_versions", lambda: {}
         )
         skills_dir = tmp_path / "skills"
         _install_all_skills(skills_dir)
 
-        assert _detect_workflow_skills(skills_dir).state == SKILLS_MISSING
+        assert detect_workflow_skills(skills_dir).state == SKILLS_MISSING
 
     def test_installed_version_reports_the_common_one(self, tmp_path: Path) -> None:
         """One odd copy does not rename the whole set: the line names the
@@ -872,7 +874,7 @@ class TestWorkflowSkillFreshness:
             _skill_md("0.9.0"), encoding="utf-8"
         )
 
-        assert _detect_workflow_skills(skills_dir).installed_version == "0.10.39"
+        assert detect_workflow_skills(skills_dir).installed_version == "0.10.39"
 
 
 @pytest.mark.unit

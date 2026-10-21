@@ -6,7 +6,7 @@ import typer
 
 from mureo.logging_setup import LOG_LEVEL_ENV, configure_log_path
 from mureo.web import run_configure_wizard
-from mureo.web.server import DEFAULT_CONFIGURE_PORT
+from mureo.web.instance import DEFAULT_CONFIGURE_PORT
 
 configure_app = typer.Typer(
     name="configure",

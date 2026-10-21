@@ -38,7 +38,6 @@ import re
 import shlex
 import subprocess
 import sys
-from importlib import metadata
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -48,7 +47,20 @@ if TYPE_CHECKING:
 
 import typer
 
+from mureo.auth_setup import install_credential_guard
+from mureo.cli.native_skills import install_native_skills
+from mureo.cli.service_cmd import _resolve_backend
+from mureo.cli.setup_cmd import install_skills
+from mureo.cli.setup_codex import install_codex_credential_guard
+from mureo.cli.skill_status import (
+    SKILLS_CURRENT,
+    SKILLS_STALE,
+    detect_workflow_skills,
+)
+from mureo.credential_guard import is_guard_entry
+from mureo.installed_packages import canonicalise, discover_all_mureo_packages
 from mureo.pip_env import pip_subprocess_env
+from mureo.web.service import SERVICE_PORT
 
 upgrade_app = typer.Typer(
     name="upgrade",
@@ -58,9 +70,6 @@ upgrade_app = typer.Typer(
     ),
     invoke_without_command=True,
 )
-
-# PEP 503: lowercase, separators normalised to '-'.
-_NORMALIZE_RE = re.compile(r"[-_.]+")
 
 # Accept either ``name`` or ``name==version``. Names are PEP 503 canonical
 # form only (lowercase letters, digits, ``-``), and version uses the
@@ -72,19 +81,6 @@ _PACKAGE_SPEC_RE = re.compile(
 )
 
 
-def _canonicalise(name: str) -> str:
-    """Return the PEP 503 canonical form of ``name``."""
-
-    return _NORMALIZE_RE.sub("-", name).lower()
-
-
-def _is_mureo_package(name: str) -> bool:
-    """Return True iff ``name`` is ``mureo`` or ``mureo-<rest>``."""
-
-    canonical = _canonicalise(name)
-    return canonical == "mureo" or canonical.startswith("mureo-")
-
-
 def _validate_spec(spec: str) -> str:
     """Return the canonicalised spec, or raise ``typer.BadParameter``."""
 
@@ -92,9 +88,9 @@ def _validate_spec(spec: str) -> str:
     # Lowercase only the name portion; preserve version exactly.
     if "==" in spec:
         name_part, _, version_part = spec.partition("==")
-        canonical = f"{_canonicalise(name_part)}=={version_part}"
+        canonical = f"{canonicalise(name_part)}=={version_part}"
     else:
-        canonical = _canonicalise(spec)
+        canonical = canonicalise(spec)
     if not _PACKAGE_SPEC_RE.match(canonical):
         msg = (
             f"Refusing to upgrade {spec!r}: package spec must match "
@@ -103,35 +99,6 @@ def _validate_spec(spec: str) -> str:
         )
         raise typer.BadParameter(msg)
     return canonical
-
-
-def _discover_all_mureo_packages() -> list[str]:
-    """Return canonical names of every ``mureo`` / ``mureo-*`` dist found.
-
-    Walks ``importlib.metadata.distributions()`` and dedupes after PEP 503
-    canonicalisation. The result is deterministic: ``mureo`` first (if
-    present), then the rest sorted alphabetically.
-    """
-
-    seen: set[str] = set()
-    for dist in metadata.distributions():
-        try:
-            # ``Distribution.name`` (3.10+) routes through ``metadata`` but
-            # tolerates a few of the more common dist-info quirks. We still
-            # wrap it because a single broken dist-info in the venv must
-            # not crash ``mureo upgrade --all``.
-            name = dist.name
-        except Exception:
-            continue
-        if not name or not _is_mureo_package(name):
-            continue
-        seen.add(_canonicalise(name))
-    ordered: list[str] = []
-    if "mureo" in seen:
-        ordered.append("mureo")
-        seen.discard("mureo")
-    ordered.extend(sorted(seen))
-    return ordered
 
 
 def _pip_is_available() -> tuple[bool, str]:
@@ -191,7 +158,7 @@ def _resolve_targets(packages: list[str], upgrade_all: bool) -> list[str]:
         msg = "`--all` cannot be combined with explicit package names."
         raise typer.BadParameter(msg)
     if upgrade_all:
-        targets = _discover_all_mureo_packages()
+        targets = discover_all_mureo_packages()
         if "mureo" not in targets:
             # mureo itself must always be upgraded under --all even if its
             # dist metadata is hidden for some reason (e.g. editable installs
@@ -218,8 +185,6 @@ def _refresh_deployed_skills() -> None:
     if not dest.exists():
         return
     try:
-        from mureo.cli.setup_cmd import install_skills
-
         count, where = install_skills()
         typer.echo(f"Refreshed {count} skills at {where}.")
     except Exception as exc:  # noqa: BLE001 — refresh is best-effort
@@ -241,8 +206,6 @@ def _refresh_native_skills() -> None:
     bundle refresh, which only targets Claude today). Best-effort: a failure is
     reported but never fails the upgrade.
     """
-    from mureo.cli.native_skills import install_native_skills
-
     for dest in (
         Path.home() / ".claude" / "skills",
         Path.home() / ".codex" / "skills",
@@ -276,12 +239,6 @@ def _report_skill_freshness() -> None:
     ``mureo setup <host> --skip-auth``. Best-effort like its neighbours —
     a report can never fail an upgrade that already landed.
     """
-    from mureo.web.status_collector import (
-        SKILLS_CURRENT,
-        SKILLS_STALE,
-        _detect_workflow_skills,
-    )
-
     hosts: tuple[tuple[str, Path], ...] = (
         ("claude-code", Path.home() / ".claude" / "skills"),
         ("codex", Path.home() / ".codex" / "skills"),
@@ -290,7 +247,7 @@ def _report_skill_freshness() -> None:
         if not dest.exists():
             continue
         try:
-            status = _detect_workflow_skills(dest)
+            status = detect_workflow_skills(dest)
         except Exception as exc:  # noqa: BLE001 — never fails the upgrade
             # Named, not swallowed: a silent skip here is indistinguishable
             # from an up-to-date set, which is the very confusion this report
@@ -322,9 +279,6 @@ def _restart_managed_service() -> None:
     otherwise. Best-effort: never fails the upgrade.
     """
     try:
-        from mureo.cli.service_cmd import _resolve_backend
-        from mureo.web.service import SERVICE_PORT
-
         backend = _resolve_backend()
     except Exception:  # noqa: BLE001 — unsupported platform / no backend; nothing to do
         return
@@ -370,8 +324,6 @@ def _has_installed_guard(config: Path) -> bool:
     then skips them instead of poking an installer at a file it would
     refuse anyway.
     """
-    from mureo.credential_guard import is_guard_entry
-
     try:
         data = json.loads(config.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError):
@@ -399,9 +351,6 @@ def _refresh_credential_guard() -> None:
     (re)installs the guard someone deliberately removed. Best-effort: a
     failure is reported but never fails the upgrade.
     """
-    from mureo.auth_setup import install_credential_guard
-    from mureo.cli.setup_codex import install_codex_credential_guard
-
     surfaces: list[tuple[Path, Callable[[], Path | None]]] = [
         (Path.home() / ".claude" / "settings.json", install_credential_guard),
         (Path.home() / ".codex" / "hooks.json", install_codex_credential_guard),

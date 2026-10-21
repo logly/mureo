@@ -6,7 +6,7 @@ current venv (``sys.executable``) and runs ``pip install --upgrade``
 against exactly that set.
 
 Security contract: the target list is derived ONLY from
-``_discover_all_mureo_packages`` — never from the request body. The HTTP
+``discover_all_mureo_packages`` — never from the request body. The HTTP
 handler passes no package list, so an attacker cannot smuggle an
 arbitrary package (or a pip flag) onto the install command. The ``--``
 sentinel further prevents any discovered name from being read as a flag.
@@ -23,7 +23,7 @@ import subprocess
 import sys
 from typing import Any, Final
 
-from mureo.cli.upgrade_cmd import _discover_all_mureo_packages
+from mureo.installed_packages import discover_all_mureo_packages
 from mureo.pip_env import pip_subprocess_env
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ def run_upgrade_all() -> dict[str, Any]:
     failure degrades to ``status="error"`` — never an exception.
     """
     try:
-        targets = _discover_all_mureo_packages()
+        targets = discover_all_mureo_packages()
     except Exception:  # noqa: BLE001 — discovery must never break the action
         logger.exception("run_upgrade_all package discovery failed")
         return {"status": "error", "returncode": -1, "packages": [], "output": ""}

@@ -2508,7 +2508,7 @@ class TestPostRestart:
 
     def test_managed_schedules_service_restart(self, wizard: ConfigureWizard) -> None:
         with (
-            patch("mureo.web.service.is_managed_service", return_value=True),
+            patch("mureo.web.handlers.is_managed_service", return_value=True),
             patch("mureo.web.handlers._request_service_restart") as mock_service,
             patch("mureo.web.handlers._request_interactive_reexec") as mock_reexec,
         ):
@@ -2520,7 +2520,7 @@ class TestPostRestart:
 
     def test_interactive_schedules_reexec(self, wizard: ConfigureWizard) -> None:
         with (
-            patch("mureo.web.service.is_managed_service", return_value=False),
+            patch("mureo.web.handlers.is_managed_service", return_value=False),
             patch("mureo.web.handlers._request_service_restart") as mock_service,
             patch("mureo.web.handlers._request_interactive_reexec") as mock_reexec,
         ):
@@ -2574,7 +2574,7 @@ class TestPostUpgrade:
                 "mureo.web.handlers.run_upgrade_all", return_value=fake_result
             ) as mock_upgrade,
             patch("mureo.web.handlers.request_update_refresh"),
-            patch("mureo.web.service.is_managed_service", return_value=False),
+            patch("mureo.web.handlers.is_managed_service", return_value=False),
         ):
             resp = _post(wizard, self.ROUTE, {})
         assert resp.status == 200
@@ -2599,7 +2599,7 @@ class TestPostUpgrade:
         with (
             patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
             patch("mureo.web.handlers.request_update_refresh") as mock_refresh,
-            patch("mureo.web.service.is_managed_service", return_value=False),
+            patch("mureo.web.handlers.is_managed_service", return_value=False),
         ):
             _post(wizard, self.ROUTE, {})
         mock_refresh.assert_called_once()
@@ -2619,7 +2619,7 @@ class TestPostUpgrade:
         with (
             patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
             patch("mureo.web.handlers.request_update_refresh"),
-            patch("mureo.web.service.is_managed_service", return_value=True),
+            patch("mureo.web.handlers.is_managed_service", return_value=True),
         ):
             resp = _post(wizard, self.ROUTE, {})
         body = json.loads(resp.read().decode("utf-8"))
@@ -2640,7 +2640,7 @@ class TestPostUpgrade:
         with (
             patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
             patch("mureo.web.handlers.request_update_refresh"),
-            patch("mureo.web.service.is_managed_service", return_value=False),
+            patch("mureo.web.handlers.is_managed_service", return_value=False),
         ):
             resp = _post(wizard, self.ROUTE, {})
         body = json.loads(resp.read().decode("utf-8"))

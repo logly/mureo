@@ -22,11 +22,12 @@ if TYPE_CHECKING:
 
     from mureo.providers.catalog import ProviderSpec
 
+from mureo.cli.native_skills import install_native_skills, remove_native_skills
 from mureo.cli.settings_remove import (
     remove_credential_guard,
     remove_mcp_config,
 )
-from mureo.cli.setup_cmd import remove_skills
+from mureo.cli.setup_cmd import install_skills, remove_skills
 from mureo.cli.setup_codex import (
     install_codex_credential_guard,
     remove_codex_credential_guard,
@@ -420,8 +421,6 @@ def install_workflow_skills(
     the codex host installs there (home-aware) instead.
     """
     try:
-        from mureo.cli.setup_cmd import install_skills
-
         target = _codex_skills_dir(home) if host == _HOST_CODEX else None
         count, dest = install_skills(target_dir=target)
     except Exception as exc:  # noqa: BLE001
@@ -433,8 +432,6 @@ def install_workflow_skills(
     # install into an error.
     native = 0
     try:
-        from mureo.cli.native_skills import install_native_skills
-
         native, _ = install_native_skills(dest)
     except Exception:  # noqa: BLE001 — plugin deploy is best-effort
         logger.exception("install_workflow_skills: plugin native skills skipped")
@@ -1209,8 +1206,6 @@ def remove_workflow_skills(
     # error, and leaving the plugin's skills behind would defeat the uninstall.
     native = 0
     try:
-        from mureo.cli.native_skills import remove_native_skills
-
         native, _ = remove_native_skills(dest)
     except Exception:  # noqa: BLE001 — plugin removal is best-effort
         logger.exception("remove_workflow_skills: plugin native skills skipped")

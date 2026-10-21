@@ -1,7 +1,7 @@
 """Server-side one-click upgrade for ``mureo.web.upgrade_action``.
 
 ``run_upgrade_all`` derives its target list ONLY from
-``_discover_all_mureo_packages`` (server-derived — never from a request
+``discover_all_mureo_packages`` (server-derived — never from a request
 body) and runs ``pip install --upgrade -- <targets>`` on
 ``sys.executable``. Every test patches ``subprocess.run`` and the
 package-discovery helper, so nothing here installs anything, mutates the
@@ -35,7 +35,7 @@ class TestRunUpgradeAll:
         targets = ["mureo", "mureo-agency"]
         with (
             patch(
-                "mureo.web.upgrade_action._discover_all_mureo_packages",
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
                 return_value=targets,
             ),
             patch(
@@ -53,7 +53,7 @@ class TestRunUpgradeAll:
         """A non-zero pip exit → ``error`` carrying the captured output."""
         with (
             patch(
-                "mureo.web.upgrade_action._discover_all_mureo_packages",
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
                 return_value=["mureo"],
             ),
             patch(
@@ -73,7 +73,7 @@ class TestRunUpgradeAll:
         single source of truth (a request body can never reach pip)."""
         with (
             patch(
-                "mureo.web.upgrade_action._discover_all_mureo_packages",
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
                 return_value=["mureo", "mureo-logly-bridge"],
             ) as mock_discover,
             patch(
@@ -104,7 +104,7 @@ class TestRunUpgradeAll:
         huge = "x" * 10000
         with (
             patch(
-                "mureo.web.upgrade_action._discover_all_mureo_packages",
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
                 return_value=["mureo"],
             ),
             patch(
@@ -119,7 +119,7 @@ class TestRunUpgradeAll:
         """A pip timeout must degrade to an error envelope, never raise."""
         with (
             patch(
-                "mureo.web.upgrade_action._discover_all_mureo_packages",
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
                 return_value=["mureo"],
             ),
             patch(
@@ -135,7 +135,7 @@ class TestRunUpgradeAll:
         """A missing interpreter / OS error must degrade, never raise."""
         with (
             patch(
-                "mureo.web.upgrade_action._discover_all_mureo_packages",
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
                 return_value=["mureo"],
             ),
             patch(
@@ -149,7 +149,7 @@ class TestRunUpgradeAll:
     def test_discovery_failure_degrades_to_error(self) -> None:
         """If package discovery itself raises, the action still degrades."""
         with patch(
-            "mureo.web.upgrade_action._discover_all_mureo_packages",
+            "mureo.web.upgrade_action.discover_all_mureo_packages",
             side_effect=RuntimeError("metadata corrupt"),
         ):
             result = run_upgrade_all()
@@ -160,7 +160,7 @@ class TestRunUpgradeAll:
         """No mureo packages discovered → never invoke pip with no targets."""
         with (
             patch(
-                "mureo.web.upgrade_action._discover_all_mureo_packages",
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
                 return_value=[],
             ),
             patch("mureo.web.upgrade_action.subprocess.run") as mock_run,
@@ -176,7 +176,7 @@ class TestRunUpgradeAll:
         install), ``mureo`` is still upgraded — prepended ahead of them."""
         with (
             patch(
-                "mureo.web.upgrade_action._discover_all_mureo_packages",
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
                 return_value=["mureo-agency"],
             ),
             patch(

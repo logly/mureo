@@ -120,6 +120,8 @@ mureo/
 ├── client_factory.py        # Per-platform BYOD-vs-live client factory, shared by every
 │                            #   live-client opener (MCP handlers, analytics, change import)
 ├── throttle.py              # Rate limiting (token bucket + rolling hourly cap)
+├── installed_packages.py    # The installed mureo / mureo-* distributions (PEP 503 names), shared
+│                            #   by `mureo upgrade` and the dashboard's About / update / upgrade (#863)
 ├── google_ads/              # Google Ads API client
 │   ├── client.py            # GoogleAdsApiClient (Mixins)
 │   ├── mappers.py           # Response mapping to structured dicts
@@ -223,6 +225,8 @@ mureo/
 │   ├── configure_cmd.py     # mureo configure — launches the local browser configuration UI
 │   ├── service_cmd.py       # mureo service install / status / restart / uninstall (auto-start daemon)
 │   ├── upgrade_cmd.py       # mureo upgrade [--all] — upgrades mureo + plugins, re-deploys skills
+│   ├── skill_status.py      # Deployed workflow skills current / stale / missing (#728), read by
+│   │                        #   upgrade_cmd and web/status_collector.py (#863)
 │   ├── byod_cmd.py          # mureo byod import / status / remove / clear (Bring Your Own Data)
 │   ├── demo_cmd.py          # mureo demo — scaffold a self-contained demo workspace
 │   ├── providers_cmd.py     # mureo providers install / list / remove (official MCP providers)
@@ -304,6 +308,13 @@ mureo/
 ├── adapters/                # BYOD per-platform header-signature adapters
 ├── demo/                    # Synthetic demo workspace scaffolding
 └── web/                     # `mureo configure` local dashboard (stdlib http.server + static assets)
+    │                        #   Layer rule with cli (#863): web imports cli helper modules
+    │                        #   (setup_cmd, setup_codex, native_skills, settings_remove, skill_status,
+    │                        #   ...) by public names; cli imports only web leaf modules (instance,
+    │                        #   service, report_clients) plus the entry command configure_cmd.
+    │                        #   Importing a web submodule never loads web/server.py unless it needs
+    │                        #   it: mureo.web resolves ConfigureWizard / run_configure_wizard on
+    │                        #   access, and DEFAULT_CONFIGURE_PORT lives in instance.py.
     └── auth_wizard.py       # OAuth handoff server spawned by web/oauth_bridge.py (Google + Meta)
 
 skills/                          # Native slash skills — deployed to ~/.claude/skills/ and ~/.codex/skills/

@@ -33,7 +33,14 @@ from mureo.web.extensions import (
 )
 from mureo.web.handlers import ConfigureHandler
 from mureo.web.host_paths import HostPaths, get_host_paths
-from mureo.web.instance import probe_mureo_instance, write_state_file
+from mureo.web.instance import (  # noqa: F401
+    # Re-exported, unused here: the port lives in the leaf ``instance``
+    # module so the service backends and the CLI read it without loading
+    # this server (#863).
+    DEFAULT_CONFIGURE_PORT,
+    probe_mureo_instance,
+    write_state_file,
+)
 from mureo.web.oauth_bridge import OAuthBridge
 from mureo.web.session import SUPPORTED_HOSTS, ConfigureSession
 from mureo.web.version_check import (
@@ -42,16 +49,6 @@ from mureo.web.version_check import (
 )
 
 logger = logging.getLogger(__name__)
-
-# #241 — fixed default port for `mureo configure`. Chosen high in the
-# IANA dynamic/private range (49152-65535-ish neighbourhood) and not
-# registered to any common service, so a fresh machine almost always
-# finds it free → a stable, bookmarkable ``http://127.0.0.1:7613/``.
-# When it IS taken, the bind logic falls back to an ephemeral port (and
-# single-instance reuse re-opens an already-running mureo), so the fixed
-# value is a convenience default, never a hard requirement. 7613 spells
-# "MURO" on a phone keypad (6-8-7-6 ≈ m-u-r-o) — a small mnemonic.
-DEFAULT_CONFIGURE_PORT = 7613
 
 # #227: how often the configure wait loop re-asserts cooked mode on the
 # controlling TTY. A leaked raw mode mid-session is healed within one

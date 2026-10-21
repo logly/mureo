@@ -11,7 +11,7 @@ the update-check consider an installed mureo package (#365):
    that registers ``mureo.providers``).
 2. **Name-prefix** — every installed ``mureo`` / ``mureo-*`` distribution,
    using the SAME discovery the updater uses
-   (:func:`mureo.cli.upgrade_cmd._discover_all_mureo_packages`). Catches a
+   (:func:`mureo.installed_packages.discover_all_mureo_packages`). Catches a
    plugin that registers only, say, ``mureo.skills`` and would otherwise be
    flagged "update available" yet never listed here (#365).
 
@@ -40,13 +40,13 @@ from importlib.metadata import (
 from typing import Any, Final
 
 from mureo.analytics.registry import ANALYTICS_ENTRY_POINT_GROUP
-from mureo.cli.upgrade_cmd import _canonicalise, _discover_all_mureo_packages
 from mureo.core.policy import POLICY_GATES_ENTRY_POINT_GROUP
 from mureo.core.providers.registry import (
     PROVIDERS_ENTRY_POINT_GROUP,
     SKILLS_ENTRY_POINT_GROUP,
 )
 from mureo.core.runtime_context import RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP
+from mureo.installed_packages import canonicalise, discover_all_mureo_packages
 from mureo.web.extensions import WEB_EXTENSIONS_ENTRY_POINT_GROUP
 
 #: Entry-point groups scanned for contributing distributions. Reuses the
@@ -174,7 +174,7 @@ def collect_about_info() -> dict[str, Any]:
                 continue
             if resolved is not None:
                 name, dist_version = resolved
-                canonical = _canonicalise(name)
+                canonical = canonicalise(name)
                 # Display the CANONICAL name (not the raw ``dist.name``) so a
                 # mixed-case / underscored distribution reads identically to the
                 # update-check banner, which always shows the canonical form
@@ -211,7 +211,7 @@ def _name_prefixed_packages() -> list[str]:
     endpoint must never 500 on a corrupted metadata index.
     """
     try:
-        return _discover_all_mureo_packages()
+        return discover_all_mureo_packages()
     except Exception:  # noqa: BLE001 — discovery must never 500 the About tab
         return []
 
