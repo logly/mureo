@@ -412,9 +412,13 @@ def create_google_ads_client(
     # Lazy import (#486): keeps the Google Ads SDK — and the two
     # google.api_core FutureWarnings it prints on Python 3.10 — off the CLI
     # startup path for every command that never builds a Google client.
-    from google.oauth2.credentials import Credentials
+    from google.oauth2.credentials import (  # noqa: PLC0415 — startup cost (#486)
+        Credentials,
+    )
 
-    from mureo.google_ads import GoogleAdsApiClient
+    from mureo.google_ads import (  # noqa: PLC0415 — startup cost (#486)
+        GoogleAdsApiClient,
+    )
 
     if oauth_credentials is None:
         oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
@@ -459,9 +463,13 @@ def create_search_console_client(
         SearchConsoleApiClient instance
     """
     # Lazy import (#486) — see create_google_ads_client.
-    from google.oauth2.credentials import Credentials
+    from google.oauth2.credentials import (  # noqa: PLC0415 — startup cost (#486)
+        Credentials,
+    )
 
-    from mureo.search_console import SearchConsoleApiClient
+    from mureo.search_console import (  # noqa: PLC0415 — startup cost (#486)
+        SearchConsoleApiClient,
+    )
 
     if oauth_credentials is None:
         oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
@@ -500,7 +508,7 @@ def create_meta_ads_client(
     # Lazy import (#486) — the Meta SDK is not a warning source, but keeping
     # all three factories symmetrical means no platform SDK loads at CLI
     # startup, and the import-hygiene guard stays a single simple assertion.
-    from mureo.meta_ads import MetaAdsApiClient
+    from mureo.meta_ads import MetaAdsApiClient  # noqa: PLC0415 — startup cost (#486)
 
     return MetaAdsApiClient(
         access_token=credentials.access_token,

@@ -44,6 +44,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 if TYPE_CHECKING:
     from mureo.auth import AmazonAdsCredentials
 
@@ -270,8 +272,6 @@ def _read_response(resp: Any) -> tuple[int | None, dict[str, Any]]:
 
 
 def _default_post(url: str, data: dict[str, str]) -> Any:
-    import httpx
-
     return httpx.post(url, data=data, timeout=_TIMEOUT)
 
 

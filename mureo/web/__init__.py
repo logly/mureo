@@ -29,7 +29,7 @@ def __getattr__(name: str) -> Any:
     if name in __all__:
         # Re-export of the configure server, resolved on access so a leaf
         # ``mureo.web.*`` import does not load it (#863).
-        from mureo.web import server  # noqa: PLC0415
+        from mureo.web import server  # noqa: PLC0415 — PEP 562 re-export (#863)
 
         return getattr(server, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

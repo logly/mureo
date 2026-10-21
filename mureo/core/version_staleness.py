@@ -25,6 +25,9 @@ interpreter, and the PyPI update check (``mureo.web.version_check``) nudges
 from __future__ import annotations
 
 import logging
+from importlib import metadata
+
+from packaging.version import InvalidVersion, Version
 
 import mureo
 
@@ -42,8 +45,6 @@ def installed_version() -> str | None:
     ``pip install -U`` is observed. Never raises.
     """
     try:
-        from importlib import metadata
-
         return metadata.version("mureo")
     except Exception:  # pragma: no cover - exotic metadata/layout failures
         logger.debug("could not read installed mureo version", exc_info=True)
@@ -69,8 +70,6 @@ def staleness_warning(
         return None
 
     try:
-        from packaging.version import InvalidVersion, Version
-
         try:
             if Version(installed) <= Version(running):
                 return None

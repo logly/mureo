@@ -28,14 +28,11 @@ Meta modules import it from.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from mureo.context.platform_accounts import account_ids_match
 from mureo.context.state_codec import parse_state
 from mureo.core import runtime_context
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _workspace_state_path() -> Path:
@@ -50,19 +47,17 @@ def _workspace_state_path() -> Path:
     workspace diverges from the process cwd. Any failure falls back to the
     cwd convention.
     """
-    from pathlib import Path as _Path
-
     try:
         store = runtime_context.get_runtime_context().state_store
         attr = getattr(store, "state_path", None)
         if attr is not None:
-            return _Path(attr)
+            return Path(attr)
         workspace = getattr(store, "workspace", None)
         if workspace is not None:
-            return _Path(workspace) / "STATE.json"
+            return Path(workspace) / "STATE.json"
     except Exception:  # noqa: BLE001 — best-effort; never break a live read.
         pass
-    return _Path("STATE.json")
+    return Path("STATE.json")
 
 
 def load_conversion_action_types(

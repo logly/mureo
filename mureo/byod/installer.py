@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from mureo.byod.runtime import (
     SUPPORTED_PLATFORMS,
     byod_data_dir,
+    manifest_path,
     read_manifest,
     write_manifest,
 )
@@ -77,8 +78,6 @@ def remove_platform(platform: str) -> bool:
         # user dropped under ~/.mureo/byod/ in place. The previous
         # `clear_all()` here also wiped those — silently surprising for
         # users who staged backup CSVs or notes alongside the manifest.
-        from mureo.byod.runtime import manifest_path
-
         mp = manifest_path()
         if mp.exists():
             mp.unlink()

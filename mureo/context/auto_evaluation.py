@@ -55,6 +55,7 @@ from mureo.context.actor_stamp import stamp_actor
 from mureo.context.decision_chain import chain_expected
 from mureo.context.models import ActionLogEntry
 from mureo.context.observations import closed_observation_indices, parse_due_date
+from mureo.context.state import _locked_state_mutation, read_state_file
 from mureo.core.actor import ACTION_REASON_MAX_CHARS
 from mureo.core.clock import server_now_iso
 from mureo.core.scrub import scrub_text
@@ -390,8 +391,6 @@ def _write_closures(
     second one sees the first one's record and finds nothing due — in which
     case nothing is written at all (see :class:`_NothingToCloseError`).
     """
-    from mureo.context.state import _locked_state_mutation
-
     closed: list[AutoClosure] = []
     skipped: list[AutoSkip] = []
 
@@ -452,8 +451,6 @@ def close_due_observations(
             caller decides — the MCP hook degrades to an error field rather
             than failing the read it is attached to.
     """
-    from mureo.context.state import read_state_file
-
     plans = _plan_due(read_state_file(path), today)
     if not plans:
         return AutoEvaluationResult(closed=(), skipped=())

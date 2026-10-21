@@ -3,10 +3,10 @@
 The single source of truth for "is BYOD active for platform X" is the
 ``manifest.json`` written into ``~/.mureo/byod/`` by ``mureo byod import``.
 
-This module is read-light (one small JSON file) and intentionally has no
-external dependencies so it can be imported from
-``mureo/client_factory.py`` without dragging the heavier installer
-or adapter code into the MCP server's startup path.
+This module is read-light (one small JSON file) and depends only on the
+standard library and :mod:`mureo.core.runtime_context`, so it can be
+imported from ``mureo/client_factory.py`` without dragging the heavier
+installer or adapter code into the MCP server's startup path.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any
+
+from mureo.core import runtime_context
 
 logger = logging.getLogger(__name__)
 
@@ -73,20 +75,9 @@ def byod_data_dir() -> Path:
 def _runtime_context_workspace() -> Path | None:
     """Return the resolved workspace dir from the RuntimeContext, or
     ``None`` when the runtime is the default single-workspace one.
-
-    Imported lazily inside this helper so ``mureo.byod.runtime`` keeps
-    its "no external dependencies" promise (see module docstring) for
-    callers that never need to touch the runtime layer.
     """
-    try:
-        from mureo.core.runtime_context import (
-            DEFAULT_WORKSPACE_ID,
-            get_runtime_context,
-        )
-    except ImportError:  # pragma: no cover — keeps the module standalone
-        return None
-    ctx = get_runtime_context()
-    if ctx.workspace_id == DEFAULT_WORKSPACE_ID:
+    ctx = runtime_context.get_runtime_context()
+    if ctx.workspace_id == runtime_context.DEFAULT_WORKSPACE_ID:
         # Single-workspace runtime: keep the legacy ~/.mureo/byod/
         # location so existing CLI / Claude Code users are unaffected.
         return None

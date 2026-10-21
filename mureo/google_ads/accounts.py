@@ -223,8 +223,13 @@ def _client_maker(
 
     Imports the Google Ads SDK, so it must only run off the event loop.
     """
-    from google.ads.googleads.client import GoogleAdsClient
-    from google.oauth2.credentials import Credentials as OAuthCredentials
+    # Startup cost (~0.6 s CPU): the Google Ads SDK is deferred to the off-loop client build (#809).
+    from google.ads.googleads.client import (  # noqa: PLC0415 — startup cost (#809)
+        GoogleAdsClient,
+    )
+    from google.oauth2.credentials import (  # noqa: PLC0415 — startup cost (#809)
+        Credentials as OAuthCredentials,
+    )
 
     oauth_creds = oauth_credentials
     if oauth_creds is None:

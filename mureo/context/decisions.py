@@ -498,7 +498,9 @@ def append_decision(path: Path, record: DecisionRecord) -> tuple[StateDocument, 
     """
     # Lazy: ``mureo.context.state`` ↔ ``mureo.context.decisions`` cycle inside
     # ``context`` (#863, later stage).
-    from mureo.context.state import _locked_state_mutation
+    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.decisions -> mureo.context.state (#879)
+        _locked_state_mutation,
+    )
 
     position = -1
 

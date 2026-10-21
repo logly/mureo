@@ -186,8 +186,11 @@ def _default_connect(
 ) -> AbstractAsyncContextManager[Any]:
     @asynccontextmanager
     async def _cm() -> AsyncIterator[Any]:
-        from mcp import ClientSession
-        from mcp.client.streamable_http import streamablehttp_client
+        # Startup cost (~0.24 s CPU): the mcp client SDK is deferred to the first manifest refresh (#863).
+        from mcp import ClientSession  # noqa: PLC0415 — startup cost (#863)
+        from mcp.client.streamable_http import (  # noqa: PLC0415 — startup cost (#863)
+            streamablehttp_client,
+        )
 
         async with (
             streamablehttp_client(url, headers=headers) as (read, write, _),

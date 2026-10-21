@@ -34,7 +34,9 @@ def get_google_ads_client(
         )
 
     # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import create_google_ads_client as _real
+    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
+        create_google_ads_client as _real,
+    )
 
     return _real(creds, customer_id, throttler=throttler)
 
@@ -49,6 +51,8 @@ def get_meta_ads_client(
         )
 
     # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import create_meta_ads_client as _real
+    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
+        create_meta_ads_client as _real,
+    )
 
     return _real(creds, account_id, throttler=throttler)

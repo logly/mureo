@@ -10,9 +10,9 @@ mechanical and identical for both platforms, so it lives here.
 A :class:`MetricsFetcher` callable abstracts how an adapter obtains a
 ``(current, baseline)`` pair for a given account: the live adapter
 will eventually call the platform client; tests inject a deterministic
-stub. Keeping the fetcher injectable means the adapter has no hard
-dependency on the platform client module, which keeps imports cheap and
-avoids cycles at registration time.
+stub. Keeping the fetcher injectable means the adapter never imports a
+platform client: the one platform module this file imports is the SDK-free
+:mod:`mureo.meta_ads._conversion_count`, so registration loads no SDK.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from mureo.analytics.builtin._row_types import (
     MetaPerformanceRow,
 )
 from mureo.analytics.models import Anomaly, AnomalySeverity
+from mureo.meta_ads._conversion_count import count_conversions_from_actions
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -98,10 +99,7 @@ def meta_row_conversions(
         # generic conversion action_types) instead of a substring scan,
         # which double-counted aggregate+component aliases (lead +
         # offsite_conversion.fb_pixel_lead) and swept in custom-conversion
-        # slugs. Lazy import keeps adapter registration free of the
-        # mureo.meta_ads client weight (this runs only on the live path).
-        from mureo.meta_ads._conversion_count import count_conversions_from_actions
-
+        # slugs.
         return count_conversions_from_actions(
             actions, conversion_action_types=conversion_action_types
         )

@@ -46,6 +46,7 @@ from __future__ import annotations
 
 from functools import cache
 from importlib import import_module
+from pkgutil import iter_modules
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -101,8 +102,6 @@ def _submodule_names(locations: tuple[str, ...]) -> frozenset[str]:
     package the running process has already introspected, where a restart is the
     expectation anyway. Attribute access is unaffected; it never reads this.
     """
-    from pkgutil import iter_modules
-
     return frozenset(info.name for info in iter_modules(locations))
 
 

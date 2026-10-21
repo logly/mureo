@@ -49,6 +49,9 @@ from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from mureo.context.strategy import parse_strategy
+from mureo.core import clock
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -287,8 +290,6 @@ def _complete_days(
     a cliff every morning — so it never takes part in a comparison.
     """
     if as_of is None:
-        from mureo.core import clock
-
         as_of = clock.server_now().date()
     return tuple(sorted((d for d in daily if d.date < as_of), key=lambda d: d.date))
 
@@ -760,11 +761,11 @@ def _valid_threshold(field: str, raw: str) -> float | int | None:
 
 def collapse_thresholds_from_strategy_text(text: str) -> CollapseThresholds:
     """Extract thresholds from full STRATEGY.md text (defaults if absent)."""
-    # Local imports: this module stays import-light for the pure path, and
     # ``strategy_gate`` owns the canonical heading name so the two cannot
     # drift onto different sections.
-    from mureo.context.strategy import parse_strategy
-    from mureo.policy.strategy_gate import GUARDRAILS_HEADING
+    from mureo.policy.strategy_gate import (  # noqa: PLC0415 — import cycle: mureo.analysis.delivery_collapse -> mureo.policy.strategy_gate (#879)
+        GUARDRAILS_HEADING,
+    )
 
     for entry in parse_strategy(text):
         if entry.title.strip().lower() == GUARDRAILS_HEADING:

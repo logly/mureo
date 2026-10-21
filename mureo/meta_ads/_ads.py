@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -104,13 +105,11 @@ class AdsMixin:
         Returns:
             Created ad information
         """
-        import json as _json
-
         account_id = self._ad_account_id
         data: dict[str, Any] = {
             "name": name,
             "adset_id": ad_set_id,
-            "creative": _json.dumps({"creative_id": creative_id}),
+            "creative": json.dumps({"creative_id": creative_id}),
             "status": status,
         }
         return await self._post(f"/{account_id}/ads", data)

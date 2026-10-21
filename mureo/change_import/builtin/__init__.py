@@ -10,17 +10,18 @@ happened.
 
 from __future__ import annotations
 
+from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
+from mureo.change_import.registry import register_change_feed
+
 
 def register_builtin_change_feeds() -> None:
     """Register every built-in change feed on the default registry.
 
-    Called once from :func:`mureo.change_import.registry.default_change_feed_registry`.
-    Imports are local so registry import stays cheap and free of auth side
-    effects — the live client is opened per call, not here.
+    Called once from :func:`mureo.change_import.registry.default_change_feed_registry`,
+    which imports this package on first use, so the registry import stays
+    cheap and free of auth side effects — the live client is opened per call,
+    not here.
     """
-    from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
-    from mureo.change_import.registry import register_change_feed
-
     register_change_feed(GoogleAdsChangeFeed())
 
 

@@ -2,6 +2,11 @@
 
 ### Changed
 
+- **The `mcp` dependency floor moves to `>=1.8.0`** (#863).
+  `mureo.learning.federation` now imports its MCP client transports at
+  module level, and 1.8.0 is the first `mcp` release that ships
+  `mcp.client.streamable_http`. With an older `mcp` the module now fails
+  to import instead of failing on the first `http` source.
 - **`mureo.rollback`, `mureo.policy`, `mureo.amazon_ads` and `mureo.core`
   no longer import `mureo.mcp`** (#863). The failure-envelope reader
   (`failure_of`, `is_error_result`, `is_auth_error_result`, `Failure`,

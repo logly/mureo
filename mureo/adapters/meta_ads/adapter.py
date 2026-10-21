@@ -181,7 +181,10 @@ class MetaAdsAdapter:
     )
 
     def __init__(self, client: MetaAdsApiClient, *, currency: str) -> None:
-        from mureo.meta_ads.client import MetaAdsApiClient
+        # Startup cost (~0.1 s CPU): mureo.meta_ads.client is deferred to the first adapter built (#807).
+        from mureo.meta_ads.client import (  # noqa: PLC0415 — startup cost (#807)
+            MetaAdsApiClient,
+        )
 
         if not isinstance(client, MetaAdsApiClient):
             raise TypeError(

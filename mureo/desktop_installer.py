@@ -33,6 +33,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from mureo.demo.installer import materialize
+from mureo.demo.scenarios import get_scenario
+
 
 class DesktopInstallError(Exception):
     """Base class for install-desktop failures."""
@@ -202,8 +205,6 @@ def _validate_demo_scenario(scenario: str) -> None:
     created and the config rewritten — leaving the user with a
     half-populated state and a confusing error.
     """
-    from mureo.demo.scenarios import get_scenario
-
     try:
         get_scenario(scenario)
     except ValueError as exc:
@@ -217,8 +218,6 @@ def _run_demo_init(workspace: Path, scenario: str) -> None:
     needing the demo bundle data on disk. Forces overwrite because the
     workspace was just created (or the user explicitly re-installed).
     """
-    from mureo.demo.installer import materialize
-
     materialize(target_dir=workspace, force=True, scenario_name=scenario)
 
 

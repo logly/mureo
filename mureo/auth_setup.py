@@ -42,6 +42,7 @@ from mureo.core.runtime_context import runtime_credentials_path
 # implementation lives in :mod:`mureo.core.terminal` (#227 follow-up).
 from mureo.core.terminal import terminal_fd as _terminal_fd
 from mureo.fsutil import backup_file, file_lock, lock_path_for
+from mureo.google_ads.accounts import GoogleAdsAccountListError
 from mureo.logging_setup import safe_http_log_line
 from mureo.meta_ads._api_version import OAUTH_DIALOG_URL, OAUTH_TOKEN_URL
 from mureo.meta_ads.accounts import META_HTTP_TIMEOUT_SECONDS, META_OAUTH_SCOPES
@@ -200,7 +201,8 @@ def _select_account(
     labels = [label_fn(a) for a in accounts]
 
     try:
-        from simple_term_menu import TerminalMenu
+        # Startup cost (~5 ms CPU): simple_term_menu is deferred to the interactive menu (#863).
+        from simple_term_menu import TerminalMenu  # noqa: PLC0415 — startup cost (#863)
 
         # #190 — wrap ``TerminalMenu.show()`` in try/finally with an
         # explicit terminal-state save/restore. ``show()`` puts the
@@ -428,7 +430,10 @@ def build_google_flow(
     # Lazy import (#486): google-auth-oauthlib pulls google.auth /
     # google.oauth2 in, and this module is imported by
     # ``mureo setup <agent> --skip-auth``, which never runs an OAuth flow.
-    from google_auth_oauthlib.flow import Flow, InstalledAppFlow
+    from google_auth_oauthlib.flow import (  # noqa: PLC0415 — startup cost (#486)
+        Flow,
+        InstalledAppFlow,
+    )
 
     config = build_google_client_config(client_id, client_secret)
     if redirect_uri is None:
@@ -684,7 +689,8 @@ def setup_mcp_config() -> None:
     print()
 
     try:
-        from simple_term_menu import TerminalMenu
+        # Startup cost (~5 ms CPU): simple_term_menu is deferred to the interactive menu (#863).
+        from simple_term_menu import TerminalMenu  # noqa: PLC0415 — startup cost (#863)
 
         options = [
             "Global (Claude Code user scope) — Available in all projects",
@@ -1098,11 +1104,6 @@ async def setup_google_ads(
         client_secret=client_secret,
         refresh_token=oauth_result.refresh_token,
     )
-
-    # Imported here, not at module scope: the package __init__ loads the
-    # Google Ads SDK and this module is on the ``mureo setup`` startup path
-    # (#486) — same reason the listers themselves are lazy re-exports.
-    from mureo.google_ads.accounts import GoogleAdsAccountListError
 
     try:
         accounts = await _reexport("list_accessible_accounts")(temp_creds)

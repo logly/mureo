@@ -272,7 +272,10 @@ class GoogleAdsChangeFeed:
             start_date=since.date().isoformat(),
             end_date=until.date().isoformat(),
         )
-        from mureo.google_ads._extensions_targeting import CHANGE_HISTORY_ROW_LIMIT
+        # Startup cost (~0.6 s CPU): the Google Ads SDK behind this constant is deferred to the first live import (#863).
+        from mureo.google_ads._extensions_targeting import (  # noqa: PLC0415 — startup cost (#863)
+            CHANGE_HISTORY_ROW_LIMIT,
+        )
 
         truncated = len(rows) >= CHANGE_HISTORY_ROW_LIMIT
         changes = tuple(
@@ -292,7 +295,10 @@ class GoogleAdsChangeFeed:
         not checked. Returning an empty result would report it as quiet.
         """
         # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-        from mureo.auth import create_google_ads_client, load_google_ads_credentials
+        from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
+            create_google_ads_client,
+            load_google_ads_credentials,
+        )
 
         # An active credential source wins over BYOD mode and the
         # credentials file, as it does for the MCP handlers (#821).

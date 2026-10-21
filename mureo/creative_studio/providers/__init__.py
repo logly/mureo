@@ -213,10 +213,18 @@ def provider_error(
 
 def _builtin_providers() -> list[ImageProvider]:
     """Instantiate the built-in providers (import-local to avoid cycles)."""
-    from mureo.creative_studio.providers.codex_cli import CodexCliImageProvider
-    from mureo.creative_studio.providers.fal import FalImageProvider
-    from mureo.creative_studio.providers.google_images import GoogleImageProvider
-    from mureo.creative_studio.providers.openai_images import OpenAIImageProvider
+    from mureo.creative_studio.providers.codex_cli import (  # noqa: PLC0415 — import cycle: mureo.creative_studio.providers -> mureo.creative_studio.providers.codex_cli (#879)
+        CodexCliImageProvider,
+    )
+    from mureo.creative_studio.providers.fal import (  # noqa: PLC0415 — import cycle: mureo.creative_studio.providers -> mureo.creative_studio.providers.fal (#879)
+        FalImageProvider,
+    )
+    from mureo.creative_studio.providers.google_images import (  # noqa: PLC0415 — import cycle: mureo.creative_studio.providers -> mureo.creative_studio.providers.google_images (#879)
+        GoogleImageProvider,
+    )
+    from mureo.creative_studio.providers.openai_images import (  # noqa: PLC0415 — import cycle: mureo.creative_studio.providers -> mureo.creative_studio.providers.openai_images (#879)
+        OpenAIImageProvider,
+    )
 
     return [
         OpenAIImageProvider(),

@@ -72,8 +72,11 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+from mureo.context.strategy import parse_strategy
+from mureo.core import runtime_context
 from mureo.core.policy import PolicyDecision
 
 # The unit layer (#783): Meta's write tools carry money in the account
@@ -426,9 +429,6 @@ def parse_guardrails(content: str) -> Guardrails:
 
 def guardrails_from_strategy_text(text: str) -> Guardrails:
     """Extract guardrails from full STRATEGY.md text (empty if no section)."""
-    # Imported here to keep the pure decision logic above import-light.
-    from mureo.context.strategy import parse_strategy
-
     for entry in parse_strategy(text):
         if entry.title.strip().lower() == GUARDRAILS_HEADING:
             return parse_guardrails(entry.content)
@@ -692,12 +692,8 @@ _cache: dict[str, tuple[float, Guardrails]] = {}
 
 def _resolve_strategy_path() -> Any:
     """Best-effort STRATEGY.md path for the active workspace (or None)."""
-    from pathlib import Path
-
     try:
-        from mureo.core.runtime_context import get_runtime_context
-
-        store = get_runtime_context().state_store
+        store = runtime_context.get_runtime_context().state_store
         strategy_path = getattr(store, "strategy_path", None)
         if strategy_path is not None:
             return Path(strategy_path)
