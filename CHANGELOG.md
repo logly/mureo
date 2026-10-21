@@ -44,6 +44,28 @@
   `mureo.core.secret_store.default_credentials_path()`, and
   `mureo.core.runtime_context.runtime_credentials_path()` now takes an
   optional default that falls back to it.
+- **`mureo.web` no longer imports the configure server at load** (#863).
+  `mureo.web.ConfigureWizard` and `mureo.web.run_configure_wizard` are still
+  importable (`__all__` and `from mureo.web import ...` are unchanged) and
+  resolve to the `mureo.web.server` objects on first access. A fresh
+  `import mureo.web` now loads 26 modules instead of 549 (`sys.modules` after
+  the import minus a bare interpreter's). Two visible side effects:
+  `import mureo.web` alone no longer sets `mureo.web.server` as a package
+  attribute (import the submodule explicitly, `import mureo.web.server`; first
+  access of either name also sets it), and
+  `dir(mureo.web)` no longer lists `ConfigureWizard` / `run_configure_wizard`.
+  `DEFAULT_CONFIGURE_PORT` lives in `mureo.web.instance`
+  (`mureo.web.server.DEFAULT_CONFIGURE_PORT` is the same object), so
+  `mureo.web.service` no longer loads the server either. Installed-distribution
+  discovery is public in `mureo.installed_packages` (`canonicalise`,
+  `is_mureo_package`, `discover_all_mureo_packages`, replacing the private
+  `mureo.cli.upgrade_cmd._canonicalise` / `_is_mureo_package` /
+  `_discover_all_mureo_packages`), and skill-version detection moved from
+  `mureo.web.status_collector` to `mureo.cli.skill_status` (`SKILLS_MISSING`,
+  `SKILLS_STALE`, `SKILLS_CURRENT`, `SkillsStatus`, and
+  `detect_workflow_skills`, formerly `_detect_workflow_skills`). Code that
+  patched `mureo.web.service.is_managed_service` for the dashboard's restart
+  patches `mureo.web.handlers.is_managed_service`.
 
 ## [0.30.0] - 2026-10-20
 

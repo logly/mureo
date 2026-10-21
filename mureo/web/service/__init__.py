@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from mureo.web.server import DEFAULT_CONFIGURE_PORT
+from mureo.web.instance import DEFAULT_CONFIGURE_PORT
 
 #: Loopback-only host the daemon binds and the status probe targets.
 SERVICE_BIND_HOST = "127.0.0.1"

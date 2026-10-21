@@ -151,6 +151,7 @@ from mureo.web.reports import (
     report_clients_payload,
     set_report_client_archived,
 )
+from mureo.web.service import is_managed_service
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
 from mureo.web.setup_actions import (
     clear_all_setup,
@@ -983,7 +984,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     def _post_upgrade(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         """#239 — upgrade mureo + every installed ``mureo-*`` plugin.
 
-        The target list is SERVER-derived (``_discover_all_mureo_packages``
+        The target list is SERVER-derived (``discover_all_mureo_packages``
         inside ``run_upgrade_all``) — the request body is deliberately
         NOT read for packages, so a stale/hostile client can never inject
         an arbitrary package or pip flag onto the install command. The
@@ -1003,10 +1004,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         ``pip --dry-run`` subprocess (which never sees stale in-process
         metadata); the in-process read only fills the displayed version.
         """
-        # Lazy import: ``mureo.web.service`` imports ``mureo.web.server``,
-        # which imports this module — a module-level import would cycle.
-        from mureo.web.service import is_managed_service
-
         result = run_upgrade_all()
         restarting = False
         if result.get("status") == "ok":
@@ -1042,10 +1039,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         ``/api/ping`` until the server returns, then reload. CSRF + Host gated
         like every other POST; the body is ignored.
         """
-        # Lazy import: ``mureo.web.service`` imports ``mureo.web.server``,
-        # which imports this module — a module-level import would cycle.
-        from mureo.web.service import is_managed_service
-
         managed = is_managed_service()
         mode = "managed" if managed else "interactive"
         # Schedule the restart FIRST. Both schedulers only SPAWN a daemon thread

@@ -98,7 +98,7 @@ class TestCollectAboutInfo:
         Default it to "no name-prefixed dists"; the cases that exercise the
         name-prefix axis re-patch it inside their own ``with`` block.
         """
-        with patch("mureo.web.about._discover_all_mureo_packages", return_value=[]):
+        with patch("mureo.web.about.discover_all_mureo_packages", return_value=[]):
             yield
 
     def test_groups_constant_covers_all_mureo_plugin_surfaces(self) -> None:
@@ -317,7 +317,7 @@ class TestCollectAboutInfo:
                 _version_for({"mureo": "1.0.0", "mureo-example-skills": "0.3.0"}),
             ),
             patch(
-                "mureo.web.about._discover_all_mureo_packages",
+                "mureo.web.about.discover_all_mureo_packages",
                 return_value=["mureo", "mureo-example-skills"],
             ),
         ):
@@ -333,7 +333,7 @@ class TestCollectAboutInfo:
             patch("mureo.web.about.entry_points", _entry_points_for({})),
             patch("mureo.web.about.version", _version_for({"mureo": "1.0.0"})),
             patch(
-                "mureo.web.about._discover_all_mureo_packages",
+                "mureo.web.about.discover_all_mureo_packages",
                 return_value=["mureo", "mureo-ghost"],
             ),
         ):
@@ -355,7 +355,7 @@ class TestCollectAboutInfo:
                 _version_for({"mureo": "1.0.0", "mureo-example-skills": "0.3.0"}),
             ),
             patch(
-                "mureo.web.about._discover_all_mureo_packages",
+                "mureo.web.about.discover_all_mureo_packages",
                 return_value=["mureo", "mureo-example-skills"],
             ),
         ):
@@ -406,7 +406,7 @@ class TestCollectAboutInfo:
             patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
             patch("mureo.web.about.version", _version_for({"mureo": "1.0.0"})),
             patch(
-                "mureo.web.about._discover_all_mureo_packages",
+                "mureo.web.about.discover_all_mureo_packages",
                 side_effect=RuntimeError("metadata index corrupted"),
             ),
         ):
@@ -428,7 +428,7 @@ class TestCollectAboutInfo:
             patch("mureo.web.about.entry_points", _entry_points_for({})),
             patch("mureo.web.about.version", version_returns_none),
             patch(
-                "mureo.web.about._discover_all_mureo_packages",
+                "mureo.web.about.discover_all_mureo_packages",
                 return_value=["mureo", "mureo-malformed"],
             ),
         ):
@@ -453,7 +453,7 @@ class TestCollectAboutInfo:
                 _version_for({"mureo": "1.0.0", "mureo-example-skills": "0.3.0"}),
             ),
             patch(
-                "mureo.web.about._discover_all_mureo_packages",
+                "mureo.web.about.discover_all_mureo_packages",
                 return_value=["mureo", "mureo-example-skills"],
             ),
         ):
@@ -478,7 +478,7 @@ class TestCollectAboutInfo:
             patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
             patch("mureo.web.about.version", _version_for(versions)),
             patch(
-                "mureo.web.about._discover_all_mureo_packages",
+                "mureo.web.about.discover_all_mureo_packages",
                 return_value=updater_set,
             ),
         ):

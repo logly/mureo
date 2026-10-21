@@ -52,10 +52,10 @@ from typing import Any, Final
 
 from packaging.version import InvalidVersion, Version
 
-from mureo.cli.upgrade_cmd import (
-    _canonicalise,
-    _discover_all_mureo_packages,
-    _is_mureo_package,
+from mureo.installed_packages import (
+    canonicalise,
+    discover_all_mureo_packages,
+    is_mureo_package,
 )
 from mureo.pip_env import pip_subprocess_env
 
@@ -110,7 +110,7 @@ def _installed_mureo_versions() -> dict[str, str]:
     ``installed`` field of each reported package.
     """
     versions: dict[str, str] = {}
-    for name in _discover_all_mureo_packages():
+    for name in discover_all_mureo_packages():
         try:
             versions[name] = metadata.version(name)
         except metadata.PackageNotFoundError:
@@ -210,11 +210,11 @@ def _outdated_from_report(
             continue
         name = meta.get("name")
         latest = meta.get("version")
-        if not isinstance(name, str) or not name or not _is_mureo_package(name):
+        if not isinstance(name, str) or not name or not is_mureo_package(name):
             continue
         if not isinstance(latest, str) or not latest:
             continue
-        canonical = _canonicalise(name)
+        canonical = canonicalise(name)
         installed_version = installed.get(canonical)
         if not installed_version:
             continue

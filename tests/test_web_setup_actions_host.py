@@ -271,7 +271,7 @@ class TestInstallWorkflowSkillsHost:
         from mureo.web import setup_actions
 
         with patch(
-            "mureo.cli.setup_cmd.install_skills",
+            "mureo.web.setup_actions.install_skills",
             return_value=(7, tmp_path / ".claude" / "skills"),
         ) as mock_skills:
             result = setup_actions.install_workflow_skills(home=tmp_path)
@@ -286,13 +286,13 @@ class TestInstallWorkflowSkillsHost:
 
         dest = tmp_path / ".claude" / "skills"
         with patch(
-            "mureo.cli.setup_cmd.install_skills", return_value=(7, dest)
+            "mureo.web.setup_actions.install_skills", return_value=(7, dest)
         ) as mock_code:
             code_result = setup_actions.install_workflow_skills(
                 home=tmp_path, host="claude-code"
             )
         with patch(
-            "mureo.cli.setup_cmd.install_skills", return_value=(7, dest)
+            "mureo.web.setup_actions.install_skills", return_value=(7, dest)
         ) as mock_desktop:
             desktop_result = setup_actions.install_workflow_skills(
                 home=tmp_path, host="claude-desktop"

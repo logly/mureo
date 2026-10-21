@@ -158,6 +158,8 @@ mureo/
 │   ├── providers_cmd.py # `mureo providers list` / `install` / `uninstall` (official MCP catalog)
 │   ├── service_cmd.py   # `mureo service` — install/restart the auto-start configure daemon (#241)
 │   ├── upgrade_cmd.py   # `mureo upgrade` — pipx venv-aware bulk upgrade of mureo + plugins
+│   ├── skill_status.py  # Deployed workflow skills current / stale / missing (#728); read by
+│   │                    #   upgrade_cmd and web/status_collector.py (#863)
 │   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*` / `upgrade-google`
 │   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
 │   ├── journal_cmd.py   # `mureo journal` — read back JOURNAL.jsonl (last/tool/since/failures/mutations/json/all)
@@ -301,6 +303,9 @@ mureo/
 ├── creative_studio/     # Creator-grade ad-creative (image) generation via pluggable providers
 ├── byod/                # Bring Your Own Data — CSV-backed offline analysis (see BYOD Mode below)
 ├── web/                 # Local `mureo configure` UI — stdlib http.server on 127.0.0.1 (no web framework)
+│   │                    #   web imports cli helper modules by public names; cli imports only the
+│   │                    #   web leaves (instance, service, report_clients) and configure_cmd;
+│   │                    #   no web submodule loads server.py unless it needs it (#863)
 │   └── auth_wizard.py   # Browser-based OAuth wizard spawned by web/oauth_bridge.py (per-platform creds)
 ├── demo/                # `mureo demo init` synthetic-bundle bootstrap (round-trips through BYOD)
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
@@ -314,6 +319,9 @@ mureo/
 │                        #   the configure entry point only — never at import time, never on root.
 ├── client_factory.py    # Per-platform BYOD-vs-live client factory (MCP handlers, analytics,
 │                        #   change import); below mcp, so none of them loads the server (#863)
+├── installed_packages.py
+│                        # The installed mureo / mureo-* distributions, for `mureo upgrade`
+│                        #   and the dashboard's About / update check / upgrade (#863)
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)
 
 skills/                       # Native slash skills — one `<name>/SKILL.md` per skill (migrated from

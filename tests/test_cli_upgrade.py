@@ -79,7 +79,9 @@ def fake_distributions(monkeypatch: pytest.MonkeyPatch) -> Any:
     def _distributions() -> list[_FakeDist]:
         return state["dists"]
 
-    monkeypatch.setattr("mureo.cli.upgrade_cmd.metadata.distributions", _distributions)
+    monkeypatch.setattr(
+        "mureo.installed_packages.metadata.distributions", _distributions
+    )
     return _set
 
 
@@ -556,7 +558,7 @@ def test_refresh_deployed_skills_noop_when_no_skills_dir(
 
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
     install = MagicMock()
-    monkeypatch.setattr("mureo.cli.setup_cmd.install_skills", install)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd.install_skills", install)
     upgrade_cmd._refresh_deployed_skills()
     install.assert_not_called()
 
@@ -571,7 +573,7 @@ def test_refresh_deployed_skills_recopies_when_dir_exists(
     skills.mkdir(parents=True)
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
     install = MagicMock(return_value=(5, skills))
-    monkeypatch.setattr("mureo.cli.setup_cmd.install_skills", install)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd.install_skills", install)
     upgrade_cmd._refresh_deployed_skills()
     install.assert_called_once()
 
@@ -778,7 +780,7 @@ def test_refresh_credential_guard_swallows_errors(
     def _boom() -> None:
         raise RuntimeError("disk full")
 
-    monkeypatch.setattr("mureo.auth_setup.install_credential_guard", _boom)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd.install_credential_guard", _boom)
     # Must not raise.
     upgrade_cmd._refresh_credential_guard()
     assert "Credential-guard refresh skipped" in capsys.readouterr().err
@@ -812,7 +814,7 @@ def test_post_upgrade_refresh_includes_credential_guard(
 
 def _deploy_skills(dest: Path, version: str) -> None:
     """Write every shipped skill into ``dest`` at ``version`` (#728)."""
-    from mureo.web.status_collector import _shipped_skill_versions
+    from mureo.cli.skill_status import _shipped_skill_versions
 
     dest.mkdir(parents=True, exist_ok=True)
     for name in _shipped_skill_versions():
@@ -870,7 +872,7 @@ def test_report_skill_freshness_confirms_a_current_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from mureo.cli import upgrade_cmd
-    from mureo.web.status_collector import _shipped_skill_versions
+    from mureo.cli.skill_status import _shipped_skill_versions
 
     dest = tmp_path / ".claude" / "skills"
     dest.mkdir(parents=True)
@@ -894,7 +896,7 @@ def test_report_skill_freshness_flags_an_incomplete_set(
     import shutil
 
     from mureo.cli import upgrade_cmd
-    from mureo.web.status_collector import _shipped_skill_versions
+    from mureo.cli.skill_status import _shipped_skill_versions
 
     dest = tmp_path / ".claude" / "skills"
     _deploy_skills(dest, "0.10.39")
@@ -926,7 +928,7 @@ def test_report_skill_freshness_never_fails_the_upgrade(
     def _boom(_dir: Path) -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("mureo.web.status_collector._detect_workflow_skills", _boom)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd.detect_workflow_skills", _boom)
 
     upgrade_cmd._report_skill_freshness()  # must not raise
 
@@ -944,7 +946,7 @@ def test_restart_managed_service_noop_when_not_installed(
 
     backend = MagicMock()
     backend.status.return_value = MagicMock(installed=False)
-    monkeypatch.setattr("mureo.cli.service_cmd._resolve_backend", lambda: backend)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd._resolve_backend", lambda: backend)
     upgrade_cmd._restart_managed_service()
     backend.restart.assert_not_called()
 
@@ -957,7 +959,7 @@ def test_restart_managed_service_restarts_when_installed(
     backend = MagicMock()
     backend.status.return_value = MagicMock(installed=True)
     backend.restart.return_value = MagicMock(ok=True, message="restarted")
-    monkeypatch.setattr("mureo.cli.service_cmd._resolve_backend", lambda: backend)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd._resolve_backend", lambda: backend)
     upgrade_cmd._restart_managed_service()
     backend.restart.assert_called_once()
 
@@ -971,6 +973,6 @@ def test_restart_managed_service_swallows_unsupported_platform(
     def _boom() -> None:
         raise RuntimeError("unsupported platform")
 
-    monkeypatch.setattr("mureo.cli.service_cmd._resolve_backend", _boom)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd._resolve_backend", _boom)
     # Must not raise.
     upgrade_cmd._restart_managed_service()

@@ -48,6 +48,7 @@ from mureo.cli._state_file import resolve_default_state_file, state_file_for_sto
 from mureo.cli._tty import terminal_safe as _safe
 from mureo.context.platform_repair import plan_platform_keys
 from mureo.context.state import read_state_file
+from mureo.web.report_clients import list_report_clients, state_store_for_client
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -127,8 +128,6 @@ def list_repair_targets() -> ClientRegistry:
     declares no client seam (the OSS default) or when the seam raises.
     """
     try:
-        from mureo.web.report_clients import list_report_clients
-
         rows = list_report_clients()
     except Exception as exc:  # noqa: BLE001 — a backend fault degrades the sweep
         return ClientRegistry(
@@ -187,8 +186,6 @@ def _target_for_row(row: dict[str, Any]) -> ClientTarget:
     if not slug:
         return ClientTarget("(unnamed)", "(unnamed)", archived, None, "it has no slug")
     try:
-        from mureo.web.report_clients import state_store_for_client
-
         store = state_store_for_client(slug)
     except Exception as exc:  # noqa: BLE001 — a backend fault is one bad client
         return ClientTarget(
