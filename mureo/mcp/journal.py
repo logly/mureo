@@ -64,6 +64,15 @@ from typing import Any
 
 import mureo
 
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``read_state_file`` is honoured at call time.
+from mureo.context import state
+from mureo.context.batch import active_batch
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``get_runtime_context`` is honoured at call time.
+from mureo.core import runtime_context
+
 # Re-exported below: the process identity moved to ``mureo.core.actor`` in
 # #758 phase 2 so ``mureo.context.state`` can stamp it onto an ``action_log``
 # entry without importing ``mureo.mcp``. Kept importable from here — this is
@@ -132,9 +141,8 @@ def _state_path() -> Path | None:
     the workspace location.
     """
     try:
-        from mureo.core.runtime_context import get_runtime_context
-
-        path = getattr(get_runtime_context().state_store, "state_path", None)
+        store = runtime_context.get_runtime_context().state_store
+        path = getattr(store, "state_path", None)
     except Exception:  # noqa: BLE001 — path resolution is best-effort
         logger.debug("journal: runtime context unavailable", exc_info=True)
         return None
@@ -198,10 +206,7 @@ def _open_batch_id() -> str | None:
     if _batch_cache is not None and _batch_cache[0] == signature:
         return _batch_cache[1]
     try:
-        from mureo.context.batch import active_batch
-        from mureo.context.state import read_state_file
-
-        record = active_batch(read_state_file(state_path))
+        record = active_batch(state.read_state_file(state_path))
     except Exception:  # noqa: BLE001 — a broken STATE.json is not our problem
         logger.debug("journal: could not read the open batch", exc_info=True)
         return None
@@ -213,14 +218,10 @@ def _open_batch_id() -> str | None:
 def _workspace_id() -> str:
     """The bound workspace identifier, or the default when unresolvable."""
     try:
-        from mureo.core.runtime_context import get_runtime_context
-
-        return get_runtime_context().workspace_id
+        return runtime_context.get_runtime_context().workspace_id
     except Exception:  # noqa: BLE001
-        from mureo.core.runtime_context import DEFAULT_WORKSPACE_ID
-
         logger.debug("journal: workspace_id unavailable", exc_info=True)
-        return DEFAULT_WORKSPACE_ID
+        return runtime_context.DEFAULT_WORKSPACE_ID
 
 
 def build_record(

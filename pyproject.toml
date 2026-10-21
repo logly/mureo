@@ -161,11 +161,9 @@ known-first-party = ["mureo"]
     # check what its import does. Hoisting those would defeat the test.
     "PLC0415",
 ]
-# Temporary: cleared by #863 stage 4b (mcp) / 4c (web, cli). Do not add packages here.
-"mureo/mcp/**" = ["PLC0415"]
-# Temporary: cleared by #863 stage 4b (mcp) / 4c (web, cli). Do not add packages here.
+# Temporary: cleared by #863 stage 4c (web, cli). Do not add packages here.
 "mureo/web/**" = ["PLC0415"]
-# Temporary: cleared by #863 stage 4b (mcp) / 4c (web, cli). Do not add packages here.
+# Temporary: cleared by #863 stage 4c (web, cli). Do not add packages here.
 "mureo/cli/**" = ["PLC0415"]
 
 [tool.pytest.ini_options]

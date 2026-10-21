@@ -26,7 +26,16 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from mureo.amazon_ads.money_paths import BID_DECLARATIONS, BUDGET_DECLARATIONS
+from mureo.amazon_ads.provider import AMAZON_SOURCE_DISTRIBUTION
+from mureo.core.tool_names import is_read_only_tool_name
 from mureo.mcp.tool_provider import plugin_source
+from mureo.policy.declarations import (
+    register_bid_declaration,
+    register_budget_declaration,
+    register_read_only_hint,
+)
+from mureo.policy.pattern_scan import register_pattern_fallback_tool
 
 if TYPE_CHECKING:
     from mureo.mcp.plugin_semantics import ToolSemantics
@@ -48,8 +57,6 @@ def _register_plugin_budget_declarations(
     (no per-plugin hand-rolled gate). Best-effort: a registry failure must
     not take the server down.
     """
-    from mureo.policy.declarations import register_budget_declaration
-
     for name, sem in semantics.items():
         if sem.budget is None:
             continue
@@ -75,8 +82,6 @@ def _register_plugin_bid_declarations(
     gate's registry, so the ONE built-in gate enforces them. Best-effort: a
     registry failure must not take the server down.
     """
-    from mureo.policy.declarations import register_bid_declaration
-
     for name, sem in semantics.items():
         if sem.bid is None:
             continue
@@ -107,8 +112,6 @@ def _register_plugin_read_only_hints(
     never "read". Best-effort: a registry failure must not take the server
     down.
     """
-    from mureo.policy.declarations import register_read_only_hint
-
     for name, sem in semantics.items():
         if sem.read_only_hint is None:
             continue
@@ -178,9 +181,6 @@ def _register_plugin_pattern_fallbacks(
 
     Best-effort: a registry failure must not take the server down.
     """
-    from mureo.core.tool_names import is_read_only_tool_name
-    from mureo.policy.pattern_scan import register_pattern_fallback_tool
-
     for name, sem in semantics.items():
         if not sem.mutating:
             continue
@@ -215,8 +215,6 @@ def _declares_from_bridged_table(
     against the tool's actual provider instance — the same breadcrumb the
     audit trail attributes calls with.
     """
-    from mureo.amazon_ads.provider import AMAZON_SOURCE_DISTRIBUTION
-
     sem = semantics.get(name)
     if sem is None or not sem.mutating:
         return None
@@ -244,19 +242,8 @@ def _register_bridged_money_declarations(
     bridge (:func:`_declares_from_bridged_table`), and only when it declared
     nothing itself: a plugin's own ``_meta`` always wins over mureo's table —
     the tool author knows their vocabulary better than a snapshot does.
-    Best-effort: a registry failure must not take the server down, and neither
-    must a table that fails to import.
+    Best-effort: a registry failure must not take the server down.
     """
-    try:
-        from mureo.amazon_ads.money_paths import BID_DECLARATIONS, BUDGET_DECLARATIONS
-    except Exception:  # noqa: BLE001 — never break startup on a table
-        logger.warning("could not load the bridged money declarations", exc_info=True)
-        return
-    from mureo.policy.declarations import (
-        register_bid_declaration,
-        register_budget_declaration,
-    )
-
     for name, budget in BUDGET_DECLARATIONS.items():
         sem = _declares_from_bridged_table(name, semantics, dispatch)
         if sem is None or sem.budget is not None:

@@ -26,7 +26,11 @@ from mcp.types import TextContent, Tool
 
 from mureo.policy.learning_reset import learning_reset_denial, load_preflight
 from mureo.policy.learning_rules import registered_platforms
-from mureo.policy.strategy_gate import Guardrails, guardrails_from_strategy_text
+from mureo.policy.strategy_gate import (
+    Guardrails,
+    _resolve_strategy_path,
+    guardrails_from_strategy_text,
+)
 
 TOOL_NAME = "mureo_learning_reset_preflight"
 
@@ -92,8 +96,6 @@ _TOOL_NAMES: frozenset[str] = frozenset(t.name for t in TOOLS)
 
 def _guardrails() -> Guardrails:
     """The operator's guardrails, read fresh. Fail-open (empty) on any error."""
-    from mureo.policy.strategy_gate import _resolve_strategy_path
-
     try:
         path = _resolve_strategy_path()
         text = path.read_text(encoding="utf-8") if path.exists() else ""

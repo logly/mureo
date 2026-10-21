@@ -24,6 +24,8 @@ from typing import Any
 from mcp.types import TextContent, Tool
 
 from mureo._image_validation import validate_image_file
+from mureo.context.models import ActionLogEntry
+from mureo.context.state import append_action_log
 from mureo.core.clock import server_now_iso
 from mureo.creative_studio import composer
 from mureo.creative_studio.brand_kit import DEFAULT_BRAND_KIT, BrandKit, load_brand_kit
@@ -516,9 +518,6 @@ def _record_audit(run_id: str, manifest_path: Path) -> None:
         state_path = Path.cwd() / "STATE.json"
         if not state_path.is_file():
             return
-        from mureo.context.models import ActionLogEntry
-        from mureo.context.state import append_action_log
-
         entry = ActionLogEntry(
             # Server clock (#460) — same stamp/format as every other writer.
             timestamp=server_now_iso(),
@@ -756,9 +755,6 @@ def _studio_audit(action: str, summary: str, metrics: dict[str, Any]) -> None:
         state_path = Path.cwd() / "STATE.json"
         if not state_path.is_file():
             return
-        from mureo.context.models import ActionLogEntry
-        from mureo.context.state import append_action_log
-
         entry = ActionLogEntry(
             # Server clock (#460) — same stamp/format as every other writer.
             timestamp=server_now_iso(),

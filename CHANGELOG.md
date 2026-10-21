@@ -71,6 +71,11 @@
   `detect_workflow_skills`, formerly `_detect_workflow_skills`). Code that
   patched `mureo.web.service.is_managed_service` for the dashboard's restart
   patches `mureo.web.handlers.is_managed_service`.
+- **The MCP server now fails to start if the bundled Amazon money-path table
+  cannot be imported** (#863). `mureo.mcp._plugin_declarations` imports
+  `mureo.amazon_ads.money_paths` at load; previously a failed import logged a
+  warning and the server started without the bridged money declarations.
+  Registering each declaration is still best-effort.
 
 ### Fixed
 

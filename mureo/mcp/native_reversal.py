@@ -46,8 +46,15 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from mureo.context.models import ActionLogEntry
+from mureo.context.state import append_action_log
 from mureo.core import clock
-from mureo.mcp._helpers import is_error_result
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``_get_client`` is honoured at call time.
+from mureo.mcp import _handlers_google_ads, _handlers_meta_ads
+from mureo.mcp._helpers import _close_clients, is_error_result
+from mureo.mcp.plugin_semantics import extract_mutation_identity
 
 logger = logging.getLogger(__name__)
 
@@ -270,13 +277,10 @@ async def capture_before_state(name: str, args: dict[str, Any]) -> Any:
 
 async def _read_meta_exclusions(args: dict[str, Any]) -> dict[str, Any] | None:
     """Read an ad set's current exclusion lists before they are replaced."""
-    from mureo.mcp._handlers_meta_ads import _get_client
-    from mureo.mcp._helpers import _close_clients
-
     ad_set_id = args.get("ad_set_id")
     if not ad_set_id:
         return None
-    client = await _get_client(args)
+    client = await _handlers_meta_ads._get_client(args)
     if client is None:
         return None
     # Runs outside any handler's cleanup scope, so close the httpx pool here.
@@ -292,10 +296,7 @@ async def _read_status(
 ) -> str | None:
     platform, entity, _ = spec
     if platform == "meta_ads":
-        from mureo.mcp._handlers_meta_ads import _get_client
-        from mureo.mcp._helpers import _close_clients
-
-        client = await _get_client(args)
+        client = await _handlers_meta_ads._get_client(args)
         if client is None:
             return None
         # before-state capture runs outside any handler's cleanup scope, so
@@ -311,9 +312,7 @@ async def _read_status(
         finally:
             await _close_clients([client])
 
-    from mureo.mcp._handlers_google_ads import _get_client as _get_google_client
-
-    client = await _get_google_client(args)
+    client = await _handlers_google_ads._get_client(args)
     if client is None:
         return None
     if entity == "campaigns":
@@ -360,10 +359,6 @@ def record_native_mutation(
         state_path = Path.cwd() / "STATE.json"
         if not state_path.is_file():
             return
-        from mureo.context.models import ActionLogEntry
-        from mureo.context.state import append_action_log
-        from mureo.mcp.plugin_semantics import extract_mutation_identity
-
         # Server clock (#460): the same offset-bearing local timestamp
         # ``mureo_state_action_log_append`` stamps, so entries from both
         # promotion paths are directly comparable — and ``observation_due``

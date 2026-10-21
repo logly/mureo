@@ -32,6 +32,10 @@ from typing import TYPE_CHECKING, Any, Final
 
 from mureo.context.auto_evaluation import close_due_observations
 
+# Reached through the module so a test that freezes the clock is seen
+# here too (see ``mureo.core.clock``).
+from mureo.core import clock
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -84,7 +88,9 @@ def _policy_denial(tool_name: str) -> str | None:
     """
     # Lazy: ``mureo.mcp.server`` imports the tool modules, one of which
     # imports this one for the schema property above.
-    from mureo.mcp.server import _evaluate_policy_gates
+    from mureo.mcp.server import (  # noqa: PLC0415 — import cycle: mureo.mcp._auto_evaluation_hook -> mureo.mcp.server (#879)
+        _evaluate_policy_gates,
+    )
 
     decision = _evaluate_policy_gates(tool_name, {})
     if decision is None:
@@ -103,10 +109,6 @@ def _auto_evaluate(path: Path, arguments: dict[str, Any]) -> dict[str, Any]:
     """
     if not arguments.get("auto_evaluate", True):
         return {}
-    # Reached through the module so a test that freezes the clock is seen
-    # here too (see ``mureo.core.clock``).
-    from mureo.core import clock
-
     fragment: dict[str, Any] = {"auto_evaluations": [], "auto_evaluation_skipped": []}
     try:
         result = close_due_observations(

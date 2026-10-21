@@ -39,22 +39,35 @@ from __future__ import annotations
 
 import logging
 import os
+from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.types import TextContent
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from mcp.types import Tool
 
-    from mureo.core.policy import PolicyDecision, PolicyGate
+    from mureo.core.policy import PolicyGate
     from mureo.mcp._journal_hook import JournalledCall
     from mureo.mcp.tool_provider import MCPToolProvider
 
+from mureo.amazon_ads.provider import amazon_ads_disabled, register_amazon_provider
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``get_runtime_context`` is honoured at call time.
+from mureo.core import runtime_context
 from mureo.core.actor import bind_call_reason
+from mureo.core.policy import POLICY_GATES_ENTRY_POINT_GROUP, PolicyDecision
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# registry is honoured at call time.
+from mureo.core.providers import registry as _registry
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
+from mureo.core.throttle_store import ProcessLocalThrottleStore
 from mureo.mcp._helpers import is_error_result
 from mureo.mcp._journal_hook import capture_client_info, journal_call, take_rationale
 from mureo.mcp._ops_history_param import (
@@ -135,6 +148,8 @@ from mureo.mcp.tools_rollback import handle_tool as handle_rollback_tool
 from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
 from mureo.mcp.tools_search_console import handle_tool as handle_search_console_tool
 from mureo.policy.learning_reset import set_builtin_platform_tool_names
+from mureo.policy.platform_model import platform_model_instructions
+from mureo.policy.strategy_gate import StrategyPolicyGate
 from mureo.rollback.executor import is_rollback_dispatch_active
 from mureo.rollback.planner import set_plugin_reversal_keys
 from mureo.throttle import PLUGIN_THROTTLE, Throttler
@@ -301,9 +316,6 @@ def _discover_with_amazon() -> tuple[Any, ...]:
     function runs at all) still wins, which is the documented
     first-wins contract.
     """
-    from mureo.amazon_ads.provider import amazon_ads_disabled, register_amazon_provider
-    from mureo.core.providers import registry as _registry
-
     if amazon_ads_disabled():
         # ``MUREO_DISABLE_AMAZON_ADS=1`` — the bridge is neither registered nor
         # appended, so no Amazon tools are exposed AND the configure UI does
@@ -488,13 +500,7 @@ async def _acquire_plugin_throttle(name: str) -> None:
     ``acquire``, so a backend that wants the "unknown name → shared
     default bucket" behaviour must implement it internally.
     """
-    # Lazy import to avoid an import cycle: ``mureo.core.runtime_context``
-    # is free to reference MCP types in future without circling back to
-    # this module via the top-level import graph.
-    from mureo.core.runtime_context import get_runtime_context
-    from mureo.core.throttle_store import ProcessLocalThrottleStore
-
-    store = get_runtime_context().throttle_store
+    store = runtime_context.get_runtime_context().throttle_store
     if isinstance(store, ProcessLocalThrottleStore):
         ident = id(store)
         if ident not in _throttle_store_seeded:
@@ -543,10 +549,6 @@ def _policy_gate_entry_points() -> tuple[Any, ...] | None:
     monkeypatching ``importlib.metadata`` — and, since the memo is keyed by
     this function object, so that patching it is what misses the memo.
     """
-    from importlib.metadata import entry_points
-
-    from mureo.core.policy import POLICY_GATES_ENTRY_POINT_GROUP
-
     try:
         eps = entry_points(group=POLICY_GATES_ENTRY_POINT_GROUP)
     except Exception as exc:  # noqa: BLE001
@@ -662,8 +664,6 @@ def _builtin_policy_gates() -> tuple[PolicyGate, ...]:
     gates only" contract (and its tests) stay unchanged. Each built-in gate
     is fail-open: it abstains (allows) whenever no rule applies.
     """
-    from mureo.policy.strategy_gate import StrategyPolicyGate
-
     return (StrategyPolicyGate(),)
 
 
@@ -712,11 +712,6 @@ def _evaluate_policy_gates(
     rest of the process. What is **not** cached is any failure; see
     :data:`_POLICY_GATE_CLASS_CACHE`.
     """
-    # Lazy-imported so the type is available for the isinstance guard
-    # without re-introducing the runtime import at module top (it lives
-    # under TYPE_CHECKING for the rest of this module).
-    from mureo.core.policy import PolicyDecision as _PolicyDecision
-
     for gate in (*_builtin_policy_gates(), *_load_policy_gates()):
         try:
             decision = gate.evaluate(name, arguments)
@@ -734,7 +729,7 @@ def _evaluate_policy_gates(
         # Treat any non-PolicyDecision return as a buggy abstain so
         # one broken gate cannot take mureo offline — the exact same
         # discipline as the per-call exception isolation above.
-        if not isinstance(decision, _PolicyDecision):
+        if not isinstance(decision, PolicyDecision):
             logger.warning(
                 "policy gate %r returned %r (not PolicyDecision) on '%s'; " "abstain",
                 type(gate).__name__,
@@ -766,15 +761,18 @@ def _maybe_append_staleness_warning(result: list[Any]) -> list[Any]:
     if _staleness_warned:
         return result
     try:
-        from mureo.core.version_staleness import staleness_warning
+        # Startup cost (~5 ms CPU): the version check and ``packaging`` behind
+        # it are deferred to the first tool call (#863). Read through the
+        # module so a monkeypatched ``staleness_warning`` is honoured.
+        from mureo.core import (  # noqa: PLC0415 — startup cost (#863)
+            version_staleness,
+        )
 
-        warning = staleness_warning()
+        warning = version_staleness.staleness_warning()
         if warning is None:
             return result
         _staleness_warned = True
         logger.warning("%s", warning)
-        from mcp.types import TextContent
-
         return [*result, TextContent(type="text", text=warning)]
     except Exception:  # noqa: BLE001 - a version check must never break a tool call
         logger.debug("staleness warning check failed", exc_info=True)
@@ -1053,23 +1051,14 @@ def _workspace_instruction() -> str:
     Returns ``""`` for the default single-workspace install — see
     :func:`_server_instructions` for why that matters.
     """
-    # Lazy import mirrors the throttle path above (``_acquire_plugin_throttle``):
-    # keeping it inside the function pre-empts a cycle should
-    # ``mureo.core.runtime_context`` ever reference MCP types.
-    from mureo.core.runtime_context import (
-        DEFAULT_WORKSPACE_ID,
-        RuntimeContextFactoryError,
-        get_runtime_context,
-    )
-
     try:
-        workspace_id = get_runtime_context().workspace_id
-    except RuntimeContextFactoryError:
+        workspace_id = runtime_context.get_runtime_context().workspace_id
+    except runtime_context.RuntimeContextFactoryError:
         # A misconfigured factory is a real error, but it must surface where it
         # already does (first tool call), not by refusing to start the server.
         # Omit instructions and let startup proceed unchanged.
         return ""
-    if workspace_id == DEFAULT_WORKSPACE_ID:
+    if workspace_id == runtime_context.DEFAULT_WORKSPACE_ID:
         return ""
     return (
         f"This mureo server is bound to workspace {workspace_id!r}. Every tool "
@@ -1098,11 +1087,6 @@ def _platform_model_instruction() -> str:
     registered a model — which is every install with no such plugin, mureo core
     shipping none of its own.
     """
-    # Lazy import for the same reason as the runtime-context import above:
-    # nothing in the policy package is needed to define the tool list, and
-    # keeping it out of module import order pre-empts a cycle.
-    from mureo.policy.platform_model import platform_model_instructions
-
     return platform_model_instructions(_plugin_tool_owners())
 
 

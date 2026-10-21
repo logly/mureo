@@ -26,6 +26,10 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.context.errors import ContextFileError
 from mureo.context.state import read_state_file
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``get_runtime_context`` is honoured at call time.
+from mureo.core import runtime_context
 from mureo.mcp._helpers import (
     _failure_result,
     _json_result,
@@ -56,7 +60,9 @@ def _get_dispatcher() -> Callable[[str, dict[str, Any]], Awaitable[list[Any]]]:
     Lazy import breaks the ``server → tools_rollback → _handlers_rollback
     → server`` cycle. Tests replace this via ``monkeypatch``.
     """
-    from mureo.mcp.server import handle_call_tool
+    from mureo.mcp.server import (  # noqa: PLC0415 — import cycle: mureo.mcp._handlers_rollback -> mureo.mcp.server (#879)
+        handle_call_tool,
+    )
 
     return handle_call_tool
 
@@ -78,9 +84,7 @@ def _resolve_state_file(arguments: dict[str, Any]) -> Path:
     follows symlinks, so a file inside the workspace that symlinks to
     ``/etc/passwd`` resolves to the target and is correctly refused.
     """
-    from mureo.core.runtime_context import get_runtime_context
-
-    store = get_runtime_context().state_store
+    store = runtime_context.get_runtime_context().state_store
     workspace = getattr(store, "workspace", Path.cwd()).resolve()
     raw = arguments.get("state_file")
     if not raw:

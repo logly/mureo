@@ -41,6 +41,7 @@ from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp import journal
 from mureo.mcp._helpers import API_ERROR_CODE, exception_text, failure_of
 from mureo.mcp._reason_param import split_call_reason
+from mureo.mcp.tool_provider import plugin_source
 from mureo.rollback.executor import is_rollback_dispatch_active
 
 if TYPE_CHECKING:
@@ -135,7 +136,9 @@ def take_rationale(
 
 def tool_family(name: str) -> str:
     """Return the journal ``family`` label for tool ``name``."""
-    from mureo.mcp import server
+    from mureo.mcp import (  # noqa: PLC0415 — import cycle: mureo.mcp._journal_hook -> mureo.mcp.server (#879)
+        server,
+    )
 
     for attribute, family in _FAMILIES:
         if name in getattr(server, attribute, frozenset()):
@@ -147,7 +150,9 @@ def tool_mutating(name: str, family: str) -> bool:
     """Whether ``name`` is a mutation, by the dispatcher's own rules."""
     if family != _PLUGIN_FAMILY:
         return is_mutating_builtin_tool(name)
-    from mureo.mcp import server
+    from mureo.mcp import (  # noqa: PLC0415 — import cycle: mureo.mcp._journal_hook -> mureo.mcp.server (#879)
+        server,
+    )
 
     semantics = server._PLUGIN_SEMANTICS.get(name)
     return True if semantics is None else bool(semantics.mutating)
@@ -155,8 +160,9 @@ def tool_mutating(name: str, family: str) -> bool:
 
 def plugin_source_of(name: str) -> str | None:
     """The distribution that supplied plugin tool ``name``, else ``None``."""
-    from mureo.mcp import server
-    from mureo.mcp.tool_provider import plugin_source
+    from mureo.mcp import (  # noqa: PLC0415 — import cycle: mureo.mcp._journal_hook -> mureo.mcp.server (#879)
+        server,
+    )
 
     provider = server._PLUGIN_DISPATCH.get(name)
     return None if provider is None else plugin_source(provider)

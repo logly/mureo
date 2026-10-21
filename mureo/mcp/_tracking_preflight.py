@@ -61,6 +61,10 @@ from mureo.analysis.tracking import (
     preflight_tracking_consistency,
     records_from_google_ads_ads,
 )
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``get_runtime_context`` is honoured at call time.
+from mureo.core import runtime_context
 from mureo.core.credential_source import (
     active_source_identity,
     current_credential_source,
@@ -146,9 +150,7 @@ def _strategy_path() -> Path:
     registered through ``mureo.runtime_context_factory`` that does not
     expose one.
     """
-    from mureo.core.runtime_context import get_runtime_context
-
-    store = get_runtime_context().state_store
+    store = runtime_context.get_runtime_context().state_store
     declared = getattr(store, "strategy_path", None)
     if declared is not None:
         return Path(declared)

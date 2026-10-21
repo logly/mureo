@@ -56,9 +56,11 @@ single-workspace response gains only the two always-present keys.
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
+from mureo.analysis.outcome_eval import evaluate_outcome
 from mureo.analysis.report_flags import normalize_flags
 from mureo.context.approval import parse_approval
 from mureo.context.batch import BatchError
@@ -93,6 +95,10 @@ from mureo.context.strategy import (
     strategy_preamble,
     write_strategy_file,
 )
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``get_runtime_context`` is honoured at call time.
+from mureo.core import runtime_context
 from mureo.core.clock import server_now_iso
 from mureo.fsutil import backup_file
 from mureo.mcp._auto_evaluation_hook import _auto_evaluate
@@ -116,12 +122,7 @@ def _runtime_envelope() -> dict[str, Any]:
     ``notices`` is omitted when the runtime has none so the default
     single-workspace response does not grow an always-empty list.
     """
-    # Lazy import, as everywhere else in this package: importing
-    # ``mureo.core.runtime_context`` at module load would pull the state
-    # layer into every handler import (see ``_helpers``).
-    from mureo.core.runtime_context import get_runtime_context
-
-    ctx = get_runtime_context()
+    ctx = runtime_context.get_runtime_context()
     envelope: dict[str, Any] = {"workspace_id": ctx.workspace_id}
     if ctx.notices:
         envelope["notices"] = list(ctx.notices)
@@ -194,9 +195,7 @@ async def handle_strategy_set(arguments: dict[str, Any]) -> list[TextContent]:
 
 def _state_to_dict(doc: StateDocument) -> dict[str, Any]:
     """Serialize a StateDocument back to the dict shape callers expect."""
-    import json as _json
-
-    parsed: dict[str, Any] = _json.loads(render_state(doc))
+    parsed: dict[str, Any] = json.loads(render_state(doc))
     return parsed
 
 
@@ -765,8 +764,6 @@ async def handle_outcome_evaluate(arguments: dict[str, Any]) -> list[TextContent
     ``metrics_at_action`` as ``before`` and the current numbers as ``after``).
     Returns per-metric and overall improved/regressed/inconclusive verdicts.
     """
-    from mureo.analysis.outcome_eval import evaluate_outcome
-
     before = _require(arguments, "before")
     after = _require(arguments, "after")
     if not isinstance(before, dict) or not isinstance(after, dict):

@@ -39,6 +39,7 @@ from mureo.analysis.exclusion_impact import (
     unevaluated_rules,
 )
 from mureo.mcp._helpers import _json_result, _opt
+from mureo.policy.strategy_gate import load_guardrails
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -187,8 +188,6 @@ async def handle_exclusion_impact_preview(
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     """Size an exclusion batch without applying it."""
-    from mureo.policy.strategy_gate import load_guardrails
-
     rules = exclusion_impact_rules(load_guardrails())
     window_days = int(_opt(arguments, "window_days", rules.window_days))
     if window_days < 1:
