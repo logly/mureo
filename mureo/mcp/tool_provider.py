@@ -50,6 +50,10 @@ import logging
 import warnings
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+# Read through the module (not bound to a name here) so a monkeypatched
+# registry — and module reloads — are honoured at call time.
+from mureo.core.providers import registry as _registry
+
 # Re-exported, defined in a leaf module. A deployment that promotes this
 # category to an error has to name it before the warnings are emitted, and
 # importing anything under ``mureo.mcp`` runs ``mureo/mcp/__init__.py``, which
@@ -166,10 +170,7 @@ def collect_plugin_tools(
     dispatch: dict[str, MCPToolProvider] = {}
 
     if discover is None:
-        # Resolve live (not via default-arg binding) so a monkeypatched
-        # registry — and module reloads — are honoured at call time.
-        from mureo.core.providers import registry as _registry
-
+        # Resolved here, not as a default argument, for the reason above.
         discover = _registry.discover_providers
 
     try:

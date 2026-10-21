@@ -31,6 +31,10 @@ from mureo.analysis.anomaly_detector import (
 )
 from mureo.context.errors import ContextFileError
 from mureo.context.state import read_state_file
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``get_runtime_context`` is honoured at call time.
+from mureo.core import runtime_context
 from mureo.mcp._helpers import _failure_result, _json_result, _opt, _require
 
 if TYPE_CHECKING:
@@ -58,9 +62,7 @@ def _resolve_state_file(arguments: dict[str, Any]) -> Path:
     analysis surface returns derived metrics that could leak file
     contents an attacker swaps in mid-call.
     """
-    from mureo.core.runtime_context import get_runtime_context
-
-    store = get_runtime_context().state_store
+    store = runtime_context.get_runtime_context().state_store
     workspace = getattr(store, "workspace", Path.cwd()).resolve()
     raw = arguments.get("state_file")
     if not raw:

@@ -8,8 +8,8 @@ reasons AGENTS.md lists. An ``import cycle`` reason names two real modules,
 and the second one is the module the statement imports. No file-level
 ``# ruff: noqa`` may cover the rule.
 
-The per-file ignore that switches the rule off for ``mcp`` / ``web`` / ``cli``
-is temporary (#863 stages 4b / 4c) and only shrinks, and nothing else in the
+The per-file ignore that switches the rule off for ``web`` / ``cli`` is
+temporary (#863 stage 4c) and only shrinks, and nothing else in the
 ruff config may switch the rule off.
 """
 
@@ -41,7 +41,7 @@ _REPO_ROOT = _PACKAGE_ROOT.parent
 _RULE = "PLC0415"
 
 #: ``per-file-ignores`` globs allowed to switch the rule off under ``mureo/``.
-_PLC0415_RATCHET = frozenset({"mureo/mcp/**", "mureo/web/**", "mureo/cli/**"})
+_PLC0415_RATCHET = frozenset({"mureo/web/**", "mureo/cli/**"})
 
 #: Every ``per-file-ignores`` key allowed to list the rule at all.
 _PLC0415_IGNORE_KEYS = _PLC0415_RATCHET | {"tests/**"}

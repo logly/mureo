@@ -47,6 +47,7 @@ and refuses only if the operator asked for that with
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.exclusion_impact import (
@@ -60,6 +61,11 @@ from mureo.analysis.exclusion_impact import (
     register_exclusion_surface,
 )
 from mureo.core import clock
+
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``_get_client`` is honoured at call time.
+from mureo.mcp import _handlers_google_ads, _handlers_meta_ads
+from mureo.mcp._helpers import _close_clients
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -107,8 +113,6 @@ def _period(window_days: int) -> str:
     calendar day), not a GAQL ``LAST_30_DAYS`` constant, so an arbitrary
     ``exclusion_impact_window_days`` is expressible.
     """
-    from datetime import timedelta
-
     end = clock.server_now().date()
     start = end - timedelta(days=max(1, window_days) - 1)
     return f"BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'"
@@ -121,16 +125,12 @@ def _period(window_days: int) -> str:
 
 async def google_ads_client(arguments: Mapping[str, Any]) -> Any:
     """A Google Ads client for this call's account, or ``None``."""
-    from mureo.mcp._handlers_google_ads import _get_client
-
-    return await _get_client(dict(arguments))
+    return await _handlers_google_ads._get_client(dict(arguments))
 
 
 async def meta_ads_client(arguments: Mapping[str, Any]) -> Any:
     """A Meta Ads client for this call's account, or ``None``."""
-    from mureo.mcp._handlers_meta_ads import _get_client
-
-    return await _get_client(dict(arguments))
+    return await _handlers_meta_ads._get_client(dict(arguments))
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +207,6 @@ async def google_placement_delivery(
     arguments: Mapping[str, Any], window_days: int
 ) -> DeliverySample:
     """Placement-attributed delivery for the scope this call writes to."""
-    from mureo.mcp._helpers import _close_clients
-
     campaign_id = arguments.get("campaign_id") or None
     ad_group_id = arguments.get("ad_group_id") or None
     client = await google_ads_client(arguments)
@@ -311,8 +309,6 @@ async def google_negative_keyword_delivery(
     arguments: Mapping[str, Any], window_days: int
 ) -> DeliverySample:
     """Search-term delivery for the campaign / ad group being negated."""
-    from mureo.mcp._helpers import _close_clients
-
     campaign_id = arguments.get("campaign_id") or None
     ad_group_id = arguments.get("ad_group_id") or None
     client = await google_ads_client(arguments)

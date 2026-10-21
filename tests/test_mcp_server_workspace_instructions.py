@@ -22,7 +22,7 @@ def _import_server_module():
 
 
 def _patch_workspace(monkeypatch: pytest.MonkeyPatch, workspace_id: str) -> None:
-    # ``_server_instructions`` re-imports ``get_runtime_context`` from the module
+    # ``_server_instructions`` reads ``get_runtime_context`` through the module
     # on every call, so patching the module attribute is picked up at call time.
     monkeypatch.setattr(
         "mureo.core.runtime_context.get_runtime_context",

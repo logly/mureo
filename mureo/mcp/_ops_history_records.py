@@ -19,6 +19,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.context.batch import active_batch
+from mureo.context.ops_linkage import batch_decision_root
+from mureo.context.settings import ops_history_enabled
+from mureo.context.state import read_state_file
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -44,9 +49,6 @@ _EXPECTING_STATUSES: Final[frozenset[str]] = frozenset({"proposed", "adopted"})
 
 def _enabled_doc(path: Path) -> StateDocument | None:
     """The document at ``path`` when ops history is on there, else ``None``."""
-    from mureo.context.settings import ops_history_enabled
-    from mureo.context.state import read_state_file
-
     if not path.is_file():
         return None
     doc = read_state_file(path, strict=False)
@@ -55,9 +57,6 @@ def _enabled_doc(path: Path) -> StateDocument | None:
 
 def _opens_a_decision(doc: StateDocument, entry: ActionLogEntry) -> bool:
     """Would appending ``entry`` create a new decision record?"""
-    from mureo.context.batch import active_batch
-    from mureo.context.ops_linkage import batch_decision_root
-
     if entry.evaluation_of is not None or entry.rollback_of is not None:
         return False
     if entry.origin is not None or entry.decision_id is not None:

@@ -4,6 +4,7 @@ mutating-call promotion into STATE.json's action_log.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -510,7 +511,10 @@ class TestRecordMutationActionLog:
         assert not (tmp_path / "STATE.json").exists()  # never created
 
     def test_never_raises_on_append_failure(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         self._seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -519,7 +523,17 @@ class TestRecordMutationActionLog:
             raise OSError("disk gone")
 
         monkeypatch.setattr("mureo.context.state.append_action_log", _boom)
-        record_mutation_action_log(tool="t", source="s", reversal=None)  # swallowed
+        with caplog.at_level(logging.WARNING, logger="mureo.mcp.plugin_semantics"):
+            record_mutation_action_log(tool="t", source="s", reversal=None)  # swallowed
+
+        # The patched append is the one that failed: the warning carries its error.
+        (record,) = [
+            r
+            for r in caplog.records
+            if "plugin action_log promotion failed" in r.message
+        ]
+        assert record.exc_info is not None
+        assert str(record.exc_info[1]) == "disk gone"
 
     def _due_date(self, doc_path: Path) -> date:
         from mureo.context.state import read_state_file

@@ -60,8 +60,11 @@ attached. That never blocks unless the operator wrote
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from mcp.types import TextContent
 
 from mureo.analysis.exclusion_impact import (
     COVERAGE_MEASURED,
@@ -78,6 +81,8 @@ from mureo.core.control_flow import STOP_EXCEPTIONS
 
 # Importing the sources module registers the built-in surfaces.
 from mureo.mcp import exclusion_sources as _sources  # noqa: F401
+from mureo.mcp._helpers import is_error_result
+from mureo.policy.strategy_gate import load_guardrails
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -170,14 +175,10 @@ async def exclusion_impact_preflight(
     Never raises: an unexpected failure degrades to "not checked", because
     a broken pre-flight must not take the exclusion tools offline.
     """
-    import os
-
     surface = exclusion_surface_for(name)
     if surface is None or os.environ.get(DISABLE_ENV_VAR) == "1":
         return _NOT_A_SURFACE
     try:
-        from mureo.policy.strategy_gate import load_guardrails
-
         rules = exclusion_impact_rules(load_guardrails())
         if not rules.enabled():
             # No rule written ⇒ no platform read, no refusal, no notice.
@@ -198,8 +199,6 @@ async def exclusion_impact_preflight(
 
 def refusal_content(preflight: ExclusionPreflight) -> list[Any]:
     """The TextContent payload returned in place of a refused exclusion."""
-    from mcp.types import TextContent
-
     reason = preflight.refusal_reason or ""
     impact = preflight.impact
     body = "Tool call refused by the exclusion delivery-impact guardrail.\n"
@@ -290,15 +289,11 @@ def _inert_rule_lines(preflight: ExclusionPreflight) -> str:
 def append_notice(result: list[Any], preflight: ExclusionPreflight) -> list[Any]:
     """Append the impact notice to an exclusion call's result. Never raises."""
     try:
-        from mureo.mcp._helpers import is_error_result
-
         if preflight.impact is None or is_error_result(result):
             return result
         text = notice_text(preflight)
         if not text:
             return result
-        from mcp.types import TextContent
-
         return [*result, TextContent(type="text", text=text)]
     except Exception:  # noqa: BLE001 — a notice must never break a tool call
         logger.debug("exclusion impact notice failed", exc_info=True)

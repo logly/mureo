@@ -18,6 +18,8 @@ caller-supplied path), and the delivery rows come in as arguments.
 from __future__ import annotations
 
 import dataclasses
+import enum
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.collapse_diagnosis import (
@@ -49,8 +51,6 @@ if TYPE_CHECKING:
 
 def _jsonable(value: Any) -> Any:
     """Frozen dataclasses -> dicts, enums -> values, tuples -> lists."""
-    import enum
-
     if isinstance(value, enum.Enum):
         return value.value
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
@@ -90,8 +90,6 @@ def _parse_date_arg(arguments: dict[str, Any], field: str) -> date | None:
     raw = arguments.get(field)
     if not raw:
         return None
-    from datetime import datetime
-
     try:
         return datetime.strptime(str(raw), "%Y-%m-%d").date()  # noqa: DTZ007
     except ValueError as exc:

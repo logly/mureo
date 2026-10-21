@@ -17,6 +17,10 @@ if TYPE_CHECKING:
 
     from mureo.core.credential_source import GoogleCredentialSource
 
+# Read through the modules (not bound to names here) so monkeypatched
+# credential, account-discovery and BYOD lookups are honoured at call time.
+from mureo import auth, google_ads
+from mureo.byod import runtime as byod_runtime
 from mureo.core.account_scope import normalize_customer_id
 from mureo.core.credential_source import call_source, current_google_source
 from mureo.core.runtime_context import runtime_google_ads_customer_ids
@@ -81,10 +85,8 @@ async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
     with a ``google`` entry wins over BYOD mode: both branches then run
     live against the source's credentials, and both are filtered.
     """
-    from mureo.byod.runtime import byod_has
-
     google = current_google_source()
-    byod = google is None and byod_has("google_ads")
+    byod = google is None and byod_runtime.byod_has("google_ads")
     if byod or _opt(args, "customer_id"):
         client = await _get_client(args)
         if client is None:
@@ -108,14 +110,11 @@ async def _discover_accounts(
     With a source (#821) its credentials and ``google.auth`` object are
     used and the credentials file is not read.
     """
-    from mureo.auth import load_google_ads_credentials
-    from mureo.google_ads import list_accessible_accounts
-
     if google is None:
-        creds = load_google_ads_credentials()
+        creds = auth.load_google_ads_credentials()
         if creds is None:
             return None
-        return await list_accessible_accounts(creds)
+        return await google_ads.list_accessible_accounts(creds)
     creds = call_source("google", google.load_credentials)
     if creds is None:
         return None
@@ -123,7 +122,7 @@ async def _discover_accounts(
     oauth = await asyncio.to_thread(
         call_source, "google", google.oauth_credentials, creds
     )
-    return await list_accessible_accounts(creds, oauth_credentials=oauth)
+    return await google_ads.list_accessible_accounts(creds, oauth_credentials=oauth)
 
 
 def _filter_accounts_to_allowed(accounts: Any) -> Any:
@@ -572,7 +571,11 @@ async def handle_zero_conversions_diagnose(
 
 @api_error_handler
 async def handle_capture(args: dict[str, Any]) -> list[TextContent]:
-    from mureo.google_ads._message_match import LPScreenshotter
+    # Startup cost (~47 ms CPU): the landing-page screenshotter and the HTML
+    # parser behind it are deferred to the first capture (#863).
+    from mureo.google_ads._message_match import (  # noqa: PLC0415 — startup cost (#863)
+        LPScreenshotter,
+    )
 
     url = _require(args, "url")
     parsed = urlparse(url)

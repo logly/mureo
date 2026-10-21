@@ -26,6 +26,9 @@ if TYPE_CHECKING:
 
 from mcp.types import TextContent
 
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``get_runtime_context`` is honoured at call time.
+from mureo.core import runtime_context
 from mureo.core.auth_failure import (
     AUTH_CAUSE_NO_CREDENTIALS,
     auth_failure_payload,
@@ -143,11 +146,7 @@ def resolve_workspace_path(
       file inside the workspace that symlinks to ``/etc/passwd``
       resolves to the target and is correctly refused.
     """
-    # Lazy import: ``mureo.core.runtime_context`` pulls in the state layer,
-    # and ``_helpers`` is imported by every handler module at load time.
-    from mureo.core.runtime_context import get_runtime_context
-
-    store = get_runtime_context().state_store
+    store = runtime_context.get_runtime_context().state_store
     workspace = getattr(store, "workspace", Path.cwd()).resolve()
     raw = arguments.get("path")
     if not raw:

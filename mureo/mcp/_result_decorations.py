@@ -35,8 +35,16 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mcp.types import TextContent
+
 from mureo.core.control_flow import STOP_EXCEPTIONS
+from mureo.core.strategy_reminder import (
+    maybe_build_reminder,
+    maybe_build_reminder_for_plugin,
+)
+from mureo.mcp._handlers_batch import maybe_build_batch_reminder
 from mureo.mcp.tool_provider import MCPReversibleToolProvider
+from mureo.policy.learning_reset import load_preflight, preflight_notice
 
 if TYPE_CHECKING:
     from mureo.core.policy import PolicyDecision
@@ -50,8 +58,6 @@ def _refuse_text_content(name: str, decision: PolicyDecision) -> list[Any]:
     policy gate refuses a tool call. Kept here so the message format
     has one source of truth.
     """
-    from mcp.types import TextContent
-
     reason = decision.reason.strip() or "(no reason provided by the policy gate)"
     body = (
         f"Tool call refused by policy gate.\n"
@@ -80,10 +86,6 @@ def _maybe_append_batch_reminder(result: list[Any], *, is_mutation: bool) -> lis
         # problem — warning on one would only cost context.
         return result
 
-    from mcp.types import TextContent
-
-    from mureo.mcp._handlers_batch import maybe_build_batch_reminder
-
     warning = maybe_build_batch_reminder()
     if warning is None:
         return result
@@ -106,13 +108,6 @@ def _maybe_append_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
     See :mod:`mureo.core.strategy_reminder` for the classification and
     builder logic.
     """
-    # Imported at the dispatcher's hot-path top rather than lazily on
-    # every call — review round 2 perf nit. TextContent is already in
-    # the module via TYPE_CHECKING; maybe_build_reminder is cheap.
-    from mcp.types import TextContent
-
-    from mureo.core.strategy_reminder import maybe_build_reminder
-
     reminder = maybe_build_reminder(name)
     if reminder is None:
         return result
@@ -128,10 +123,6 @@ def _maybe_append_plugin_strategy_reminder(name: str, result: list[Any]) -> list
     strategy-reminder guardrail gap. Same soft-enforcement contract: never
     refuses, never replaces the tool's content, best-effort.
     """
-    from mcp.types import TextContent
-
-    from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
-
     reminder = maybe_build_reminder_for_plugin(name)
     if reminder is None:
         return result
@@ -219,10 +210,6 @@ def _maybe_append_learning_reset_notice(
     Best-effort and never raises: a notice must not break a tool call.
     """
     try:
-        from mcp.types import TextContent
-
-        from mureo.policy.learning_reset import load_preflight, preflight_notice
-
         notice = preflight_notice(load_preflight(name, arguments))
         if notice is None:
             return result

@@ -7,6 +7,7 @@ Tool definitions (TOOLS) and handler mapping (HANDLERS) remain in tools_meta_ads
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -641,8 +642,6 @@ async def handle_lead_forms_create(args: dict[str, Any]) -> list[TextContent]:
 @api_error_handler
 async def handle_leads_export_csv(args: dict[str, Any]) -> list[TextContent]:
     """Export form leads to a local CSV file."""
-    from pathlib import Path as _Path
-
     client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
@@ -655,7 +654,7 @@ async def handle_leads_export_csv(args: dict[str, Any]) -> list[TextContent]:
         kwargs["field_order"] = field_order
     count = await client.export_leads_to_csv(
         _require(args, "form_id"),
-        _Path(_require(args, "output_path")),
+        Path(_require(args, "output_path")),
         **kwargs,
     )
     return _json_result({"rows": count})

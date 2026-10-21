@@ -13,6 +13,7 @@ place for the two to drift apart silently.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Any
 
 from mureo.context.batch import (
@@ -121,8 +122,6 @@ def maybe_build_batch_reminder() -> str | None:
     ``MUREO_DISABLE_BATCH_REMINDER=1`` (exact string, matching the established
     ``MUREO_DISABLE_*`` pattern).
     """
-    import os
-
     if os.environ.get("MUREO_DISABLE_BATCH_REMINDER") == "1":
         return None
     try:

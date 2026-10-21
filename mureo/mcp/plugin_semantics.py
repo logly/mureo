@@ -70,6 +70,10 @@ from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+# Read through the module (not bound to a name here) so a monkeypatched
+# ``append_action_log`` is honoured at call time.
+from mureo.context import state
+from mureo.context.models import ActionLogEntry
 from mureo.core import clock
 from mureo.core.platform_keys import plugin_platform_key
 from mureo.core.tool_names import is_read_only_tool_name
@@ -498,9 +502,6 @@ def record_mutation_action_log(
         state_path = Path.cwd() / "STATE.json"
         if not state_path.is_file():
             return
-        from mureo.context.models import ActionLogEntry
-        from mureo.context.state import append_action_log
-
         # Server clock (#460) — same stamp/format as every other writer.
         now = clock.server_now()
         days = observation_days or _DEFAULT_OBSERVATION_DAYS
@@ -524,7 +525,7 @@ def record_mutation_action_log(
             observation_due=(now + timedelta(days=days)).date().isoformat(),
             reversible_params=reversal,
         )
-        append_action_log(state_path, entry)
+        state.append_action_log(state_path, entry)
     except Exception:  # noqa: BLE001 — must never break the tool call
         logger.warning(
             "plugin action_log promotion failed for tool %r", tool, exc_info=True

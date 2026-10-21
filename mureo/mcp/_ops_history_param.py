@@ -48,12 +48,17 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
+# Read through the modules (not bound to names here) so monkeypatched
+# linkage functions are honoured at call time.
+from mureo.context import ops_linkage
 from mureo.context.approval import (
     APPROVAL_AT_MAX_CHARS,
     APPROVAL_BY_MAX_CHARS,
     APPROVAL_REFERENCE_MAX_CHARS,
     parse_approval,
 )
+from mureo.context.batch import active_batch
+from mureo.context.decision_chain import chain_expected
 from mureo.context.expected import (
     EXPECTED_DIRECTIONS,
     EXPECTED_HORIZON_MAX_DAYS,
@@ -61,6 +66,17 @@ from mureo.context.expected import (
     EXPECTED_METRICS,
     parse_expected,
 )
+from mureo.context.models import StateDocument
+from mureo.context.ops_intent import bind_ops_intent
+from mureo.context.settings import ops_history_enabled
+from mureo.context.state import read_state_file
+from mureo.core.clock import server_now_iso
+from mureo.mcp._helpers import resolve_workspace_path
+from mureo.mcp._journal_hook import JournalledCall, tool_family
+from mureo.mcp._tools_settings import check_settings_call
+from mureo.mcp.journal import _open_batch_id
+from mureo.mcp.plugin_audit import mask_arguments
+from mureo.rollback.executor import is_rollback_dispatch_active
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
@@ -70,9 +86,7 @@ if TYPE_CHECKING:
 
     from mureo.context.approval import ApprovalRef
     from mureo.context.expected import ExpectedEffect
-    from mureo.context.models import StateDocument
     from mureo.context.ops_intent import OpsIntent
-    from mureo.mcp._journal_hook import JournalledCall
 
 logger = logging.getLogger(__name__)
 
@@ -322,15 +336,11 @@ def take_ops_params(
 
 def _state_path(name: str, handler_args: Mapping[str, Any]) -> Path:
     """The STATE.json the call's change will be recorded in."""
-    from mureo.mcp._helpers import resolve_workspace_path
-
     scoped = dict(handler_args) if name == BATCH_BEGIN_TOOL else {}
     return resolve_workspace_path(scoped, "STATE.json", store_attr="state_path")
 
 
 def _read(path: Path) -> StateDocument | None:
-    from mureo.context.state import read_state_file
-
     if not path.is_file():
         return None
     return read_state_file(path, strict=False)
@@ -369,13 +379,13 @@ def _readable_state(
 
 
 def _joins_batch_decision(doc: StateDocument, name: str) -> bool:
-    from mureo.context.batch import active_batch
-    from mureo.context.ops_linkage import batch_decision_root
-
     if name == BATCH_BEGIN_TOOL:
         return False
     batch = active_batch(doc)
-    return batch is not None and batch_decision_root(doc, batch.batch_id) is not None
+    return (
+        batch is not None
+        and ops_linkage.batch_decision_root(doc, batch.batch_id) is not None
+    )
 
 
 def check_ops_call(
@@ -387,14 +397,11 @@ def check_ops_call(
         ValueError: the decision is not linkable, or ops history is on and
             ``reason`` / ``expected`` is missing.
     """
-    from mureo.context.decision_chain import chain_expected
-    from mureo.context.models import StateDocument as _Doc
-    from mureo.context.ops_linkage import check_linkable
-    from mureo.context.settings import ops_history_enabled
-
     doc = _readable_state(name, params, handler_args)
     if params.decision_id is not None:
-        root = check_linkable(doc or _Doc(version="2"), params.decision_id)
+        root = ops_linkage.check_linkable(
+            doc or StateDocument(version="2"), params.decision_id
+        )
     if doc is None or not ops_history_enabled(doc):
         return
     if params.decision_id is not None:
@@ -422,9 +429,6 @@ def enforce_ops_call(
     Skipped for the reversal leg of a rollback: that call re-enters the
     dispatcher on mureo's behalf and carries no parameters of its own.
     """
-    from mureo.mcp._tools_settings import check_settings_call
-    from mureo.rollback.executor import is_rollback_dispatch_active
-
     try:
         check_settings_call(name, handler_args)
         if name not in injected or is_rollback_dispatch_active():
@@ -442,8 +446,6 @@ def applied_params_of(arguments: Mapping[str, Any]) -> dict[str, Any] | None:
     the two stores cannot disagree about what a secret is; ``None`` for an
     empty set or one over :data:`APPLIED_PARAMS_MAX_CHARS`.
     """
-    from mureo.mcp.plugin_audit import mask_arguments
-
     masked = mask_arguments(dict(arguments))
     if not masked or not isinstance(masked, dict):
         return None
@@ -452,8 +454,6 @@ def applied_params_of(arguments: Mapping[str, Any]) -> dict[str, Any] | None:
 
 
 def _platform_of(name: str) -> str | None:
-    from mureo.mcp._journal_hook import tool_family
-
     family = tool_family(name)
     return family if family in _PLATFORM_FAMILIES else None
 
@@ -474,11 +474,6 @@ def _record_unentried(
     failing the call would tell the agent a change that went through did
     not.
     """
-    from mureo.context.ops_linkage import LinkRequest, record_call_decision
-    from mureo.core.clock import server_now_iso
-    from mureo.mcp.journal import _open_batch_id
-    from mureo.rollback.executor import is_rollback_dispatch_active
-
     if (
         reason is None
         and intent.approval is None
@@ -489,7 +484,7 @@ def _record_unentried(
     path = _state_path(name, intent.arguments)
     if name == BATCH_BEGIN_TOOL or is_rollback_dispatch_active() or not path.is_file():
         return
-    request = LinkRequest(
+    request = ops_linkage.LinkRequest(
         reason=reason,
         now=server_now_iso(),
         expected=intent.expected,
@@ -500,7 +495,7 @@ def _record_unentried(
         approval=intent.approval,
     )
     try:
-        root = record_call_decision(
+        root = ops_linkage.record_call_decision(
             path, request, tool=name, platform=_platform_of(name)
         )
     except Exception:  # noqa: BLE001 — the change itself already succeeded
@@ -528,8 +523,6 @@ def ops_call_scope(
     if name not in injected:
         yield
         return
-    from mureo.context.ops_intent import bind_ops_intent
-
     with bind_ops_intent(
         expected=params.expected,
         decision_id=params.decision_id,
