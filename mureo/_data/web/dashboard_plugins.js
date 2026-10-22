@@ -379,9 +379,10 @@
       res = null;
     }
     btn.disabled = false;
-    if (res && res.ok && res.body && res.body.status === "ok") {
+    const outcome = MUREO.postOutcome(res);
+    if (outcome.ok && outcome.body.status === "ok") {
       const msg = MUREO.t("dashboard.amazon_refresh_manifest_done", {
-        count: res.body.tool_count,
+        count: outcome.body.tool_count,
       });
       status.textContent = msg;
       MUREO.toast(msg, "success");
@@ -389,9 +390,8 @@
     }
     // "Not configured yet" is a distinct, actionable state — don't collapse
     // it into the generic failure.
-    const err = res && res.body ? res.body.error : null;
     const key =
-      err === "amazon_credentials_missing"
+      outcome.code === "amazon_credentials_missing"
         ? "dashboard.amazon_refresh_manifest_no_credentials"
         : "dashboard.amazon_refresh_manifest_failed";
     status.textContent = MUREO.t(key);
@@ -568,7 +568,8 @@
       MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"), "error");
       return;
     }
-    if (res && res.ok && res.body && res.body.status === "ok") {
+    const outcome = MUREO.postOutcome(res);
+    if (outcome.ok && outcome.body.status === "ok") {
       ui.saveBtn.disabled = true;
       MUREO.toast(MUREO.t("dashboard.plugin_accounts_saved"), "success");
     } else {
@@ -665,9 +666,10 @@
       MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"), "error");
       return;
     }
-    // ``postJson`` returns ``{ok, status: <HTTP code>, body}`` — the
-    // server's logical ``"ok"`` envelope lives inside ``body.status``.
-    if (res && res.ok && res.body && res.body.status === "ok") {
+    // ``postOutcome`` reads ``postJson``'s ``{ok, status, body}``; the
+    // server's logical ``"ok"`` lives inside ``body.status``.
+    const outcome = MUREO.postOutcome(res);
+    if (outcome.ok && outcome.body.status === "ok") {
       MUREO.toast(MUREO.t("dashboard.plugin_credentials_saved"), "success");
       // Clear secret inputs so the next view starts from the "keep
       // existing" baseline rather than the just-typed plain text.

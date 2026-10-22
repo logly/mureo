@@ -7,6 +7,7 @@ surrounding flow).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import mureo.cli.native_skills as native_skills
@@ -59,7 +60,7 @@ def test_refresh_is_best_effort(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_web_remove_workflow_skills_also_removes_native(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, caplog
 ) -> None:
     """clear-setup path must remove plugin native skills, not just the bundle."""
     from mureo.web import setup_actions
@@ -79,8 +80,11 @@ def test_web_remove_workflow_skills_also_removes_native(
     monkeypatch.setattr(setup_actions, "remove_skills", _fake_remove_skills)
     monkeypatch.setattr(setup_actions, "remove_native_skills", _fake_remove_native)
 
-    result = setup_actions.remove_workflow_skills()
+    with caplog.at_level(logging.INFO, logger="mureo.web.setup_actions"):
+        result = setup_actions.remove_workflow_skills()
 
     assert called_with == [dest]
     assert result.status == "ok"
-    assert "plugin native skills" in result.detail
+    # #864: the count is logged, not sent as a sentence in ``detail``.
+    assert result.detail is None
+    assert "+2 plugin native" in caplog.text

@@ -10,8 +10,9 @@ The window defaults to the last :data:`DEFAULT_WINDOW_DAYS` calendar days
 ending today, both ends included, by the server's clock
 (:func:`mureo.core.clock.server_now`) — the same window the client card's
 counts cover. A date that is not exactly ``YYYY-MM-DD``, or an ``until``
-before ``since``, is a 400 whose message names the parameter and does not
-echo the value.
+before ``since``, is a 400 whose code names the parameter
+(``since_invalid`` / ``until_invalid`` / ``until_before_since``) and does
+not echo the value.
 
 The response carries ``enabled`` whatever the setting: while ops history is
 off the browser draws nothing.
@@ -42,20 +43,20 @@ _DATE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class OpsHistoryQueryError(ValueError):
-    """A ``since`` / ``until`` the feed cannot read. The message is plain."""
+    """A ``since`` / ``until`` the feed cannot read. The message is its code."""
 
 
 def _day(value: str | None, name: str, default: date) -> date:
     text = (value or "").strip()
     if not text:
         return default
-    message = f"{name} must be a YYYY-MM-DD date"
+    code = f"{name}_invalid"
     if not _DATE.match(text):
-        raise OpsHistoryQueryError(message)
+        raise OpsHistoryQueryError(code)
     try:
         return date.fromisoformat(text)
     except ValueError as exc:
-        raise OpsHistoryQueryError(message) from exc
+        raise OpsHistoryQueryError(code) from exc
 
 
 def resolve_window(query: dict[str, str], today: date) -> tuple[date, date]:
@@ -68,7 +69,7 @@ def resolve_window(query: dict[str, str], today: date) -> tuple[date, date]:
     since = _day(query.get("since"), "since", window_start(today, DEFAULT_WINDOW_DAYS))
     until = _day(query.get("until"), "until", today)
     if until < since:
-        raise OpsHistoryQueryError("until is before since")
+        raise OpsHistoryQueryError("until_before_since")
     return since, until
 
 

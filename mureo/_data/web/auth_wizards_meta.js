@@ -13,16 +13,16 @@
   // Server-side failure codes from /api/credentials/meta/token mapped to
   // mureo's own wording (#579). Graph answers an expired or revoked token
   // with an error 190 string carrying an fbtrace_id — the right thing to
-  // keep for a support thread, the wrong thing to be the only sentence an
-  // operator is shown. mureo names the platform, the cause and the single
-  // recovery action; Graph's text stays underneath, secondary.
+  // keep for a support thread, the wrong thing to show an operator. mureo
+  // names the platform, the cause and the single recovery action; Graph's
+  // text goes to the server log only (#864).
   const META_TOKEN_ERROR_KEYS = {
     token_invalid: "wizard.auth.meta_token_invalid",
     account_fetch_failed: "wizard.auth.meta_token_account_fetch_failed",
   };
 
   function metaTokenErrorKey(res) {
-    const err = res && res.body ? res.body.error : null;
+    const err = MUREO.postOutcome(res).code;
     return (err && META_TOKEN_ERROR_KEYS[err]) || "wizard.auth.oauth_failed";
   }
 
@@ -163,7 +163,7 @@
       }
       finalizeBtn.disabled = false;
       affirmBtn.disabled = false;
-      const st = res && res.body && res.body.status;
+      const st = MUREO.postOutcome(res).ok ? res.body.status : null;
       const key =
         st === "ok"
           ? "connector.finalize_ok"
@@ -572,10 +572,10 @@
     status.className = "wizard-shared-with-sc-note";
     details.appendChild(status);
 
-    // Graph's own error body, demoted to a second line: the status above
-    // says what happened and what to do, this says what Meta replied.
-    // Hidden until there is something to show, so a clean card carries no
-    // empty row.
+    // The warnings line under the status (renderWarnings). A failure shows
+    // its localized message in the status only: Graph's reply is in the
+    // server log, not the response (#864). Hidden until there is something
+    // to show, so a clean card carries no empty row.
     const detail = document.createElement("small");
     detail.className = "field-hint";
     detail.hidden = true;
@@ -590,9 +590,8 @@
     function reportError(res) {
       const msg = MUREO.t(metaTokenErrorKey(res));
       status.textContent = msg;
-      const raw = (res && res.body && res.body.detail) || "";
-      detail.textContent = raw;
-      detail.hidden = !raw;
+      detail.textContent = "";
+      detail.hidden = true;
       MUREO.toast(msg, "error");
     }
 
@@ -718,7 +717,7 @@
         validate_only: true,
       });
       validateBtn.disabled = false;
-      if (res.ok && res.body) {
+      if (MUREO.postOutcome(res).ok) {
         renderProbe(res.body);
       } else {
         reportError(res);
@@ -736,7 +735,7 @@
         app_id: appIdInput.value.trim(),
         app_secret: appSecretInput.value.trim(),
       });
-      if (res.ok && res.body && res.body.status === "ok") {
+      if (MUREO.postOutcome(res).ok && res.body.status === "ok") {
         const msg = MUREO.t("wizard.auth.meta_token_saved");
         status.textContent = msg;
         // The expiry and any warning survive the save, so the operator

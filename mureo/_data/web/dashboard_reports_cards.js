@@ -250,7 +250,8 @@
     } catch (_err) {
       res = null;
     }
-    if (!res || !res.ok || !res.body || res.body.status === "error") {
+    const outcome = MUREO.postOutcome(res);
+    if (!(outcome.ok && outcome.body.status === "ok")) {
       MUREO.toast(MUREO.t("dashboard.reports_archive_failed"), "error");
       return;
     }

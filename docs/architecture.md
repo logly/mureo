@@ -320,6 +320,9 @@ mureo/
     │                        #   Importing a web submodule never loads web/server.py unless it needs
     │                        #   it: mureo.web resolves ConfigureWizard / run_configure_wizard on
     │                        #   access, and DEFAULT_CONFIGURE_PORT lives in instance.py.
+    │                        #   Failures are 4xx / 5xx {"error": <code>, "detail"?} written by
+    │                        #   _helpers.send_error_json (see "Failure contract" in plugin-authoring.md).
+    ├── action_result.py     # ActionResult (refused = 400, failed = 500) + send_result (#864)
     └── auth_wizard.py       # OAuth handoff server spawned by web/oauth_bridge.py (Google + Meta)
 
 skills/                          # Native slash skills — deployed to ~/.claude/skills/ and ~/.codex/skills/

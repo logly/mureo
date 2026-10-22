@@ -80,19 +80,42 @@
     btn.addEventListener("click", runBulkClear);
   }
 
+  // #864: a refused demo / import answers with a code. The codes the
+  // operator can act on have a message; any other code is shown as is.
+  const DEMO_ERROR_KEYS = {
+    target_required: "dashboard.demo_target_required",
+    target_control_characters: "dashboard.demo_target_control_characters",
+    target_traversal: "dashboard.demo_target_traversal",
+  };
+  const BYOD_IMPORT_ERROR_KEYS = {
+    file_path_required: "dashboard.byod_file_required",
+    file_path_control_characters: "dashboard.byod_file_control_characters",
+    file_path_not_absolute: "dashboard.byod_file_not_absolute",
+    file_path_traversal: "dashboard.byod_file_traversal",
+    file_path_not_xlsx: "dashboard.byod_file_not_xlsx",
+    file_path_not_found: "dashboard.byod_file_not_found",
+  };
+
+  function failureText(table, outcome) {
+    const code = outcome.code || "request_failed";
+    return table[code] ? MUREO.t(table[code]) : code;
+  }
+
   // ----- Demo section -------------------------------------------------
 
   async function loadDemoScenarios() {
     const select = document.querySelector("[data-demo-scenario]");
     if (!select) return;
-    let body;
+    let outcome;
     try {
       const res = await fetch("/api/demo/scenarios");
-      body = await res.json();
+      // A failed listing is HTTP 500 (#864); read it like a POST answer.
+      outcome = MUREO.postOutcome({ ok: res.ok, body: await res.json() });
     } catch (_err) {
       return;
     }
-    if (!body || body.status !== "ok" || !Array.isArray(body.scenarios)) {
+    const body = outcome.body;
+    if (!outcome.ok || body.status !== "ok" || !Array.isArray(body.scenarios)) {
       return;
     }
     while (select.firstChild) select.removeChild(select.firstChild);
@@ -145,16 +168,16 @@
         MUREO.toast(msg, "error");
         return;
       }
-      const data = (res && res.body) || {};
-      if (res && res.ok && data.status === "ok") {
+      const outcome = MUREO.postOutcome(res);
+      if (outcome.ok && outcome.body.status === "ok") {
         const msg = MUREO.t("dashboard.demo_success", {
-          path: data.created_path || target,
+          path: outcome.body.created_path || target,
         });
         if (resultNode) resultNode.textContent = msg;
         MUREO.toast(msg, "success");
       } else {
         const msg = MUREO.t("dashboard.demo_failed", {
-          detail: (data && data.detail) || "error",
+          detail: failureText(DEMO_ERROR_KEYS, outcome),
         });
         if (resultNode) resultNode.textContent = msg;
         MUREO.toast(msg, "error");
@@ -174,7 +197,9 @@
         MUREO.toast(MUREO.t("dashboard.picker_error"), "error");
         return;
       }
-      const data = (res && res.body) || {};
+      // A picker that could not run is HTTP 500 ``picker_failed`` (#864).
+      const outcome = MUREO.postOutcome(res);
+      const data = outcome.ok ? outcome.body : {};
       if (data.status === "ok" && data.path) {
         if (input) input.value = data.path;
       } else if (data.status === "cancelled") {
@@ -231,8 +256,9 @@
         MUREO.toast(MUREO.t("dashboard.byod_remove_failed"), "error");
         return;
       }
-      const data = (res && res.body) || {};
-      if (res && res.ok && data.status !== "error") {
+      const outcome = MUREO.postOutcome(res);
+      const st = outcome.ok ? outcome.body.status : null;
+      if (st === "ok" || st === "noop") {
         await renderByodStatus();
       } else {
         MUREO.toast(MUREO.t("dashboard.byod_remove_failed"), "error");
@@ -317,15 +343,15 @@
         MUREO.toast(msg, "error");
         return;
       }
-      const data = (res && res.body) || {};
-      if (res && res.ok && data.status === "ok") {
+      const outcome = MUREO.postOutcome(res);
+      if (outcome.ok && outcome.body.status === "ok") {
         const msg = MUREO.t("dashboard.byod_import_success");
         if (resultNode) resultNode.textContent = msg;
         MUREO.toast(msg, "success");
         await renderByodStatus();
       } else {
         const msg = MUREO.t("dashboard.byod_import_failed", {
-          detail: (data && data.detail) || "error",
+          detail: failureText(BYOD_IMPORT_ERROR_KEYS, outcome),
         });
         if (resultNode) resultNode.textContent = msg;
         MUREO.toast(msg, "error");
@@ -349,8 +375,9 @@
       MUREO.toast(MUREO.t("dashboard.byod_clear_failed"), "error");
       return;
     }
-    const data = (res && res.body) || {};
-    if (res && res.ok && data.status !== "error") {
+    const outcome = MUREO.postOutcome(res);
+    const st = outcome.ok ? outcome.body.status : null;
+    if (st === "ok" || st === "noop") {
       MUREO.toast(MUREO.t("dashboard.byod_clear_success"), "success");
       await renderByodStatus();
     } else {

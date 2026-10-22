@@ -2831,6 +2831,68 @@ the handler touched). Your handler MUST NOT raise after starting to
 write the response — the dispatcher cannot retroactively suppress a
 partial response that has already shipped bytes to the wire.
 
+### Failure contract
+
+Every JSON route of the configure web API answers a failure the same way,
+the built-in `/api/*` routes and the dispatcher's own answers for your
+`/api/ext/<name>/*` routes alike (#864). The configure UI reads every POST
+response through one helper, `MUREO.postOutcome` in `app.js`, so an
+extension route that answers the same way is read the same way.
+
+- **Failure**: an HTTP 4xx or 5xx status with the body
+  `{"error": "<code>"}`, plus an optional `"detail"` and optional context
+  keys.
+  - `error` is a snake_case code (`^[a-z][a-z0-9_]*$`), for example
+    `unknown_provider`, `file_path_not_xlsx` or `internal_error`.
+  - `detail` is a short code or an exception class name
+    (`^[A-Za-z_][A-Za-z0-9_]*$`: `install_returncode_2`, `OSError`). It is
+    never a file path, a sentence, an exception message or a platform's
+    reply: the full error, scrubbed of secrets, stays in the server log.
+  - The context keys in use are `region` (Amazon routes), `field`
+    (`/api/strategy/guardrails`) and `account_id`
+    (`/api/credentials/meta/token`). A context key never replaces `error`
+    or `detail`.
+- **Status**: `400` means the request was refused: bad, missing or unknown
+  input, including an unknown id in the body (`unknown_provider` is always
+  400 on a POST body). `409` means refused because of local state, and only
+  where a route already uses it (`credentials_file_corrupt`,
+  `not_authenticated`). `500` means the action was attempted and failed
+  (`internal_error` with the exception class name in `detail`,
+  `install_failed`, `upgrade_failed`, `update_check_failed`,
+  `picker_failed`, `demo_init_failed`, `bundle_import_failed`,
+  `byod_remove_failed`, `extension_handler_error`). `403` (CSRF / Host),
+  `413` (body too large) and `502` (an upstream platform failed) keep their
+  meaning. `404` means an unknown path, including an unknown id that is
+  part of the path (`/api/oauth/<provider>/...`,
+  `/api/credentials/plugins/<provider>/...`): the route itself does not
+  exist, so it answers like any other unknown path.
+- **Success**: HTTP 200 with the route's own body. The setup, provider,
+  demo and BYOD action routes answer `{"status": <status>, "detail"?}`,
+  where the status is one of `ACTION_STATUSES` in
+  `mureo.web.action_result` (`ok`, `noop`, `manual_required`, `skipped`,
+  `needs_credentials`, `manual`, `not_connected`, `unverifiable`); a few
+  routes have statuses of their own (`cancelled` from the file pickers,
+  `checking` from `/api/updates` while a check runs). No route sends
+  `"status": "error"` with HTTP 200. Two things look similar and are not
+  failure bodies: the multi-step envelopes (`/api/setup/basic`,
+  `/api/setup/basic/clear`) are 200 bodies that report each step, and a
+  step that failed reads `{"status": "error", "error": "<code>",
+  "detail"?}`; and the OAuth status routes (`/api/oauth/<provider>/status`,
+  `/api/credentials/plugins/<provider>/oauth/status`) answer 200 with the
+  flow's state, whose `error` key is that state (`null` while nothing
+  went wrong), not a failure of the request.
+
+In Python, `send_error_json(handler, status, code, *, detail=None,
+extra=None)` in `mureo.web._helpers` writes a failure body; an extension
+handler that refuses a request can call it with the request handler it
+was given. The built-in actions return
+`mureo.web.action_result.ActionResult`: `ActionResult.refused(code)` is a
+400, `ActionResult.failed(code, detail)` a 500, and `send_result` sends
+either, or the 200 body of a success. A success body that carries
+`"status": "error"` is a programming error: `send_result` raises instead
+of sending it, and the success result types refuse that status when they
+are built.
+
 ### Lazy loading
 
 The configure UI fetches `/api/extensions` once when the dashboard

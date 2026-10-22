@@ -1,10 +1,10 @@
 """High-level setup actions invoked by the configure-UI POST endpoints.
 
-Each function wraps an existing CLI primitive and returns a structured
-JSON-friendly result that the configure UI surfaces directly to the
-browser. Failures degrade to ``status="error"`` envelopes rather than
-propagating exceptions, so a click in the configure UI never produces
-a 500 from a setup-time race.
+Each function wraps an existing CLI primitive and returns an
+:class:`~mureo.web.action_result.ActionResult` instead of raising: a
+refusal is ``ActionResult.refused`` (HTTP 400), an attempt that raised is
+``ActionResult.failed("internal_error", <class name>)`` (HTTP 500), and
+the route sends it with ``send_result`` (#864).
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -40,6 +39,7 @@ from mureo.cli.setup_codex import (
 # Read through the modules (not bound to names here) so monkeypatched
 # provider installers and settings writers are honoured at call time.
 from mureo.providers import catalog, config_writer, installer, mureo_env
+from mureo.web.action_result import ERROR_STATUS, ActionResult, returncode_detail
 from mureo.web.codex_mcp import (
     install_codex_mcp_block,
     install_codex_server_block,
@@ -85,22 +85,6 @@ _OFFICIAL_PROVIDER_IDS: tuple[str, ...] = (
 )
 
 
-@dataclass(frozen=True)
-class ActionResult:
-    """JSON-friendly result of one setup action."""
-
-    # "ok"|"noop"|"error"|"manual_required" (+ "auth_required" reserved,
-    # not currently produced — hosted Meta now returns manual_required).
-    status: str
-    detail: str | None = None
-
-    def as_dict(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"status": self.status}
-        if self.detail is not None:
-            out["detail"] = self.detail
-        return out
-
-
 def _install_desktop_mcp(home: Path | None) -> ActionResult:
     """Register the mureo MCP block in the Claude Desktop config."""
     try:
@@ -113,11 +97,11 @@ def _install_desktop_mcp(home: Path | None) -> ActionResult:
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_mureo_mcp (desktop) failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not wrote:
         return ActionResult(status="noop", detail="already_configured")
-    return ActionResult(status="ok", detail=str(config_path))
+    return ActionResult(status="ok")
 
 
 def _codex_hooks_path(home: Path | None) -> Path:
@@ -139,11 +123,11 @@ def _install_codex_mcp(home: Path | None) -> ActionResult:
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_mureo_mcp (codex) failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not wrote:
         return ActionResult(status="noop", detail="already_configured")
-    return ActionResult(status="ok", detail=str(config_path))
+    return ActionResult(status="ok")
 
 
 def backfill_disable_for_installed_providers(
@@ -264,19 +248,18 @@ def set_native_preference(
     can't strand themselves. ``prefer_official=False`` removes the flag
     (restore native) — always allowed (the un-strand path).
 
-    Statuses: ``ok`` (changed), ``noop`` (already in desired state),
-    ``error`` with detail ``invalid_platform`` /
-    ``provider_not_installed`` / ``connector_not_connected`` /
-    ``no_mureo_block``.
+    Statuses: ``ok`` (changed), ``noop`` (already in desired state);
+    refused with ``invalid_platform`` / ``provider_not_installed`` /
+    ``connector_not_connected`` / ``no_mureo_block``.
     """
     if platform not in _TOGGLE_PLATFORMS:
-        return ActionResult(status="error", detail="invalid_platform")
+        return ActionResult.refused("invalid_platform")
 
     try:
         registry = get_host_paths(host, home).mcp_registry_path
     except Exception as exc:  # noqa: BLE001
         logger.exception("set_native_preference path resolve failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not prefer_official:
         return _restore_native(host, platform, home, registry)
@@ -292,15 +275,15 @@ def set_native_preference(
             None,
         )
         if spec is None:
-            return ActionResult(status="error", detail="invalid_platform")
+            return ActionResult.refused("invalid_platform")
         if spec.install_kind == "hosted_http":
             if not config_writer.is_hosted_provider_connected(spec):
-                return ActionResult(status="error", detail="connector_not_connected")
+                return ActionResult.refused("connector_not_connected")
         elif not _registered_in_registry(host, spec.id, registry):
-            return ActionResult(status="error", detail="provider_not_installed")
+            return ActionResult.refused("provider_not_installed")
     except Exception as exc:  # noqa: BLE001
         logger.exception("set_native_preference guard failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     return _prefer_official(host, platform, home, registry)
 
@@ -315,9 +298,9 @@ def _prefer_official(
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("set_native_preference set failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
     if not mureo_block_present:
-        return ActionResult(status="error", detail="no_mureo_block")
+        return ActionResult.refused("no_mureo_block")
     return ActionResult(status="ok" if changed else "noop", detail=platform)
 
 
@@ -344,7 +327,7 @@ def _restore_native(
         return ActionResult(status="ok" if changed else "noop", detail=platform)
     except Exception as exc:  # noqa: BLE001
         logger.exception("set_native_preference unset failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
 
 def install_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> ActionResult:
@@ -366,15 +349,15 @@ def install_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Actio
             res = auth_setup.install_mcp_config(scope="global")
         except Exception as exc:  # noqa: BLE001
             logger.exception("install_mureo_mcp failed")
-            return ActionResult(status="error", detail=type(exc).__name__)
+            return ActionResult.failed("internal_error", type(exc).__name__)
 
         result = (
             ActionResult(status="noop", detail="already_configured")
             if res is None
-            else ActionResult(status="ok", detail=str(res))
+            else ActionResult(status="ok")
         )
 
-    if result.status != "error":
+    if result.status != ERROR_STATUS:
         backfill_disable_for_installed_providers(host, home)
     return result
 
@@ -398,11 +381,11 @@ def install_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Actio
             result = auth_setup.install_credential_guard()
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_auth_hook failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if result is None:
         return ActionResult(status="noop", detail="already_installed")
-    return ActionResult(status="ok", detail=str(result))
+    return ActionResult(status="ok")
 
 
 def install_workflow_skills(
@@ -419,7 +402,7 @@ def install_workflow_skills(
         count, dest = install_skills(target_dir=target)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_workflow_skills failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     # Plugin native slash skills (Issue #439). Best-effort and isolated from
     # the bundle install: a broken plugin must not turn a successful bundle
@@ -430,10 +413,8 @@ def install_workflow_skills(
     except Exception:  # noqa: BLE001 — plugin deploy is best-effort
         logger.exception("install_workflow_skills: plugin native skills skipped")
 
-    detail = f"installed {count} skills at {dest}"
-    if native:
-        detail += f" (+{native} plugin native skills)"
-    return ActionResult(status="ok", detail=detail)
+    logger.info("installed %d skills (+%d plugin native) at %s", count, native, dest)
+    return ActionResult(status="ok")
 
 
 def install_basic_setup(
@@ -566,10 +547,10 @@ def _install_provider_code(
     try:
         spec = catalog.get_provider(provider_id)
     except KeyError:
-        return ActionResult(status="error", detail="unknown_provider")
+        return ActionResult.refused("unknown_provider")
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider import/resolve failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if spec.install_kind == "hosted_http":
         # Claude Code: Meta's hosted MCP CANNOT be OAuth-authenticated as
@@ -594,12 +575,11 @@ def _install_provider_code(
         result = installer.run_install(spec, dry_run=False)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider subprocess failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if result.returncode != 0:
-        return ActionResult(
-            status="error",
-            detail=f"install_returncode_{result.returncode}",
+        return ActionResult.failed(
+            "install_failed", returncode_detail("install", result.returncode)
         )
 
     extra_env = _credential_env_for(spec, credentials_path)
@@ -627,7 +607,7 @@ def _install_provider_code(
                 mureo_env.unset_mureo_disable_env(platform)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider settings write failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if platform is not None and not credentialed:
         return ActionResult(status="needs_credentials", detail=spec.id)
@@ -685,10 +665,10 @@ def _install_provider_desktop(
     try:
         spec = catalog.get_provider(provider_id)
     except KeyError:
-        return ActionResult(status="error", detail="unknown_provider")
+        return ActionResult.refused("unknown_provider")
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider (desktop) import/resolve failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if spec.install_kind == "hosted_http":
         # A remote MCP cannot be wired into Claude Desktop via the
@@ -712,11 +692,10 @@ def _install_provider_desktop(
             result = installer.run_install(spec, dry_run=False)
         except Exception as exc:  # noqa: BLE001
             logger.exception("install_provider (desktop) subprocess failed")
-            return ActionResult(status="error", detail=type(exc).__name__)
+            return ActionResult.failed("internal_error", type(exc).__name__)
         if result.returncode != 0:
-            return ActionResult(
-                status="error",
-                detail=f"install_returncode_{result.returncode}",
+            return ActionResult.failed(
+                "install_failed", returncode_detail("install", result.returncode)
             )
 
     block: dict[str, Any] = dict(_desktop_block_for(spec))
@@ -728,7 +707,7 @@ def _install_provider_desktop(
         wrote = install_desktop_server_block(config_path, spec.id, block)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider (desktop) config write failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not wrote:
         return ActionResult(status="noop", detail="already_configured")
@@ -754,10 +733,10 @@ def _install_provider_codex(
     try:
         spec = catalog.get_provider(provider_id)
     except KeyError:
-        return ActionResult(status="error", detail="unknown_provider")
+        return ActionResult.refused("unknown_provider")
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider (codex) import/resolve failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if spec.install_kind == "hosted_http":
         return ActionResult(status="manual_required", detail=spec.id)
@@ -767,11 +746,10 @@ def _install_provider_codex(
             result = installer.run_install(spec, dry_run=False)
         except Exception as exc:  # noqa: BLE001
             logger.exception("install_provider (codex) subprocess failed")
-            return ActionResult(status="error", detail=type(exc).__name__)
+            return ActionResult.failed("internal_error", type(exc).__name__)
         if result.returncode != 0:
-            return ActionResult(
-                status="error",
-                detail=f"install_returncode_{result.returncode}",
+            return ActionResult.failed(
+                "install_failed", returncode_detail("install", result.returncode)
             )
 
     block: dict[str, Any] = dict(_desktop_block_for(spec))
@@ -783,7 +761,7 @@ def _install_provider_codex(
         wrote = install_codex_server_block(config_path, spec.id, block)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider (codex) config write failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not wrote:
         return ActionResult(status="noop", detail="already_configured")
@@ -824,10 +802,10 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
     try:
         spec = catalog.get_provider(provider_id)
     except KeyError:
-        return ActionResult(status="error", detail="unknown_provider")
+        return ActionResult.refused("unknown_provider")
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_provider (desktop) import/resolve failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if spec.install_kind == "hosted_http":
         # The hosted MCP block was never written on Desktop (manual
@@ -843,7 +821,7 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
             changed = unset_mureo_disable_env_desktop(config_path, env_var)
         except Exception as exc:  # noqa: BLE001
             logger.exception("remove_provider (desktop) unset-env failed")
-            return ActionResult(status="error", detail=type(exc).__name__)
+            return ActionResult.failed("internal_error", type(exc).__name__)
         if not changed:
             return ActionResult(status="noop", detail="not_registered")
         return ActionResult(status="ok", detail=provider_id)
@@ -853,7 +831,7 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
         removed = remove_desktop_server_block(config_path, provider_id)
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_provider (desktop) failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not removed:
         return ActionResult(status="noop", detail="not_registered")
@@ -872,10 +850,10 @@ def _remove_provider_codex(provider_id: str, home: Path | None) -> ActionResult:
     try:
         spec = catalog.get_provider(provider_id)
     except KeyError:
-        return ActionResult(status="error", detail="unknown_provider")
+        return ActionResult.refused("unknown_provider")
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_provider (codex) import/resolve failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     config_path = resolve_codex_config_path(home)
     if spec.install_kind == "hosted_http":
@@ -887,7 +865,7 @@ def _remove_provider_codex(provider_id: str, home: Path | None) -> ActionResult:
             changed = unset_mureo_disable_env_codex(config_path, env_var)
         except Exception as exc:  # noqa: BLE001
             logger.exception("remove_provider (codex) unset-env failed")
-            return ActionResult(status="error", detail=type(exc).__name__)
+            return ActionResult.failed("internal_error", type(exc).__name__)
         if not changed:
             return ActionResult(status="noop", detail="not_registered")
         return ActionResult(status="ok", detail=provider_id)
@@ -896,7 +874,7 @@ def _remove_provider_codex(provider_id: str, home: Path | None) -> ActionResult:
         removed = remove_codex_server_block(config_path, provider_id)
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_provider (codex) failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not removed:
         return ActionResult(status="noop", detail="not_registered")
@@ -922,16 +900,16 @@ def remove_provider(
     try:
         catalog.get_provider(provider_id)
     except KeyError:
-        return ActionResult(status="error", detail="unknown_provider")
+        return ActionResult.refused("unknown_provider")
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_provider import/resolve failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     try:
         result = config_writer.remove_provider_from_claude_settings(provider_id)
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_provider failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not result.changed:
         return ActionResult(status="noop", detail="not_registered")
@@ -972,19 +950,19 @@ def confirm_hosted_provider(
     genuinely connected the connector.
 
     Statuses: ``ok`` (just disabled), ``noop`` (already disabled),
-    ``not_connected``, ``unverifiable``, ``manual``, ``error``
-    (``unknown_provider`` / ``not_hosted`` / ``no_mureo_block``).
+    ``not_connected``, ``unverifiable``, ``manual``; refused with
+    ``unknown_provider`` / ``not_hosted`` / ``no_mureo_block``.
     """
     try:
         spec = catalog.get_provider(provider_id)
     except KeyError:
-        return ActionResult(status="error", detail="unknown_provider")
+        return ActionResult.refused("unknown_provider")
     except Exception as exc:  # noqa: BLE001
         logger.exception("confirm_hosted_provider import/resolve failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if spec.install_kind != "hosted_http":
-        return ActionResult(status="error", detail="not_hosted")
+        return ActionResult.refused("not_hosted")
 
     platform = spec.coexists_with_mureo_platform
     if platform is None:
@@ -1028,13 +1006,13 @@ def confirm_hosted_provider(
             mureo_block_present = env_result.mureo_block_present
     except Exception as exc:  # noqa: BLE001
         logger.exception("confirm_hosted_provider failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if changed:
         return ActionResult(status="ok", detail=spec.id)
     if mureo_block_present:
         return ActionResult(status="noop", detail="already_disabled")
-    return ActionResult(status="error", detail="no_mureo_block")
+    return ActionResult.refused("no_mureo_block")
 
 
 def hosted_provider_status(host: str = _HOST_CODE) -> dict[str, bool]:
@@ -1077,7 +1055,7 @@ def _remove_desktop_mcp(home: Path | None) -> ActionResult:
         removed = remove_desktop_mcp_block(config_path)
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_mureo_mcp (desktop) failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not removed:
         return ActionResult(status="noop", detail="not_installed")
@@ -1098,7 +1076,7 @@ def remove_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Action
             changed = remove_codex_mcp_block(resolve_codex_config_path(home))
         except Exception as exc:  # noqa: BLE001
             logger.exception("remove_mureo_mcp (codex) failed")
-            return ActionResult(status="error", detail=type(exc).__name__)
+            return ActionResult.failed("internal_error", type(exc).__name__)
         if not changed:
             return ActionResult(status="noop", detail="not_installed")
         return ActionResult(status="ok")
@@ -1107,7 +1085,7 @@ def remove_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Action
         result = remove_mcp_config()
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_mureo_mcp failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not result.changed:
         return ActionResult(status="noop", detail="not_installed")
@@ -1134,7 +1112,7 @@ def remove_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Action
         result = remove_credential_guard()
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_auth_hook failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not result.changed:
         return ActionResult(status="noop", detail="not_installed")
@@ -1154,7 +1132,7 @@ def remove_workflow_skills(
         count, dest = remove_skills(target_dir=target)
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_workflow_skills failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     # Plugin native slash skills (Issue #439) are deployed alongside the bundle,
     # so "clear setup" must remove them too. Best-effort and isolated from the
@@ -1167,11 +1145,9 @@ def remove_workflow_skills(
         logger.exception("remove_workflow_skills: plugin native skills skipped")
 
     if count == 0 and native == 0:
-        return ActionResult(status="noop", detail=f"no skills found at {dest}")
-    detail = f"removed {count} skills from {dest}"
-    if native:
-        detail += f" (+{native} plugin native skills)"
-    return ActionResult(status="ok", detail=detail)
+        return ActionResult(status="noop", detail="not_installed")
+    logger.info("removed %d skills (+%d plugin native) from %s", count, native, dest)
+    return ActionResult(status="ok")
 
 
 def _installed_official_providers(
@@ -1230,10 +1206,10 @@ def _safe_step(fn: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
         result = fn(*args, **kwargs)
     except Exception as exc:  # noqa: BLE001
         logger.exception("clear_all_setup step %s failed", getattr(fn, "__name__", fn))
-        return ActionResult(status="error", detail=type(exc).__name__).as_dict()
+        return ActionResult.failed("internal_error", type(exc).__name__).as_dict()
     if isinstance(result, ActionResult):
         return result.as_dict()
-    return {"status": "ok", "detail": str(result)}
+    return ActionResult(status="ok").as_dict()
 
 
 def clear_all_setup(home: Path | None = None, host: str = _HOST_CODE) -> dict[str, Any]:

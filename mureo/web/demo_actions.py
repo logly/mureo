@@ -2,9 +2,12 @@
 
 Wraps the ``mureo demo`` CLI primitives (scenario registry +
 ``materialize``) and returns JSON-friendly frozen result envelopes that
-the configure UI surfaces directly. Failures degrade to
-``status="error"`` envelopes rather than propagating exceptions, so a
-click in the configure UI never produces a 500.
+the configure UI surfaces directly, rather than propagating exceptions.
+``init_demo`` answers a refused request with ``ActionResult.refused`` and
+an attempt that raised with ``ActionResult.failed``, and
+``list_demo_scenarios`` answers a registry failure with
+``ActionResult.failed``; the routes send either with ``send_result``
+(#864).
 
 Mirrors the wrapper / frozen-result-envelope pattern of
 ``mureo.web.setup_actions``.
@@ -19,6 +22,7 @@ from typing import Any
 
 from mureo.demo.installer import DemoInitError, materialize
 from mureo.demo.scenarios import DEFAULT_SCENARIO, SCENARIOS
+from mureo.web.action_result import ActionResult, refuse_error_status
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +33,14 @@ __all__ = ["DemoListResult", "DemoInitResult", "list_demo_scenarios", "init_demo
 
 @dataclass(frozen=True)
 class DemoListResult:
-    """JSON-friendly result of ``list_demo_scenarios``."""
+    """JSON-friendly result of a ``list_demo_scenarios`` that succeeded."""
 
-    status: str  # "ok" | "error"
+    status: str  # "ok"
     scenarios: tuple[dict[str, Any], ...] = ()
     detail: str | None = None
+
+    def __post_init__(self) -> None:
+        refuse_error_status(self, self.status)
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"status": self.status}
@@ -46,12 +53,15 @@ class DemoListResult:
 
 @dataclass(frozen=True)
 class DemoInitResult:
-    """JSON-friendly result of ``init_demo``."""
+    """JSON-friendly result of an ``init_demo`` that succeeded."""
 
-    status: str  # "ok" | "error"
+    status: str  # "ok"
     created_path: str | None = None
     imported: bool | None = None
     detail: str | None = None
+
+    def __post_init__(self) -> None:
+        refuse_error_status(self, self.status)
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"status": self.status}
@@ -63,12 +73,12 @@ class DemoInitResult:
         return out
 
 
-def list_demo_scenarios() -> DemoListResult:
+def list_demo_scenarios() -> DemoListResult | ActionResult:
     """Return the registered demo scenarios sorted by name.
 
     Exactly one row carries ``default=True`` (the ``DEFAULT_SCENARIO``).
-    A registry failure degrades to an ``error`` envelope with no path
-    or secret leakage.
+    A registry failure is ``ActionResult.failed("internal_error")`` with
+    the exception class name as its detail (HTTP 500).
     """
     try:
         rows: list[dict[str, Any]] = []
@@ -84,7 +94,7 @@ def list_demo_scenarios() -> DemoListResult:
             )
     except Exception as exc:  # noqa: BLE001
         logger.exception("list_demo_scenarios failed")
-        return DemoListResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
     return DemoListResult(status="ok", scenarios=tuple(rows))
 
 
@@ -93,23 +103,24 @@ def _validate_target(target: object) -> str:
 
     Rejects non-str, empty, NUL/control chars, ``..`` traversal and
     symlink-escape (via ``os.path.realpath``). Returns the resolved
-    absolute path on success; raises ``ValueError`` otherwise.
+    absolute path on success; raises ``ValueError`` otherwise, whose
+    message is the refusal's error code.
     """
     if not isinstance(target, str):
-        raise ValueError("target must be a string")
+        raise ValueError("target_invalid")
     if not target.strip():
-        raise ValueError("target must not be empty")
+        raise ValueError("target_required")
     if any(ord(c) < 0x20 for c in target):
-        raise ValueError("target contains control characters")
+        raise ValueError("target_control_characters")
     # Reject traversal segments outright — the UI never has a
     # legitimate reason to pass ``..`` and ``realpath`` could silently
     # normalize an escape away.
     parts = target.replace("\\", "/").split("/")
     if ".." in parts:
-        raise ValueError("target must not contain '..' traversal")
+        raise ValueError("target_traversal")
     resolved = os.path.realpath(target)
     if ".." in resolved.replace("\\", "/").split("/"):
-        raise ValueError("target resolved to a traversal path")
+        raise ValueError("target_traversal")
     return resolved
 
 
@@ -118,18 +129,18 @@ def init_demo(
     target: str,
     force: bool,
     skip_import: bool,
-) -> DemoInitResult:
+) -> DemoInitResult | ActionResult:
     """Materialize a demo workspace at ``target``.
 
-    ``target`` is validated *before* ``materialize`` is invoked. Any
-    failure (validation, unknown scenario, ``DemoInitError`` or an
-    unexpected exception) degrades to an ``error`` envelope that never
+    ``target`` is validated *before* ``materialize`` is invoked. An
+    invalid target or an unknown scenario is a refused result; a
+    ``DemoInitError`` or an unexpected exception is a failed one. Neither
     echoes file contents or a traceback.
     """
     try:
         resolved = _validate_target(target)
     except ValueError as exc:
-        return DemoInitResult(status="error", detail=str(exc))
+        return ActionResult.refused(str(exc))
 
     try:
         materialize(
@@ -140,13 +151,13 @@ def init_demo(
         )
     except ValueError:
         logger.warning("init_demo rejected: unknown scenario %r", scenario_name)
-        return DemoInitResult(status="error", detail="unknown_scenario")
+        return ActionResult.refused("unknown_scenario")
     except DemoInitError as exc:
         logger.warning("init_demo failed: %s", type(exc).__name__)
-        return DemoInitResult(status="error", detail="DemoInitError")
+        return ActionResult.failed("demo_init_failed", "DemoInitError")
     except Exception as exc:  # noqa: BLE001
         logger.exception("init_demo unexpected failure")
-        return DemoInitResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     return DemoInitResult(
         status="ok",

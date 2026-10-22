@@ -88,10 +88,8 @@ def test_install_hosted_provider_is_manual_required(home: Path) -> None:
 @pytest.mark.unit
 def test_native_toggle_guard_and_apply(home: Path, _stub_run_install: None) -> None:
     # Guard: cannot prefer official before the provider is installed.
-    assert (
-        sa.set_native_preference("google_ads", True, home=home, host="codex").detail
-        == "provider_not_installed"
-    )
+    refused = sa.set_native_preference("google_ads", True, home=home, host="codex")
+    assert (refused.code, refused.http_status) == ("provider_not_installed", 400)
     sa.install_mureo_mcp(home=home, host="codex")
     sa.install_provider("google-ads-official", home=home, host="codex")
     # Now allowed → disable env set in the TOML mureo block.

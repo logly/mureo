@@ -17,6 +17,7 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from http.server import BaseHTTPRequestHandler
     from pathlib import Path
 
@@ -191,9 +192,34 @@ def flatten_query(path: str) -> dict[str, str]:
     return {k: v[0] for k, v in parsed.items() if v}
 
 
-def send_error_json(handler: BaseHTTPRequestHandler, status: int, message: str) -> None:
-    """Emit a JSON error envelope rather than the default text body."""
-    send_json(handler, {"error": message}, status=status)
+#: The keys of a failure body that ``extra`` context can never set.
+_FAILURE_BODY_KEYS: Final[frozenset[str]] = frozenset({"error", "detail"})
+
+
+def send_error_json(
+    handler: BaseHTTPRequestHandler,
+    status: int,
+    code: str,
+    *,
+    detail: str | None = None,
+    extra: Mapping[str, str | int] | None = None,
+) -> None:
+    """Emit the configure web API's failure body (#864).
+
+    ``{"error": code}``, plus ``detail`` when given, plus any ``extra``
+    context keys (``region``, ``field``, ``account_id``). ``code`` is a
+    snake_case code; ``detail`` is a short code or an exception class
+    name -- see "Failure contract" in ``docs/plugin-authoring.md``. An
+    ``extra`` key named ``error`` or ``detail`` is dropped, whether or not
+    ``detail`` was given.
+    """
+    body: dict[str, Any] = {"error": code}
+    if detail is not None:
+        body["detail"] = detail
+    for key, value in (extra or {}).items():
+        if key not in _FAILURE_BODY_KEYS:
+            body[key] = value
+    send_json(handler, body, status=status)
 
 
 def read_json_safe(path: Path) -> dict[str, Any]:

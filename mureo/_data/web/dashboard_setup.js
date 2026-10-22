@@ -277,11 +277,9 @@
         MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
         return;
       }
-      // The route always answers HTTP 200; a swallowed failure surfaces as
-      // an ``error`` envelope, so gate on the parsed body too (mirrors the
-      // advisors/byod handlers) — otherwise a failed remove looks like it
-      // succeeded.
-      if (!res || !res.ok || !res.body || res.body.status === "error") {
+      // A failed remove is an HTTP error (#864); ``noop``: nothing was there.
+      const st = MUREO.postOutcome(res).ok ? res.body.status : null;
+      if (st !== "ok" && st !== "noop") {
         MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
         return;
       }
@@ -318,19 +316,18 @@
         MUREO.toast(MUREO.t("dashboard.install_failed"), "error");
         return;
       }
-      // Same 200-envelope caveat as the remove button: a swallowed install
-      // failure comes back as an ``error`` envelope over HTTP 200, so a bare
-      // ``res.ok`` check would show a green "installed" mark on failure.
-      if (!res || !res.ok || !res.body || res.body.status === "error") {
+      // A failed install is an HTTP error (#864), as for the remove button.
+      if (!MUREO.postOutcome(res).ok) {
         MUREO.toast(MUREO.t("dashboard.install_failed"), "error");
         return;
       }
+      const body = res.body;
       // #400: toast the success/noop outcomes too — on an already-installed
       // row nothing else on screen changes, so a silent success is
       // indistinguishable from a dead button. ``noop`` means the server
       // decided nothing needed to change; its ``detail`` says why.
-      if (res.body.status === "noop") {
-        if (res.body.detail === "unsupported_on_desktop") {
+      if (body.status === "noop") {
+        if (body.detail === "unsupported_on_desktop") {
           // Currently unreachable via the UI: the hook row's button is
           // suppressed on claude-desktop (hookUnsupported below), the only
           // host where the server returns this detail. Kept to match the
@@ -339,7 +336,7 @@
         } else {
           MUREO.toast(MUREO.t("dashboard.install_already"), "info");
         }
-      } else if (res.body.status === "ok") {
+      } else if (body.status === "ok") {
         MUREO.toast(MUREO.t("dashboard.install_done"), "success");
       } else {
         // Unrecognized status — surface it rather than mislabeling as
@@ -455,7 +452,8 @@
           const res = await MUREO.postJson("/api/providers/remove", {
             provider_id: pid,
           });
-          if (res.ok) {
+          const st = MUREO.postOutcome(res).ok ? res.body.status : null;
+          if (st === "ok" || st === "noop") {
             await MUREO.loadStatus();
             renderAll();
           } else {
@@ -520,20 +518,21 @@
             "/api/providers/native-toggle",
             { platform: platform, prefer_official: !preferred }
           );
-          const body = res && res.body;
-          if (res.ok && body && (body.status === "ok" || body.status === "noop")) {
+          const outcome = MUREO.postOutcome(res);
+          const st = outcome.ok ? outcome.body.status : null;
+          if (st === "ok" || st === "noop") {
             MUREO.toast(MUREO.t("dashboard.tooluse_restart_note"), "success");
             await MUREO.loadStatus();
             renderAll();
             return;
           }
-          const detail = body && body.detail;
+          const code = outcome.code; // the refusal's code (#864)
           const errKey =
-            detail === "provider_not_installed"
+            code === "provider_not_installed"
               ? "dashboard.tooluse_err_provider_not_installed"
-              : detail === "connector_not_connected"
+              : code === "connector_not_connected"
               ? "dashboard.tooluse_err_connector_not_connected"
-              : detail === "no_mureo_block"
+              : code === "no_mureo_block"
               ? "dashboard.tooluse_err_no_mureo_block"
               : "dashboard.tooluse_err_generic";
           MUREO.toast(MUREO.t(errKey), "error");

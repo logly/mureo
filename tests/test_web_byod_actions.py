@@ -26,6 +26,8 @@ from unittest.mock import patch
 
 import pytest
 
+from mureo.web.action_result import ActionResult
+
 
 def _d(result: Any) -> dict[str, Any]:
     return result.as_dict() if hasattr(result, "as_dict") else result
@@ -57,7 +59,7 @@ class TestValidateXlsxPath:
         from mureo.web import byod_actions
 
         (tmp_path / "bundle.xlsx").write_bytes(b"x")
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_not_absolute$"):
             byod_actions._validate_xlsx_path("bundle.xlsx")
 
     @pytest.mark.parametrize("ext", [".csv", ".txt", ".json", ".xls", ""])
@@ -66,7 +68,7 @@ class TestValidateXlsxPath:
 
         f = tmp_path / f"bundle{ext}"
         f.write_bytes(b"x")
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_not_xlsx$"):
             byod_actions._validate_xlsx_path(str(f))
 
     @pytest.mark.parametrize(
@@ -76,13 +78,13 @@ class TestValidateXlsxPath:
     def test_rejects_nul_and_control_chars(self, payload: str) -> None:
         from mureo.web import byod_actions
 
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_control_characters$"):
             byod_actions._validate_xlsx_path(payload)
 
     def test_rejects_missing_file(self, tmp_path: Path) -> None:
         from mureo.web import byod_actions
 
-        with pytest.raises((ValueError, FileNotFoundError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_not_found$"):
             byod_actions._validate_xlsx_path(str(tmp_path / "nope.xlsx"))
 
     def test_rejects_directory(self, tmp_path: Path) -> None:
@@ -90,25 +92,25 @@ class TestValidateXlsxPath:
 
         d = tmp_path / "dir.xlsx"
         d.mkdir()
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_not_found$"):
             byod_actions._validate_xlsx_path(str(d))
 
     def test_rejects_traversal_even_with_xlsx_suffix(self, tmp_path: Path) -> None:
         from mureo.web import byod_actions
 
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_traversal$"):
             byod_actions._validate_xlsx_path("/tmp/../../etc/passwd.xlsx")
 
     def test_rejects_empty_string(self) -> None:
         from mureo.web import byod_actions
 
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_required$"):
             byod_actions._validate_xlsx_path("")
 
     def test_rejects_non_string(self) -> None:
         from mureo.web import byod_actions
 
-        with pytest.raises((ValueError, TypeError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_invalid$"):
             byod_actions._validate_xlsx_path(123)  # type: ignore[arg-type]
 
     def test_symlink_to_non_xlsx_target_rejected(self, tmp_path: Path) -> None:
@@ -120,7 +122,7 @@ class TestValidateXlsxPath:
         secret.write_text("top secret", encoding="utf-8")
         link = tmp_path / "innocent.xlsx"
         link.symlink_to(secret)
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValueError, match="^file_path_not_xlsx$"):
             byod_actions._validate_xlsx_path(str(link))
 
 
@@ -212,7 +214,7 @@ class TestByodStatus:
             side_effect=RuntimeError("boom"),
         ):
             result = byod_actions.byod_status()
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.failed("internal_error", "RuntimeError")
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +304,7 @@ class TestByodImportValidation:
         f.write_text("a,b", encoding="utf-8")
         with patch("mureo.web.byod_actions.import_bundle") as mock_imp:
             result = byod_actions.byod_import(file_path=str(f), replace=False)
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.refused("file_path_not_xlsx")
         mock_imp.assert_not_called()
 
     def test_non_absolute_path_rejected(self, tmp_path: Path) -> None:
@@ -311,7 +313,7 @@ class TestByodImportValidation:
         (tmp_path / "bundle.xlsx").write_bytes(b"x")
         with patch("mureo.web.byod_actions.import_bundle") as mock_imp:
             result = byod_actions.byod_import(file_path="bundle.xlsx", replace=False)
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.refused("file_path_not_absolute")
         mock_imp.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -323,7 +325,7 @@ class TestByodImportValidation:
 
         with patch("mureo.web.byod_actions.import_bundle") as mock_imp:
             result = byod_actions.byod_import(file_path=payload, replace=False)
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.refused("file_path_traversal")
         mock_imp.assert_not_called()
 
     def test_missing_file_rejected(self, tmp_path: Path) -> None:
@@ -333,7 +335,7 @@ class TestByodImportValidation:
             result = byod_actions.byod_import(
                 file_path=str(tmp_path / "missing.xlsx"), replace=False
             )
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.refused("file_path_not_found")
         mock_imp.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -344,7 +346,7 @@ class TestByodImportValidation:
 
         with patch("mureo.web.byod_actions.import_bundle") as mock_imp:
             result = byod_actions.byod_import(file_path=payload, replace=False)
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.refused("file_path_control_characters")
         mock_imp.assert_not_called()
 
     def test_bundle_import_error_degrades_to_error_envelope(
@@ -360,8 +362,9 @@ class TestByodImportValidation:
             side_effect=BundleImportError("no recognized tabs"),
         ):
             result = byod_actions.byod_import(file_path=str(f), replace=False)
-        as_dict = _d(result)
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.failed(
+            "bundle_import_failed", "BundleImportError"
+        )
 
     def test_unexpected_exception_degrades_to_error(self, tmp_path: Path) -> None:
         from mureo.web import byod_actions
@@ -373,7 +376,7 @@ class TestByodImportValidation:
             side_effect=RuntimeError("openpyxl exploded"),
         ):
             result = byod_actions.byod_import(file_path=str(f), replace=False)
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.failed("internal_error", "RuntimeError")
 
     def test_error_envelope_does_not_leak_traceback(self, tmp_path: Path) -> None:
         from mureo.web import byod_actions
@@ -427,7 +430,7 @@ class TestByodRemove:
 
         with patch("mureo.web.byod_actions.remove_platform") as mock_rm:
             result = byod_actions.byod_remove(google_ads=False, meta_ads=False)
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.refused("invalid_platform_selection")
         mock_rm.assert_not_called()
 
     def test_both_platforms_selected_rejected(self) -> None:
@@ -435,7 +438,7 @@ class TestByodRemove:
 
         with patch("mureo.web.byod_actions.remove_platform") as mock_rm:
             result = byod_actions.byod_remove(google_ads=True, meta_ads=True)
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.refused("invalid_platform_selection")
         mock_rm.assert_not_called()
 
     def test_remove_platform_error_degrades_to_error(self) -> None:
@@ -447,7 +450,7 @@ class TestByodRemove:
             side_effect=BYODImportError("unknown platform"),
         ):
             result = byod_actions.byod_remove(google_ads=True, meta_ads=False)
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.failed("byod_remove_failed", "BYODImportError")
 
     def test_remove_idempotent_second_call_noop(self) -> None:
         from mureo.web import byod_actions
@@ -492,7 +495,7 @@ class TestByodClear:
             side_effect=OSError("permission denied"),
         ):
             result = byod_actions.byod_clear()
-        assert _d(result)["status"] == "error"
+        assert result == ActionResult.failed("internal_error", "OSError")
 
     def test_clear_idempotent_second_call_noop(self) -> None:
         from mureo.web import byod_actions
@@ -533,3 +536,12 @@ class TestEnvelopeContract:
         assert hasattr(result, "as_dict")
         with pytest.raises(dataclasses.FrozenInstanceError):
             result.status = "tampered"  # type: ignore[misc]
+
+
+@pytest.mark.unit
+def test_byod_result_refuses_the_error_status() -> None:
+    """#864: a failure is an ``ActionResult``, never a ``ByodResult``."""
+    from mureo.web.byod_actions import ByodResult
+
+    with pytest.raises(ValueError, match="a failure is an ActionResult"):
+        ByodResult(status="error", detail="OSError")

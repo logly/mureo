@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mureo.web._helpers import SOCKET_READ_TIMEOUT_SECONDS
+from mureo.web.action_result import ActionResult
 from mureo.web.handlers import ConfigureHandler
 from mureo.web.server import ConfigureWizard
 from tests.web_support import get, get_raw, post, route_url
@@ -1209,14 +1210,13 @@ class TestPostSetupMcpRemove:
     ROUTE = "/api/setup/mcp/remove"
 
     def test_ok_dispatches_to_remove_mureo_mcp(self, wizard: ConfigureWizard) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {"status": "ok", "detail": "/tmp/settings.json"}
+        fake = ActionResult(status="ok")
         with patch(
             "mureo.web.handlers.remove_mureo_mcp", return_value=fake
         ) as mock_remove:
             status, body = post(wizard, self.ROUTE, {})
         assert status == 200, body
-        assert body == {"status": "ok", "detail": "/tmp/settings.json"}
+        assert body == {"status": "ok"}
         mock_remove.assert_called_once()
 
     def test_noop_envelope_when_already_removed(self, wizard: ConfigureWizard) -> None:
@@ -1287,17 +1287,16 @@ class TestPostSetupHookRemove:
         assert status == 200, body
         assert body == {"status": "noop"}
 
-    def test_error_envelope_surfaces_to_client(self, wizard: ConfigureWizard) -> None:
+    def test_failed_action_is_a_500_with_its_code(
+        self, wizard: ConfigureWizard
+    ) -> None:
         """The wrapper catches its own exceptions and returns
-        ``ActionResult(status="error")``; the route MUST surface this as
-        a 200 envelope (not a 500). 500 is reserved for genuine route
-        bugs."""
-        fake = MagicMock()
-        fake.as_dict.return_value = {"status": "error", "detail": "OSError"}
-        with patch("mureo.web.handlers.remove_auth_hook", return_value=fake):
+        ``ActionResult.failed``; the route answers with the failure
+        contract (#864), never a 200 ``status: error`` body."""
+        failed = ActionResult.failed("internal_error", "OSError")
+        with patch("mureo.web.handlers.remove_auth_hook", return_value=failed):
             status, body = post(wizard, self.ROUTE, {})
-        assert status == 200, body
-        assert body == {"status": "error", "detail": "OSError"}
+        assert (status, body) == (500, {"error": "internal_error", "detail": "OSError"})
 
     def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
         status, body = post(wizard, self.ROUTE, {}, csrf=None)
@@ -1337,14 +1336,13 @@ class TestPostSetupSkillsRemove:
     def test_ok_dispatches_to_remove_workflow_skills(
         self, wizard: ConfigureWizard
     ) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {"status": "ok", "detail": "removed 15 skills"}
+        fake = ActionResult(status="ok")
         with patch(
             "mureo.web.handlers.remove_workflow_skills", return_value=fake
         ) as mock_remove:
             status, body = post(wizard, self.ROUTE, {})
         assert status == 200, body
-        assert body == {"status": "ok", "detail": "removed 15 skills"}
+        assert body == {"status": "ok"}
         mock_remove.assert_called_once()
 
     def test_noop_envelope_when_nothing_to_remove(
@@ -1386,14 +1384,13 @@ class TestPostSetupHookInstall:
     ROUTE = "/api/setup/hook/install"
 
     def test_ok_dispatches_to_install_auth_hook(self, wizard: ConfigureWizard) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {"status": "ok", "detail": "written"}
+        fake = ActionResult(status="ok")
         with patch(
             "mureo.web.handlers.install_auth_hook", return_value=fake
         ) as mock_install:
             status, body = post(wizard, self.ROUTE, {})
         assert status == 200, body
-        assert body == {"status": "ok", "detail": "written"}
+        assert body == {"status": "ok"}
         mock_install.assert_called_once()
 
     def test_noop_envelope_when_already_installed(
@@ -1406,13 +1403,13 @@ class TestPostSetupHookInstall:
         assert status == 200, body
         assert body == {"status": "noop"}
 
-    def test_error_envelope_surfaces_to_client(self, wizard: ConfigureWizard) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {"status": "error", "detail": "OSError"}
-        with patch("mureo.web.handlers.install_auth_hook", return_value=fake):
+    def test_failed_action_is_a_500_with_its_code(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        failed = ActionResult.failed("internal_error", "OSError")
+        with patch("mureo.web.handlers.install_auth_hook", return_value=failed):
             status, body = post(wizard, self.ROUTE, {})
-        assert status == 200, body
-        assert body == {"status": "error", "detail": "OSError"}
+        assert (status, body) == (500, {"error": "internal_error", "detail": "OSError"})
 
     def test_forwards_client_host_and_home(self, wizard: ConfigureWizard) -> None:
         """The client-authoritative payload host must reach the install
@@ -1456,23 +1453,22 @@ class TestPostSetupSkillsInstall:
     def test_ok_dispatches_to_install_workflow_skills(
         self, wizard: ConfigureWizard
     ) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {"status": "ok", "detail": "installed 15 skills"}
+        fake = ActionResult(status="ok")
         with patch(
             "mureo.web.handlers.install_workflow_skills", return_value=fake
         ) as mock_install:
             status, body = post(wizard, self.ROUTE, {})
         assert status == 200, body
-        assert body == {"status": "ok", "detail": "installed 15 skills"}
+        assert body == {"status": "ok"}
         mock_install.assert_called_once()
 
-    def test_error_envelope_surfaces_to_client(self, wizard: ConfigureWizard) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {"status": "error", "detail": "OSError"}
-        with patch("mureo.web.handlers.install_workflow_skills", return_value=fake):
+    def test_failed_action_is_a_500_with_its_code(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        failed = ActionResult.failed("internal_error", "OSError")
+        with patch("mureo.web.handlers.install_workflow_skills", return_value=failed):
             status, body = post(wizard, self.ROUTE, {})
-        assert status == 200, body
-        assert body == {"status": "error", "detail": "OSError"}
+        assert (status, body) == (500, {"error": "internal_error", "detail": "OSError"})
 
     def test_forwards_client_host_and_home(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
@@ -1558,6 +1554,16 @@ class TestGetDemoScenarios:
             resp = get_raw(wizard, self.ROUTE)
         assert resp.status == 200
 
+    def test_registry_failure_is_a_500(self, wizard: ConfigureWizard) -> None:
+        """#864: a listing that raised is ``internal_error``, not a 200."""
+        failed = ActionResult.failed("internal_error", "KeyError")
+        with patch("mureo.web.handlers.list_demo_scenarios", return_value=failed):
+            status, body = get(wizard, self.ROUTE)
+        assert (status, body) == (
+            500,
+            {"error": "internal_error", "detail": "KeyError"},
+        )
+
     def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
         req = urllib.request.Request(route_url(wizard, self.ROUTE))
         req.add_header("Host", "attacker.example.com")
@@ -1602,18 +1608,26 @@ class TestPostDemoInit:
                 self.ROUTE,
                 {"scenario_name": "seasonality-trap"},
             )
-            assert status == 400
+            assert (status, body) == (400, {"error": "target_required"})
         mock_init.assert_not_called()
 
-    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
-        """The wrapper catches its own exceptions and returns an
-        ``error`` envelope; the route surfaces it as 200, not 500."""
-        fake = MagicMock()
-        fake.as_dict.return_value = {
-            "status": "error",
-            "detail": "DemoInitError",
-        }
-        with patch("mureo.web.handlers.init_demo", return_value=fake):
+    def test_control_characters_are_refused_like_an_empty_target(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """#864: both target checks refuse with 400 and their own code."""
+        status, body = post(
+            wizard,
+            self.ROUTE,
+            {"scenario_name": "seasonality-trap", "target": "demo\x01dir"},
+        )
+        assert (status, body) == (400, {"error": "target_control_characters"})
+
+    def test_failed_init_is_a_500_with_its_code(self, wizard: ConfigureWizard) -> None:
+        """The wrapper catches its own exceptions and returns
+        ``ActionResult.failed``; the route answers with the failure
+        contract (#864)."""
+        failed = ActionResult.failed("demo_init_failed", "DemoInitError")
+        with patch("mureo.web.handlers.init_demo", return_value=failed):
             status, body = post(
                 wizard,
                 self.ROUTE,
@@ -1622,8 +1636,10 @@ class TestPostDemoInit:
                     "target": "/tmp/x",
                 },
             )
-        assert status == 200, body
-        assert body["status"] == "error"
+        assert (status, body) == (
+            500,
+            {"error": "demo_init_failed", "detail": "DemoInitError"},
+        )
 
     def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
         status, body = post(
@@ -1741,25 +1757,19 @@ class TestPostByodImport:
     def test_missing_file_path_returns_400(self, wizard: ConfigureWizard) -> None:
         with patch("mureo.web.handlers.byod_import") as mock_imp:
             status, body = post(wizard, self.ROUTE, {"replace": True})
-            assert status == 400
+            assert (status, body) == (400, {"error": "file_path_required"})
         mock_imp.assert_not_called()
 
-    def test_validation_error_envelope_surfaces_as_200(
+    def test_validation_refusal_is_a_400_like_a_missing_path(
         self, wizard: ConfigureWizard
     ) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {
-            "status": "error",
-            "detail": "not_xlsx",
-        }
-        with patch("mureo.web.handlers.byod_import", return_value=fake):
-            status, body = post(
-                wizard,
-                self.ROUTE,
-                {"file_path": "/tmp/data.csv", "replace": False},
-            )
-        assert status == 200, body
-        assert body["status"] == "error"
+        """#864: both import checks refuse with 400 and their own code."""
+        status, body = post(
+            wizard,
+            self.ROUTE,
+            {"file_path": "/tmp/data.csv", "replace": False},
+        )
+        assert (status, body) == (400, {"error": "file_path_not_xlsx"})
 
     def test_does_not_echo_file_bytes(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
@@ -1826,20 +1836,13 @@ class TestPostByodRemove:
         assert body["status"] == "ok"
         mock_rm.assert_called_once()
 
-    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {
-            "status": "error",
-            "detail": "select exactly one",
-        }
-        with patch("mureo.web.handlers.byod_remove", return_value=fake):
-            status, body = post(
-                wizard,
-                self.ROUTE,
-                {"google_ads": True, "meta_ads": True},
-            )
-        assert status == 200, body
-        assert body["status"] == "error"
+    def test_two_platforms_are_refused(self, wizard: ConfigureWizard) -> None:
+        status, body = post(
+            wizard,
+            self.ROUTE,
+            {"google_ads": True, "meta_ads": True},
+        )
+        assert (status, body) == (400, {"error": "invalid_platform_selection"})
 
     def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
         status, body = post(
@@ -1997,18 +2000,16 @@ class TestPostPickDirectory:
             assert status == 200, body
         assert mock_pick.call_args.kwargs["locale"] == "en"
 
-    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
-        """tkinter-unavailable degrades to an error envelope (UI falls
-        back to manual entry), never a 500."""
-        fake = MagicMock()
-        fake.as_dict.return_value = {
-            "status": "error",
-            "detail": "tkinter_unavailable",
-        }
-        with patch("mureo.web.handlers.pick_directory", return_value=fake):
+    def test_picker_failure_is_a_500(self, wizard: ConfigureWizard) -> None:
+        """#864: tkinter-unavailable is ``picker_failed`` (the UI falls back
+        to manual entry), not a 200 error envelope."""
+        failed = ActionResult.failed("picker_failed", "tkinter_unavailable")
+        with patch("mureo.web.handlers.pick_directory", return_value=failed):
             status, body = post(wizard, self.ROUTE, {})
-        assert status == 200, body
-        assert body["status"] == "error"
+        assert (status, body) == (
+            500,
+            {"error": "picker_failed", "detail": "tkinter_unavailable"},
+        )
 
     def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
         status, body = post(wizard, self.ROUTE, {}, csrf=None)
@@ -2098,16 +2099,14 @@ class TestPostPickFile:
             assert status == 200, body
         assert mock_pick.call_args.kwargs["locale"] == "en"
 
-    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
-        fake = MagicMock()
-        fake.as_dict.return_value = {
-            "status": "error",
-            "detail": "tkinter_unavailable",
-        }
-        with patch("mureo.web.handlers.pick_file", return_value=fake):
+    def test_picker_failure_is_a_500(self, wizard: ConfigureWizard) -> None:
+        failed = ActionResult.failed("picker_failed", "tkinter_unavailable")
+        with patch("mureo.web.handlers.pick_file", return_value=failed):
             status, body = post(wizard, self.ROUTE, {"kind": "xlsx"})
-        assert status == 200, body
-        assert body["status"] == "error"
+        assert (status, body) == (
+            500,
+            {"error": "picker_failed", "detail": "tkinter_unavailable"},
+        )
 
     def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
         status, body = post(wizard, self.ROUTE, {"kind": "xlsx"}, csrf=None)
@@ -2166,7 +2165,11 @@ class TestPostSetupBasicClear:
         """Acceptance criteria L132-L134: a step failure is reported in
         the envelope, not as a 500."""
         envelope: dict[str, Any] = {
-            "mureo_mcp": {"status": "error", "detail": "OSError"},
+            "mureo_mcp": {
+                "status": "error",
+                "error": "internal_error",
+                "detail": "OSError",
+            },
             "auth_hook": {"status": "ok"},
             "skills": {"status": "ok"},
         }
@@ -2351,14 +2354,12 @@ class TestServeUpdates:
         assert body == fake_result
         mock_check.assert_called_once()
 
-    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
-        """A degraded pip check is a normal outcome, never a 500."""
-        fake_result = {"status": "error", "any_update": False, "packages": []}
-        with patch("mureo.web.handlers.get_update_status", return_value=fake_result):
-            resp = get_raw(wizard, self.ROUTE)
-        body = json.loads(resp.read().decode("utf-8"))
-        assert body["status"] == "error"
-        assert body["any_update"] is False
+    def test_failed_check_is_a_500(self, wizard: ConfigureWizard) -> None:
+        """#864: a failed pip check is ``update_check_failed``, not a 200."""
+        failed = ActionResult.failed("update_check_failed")
+        with patch("mureo.web.handlers.get_update_status", return_value=failed):
+            status, body = get(wizard, self.ROUTE)
+        assert (status, body) == (500, {"error": "update_check_failed"})
 
     def test_get_does_not_require_csrf(self, wizard: ConfigureWizard) -> None:
         fake_result = {"status": "ok", "any_update": False, "packages": []}
@@ -2622,22 +2623,24 @@ class TestPostUpgrade:
         assert body["restarting"] is False
         _no_real_restart.assert_not_called()
 
-    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
-        fake_result = {
-            "status": "error",
-            "returncode": 1,
-            "packages": ["mureo"],
-            "output": "Could not find a version",
-        }
+    def test_failed_upgrade_is_a_500(
+        self, wizard: ConfigureWizard, _no_real_restart: Any
+    ) -> None:
+        """#864: a failed pip run is ``upgrade_failed``, not a 200."""
+        failed = ActionResult.failed("upgrade_failed", "upgrade_returncode_1")
         with (
-            patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
+            patch("mureo.web.handlers.run_upgrade_all", return_value=failed),
             patch("mureo.web.handlers.request_update_refresh") as mock_refresh,
+            patch("mureo.web.handlers.is_managed_service", return_value=True),
         ):
             status, body = post(wizard, self.ROUTE, {})
-        assert status == 200, body
-        assert body["status"] == "error"
-        # A failed upgrade must NOT touch the update cache.
+        assert (status, body) == (
+            500,
+            {"error": "upgrade_failed", "detail": "upgrade_returncode_1"},
+        )
+        # A failed upgrade must NOT touch the update cache or restart.
         mock_refresh.assert_not_called()
+        _no_real_restart.assert_not_called()
 
     def test_noop_upgrade_skips_cache_invalidation(
         self, wizard: ConfigureWizard

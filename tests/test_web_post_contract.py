@@ -1,7 +1,9 @@
 """The failure contract of every POST route in ``ConfigureHandler._POST_ROUTES``.
 
 #864: a refused request is HTTP 400 with ``{"error": <snake_case code>,
-"detail"?: ...}``. The routes are read from the route table when this module
+"detail"?: ...}``; an action that was attempted and failed is HTTP 500 with
+the same body. ``detail`` is a code or an exception class name, never a
+sentence or a path. The routes are read from the route table when this module
 is collected, so a new route is covered without editing this file — and the
 bookkeeping test fails until the new route is given an input it must refuse
 or is declared inputless.
@@ -9,10 +11,6 @@ or is declared inputless.
 Only the static table is covered. Routes dispatched by regex — ``/api/oauth/*``,
 the plugin OAuth start (``/api/credentials/plugins/<p>/oauth/start``) and
 ``/api/ext/*`` — are outside ``_POST_ROUTES`` and not tested here.
-
-Routes that break the contract today are listed in ``_KNOWN_VIOLATIONS`` and
-run as strict xfails: fixing one turns its case into an XPASS, which fails
-the run until its entry is deleted.
 
 What is blocked for every contract request: ``subprocess.run``,
 ``subprocess.Popen``, ``os.execv``, ``webbrowser.open``, httpx
@@ -33,6 +31,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 import urllib.request
 import webbrowser
 from typing import TYPE_CHECKING, Any
@@ -40,8 +39,14 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import pytest
 
+from mureo.byod.bundle import BundleImportError
+from mureo.byod.installer import BYODImportError
+from mureo.demo.installer import DemoInitError
+from mureo.providers.installer import InstallResult
+from mureo.web import version_check
+from mureo.web.action_result import ActionResult
 from mureo.web.handlers import ConfigureHandler
-from tests.web_support import post
+from tests.web_support import get, post, post_refused
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -53,9 +58,11 @@ _ROUTES: tuple[str, ...] = tuple(ConfigureHandler._POST_ROUTES)
 
 _ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]*$")
 
-#: One input per route that the route must refuse. Where a route has a
-#: refusal that breaks the contract today, that is the one chosen, so stage 2
-#: of #864 has a case to turn green; otherwise it is the handler's own check.
+#: ``detail``: a code or an exception class name — no space, no path.
+_DETAIL = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+#: One input per route that the route must refuse: the refusal stage 2 of
+#: #864 fixed where the route had one, otherwise the handler's own check.
 _INVALID_INPUTS: dict[str, dict[str, Any]] = {
     "/api/locale": {"locale": "fr"},
     "/api/host": {"host": "vscode"},
@@ -106,33 +113,13 @@ _NO_INVALID_INPUT: frozenset[str] = frozenset(
     }
 )
 
-#: Today's response for each route that breaks the contract (#864 stage 2
-#: deletes an entry as it fixes the route).
-_KNOWN_VIOLATIONS: dict[str, str] = {
-    "/api/providers/install": '200 {"status": "error", "detail": "unknown_provider"}',
-    "/api/providers/confirm": '200 {"status": "error", "detail": "unknown_provider"}',
-    "/api/providers/native-toggle": (
-        '200 {"status": "error", "detail": "invalid_platform"}'
-    ),
-    "/api/providers/remove": '200 {"status": "error", "detail": "unknown_provider"}',
-    "/api/demo/init": (
-        '200 {"status": "error", "detail": "target contains control characters"}'
-    ),
-    "/api/byod/import": (
-        '200 {"status": "error", "detail": "file_path must be absolute"}'
-    ),
-    "/api/byod/remove": (
-        '200 {"status": "error", '
-        '"detail": "select exactly one of google_ads / meta_ads"}'
-    ),
-}
-
-
 #: Routes whose action must never run from this module, even if a future
 #: change made them validate input: they stop or re-exec the server, run the
 #: package upgrade, or open a native file dialog. They may never be given an
-#: invalid input (the shape test is the only one that dispatches); the CSRF
-#: test still covers them, because CSRF refuses before dispatch.
+#: invalid input (the shape test dispatches every route it has an input
+#: for); the CSRF test still covers them, because CSRF refuses before
+#: dispatch. The failure table below dispatches the upgrade and the pickers
+#: with the step that would act (discovery, the dialog process) patched.
 _NEVER_DISPATCH: frozenset[str] = frozenset(
     {
         "/api/shutdown",
@@ -150,15 +137,6 @@ _AMAZON_ENV = (
     "AMAZON_ADS_REFRESH_TOKEN",
     "AMAZON_ADS_REGION",
 )
-
-
-def _shape_case(path: str) -> Any:
-    if path in _KNOWN_VIOLATIONS:
-        mark = pytest.mark.xfail(
-            strict=True, raises=AssertionError, reason=_KNOWN_VIOLATIONS[path]
-        )
-        return pytest.param(path, marks=mark, id=path)
-    return pytest.param(path, id=path)
 
 
 def _tripwire(reached: list[str], name: str) -> Callable[..., Any]:
@@ -228,16 +206,8 @@ class TestRouteTable:
         assert set(_INVALID_INPUTS) & _NO_INVALID_INPUT == set()
 
     def test_every_listed_path_is_a_route(self) -> None:
-        listed = (
-            set(_INVALID_INPUTS)
-            | _NO_INVALID_INPUT
-            | set(_KNOWN_VIOLATIONS)
-            | _NEVER_DISPATCH
-        )
+        listed = set(_INVALID_INPUTS) | _NO_INVALID_INPUT | _NEVER_DISPATCH
         assert listed - set(_ROUTES) == set()
-
-    def test_known_violations_all_have_an_input(self) -> None:
-        assert set(_KNOWN_VIOLATIONS) <= set(_INVALID_INPUTS)
 
     def test_never_dispatched_routes_have_no_input(self) -> None:
         assert _NEVER_DISPATCH & set(_INVALID_INPUTS) == set()
@@ -252,16 +222,198 @@ def test_missing_csrf_is_refused(
     assert (status, body) == (403, {"error": "csrf_invalid"})
 
 
+def _assert_contract_body(body: dict[str, Any]) -> None:
+    error = body.get("error")
+    assert isinstance(error, str) and _ERROR_CODE.fullmatch(error), body
+    detail = body.get("detail")
+    assert detail is None or (
+        isinstance(detail, str) and _DETAIL.fullmatch(detail)
+    ), body
+    assert "status" not in body, body
+
+
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "path", [_shape_case(path) for path in _ROUTES if path in _INVALID_INPUTS]
-)
+@pytest.mark.parametrize("path", [path for path in _ROUTES if path in _INVALID_INPUTS])
 def test_refusal_has_the_contract_shape(
     tripwires: list[str], wizard: ConfigureWizard, path: str
 ) -> None:
     status, body = post(wizard, path, _INVALID_INPUTS[path])
 
     assert status == 400, (status, body)
-    error = body.get("error")
-    assert isinstance(error, str) and _ERROR_CODE.fullmatch(error), body
-    assert "detail" not in body or isinstance(body["detail"], str), body
+    _assert_contract_body(body)
+
+
+#: Routes whose action is attempted and fails: (route, body, the name the
+#: failure is patched onto, the exception it raises or the value it returns,
+#: the expected 500 body). The failure is raised inside the action wrapper,
+#: so the case covers the wrapper's ``ActionResult.failed`` and the
+#: route's ``send_result`` together.
+_FAILURES: tuple[tuple[str, dict[str, Any], str, Any, dict[str, str]], ...] = (
+    (
+        "/api/setup/mcp/remove",
+        {},
+        "mureo.web.setup_actions.remove_mcp_config",
+        OSError("disk"),
+        {"error": "internal_error", "detail": "OSError"},
+    ),
+    (
+        "/api/setup/hook/remove",
+        {},
+        "mureo.web.setup_actions.remove_credential_guard",
+        PermissionError("denied"),
+        {"error": "internal_error", "detail": "PermissionError"},
+    ),
+    (
+        "/api/setup/hook/install",
+        {},
+        "mureo.web.setup_actions.auth_setup.install_credential_guard",
+        OSError("disk"),
+        {"error": "internal_error", "detail": "OSError"},
+    ),
+    (
+        "/api/setup/skills/remove",
+        {},
+        "mureo.web.setup_actions.remove_skills",
+        OSError("disk"),
+        {"error": "internal_error", "detail": "OSError"},
+    ),
+    (
+        "/api/setup/skills/install",
+        {},
+        "mureo.web.setup_actions.install_skills",
+        FileNotFoundError("bundle"),
+        {"error": "internal_error", "detail": "FileNotFoundError"},
+    ),
+    (
+        "/api/providers/install",
+        {"provider_id": "google-ads-official"},
+        "mureo.providers.installer.run_install",
+        InstallResult(returncode=2, stdout="", stderr="", argv=[]),
+        {"error": "install_failed", "detail": "install_returncode_2"},
+    ),
+    (
+        "/api/byod/clear",
+        {},
+        "mureo.web.byod_actions.clear_all",
+        OSError("disk"),
+        {"error": "internal_error", "detail": "OSError"},
+    ),
+    (
+        "/api/byod/remove",
+        {"google_ads": True},
+        "mureo.web.byod_actions.remove_platform",
+        BYODImportError("broken"),
+        {"error": "byod_remove_failed", "detail": "BYODImportError"},
+    ),
+    (
+        "/api/demo/init",
+        {"scenario_name": "seasonality-trap", "target": "demo-dir"},
+        "mureo.web.demo_actions.materialize",
+        DemoInitError("directory is not empty"),
+        {"error": "demo_init_failed", "detail": "DemoInitError"},
+    ),
+    (
+        "/api/upgrade",
+        {},
+        "mureo.web.upgrade_action.discover_all_mureo_packages",
+        OSError("metadata"),
+        {"error": "internal_error", "detail": "OSError"},
+    ),
+    (
+        "/api/pick/directory",
+        {},
+        "mureo.web.native_picker._invoke",
+        subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+        {"error": "picker_failed", "detail": "failed"},
+    ),
+    (
+        "/api/pick/file",
+        {"kind": "xlsx"},
+        "mureo.web.native_picker._invoke",
+        subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+        {"error": "picker_failed", "detail": "failed"},
+    ),
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("path", "payload", "target", "outcome", "expected"),
+    [pytest.param(*case, id=case[0]) for case in _FAILURES],
+)
+def test_failed_action_is_a_500_with_its_code(
+    tripwires: list[str],
+    wizard: ConfigureWizard,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    payload: dict[str, Any],
+    target: str,
+    outcome: Any,
+    expected: dict[str, str],
+) -> None:
+    def _fail(*_args: Any, **_kwargs: Any) -> Any:
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(target, _fail)
+    status, body = post_refused(wizard, path, payload)
+
+    assert (status, body) == (500, expected)
+    _assert_contract_body(body)
+
+
+class _BrokenRegistry:
+    """A scenario registry that cannot be read."""
+
+    def __iter__(self) -> Iterator[str]:
+        raise KeyError("registry")
+
+
+@pytest.mark.unit
+def test_failed_scenario_listing_is_a_500_with_its_code(
+    tripwires: list[str], wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``GET /api/demo/scenarios`` answers a registry failure like a POST."""
+    monkeypatch.setattr("mureo.web.demo_actions.SCENARIOS", _BrokenRegistry())
+    status, body = get(wizard, "/api/demo/scenarios")
+
+    assert (status, body) == (500, {"error": "internal_error", "detail": "KeyError"})
+    _assert_contract_body(body)
+
+
+@pytest.mark.unit
+def test_failed_update_check_is_a_500_with_its_code(
+    tripwires: list[str], wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``GET /api/updates`` answers a cached failed check like a POST."""
+    failed = ActionResult.failed("update_check_failed")
+    monkeypatch.setattr(version_check, "_cached_result", failed)
+    monkeypatch.setattr(version_check, "_cached_at_monotonic", time.monotonic())
+    status, body = get(wizard, "/api/updates")
+
+    assert (status, body) == (500, {"error": "update_check_failed"})
+    _assert_contract_body(body)
+
+
+@pytest.mark.unit
+def test_failed_bundle_import_is_a_500_with_its_code(
+    tripwires: list[str],
+    wizard: ConfigureWizard,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The import needs a real ``.xlsx`` on disk to get past validation."""
+
+    def _fail(*_args: Any, **_kwargs: Any) -> Any:
+        raise BundleImportError("no recognized tabs in /private/secret.xlsx")
+
+    monkeypatch.setattr("mureo.web.byod_actions.import_bundle", _fail)
+    bundle = tmp_path / "bundle.xlsx"
+    bundle.write_bytes(b"PK\x03\x04stub")
+    status, body = post_refused(wizard, "/api/byod/import", {"file_path": str(bundle)})
+
+    assert (status, body) == (
+        500,
+        {"error": "bundle_import_failed", "detail": "BundleImportError"},
+    )

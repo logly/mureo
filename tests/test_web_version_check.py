@@ -20,6 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from mureo.web import version_check
+from mureo.web.action_result import ActionResult
 from mureo.web.version_check import (
     check_for_updates,
     get_update_status,
@@ -194,8 +195,8 @@ class TestCheckForUpdates:
         assert result == {"status": "ok", "any_update": False, "packages": []}
         mock_report.assert_not_called()
 
-    def test_pip_failure_degrades_to_error(self) -> None:
-        """When the scoped pip call fails (``None``), degrade to ``error``."""
+    def test_pip_failure_is_a_failed_result(self) -> None:
+        """When the scoped pip call fails (``None``), the check failed (#864)."""
         with (
             patch(
                 "mureo.web.version_check._installed_mureo_versions",
@@ -204,9 +205,7 @@ class TestCheckForUpdates:
             patch("mureo.web.version_check._run_pip_report", return_value=None),
         ):
             result = check_for_updates()
-        assert result["status"] == "error"
-        assert result["any_update"] is False
-        assert result["packages"] == []
+        assert result == ActionResult.failed("update_check_failed")
 
     def test_malformed_entry_is_skipped_not_fatal(self) -> None:
         """An ``install`` entry missing metadata is dropped; valid ones surface."""
@@ -407,16 +406,33 @@ class TestGetUpdateStatus:
         assert slow_calls == ["ran"]
 
     def test_error_result_is_cached_with_short_ttl(self) -> None:
-        """A degraded check is cached (so it is not retried every request)."""
+        """A failed check is cached (so it is not retried every request)."""
+        failed = ActionResult.failed("update_check_failed")
         with patch(
-            "mureo.web.version_check.check_for_updates",
-            return_value={"status": "error", "any_update": False, "packages": []},
+            "mureo.web.version_check.check_for_updates", return_value=failed
         ) as mock_check:
             assert get_update_status()["status"] == "checking"
             _join_refresh()
-            assert get_update_status()["status"] == "error"
+            assert get_update_status() == failed
             get_update_status()  # still within the error TTL
         mock_check.assert_called_once()
+
+    def test_error_result_expires_after_the_short_ttl(self) -> None:
+        """A failed check is retried after ``_ERROR_TTL_SECONDS``, long
+        before a success would be."""
+        failed = ActionResult.failed("update_check_failed")
+        with patch(
+            "mureo.web.version_check.check_for_updates", return_value=failed
+        ) as mock_check:
+            get_update_status()
+            _join_refresh()
+            with version_check._cache_lock:
+                version_check._cached_at_monotonic -= (
+                    version_check._ERROR_TTL_SECONDS + 1
+                )
+            assert get_update_status() == failed  # stale: returned, and re-run
+            _join_refresh()
+        assert mock_check.call_count == 2
 
     def test_stale_cache_triggers_one_background_refresh(self) -> None:
         """An expired cache serves the stale result and refreshes once."""

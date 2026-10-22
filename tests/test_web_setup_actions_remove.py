@@ -21,12 +21,13 @@ The wrappers return ``ActionResult`` shaped envelopes (status: ok/noop/error).
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mureo.web.setup_actions import ActionResult
+from mureo.web.action_result import ActionResult
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -76,6 +77,7 @@ class TestRemoveMureoMcp:
             result = setup_actions.remove_mureo_mcp(home=tmp_path)
 
         assert result.status == "error"
+        assert (result.code, result.http_status) == ("internal_error", 500)
         # The detail should surface the exception type, not the raw message.
         assert result.detail == "RuntimeError"
 
@@ -145,6 +147,7 @@ class TestRemoveAuthHook:
             result = setup_actions.remove_auth_hook(home=tmp_path)
 
         assert result.status == "error"
+        assert (result.code, result.http_status) == ("internal_error", 500)
         assert result.detail == "PermissionError"
 
     # The flag-flip tests that lived here are gone with the flag (#423): the
@@ -159,20 +162,24 @@ class TestRemoveAuthHook:
 
 @pytest.mark.unit
 class TestRemoveWorkflowSkills:
-    def test_returns_ok_when_skills_removed(self, tmp_path: Path) -> None:
+    def test_returns_ok_when_skills_removed(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         from mureo.web import setup_actions
 
         # ``remove_skills`` returns ``(count, dest)`` per signature.
-        with patch(
-            "mureo.web.setup_actions.remove_skills",
-            return_value=(5, tmp_path / "skills"),
-        ) as mock_remove:
+        with (
+            caplog.at_level(logging.INFO, logger="mureo.web.setup_actions"),
+            patch(
+                "mureo.web.setup_actions.remove_skills",
+                return_value=(5, tmp_path / "skills"),
+            ) as mock_remove,
+        ):
             result = setup_actions.remove_workflow_skills(home=tmp_path)
 
-        assert result.status == "ok"
-        # Detail should communicate the removed count.
-        assert result.detail is not None
-        assert "5" in result.detail
+        # #864: no sentence or path in the response; the count is logged.
+        assert result == ActionResult(status="ok")
+        assert "removed 5 skills" in caplog.text
         mock_remove.assert_called_once()
 
     def test_returns_noop_when_no_skills_present(self, tmp_path: Path) -> None:
@@ -185,7 +192,7 @@ class TestRemoveWorkflowSkills:
         ):
             result = setup_actions.remove_workflow_skills(home=tmp_path)
 
-        assert result.status == "noop"
+        assert result == ActionResult(status="noop", detail="not_installed")
 
     def test_returns_error_on_exception(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
@@ -197,6 +204,7 @@ class TestRemoveWorkflowSkills:
             result = setup_actions.remove_workflow_skills(home=tmp_path)
 
         assert result.status == "error"
+        assert (result.code, result.http_status) == ("internal_error", 500)
         assert result.detail == "FileNotFoundError"
 
     # The flag-flip tests that lived here are gone with the flag (#423). One of
@@ -275,7 +283,7 @@ class TestClearAllSetup:
         with (
             patch(
                 "mureo.web.setup_actions.remove_mureo_mcp",
-                return_value=ActionResult(status="error", detail="boom"),
+                return_value=ActionResult.failed("internal_error", "OSError"),
             ),
             patch(
                 "mureo.web.setup_actions.remove_auth_hook",
@@ -289,7 +297,11 @@ class TestClearAllSetup:
             result = setup_actions.clear_all_setup(home=tmp_path)
 
         # Step 1 errored …
-        assert result["mureo_mcp"]["status"] == "error"
+        assert result["mureo_mcp"] == {
+            "status": "error",
+            "error": "internal_error",
+            "detail": "OSError",
+        }
         # … but step 2..N all ran.
         mock_hook.assert_called_once()
         mock_skills.assert_called_once()
@@ -316,7 +328,11 @@ class TestClearAllSetup:
         ):
             result = setup_actions.clear_all_setup(home=tmp_path)
 
-        assert result["mureo_mcp"]["status"] == "error"
+        assert result["mureo_mcp"] == {
+            "status": "error",
+            "error": "internal_error",
+            "detail": "RuntimeError",
+        }
         mock_hook.assert_called_once()
         mock_skills.assert_called_once()
 

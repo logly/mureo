@@ -245,6 +245,61 @@ class TestSendErrorJson:
         assert sent["X-Frame-Options"] == "DENY"
         assert "Content-Security-Policy" in sent
 
+    def test_detail_is_added_when_given(self, handler: _StubHandler) -> None:
+        send_error_json(handler, 500, "internal_error", detail="OSError")
+        body = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert (handler.status, body) == (
+            500,
+            {"error": "internal_error", "detail": "OSError"},
+        )
+
+    def test_extra_context_keys_are_added(self, handler: _StubHandler) -> None:
+        send_error_json(
+            handler,
+            502,
+            "manifest_refresh_failed",
+            detail="TimeoutError",
+            extra={"region": "fe", "account_id": 7},
+        )
+        body = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert body == {
+            "error": "manifest_refresh_failed",
+            "detail": "TimeoutError",
+            "region": "fe",
+            "account_id": 7,
+        }
+
+    def test_extra_cannot_replace_error_or_detail(self, handler: _StubHandler) -> None:
+        send_error_json(
+            handler,
+            400,
+            "invalid_value",
+            detail="ValueError",
+            extra={"error": "other", "detail": "a sentence", "field": "x"},
+        )
+        body = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert body == {"error": "invalid_value", "detail": "ValueError", "field": "x"}
+
+    def test_extra_cannot_add_detail_when_none_was_given(
+        self, handler: _StubHandler
+    ) -> None:
+        """``extra`` never sets ``detail``, not even when ``detail=None``."""
+        send_error_json(
+            handler,
+            400,
+            "invalid_value",
+            extra={"detail": "a sentence", "error": "other", "field": "x"},
+        )
+        body = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert body == {"error": "invalid_value", "field": "x"}
+
+    def test_no_detail_and_empty_extra_send_only_the_code(
+        self, handler: _StubHandler
+    ) -> None:
+        send_error_json(handler, 400, "invalid_value", extra={})
+        body = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert body == {"error": "invalid_value"}
+
 
 @pytest.mark.unit
 class TestEndHeadersIsCalledOnce:
