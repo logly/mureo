@@ -68,7 +68,7 @@ from mureo.core.clock import server_now_iso
 from mureo.core.scrub import scrub_text
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from datetime import date
     from pathlib import Path
 
@@ -236,6 +236,23 @@ def _period_mismatch(before: dict[str, Any], after: dict[str, Any]) -> bool:
     return stated_before != stated_after
 
 
+def entry_snapshot(doc: StateDocument, entry: ActionLogEntry) -> CampaignSnapshot | str:
+    """The entry's campaign in ``doc``, or the skip saying why there is none.
+
+    Also how the manual evaluation (#889) finds the campaign whose
+    ``bidding_details`` choose the primary metric.
+    """
+    platform = (doc.platforms or {}).get(entry.platform)
+    if platform is None:
+        return SKIP_PLATFORM_NOT_IN_STATE
+    snapshot = next(
+        (c for c in platform.campaigns if c.campaign_id == entry.campaign_id), None
+    )
+    if snapshot is None:
+        return SKIP_CAMPAIGN_NOT_IN_STATE
+    return snapshot
+
+
 def _comparable_snapshot(
     doc: StateDocument, entry: ActionLogEntry
 ) -> CampaignSnapshot | str:
@@ -251,14 +268,9 @@ def _comparable_snapshot(
     observation's due date. Anything else scores a period that overlaps the
     window rather than follows it.
     """
-    platform = (doc.platforms or {}).get(entry.platform)
-    if platform is None:
-        return SKIP_PLATFORM_NOT_IN_STATE
-    snapshot = next(
-        (c for c in platform.campaigns if c.campaign_id == entry.campaign_id), None
-    )
-    if snapshot is None:
-        return SKIP_CAMPAIGN_NOT_IN_STATE
+    snapshot = entry_snapshot(doc, entry)
+    if isinstance(snapshot, str):
+        return snapshot
     metrics = snapshot.metrics or {}
     if not metrics:
         return SKIP_NO_CURRENT_METRICS
@@ -346,7 +358,13 @@ def plan_closure(
     if isinstance(snapshot, str):
         return AutoSkip(index=index, reason=snapshot)
     after = dict(snapshot.metrics or {})
-    result = _evaluate(doc, entry, snapshot, thresholds)
+    result = evaluate_entry(
+        doc,
+        entry,
+        after,
+        bidding_details=snapshot.bidding_details,
+        thresholds=thresholds,
+    )
     if isinstance(result, str):
         return AutoSkip(index=index, reason=result)
     # No scored metric at all — the baseline and the current snapshot share no
@@ -367,28 +385,32 @@ def _iso_day(value: Any) -> str | None:
     return day.isoformat() if day is not None else None
 
 
-def _evaluate(
+def evaluate_entry(
     doc: StateDocument,
     entry: ActionLogEntry,
-    snapshot: CampaignSnapshot,
+    after: Mapping[str, Any],
+    *,
+    bidding_details: Mapping[str, Any] | None,
     thresholds: OutcomeThresholds,
 ) -> EvaluationResult | str:
-    """Score the entry's baseline against the snapshot, or a skip reason.
+    """Score the entry's baseline against ``after``, or a skip reason.
 
     The primary metric is the linked decision's ``expected`` effect (#848),
-    else the snapshot's bidding target, else the evaluator's default
-    (:func:`~mureo.analysis.expected_eval.choose_primary`). Two different
-    stated periods are a skip only when that primary is a count. The window
-    runs from the day of the change to the day the snapshot was collected.
+    else the campaign's bidding target (``bidding_details``), else the
+    evaluator's default (:func:`~mureo.analysis.expected_eval.choose_primary`).
+    Two different stated periods are a skip only when that primary is a
+    count. The window runs from the day of the change to the day ``after``
+    was collected (its ``fetched_at``). The one scoring path of both the
+    automatic closure and the manual evaluation of an entry (#889).
     """
     expected = chain_expected(doc, entry.decision_id) if entry.decision_id else ()
     baseline = entry.metrics_at_action or {}
-    after = dict(snapshot.metrics or {})
+    snapshot = dict(after)
     # Stripped for the SCORING only. The record keeps the whole snapshot.
-    before, current = _scored_metrics(baseline), _scored_metrics(after)
-    choice = choose_primary(expected, snapshot.bidding_details, before, current)
+    before, current = _scored_metrics(baseline), _scored_metrics(snapshot)
+    choice = choose_primary(expected, bidding_details, before, current)
     counted = choice is not None and choice.metric in COUNT_METRICS
-    if counted and _period_mismatch(baseline, after):
+    if counted and _period_mismatch(baseline, snapshot):
         return SKIP_PERIOD_MISMATCH
     report = evaluate_outcome(
         before=before, after=current, thresholds=thresholds, primary=choice
@@ -398,7 +420,7 @@ def _evaluate(
         expected,
         after=current,
         window_from=_iso_day(entry.timestamp),
-        window_to=_iso_day(after.get("fetched_at")),
+        window_to=_iso_day(snapshot.get("fetched_at")),
         thresholds=thresholds,
     )
 
@@ -541,5 +563,7 @@ __all__ = [
     "ClosurePlan",
     "close_due_observations",
     "due_candidates",
+    "entry_snapshot",
+    "evaluate_entry",
     "plan_closure",
 ]

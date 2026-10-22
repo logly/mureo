@@ -1983,6 +1983,15 @@ async def test_state_get_rejects_unknown_action_log_scope(cwd_to_tmp) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _evaluation_table() -> dict:
+    """A table as ``mureo_outcome_evaluate`` returns it (#889)."""
+    from mureo.analysis.expected_eval import build_evaluation
+
+    return build_evaluation(
+        {"cpa": 100}, {"cpa": 90}, (), window_from=None, window_to=None
+    ).table
+
+
 def _write_state_with_action_log(root, action_log) -> None:
     state = {
         "version": "2",
@@ -2061,10 +2070,11 @@ async def test_action_log_append_round_trips_evaluation_of(cwd_to_tmp) -> None:
         "mureo_state_action_log_append",
         {
             "entry": {
-                "action": "Evaluated budget change: regressed",
+                "action": "Outcome evaluated",
                 "platform": "google_ads",
                 "campaign_id": "c1",
                 "evaluation_of": 0,
+                "evaluation": _evaluation_table(),
             }
         },
     )
@@ -2120,10 +2130,10 @@ async def test_action_log_append_accepts_valid_index(cwd_to_tmp, field) -> None:
         ],
     )
     mod = _import_tools()
-    result = await mod.handle_tool(
-        "mureo_state_action_log_append",
-        {"entry": {"action": "record", "platform": "google_ads", field: 0}},
-    )
+    entry = {"action": "record", "platform": "google_ads", field: 0}
+    if field == "evaluation_of":
+        entry["evaluation"] = _evaluation_table()
+    result = await mod.handle_tool("mureo_state_action_log_append", {"entry": entry})
     payload = json.loads(result[0].text)
     assert payload["action_log"][1][field] == 0
 

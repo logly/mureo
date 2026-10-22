@@ -51,6 +51,7 @@ from mureo.analysis.outcome_eval import (
     BASIS_EXPECTED,
     DEFAULT_THRESHOLDS,
     GATE_REASONS,
+    OUTCOME_REASONS,
     PER_DAY_MARKER,
     REASON_NO_CHANGE,
     REASON_TARGET_NOT_REACHED,
@@ -85,6 +86,24 @@ RULES_VERSION: Final = 2
 #: ``role`` values of a metric row.
 ROLE_PRIMARY: Final = "primary"
 ROLE_REFERENCE: Final = "reference"
+
+#: The keys :func:`evaluation_from_report` writes: the ones every table
+#: carries, then the ones written only when they apply. A row carries
+#: exactly the keys of :func:`_row`.
+_TABLE_REQUIRED_KEYS: Final[tuple[str, ...]] = (
+    "rules",
+    "overall",
+    "basis",
+    "primary",
+    "noise_pct",
+    "window",
+    "metrics",
+)
+_TABLE_OPTIONAL_KEYS: Final[tuple[str, ...]] = ("reason", "expected_missing")
+_ROW_KEYS: Final[frozenset[str]] = frozenset(
+    {"metric", "before", "after", "delta_pct", "verdict", "note", "role"}
+)
+_BASES: Final[tuple[str, ...]] = (BASIS_EXPECTED, BASIS_BIDDING_TARGET, BASIS_DEFAULT)
 
 #: ``bidding_details`` key -> the metric that target is set on, in order.
 _BIDDING_TARGETS: Final[tuple[tuple[str, str], ...]] = (
@@ -351,6 +370,82 @@ def evaluation_from_report(
     )
 
 
+def _check_table_keys(raw: Mapping[str, Any]) -> None:
+    unknown = sorted(set(raw) - {*_TABLE_REQUIRED_KEYS, *_TABLE_OPTIONAL_KEYS})
+    if unknown:
+        raise ValueError(f"evaluation has unknown keys: {', '.join(unknown)}")
+    missing = [key for key in _TABLE_REQUIRED_KEYS if key not in raw]
+    if missing:
+        raise ValueError(f"evaluation is missing keys: {', '.join(missing)}")
+
+
+def _check_noise_pct(value: object) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0 < value <= 100
+    ):
+        raise ValueError(
+            f"evaluation.noise_pct must be a number above 0 and at most 100; "
+            f"got {value!r}"
+        )
+
+
+def _check_rows(rows: object) -> None:
+    if not isinstance(rows, list):
+        raise ValueError("evaluation.metrics must be a list of metric rows")
+    if not rows:
+        # The automatic closure's skip word (auto_evaluation's
+        # SKIP_NO_COMPARABLE_METRIC), spelled out: that module imports this
+        # one, so importing it back would be a cycle.
+        raise ValueError(
+            "no_comparable_metric: evaluation.metrics is empty; the automatic "
+            "closure never stores a table without rows"
+        )
+    keys = ", ".join(sorted(_ROW_KEYS))
+    for position, row in enumerate(rows):
+        if not isinstance(row, dict) or set(row) != _ROW_KEYS:
+            raise ValueError(
+                f"evaluation.metrics[{position}] must be an object with "
+                f"exactly the keys {keys}"
+            )
+
+
+def validate_evaluation_table(raw: object) -> Mapping[str, Any]:
+    """Check that ``raw`` has the shape :func:`evaluation_from_report` writes.
+
+    For a table handed back by a caller (the manual evaluation record,
+    #889). The values are not re-derived — only the shape is checked, so a
+    record carries a table every reader of the automatic one can read.
+    Reading a STORED table never calls this: a malformed one on disk reads
+    as no verdict, it does not block a load.
+
+    Raises:
+        ValueError: naming the first offending part, as
+            :func:`mureo.context.expected.parse_expected` does.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError(
+            "evaluation must be an object: the table mureo_outcome_evaluate returns"
+        )
+    _check_table_keys(raw)
+    rules = raw["rules"]
+    if isinstance(rules, bool) or rules != RULES_VERSION:
+        raise ValueError(f"evaluation.rules must be {RULES_VERSION}; got {rules!r}")
+    # Tuples, not sets: ``in`` on a set raises TypeError for a list or a dict.
+    if raw["overall"] not in tuple(verdict.value for verdict in Verdict):
+        raise ValueError(f"evaluation.overall is not a verdict: {raw['overall']!r}")
+    if raw["basis"] not in _BASES:
+        raise ValueError(f"evaluation.basis is not a basis: {raw['basis']!r}")
+    if raw["primary"] is not None and not isinstance(raw["primary"], str):
+        raise ValueError("evaluation.primary must be a metric name or null")
+    if "reason" in raw and raw["reason"] not in OUTCOME_REASONS:
+        raise ValueError(f"evaluation.reason is not a reason: {raw['reason']!r}")
+    _check_noise_pct(raw["noise_pct"])
+    _check_rows(raw["metrics"])
+    return raw
+
+
 __all__ = [
     "BASIS_BIDDING_TARGET",
     "BASIS_DEFAULT",
@@ -362,4 +457,5 @@ __all__ = [
     "build_evaluation",
     "choose_primary",
     "evaluation_from_report",
+    "validate_evaluation_table",
 ]

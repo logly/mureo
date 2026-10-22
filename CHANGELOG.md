@@ -73,8 +73,44 @@
   `after=`. A stored decision is read as it was written: one naming both
   `cost` and `spend` still reads, while a new declaration may not name the
   two. Stored tables are not rewritten.
+- **An evaluation record must carry its table** (#889).
+  `mureo_state_action_log_append` with `entry.evaluation_of` now requires
+  `entry.evaluation` — the `evaluation` object `mureo_outcome_evaluate`
+  returned, unchanged — and refuses the append without it
+  (`evaluation_required`); `entry.evaluation` without `entry.evaluation_of`
+  is refused too (`evaluation_without_target`). The table's shape is
+  checked (`validate_evaluation_table`); a table with no rows is refused
+  (`no_comparable_metric`), as the automatic closure never stores one.
+  As on an automatic record,
+  the record's `summary` is built from the table and its
+  `decision_id` is the evaluated entry's; a value passed for either
+  is now replaced (an explicit `decision_id` on an evaluation record
+  used to be kept). It is stored in the field the
+  automatic closure uses, so ops history, its counts and the dashboard
+  show a manual evaluation's verdict as they show an automatic one.
+  Stored entries are read as before: a malformed or missing table reads
+  as no verdict and never blocks a write. The `daily-check`,
+  `monthly-report`, `incident-postmortem` and `experiment` skills pass the
+  table through and write a neutral `action` ("Outcome evaluated").
+  `handle_outcome_evaluate` moves to `mureo.mcp._handlers_outcome`.
 
 ### Added
+
+- **`evaluation` in the `mureo_outcome_evaluate` answer, and its
+  `evaluation_of` input** (#889). The answer carries the evaluation table
+  automatic closure stores, next to the existing keys, which are read off
+  it. With `evaluation_of` (and `path`), the entry's baseline, its
+  decision's `expected` effects and its campaign's bidding target are read
+  from STATE.json and scored by the automatic closure's own path
+  (`mureo.context.auto_evaluation.evaluate_entry`); `before` is then
+  required only when the entry recorded no baseline and refused beside
+  one (`evaluation_of_conflicts_with_before`), an explicit `expected`
+  is refused (`evaluation_of_conflicts_with_expected`), a count primary
+  over two different stated periods is refused (`period_mismatch`),
+  and a result with no metric on both sides is refused
+  (`no_comparable_metric`). `after` is the campaign's `metrics` from
+  `mureo_state_get`, unchanged.
+  Without it, an optional `expected` declares the effects.
 
 - **The verdict `held`** (#888): an `expected` `hold` that stayed inside the
   noise band (or near its target). Shown as "Held" in the ops history view.

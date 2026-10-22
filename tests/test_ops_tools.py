@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from mureo.analysis.expected_eval import build_evaluation
 from mureo.context.settings import ops_history_enabled, set_ops_history_enabled
 from mureo.context.state import read_state_file
 from mureo.mcp import journal
@@ -141,7 +142,15 @@ class TestActionLogAppend:
         set_ops_history_enabled(workspace / "STATE.json", True)
         await _call(
             "mureo_state_action_log_append",
-            {"entry": _entry(action="evaluated", evaluation_of=0)},
+            {
+                "entry": _entry(
+                    action="evaluated",
+                    evaluation_of=0,
+                    evaluation=build_evaluation(
+                        {"cpa": 100}, {"cpa": 90}, (), window_from=None, window_to=None
+                    ).table,
+                )
+            },
         )
         doc = read_state_file(workspace / "STATE.json")
         assert doc.action_log[1].decision_id == doc.action_log[0].decision_id

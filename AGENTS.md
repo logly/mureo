@@ -123,6 +123,8 @@ mureo/
 │   ├── tools_learning_preflight.py        # mureo_learning_reset_preflight (#548)
 │   ├── tools_mureo_context.py             # STRATEGY.md / STATE.json + mureo_outcome_evaluate tools
 │   ├── _handlers_mureo_context.py         # Context (STRATEGY/STATE) handlers
+│   ├── _handlers_outcome.py               # mureo_outcome_evaluate: the evaluation
+│   │                                      #   table, by evaluation_of or by maps (#889)
 │   ├── _tools_decisions.py                # mureo_decision_record (#758 phase 3) — a PARTIAL of the
 │   │                                      #   mureo_context family, not a family of its own, so
 │   │                                      #   server.py and the journal labels are untouched

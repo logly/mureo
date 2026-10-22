@@ -21,7 +21,7 @@ whether the reason and the expected effect are **required**.
 | `applied_params` | `STATE.json`, on `action_log` entries and on decisions mureo writes for a call | The parameters the call sent, masked like the journal's `args`. Omitted when there were none, or when they exceed 4,000 characters of JSON |
 | `journal_call_id` | `STATE.json`, on decisions mureo writes for a call | The `call_id` of that call's `JOURNAL.jsonl` record. The record carries `call_id` and `decision_id` in turn |
 | `journal_tool` | `STATE.json`, on decisions mureo writes for a call that wrote no entry | The call's tool name, which rule 4 matches against an entry's `action` |
-| `action_log[].evaluation` | `STATE.json`, on `outcome_evaluated` entries | The evaluation table: every metric before and after, with a verdict and a note |
+| `action_log[].evaluation` | `STATE.json`, on every `evaluation_of` entry: the automatic closure's `outcome_evaluated` entries and the manual evaluation records | The evaluation table: every metric before and after, with a verdict and a note |
 | `approval` | Every mutating tool, and `entry.approval` on `mureo_state_action_log_append`; stored on `action_log` entries and on decisions | An external approval the change carries out: `{reference, approved_by, approved_at}`. Optional, never required |
 | `settings.ops_history.enabled` | `STATE.json` | Off by default. When on, `reason` and `expected` are required |
 
@@ -165,8 +165,9 @@ When an `action_log` entry is recorded — by a mutating call, or by
 6. **Otherwise** the change is recorded without a decision, as before.
 
 Imported external changes (`origin: "external"`) and rollback entries are
-never linked. An `outcome_evaluated` entry inherits the `decision_id` of
-the entry it evaluates.
+never linked. An evaluation record (`evaluation_of`), automatic or
+appended by hand, inherits the `decision_id` of the entry it evaluates;
+a value passed on it is replaced.
 
 Nothing else is joined. A change is never attached to an earlier decision
 because it looks related — same session, same campaign or same platform is
@@ -324,6 +325,43 @@ never rewritten.
   `expected_missing`.
 - The schema reserves `control` (a comparison group) and `skipped_reason`.
   Neither is written in this phase.
+
+### Manual evaluations store the same table
+
+An observation the automatic closure skips is evaluated by the agent, and
+that record carries the same table, in the same field (#889):
+
+1. `mureo_outcome_evaluate` with `evaluation_of: <index>` and `after` —
+   the campaign's `metrics` from `mureo_state_get`, unchanged, `period`
+   and `fetched_at` included (`fetched_at` ends the window). The
+   entry's `metrics_at_action`, its decision's `expected` effects and its
+   campaign's `bidding_details` are read from STATE.json and scored by the
+   automatic closure's own path, so for the same `after` the table is
+   identical to the one the closure would store. `before` is required
+   only when the entry recorded no baseline, and refused beside one
+   (`evaluation_of_conflicts_with_before`). `expected` beside
+   `evaluation_of` is refused (`evaluation_of_conflicts_with_expected`);
+   a count primary over two different stated periods is refused
+   (`period_mismatch`), and so is a result with no metric on both
+   sides (`no_comparable_metric`), so an empty table is never stored.
+2. `mureo_state_action_log_append` with `evaluation_of` and `evaluation`
+   — the `evaluation` object the tool returned, unchanged. An
+   `evaluation_of` without it is refused (`evaluation_required`), and
+   `evaluation` without `evaluation_of` is refused
+   (`evaluation_without_target`). Its shape is checked: `rules` 2, a known
+   `overall` / `basis` / `reason`, `primary` a name or null, `noise_pct`
+   in (0, 100], at least one row, rows with the row keys above, no
+   unknown key. A table with no rows is refused (`no_comparable_metric`),
+   as the automatic closure never stores one.
+3. `action` is a short neutral label (`"Outcome evaluated"`); the verdict
+   lives in the table. As on an automatic record, `summary` is built
+   from the table (`outcome_summary`) and `decision_id` is the
+   evaluated entry's; values passed for either are replaced.
+
+The view, its counts and the dashboard feed read a manual record exactly
+as an automatic one. Reading stays lenient: a stored table that is
+malformed or missing never blocks a load or a write, and reads as no
+verdict.
 
 ## The setting
 

@@ -48,7 +48,6 @@ from mureo.core.report_kinds import REPORT_KIND_DESCRIPTION, REPORT_KINDS
 from mureo.core.report_summary import REPORT_SUMMARY_RULE
 from mureo.mcp._auto_evaluation_hook import AUTO_EVALUATE_PROPERTY
 from mureo.mcp._handlers_mureo_context import (
-    handle_outcome_evaluate,
     handle_state_action_log_append,
     handle_state_display_set,
     handle_state_get,
@@ -62,6 +61,7 @@ from mureo.mcp._handlers_mureo_context import (
     handle_strategy_get,
     handle_strategy_set,
 )
+from mureo.mcp._handlers_outcome import handle_outcome_evaluate
 from mureo.mcp._ops_history_param import (
     approval_schema,
     decision_id_schema,
@@ -203,11 +203,26 @@ _ACTION_LOG_ENTRY_PROPERTY = {
             "description": (
                 "Positional index (into the full action_log) of the action "
                 "whose ``observation_due`` this entry evaluates and CLOSES. "
-                "Append this after running ``mureo_outcome_evaluate`` on a "
-                "past-due observation so the source entry leaves the pending "
-                "set (``mureo_outcome_evaluate`` is pure and records nothing "
-                "itself). Must point at an existing entry — the daily-check's "
-                "pending scope reads the returned ``index`` field to fill it."
+                "Append this after running ``mureo_outcome_evaluate`` with the "
+                "same ``evaluation_of`` on a past-due observation so the "
+                "source entry leaves the pending set (``mureo_outcome_evaluate`` "
+                "is pure and records nothing itself). Must point at an "
+                "existing entry — the daily-check's pending scope reads the "
+                "returned ``index`` field to fill it. Requires ``evaluation``. "
+                "The record's ``decision_id`` is the evaluated entry's, "
+                "whatever is passed."
+            ),
+        },
+        "evaluation": {
+            "type": "object",
+            "description": (
+                "The evaluation table — pass the ``evaluation`` object "
+                "``mureo_outcome_evaluate`` returned, unchanged. Required with "
+                "``evaluation_of`` (evaluation_required) "
+                "and refused without it (evaluation_without_target). Its shape "
+                "is checked; it is stored where the automatic closure stores "
+                "its table, so ops history shows the verdict, and the record's "
+                "``summary`` is built from it (a passed one is replaced)."
             ),
         },
         "batch_id": {
@@ -1432,11 +1447,34 @@ TOOLS: list[Tool] = [
             "±noise_pct (default 10%) is 'inconclusive' (no_change). The "
             "floors and the band come from STRATEGY.md ## Guardrails "
             "(outcome_noise_pct, outcome_min_conversions, "
-            "outcome_min_impressions, outcome_min_clicks)."
+            "outcome_min_impressions, outcome_min_clicks). To close an "
+            "observation, pass ``evaluation_of`` (the entry's index): the "
+            "entry's baseline, its decision's expected effects and its "
+            "campaign's bidding target are read from STATE.json, exactly as "
+            "the automatic closure reads them; ``before`` is refused beside a "
+            "recorded baseline (evaluation_of_conflicts_with_before), and a "
+            "result with no metric on both sides is refused "
+            "(no_comparable_metric). The answer's ``evaluation`` is the table "
+            "to append, unchanged, with ``evaluation_of`` via "
+            "mureo_state_action_log_append."
         ),
         inputSchema={
             "type": "object",
             "properties": {
+                "path": _PATH_PROPERTY,
+                "evaluation_of": {
+                    "type": "integer",
+                    "description": (
+                        "Positional index (into the full action_log) of the "
+                        "entry being evaluated — the pending entry's "
+                        "``index``. Its metrics_at_action is the baseline, so "
+                        "``before`` is refused beside it "
+                        "(evaluation_of_conflicts_with_before) unless the "
+                        "entry recorded none; its decision's expected effects "
+                        "apply, so ``expected`` is refused beside it "
+                        "(evaluation_of_conflicts_with_expected)."
+                    ),
+                },
                 "before": {
                     "type": "object",
                     "description": (
@@ -1444,12 +1482,22 @@ TOOLS: list[Tool] = [
                         '{"cpa": 5000, "conversions": 50, "days": 7}). '
                         "Usually the action_log entry's metrics_at_action. "
                         "``days`` / ``period`` say which window the figures "
-                        "cover; they are read, never scored."
+                        "cover; they are read, never scored. Required "
+                        "without ``evaluation_of``; with it, required when the "
+                        "entry recorded no metrics_at_action and refused when "
+                        "it recorded one (evaluation_of_conflicts_with_before)."
                     ),
                 },
                 "after": {
                     "type": "object",
-                    "description": "Current metrics, same shape as ``before``.",
+                    "description": (
+                        "Current metrics, same shape as ``before``. With "
+                        "``evaluation_of``, pass the campaign's ``metrics`` "
+                        "object from mureo_state_get unchanged, ``period`` "
+                        "and ``fetched_at`` included: ``fetched_at`` is the "
+                        "end of the table's window and ``period`` is what the "
+                        "count rule compares."
+                    ),
                 },
                 "noise_pct": {
                     "type": "number",
@@ -1462,8 +1510,14 @@ TOOLS: list[Tool] = [
                         "variance)."
                     ),
                 },
+                "expected": expected_schema(
+                    "Without evaluation_of only: the effects the change "
+                    'should have (e.g. [{"metric": "cpa", "direction": '
+                    '"down"}]); with several, mark exactly one "primary": '
+                    "true. The verdict is then read off that primary."
+                ),
             },
-            "required": ["before", "after"],
+            "required": ["after"],
             "additionalProperties": False,
         },
     ),

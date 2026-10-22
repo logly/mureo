@@ -343,8 +343,14 @@ def _new_decision(entry: ActionLogEntry, request: LinkRequest) -> DecisionRecord
 
 
 def _inherit_evaluated(doc: StateDocument, entry: ActionLogEntry) -> ActionLogEntry:
+    """Stamp the evaluated entry's ``decision_id``, as the automatic closure does.
+
+    A value the caller put on the evaluation record is replaced (#889): its
+    table was scored against the evaluated entry's decision, so the record
+    names that decision whatever it was handed.
+    """
     index = entry.evaluation_of
-    if entry.decision_id is not None or index is None:
+    if index is None:
         return entry
     if not 0 <= index < len(doc.action_log):
         return entry
