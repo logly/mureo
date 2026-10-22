@@ -18,9 +18,9 @@ import pytest
 
 from mureo.web.host_paths import HostPaths
 from mureo.web.server import ConfigureWizard, run_configure_wizard
+from tests.web_support import post
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -31,19 +31,6 @@ def home_dir(tmp_path: Path) -> Path:
     (home / ".claude" / "commands").mkdir(parents=True)
     (home / ".mureo").mkdir()
     return home
-
-
-@pytest.fixture
-def served_wizard(home_dir: Path) -> Iterator[ConfigureWizard]:
-    wiz = ConfigureWizard(home=home_dir)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
 
 
 @pytest.mark.unit
@@ -79,15 +66,15 @@ class TestConfigureWizardPortAndUrl:
         with pytest.raises(RuntimeError, match="serve"):
             _ = wiz.port
 
-    def test_port_is_set_after_serve(self, served_wizard: ConfigureWizard) -> None:
-        assert served_wizard.port > 0
-        assert served_wizard.port < 65536
+    def test_port_is_set_after_serve(self, wizard: ConfigureWizard) -> None:
+        assert wizard.port > 0
+        assert wizard.port < 65536
 
-    def test_home_url_uses_loopback(self, served_wizard: ConfigureWizard) -> None:
-        url = served_wizard.home_url()
+    def test_home_url_uses_loopback(self, wizard: ConfigureWizard) -> None:
+        url = wizard.home_url()
         assert url.startswith("http://127.0.0.1:")
         assert url.endswith("/")
-        assert str(served_wizard.port) in url
+        assert str(wizard.port) in url
 
 
 @pytest.mark.unit
@@ -149,15 +136,13 @@ class TestConfigureWizardServeAndShutdown:
         with pytest.raises(TimeoutError):
             wiz.wait_until_ready(timeout=0.01)
 
-    def test_shutdown_is_idempotent(self, served_wizard: ConfigureWizard) -> None:
-        served_wizard.shutdown()
-        served_wizard.shutdown()
+    def test_shutdown_is_idempotent(self, wizard: ConfigureWizard) -> None:
+        wizard.shutdown()
+        wizard.shutdown()
 
-    def test_shutdown_cancels_oauth_bridges(
-        self, served_wizard: ConfigureWizard
-    ) -> None:
-        with patch.object(served_wizard.oauth_bridge, "cancel_all") as mock_cancel:
-            served_wizard.shutdown()
+    def test_shutdown_cancels_oauth_bridges(self, wizard: ConfigureWizard) -> None:
+        with patch.object(wizard.oauth_bridge, "cancel_all") as mock_cancel:
+            wizard.shutdown()
         mock_cancel.assert_called_once()
 
 
@@ -498,29 +483,16 @@ class TestStopLifecycle:
         assert not thread.is_alive(), "CLI loop did not stop on request_stop"
         assert elapsed < 3.0, f"stop took {elapsed:.2f}s (should be ~instant)"
 
-    def test_api_shutdown_route_triggers_stop(
-        self, served_wizard: ConfigureWizard
-    ) -> None:
-        import json
-        import urllib.request
+    def test_api_shutdown_route_triggers_stop(self, wizard: ConfigureWizard) -> None:
+        status, body = post(wizard, "/api/shutdown", {})
 
-        base = f"http://127.0.0.1:{served_wizard.port}"
-        token = served_wizard.session.csrf_token
-        req = urllib.request.Request(
-            f"{base}/api/shutdown",
-            data=b"{}",
-            method="POST",
-            headers={"Content-Type": "application/json", "X-CSRF-Token": token},
-        )
-        with urllib.request.urlopen(req, timeout=5.0) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-
+        assert status == 200, body
         assert body == {"status": "stopping"}
         # The handler returns "stopping" and the server thread sets the
         # stop event; sampling is_set() immediately races that thread
         # (flaky on CI). stop_event is a threading.Event — wait for it
         # with a bounded timeout instead.
-        assert served_wizard.stop_event.wait(
+        assert wizard.stop_event.wait(
             timeout=5.0
         ), "/api/shutdown did not trigger stop within 5s"
 
@@ -568,16 +540,12 @@ class TestConfigureWizardProviderDiscovery:
 
 @pytest.mark.unit
 class TestSecurityBindLoopbackOnly:
-    def test_server_binds_to_loopback_only(
-        self, served_wizard: ConfigureWizard
-    ) -> None:
+    def test_server_binds_to_loopback_only(self, wizard: ConfigureWizard) -> None:
         """The server must be bound to 127.0.0.1, never 0.0.0.0 — that
         would expose the configure UI to the LAN."""
-        assert served_wizard._bind_host == "127.0.0.1"
+        assert wizard._bind_host == "127.0.0.1"
 
-    def test_home_url_never_contains_zero_host(
-        self, served_wizard: ConfigureWizard
-    ) -> None:
-        url = served_wizard.home_url()
+    def test_home_url_never_contains_zero_host(self, wizard: ConfigureWizard) -> None:
+        url = wizard.home_url()
         assert "0.0.0.0" not in url
         assert url.startswith("http://127.0.0.1:")

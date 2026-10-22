@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from tests._measurement_child import StandaloneSweep
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from mureo.web.server import ConfigureWizard
 
 
 @pytest.fixture(autouse=True)
@@ -130,6 +137,40 @@ def fake_home(tmp_path: Path) -> Path:
     from tests.credential_guard_support import make_fake_home
 
     return make_fake_home(tmp_path)
+
+
+@pytest.fixture
+def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
+    """A ``ConfigureWizard`` served on 127.0.0.1:0 from ``tmp_path / "home"``.
+
+    Shared by the configure web server tests (#864); talk to it through
+    ``tests.web_support``. To patch something before the wizard boots, put
+    the patch in its own fixture and request that fixture *before*
+    ``wizard`` — pytest sets fixtures up in argument order::
+
+        @pytest.fixture
+        def wizard(_two_plugins: None, wizard: ConfigureWizard) -> ConfigureWizard:
+            return wizard
+
+    overrides ``wizard`` for a whole module; a module with several variants
+    names each one instead (``def wizard_no_extensions(_no_entries, wizard)``).
+    ``ConfigureWizard`` is imported here rather than at module level so that
+    loading this conftest does not load the web server for every test.
+    """
+    from mureo.web.server import ConfigureWizard
+
+    home = tmp_path / "home"
+    (home / ".claude" / "commands").mkdir(parents=True)
+    (home / ".mureo").mkdir()
+    wiz = ConfigureWizard(home=home)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    wiz.wait_until_ready(timeout=5.0)
+    try:
+        yield wiz
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
 
 
 @pytest.fixture

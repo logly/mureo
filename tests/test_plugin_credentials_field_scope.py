@@ -19,10 +19,6 @@ whatever ``mureo.runtime_context_factory`` is installed in the dev venv.
 from __future__ import annotations
 
 import dataclasses
-import json
-import threading
-import urllib.error
-import urllib.request
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
@@ -42,10 +38,10 @@ from mureo.web.plugin_credentials import (
     save_plugin_credentials,
 )
 from mureo.web.server import ConfigureWizard
+from tests.web_support import get, post
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from http.client import HTTPResponse
     from pathlib import Path
 
 
@@ -227,23 +223,9 @@ def test_list_drops_provider_when_no_keys_remain(two_providers: None) -> None:
 
 
 @pytest.fixture
-def home_wizard(tmp_path: Path, two_providers: None) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    for sub in ("", ".claude", ".claude/commands", ".mureo"):
-        (home / sub).mkdir(parents=True, exist_ok=True)
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
-def _get(wiz: ConfigureWizard, path: str) -> HTTPResponse:
-    return urllib.request.urlopen(f"http://127.0.0.1:{wiz.port}{path}", timeout=2.0)
+def home_wizard(two_providers: None, wizard: ConfigureWizard) -> ConfigureWizard:
+    """The shared ``wizard``, booted after ``two_providers`` is registered."""
+    return wizard
 
 
 @pytest.mark.unit
@@ -258,7 +240,8 @@ def test_handler_suppresses_scope_when_home_injected(
     with patch(
         "mureo.web.handlers.runtime_ui_plugin_credential_fields", return_value=scope
     ):
-        body = json.loads(_get(home_wizard, "/api/credentials/plugins").read())
+        status, body = get(home_wizard, "/api/credentials/plugins")
+    assert status == 200, body
     by_name = {p["provider_name"]: p for p in body["plugins"]}
     # Scope ignored under injected home → account_id still rendered.
     assert [f["key"] for f in by_name["yahoo_ads"]["fields"]] == [
@@ -358,30 +341,9 @@ def test_save_scoped_in_required_still_enforced(
 
 
 @pytest.fixture
-def line_home_wizard(tmp_path: Path, line_provider: None) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    for sub in ("", ".claude", ".claude/commands", ".mureo"):
-        (home / sub).mkdir(parents=True, exist_ok=True)
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
-def _post(wiz: ConfigureWizard, path: str, payload: dict[str, Any]) -> Any:
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{wiz.port}{path}",
-        data=json.dumps(payload).encode(),
-        method="POST",
-    )
-    req.add_header("Content-Type", "application/json")
-    req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    return urllib.request.urlopen(req, timeout=2.0)
+def line_home_wizard(line_provider: None, wizard: ConfigureWizard) -> ConfigureWizard:
+    """The shared ``wizard``, booted after ``line_provider`` is registered."""
+    return wizard
 
 
 @pytest.mark.unit
@@ -392,13 +354,10 @@ def test_save_handler_suppresses_scope_when_home_injected(
     process-global factory's scope, so required validation stays full — a
     payload missing the per-account required field is rejected."""
     scope = {"line_ads": frozenset({"access_key", "secret_key"})}
-    with (
-        patch(
-            "mureo.web.handlers.runtime_ui_plugin_credential_fields", return_value=scope
-        ),
-        pytest.raises(urllib.error.HTTPError) as exc,
+    with patch(
+        "mureo.web.handlers.runtime_ui_plugin_credential_fields", return_value=scope
     ):
-        _post(
+        status, body = post(
             line_home_wizard,
             "/api/credentials/plugins/save",
             {
@@ -406,8 +365,8 @@ def test_save_handler_suppresses_scope_when_home_injected(
                 "values": {"access_key": "AK", "secret_key": "SK"},
             },
         )
-    assert exc.value.code == 400
-    assert json.loads(exc.value.read())["error"] == "required_field_missing"
+    assert status == 400
+    assert body["error"] == "required_field_missing"
 
 
 # ---------------------------------------------------------------------------

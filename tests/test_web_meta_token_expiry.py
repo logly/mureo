@@ -20,19 +20,13 @@ patches the network probe, so nothing outbound happens.
 from __future__ import annotations
 
 import json
-import threading
-import urllib.request
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 from mureo.web.server import ConfigureWizard
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from http.client import HTTPResponse
-    from pathlib import Path
+from tests.web_support import post
 
 pytestmark = pytest.mark.unit
 
@@ -75,39 +69,6 @@ def _probe_result(
     }
 
 
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
-def _post(
-    wiz: ConfigureWizard, payload: dict[str, Any]
-) -> HTTPResponse:  # pragma: no cover - trivial
-    body = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{wiz.port}/api/credentials/meta/token",
-        data=body,
-        method="POST",
-    )
-    req.add_header("Content-Type", "application/json")
-    req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    return urllib.request.urlopen(req, timeout=2.0)
-
-
 def _save(
     wiz: ConfigureWizard,
     payload: dict[str, Any],
@@ -120,8 +81,9 @@ def _save(
         return probe
 
     with patch(_PROBE, side_effect=_fake):
-        resp = _post(wiz, payload)
-    return json.loads(resp.read().decode())
+        status, body = post(wiz, "/api/credentials/meta/token", payload)
+    assert status == 200, body
+    return body
 
 
 def _stored(wiz: ConfigureWizard) -> dict[str, Any]:

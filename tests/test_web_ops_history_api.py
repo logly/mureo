@@ -15,9 +15,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
-import threading
-import urllib.error
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,6 +23,7 @@ import pytest
 
 from mureo.context.state_store import FilesystemStateStore
 from mureo.web.server import ConfigureWizard
+from tests.web_support import get, get_ok
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -95,35 +93,6 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     reset_runtime_context()
 
 
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    (home / ".claude" / "commands").mkdir(parents=True)
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
-def _get(wiz: ConfigureWizard, path: str) -> dict[str, Any]:
-    url = f"http://127.0.0.1:{wiz.port}{path}"
-    with urllib.request.urlopen(url, timeout=2.0) as res:
-        body: dict[str, Any] = json.loads(res.read().decode("utf-8"))
-    return body
-
-
-def _get_error(wiz: ConfigureWizard, path: str) -> tuple[int, dict[str, Any]]:
-    with pytest.raises(urllib.error.HTTPError) as excinfo:
-        _get(wiz, path)
-    return excinfo.value.code, json.loads(excinfo.value.read())
-
-
 def _days(body: dict[str, Any]) -> list[str]:
     return [item["actions"][0]["timestamp"][:10] for item in body["items"]]
 
@@ -133,7 +102,7 @@ class TestEndpoint:
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
         _write(workspace, _document(enabled=True))
-        body = _get(wizard, ENDPOINT)
+        body = get_ok(wizard, ENDPOINT)
         # Thirty calendar days ending today, both ends included.
         assert body["since"] == "2026-09-15"
         assert body["until"] == "2026-10-14"
@@ -143,7 +112,7 @@ class TestEndpoint:
 
     def test_an_explicit_window(self, wizard: ConfigureWizard, workspace: Path) -> None:
         _write(workspace, _document(enabled=True))
-        body = _get(wizard, ENDPOINT + "?since=2026-08-01&until=2026-10-02")
+        body = get_ok(wizard, ENDPOINT + "?since=2026-08-01&until=2026-10-02")
         assert (body["since"], body["until"]) == ("2026-08-01", "2026-10-02")
         assert _days(body) == ["2026-10-01", "2026-09-01"]
 
@@ -151,7 +120,7 @@ class TestEndpoint:
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
         _write(workspace, _document(enabled=True))
-        body = _get(wizard, ENDPOINT + "?since=2026-10-05")
+        body = get_ok(wizard, ENDPOINT + "?since=2026-10-05")
         assert (body["since"], body["until"]) == ("2026-10-05", "2026-10-14")
 
     @pytest.mark.parametrize(
@@ -169,7 +138,7 @@ class TestEndpoint:
         self, wizard: ConfigureWizard, workspace: Path, query: str, named: str
     ) -> None:
         _write(workspace, _document(enabled=True))
-        status, body = _get_error(wizard, f"{ENDPOINT}?{query}")
+        status, body = get(wizard, f"{ENDPOINT}?{query}")
         assert status == 400
         assert named in body["error"]
         assert "yesterday" not in body["error"]
@@ -178,13 +147,13 @@ class TestEndpoint:
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
         _write(workspace, _document(enabled=False))
-        body = _get(wizard, ENDPOINT)
+        body = get_ok(wizard, ENDPOINT)
         assert body["enabled"] is False
 
     def test_a_missing_document_is_empty_and_disabled(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _get(wizard, ENDPOINT)
+        body = get_ok(wizard, ENDPOINT)
         assert body["enabled"] is False
         assert body["items"] == []
 
@@ -192,7 +161,7 @@ class TestEndpoint:
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
         _write(workspace, _document(enabled=True))
-        assert _get(wizard, ENDPOINT + "?client=acme")["client"] == "acme"
+        assert get_ok(wizard, ENDPOINT + "?client=acme")["client"] == "acme"
 
 
 class _Roster(FilesystemStateStore):
@@ -237,8 +206,8 @@ class TestClientResolution:
     ) -> None:
         _write(roster["acme"], _document(enabled=True))
         _write(roster["globex"], _document(enabled=False))
-        acme = _get(wizard, ENDPOINT + "?client=acme")
-        globex = _get(wizard, ENDPOINT + "?client=globex")
+        acme = get_ok(wizard, ENDPOINT + "?client=acme")
+        globex = get_ok(wizard, ENDPOINT + "?client=globex")
         assert (acme["client"], acme["enabled"]) == ("acme", True)
         assert (globex["client"], globex["enabled"]) == ("globex", False)
         assert len(acme["items"]) == 3

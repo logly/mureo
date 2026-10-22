@@ -16,10 +16,6 @@ and the new routes pick up the gates automatically.
 from __future__ import annotations
 
 import json
-import threading
-import urllib.error
-import urllib.parse
-import urllib.request
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -27,10 +23,9 @@ import pytest
 from mureo.core.providers import AccountCredentialField, default_registry
 from mureo.core.providers.registry import ProviderEntry
 from mureo.web.server import ConfigureWizard
+from tests.web_support import get, post
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from http.client import HTTPResponse
     from pathlib import Path
 
 
@@ -68,28 +63,6 @@ def _entry(
         provider_class=_make_class(name, fields=fields, display_name=display_name),
         source_distribution=None,
     )
-
-
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    """ConfigureWizard with a writable HOME and a credentials.json
-    path under ``tmp_path`` so the save route never touches the
-    operator's real file."""
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
 
 
 @pytest.fixture
@@ -132,31 +105,6 @@ def registry_two_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# HTTP helpers
-# ---------------------------------------------------------------------------
-
-
-def _url(wiz: ConfigureWizard, path: str) -> str:
-    return f"http://127.0.0.1:{wiz.port}{path}"
-
-
-def _get(wiz: ConfigureWizard, path: str) -> HTTPResponse:
-    return urllib.request.urlopen(_url(wiz, path), timeout=2.0)
-
-
-def _post(
-    wiz: ConfigureWizard,
-    path: str,
-    payload: dict[str, Any],
-) -> HTTPResponse:
-    body = json.dumps(payload).encode()
-    req = urllib.request.Request(_url(wiz, path), data=body, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    return urllib.request.urlopen(req, timeout=2.0)
-
-
-# ---------------------------------------------------------------------------
 # GET /api/credentials/plugins
 # ---------------------------------------------------------------------------
 
@@ -165,9 +113,8 @@ def _post(
 def test_get_lists_plugins_with_declared_fields(
     wizard: ConfigureWizard, registry_two_plugins: None
 ) -> None:
-    resp = _get(wizard, "/api/credentials/plugins")
-    assert resp.status == 200
-    body = json.loads(resp.read())
+    status, body = get(wizard, "/api/credentials/plugins")
+    assert status == 200
     assert "plugins" in body
     names = [p["provider_name"] for p in body["plugins"]]
     # The "noop" plugin (no declared fields) is filtered out.
@@ -210,8 +157,8 @@ def test_get_uses_session_locale_for_field_labels(
     )
     wizard.session.set_locale("ja")
 
-    resp = _get(wizard, "/api/credentials/plugins")
-    body = json.loads(resp.read())
+    status, body = get(wizard, "/api/credentials/plugins")
+    assert status == 200, body
     [plugin] = body["plugins"]
     [field] = plugin["fields"]
     assert field["display_name"] == "ビジネス ID"
@@ -223,9 +170,8 @@ def test_get_returns_empty_list_when_no_plugins(
     wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(default_registry, "_entries", {})
-    resp = _get(wizard, "/api/credentials/plugins")
-    assert resp.status == 200
-    body = json.loads(resp.read())
+    status, body = get(wizard, "/api/credentials/plugins")
+    assert status == 200
     assert body == {"plugins": []}
 
 
@@ -277,14 +223,16 @@ def test_get_exposes_provider_callback_hint(
             "c_suppressed": _hinted_entry("c_suppressed", ""),
         },
     )
-    body = json.loads(_get(wizard, "/api/credentials/plugins").read())
+    status, body = get(wizard, "/api/credentials/plugins")
+    assert status == 200, body
     oauth = {p["provider_name"]: p["oauth"] for p in body["plugins"]}
     assert "callback_hint" not in oauth["a_default"]
     assert oauth["b_custom"]["callback_hint"] == "Nothing to register."
     assert oauth["c_suppressed"]["callback_hint"] == ""
 
     wizard.session.set_locale("ja")
-    body = json.loads(_get(wizard, "/api/credentials/plugins").read())
+    status, body = get(wizard, "/api/credentials/plugins")
+    assert status == 200, body
     oauth = {p["provider_name"]: p["oauth"] for p in body["plugins"]}
     assert oauth["b_custom"]["callback_hint"] == "JA hint"
 
@@ -300,7 +248,7 @@ def test_post_save_writes_credentials_file(
     registry_two_plugins: None,
     credentials_path: Path,
 ) -> None:
-    resp = _post(
+    status, body = post(
         wizard,
         "/api/credentials/plugins/save",
         {
@@ -308,8 +256,7 @@ def test_post_save_writes_credentials_file(
             "values": {"api_key": "sk-zzzz", "account_id": "acct-1"},
         },
     )
-    assert resp.status == 200
-    body = json.loads(resp.read())
+    assert status == 200
     assert body["status"] == "ok"
     assert body["provider_name"] == "demo_ads"
     assert sorted(body["accepted_keys"]) == ["account_id", "api_key"]
@@ -325,14 +272,12 @@ def test_post_save_unknown_provider_returns_400(
     registry_two_plugins: None,
     credentials_path: Path,
 ) -> None:
-    with pytest.raises(urllib.error.HTTPError) as excinfo:
-        _post(
-            wizard,
-            "/api/credentials/plugins/save",
-            {"provider_name": "ghost", "values": {"api_key": "x"}},
-        )
-    assert excinfo.value.code == 400
-    body = json.loads(excinfo.value.read())
+    status, body = post(
+        wizard,
+        "/api/credentials/plugins/save",
+        {"provider_name": "ghost", "values": {"api_key": "x"}},
+    )
+    assert status == 400
     assert body["error"] == "unknown_provider"
 
 
@@ -342,14 +287,12 @@ def test_post_save_missing_provider_name_returns_400(
     registry_two_plugins: None,
     credentials_path: Path,
 ) -> None:
-    with pytest.raises(urllib.error.HTTPError) as excinfo:
-        _post(
-            wizard,
-            "/api/credentials/plugins/save",
-            {"values": {"api_key": "x"}},
-        )
-    assert excinfo.value.code == 400
-    body = json.loads(excinfo.value.read())
+    status, body = post(
+        wizard,
+        "/api/credentials/plugins/save",
+        {"values": {"api_key": "x"}},
+    )
+    assert status == 400
     assert body["error"] == "provider_name_required"
 
 
@@ -359,17 +302,15 @@ def test_post_save_non_string_value_returns_400(
     registry_two_plugins: None,
     credentials_path: Path,
 ) -> None:
-    with pytest.raises(urllib.error.HTTPError) as excinfo:
-        _post(
-            wizard,
-            "/api/credentials/plugins/save",
-            {
-                "provider_name": "demo_ads",
-                "values": {"api_key": {"nested": "no"}},
-            },
-        )
-    assert excinfo.value.code == 400
-    body = json.loads(excinfo.value.read())
+    status, body = post(
+        wizard,
+        "/api/credentials/plugins/save",
+        {
+            "provider_name": "demo_ads",
+            "values": {"api_key": {"nested": "no"}},
+        },
+    )
+    assert status == 400
     assert body["error"] == "invalid_field_value"
 
 
@@ -380,7 +321,7 @@ def test_post_save_blank_secret_keeps_existing(
     credentials_path: Path,
 ) -> None:
     # Seed an existing entry.
-    _post(
+    status, body = post(
         wizard,
         "/api/credentials/plugins/save",
         {
@@ -388,8 +329,9 @@ def test_post_save_blank_secret_keeps_existing(
             "values": {"api_key": "previous", "account_id": "old-label"},
         },
     )
+    assert status == 200, body
     # Submit blank api_key + new label.
-    resp = _post(
+    status, body = post(
         wizard,
         "/api/credentials/plugins/save",
         {
@@ -397,7 +339,7 @@ def test_post_save_blank_secret_keeps_existing(
             "values": {"api_key": "", "account_id": "new-label"},
         },
     )
-    body = json.loads(resp.read())
+    assert status == 200, body
     assert body["status"] == "ok"
     # Only ``account_id`` was actually changed; the blank-secret-skip
     # path must not list the unchanged secret as accepted.
@@ -478,9 +420,8 @@ def test_accounts_endpoint_returns_normalised_accounts(
         },
     )
     _store_token(credentials_path)
-    resp = _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
-    assert resp.status == 200
-    body = json.loads(resp.read())
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    assert status == 200
     # Extra keys the plugin returned travel all the way to the picker, and
     # an account the plugin gave no name for arrives as ``null`` (#746).
     assert body["accounts"] == [
@@ -499,10 +440,9 @@ def test_accounts_endpoint_409_when_not_authenticated(
         {"meta_ads_logly": _picker_entry(lambda creds: [{"id": "act_1"}])},
     )
     # No token stored → 409 not_authenticated.
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
-    assert exc.value.code == 409
-    assert json.loads(exc.value.read())["error"] == "not_authenticated"
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    assert status == 409
+    assert body["error"] == "not_authenticated"
 
 
 @pytest.mark.unit
@@ -518,18 +458,16 @@ def test_accounts_endpoint_404_when_not_supported(
         {"meta_ads_logly": _picker_entry(None)},
     )
     _store_token(credentials_path)
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
-    assert exc.value.code == 404
-    assert json.loads(exc.value.read())["error"] == "accounts_not_supported"
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    assert status == 404
+    assert body["error"] == "accounts_not_supported"
 
 
 @pytest.mark.unit
 def test_accounts_endpoint_404_unknown_provider(wizard: ConfigureWizard) -> None:
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard, "/api/credentials/plugins/nope/accounts")
-    assert exc.value.code == 404
-    assert json.loads(exc.value.read())["error"] == "unknown_provider"
+    status, body = get(wizard, "/api/credentials/plugins/nope/accounts")
+    assert status == 404
+    assert body["error"] == "unknown_provider"
 
 
 @pytest.mark.unit
@@ -547,7 +485,6 @@ def test_accounts_endpoint_502_when_hook_fails(
         {"meta_ads_logly": _picker_entry(_boom)},
     )
     _store_token(credentials_path)
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
-    assert exc.value.code == 502
-    assert json.loads(exc.value.read())["error"] == "account_listing_failed"
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    assert status == 502
+    assert body["error"] == "account_listing_failed"

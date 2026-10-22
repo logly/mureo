@@ -22,8 +22,6 @@ import contextlib
 import dataclasses
 import json
 import threading
-import urllib.error
-import urllib.request
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -44,10 +42,10 @@ from mureo.web.strategy_currency import (
     strategy_path_for_client,
     write_currency,
 )
+from tests.web_support import get_ok, get_text, post, post_ok
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from http.client import HTTPResponse
     from pathlib import Path
 
 
@@ -356,6 +354,7 @@ def agency_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
     reset_runtime_context()
 
 
+# Not the shared ``wizard``: the broken-markers wizard needs its own static_dir.
 @contextlib.contextmanager
 def _running_wizard(
     home: Path, static_dir: Path | None = None
@@ -373,12 +372,6 @@ def _running_wizard(
     finally:
         wiz.shutdown()
         thread.join(timeout=2.0)
-
-
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    with _running_wizard(tmp_path / "home") as wiz:
-        yield wiz
 
 
 @pytest.fixture
@@ -407,56 +400,12 @@ def wizard_without_card_markers(tmp_path: Path) -> Iterator[ConfigureWizard]:
         yield wiz
 
 
-def _url(wiz: ConfigureWizard, path: str) -> str:
-    return f"http://127.0.0.1:{wiz.port}{path}"
-
-
-def _get(wiz: ConfigureWizard, path: str) -> dict[str, Any]:
-    with urllib.request.urlopen(_url(wiz, path), timeout=2.0) as res:
-        body: dict[str, Any] = json.loads(res.read().decode("utf-8"))
-    return body
-
-
-def _get_text(wiz: ConfigureWizard, path: str) -> str:
-    with urllib.request.urlopen(_url(wiz, path), timeout=2.0) as res:
-        text: str = res.read().decode("utf-8")
-    return text
-
-
-def _post(
-    wiz: ConfigureWizard,
-    path: str,
-    payload: dict[str, Any],
-    *,
-    csrf: str | None = "use_session",
-) -> HTTPResponse:
-    headers = {"Content-Type": "application/json"}
-    if csrf == "use_session":
-        headers["X-CSRF-Token"] = wiz.session.csrf_token
-    elif csrf is not None:
-        headers["X-CSRF-Token"] = csrf
-    req = urllib.request.Request(
-        _url(wiz, path), data=json.dumps(payload).encode(), method="POST"
-    )
-    for key, value in headers.items():
-        req.add_header(key, value)
-    return urllib.request.urlopen(req, timeout=2.0)
-
-
-def _post_json(
-    wiz: ConfigureWizard, path: str, payload: dict[str, Any]
-) -> dict[str, Any]:
-    with _post(wiz, path, payload) as res:
-        body: dict[str, Any] = json.loads(res.read().decode("utf-8"))
-    return body
-
-
 @pytest.mark.unit
 class TestStrategyCurrencyRoutes:
     def test_get_reports_the_options_and_the_active_path(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _get(wizard, "/api/strategy/currency")
+        body = get_ok(wizard, "/api/strategy/currency")
         assert body["status"] == "ok"
         assert body["currency"] is None
         assert body["client"] is None
@@ -466,18 +415,18 @@ class TestStrategyCurrencyRoutes:
     def test_post_upper_cases_writes_and_is_read_back(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _post_json(wizard, "/api/strategy/currency", {"currency": "eur"})
+        body = post_ok(wizard, "/api/strategy/currency", {"currency": "eur"})
         assert body["status"] == "ok"
         assert body["currency"] == "EUR"
         text = (workspace / "STRATEGY.md").read_text(encoding="utf-8")
         assert "- currency: EUR" in text
-        assert _get(wizard, "/api/strategy/currency")["currency"] == "EUR"
+        assert get_ok(wizard, "/api/strategy/currency")["currency"] == "EUR"
 
     def test_post_empty_clears_the_bullet(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        _post_json(wizard, "/api/strategy/currency", {"currency": "EUR"})
-        body = _post_json(wizard, "/api/strategy/currency", {"currency": ""})
+        post_ok(wizard, "/api/strategy/currency", {"currency": "EUR"})
+        body = post_ok(wizard, "/api/strategy/currency", {"currency": ""})
         assert body["currency"] is None
         text = (workspace / "STRATEGY.md").read_text(encoding="utf-8")
         assert "currency" not in text
@@ -485,38 +434,37 @@ class TestStrategyCurrencyRoutes:
     def test_post_refuses_an_unknown_code(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _post(wizard, "/api/strategy/currency", {"currency": "XYZ"})
-        assert excinfo.value.code == 400
-        assert json.loads(excinfo.value.read())["error"] == "invalid_currency"
+        status, body = post(wizard, "/api/strategy/currency", {"currency": "XYZ"})
+        assert status == 400
+        assert body["error"] == "invalid_currency"
         assert not (workspace / "STRATEGY.md").exists()
 
     def test_post_refuses_a_non_string(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _post(wizard, "/api/strategy/currency", {"currency": 5})
-        assert excinfo.value.code == 400
-        assert json.loads(excinfo.value.read())["error"] == "invalid_currency"
+        status, body = post(wizard, "/api/strategy/currency", {"currency": 5})
+        assert status == 400
+        assert body["error"] == "invalid_currency"
 
     def test_post_needs_the_csrf_header(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _post(wizard, "/api/strategy/currency", {"currency": "EUR"}, csrf=None)
-        assert excinfo.value.code == 403
+        status, _ = post(
+            wizard, "/api/strategy/currency", {"currency": "EUR"}, csrf=None
+        )
+        assert status == 403
         assert not (workspace / "STRATEGY.md").exists()
 
     def test_a_client_slug_is_echoed_and_ignored_on_oss(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
         """OSS is one workspace; the picker exists for the Agency seam."""
-        body = _post_json(
+        body = post_ok(
             wizard, "/api/strategy/currency", {"currency": "EUR", "client": "acme"}
         )
         assert body["client"] == "acme"
         assert body["path"] == str(workspace / "STRATEGY.md")
-        assert _get(wizard, "/api/strategy/currency?client=acme")["client"] == "acme"
+        assert get_ok(wizard, "/api/strategy/currency?client=acme")["client"] == "acme"
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +484,8 @@ class TestGuardrailsCardVisibility:
     def test_a_single_workspace_is_served_the_card(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        html = _get_text(wizard, "/")
+        status, html = get_text(wizard, "/")
+        assert status == 200
         assert "data-dashboard-guardrails" in html
         assert "data-guardrails-currency" in html
 
@@ -546,7 +495,8 @@ class TestGuardrailsCardVisibility:
         """Currency is a per-client setting there, and it belongs on the
         client's own edit form — not on a card that would write the
         operator's ambient workspace, which is no client's file."""
-        html = _get_text(wizard, "/")
+        status, html = get_text(wizard, "/")
+        assert status == 200
         assert "data-dashboard-guardrails" not in html
         assert "data-guardrails-currency" not in html
         # Only the card goes: the section it sat in, and the rest of the
@@ -563,10 +513,9 @@ class TestGuardrailsCardVisibility:
         best and a page WITH the card at worst — served to exactly the
         backend the omission protects.
         """
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _get_text(wizard_without_card_markers, "/")
-        assert excinfo.value.code == 500
-        body = json.loads(excinfo.value.read())
+        status, text = get_text(wizard_without_card_markers, "/")
+        assert status == 500
+        body = json.loads(text)
         assert body["error"] == "guardrails_card_markers_missing"
 
     def test_a_single_workspace_never_reaches_that_refusal(
@@ -575,7 +524,8 @@ class TestGuardrailsCardVisibility:
         """Nothing is cut where there is no roster, so the same damaged
         document still serves — the refusal is scoped to the one backend
         that needs the card gone."""
-        html = _get_text(wizard_without_card_markers, "/")
+        status, html = get_text(wizard_without_card_markers, "/")
+        assert status == 200
         assert "data-dashboard-guardrails" in html
 
 
