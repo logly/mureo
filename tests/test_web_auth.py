@@ -131,6 +131,7 @@ class TestRenderGoogleSecretsForm:
 # ---------------------------------------------------------------------------
 
 
+# Own fixture and helpers: this is WebAuthWizard (HTML forms), not ConfigureWizard.
 @pytest.fixture
 def wizard(tmp_path: Path) -> Any:
     """Launch a real WebAuthWizard server on a random port for each test."""

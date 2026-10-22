@@ -26,11 +26,10 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
@@ -39,23 +38,14 @@ from mureo.core import scrub
 from mureo.core.scrub import STRADDLE_MARGIN
 from mureo.mcp.plugin_audit import _MAX_STR
 from mureo.web.server import ConfigureWizard
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from http.client import HTTPResponse
-    from pathlib import Path
+from tests.web_support import post, post_ok, post_refused
 
 _AUTHORIZE_URL = "/api/amazon/oauth/authorize-url"
 _EXCHANGE_URL = "/api/amazon/oauth/exchange"
 
 
 @pytest.fixture
-def wizard(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    (home / ".claude" / "commands").mkdir(parents=True)
-    (home / ".mureo").mkdir(parents=True)
+def _no_amazon_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # No AMAZON_ADS_* env fallback may leak into these assertions.
     for name in (
         "AMAZON_ADS_CLIENT_ID",
@@ -66,67 +56,11 @@ def wizard(
     ):
         monkeypatch.delenv(name, raising=False)
 
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
 
-
-def _post(
-    wiz: ConfigureWizard, path: str, payload: dict[str, Any] | None = None
-) -> HTTPResponse:
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{wiz.port}{path}",
-        data=json.dumps(payload or {}).encode(),
-        method="POST",
-    )
-    req.add_header("Content-Type", "application/json")
-    req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    return urllib.request.urlopen(req, timeout=5.0)
-
-
-def _post_json(
-    wiz: ConfigureWizard, path: str, payload: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    return json.loads(_post(wiz, path, payload).read().decode())
-
-
-def _post_error(
-    wiz: ConfigureWizard, path: str, payload: dict[str, Any] | None = None
-) -> tuple[int, dict[str, Any]]:
-    try:
-        resp = _post(wiz, path, payload)
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read().decode())
-    raise AssertionError(f"expected an HTTP error, got {resp.status}")
-
-
-def _post_raw(
-    wiz: ConfigureWizard,
-    path: str,
-    *,
-    csrf: bool = True,
-    host: str | None = None,
-) -> urllib.error.HTTPError:
-    """POST with the hardening headers under test deliberately wrong."""
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{wiz.port}{path}", data=b"{}", method="POST"
-    )
-    req.add_header("Content-Type", "application/json")
-    if csrf:
-        req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    if host is not None:
-        req.add_header("Host", host)
-    try:
-        urllib.request.urlopen(req, timeout=5.0)
-    except urllib.error.HTTPError as exc:
-        return exc
-    raise AssertionError("expected an HTTP error")
+@pytest.fixture
+def wizard(_no_amazon_env: None, wizard: ConfigureWizard) -> ConfigureWizard:
+    """The shared wizard, booted only once the AMAZON_ADS_* fallback is gone."""
+    return wizard
 
 
 def _write_credentials(wiz: ConfigureWizard, section: dict[str, Any]) -> None:
@@ -171,7 +105,7 @@ def _stub_exchange(monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any]) ->
 @pytest.mark.unit
 class TestAuthorizeUrlRoute:
     def test_missing_client_id_is_a_clean_400(self, wizard: ConfigureWizard) -> None:
-        code, body = _post_error(wizard, _AUTHORIZE_URL)
+        code, body = post_refused(wizard, _AUTHORIZE_URL)
         assert code == 400
         assert body["error"] == "amazon_client_id_missing"
 
@@ -181,13 +115,13 @@ class TestAuthorizeUrlRoute:
         """No token exists yet at authorize time — the credentials loader
         would answer ``None`` here, so the route must read the section."""
         _write_credentials(wizard, {"client_id": "amzn1.app.CID"})
-        body = _post_json(wizard, _AUTHORIZE_URL)
+        body = post_ok(wizard, _AUTHORIZE_URL)
         assert body["region"] == "na"
         assert body["authorize_url"].startswith("https://www.amazon.com/ap/oa?")
 
     def test_url_carries_the_documented_query(self, wizard: ConfigureWizard) -> None:
         _write_credentials(wizard, {"client_id": "amzn1.app.CID", "region": "fe"})
-        body = _post_json(wizard, _AUTHORIZE_URL)
+        body = post_ok(wizard, _AUTHORIZE_URL)
         assert body["region"] == "fe"
         assert body["authorize_url"].startswith(
             "https://apac.account.amazon.com/ap/oa?"
@@ -201,7 +135,7 @@ class TestAuthorizeUrlRoute:
 
     def test_custom_redirect_uri_is_honoured(self, wizard: ConfigureWizard) -> None:
         _write_credentials(wizard, {"client_id": "cid"})
-        body = _post_json(
+        body = post_ok(
             wizard, _AUTHORIZE_URL, {"redirect_uri": "https://example.com/cb"}
         )
         assert _query(body["authorize_url"])["redirect_uri"] == "https://example.com/cb"
@@ -210,7 +144,7 @@ class TestAuthorizeUrlRoute:
         """The URL is handed straight to ``window.open`` — a ``javascript:``
         redirect target has no business round-tripping through the server."""
         _write_credentials(wizard, {"client_id": "cid"})
-        code, body = _post_error(
+        code, body = post_refused(
             wizard, _AUTHORIZE_URL, {"redirect_uri": "javascript:alert(1)"}
         )
         assert code == 400
@@ -218,7 +152,7 @@ class TestAuthorizeUrlRoute:
 
     def test_unknown_region_degrades_to_na(self, wizard: ConfigureWizard) -> None:
         _write_credentials(wizard, {"client_id": "cid", "region": "ZZ"})
-        assert _post_json(wizard, _AUTHORIZE_URL)["region"] == "na"
+        assert post_ok(wizard, _AUTHORIZE_URL)["region"] == "na"
 
     def test_response_never_echoes_secrets(self, wizard: ConfigureWizard) -> None:
         _write_credentials(
@@ -230,28 +164,32 @@ class TestAuthorizeUrlRoute:
                 "access_token": "Atza|SECRETTOKEN",
             },
         )
-        raw = _post(wizard, _AUTHORIZE_URL).read().decode()
+        status, body = post(wizard, _AUTHORIZE_URL)
+        assert status == 200, body
+        raw = json.dumps(body, ensure_ascii=False)
         for secret in ("SECRETSHH", "SECRETREFRESH", "SECRETTOKEN"):
             assert secret not in raw
 
     def test_csrf_token_is_required(self, wizard: ConfigureWizard) -> None:
-        exc = _post_raw(wizard, _AUTHORIZE_URL, csrf=False)
-        assert exc.code == 403
-        assert json.loads(exc.read().decode())["error"] == "csrf_invalid"
+        status, body = post(wizard, _AUTHORIZE_URL, csrf=None)
+        assert status == 403
+        assert body["error"] == "csrf_invalid"
 
     def test_spoofed_host_rejected(self, wizard: ConfigureWizard) -> None:
         """The route is Host-gated like every sibling POST route (DNS
         rebinding: a page on attacker.example.com resolving to 127.0.0.1
         must not be able to drive the configure server)."""
-        exc = _post_raw(wizard, _AUTHORIZE_URL, host="attacker.example.com")
-        assert exc.code == 403
-        assert json.loads(exc.read().decode())["error"] == "host_not_allowed"
+        status, body = post(
+            wizard, _AUTHORIZE_URL, headers={"Host": "attacker.example.com"}
+        )
+        assert status == 403
+        assert body["error"] == "host_not_allowed"
 
 
 @pytest.mark.unit
 class TestExchangeRouteValidation:
     def test_missing_credentials_is_a_clean_400(self, wizard: ConfigureWizard) -> None:
-        code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
         assert code == 400
         assert body["error"] == "amazon_client_credentials_missing"
 
@@ -259,13 +197,13 @@ class TestExchangeRouteValidation:
         self, wizard: ConfigureWizard
     ) -> None:
         _write_credentials(wizard, {"client_id": "cid"})
-        code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
         assert code == 400
         assert body["error"] == "amazon_client_credentials_missing"
 
     def test_blank_input_is_a_clean_400(self, wizard: ConfigureWizard) -> None:
         _write_credentials(wizard, {"client_id": "cid", "client_secret": "s"})
-        code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "   "})
+        code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "   "})
         assert code == 400
         assert body["error"] == "authorization_code_required"
 
@@ -273,7 +211,7 @@ class TestExchangeRouteValidation:
         self, wizard: ConfigureWizard
     ) -> None:
         _write_credentials(wizard, {"client_id": "cid", "client_secret": "s"})
-        code, body = _post_error(
+        code, body = post_refused(
             wizard,
             _EXCHANGE_URL,
             {"code_or_url": "https://amazon.com/?error=access_denied"},
@@ -283,7 +221,7 @@ class TestExchangeRouteValidation:
 
     def test_non_http_redirect_uri_is_refused(self, wizard: ConfigureWizard) -> None:
         _write_credentials(wizard, {"client_id": "cid", "client_secret": "s"})
-        code, body = _post_error(
+        code, body = post_refused(
             wizard,
             _EXCHANGE_URL,
             {"code_or_url": "ANcode", "redirect_uri": "javascript:alert(1)"},
@@ -302,7 +240,7 @@ class TestExchangeRouteCodeParsing:
         _stub_exchange(monkeypatch, captured)
         _stub_manifest(monkeypatch)
 
-        body = _post_json(wizard, _EXCHANGE_URL, {"code_or_url": "  ANbareCode  "})
+        body = post_ok(wizard, _EXCHANGE_URL, {"code_or_url": "  ANbareCode  "})
 
         assert body["status"] == "ok"
         assert captured["code"] == "ANbareCode"
@@ -319,7 +257,7 @@ class TestExchangeRouteCodeParsing:
         _stub_exchange(monkeypatch, captured)
         _stub_manifest(monkeypatch)
 
-        _post_json(
+        post_ok(
             wizard,
             _EXCHANGE_URL,
             {
@@ -339,9 +277,7 @@ class TestExchangeRouteCodeParsing:
         _stub_exchange(monkeypatch, captured)
         _stub_manifest(monkeypatch)
 
-        _post_json(
-            wizard, _EXCHANGE_URL, {"code_or_url": "amazon.com/?code=ANfrag#done"}
-        )
+        post_ok(wizard, _EXCHANGE_URL, {"code_or_url": "amazon.com/?code=ANfrag#done"})
         assert captured["code"] == "ANfrag"
 
     def test_bare_query_string_is_parsed(
@@ -355,7 +291,7 @@ class TestExchangeRouteCodeParsing:
         _stub_exchange(monkeypatch, captured)
         _stub_manifest(monkeypatch)
 
-        _post_json(
+        post_ok(
             wizard,
             _EXCHANGE_URL,
             {
@@ -374,7 +310,7 @@ class TestExchangeRouteCodeParsing:
         _stub_exchange(monkeypatch, captured)
         _stub_manifest(monkeypatch)
 
-        _post_json(wizard, _EXCHANGE_URL, {"code_or_url": "?code=ANfromLeadingQ"})
+        post_ok(wizard, _EXCHANGE_URL, {"code_or_url": "?code=ANfromLeadingQ"})
         assert captured["code"] == "ANfromLeadingQ"
 
     def test_genuinely_bare_code_is_not_treated_as_a_query(
@@ -388,7 +324,7 @@ class TestExchangeRouteCodeParsing:
         _stub_exchange(monkeypatch, captured)
         _stub_manifest(monkeypatch)
 
-        _post_json(wizard, _EXCHANGE_URL, {"code_or_url": "ANpaddedCode=="})
+        post_ok(wizard, _EXCHANGE_URL, {"code_or_url": "ANpaddedCode=="})
         assert captured["code"] == "ANpaddedCode=="
 
     def test_code_hidden_behind_a_fragment_is_a_clean_400(
@@ -402,7 +338,7 @@ class TestExchangeRouteCodeParsing:
         captured: dict[str, Any] = {}
         _stub_exchange(monkeypatch, captured)
 
-        code, body = _post_error(
+        code, body = post_refused(
             wizard,
             _EXCHANGE_URL,
             {"code_or_url": "https://amazon.com/#/callback?code=ANhidden"},
@@ -421,7 +357,7 @@ class TestExchangeRouteCodeParsing:
         _stub_exchange(monkeypatch, captured)
         _stub_manifest(monkeypatch)
 
-        body = _post_json(
+        body = post_ok(
             wizard,
             _EXCHANGE_URL,
             {"code_or_url": "ANcode", "redirect_uri": "https://example.com/cb"},
@@ -442,7 +378,7 @@ class TestExchangeRouteSuccess:
         _stub_exchange(monkeypatch, {})
         _stub_manifest(monkeypatch, tools=3)
 
-        body = _post_json(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        body = post_ok(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
         section = _read_section(wizard)
 
         assert body["status"] == "ok"
@@ -466,7 +402,7 @@ class TestExchangeRouteSuccess:
         _stub_exchange(monkeypatch, {})
         _stub_manifest(monkeypatch)
 
-        _post_json(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        post_ok(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
         assert (
             _read_section(wizard)["refresh_token_obtained_at"]
             == "2026-07-30T19:05:06+00:00"
@@ -481,7 +417,9 @@ class TestExchangeRouteSuccess:
         _stub_exchange(monkeypatch, {})
         _stub_manifest(monkeypatch)
 
-        raw = _post(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"}).read().decode()
+        status, body = post(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        assert status == 200, body
+        raw = json.dumps(body, ensure_ascii=False)
         for secret in ("Atza|", "Atzr|", "MINTED", "SECRETSHH", "SECRETCID", "ANcode"):
             assert secret not in raw
 
@@ -492,7 +430,7 @@ class TestExchangeRouteSuccess:
         _stub_exchange(monkeypatch, {})
         _stub_manifest(monkeypatch, tools=4)
 
-        body = _post_json(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        body = post_ok(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
         assert body["manifest"] == "ok"
         assert body["tool_count"] == 4
         written = wizard.host_paths.credentials_path.parent / "amazon_tools.json"
@@ -511,7 +449,7 @@ class TestExchangeRouteSuccess:
 
         monkeypatch.setattr("mureo.amazon_ads.manifest.generate_manifest", _boom)
 
-        body = _post_json(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        body = post_ok(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
         assert body["status"] == "ok"
         assert body["manifest"] == "failed"
         assert "LEAKED" not in json.dumps(body)
@@ -534,7 +472,7 @@ class TestExchangeRouteFailures:
             )
 
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _reject)
-        code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANstale"})
+        code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANstale"})
 
         assert code == 400
         assert body["error"] == "authorization_code_invalid"
@@ -549,7 +487,7 @@ class TestExchangeRouteFailures:
             raise AmazonAuthError("HTTP 500 while holding Bearer Atza|LEAKED-123")
 
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
-        code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
 
         assert code == 502
         assert body["error"] == "amazon_authorization_failed"
@@ -565,7 +503,7 @@ class TestExchangeRouteFailures:
             raise AmazonAuthError("x" * 5000)
 
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
-        _code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        _code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
         assert len(body["detail"]) == _MAX_STR
 
     def test_the_scrubber_does_not_read_the_whole_failure(
@@ -589,7 +527,7 @@ class TestExchangeRouteFailures:
 
         monkeypatch.setattr(scrub, "scrub_text", _spy)
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
-        _code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        _code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
 
         assert max(seen) == _MAX_STR + STRADDLE_MARGIN
         assert len(body["detail"]) == _MAX_STR
@@ -616,7 +554,7 @@ class TestExchangeRouteFailures:
 
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
         with caplog.at_level(logging.DEBUG):
-            _code, body = _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+            _code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
 
         for sink in (body["detail"], caplog.text):
             assert "Atza|" not in sink
@@ -642,17 +580,19 @@ class TestExchangeRouteFailures:
 
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
         with caplog.at_level(logging.DEBUG):
-            _post_error(wizard, _EXCHANGE_URL, {"code_or_url": "ANsecretCode123"})
+            post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANsecretCode123"})
         assert "ANsecretCode123" not in caplog.text
 
     def test_csrf_token_is_required(self, wizard: ConfigureWizard) -> None:
-        exc = _post_raw(wizard, _EXCHANGE_URL, csrf=False)
-        assert exc.code == 403
-        assert json.loads(exc.read().decode())["error"] == "csrf_invalid"
+        status, body = post(wizard, _EXCHANGE_URL, csrf=None)
+        assert status == 403
+        assert body["error"] == "csrf_invalid"
 
     def test_spoofed_host_rejected(self, wizard: ConfigureWizard) -> None:
         """Host-gated like every sibling POST route — this one writes
         credentials, so the rebinding guard matters most here."""
-        exc = _post_raw(wizard, _EXCHANGE_URL, host="attacker.example.com")
-        assert exc.code == 403
-        assert json.loads(exc.read().decode())["error"] == "host_not_allowed"
+        status, body = post(
+            wizard, _EXCHANGE_URL, headers={"Host": "attacker.example.com"}
+        )
+        assert status == 403
+        assert body["error"] == "host_not_allowed"

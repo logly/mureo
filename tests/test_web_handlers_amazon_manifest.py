@@ -17,10 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
-import urllib.error
-import urllib.request
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
@@ -29,49 +26,9 @@ from mureo.core import scrub
 from mureo.core.scrub import STRADDLE_MARGIN
 from mureo.mcp.plugin_audit import _MAX_STR
 from mureo.web.server import ConfigureWizard
+from tests.web_support import post, post_refused
 
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from http.client import HTTPResponse
-    from pathlib import Path
-
-
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    (home / ".claude" / "commands").mkdir(parents=True)
-    (home / ".mureo").mkdir(parents=True)
-
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
-def _post(wiz: ConfigureWizard, payload: dict[str, Any] | None = None) -> HTTPResponse:
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{wiz.port}/api/amazon/refresh-manifest",
-        data=json.dumps(payload or {}).encode(),
-        method="POST",
-    )
-    req.add_header("Content-Type", "application/json")
-    req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    return urllib.request.urlopen(req, timeout=5.0)
-
-
-def _post_error(
-    wiz: ConfigureWizard, payload: dict[str, Any] | None = None
-) -> tuple[int, dict[str, Any]]:
-    try:
-        resp = _post(wiz, payload)
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read().decode())
-    raise AssertionError(f"expected an HTTP error, got {resp.status}")
+_ROUTE = "/api/amazon/refresh-manifest"
 
 
 def _write_credentials(wiz: ConfigureWizard, section: dict[str, Any]) -> None:
@@ -88,7 +45,7 @@ class TestAmazonRefreshManifestRoute:
         # No file, and no AMAZON_ADS_* env fallback either.
         for name in ("AMAZON_ADS_CLIENT_ID", "AMAZON_ADS_ACCESS_TOKEN"):
             monkeypatch.delenv(name, raising=False)
-        code, body = _post_error(wizard)
+        code, body = post_refused(wizard, _ROUTE)
         assert code == 400
         assert body["error"] == "amazon_credentials_missing"
 
@@ -114,10 +71,9 @@ class TestAmazonRefreshManifestRoute:
         monkeypatch.setattr(
             "mureo.amazon_ads.manifest.generate_manifest", _fake_generate
         )
-        resp = _post(wizard)
-        body = json.loads(resp.read().decode())
+        status, body = post(wizard, _ROUTE)
 
-        assert resp.status == 200
+        assert status == 200
         assert body["status"] == "ok"
         assert body["region"] == "eu"
         assert body["tool_count"] == 2
@@ -135,7 +91,7 @@ class TestAmazonRefreshManifestRoute:
             raise RuntimeError("401 sending Authorization: Bearer Atza|LEAKED-123")
 
         monkeypatch.setattr("mureo.amazon_ads.manifest.generate_manifest", _boom)
-        code, body = _post_error(wizard)
+        code, body = post_refused(wizard, _ROUTE)
 
         assert code == 502
         assert body["error"] == "manifest_refresh_failed"
@@ -162,7 +118,7 @@ class TestAmazonRefreshManifestRoute:
 
         monkeypatch.setattr("mureo.amazon_ads.manifest.generate_manifest", _boom)
         with caplog.at_level(logging.WARNING, logger="mureo.web.handlers"):
-            code, body = _post_error(wizard)
+            code, body = post_refused(wizard, _ROUTE)
 
         assert code == 502
         assert "LEAKED-TOKEN-VALUE" not in body["detail"]
@@ -184,7 +140,7 @@ class TestAmazonRefreshManifestRoute:
             raise RuntimeError("x" * 5000)
 
         monkeypatch.setattr("mureo.amazon_ads.manifest.generate_manifest", _boom)
-        _code, body = _post_error(wizard)
+        _code, body = post_refused(wizard, _ROUTE)
         assert len(body["detail"]) == _MAX_STR
 
     def test_the_scrubber_does_not_read_the_whole_failure(
@@ -209,7 +165,7 @@ class TestAmazonRefreshManifestRoute:
 
         monkeypatch.setattr(scrub, "scrub_text", _spy)
         monkeypatch.setattr("mureo.amazon_ads.manifest.generate_manifest", _boom)
-        _code, body = _post_error(wizard)
+        _code, body = post_refused(wizard, _ROUTE)
 
         assert max(seen) == _MAX_STR + STRADDLE_MARGIN
         assert len(body["detail"]) == _MAX_STR
@@ -236,17 +192,12 @@ class TestAmazonRefreshManifestRoute:
         monkeypatch.setattr(
             "mureo.amazon_ads.manifest.generate_manifest", _fake_generate
         )
-        raw = _post(wizard).read().decode()
+        status, body = post(wizard, _ROUTE)
+        assert status == 200, body
+        raw = json.dumps(body, ensure_ascii=False)
         for secret in ("SECRETCID", "SECRETTOKEN", "SECRETREFRESH", "SECRETSHH"):
             assert secret not in raw
 
     def test_csrf_token_is_required(self, wizard: ConfigureWizard) -> None:
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{wizard.port}/api/amazon/refresh-manifest",
-            data=b"{}",
-            method="POST",
-        )
-        req.add_header("Content-Type", "application/json")
-        with pytest.raises(urllib.error.HTTPError) as exc:
-            urllib.request.urlopen(req, timeout=5.0)
-        assert exc.value.code == 403
+        status, _ = post(wizard, _ROUTE, csrf=None)
+        assert status == 403

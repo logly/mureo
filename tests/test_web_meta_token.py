@@ -15,67 +15,18 @@ outbound happens.
 from __future__ import annotations
 
 import json
-import threading
-import urllib.error
-import urllib.request
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
 
 from mureo.web.server import ConfigureWizard
+from tests.web_support import post
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from http.client import HTTPResponse
     from pathlib import Path
 
 _PROBE = "mureo.web.handlers.validate_meta_access_token"
-
-
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
-def _url(wiz: ConfigureWizard, path: str) -> str:
-    return f"http://127.0.0.1:{wiz.port}{path}"
-
-
-def _post(
-    wiz: ConfigureWizard,
-    path: str,
-    payload: dict[str, Any] | None,
-    *,
-    csrf: str | None = "use_session",
-) -> HTTPResponse:
-    body = json.dumps(payload or {}).encode()
-    req = urllib.request.Request(_url(wiz, path), data=body, method="POST")
-    req.add_header("Content-Type", "application/json")
-    if csrf == "use_session":
-        req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    elif csrf is not None:
-        req.add_header("X-CSRF-Token", csrf)
-    return urllib.request.urlopen(req, timeout=2.0)
-
-
-def _body(resp: HTTPResponse) -> dict[str, Any]:
-    return json.loads(resp.read().decode())
-
 
 _VALID = {
     "scopes": ["ads_management", "ads_read"],
@@ -93,12 +44,12 @@ class TestMetaTokenRoute:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake) as probe:
-            resp = _post(
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok", "validate_only": True},
             )
-        body = _body(resp)
+        assert status == 200, body
         assert probe.called
         assert body["scopes"] == ["ads_management", "ads_read"]
         assert body["accounts"] == [{"id": "act_1", "name": "One"}]
@@ -114,12 +65,12 @@ class TestMetaTokenRoute:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake):
-            resp = _post(
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok", "account_id": "act_1"},
             )
-        body = _body(resp)
+        assert status == 200, body
         assert body["status"] == "ok"
         data = json.loads(wizard.host_paths.credentials_path.read_text())
         meta = data["meta_ads"]
@@ -142,13 +93,12 @@ class TestMetaTokenRoute:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake):
-            resp = _post(
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok"},
             )
-        assert resp.status == 200
-        body = _body(resp)
+        assert status == 200
         assert body["status"] == "ok"
         data = json.loads(wizard.host_paths.credentials_path.read_text())
         meta = data["meta_ads"]
@@ -169,13 +119,13 @@ class TestMetaTokenRoute:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake):
-            resp = _post(
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok", "account_id": account_id},
             )
-        assert resp.status == 200
-        assert _body(resp)["status"] == "ok"
+        assert status == 200
+        assert body["status"] == "ok"
         meta = json.loads(wizard.host_paths.credentials_path.read_text())["meta_ads"]
         assert "account_id" not in meta
 
@@ -190,16 +140,18 @@ class TestMetaTokenRoute:
             return _VALID
 
         with patch(_PROBE, side_effect=_fake):
-            _post(
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok", "account_id": "act_1"},
             )
-            _post(
+            assert status == 200, body
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok-2"},
             )
+            assert status == 200, body
         meta = json.loads(wizard.host_paths.credentials_path.read_text())["meta_ads"]
         assert meta["access_token"] == "sys-tok-2"
         assert meta["account_id"] == "act_1"
@@ -217,12 +169,12 @@ class TestMetaTokenRoute:
             return probe_result
 
         with patch(_PROBE, side_effect=_fake):
-            resp = _post(
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok", "account_id": "act_1"},
             )
-        body = _body(resp)
+        assert status == 200, body
         assert body["status"] == "ok"
         assert body["missing_scopes"] == ["ads_management", "business_management"]
         # Saved despite the warning.
@@ -237,55 +189,43 @@ class TestMetaTokenRoute:
         async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             raise MetaTokenInvalidError("Invalid OAuth access token. | subcode=463")
 
-        with (
-            patch(_PROBE, side_effect=_fake),
-            pytest.raises(urllib.error.HTTPError) as exc,
-        ):
-            _post(
+        with patch(_PROBE, side_effect=_fake):
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "bad-tok"},
             )
-        assert exc.value.code == 400
-        err = json.loads(exc.value.read().decode())
-        assert err["error"] == "token_invalid"
-        assert "Invalid OAuth access token." in err["detail"]
+        assert status == 400
+        assert body["error"] == "token_invalid"
+        assert "Invalid OAuth access token." in body["detail"]
 
     def test_missing_access_token_rejected(self, wizard: ConfigureWizard) -> None:
-        with pytest.raises(urllib.error.HTTPError) as exc:
-            _post(wizard, "/api/credentials/meta/token", {"account_id": "act_1"})
-        assert exc.value.code == 400
-        err = json.loads(exc.value.read().decode())
-        assert err["error"] == "access_token_required"
+        status, body = post(
+            wizard, "/api/credentials/meta/token", {"account_id": "act_1"}
+        )
+        assert status == 400
+        assert body["error"] == "access_token_required"
 
     def test_missing_csrf_rejected(self, wizard: ConfigureWizard) -> None:
-        with pytest.raises(urllib.error.HTTPError) as exc:
-            _post(
-                wizard,
-                "/api/credentials/meta/token",
-                {"access_token": "sys-tok"},
-                csrf=None,
-            )
-        assert exc.value.code == 403
-        err = json.loads(exc.value.read().decode())
-        assert err["error"] == "csrf_invalid"
+        status, body = post(
+            wizard,
+            "/api/credentials/meta/token",
+            {"access_token": "sys-tok"},
+            csrf=None,
+        )
+        assert status == 403
+        assert body["error"] == "csrf_invalid"
 
     def test_spoofed_host_rejected(self, wizard: ConfigureWizard) -> None:
         """The route is Host-gated like every sibling POST route."""
-        body = json.dumps({"access_token": "sys-tok"}).encode()
-        req = urllib.request.Request(
-            _url(wizard, "/api/credentials/meta/token"),
-            data=body,
-            method="POST",
+        status, body = post(
+            wizard,
+            "/api/credentials/meta/token",
+            {"access_token": "sys-tok"},
+            headers={"Host": "attacker.example.com"},
         )
-        req.add_header("Content-Type", "application/json")
-        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
-        req.add_header("Host", "attacker.example.com")
-        with pytest.raises(urllib.error.HTTPError) as exc:
-            urllib.request.urlopen(req, timeout=2.0)
-        assert exc.value.code == 403
-        err = json.loads(exc.value.read().decode())
-        assert err["error"] == "host_not_allowed"
+        assert status == 403
+        assert body["error"] == "host_not_allowed"
 
     def test_account_fetch_failure_returns_distinct_code(
         self, wizard: ConfigureWizard
@@ -297,19 +237,15 @@ class TestMetaTokenRoute:
         async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             raise MetaAccountFetchError("Meta ad-account listing failed: boom")
 
-        with (
-            patch(_PROBE, side_effect=_fake),
-            pytest.raises(urllib.error.HTTPError) as exc,
-        ):
-            _post(
+        with patch(_PROBE, side_effect=_fake):
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok"},
             )
-        assert exc.value.code == 400
-        err = json.loads(exc.value.read().decode())
-        assert err["error"] == "account_fetch_failed"
-        assert "listing failed" in err["detail"]
+        assert status == 400
+        assert body["error"] == "account_fetch_failed"
+        assert "listing failed" in body["detail"]
 
     def test_save_rejects_inaccessible_account(self, wizard: ConfigureWizard) -> None:
         """A submitted account_id absent from the probe's account list is
@@ -323,19 +259,15 @@ class TestMetaTokenRoute:
         async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             return probe_result
 
-        with (
-            patch(_PROBE, side_effect=_fake),
-            pytest.raises(urllib.error.HTTPError) as exc,
-        ):
-            _post(
+        with patch(_PROBE, side_effect=_fake):
+            status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok", "account_id": "act_999"},
             )
-        assert exc.value.code == 400
-        err = json.loads(exc.value.read().decode())
-        assert err["error"] == "account_not_accessible"
-        assert err["account_id"] == "act_999"
+        assert status == 400
+        assert body["error"] == "account_not_accessible"
+        assert body["account_id"] == "act_999"
         # Nothing persisted on rejection.
         cred_path = wizard.host_paths.credentials_path
         if cred_path.exists():

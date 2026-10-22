@@ -16,9 +16,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
-import threading
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -34,10 +31,10 @@ from mureo.web.ops_history_setting import (
     write_setting,
 )
 from mureo.web.server import ConfigureWizard
+from tests.web_support import get_ok, get_text, post, post_ok
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from http.client import HTTPResponse
 
 _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 ENDPOINT = "/api/settings/ops_history"
@@ -150,62 +147,12 @@ def roster_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
     reset_runtime_context()
 
 
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    (home / ".claude" / "commands").mkdir(parents=True)
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
-def _url(wiz: ConfigureWizard, path: str) -> str:
-    return f"http://127.0.0.1:{wiz.port}{path}"
-
-
-def _get(wiz: ConfigureWizard, path: str) -> dict[str, Any]:
-    with urllib.request.urlopen(_url(wiz, path), timeout=2.0) as res:
-        body: dict[str, Any] = json.loads(res.read().decode("utf-8"))
-    return body
-
-
-def _get_text(wiz: ConfigureWizard, path: str) -> str:
-    with urllib.request.urlopen(_url(wiz, path), timeout=2.0) as res:
-        text: str = res.read().decode("utf-8")
-    return text
-
-
-def _post(
-    wiz: ConfigureWizard, payload: dict[str, Any], *, csrf: bool = True
-) -> HTTPResponse:
-    req = urllib.request.Request(
-        _url(wiz, ENDPOINT), data=json.dumps(payload).encode(), method="POST"
-    )
-    req.add_header("Content-Type", "application/json")
-    if csrf:
-        req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    return urllib.request.urlopen(req, timeout=2.0)
-
-
-def _post_json(wiz: ConfigureWizard, payload: dict[str, Any]) -> dict[str, Any]:
-    with _post(wiz, payload) as res:
-        body: dict[str, Any] = json.loads(res.read().decode("utf-8"))
-    return body
-
-
 @pytest.mark.unit
 class TestRoutes:
     def test_get_reports_off_and_the_active_path(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _get(wizard, ENDPOINT)
+        body = get_ok(wizard, ENDPOINT)
         assert body == {
             "status": "ok",
             "client": None,
@@ -217,37 +164,35 @@ class TestRoutes:
     def test_post_switches_on_and_is_read_back(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _post_json(wizard, {"enabled": True})
+        body = post_ok(wizard, ENDPOINT, {"enabled": True})
         assert body["status"] == "ok"
         assert body["enabled"] is True
         assert ops_history_enabled(read_state_file(workspace / "STATE.json"))
-        assert _get(wizard, ENDPOINT)["enabled"] is True
+        assert get_ok(wizard, ENDPOINT)["enabled"] is True
 
     @pytest.mark.parametrize("value", ["true", 1, None])
     def test_post_refuses_anything_but_a_boolean(
         self, wizard: ConfigureWizard, workspace: Path, value: Any
     ) -> None:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _post(wizard, {"enabled": value})
-        assert excinfo.value.code == 400
-        assert json.loads(excinfo.value.read())["error"] == "invalid_value"
+        status, body = post(wizard, ENDPOINT, {"enabled": value})
+        assert status == 400
+        assert body["error"] == "invalid_value"
         assert not (workspace / "STATE.json").exists()
 
     def test_post_needs_the_csrf_header(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _post(wizard, {"enabled": True}, csrf=False)
-        assert excinfo.value.code == 403
+        status, _ = post(wizard, ENDPOINT, {"enabled": True}, csrf=None)
+        assert status == 403
         assert not (workspace / "STATE.json").exists()
 
     def test_a_client_slug_is_echoed_and_ignored_on_a_single_workspace(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _post_json(wizard, {"enabled": True, "client": "acme"})
+        body = post_ok(wizard, ENDPOINT, {"enabled": True, "client": "acme"})
         assert body["client"] == "acme"
         assert body["path"] == str(workspace / "STATE.json")
-        assert _get(wizard, ENDPOINT + "?client=acme")["enabled"] is True
+        assert get_ok(wizard, ENDPOINT + "?client=acme")["enabled"] is True
 
     def test_a_client_slug_resolves_that_client_s_own_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -349,13 +294,16 @@ class TestServedPage:
     def test_a_single_workspace_is_served_the_card(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        assert "data-dashboard-ops-history" in _get_text(wizard, "/")
+        status, html = get_text(wizard, "/")
+        assert status == 200
+        assert "data-dashboard-ops-history" in html
 
     def test_a_client_roster_is_served_a_page_without_it(
         self, wizard: ConfigureWizard, roster_workspace: Path
     ) -> None:
         """The card writes the active workspace's STATE.json, which on a
         backend with a client roster is no client's file."""
-        html = _get_text(wizard, "/")
+        status, html = get_text(wizard, "/")
+        assert status == 200
         assert "data-dashboard-ops-history" not in html
         assert "data-dashboard-advisors" in html

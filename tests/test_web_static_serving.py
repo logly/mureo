@@ -16,12 +16,10 @@ Security invariants enforced:
 from __future__ import annotations
 
 import json
-import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -33,32 +31,7 @@ from mureo.web.handlers import (
     _static_content_type,
 )
 from mureo.web.server import ConfigureWizard
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from http.client import HTTPResponse
-
-
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
-def _get(wiz: ConfigureWizard, path: str) -> HTTPResponse:
-    return urllib.request.urlopen(f"http://127.0.0.1:{wiz.port}{path}", timeout=2.0)
+from tests.web_support import get_raw
 
 
 @pytest.mark.unit
@@ -165,19 +138,19 @@ class TestServeStaticRoute:
     def test_allowed_asset_serves_with_correct_mime(
         self, wizard: ConfigureWizard, asset: str
     ) -> None:
-        resp = _get(wizard, f"/static/{asset}")
+        resp = get_raw(wizard, f"/static/{asset}")
         assert resp.status == 200
         ct = resp.headers["Content-Type"]
         assert ct == _static_content_type(asset)
 
     def test_unallowed_filename_returns_404(self, wizard: ConfigureWizard) -> None:
         with pytest.raises(urllib.error.HTTPError) as exc:
-            _get(wizard, "/static/secret.txt")
+            get_raw(wizard, "/static/secret.txt")
         assert exc.value.code == 404
 
     def test_root_dir_traversal_returns_404(self, wizard: ConfigureWizard) -> None:
         with pytest.raises(urllib.error.HTTPError) as exc:
-            _get(
+            get_raw(
                 wizard,
                 "/static/" + urllib.parse.quote("../../../etc/passwd"),
             )
@@ -185,19 +158,19 @@ class TestServeStaticRoute:
 
     def test_dotdot_in_path_returns_404(self, wizard: ConfigureWizard) -> None:
         with pytest.raises(urllib.error.HTTPError) as exc:
-            _get(wizard, "/static/..")
+            get_raw(wizard, "/static/..")
         assert exc.value.code == 404
 
     def test_static_route_includes_security_headers(
         self, wizard: ConfigureWizard
     ) -> None:
-        resp = _get(wizard, "/static/app.html")
+        resp = get_raw(wizard, "/static/app.html")
         assert resp.headers["X-Frame-Options"] == "DENY"
         assert resp.headers["X-Content-Type-Options"] == "nosniff"
         assert "default-src 'none'" in resp.headers["Content-Security-Policy"]
 
     def test_static_route_body_is_valid_json(self, wizard: ConfigureWizard) -> None:
-        resp = _get(wizard, "/static/i18n.json")
+        resp = get_raw(wizard, "/static/i18n.json")
         body = resp.read()
         json.loads(body.decode("utf-8"))
 
@@ -207,7 +180,7 @@ class TestServeStaticRoute:
         wizard.static_dir = tmp_path / "empty"
         wizard.static_dir.mkdir(exist_ok=True)
         with pytest.raises(urllib.error.HTTPError) as exc:
-            _get(wizard, "/static/app.css")
+            get_raw(wizard, "/static/app.css")
         assert exc.value.code == 404
 
 

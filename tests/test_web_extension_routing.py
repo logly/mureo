@@ -14,7 +14,6 @@ and exercises every dispatch branch added by this commit:
 from __future__ import annotations
 
 import json
-import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -30,12 +29,11 @@ from mureo.web.extensions import (
     reset_web_extensions,
 )
 from mureo.web.server import ConfigureWizard
+from tests.web_support import get_raw, post
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from http.client import HTTPResponse
     from http.server import BaseHTTPRequestHandler
-    from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -107,75 +105,27 @@ def _reset_extensions_state() -> Iterator[None]:
 
 
 @pytest.fixture
-def wizard_with_extensions(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[ConfigureWizard]:
-    """Pre-seed one extension, boot a wizard, yield it."""
-    entry = _make_entry()
-    monkeypatch.setattr("mureo.web.extensions._cached_entries", (entry,))
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
+def _demo_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mureo.web.extensions._cached_entries", (_make_entry(),))
 
 
 @pytest.fixture
-def wizard_no_extensions(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[ConfigureWizard]:
-    """Boot a wizard with zero extensions registered."""
+def _no_entries(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("mureo.web.extensions._cached_entries", ())
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
 
 
-def _url(wiz: ConfigureWizard, path: str) -> str:
-    return f"http://127.0.0.1:{wiz.port}{path}"
+@pytest.fixture
+def wizard_with_extensions(
+    _demo_entries: None, wizard: ConfigureWizard
+) -> ConfigureWizard:
+    """The shared ``wizard``, booted with one extension pre-seeded."""
+    return wizard
 
 
-def _get(wiz: ConfigureWizard, path: str) -> HTTPResponse:
-    return urllib.request.urlopen(_url(wiz, path), timeout=2.0)
-
-
-def _post(
-    wiz: ConfigureWizard,
-    path: str,
-    payload: dict[str, Any] | None,
-    *,
-    csrf: str | None = "use_session",
-) -> HTTPResponse:
-    body = json.dumps(payload or {}).encode()
-    headers: dict[str, str] = {"Content-Type": "application/json"}
-    if csrf == "use_session":
-        headers["X-CSRF-Token"] = wiz.session.csrf_token
-    elif csrf is not None:
-        headers["X-CSRF-Token"] = csrf
-    req = urllib.request.Request(_url(wiz, path), data=body, method="POST")
-    for k, v in headers.items():
-        req.add_header(k, v)
-    return urllib.request.urlopen(req, timeout=2.0)
+@pytest.fixture
+def wizard_no_extensions(_no_entries: None, wizard: ConfigureWizard) -> ConfigureWizard:
+    """The shared ``wizard``, booted with zero extensions registered."""
+    return wizard
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +135,7 @@ def _post(
 
 @pytest.mark.unit
 def test_extensions_index_empty(wizard_no_extensions: ConfigureWizard) -> None:
-    resp = _get(wizard_no_extensions, "/api/extensions")
+    resp = get_raw(wizard_no_extensions, "/api/extensions")
     assert resp.status == 200
     payload = json.loads(resp.read().decode())
     assert payload == []
@@ -195,7 +145,7 @@ def test_extensions_index_empty(wizard_no_extensions: ConfigureWizard) -> None:
 def test_extensions_index_lists_registered(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    resp = _get(wizard_with_extensions, "/api/extensions")
+    resp = get_raw(wizard_with_extensions, "/api/extensions")
     payload = json.loads(resp.read().decode())
     assert isinstance(payload, list)
     assert len(payload) == 1
@@ -212,13 +162,8 @@ def test_extensions_index_lists_registered(
     assert item["view"]["styles"] == ["demo.css"]
 
 
-@pytest.mark.unit
-def test_extensions_index_includes_surface_overrides(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """#189 — ``hidden_builtin_tabs`` / ``replaces_landing`` ride the
-    index payload so ``extensions.js`` can hide built-in tabs and skip
-    the landing for full-surface plugins."""
+@pytest.fixture
+def _surface_override_entries(monkeypatch: pytest.MonkeyPatch) -> None:
     override_entry = WebExtensionEntry(
         name="full-surface",
         display_name="Full surface",
@@ -229,32 +174,23 @@ def test_extensions_index_includes_surface_overrides(
         replaces_landing=True,
     )
     monkeypatch.setattr("mureo.web.extensions._cached_entries", (override_entry,))
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    t = threading.Thread(target=wiz.serve, daemon=True)
-    t.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        resp = _get(wiz, "/api/extensions")
-        payload = json.loads(resp.read().decode())
-        assert payload[0]["hidden_builtin_tabs"] == ["setup", "demo"]
-        assert payload[0]["replaces_landing"] is True
-    finally:
-        wiz.shutdown()
-        t.join(timeout=2.0)
 
 
 @pytest.mark.unit
-def test_extensions_index_includes_display_name_i18n(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_extensions_index_includes_surface_overrides(
+    _surface_override_entries: None, wizard: ConfigureWizard
 ) -> None:
-    """An extension that ships per-locale labels surfaces them on
-    ``/api/extensions`` so the renderer can swap nav labels when the
-    operator toggles locale without round-tripping the server."""
+    """#189 — ``hidden_builtin_tabs`` / ``replaces_landing`` ride the
+    index payload so ``extensions.js`` can hide built-in tabs and skip
+    the landing for full-surface plugins."""
+    resp = get_raw(wizard, "/api/extensions")
+    payload = json.loads(resp.read().decode())
+    assert payload[0]["hidden_builtin_tabs"] == ["setup", "demo"]
+    assert payload[0]["replaces_landing"] is True
+
+
+@pytest.fixture
+def _i18n_entries(monkeypatch: pytest.MonkeyPatch) -> None:
     i18n_entry = WebExtensionEntry(
         name="i18n-demo",
         display_name="I18n demo",
@@ -264,28 +200,22 @@ def test_extensions_index_includes_display_name_i18n(
         display_name_i18n={"en": "Demo", "ja": "デモ"},
     )
     monkeypatch.setattr("mureo.web.extensions._cached_entries", (i18n_entry,))
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    t = threading.Thread(target=wiz.serve, daemon=True)
-    t.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        resp = _get(wiz, "/api/extensions")
-        payload = json.loads(resp.read().decode())
-        assert payload[0]["display_name_i18n"] == {"en": "Demo", "ja": "デモ"}
-    finally:
-        wiz.shutdown()
-        t.join(timeout=2.0)
 
 
 @pytest.mark.unit
-def test_extensions_index_view_null_when_extension_has_no_view(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_extensions_index_includes_display_name_i18n(
+    _i18n_entries: None, wizard: ConfigureWizard
 ) -> None:
+    """An extension that ships per-locale labels surfaces them on
+    ``/api/extensions`` so the renderer can swap nav labels when the
+    operator toggles locale without round-tripping the server."""
+    resp = get_raw(wizard, "/api/extensions")
+    payload = json.loads(resp.read().decode())
+    assert payload[0]["display_name_i18n"] == {"en": "Demo", "ja": "デモ"}
+
+
+@pytest.fixture
+def _no_view_entries(monkeypatch: pytest.MonkeyPatch) -> None:
     no_view = WebExtensionEntry(
         name="nogui",
         display_name="No GUI",
@@ -294,32 +224,25 @@ def test_extensions_index_view_null_when_extension_has_no_view(
         source_distribution=None,
     )
     monkeypatch.setattr("mureo.web.extensions._cached_entries", (no_view,))
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    t = threading.Thread(target=wiz.serve, daemon=True)
-    t.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        resp = _get(wiz, "/api/extensions")
-        payload = json.loads(resp.read().decode())
-        assert payload == [
-            {
-                "name": "nogui",
-                "display_name": "No GUI",
-                "display_name_i18n": {},
-                "hidden_builtin_tabs": [],
-                "replaces_landing": False,
-                "dashboard_cards": [],
-                "view": None,
-            }
-        ]
-    finally:
-        wiz.shutdown()
-        t.join(timeout=2.0)
+
+
+@pytest.mark.unit
+def test_extensions_index_view_null_when_extension_has_no_view(
+    _no_view_entries: None, wizard: ConfigureWizard
+) -> None:
+    resp = get_raw(wizard, "/api/extensions")
+    payload = json.loads(resp.read().decode())
+    assert payload == [
+        {
+            "name": "nogui",
+            "display_name": "No GUI",
+            "display_name_i18n": {},
+            "hidden_builtin_tabs": [],
+            "replaces_landing": False,
+            "dashboard_cards": [],
+            "view": None,
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +254,7 @@ def test_extensions_index_view_null_when_extension_has_no_view(
 def test_get_extension_route_dispatches_to_handler(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    resp = _get(wizard_with_extensions, "/api/ext/demo/ping?q=hello&n=42")
+    resp = get_raw(wizard_with_extensions, "/api/ext/demo/ping?q=hello&n=42")
     assert resp.status == 200
     body = json.loads(resp.read().decode())
     assert body == {"echo": {"q": "hello", "n": "42"}}
@@ -345,7 +268,7 @@ def test_get_extension_route_first_value_wins_for_repeated_keys(
     """``urllib.parse.parse_qs`` lists values; the dispatcher flattens
     each list to its first element. Handlers that need full multi-value
     semantics can still read ``self.path`` directly."""
-    _get(wizard_with_extensions, "/api/ext/demo/ping?q=one&q=two&q=three")
+    get_raw(wizard_with_extensions, "/api/ext/demo/ping?q=one&q=two&q=three")
     assert _recorded_calls == [("ping", {"q": "one"})]
 
 
@@ -354,7 +277,7 @@ def test_get_unknown_extension_returns_404(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard_with_extensions, "/api/ext/missing/ping")
+        get_raw(wizard_with_extensions, "/api/ext/missing/ping")
     assert exc.value.code == 404
 
 
@@ -363,7 +286,7 @@ def test_get_unknown_subpath_returns_404(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard_with_extensions, "/api/ext/demo/nope")
+        get_raw(wizard_with_extensions, "/api/ext/demo/nope")
     assert exc.value.code == 404
 
 
@@ -382,7 +305,7 @@ def test_get_traversal_or_malformed_paths_return_404(
     wizard_with_extensions: ConfigureWizard, path: str
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard_with_extensions, path)
+        get_raw(wizard_with_extensions, path)
     assert exc.value.code == 404
 
 
@@ -391,7 +314,7 @@ def test_get_extension_handler_exception_returns_500(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard_with_extensions, "/api/ext/demo/explode")
+        get_raw(wizard_with_extensions, "/api/ext/demo/explode")
     assert exc.value.code == 500
     body = json.loads(exc.value.read().decode())
     assert "error" in body
@@ -406,9 +329,8 @@ def test_get_extension_handler_exception_returns_500(
 def test_post_extension_route_dispatches_with_csrf(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    resp = _post(wizard_with_extensions, "/api/ext/demo/save", {"key": "value"})
-    assert resp.status == 200
-    body = json.loads(resp.read().decode())
+    status, body = post(wizard_with_extensions, "/api/ext/demo/save", {"key": "value"})
+    assert status == 200
     assert body == {"saved": True, "received": {"key": "value"}}
 
 
@@ -416,32 +338,31 @@ def test_post_extension_route_dispatches_with_csrf(
 def test_post_extension_route_rejects_missing_csrf(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _post(wizard_with_extensions, "/api/ext/demo/save", {"key": "v"}, csrf=None)
-    assert exc.value.code == 403
+    status, body = post(
+        wizard_with_extensions, "/api/ext/demo/save", {"key": "v"}, csrf=None
+    )
+    assert status == 403
 
 
 @pytest.mark.unit
 def test_post_extension_route_rejects_bad_csrf(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _post(
-            wizard_with_extensions,
-            "/api/ext/demo/save",
-            {"key": "v"},
-            csrf="wrong-token",
-        )
-    assert exc.value.code == 403
+    status, body = post(
+        wizard_with_extensions,
+        "/api/ext/demo/save",
+        {"key": "v"},
+        csrf="wrong-token",
+    )
+    assert status == 403
 
 
 @pytest.mark.unit
 def test_post_unknown_extension_returns_404(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _post(wizard_with_extensions, "/api/ext/missing/save", {})
-    assert exc.value.code == 404
+    status, body = post(wizard_with_extensions, "/api/ext/missing/save", {})
+    assert status == 404
 
 
 @pytest.mark.unit
@@ -449,9 +370,8 @@ def test_post_get_only_subpath_returns_404(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
     """``/api/ext/demo/ping`` is a GET-only route; POSTing must 404."""
-    with pytest.raises(urllib.error.HTTPError) as exc:
-        _post(wizard_with_extensions, "/api/ext/demo/ping", {})
-    assert exc.value.code == 404
+    status, body = post(wizard_with_extensions, "/api/ext/demo/ping", {})
+    assert status == 404
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +383,7 @@ def test_post_get_only_subpath_returns_404(
 def test_static_asset_served_with_correct_content_type(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    resp = _get(wizard_with_extensions, "/static/ext/demo/demo.js")
+    resp = get_raw(wizard_with_extensions, "/static/ext/demo/demo.js")
     assert resp.status == 200
     assert resp.headers["Content-Type"].startswith("application/javascript")
     assert resp.read() == b"console.log('demo');"
@@ -474,7 +394,7 @@ def test_static_asset_unknown_filename_returns_404(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard_with_extensions, "/static/ext/demo/missing.js")
+        get_raw(wizard_with_extensions, "/static/ext/demo/missing.js")
     assert exc.value.code == 404
 
 
@@ -483,7 +403,7 @@ def test_static_asset_unknown_extension_returns_404(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard_with_extensions, "/static/ext/missing/demo.js")
+        get_raw(wizard_with_extensions, "/static/ext/missing/demo.js")
     assert exc.value.code == 404
 
 
@@ -501,7 +421,7 @@ def test_static_asset_traversal_paths_return_404(
     wizard_with_extensions: ConfigureWizard, path: str
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
-        _get(wizard_with_extensions, path)
+        get_raw(wizard_with_extensions, path)
     assert exc.value.code == 404
 
 
@@ -512,7 +432,7 @@ def test_static_asset_response_carries_security_headers(
     """Extension-served assets inherit the same CSP / X-Frame-Options /
     Cache-Control set the built-in static path applies — they share the
     ``send_bytes`` helper."""
-    resp = _get(wizard_with_extensions, "/static/ext/demo/demo.css")
+    resp = get_raw(wizard_with_extensions, "/static/ext/demo/demo.css")
     assert resp.headers["X-Content-Type-Options"] == "nosniff"
     assert resp.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'none'" in (resp.headers["Content-Security-Policy"] or "")
@@ -556,33 +476,23 @@ def _make_card_entry() -> WebExtensionEntry:
 
 
 @pytest.fixture
+def _card_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mureo.web.extensions._cached_entries", (_make_card_entry(),))
+
+
+@pytest.fixture
 def wizard_with_card_extension(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[ConfigureWizard]:
-    """Pre-seed one headless, card-bearing extension, boot a wizard."""
-    entry = _make_card_entry()
-    monkeypatch.setattr("mureo.web.extensions._cached_entries", (entry,))
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".claude").mkdir()
-    (home / ".claude" / "commands").mkdir()
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
+    _card_entries: None, wizard: ConfigureWizard
+) -> ConfigureWizard:
+    """The shared ``wizard``, booted with one headless, card-bearing extension."""
+    return wizard
 
 
 @pytest.mark.unit
 def test_extensions_index_includes_dashboard_cards(
     wizard_with_card_extension: ConfigureWizard,
 ) -> None:
-    resp = _get(wizard_with_card_extension, "/api/extensions")
+    resp = get_raw(wizard_with_card_extension, "/api/extensions")
     payload = json.loads(resp.read().decode())
     assert len(payload) == 1
     item = payload[0]
@@ -601,7 +511,7 @@ def test_extensions_index_includes_dashboard_cards(
 def test_extensions_index_dashboard_cards_default_to_empty_list(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    resp = _get(wizard_with_extensions, "/api/extensions")
+    resp = get_raw(wizard_with_extensions, "/api/extensions")
     payload = json.loads(resp.read().decode())
     assert payload[0]["dashboard_cards"] == []
 
@@ -610,12 +520,12 @@ def test_extensions_index_dashboard_cards_default_to_empty_list(
 def test_dashboard_card_static_assets_are_served(
     wizard_with_card_extension: ConfigureWizard,
 ) -> None:
-    resp = _get(wizard_with_card_extension, "/static/ext/cardful/cardful.js")
+    resp = get_raw(wizard_with_card_extension, "/static/ext/cardful/cardful.js")
     assert resp.status == 200
     assert resp.headers["Content-Type"].startswith("application/javascript")
     assert resp.read() == b"console.log('cardful');"
 
-    resp = _get(wizard_with_card_extension, "/static/ext/cardful/cardful.css")
+    resp = get_raw(wizard_with_card_extension, "/static/ext/cardful/cardful.css")
     assert resp.status == 200
     assert resp.read() == b".cardful{color:blue}"
 
@@ -625,5 +535,5 @@ def test_dashboard_card_unknown_asset_still_404s(
     wizard_with_card_extension: ConfigureWizard,
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as excinfo:
-        _get(wizard_with_card_extension, "/static/ext/cardful/absent.js")
+        get_raw(wizard_with_card_extension, "/static/ext/cardful/absent.js")
     assert excinfo.value.code == 404

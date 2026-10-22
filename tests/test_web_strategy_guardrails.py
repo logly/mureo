@@ -17,10 +17,7 @@ here are the same ones, generalised:
 
 from __future__ import annotations
 
-import json
 import threading
-import urllib.error
-import urllib.request
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -37,10 +34,10 @@ from mureo.web.strategy_guardrails import (
     resolve_lang,
     write_guardrails,
 )
+from tests.web_support import get_ok, post, post_ok
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from http.client import HTTPResponse
     from pathlib import Path
 
     from mureo.web.server import ConfigureWizard
@@ -596,58 +593,7 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     reset_runtime_context()
 
 
-@pytest.fixture
-def wizard(tmp_path: Path) -> Iterator[ConfigureWizard]:
-    from mureo.web.server import ConfigureWizard
-
-    home = tmp_path / "home"
-    (home / ".claude" / "commands").mkdir(parents=True)
-    (home / ".mureo").mkdir()
-    wiz = ConfigureWizard(home=home)
-    thread = threading.Thread(target=wiz.serve, daemon=True)
-    thread.start()
-    wiz.wait_until_ready(timeout=5.0)
-    try:
-        yield wiz
-    finally:
-        wiz.shutdown()
-        thread.join(timeout=2.0)
-
-
 _ROUTE = "/api/strategy/guardrails"
-
-
-def _url(wiz: ConfigureWizard, path: str) -> str:
-    return f"http://127.0.0.1:{wiz.port}{path}"
-
-
-def _get(
-    wiz: ConfigureWizard, path: str, headers: dict[str, str] | None = None
-) -> dict[str, Any]:
-    req = urllib.request.Request(_url(wiz, path))
-    for key, value in (headers or {}).items():
-        req.add_header(key, value)
-    with urllib.request.urlopen(req, timeout=2.0) as res:
-        body: dict[str, Any] = json.loads(res.read().decode("utf-8"))
-    return body
-
-
-def _post(
-    wiz: ConfigureWizard, payload: dict[str, Any], *, csrf: bool = True
-) -> HTTPResponse:
-    req = urllib.request.Request(
-        _url(wiz, _ROUTE), data=json.dumps(payload).encode(), method="POST"
-    )
-    req.add_header("Content-Type", "application/json")
-    if csrf:
-        req.add_header("X-CSRF-Token", wiz.session.csrf_token)
-    return urllib.request.urlopen(req, timeout=2.0)
-
-
-def _post_json(wiz: ConfigureWizard, payload: dict[str, Any]) -> dict[str, Any]:
-    with _post(wiz, payload) as res:
-        body: dict[str, Any] = json.loads(res.read().decode("utf-8"))
-    return body
 
 
 @pytest.mark.unit
@@ -655,7 +601,7 @@ class TestStrategyGuardrailsRoutes:
     def test_get_lists_every_field_for_the_active_workspace(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _get(wizard, _ROUTE)
+        body = get_ok(wizard, _ROUTE)
         assert body["status"] == "ok"
         assert body["client"] is None
         assert body["path"] == str(workspace / "STRATEGY.md")
@@ -667,14 +613,14 @@ class TestStrategyGuardrailsRoutes:
     def test_get_resolves_labels_from_accept_language(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _get(wizard, _ROUTE, {"Accept-Language": "ja-JP,ja;q=0.9"})
+        body = get_ok(wizard, _ROUTE, headers={"Accept-Language": "ja-JP,ja;q=0.9"})
         row = _by_key(body)["max_cumulative_delivery_share_removed_pct"]
         assert row["label"] == "除外で削ってよい配信量の累計上限(%)"
 
     def test_get_the_lang_query_outranks_accept_language(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _get(wizard, f"{_ROUTE}?lang=ja", {"Accept-Language": "en"})
+        body = get_ok(wizard, f"{_ROUTE}?lang=ja", headers={"Accept-Language": "en"})
         row = _by_key(body)["max_daily_budget_increase_pct"]
         assert row["label"] == "1 回の変更で許す日予算の増加率(%)"
 
@@ -682,8 +628,9 @@ class TestStrategyGuardrailsRoutes:
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
         path = _write(workspace / "STRATEGY.md", _DOC)
-        body = _post_json(
+        body = post_ok(
             wizard,
+            _ROUTE,
             {
                 "set": {"max_total_daily_budget": "1200"},
                 "clear": ["blocked_operations"],
@@ -696,7 +643,7 @@ class TestStrategyGuardrailsRoutes:
         text = path.read_text(encoding="utf-8")
         assert "- max_total_daily_budget: 1200" in text
         assert "blocked_operations" not in text
-        assert _get(wizard, _ROUTE) == body
+        assert get_ok(wizard, _ROUTE) == body
 
     @pytest.mark.parametrize(
         ("payload", "code"),
@@ -716,10 +663,9 @@ class TestStrategyGuardrailsRoutes:
         code: str,
     ) -> None:
         path = _write(workspace / "STRATEGY.md", _DOC)
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _post(wizard, payload)
-        assert excinfo.value.code == 400
-        assert json.loads(excinfo.value.read())["error"] == code
+        status, body = post(wizard, _ROUTE, payload)
+        assert status == 400
+        assert body["error"] == code
         assert path.read_text(encoding="utf-8") == _DOC
 
     def test_get_survives_a_non_finite_value_in_the_file(
@@ -732,7 +678,7 @@ class TestStrategyGuardrailsRoutes:
             "- max_daily_budget_per_campaign: 1e999\n"
             "- exclusion_impact_window_days: inf\n",
         )
-        rows = _by_key(_get(wizard, _ROUTE))
+        rows = _by_key(get_ok(wizard, _ROUTE))
         for key in (
             "max_total_daily_budget",
             "max_daily_budget_per_campaign",
@@ -744,9 +690,10 @@ class TestStrategyGuardrailsRoutes:
     def test_post_names_the_field_it_refused(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _post(wizard, {"set": {"exclusion_impact_window_days": 0}})
-        body = json.loads(excinfo.value.read())
+        status, body = post(
+            wizard, _ROUTE, {"set": {"exclusion_impact_window_days": 0}}
+        )
+        assert status >= 400
         assert body == {
             "error": "out_of_range",
             "field": "exclusion_impact_window_days",
@@ -756,7 +703,7 @@ class TestStrategyGuardrailsRoutes:
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
         path = _write(workspace / "STRATEGY.md", _DOC)
-        _post_json(wizard, {"set": {"max_total_daily_budget": ""}})
+        post_ok(wizard, _ROUTE, {"set": {"max_total_daily_budget": ""}})
         text = path.read_text(encoding="utf-8")
         assert "max_total_daily_budget" not in text
         assert ": 0" not in text
@@ -764,23 +711,24 @@ class TestStrategyGuardrailsRoutes:
     def test_post_needs_the_csrf_header(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        with pytest.raises(urllib.error.HTTPError) as excinfo:
-            _post(wizard, {"set": {"max_total_daily_budget": 5}}, csrf=False)
-        assert excinfo.value.code == 403
+        status, _ = post(
+            wizard, _ROUTE, {"set": {"max_total_daily_budget": 5}}, csrf=None
+        )
+        assert status == 403
         assert not (workspace / "STRATEGY.md").exists()
 
     def test_the_currency_route_sees_what_this_route_wrote(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        _post_json(wizard, {"set": {"currency": "eur"}})
-        assert _get(wizard, "/api/strategy/currency")["currency"] == "EUR"
+        post_ok(wizard, _ROUTE, {"set": {"currency": "eur"}})
+        assert get_ok(wizard, "/api/strategy/currency")["currency"] == "EUR"
 
     def test_a_client_slug_is_echoed_and_ignored_on_a_single_workspace(
         self, wizard: ConfigureWizard, workspace: Path
     ) -> None:
-        body = _post_json(
-            wizard, {"client": "acme", "set": {"max_total_daily_budget": 5}}
+        body = post_ok(
+            wizard, _ROUTE, {"client": "acme", "set": {"max_total_daily_budget": 5}}
         )
         assert body["client"] == "acme"
         assert body["path"] == str(workspace / "STRATEGY.md")
-        assert _get(wizard, f"{_ROUTE}?client=acme")["client"] == "acme"
+        assert get_ok(wizard, f"{_ROUTE}?client=acme")["client"] == "acme"
