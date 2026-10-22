@@ -23,6 +23,7 @@ never raising.
 
 from __future__ import annotations
 
+import importlib
 import sys
 from typing import TYPE_CHECKING
 
@@ -66,9 +67,7 @@ def _resolve_backend() -> ModuleType:
             err=True,
         )
         raise typer.Exit(code=1)
-    # Import lazily so a platform-specific import never runs at module load.
-    import importlib
-
+    # Resolved lazily so a platform-specific backend never loads at module load.
     return importlib.import_module(f"mureo.web.service.{name}")
 
 

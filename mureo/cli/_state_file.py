@@ -12,6 +12,8 @@ from pathlib import Path
 
 import typer
 
+from mureo.core.runtime_context import get_runtime_context
+
 STATE_FILE_OPTION = typer.Option(
     None,
     "--state-file",
@@ -57,12 +59,7 @@ def resolve_default_state_file() -> Path:
     mureo_context) perform: the file lives at the active StateStore's
     ``state_path`` if exposed, otherwise ``<workspace>/STATE.json``
     where workspace falls back to ``Path.cwd()``.
-
-    Lazy import keeps the CLI modules import-time-free of the
-    runtime_context resolver, so Typer's startup remains cheap.
     """
-    from mureo.core.runtime_context import get_runtime_context
-
     store = get_runtime_context().state_store
     return state_file_for_store(store) or Path.cwd() / "STATE.json"
 

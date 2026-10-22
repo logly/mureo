@@ -159,12 +159,9 @@ known-first-party = ["mureo"]
     # bodies on purpose: patch first and then import the module under test,
     # skip when an optional dependency is absent, or load a module fresh to
     # check what its import does. Hoisting those would defeat the test.
+    # No path under mureo/ is excused (tests/test_plc0415_reasons.py).
     "PLC0415",
 ]
-# Temporary: cleared by #863 stage 4c (web, cli). Do not add packages here.
-"mureo/web/**" = ["PLC0415"]
-# Temporary: cleared by #863 stage 4c (web, cli). Do not add packages here.
-"mureo/cli/**" = ["PLC0415"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

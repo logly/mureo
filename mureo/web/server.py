@@ -167,7 +167,9 @@ class ConfigureWizard:
         operator to configure credentials that go nowhere.
         """
         try:
-            from mureo.amazon_ads.provider import (
+            # Startup cost (~240 ms CPU): the bridge and the mcp SDK types it
+            # pulls in wait for provider discovery (#863).
+            from mureo.amazon_ads.provider import (  # noqa: PLC0415 — startup cost (#863)
                 amazon_ads_disabled,
                 register_amazon_provider,
             )

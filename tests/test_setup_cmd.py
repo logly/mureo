@@ -254,3 +254,40 @@ def test_setup_claude_code_runs_without_tty(
     assert (tmp_path / ".claude" / "skills" / "onboard" / "SKILL.md").exists()
     assert (tmp_path / ".claude" / "skills" / "daily-check" / "SKILL.md").exists()
     assert (tmp_path / ".claude" / "skills" / "_mureo-shared" / "SKILL.md").exists()
+
+
+@pytest.mark.unit
+def test_setup_claude_code_calls_the_wizard_steps_through_auth_setup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The wizard steps are looked up on ``mureo.auth_setup`` at call time.
+
+    The non-TTY test above patches ``auth_setup.setup_google_ads`` to fail
+    loudly, but that path never authenticates, so it would pass even if
+    ``setup_cmd`` bound the names at import and the patch reached nothing.
+    Here every patched step must actually be called.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    import typer.testing
+
+    from mureo import auth_setup
+    from mureo.cli.main import app
+
+    google = AsyncMock()
+    mcp = MagicMock(return_value=None)
+    guard = MagicMock(return_value=None)
+    monkeypatch.setattr(auth_setup, "setup_google_ads", google)
+    monkeypatch.setattr(auth_setup, "install_mcp_config", mcp)
+    monkeypatch.setattr(auth_setup, "install_credential_guard", guard)
+    monkeypatch.setattr("mureo.cli.setup_cmd.is_tty", lambda: True)
+    monkeypatch.setattr("mureo.cli.setup_cmd.install_skills", lambda: (0, tmp_path))
+
+    result = typer.testing.CliRunner().invoke(
+        app, ["setup", "claude-code", "--google-ads", "--no-meta-ads"]
+    )
+
+    assert result.exit_code == 0, result.output
+    google.assert_awaited_once_with()
+    mcp.assert_called_once_with(scope="global")
+    guard.assert_called_once_with()

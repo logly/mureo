@@ -40,6 +40,9 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
+from mureo.cli._journal_verify import verify_command
+from mureo.core.rotation import sibling_files
+
 if TYPE_CHECKING:
     from datetime import date
 
@@ -171,7 +174,9 @@ def _read_sources(
     says the budget ran out, so the caller can say what it did not look
     at rather than letting a bounded answer read as a complete one.
     """
-    from mureo.mcp.journal_read import (
+    # Startup cost (~300 ms CPU): ``mureo.mcp`` loads the MCP server at
+    # package import, so the journal readers wait for the command (#486).
+    from mureo.mcp.journal_read import (  # noqa: PLC0415 — startup cost (#486)
         JOURNAL_SCAN_LINES,
         read_records_files,
         read_records_tail_files,
@@ -207,19 +212,21 @@ def show_journal(
     verify: bool = _VERIFY_OPTION,
 ) -> None:
     """Show recorded MCP tool calls, newest last."""
-    from mureo.core.rotation import sibling_files
-    from mureo.mcp.journal import journal_path
-
+    # Startup cost (~300 ms CPU): ``mureo.mcp`` loads the MCP server at
+    # package import, so the journal readers wait for the command (#486).
     # The parse and the filter are shared with ``mureo_history_query``
     # (#758 phase 4b): one file must not have two answers to "does this
-    # record match". Imported here, like ``journal_path``, because
-    # ``mureo.mcp`` pulls the whole MCP server in at package import (#486).
-    from mureo.mcp.journal_read import JOURNAL_SCAN_LINES, record_matches
+    # record match".
+    from mureo.mcp.journal import (  # noqa: PLC0415 — startup cost (#486)
+        journal_path,
+    )
+    from mureo.mcp.journal_read import (  # noqa: PLC0415 — startup cost (#486)
+        JOURNAL_SCAN_LINES,
+        record_matches,
+    )
 
     target = Path(path) if path is not None else journal_path()
     if verify:
-        from mureo.cli._journal_verify import verify_command
-
         raise typer.Exit(verify_command(target, as_json=as_json))
 
     rotated = [file for file in sibling_files(target) if file != target]

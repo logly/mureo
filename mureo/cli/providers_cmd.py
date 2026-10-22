@@ -19,9 +19,11 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from mureo.core.atomic_json import load_existing_json
 from mureo.providers.catalog import CATALOG, ProviderSpec, get_provider
 from mureo.providers.coexistence import coexistence_warning
 from mureo.providers.config_writer import (
+    _default_settings_path,
     add_provider_to_claude_settings,
     is_hosted_provider_connected,
     is_provider_installed,
@@ -228,9 +230,6 @@ def _register_provider(spec: ProviderSpec) -> bool:
 
 def _mureo_block_exists() -> bool:
     """Return True iff ``mcpServers.mureo`` exists in the default settings file."""
-    from mureo.core.atomic_json import load_existing_json
-    from mureo.providers.config_writer import _default_settings_path
-
     target = _default_settings_path()
     if not target.exists():
         return False

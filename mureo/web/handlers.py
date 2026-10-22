@@ -73,11 +73,22 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
 
+from mureo.amazon_ads import lwa
+from mureo.amazon_ads import manifest as amazon_manifest
+from mureo.auth import (
+    MetaAdsCredentials,
+    load_amazon_ads_credentials,
+    load_meta_ads_credentials,
+    save_amazon_access_token,
+)
+from mureo.auth_setup import save_credentials
+from mureo.core import clock
 from mureo.core.providers import default_registry, get_account_oauth_config
 from mureo.core.runtime_context import (
     runtime_multi_account_auth,
     runtime_ui_plugin_credential_fields,
 )
+from mureo.core.scrub import scrub_capped
 from mureo.core.secret_store import FilesystemSecretStore, SecretStoreError
 from mureo.logging_setup import safe_http_log_line
 from mureo.meta_ads.accounts import (
@@ -479,11 +490,9 @@ def _amazon_redirect_uri(payload: dict[str, Any]) -> str | None:
     Amazon rejects the exchange anyway unless the URL is listed in the
     LwA security profile's Allowed Return URLs.
     """
-    from mureo.amazon_ads.lwa import DEFAULT_REDIRECT_URI
-
     raw = str(payload.get("redirect_uri") or "").strip()
     if not raw:
-        return DEFAULT_REDIRECT_URI
+        return lwa.DEFAULT_REDIRECT_URI
     if urllib.parse.urlsplit(raw).scheme.lower() not in ("http", "https"):
         return None
     return raw
@@ -531,9 +540,6 @@ def _persist_amazon_authorization(credentials_path: Path, tokens: Any) -> None:
     after consent and never reports the issue date, so this write is the
     only record of when the countdown started.
     """
-    from mureo.auth import save_amazon_access_token
-    from mureo.core import clock
-
     save_amazon_access_token(
         tokens.access_token,
         tokens.refresh_token,
@@ -566,9 +572,11 @@ def _generate_amazon_manifest(
     ``~/.mureo``, so a relocating runtime got a written manifest and a
     toolless bridge.
     """
-    from mureo.amazon_ads import manifest as amazon_manifest
-    from mureo.core.scrub import scrub_capped
-    from mureo.mcp.plugin_audit import _MAX_STR
+    # Startup cost (~300 ms CPU): ``mureo.mcp`` loads the MCP server at
+    # package import, so the cap is read on this failure path only (#863).
+    from mureo.mcp.plugin_audit import (  # noqa: PLC0415 — startup cost (#863)
+        _MAX_STR,
+    )
 
     out_path = amazon_manifest.manifest_path_for(credentials_path)
     try:
@@ -592,8 +600,6 @@ def _amazon_manifest_refresh_result(credentials_path: Path) -> dict[str, Any]:
     consent that worked would be a lie, and the dashboard's
     "Refresh tool list" button retries this exact generator.
     """
-    from mureo.auth import load_amazon_ads_credentials
-
     creds = load_amazon_ads_credentials(credentials_path)
     if creds is None:  # pragma: no cover — tokens were just written
         return {"manifest": "failed", "manifest_detail": "amazon_credentials_missing"}
@@ -1554,9 +1560,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         app_secret = str(payload.get("app_secret") or "").strip() or None
         validate_only = bool(payload.get("validate_only", False))
 
-        from mureo.auth import MetaAdsCredentials, load_meta_ads_credentials
-        from mureo.auth_setup import save_credentials
-
         credentials_path = self.wizard.host_paths.credentials_path
         # Read BEFORE the save: the inspection needs an app access token, and
         # the operator may have stored the pair on an earlier paste rather
@@ -1754,8 +1757,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         ever echoed back, and a ``502`` distinguishes "Amazon/network
         said no" from the ``400`` "you have not configured Amazon yet".
         """
-        from mureo.auth import load_amazon_ads_credentials
-
         credentials_path = self.wizard.host_paths.credentials_path
         creds = load_amazon_ads_credentials(credentials_path)
         if creds is None:
@@ -1800,8 +1801,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         echoed. A missing client id is a distinct ``400`` because the
         remedy is "save the card first", not "try again".
         """
-        from mureo.amazon_ads.lwa import build_authorization_url, normalize_region
-
         section = _amazon_credentials_section(self.wizard.host_paths.credentials_path)
         client_id = str(section.get("client_id") or "").strip()
         if not client_id:
@@ -1812,11 +1811,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 400, "invalid_redirect_uri")
             return
 
-        region = normalize_region(section.get("region"))
+        region = lwa.normalize_region(section.get("region"))
         send_json(
             self,
             {
-                "authorize_url": build_authorization_url(
+                "authorize_url": lwa.build_authorization_url(
                     client_id=client_id, region=region, redirect_uri=redirect_uri
                 ),
                 "region": region,
@@ -1837,8 +1836,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         route: a rejected code is a ``400`` (they expire 5 minutes after
         consent — the operator re-authorizes), anything else a ``502``.
         """
-        from mureo.amazon_ads import lwa
-
         credentials_path = self.wizard.host_paths.credentials_path
         section = _amazon_credentials_section(credentials_path)
         client_id = str(section.get("client_id") or "").strip()
@@ -1894,13 +1891,15 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         say "codes expire in 5 minutes, authorize again" instead of
         sending the operator to check their client secret.
         """
-        from mureo.amazon_ads.lwa import AmazonAuthCodeError
-        from mureo.core.scrub import scrub_capped
-        from mureo.mcp.plugin_audit import _MAX_STR
+        # Startup cost (~300 ms CPU): ``mureo.mcp`` loads the MCP server at
+        # package import, so the cap is read on this failure path only (#863).
+        from mureo.mcp.plugin_audit import (  # noqa: PLC0415 — startup cost (#863)
+            _MAX_STR,
+        )
 
         detail = scrub_capped(str(exc), _MAX_STR)
         logger.warning("Amazon authorization exchange failed: %s", detail)
-        rejected = isinstance(exc, AmazonAuthCodeError)
+        rejected = isinstance(exc, lwa.AmazonAuthCodeError)
         send_json(
             self,
             {
