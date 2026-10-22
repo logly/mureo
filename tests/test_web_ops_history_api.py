@@ -218,6 +218,7 @@ _ZERO_COUNTS = {
     "improved": 0,
     "regressed": 0,
     "regressed_open": 0,
+    "held": 0,
     "inconclusive": 0,
     "observing": 0,
 }
@@ -236,6 +237,7 @@ class TestSummaryAggregate:
             "improved": 1,
             "regressed": 1,
             "regressed_open": 1,
+            "held": 0,
             "inconclusive": 0,
             "observing": 1,
         }

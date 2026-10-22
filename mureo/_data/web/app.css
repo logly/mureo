@@ -5238,6 +5238,14 @@ label .muted,
   color: var(--status-ok);
 }
 
+/* An expected "hold" that held (#888): information, not achievement, so the
+   blue the palette reserves for information rather than the status green. */
+.ops-history-verdict.is-held {
+  background: var(--accent-tint);
+  border-color: var(--accent-tint);
+  color: var(--report-blue-ink);
+}
+
 .ops-history-expand-cell {
   width: 1%;
   text-align: right;

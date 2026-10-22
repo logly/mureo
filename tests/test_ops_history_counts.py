@@ -30,6 +30,7 @@ _ZERO = {
     "improved": 0,
     "regressed": 0,
     "regressed_open": 0,
+    "held": 0,
     "inconclusive": 0,
     "observing": 0,
 }
@@ -57,6 +58,7 @@ class TestCountItems:
             _item("evaluated", "improved"),
             _item("evaluated", "regressed"),
             _item("evaluated", "regressed", rolled_back=True),
+            _item("evaluated", "held"),
             _item("evaluated", "inconclusive"),
             _item("evaluated", None),
             _item("observing"),
@@ -64,10 +66,12 @@ class TestCountItems:
             _item("skipped"),
         ]
         assert count_ops_history_items(items) == {
-            "changes": 9,
+            "changes": 10,
             "improved": 2,
             "regressed": 2,
             "regressed_open": 1,
+            # A held change is its own count, never folded into inconclusive.
+            "held": 1,
             "inconclusive": 2,
             "observing": 1,
         }

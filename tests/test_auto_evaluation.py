@@ -19,7 +19,12 @@ from typing import Any
 
 import pytest
 
-from mureo.analysis.outcome_eval import MetricOutcome, OutcomeReport, Verdict
+from mureo.analysis.outcome_eval import (
+    MetricOutcome,
+    OutcomeReport,
+    OutcomeThresholds,
+    Verdict,
+)
 from mureo.context import auto_evaluation
 from mureo.context.actor_stamp import stamp_actor
 from mureo.context.auto_evaluation import (
@@ -41,12 +46,12 @@ TODAY = date(2026, 9, 19)
 #: keys that are not metrics at all.
 CURRENT_METRICS: dict[str, Any] = {
     "cpa": 5000,
-    "conversions": 10,
+    "conversions": 100,
     "period": "LAST_30_DAYS",
     "fetched_at": "2026-09-18T09:00:00+09:00",
 }
 
-BASELINE: dict[str, Any] = {"cpa": 10000, "conversions": 5}
+BASELINE: dict[str, Any] = {"cpa": 10000, "conversions": 50}
 
 
 def _log_entry(**overrides: Any) -> dict[str, Any]:
@@ -92,6 +97,22 @@ def _state_path(tmp_path: Path, **kwargs: Any) -> Path:
     path = tmp_path / "STATE.json"
     _write_state(path, **kwargs)
     return path
+
+
+def _add_decision(path: Path, expected: list[dict[str, Any]]) -> None:
+    """Record decision ``dec-1`` declaring ``expected`` in the document."""
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["decisions"] = [
+        {
+            "decision_id": "dec-1",
+            "recorded_at": "2026-09-01T10:00:00+09:00",
+            "status": "adopted",
+            "title": "Change",
+            "rationale": "Because.",
+            "expected": expected,
+        }
+    ]
+    path.write_text(json.dumps(document), encoding="utf-8")
 
 
 def _allow() -> str | None:
@@ -252,8 +273,25 @@ class TestSkipReasons:
         )
         assert not isinstance(plan_closure(read_state_file(path), 0, TODAY), AutoSkip)
 
-    def test_period_mismatch(self, tmp_path: Path) -> None:
-        """Two windows are not a before and an after of the same thing."""
+    def test_period_mismatch_on_a_count_primary(self, tmp_path: Path) -> None:
+        """Two windows are not a before and an after of the same count."""
+        path = _state_path(
+            tmp_path,
+            action_log=[
+                _log_entry(
+                    decision_id="dec-1",
+                    metrics_at_action={**BASELINE, "period": "LAST_7_DAYS"},
+                )
+            ],
+            metrics=CURRENT_METRICS,
+        )
+        _add_decision(path, [{"metric": "conversions", "direction": "up"}])
+        assert self._skip(path).reason == "period_mismatch"
+
+    def test_a_ratio_primary_compares_across_stated_periods(
+        self, tmp_path: Path
+    ) -> None:
+        """CPA over 7 days and over 30 days are the same quantity (#888)."""
         path = _state_path(
             tmp_path,
             action_log=[
@@ -261,7 +299,32 @@ class TestSkipReasons:
             ],
             metrics=CURRENT_METRICS,
         )
-        assert self._skip(path).reason == "period_mismatch"
+        plan = plan_closure(read_state_file(path), 0, TODAY)
+        assert not isinstance(plan, AutoSkip)
+        assert plan.overall == "improved"
+
+    def test_the_period_reaches_the_scoring(self, tmp_path: Path) -> None:
+        """``period`` / ``days`` are not scored but decide the per-day split."""
+        path = _state_path(
+            tmp_path,
+            action_log=[
+                _log_entry(
+                    decision_id="dec-1",
+                    metrics_at_action={"conversions": 70, "days": 7},
+                )
+            ],
+            metrics={**CURRENT_METRICS, "conversions": 600},
+        )
+        _add_decision(path, [{"metric": "conversions", "direction": "up"}])
+        plan = plan_closure(read_state_file(path), 0, TODAY)
+        assert not isinstance(plan, AutoSkip)
+        rows = {row["metric"]: row for row in plan.entry.evaluation["metrics"]}
+        assert (rows["conversions"]["before"], rows["conversions"]["after"]) == (
+            10.0,
+            20.0,
+        )
+        assert "days" not in rows
+        assert plan.overall == "improved"
 
     def test_the_same_period_spelled_differently_is_not_a_mismatch(
         self, tmp_path: Path
@@ -286,7 +349,7 @@ class TestSkipReasons:
             action_log=[
                 _log_entry(metrics_at_action={**BASELINE, "period": "LAST_7_DAYS"})
             ],
-            metrics={"cpa": 5000, "conversions": 10, "fetched_at": "2026-09-18"},
+            metrics={"cpa": 5000, "conversions": 100, "fetched_at": "2026-09-18"},
         )
         assert not isinstance(plan_closure(read_state_file(path), 0, TODAY), AutoSkip)
 
@@ -349,12 +412,52 @@ class TestCloseDueObservations:
     def test_the_verdict_matches_evaluate_outcome(self, tmp_path: Path) -> None:
         path = _state_path(
             tmp_path,
-            action_log=[_log_entry(metrics_at_action={"cpa": 1000})],
+            action_log=[_log_entry(metrics_at_action={"cpa": 1000, "conversions": 50})],
             metrics=CURRENT_METRICS,
         )
         result = close_due_observations(path, today=TODAY, may_write=_allow)
         assert result.closed[0].overall == "regressed"
-        assert "cpa" in result.closed[0].summary
+        assert result.closed[0].summary == "Regressed on cpa (primary)."
+
+    def test_a_baseline_without_conversions_closes_with_no_primary(
+        self, tmp_path: Path
+    ) -> None:
+        path = _state_path(
+            tmp_path,
+            action_log=[_log_entry(metrics_at_action={"cpa": 1000})],
+            metrics=CURRENT_METRICS,
+        )
+        result = close_due_observations(path, today=TODAY, may_write=_allow)
+        assert result.closed[0].overall == "inconclusive"
+        assert result.closed[0].summary == "Inconclusive: no_primary_metric."
+
+    def test_low_volume_closes_as_insufficient_volume(self, tmp_path: Path) -> None:
+        path = _state_path(
+            tmp_path,
+            action_log=[_log_entry(metrics_at_action={"cpa": 10000, "conversions": 3})],
+            metrics={**CURRENT_METRICS, "conversions": 2},
+        )
+        result = close_due_observations(path, today=TODAY, may_write=_allow)
+        assert result.closed[0].overall == "inconclusive"
+        appended = read_state_file(path).action_log[1]
+        assert appended.evaluation is not None
+        assert appended.evaluation["reason"] == "insufficient_volume"
+
+    def test_the_thresholds_are_passed_down(self, tmp_path: Path) -> None:
+        path = _state_path(
+            tmp_path,
+            action_log=[_log_entry(metrics_at_action={"cpa": 10000, "conversions": 3})],
+            metrics={**CURRENT_METRICS, "conversions": 3},
+        )
+        result = close_due_observations(
+            path,
+            today=TODAY,
+            may_write=_allow,
+            thresholds=OutcomeThresholds(
+                noise_pct=10.0, min_conversions=3, min_impressions=1, min_clicks=1
+            ),
+        )
+        assert result.closed[0].overall == "improved"
 
     def test_the_closed_entry_leaves_the_pending_set(self, tmp_path: Path) -> None:
         path = _state_path(tmp_path, action_log=[_log_entry()], metrics=CURRENT_METRICS)

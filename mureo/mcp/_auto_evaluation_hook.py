@@ -35,6 +35,7 @@ from mureo.context.auto_evaluation import close_due_observations
 # Reached through the module so a test that freezes the clock is seen
 # here too (see ``mureo.core.clock``).
 from mureo.core import clock
+from mureo.mcp._outcome_thresholds import load_outcome_thresholds
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -115,6 +116,7 @@ def _auto_evaluate(path: Path, arguments: dict[str, Any]) -> dict[str, Any]:
             path,
             today=clock.server_now().date(),
             may_write=lambda: _policy_denial(APPEND_TOOL_NAME),
+            thresholds=load_outcome_thresholds(),
         )
     except Exception as exc:  # noqa: BLE001 — a read must not fail on this
         logger.warning(

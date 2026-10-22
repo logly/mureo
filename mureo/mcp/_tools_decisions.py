@@ -215,8 +215,11 @@ TOOLS: list[Tool] = [
                 "expected": expected_schema(
                     "What the decision should move, judged when the change "
                     'it leads to is evaluated (e.g. [{"metric": "cpa", '
-                    '"direction": "down", "target": 4500}]). Its '
-                    "metrics are the primary ones in that evaluation. "
+                    '"direction": "down", "target": 4500}]). The '
+                    "verdict is read off one primary metric: a single "
+                    "effect is primary by itself; with several, mark "
+                    'exactly one "primary": true or the record is refused '
+                    "(expected_primary_required). "
                     "Required for 'proposed' / 'adopted' when ops history is "
                     "enabled."
                 ),

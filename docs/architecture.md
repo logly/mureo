@@ -105,7 +105,7 @@ The journal answers "what did this agent actually try"; `action_log` answers "wh
 
 One part of the `action_log` trail closes itself (#758 phase 5). An entry with an `observation_due` used to stay open until an agent remembered to append an `evaluation_of` record for it, and a forgotten one was re-evaluated on every run while the pending set grew. Where the verdict is fully determined by the document — a campaign-level action with a numeric baseline, on a platform whose campaign metrics were collected on or after the due date — `mureo_state_get` now scores it with the same deterministic `evaluate_outcome` an agent would call and appends the closure record itself, with the writing session's id and a machine-built `reason`. Everything it cannot decide (an external change, a missing baseline, metrics that predate the window) is reported back as a skip with its reason and still owes a manual evaluation. The write faces the same policy gates an `action_log` append does, so a read-only deployment skips it rather than bypassing them — see [mcp-server.md](mcp-server.md#automatic-observation-closure-758-phase-5).
 
-**Ops history (#848)** joins the two trails. A mutating call's `reason` and `expected` become an `adopted` decision record (or join the batch's; nothing is joined by similarity), and the `action_log` entry it produces is stamped with that decision's id. This happens inside the same locked write as the append, in `mureo/context/ops_linkage.py`, so an entry and its decision cannot be written apart. A call that writes no entry gets its decision in one locked write right after it succeeds, linked to its `JOURNAL.jsonl` record by `call_id`. The automatic closure then scores the change against the decision's `expected` metrics and stores the full evaluation table on the `outcome_evaluated` entry. `settings.ops_history.enabled` makes `reason` and `expected` required. The `decisions` and `ops_history` sources of `mureo_history_query` read the join back with a derived state, and nothing about that state is stored. See [ops-history.md](ops-history.md).
+**Ops history (#848)** joins the two trails. A mutating call's `reason` and `expected` become an `adopted` decision record (or join the batch's; nothing is joined by similarity), and the `action_log` entry it produces is stamped with that decision's id. This happens inside the same locked write as the append, in `mureo/context/ops_linkage.py`, so an entry and its decision cannot be written apart. A call that writes no entry gets its decision in one locked write right after it succeeds, linked to its `JOURNAL.jsonl` record by `call_id`. The automatic closure then scores the change on ONE primary metric — the decision's `expected` effect marked primary, else the campaign's bidding target, else CPA (#888) — behind a per-side volume floor, and stores the full evaluation table on the `outcome_evaluated` entry. The noise band and the floors are read from STRATEGY.md `## Guardrails` at the MCP layer (`mureo/mcp/_outcome_thresholds.py`) and parsed there, then passed down, so neither the pure evaluator nor `mureo/context` gains an edge onto `mureo/policy`. `settings.ops_history.enabled` makes `reason` and `expected` required. The `decisions` and `ops_history` sources of `mureo_history_query` read the join back with a derived state, and nothing about that state is stored. See [ops-history.md](ops-history.md).
 
 mureo's value increases — not decreases — as official MCPs ship.
 
@@ -202,7 +202,7 @@ mureo/
 │   │                        #   dashboard write and so cannot be a history
 │   ├── _decision_codec.py   # That section's two codec halves — strict like action_log's,
 │   │                        #   because a decision record IS history
-│   ├── expected.py          # `expected` effects (#848): {metric, direction, target?, horizon_days?}
+│   ├── expected.py          # `expected` effects (#848): {metric, direction, target?, horizon_days?, primary?}
 │   ├── settings.py          # The `settings` section: ops_history.enabled (#848)
 │   ├── decision_chain.py    # A decision's `supersedes` chain: root, latest, expected
 │   ├── ops_intent.py        # The call's expected / decision_id, bound by the dispatcher
@@ -269,6 +269,7 @@ mureo/
 │   ├── _handlers_tracking.py              # Tracking-parameter consistency handler (#550)
 │   ├── tools_mureo_context.py            # STRATEGY.md / STATE.json read-write + outcome eval
 │   ├── _handlers_mureo_context.py        # Mureo-context handlers (atomic file writes)
+│   ├── _outcome_thresholds.py            # Outcome verdict thresholds from ## Guardrails (#888)
 │   ├── tools_analytics_registry.py       # mureo_analytics_modules_list / _run (#440)
 │   ├── tools_learning.py                 # mureo_learning_insights_get / mureo_consult_advisor
 │   └── tools_creative_studio.py          # creative_studio_* (generate / edit / compose)

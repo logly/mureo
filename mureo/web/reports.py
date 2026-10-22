@@ -241,8 +241,8 @@ def build_report_summary(
     - ``ops_history``: **only where the Agency client seam is declared**
       (#849) — the client card's counts for the last 30 days, today
       included, ``{enabled, window_days, changes, improved, regressed,
-      regressed_open, inconclusive, observing}``, all zero while ops history
-      is off. Counted from the
+      regressed_open, held, inconclusive, observing}``, all zero while ops
+      history is off. Counted from the
       document already read here; see
       :func:`~mureo.context.ops_history_counts.ops_history_counts`.
 

@@ -27,8 +27,10 @@ open observation:
   fallback to ``platform.last_synced_at``: a platform-level sync stamp says
   nothing about when this campaign's figures were read;
 - a baseline and a snapshot that state DIFFERENT ``period`` windows are not
-  a before and an after of the same thing — every volume metric would move
-  simply because the window changed.
+  a before and an after of the same COUNT — conversions or spend would move
+  simply because the window changed. This applies only when the primary
+  metric (:func:`mureo.analysis.expected_eval.choose_primary`) is a count;
+  a ratio such as CPA is the same quantity over 7 days and over 30 (#888).
 
 ``fetched_at`` is taken as the collector wrote it: mureo cannot verify when
 a platform's figures were actually read, so a collector that stamps a wrong
@@ -49,8 +51,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final
 
-from mureo.analysis.expected_eval import evaluation_from_report
-from mureo.analysis.outcome_eval import evaluate_outcome
+from mureo.analysis.expected_eval import choose_primary, evaluation_from_report
+from mureo.analysis.outcome_eval import (
+    COUNT_METRICS,
+    DEFAULT_THRESHOLDS,
+    PERIOD_KEYS,
+    evaluate_outcome,
+)
 from mureo.context.actor_stamp import stamp_actor
 from mureo.context.decision_chain import chain_expected
 from mureo.context.models import ActionLogEntry
@@ -66,7 +73,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from mureo.analysis.expected_eval import EvaluationResult
-    from mureo.context.models import StateDocument
+    from mureo.analysis.outcome_eval import OutcomeThresholds
+    from mureo.context.models import CampaignSnapshot, StateDocument
 
 #: The ``action`` of the entry an automatic closure appends. One string, so a
 #: reader can tell mureo's own closure from an agent-written evaluation record
@@ -77,6 +85,8 @@ AUTO_EVALUATION_ACTION: Final = "outcome_evaluated"
 #: are dropped from both maps for the SCORING call only — the closure entry
 #: records the snapshot whole, because a stored verdict that does not say
 #: which window and which collection produced it cannot be checked.
+#: ``period`` is the exception the scoring call still reads: it is never
+#: scored, but it says how many days a count covers (#888).
 BOOKKEEPING_METRIC_KEYS: Final[tuple[str, ...]] = (
     "period",
     "fetched_at",
@@ -189,8 +199,16 @@ def _baseline_skip(entry: ActionLogEntry) -> str | None:
 
 
 def _scored_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
-    """``metrics`` without the keys that are bookkeeping, not figures."""
-    return {k: v for k, v in metrics.items() if k not in BOOKKEEPING_METRIC_KEYS}
+    """``metrics`` without the bookkeeping keys, the period keys kept.
+
+    ``period`` / ``days`` are not figures — the evaluator never scores them
+    — but they decide whether a count is compared per day.
+    """
+    return {
+        k: v
+        for k, v in metrics.items()
+        if k not in BOOKKEEPING_METRIC_KEYS or k in PERIOD_KEYS
+    }
 
 
 def _period_label(value: Any) -> str | None:
@@ -218,14 +236,15 @@ def _period_mismatch(before: dict[str, Any], after: dict[str, Any]) -> bool:
     return stated_before != stated_after
 
 
-def _comparable_metrics(
+def _comparable_snapshot(
     doc: StateDocument, entry: ActionLogEntry
-) -> dict[str, Any] | str:
-    """The current campaign snapshot's metrics to score against, or a skip.
+) -> CampaignSnapshot | str:
+    """The current campaign snapshot to score against, or a skip.
 
-    Returned WHOLE, bookkeeping keys included — the caller strips them for
-    the scoring call and keeps them on the record, where they are what makes
-    a stored verdict diagnosable months later.
+    Its metrics are kept WHOLE, bookkeeping keys included — the caller
+    strips them for the scoring call and keeps them on the record, where
+    they are what makes a stored verdict diagnosable months later. The
+    period rule is not applied here: it depends on the primary metric.
 
     The freshness rule is the load-bearing one: the snapshot must say WHEN it
     was collected (``fetched_at``), and that date must be on or after the
@@ -251,9 +270,7 @@ def _comparable_metrics(
         return SKIP_CURRENT_METRICS_UNDATED
     if fetched < due:
         return SKIP_CURRENT_METRICS_PREDATE_WINDOW
-    if _period_mismatch(entry.metrics_at_action or {}, metrics):
-        return SKIP_PERIOD_MISMATCH
-    return dict(metrics)
+    return snapshot
 
 
 def _closure_entry(
@@ -302,7 +319,13 @@ def _closure_entry(
     )
 
 
-def plan_closure(doc: StateDocument, index: int, today: date) -> ClosurePlan | AutoSkip:
+def plan_closure(
+    doc: StateDocument,
+    index: int,
+    today: date,
+    *,
+    thresholds: OutcomeThresholds = DEFAULT_THRESHOLDS,
+) -> ClosurePlan | AutoSkip:
     """Decide what to do with the due observation at ``index``.
 
     The rules run in the order they are listed in :data:`SKIP_REASONS` and
@@ -313,15 +336,19 @@ def plan_closure(doc: StateDocument, index: int, today: date) -> ClosurePlan | A
     ``(doc, index, today)`` triple that selected the candidate; the freshness
     rule itself anchors on the entry's ``observation_due``, never on today —
     a window that closed a fortnight ago is still the period to score.
+    ``thresholds`` are the noise band and the volume floors to score with.
     """
     entry = doc.action_log[index]
     refusal = _baseline_skip(entry)
     if refusal is not None:
         return AutoSkip(index=index, reason=refusal)
-    after = _comparable_metrics(doc, entry)
-    if isinstance(after, str):
-        return AutoSkip(index=index, reason=after)
-    result = _evaluate(doc, entry, after)
+    snapshot = _comparable_snapshot(doc, entry)
+    if isinstance(snapshot, str):
+        return AutoSkip(index=index, reason=snapshot)
+    after = dict(snapshot.metrics or {})
+    result = _evaluate(doc, entry, snapshot, thresholds)
+    if isinstance(result, str):
+        return AutoSkip(index=index, reason=result)
     # No scored metric at all — the baseline and the current snapshot share no
     # numeric key. ``Verdict`` has no "unknown" member: INCONCLUSIVE is a real
     # verdict ("moved less than the noise band") and is closed like any other.
@@ -341,32 +368,49 @@ def _iso_day(value: Any) -> str | None:
 
 
 def _evaluate(
-    doc: StateDocument, entry: ActionLogEntry, after: dict[str, Any]
-) -> EvaluationResult:
-    """Score the entry's baseline against ``after`` into the stored table.
+    doc: StateDocument,
+    entry: ActionLogEntry,
+    snapshot: CampaignSnapshot,
+    thresholds: OutcomeThresholds,
+) -> EvaluationResult | str:
+    """Score the entry's baseline against the snapshot, or a skip reason.
 
-    The linked decision's ``expected`` effects (#848), when it declared any,
-    are the primary metrics; without them the verdict is the evaluator's
-    default one, unchanged. The window runs from the day of the change to
-    the day the snapshot was collected.
+    The primary metric is the linked decision's ``expected`` effect (#848),
+    else the snapshot's bidding target, else the evaluator's default
+    (:func:`~mureo.analysis.expected_eval.choose_primary`). Two different
+    stated periods are a skip only when that primary is a count. The window
+    runs from the day of the change to the day the snapshot was collected.
     """
     expected = chain_expected(doc, entry.decision_id) if entry.decision_id else ()
+    baseline = entry.metrics_at_action or {}
+    after = dict(snapshot.metrics or {})
     # Stripped for the SCORING only. The record keeps the whole snapshot.
+    before, current = _scored_metrics(baseline), _scored_metrics(after)
+    choice = choose_primary(expected, snapshot.bidding_details, before, current)
+    counted = choice is not None and choice.metric in COUNT_METRICS
+    if counted and _period_mismatch(baseline, after):
+        return SKIP_PERIOD_MISMATCH
     report = evaluate_outcome(
-        before=_scored_metrics(entry.metrics_at_action or {}),
-        after=_scored_metrics(after),
+        before=before, after=current, thresholds=thresholds, primary=choice
     )
     return evaluation_from_report(
         report,
         expected,
+        after=current,
         window_from=_iso_day(entry.timestamp),
         window_to=_iso_day(after.get("fetched_at")),
+        thresholds=thresholds,
     )
 
 
-def _plan_due(doc: StateDocument, today: date) -> list[ClosurePlan | AutoSkip]:
+def _plan_due(
+    doc: StateDocument, today: date, thresholds: OutcomeThresholds
+) -> list[ClosurePlan | AutoSkip]:
     """Plan every due candidate in ``doc``, in document order."""
-    return [plan_closure(doc, index, today) for index in due_candidates(doc, today)]
+    return [
+        plan_closure(doc, index, today, thresholds=thresholds)
+        for index in due_candidates(doc, today)
+    ]
 
 
 class _NothingToCloseError(Exception):
@@ -381,7 +425,7 @@ class _NothingToCloseError(Exception):
 
 
 def _write_closures(
-    path: Path, today: date
+    path: Path, today: date, thresholds: OutcomeThresholds
 ) -> tuple[list[AutoClosure], list[AutoSkip]]:
     """Re-plan under the state lock and append every closure in ONE write.
 
@@ -398,7 +442,7 @@ def _write_closures(
         closed.clear()
         skipped.clear()
         entries = list(doc.action_log)
-        for plan in _plan_due(doc, today):
+        for plan in _plan_due(doc, today, thresholds):
             if isinstance(plan, AutoSkip):
                 skipped.append(plan)
                 continue
@@ -426,7 +470,11 @@ def _write_closures(
 
 
 def close_due_observations(
-    path: Path, *, today: date, may_write: Callable[[], str | None]
+    path: Path,
+    *,
+    today: date,
+    may_write: Callable[[], str | None],
+    thresholds: OutcomeThresholds = DEFAULT_THRESHOLDS,
 ) -> AutoEvaluationResult:
     """Close every past-due observation whose outcome is determined.
 
@@ -441,6 +489,8 @@ def close_due_observations(
             nothing is written and every candidate is reported as skipped
             with that reason. This is what keeps the feature inside the
             host's guardrails instead of around them.
+        thresholds: The noise band and the volume floors to score with —
+            the workspace's ``## Guardrails`` values, read by the caller.
 
     Returns:
         What was closed and what was not. Both may be empty: an untouched
@@ -451,7 +501,7 @@ def close_due_observations(
             caller decides — the MCP hook degrades to an error field rather
             than failing the read it is attached to.
     """
-    plans = _plan_due(read_state_file(path), today)
+    plans = _plan_due(read_state_file(path), today, thresholds)
     if not plans:
         return AutoEvaluationResult(closed=(), skipped=())
     denial = may_write()
@@ -465,7 +515,7 @@ def close_due_observations(
         # would churn STATE.json on every read for as long as an unclosable
         # candidate sits in the log.
         return AutoEvaluationResult(closed=(), skipped=skips)
-    closed, skipped = _write_closures(path, today)
+    closed, skipped = _write_closures(path, today, thresholds)
     return AutoEvaluationResult(closed=tuple(closed), skipped=tuple(skipped))
 
 

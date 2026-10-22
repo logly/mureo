@@ -63,7 +63,7 @@
     "rejected",
     "deferred",
   ];
-  const VERDICTS = ["regressed", "inconclusive", "improved"];
+  const VERDICTS = ["regressed", "inconclusive", "held", "improved"];
   const COLUMNS = [
     "col_date",
     "col_title",
@@ -195,13 +195,15 @@
     return [];
   }
 
-  /** The row the list states: the first expected metric, else the primary. */
+  /** The row the list states: the expected metric marked primary (a legacy
+   *  declaration without one: the first), else the table's primary row. */
   function primaryMetric(item) {
     const rows = evaluationRows(item);
     const expected = item && item.decision && Array.isArray(item.decision.expected)
       ? item.decision.expected
       : [];
-    const wanted = expected.length && expected[0] ? String(expected[0].metric || "") : "";
+    const declared = expected.find(function (e) { return e && e.primary === true; }) || expected[0];
+    const wanted = declared ? String(declared.metric || "") : "";
     const pick =
       rows.find(function (r) {
         return wanted && r && String(r.metric).toLowerCase() === wanted.toLowerCase();
@@ -266,6 +268,7 @@
       n: count("changes"),
       improved: count("improved"),
       regressed: count("regressed"),
+      held: count("held"),
       inconclusive: count("inconclusive"),
       observing: count("observing"),
     });

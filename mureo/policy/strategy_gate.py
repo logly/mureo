@@ -138,7 +138,7 @@ from mureo.policy.declarations import (
 )
 
 # How a bullet's number is read (#843) — split out for the file-size budget.
-from mureo.policy.guardrail_numbers import _to_float, _to_int
+from mureo.policy.guardrail_numbers import to_float, to_int
 
 # The learning-period pre-flight (#548) — "is this change reset-triggering,
 # and is the campaign already learning?". Its own module because the
@@ -174,6 +174,7 @@ __all__ = [
     "load_preflight",
     "evaluate_guardrails",
     "guardrails_from_strategy_text",
+    "guardrail_bullets",
     "load_guardrails",
     "parse_guardrails",
     "ArgumentPaths",
@@ -364,7 +365,7 @@ def _to_metrics(value: str) -> tuple[str, ...]:
     return tuple(item.strip().lower() for item in value.split(",") if item.strip())
 
 
-def _bullets(content: str) -> dict[str, str]:
+def guardrail_bullets(content: str) -> dict[str, str]:
     """``- key: value`` bullets of a section body, last occurrence winning.
 
     Lines end at ``\\n`` only, as the section split in ``parse_strategy``
@@ -387,11 +388,11 @@ def parse_guardrails(content: str) -> Guardrails:
     with one warning (see :func:`~mureo.policy.currency_units.
     parse_currency_code`).
     """
-    bullets = _bullets(content)
+    bullets = guardrail_bullets(content)
 
     def number(key: str) -> float | None:
         raw = bullets.get(key)
-        return None if raw is None else _to_float(raw)
+        return None if raw is None else to_float(raw)
 
     window_raw = bullets.get("exclusion_impact_window_days")
     return Guardrails(
@@ -412,7 +413,7 @@ def parse_guardrails(content: str) -> Guardrails:
             "max_cumulative_delivery_share_removed_pct"
         ),
         exclusion_impact_window_days=(
-            None if window_raw is None else _to_int(window_raw)
+            None if window_raw is None else to_int(window_raw)
         ),
         exclusion_impact_metrics=_to_metrics(
             bullets.get("exclusion_impact_metrics", "")

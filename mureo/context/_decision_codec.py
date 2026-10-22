@@ -131,7 +131,9 @@ def _parse_decision(item: Any, *, strict: bool = True) -> DecisionRecord:
         session_id=item.get("session_id"),
         client=item.get("client"),
         # #848 — absent on every record written before ops history.
-        expected=parse_expected(item.get("expected")),
+        # #888 — read without the one-primary rule: a legacy declaration may
+        # list several effects and mark none.
+        expected=parse_expected(item.get("expected"), require_primary=False),
         applied_params=item.get("applied_params"),
         journal_call_id=item.get("journal_call_id"),
         journal_tool=item.get("journal_tool"),

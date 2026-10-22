@@ -304,8 +304,10 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         },
         "expected": expected_schema(
             'What the recorded change should move (e.g. [{"metric": "cpa", '
-            '"direction": "down"}]). With reason, mureo writes the '
-            "decision record for this change and links the entry to it. "
+            '"direction": "down"}]). With several effects, mark exactly '
+            'one "primary": true — the verdict is read off it. With reason, '
+            "mureo writes the decision record for this change and links the "
+            "entry to it. "
             "Required with reason when ops history is enabled and the entry "
             "opens a new decision."
         ),
@@ -1416,11 +1418,21 @@ TOOLS: list[Tool] = [
             "action_log entry's ``metrics_at_action``) and ``after`` (the "
             "current numbers). Pure calculation — works for ANY platform "
             "(google_ads / meta_ads / tiktok_ads / plugins) as long as you feed "
-            "comparable metric names. Direction is built in: cpa/cpc/cpl/cpm "
-            "lower-is-better; conversions/ctr/cvr/roas higher-is-better; "
-            "cost/spend/clicks/impressions are volume-only (reported, never "
-            "scored). A change within ±noise_pct (default 10%) or a zero/absent "
-            "baseline is 'inconclusive' (no fabricated swing)."
+            "comparable metric names. The verdict is ONE primary metric's: "
+            "cpa when both sides have conversions, else 'inconclusive' "
+            "(reason no_primary_metric); every other metric is a reference "
+            "row. Synonyms merge first (cost_per_conversion is cpa, cost is "
+            "spend). The primary is judged only when both sides reach the "
+            "volume floor (conversions 30 for cpa/cpl/roas/conversions, "
+            "impressions 1000 for ctr/cpm, clicks 200 for cpc/cvr; else "
+            "insufficient_volume / volume_unknown). A zero baseline is "
+            "'inconclusive' (zero_baseline). Count metrics are "
+            "compared per day using each side's ``days`` or ``period`` "
+            "(YESTERDAY / LAST_7_DAYS / LAST_30_DAYS). A change within "
+            "±noise_pct (default 10%) is 'inconclusive' (no_change). The "
+            "floors and the band come from STRATEGY.md ## Guardrails "
+            "(outcome_noise_pct, outcome_min_conversions, "
+            "outcome_min_impressions, outcome_min_clicks)."
         ),
         inputSchema={
             "type": "object",
@@ -1429,8 +1441,10 @@ TOOLS: list[Tool] = [
                     "type": "object",
                     "description": (
                         "Baseline metrics — metric name → number (e.g. "
-                        '{"cpa": 5000, "conversions": 50}). Usually the '
-                        "action_log entry's metrics_at_action."
+                        '{"cpa": 5000, "conversions": 50, "days": 7}). '
+                        "Usually the action_log entry's metrics_at_action. "
+                        "``days`` / ``period`` say which window the figures "
+                        "cover; they are read, never scored."
                     ),
                 },
                 "after": {
@@ -1440,8 +1454,12 @@ TOOLS: list[Tool] = [
                 "noise_pct": {
                     "type": "number",
                     "description": (
-                        "Noise band in percent (default 10). A change smaller "
-                        "than this is 'inconclusive' (day-to-day variance)."
+                        "Noise band in percent, above 0 and at most 100 "
+                        "(0, 100]. Omit it to use the workspace's "
+                        "``outcome_noise_pct`` guardrail (default 10); pass it "
+                        "only to override that for this one call. A change "
+                        "smaller than this is 'inconclusive' (day-to-day "
+                        "variance)."
                     ),
                 },
             },

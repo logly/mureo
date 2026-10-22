@@ -91,6 +91,18 @@ Before drawing any conclusion about a metric change, verify sufficient data:
 
 **If the sample size is insufficient, the finding stays in OBSERVING. Do NOT promote it.**
 
+**The outcome evaluator enforces these floors itself.** `mureo_outcome_evaluate` and the automatic observation closure judge ONE primary metric (the decision's `expected` effect marked `primary`, else the campaign's bidding target, else CPA when both sides have conversions) and only when BOTH sides reach the floor for it, on the raw counts:
+
+| Primary metric | Gated on | Default floor | `## Guardrails` key |
+|---|---|---|---|
+| cpa / cpl / roas / conversions | conversions | 30 | `outcome_min_conversions` |
+| ctr / cpm | impressions | 1,000 | `outcome_min_impressions` |
+| cpc / cvr | clicks | 200 | `outcome_min_clicks` |
+
+Below the floor the verdict is `inconclusive` with `reason: insufficient_volume` (`volume_unknown` when the count is missing; `zero_baseline` when the baseline is zero). The noise band (default ±10%) is `outcome_noise_pct`. Count metrics (conversions, clicks, impressions, spend) are compared per day, so a 7-day baseline against a 30-day snapshot is not read as growth. The automatic observation closure records such a result as `inconclusive` and closes the observation; it is not "no effect". To judge the change anyway, re-evaluate it manually with `mureo_outcome_evaluate` over a longer window, once both sides reach the floor.
+
+**Declare the primary effect.** A single `expected` effect is primary by itself. When you declare several, mark exactly one `"primary": true` — the metric the change is meant to move (`[{"metric": "spend", "direction": "down", "primary": true}, {"metric": "conversions", "direction": "hold"}]` for a budget cut that must not cost conversions); the others are reference rows. A declaration of several without exactly one primary is refused with `expected_primary_required`. Use `"direction": "hold"` for "must not move": it is judged `held` inside the noise band and `regressed` outside it. A `target` decides when given — reaching it is `improved` even inside the band, and a move the right way that misses it is `inconclusive` (`target_not_reached`). A target on a count metric (spend, conversions, clicks, impressions) is the total over the evaluation window, not a per-day figure.
+
 ## How to Evaluate an Outcome
 
 When the observation window for an action has passed:

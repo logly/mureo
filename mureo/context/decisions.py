@@ -213,7 +213,11 @@ class DecisionRecord:
         self._validate_optional_text()
         self._validate_metrics()
         self._validate_related_actions()
-        object.__setattr__(self, "expected", parse_expected(self.expected))
+        # The model re-validates the SHAPE only. The one-primary rule is a
+        # boundary rule for a new declaration (``parse_expected`` at the
+        # tool), never applied to a stored one (#888).
+        expected = parse_expected(self.expected, require_primary=False)
+        object.__setattr__(self, "expected", expected)
         if self.applied_params is not None:
             if not isinstance(self.applied_params, dict):
                 raise ValueError("applied_params must be an object")

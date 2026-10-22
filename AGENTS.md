@@ -130,6 +130,9 @@ mureo/
 │   │                                      #   (#758 phase 5): the `auto_evaluate` switch, the
 │   │                                      #   policy-gate check that decides whether the write
 │   │                                      #   may happen, and the response fragment
+│   ├── _outcome_thresholds.py             # The outcome verdict's noise band + volume floors from
+│   │                                      #   STRATEGY.md ## Guardrails (#888), read here so
+│   │                                      #   analysis / context gain no edge onto the gate
 │   ├── _tools_settings.py                 # mureo_state_settings_set (#848) — workspace settings,
 │   │                                      #   another PARTIAL of the mureo_context family
 │   ├── _ops_history_param.py              # `expected` / `decision_id` on mutating tools (#848):

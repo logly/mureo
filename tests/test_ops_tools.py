@@ -105,6 +105,16 @@ class TestActionLogAppend:
                 {"entry": _entry(reason="x", expected=[{"metric": "cpa"}])},
             )
 
+    async def test_several_effects_without_a_primary_are_refused(
+        self, workspace: Path
+    ) -> None:
+        expected = [*CPA_DOWN, {"metric": "ctr", "direction": "up"}]
+        with pytest.raises(ValueError, match="expected_primary_required"):
+            await _call(
+                "mureo_state_action_log_append",
+                {"entry": _entry(reason="x", expected=expected)},
+            )
+
     @pytest.mark.parametrize(
         ("extra", "message"),
         [
@@ -148,6 +158,25 @@ class TestDecisionRecord:
     ) -> None:
         with pytest.raises(ValueError):
             await _propose([{"metric": "cpa_7d", "direction": "down"}])
+
+    async def test_several_effects_without_a_primary_are_refused(
+        self, workspace: Path
+    ) -> None:
+        with pytest.raises(ValueError, match="expected_primary_required"):
+            await _propose([*CPA_DOWN, {"metric": "ctr", "direction": "up"}])
+        assert not (workspace / "STATE.json").exists() or (
+            read_state_file(workspace / "STATE.json").decisions == ()
+        )
+
+    async def test_the_marked_primary_is_stored(self, workspace: Path) -> None:
+        await _propose(
+            [
+                {"metric": "ctr", "direction": "up"},
+                {"metric": "cpa", "direction": "down", "primary": True},
+            ]
+        )
+        doc = read_state_file(workspace / "STATE.json")
+        assert [e.primary for e in doc.decisions[0].expected] == [False, True]
 
     async def test_disabled_accepts_a_proposal_without_expected(
         self, workspace: Path

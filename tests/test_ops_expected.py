@@ -132,7 +132,8 @@ class TestExpectedToList:
             [
                 {"metric": "cpa", "direction": "down"},
                 {"metric": "cost", "direction": "up", "target": 12000},
-            ]
+            ],
+            require_primary=False,
         )
         assert expected_to_list(effects) == [
             {"metric": "cpa", "direction": "down"},
@@ -142,3 +143,129 @@ class TestExpectedToList:
     def test_round_trip(self) -> None:
         raw = [{"metric": "roas", "direction": "up", "target": 3, "horizon_days": 7}]
         assert expected_to_list(parse_expected(raw)) == raw
+
+    def test_primary_is_written_only_when_set(self) -> None:
+        raw = [
+            {"metric": "cpa", "direction": "down", "primary": True},
+            {"metric": "ctr", "direction": "up"},
+        ]
+        assert expected_to_list(parse_expected(raw)) == raw
+
+
+class TestPrimary:
+    """Several declared effects need exactly one ``primary: true`` (#888)."""
+
+    def test_a_single_effect_is_primary_by_itself(self) -> None:
+        parsed = parse_expected([{"metric": "cpa", "direction": "down"}])
+        assert parsed[0].primary is False
+
+    def test_a_single_effect_may_say_so(self) -> None:
+        parsed = parse_expected(
+            [{"metric": "cpa", "direction": "down", "primary": True}]
+        )
+        assert parsed[0].primary is True
+
+    def test_several_with_one_primary(self) -> None:
+        parsed = parse_expected(
+            [
+                {"metric": "cpa", "direction": "down"},
+                {"metric": "ctr", "direction": "up", "primary": True},
+            ]
+        )
+        assert [e.primary for e in parsed] == [False, True]
+
+    def test_several_without_a_primary_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="expected_primary_required") as info:
+            parse_expected(
+                [
+                    {"metric": "cpa", "direction": "down"},
+                    {"metric": "ctr", "direction": "up"},
+                ]
+            )
+        # The message says how to fix it.
+        assert '"primary": true' in str(info.value)
+
+    def test_two_primaries_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="expected_primary_required"):
+            parse_expected(
+                [
+                    {"metric": "cpa", "direction": "down", "primary": True},
+                    {"metric": "ctr", "direction": "up", "primary": True},
+                ]
+            )
+
+    @pytest.mark.parametrize("value", ["true", 1, None])
+    def test_primary_must_be_a_bool(self, value: Any) -> None:
+        with pytest.raises(ValueError, match="primary"):
+            parse_expected([{"metric": "cpa", "direction": "down", "primary": value}])
+
+    def test_a_stored_declaration_is_read_without_the_rule(self) -> None:
+        legacy = [
+            {"metric": "cpa", "direction": "down"},
+            {"metric": "ctr", "direction": "up"},
+        ]
+        parsed = parse_expected(legacy, require_primary=False)
+        assert [e.metric for e in parsed] == ["cpa", "ctr"]
+
+    def test_a_stored_decision_with_a_legacy_declaration_is_read(self) -> None:
+        from mureo.context._decision_codec import parse_decisions
+
+        records = parse_decisions(
+            [
+                {
+                    "decision_id": "dec-1",
+                    "recorded_at": "2026-09-01T10:00:00+09:00",
+                    "status": "adopted",
+                    "title": "t",
+                    "rationale": "r",
+                    "expected": [
+                        {"metric": "cpa", "direction": "down"},
+                        {"metric": "ctr", "direction": "up"},
+                    ],
+                }
+            ],
+            strict=True,
+        )
+        assert len(records[0].expected) == 2
+
+    def test_a_stored_decision_naming_cost_and_spend_still_reads(self) -> None:
+        # Written before cost became an alias of spend: the stored read keeps
+        # the raw-name duplicate rule, so the record is not lost.
+        from mureo.context._decision_codec import parse_decisions
+
+        records = parse_decisions(
+            [
+                {
+                    "decision_id": "dec-1",
+                    "recorded_at": "2026-09-01T10:00:00+09:00",
+                    "status": "adopted",
+                    "title": "t",
+                    "rationale": "r",
+                    "expected": [
+                        {"metric": "cost", "direction": "down"},
+                        {"metric": "spend", "direction": "down"},
+                    ],
+                }
+            ],
+            strict=True,
+        )
+        assert [e.metric for e in records[0].expected] == ["cost", "spend"]
+
+    def test_a_stored_read_still_refuses_the_same_name_twice(self) -> None:
+        with pytest.raises(ValueError, match="more than once"):
+            parse_expected(
+                [
+                    {"metric": "cpa", "direction": "down"},
+                    {"metric": "cpa", "direction": "up"},
+                ],
+                require_primary=False,
+            )
+
+    def test_cost_and_spend_are_one_metric(self) -> None:
+        with pytest.raises(ValueError, match="more than once"):
+            parse_expected(
+                [
+                    {"metric": "cost", "direction": "up", "primary": True},
+                    {"metric": "spend", "direction": "up"},
+                ]
+            )

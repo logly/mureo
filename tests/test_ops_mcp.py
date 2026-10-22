@@ -138,7 +138,8 @@ class TestSchema:
         text = self._served()[STATUS_TOOL].inputSchema["properties"][EXPECTED_PARAM][
             "description"
         ]
-        assert "[{metric, direction, target?, horizon_days?}]" in text
+        assert "[{metric, direction, target?, horizon_days?, primary?}]" in text
+        assert "exactly one primary:true" in text
         for word in (*EXPECTED_METRICS, *EXPECTED_DIRECTIONS):
             assert word in text, word
         assert text.count(". ") == 0
@@ -155,6 +156,8 @@ class TestSchema:
         assert "cpa" in items["properties"]["metric"]["enum"]
         assert items["properties"]["direction"]["enum"] == ["up", "down", "hold"]
         assert items["additionalProperties"] is False
+        assert items["properties"]["primary"]["type"] == "boolean"
+        assert items["properties"]["primary"]["description"]
 
 
 class TestSplit:
@@ -179,6 +182,10 @@ class TestSplit:
             ({"expected": "cpa"}, "array"),
             ({"decision_id": " "}, "decision_id"),
             ({"decision_id": 5}, "decision_id"),
+            (
+                {"expected": [*CPA_DOWN, {"metric": "ctr", "direction": "up"}]},
+                "expected_primary_required",
+            ),
         ],
     )
     def test_malformed_is_refused(self, value: dict[str, Any], match: str) -> None:
@@ -242,6 +249,7 @@ class TestEnabled:
             {"metric": "cpa_7d", "direction": "down"},
             {"metric": "cpa", "direction": "lower"},
             {"metric": "cpa", "direction": "down", "horizon": 7},
+            {"metric": "cpa", "direction": "down", "primary": "yes"},
             "cpa",
         ],
     )

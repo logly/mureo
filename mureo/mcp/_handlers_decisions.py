@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Final
 from mureo.context._decision_codec import decision_to_dict
 from mureo.context.batch import BatchError
 from mureo.context.decisions import DecisionRecord, append_decision, new_decision_id
+from mureo.context.expected import parse_expected
 from mureo.core.clock import server_now_iso
 from mureo.mcp._helpers import _json_result, _opt, _require, resolve_workspace_path
 from mureo.mcp._ops_history_records import require_decision_expected
@@ -61,7 +62,9 @@ def _build_record(arguments: dict[str, Any]) -> DecisionRecord:
         related_actions=_opt(arguments, "related_actions") or (),
         supersedes=_opt(arguments, "supersedes"),
         batch_id=_opt(arguments, "batch_id"),
-        expected=_opt(arguments, "expected"),
+        # Parsed here, at the boundary, so a new declaration meets the
+        # one-primary rule the stored-record model does not apply (#888).
+        expected=parse_expected(_opt(arguments, "expected")),
     )
 
 
