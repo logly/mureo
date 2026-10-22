@@ -58,9 +58,10 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
-from mureo.analysis.outcome_eval import evaluate_outcome
+from mureo.analysis.expected_eval import validate_evaluation_table
+from mureo.analysis.outcome_eval import outcome_summary
 from mureo.analysis.report_flags import normalize_flags
 from mureo.context.approval import parse_approval
 from mureo.context.batch import BatchError
@@ -106,10 +107,16 @@ from mureo.mcp._handlers_decisions import apply_decisions_scope
 from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
 from mureo.mcp._ops_history_param import parse_decision_id
 from mureo.mcp._ops_history_records import require_entry_fields
-from mureo.mcp._outcome_thresholds import load_outcome_thresholds
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from mcp.types import TextContent
+
+#: Refusal codes of an evaluation record's table (#889), led into the
+#: message the way ``expected_primary_required`` is.
+EVALUATION_REQUIRED: Final = "evaluation_required"
+EVALUATION_WITHOUT_TARGET: Final = "evaluation_without_target"
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +318,7 @@ async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     return _json_result(payload)
 
 
-def _validate_closure_index(raw: dict[str, Any], key: str, log_len: int) -> None:
+def validate_closure_index(raw: dict[str, Any], key: str, log_len: int) -> None:
     """Validate a ``rollback_of`` / ``evaluation_of`` index when supplied.
 
     These fields now carry behavioral weight — either takes its target out of
@@ -331,6 +338,37 @@ def _validate_closure_index(raw: dict[str, Any], key: str, log_len: int) -> None
         )
 
 
+def _closure_evaluation(
+    raw: dict[str, Any],
+) -> tuple[Mapping[str, Any] | None, str | None]:
+    """The ``(evaluation, summary)`` an entry is recorded with (#889).
+
+    ``evaluation`` is required beside ``evaluation_of`` and refused without
+    it, so a manual evaluation stores the automatic closure's table in the
+    same field; only its shape is checked (``validate_evaluation_table``).
+    An evaluation record's summary is built from it by ``outcome_summary``,
+    as the automatic one's is; any other entry keeps its own.
+    """
+    table = raw.get("evaluation")
+    if raw.get("evaluation_of") is None:
+        if table is not None:
+            raise ValueError(
+                f"{EVALUATION_WITHOUT_TARGET}: evaluation belongs on an "
+                "evaluation record; set evaluation_of to the index of the "
+                "entry it evaluates"
+            )
+        return None, raw.get("summary")
+    if table is None:
+        raise ValueError(
+            f"{EVALUATION_REQUIRED}: an evaluation record (evaluation_of) must "
+            "carry evaluation; pass the evaluation returned by "
+            "mureo_outcome_evaluate called with the same evaluation_of, unchanged"
+        )
+    checked = validate_evaluation_table(table)
+    reason = checked.get("reason")
+    return checked, outcome_summary(checked["overall"], checked["primary"], reason)
+
+
 async def handle_state_action_log_append(
     arguments: dict[str, Any],
 ) -> list[TextContent]:
@@ -347,8 +385,9 @@ async def handle_state_action_log_append(
     # silently hiding an open observation. (A benign race can only make a
     # just-appended sibling entry un-referenceable, never mis-close another.)
     log_len = len(read_state_file(path).action_log)
-    _validate_closure_index(raw, "rollback_of", log_len)
-    _validate_closure_index(raw, "evaluation_of", log_len)
+    validate_closure_index(raw, "rollback_of", log_len)
+    validate_closure_index(raw, "evaluation_of", log_len)
+    evaluation, summary = _closure_evaluation(raw)
     # ``timestamp`` is stamped SERVER-side (#460). A model-supplied value is
     # accepted by the schema (dropping the property would break existing
     # callers under ``additionalProperties: false``) but deliberately ignored:
@@ -362,7 +401,7 @@ async def handle_state_action_log_append(
         ad_id=raw.get("ad_id"),
         entity_type=raw.get("entity_type"),
         entity_id=raw.get("entity_id"),
-        summary=raw.get("summary"),
+        summary=summary,
         command=raw.get("command"),
         metrics_at_action=raw.get("metrics_at_action"),
         observation_due=raw.get("observation_due"),
@@ -398,6 +437,8 @@ async def handle_state_action_log_append(
         # #848: an earlier decision this change carried out (validated, and a
         # proposal adopted, inside ``append_action_log``'s lock).
         decision_id=parse_decision_id(raw.get("decision_id")),
+        # #889: the table, in the field the automatic closure writes.
+        evaluation=None if evaluation is None else dict(evaluation),
         # #854: an external approval this change carried out; recorded and
         # shown, never verified.
         approval=parse_approval(raw.get("approval")),
@@ -755,40 +796,3 @@ async def handle_state_set_conversion_events(
     except ContextFileError as exc:
         raise ValueError(str(exc)) from exc
     return _json_result(_state_to_dict(doc))
-
-
-async def handle_outcome_evaluate(arguments: dict[str, Any]) -> list[TextContent]:
-    """Deterministically evaluate a before→after metric change.
-
-    Pure calculation (no state I/O), so it works for ANY platform — the caller
-    supplies the two metric maps (typically an action_log entry's
-    ``metrics_at_action`` as ``before`` and the current numbers as ``after``).
-    Returns every metric's row and the primary metric's verdict (#888), on
-    the workspace's ``## Guardrails`` thresholds unless ``noise_pct`` is set.
-    """
-    before = _require(arguments, "before")
-    after = _require(arguments, "after")
-    if not isinstance(before, dict) or not isinstance(after, dict):
-        raise ValueError("before and after must be objects (metric name -> number)")
-    thresholds = load_outcome_thresholds(arguments.get("noise_pct"))
-    report = evaluate_outcome(before, after, thresholds=thresholds)
-    payload: dict[str, Any] = {
-        "overall": report.overall.value,
-        "summary": report.summary,
-        "primary": report.primary,
-        "basis": report.basis,
-    }
-    if report.reason is not None:
-        payload["reason"] = report.reason
-    payload["metrics"] = [
-        {
-            "metric": m.metric,
-            "before": m.before,
-            "after": m.after,
-            "delta_pct": m.delta_pct,
-            "verdict": m.verdict.value,
-            "note": m.note,
-        }
-        for m in report.metrics
-    ]
-    return _json_result(payload)
