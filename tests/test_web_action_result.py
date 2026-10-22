@@ -9,14 +9,18 @@ import pytest
 
 from mureo.web.action_result import (
     ACTION_STATUSES,
+    BASIC_CLEAR_FAILED,
+    BASIC_SETUP_FAILED,
     ERROR_STATUS,
     FAILED_HTTP_STATUS,
     REFUSED_HTTP_STATUS,
     SUCCESS_HTTP_STATUS,
     ActionResult,
+    every_step_failed,
     refuse_error_status,
     returncode_detail,
     send_result,
+    send_steps,
 )
 
 
@@ -216,3 +220,149 @@ class TestSendResult:
             send_result(MagicMock(), result)  # type: ignore[arg-type]
         error_writer.assert_not_called()
         json_writer.assert_not_called()
+
+
+_OK = {"status": "ok"}
+_NOOP = {"status": "noop", "detail": "not_installed"}
+_SKIPPED = {"status": "skipped", "detail": "multi_account_auth"}
+_FAILED = {"status": "error", "error": "internal_error", "detail": "OSError"}
+
+#: The same envelopes as PARITY_CASES in tests/js/step_failures.test.js: the
+#: server decides "every step failed" and the page lists the failed steps by
+#: one flattening rule — a nested value is a step only if it has a status.
+_PARITY_CASES: list[tuple[dict[str, object], bool]] = [
+    ({"mureo_mcp": _SKIPPED, "auth_hook": _FAILED, "skills": _FAILED}, True),
+    ({"skills": _FAILED, "providers": {"p1": _OK}}, False),
+    ({"skills": _FAILED, "providers": {"p1": {"note": "no status"}}}, True),
+    ({"skills": _OK, "providers": {"p1": _FAILED, "p2": "not a step"}}, False),
+]
+
+
+@pytest.mark.unit
+class TestEveryStepFailed:
+    """#891: a multi-step envelope fails as a whole only when nothing worked."""
+
+    def test_all_succeeded(self) -> None:
+        assert not every_step_failed({"a": _OK, "b": _NOOP, "c": _OK})
+
+    def test_some_failed(self) -> None:
+        assert not every_step_failed({"a": _FAILED, "b": _OK, "c": _FAILED})
+
+    def test_all_failed(self) -> None:
+        assert every_step_failed({"a": _FAILED, "b": _FAILED})
+
+    def test_skipped_and_failed_only_is_all_failed(self) -> None:
+        assert every_step_failed({"a": _SKIPPED, "b": _FAILED, "c": _FAILED})
+
+    def test_skipped_only_is_not_a_failure(self) -> None:
+        assert not every_step_failed({"a": _SKIPPED})
+
+    @pytest.mark.parametrize("status", ["noop", "manual_required"])
+    def test_a_non_error_status_next_to_failures_is_not_all_failed(
+        self, status: str
+    ) -> None:
+        assert not every_step_failed({"a": {"status": status}, "b": _FAILED})
+
+    def test_nested_providers_count_one_step_each(self) -> None:
+        envelope = {
+            "mureo_mcp": _FAILED,
+            "auth_hook": _FAILED,
+            "skills": _FAILED,
+            "providers": {"google-ads-official": _OK},
+        }
+        assert not every_step_failed(envelope)
+
+    def test_nested_providers_that_failed_too(self) -> None:
+        envelope = {
+            "mureo_mcp": _FAILED,
+            "auth_hook": _FAILED,
+            "skills": _FAILED,
+            "providers": {"google-ads-official": _FAILED},
+        }
+        assert every_step_failed(envelope)
+
+    def test_a_nested_failure_next_to_top_level_success(self) -> None:
+        envelope = {"skills": _OK, "providers": {"p1": _FAILED}}
+        assert not every_step_failed(envelope)
+
+    def test_an_empty_providers_map_is_no_step(self) -> None:
+        assert every_step_failed({"skills": _FAILED, "providers": {}})
+
+    @pytest.mark.parametrize("envelope", [{}, {"providers": {}}])
+    def test_no_step_is_not_a_failure(self, envelope: dict[str, object]) -> None:
+        assert not every_step_failed(envelope)
+
+    @pytest.mark.parametrize(("envelope", "expected"), _PARITY_CASES)
+    def test_reads_an_envelope_as_the_page_does(
+        self, envelope: dict[str, object], expected: bool
+    ) -> None:
+        assert every_step_failed(envelope) is expected
+
+
+@pytest.mark.unit
+class TestSendSteps:
+    def _send(self, envelope: object) -> tuple[MagicMock, MagicMock]:
+        handler = MagicMock()
+        with (
+            patch("mureo.web.action_result.send_error_json") as error_writer,
+            patch("mureo.web.action_result.send_json") as json_writer,
+        ):
+            send_steps(handler, envelope, BASIC_SETUP_FAILED)  # type: ignore[arg-type]
+        return error_writer, json_writer
+
+    def test_the_failure_codes(self) -> None:
+        assert (BASIC_SETUP_FAILED, BASIC_CLEAR_FAILED) == (
+            "basic_setup_failed",
+            "basic_clear_failed",
+        )
+
+    def test_every_step_failed_is_a_500_with_the_steps(self) -> None:
+        envelope = {"mureo_mcp": _SKIPPED, "auth_hook": _FAILED, "skills": _FAILED}
+        error_writer, json_writer = self._send(envelope)
+        _handler, status, code = error_writer.call_args.args
+        assert (status, code, error_writer.call_args.kwargs) == (
+            500,
+            "basic_setup_failed",
+            {"extra": {"steps": envelope}},
+        )
+        json_writer.assert_not_called()
+
+    def test_some_failed_is_the_envelope_at_200(self) -> None:
+        envelope = {"mureo_mcp": _OK, "auth_hook": _FAILED, "skills": _OK}
+        error_writer, json_writer = self._send(MappingProxyType(envelope))
+        error_writer.assert_not_called()
+        _handler, body = json_writer.call_args.args
+        assert (type(body), body, json_writer.call_args.kwargs) == (dict, envelope, {})
+
+    def test_all_succeeded_is_the_envelope_at_200(self) -> None:
+        envelope = {"mureo_mcp": _OK, "auth_hook": _NOOP, "skills": _OK}
+        error_writer, json_writer = self._send(envelope)
+        error_writer.assert_not_called()
+        assert json_writer.call_args.args[1] == envelope
+
+    def test_logs_the_failed_steps_and_their_codes_only(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        envelope = {
+            "auth_hook": {
+                "status": "error",
+                "error": "internal_error",
+                "detail": "SecretDetail",
+            },
+            "providers": {"p1": {"status": "error", "error": "unknown_provider"}},
+        }
+        with caplog.at_level("WARNING", logger="mureo.web.action_result"):
+            self._send(envelope)
+        assert len(caplog.records) == 1
+        message = caplog.records[0].getMessage()
+        assert "basic_setup_failed" in message
+        assert "auth_hook=internal_error" in message
+        assert "p1=unknown_provider" in message
+        assert "SecretDetail" not in message
+
+    def test_a_partial_failure_logs_nothing(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level("WARNING", logger="mureo.web.action_result"):
+            self._send({"a": _OK, "b": _FAILED})
+        assert caplog.records == []

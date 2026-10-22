@@ -667,6 +667,14 @@ a {
   border-color: color-mix(in srgb, var(--muted) 28%, transparent);
 }
 
+/* #891: the steps the last basic install could not do — a real failure. */
+.wizard-basic-failures {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--danger);
+  font-size: var(--type-body-size);
+}
+
 .wizard-completed-summary {
   list-style: none;
   background: var(--accent-tint);

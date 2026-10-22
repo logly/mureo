@@ -202,16 +202,18 @@ def send_error_json(
     code: str,
     *,
     detail: str | None = None,
-    extra: Mapping[str, str | int] | None = None,
+    extra: Mapping[str, object] | None = None,
 ) -> None:
     """Emit the configure web API's failure body (#864).
 
     ``{"error": code}``, plus ``detail`` when given, plus any ``extra``
-    context keys (``region``, ``field``, ``account_id``). ``code`` is a
-    snake_case code; ``detail`` is a short code or an exception class
-    name -- see "Failure contract" in ``docs/plugin-authoring.md``. An
-    ``extra`` key named ``error`` or ``detail`` is dropped, whether or not
-    ``detail`` was given.
+    context keys (``region``, ``field``, ``account_id``, ``steps``).
+    ``code`` is a snake_case code; ``detail`` is a short code or an
+    exception class name -- see "Failure contract" in
+    ``docs/plugin-authoring.md``. An ``extra`` key named ``error`` or
+    ``detail`` is dropped, whether or not ``detail`` was given. Every
+    ``extra`` value must be representable in JSON (strings, numbers,
+    booleans, ``None``, and lists / dicts of those).
     """
     body: dict[str, Any] = {"error": code}
     if detail is not None:

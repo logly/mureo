@@ -110,7 +110,13 @@ from mureo.web._helpers import (
     send_json,
 )
 from mureo.web.about import collect_about_info
-from mureo.web.action_result import ActionResult, send_result
+from mureo.web.action_result import (
+    BASIC_CLEAR_FAILED,
+    BASIC_SETUP_FAILED,
+    ActionResult,
+    send_result,
+    send_steps,
+)
 from mureo.web.advisors import (
     AdvisorActionError,
     add_advisor,
@@ -118,12 +124,7 @@ from mureo.web.advisors import (
     remove_advisor,
 )
 from mureo.web.app_html import AppHtmlError, render_app_html
-from mureo.web.byod_actions import (
-    byod_clear,
-    byod_import,
-    byod_remove,
-    byod_status,
-)
+from mureo.web.byod_actions import byod_clear, byod_import, byod_remove, byod_status
 from mureo.web.creative_gallery import list_creative_runs, resolve_gallery_image
 from mureo.web.demo_actions import init_demo, list_demo_scenarios
 from mureo.web.env_var_writer import (
@@ -192,11 +193,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterator, Mapping
     from pathlib import Path
 
-    from mureo.web.extensions import (
-        RouteContribution,
-        StaticAsset,
-        WebExtensionEntry,
-    )
+    from mureo.web.extensions import RouteContribution, StaticAsset, WebExtensionEntry
     from mureo.web.server import ConfigureWizard
 
 logger = logging.getLogger(__name__)
@@ -943,7 +940,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             # wiring). Same production gate as the account-picker skip.
             skip_mcp_registration=self._multi_account_active(),
         )
-        send_json(self, result)
+        send_steps(self, result, BASIC_SETUP_FAILED)
 
     def _post_setup_mcp_remove(self, payload: dict[str, Any]) -> None:
         result = remove_mureo_mcp(
@@ -986,7 +983,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         envelope = clear_all_setup(
             home=self.wizard.home, host=self._resolve_host(payload)
         )
-        send_json(self, envelope)
+        send_steps(self, envelope, BASIC_CLEAR_FAILED)
 
     def _post_upgrade(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         """#239 — upgrade mureo + every installed ``mureo-*`` plugin.

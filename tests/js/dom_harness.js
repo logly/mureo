@@ -212,6 +212,12 @@ class Element {
     this.childNodes = [];
     if (text !== "" && text != null) this.appendChild(new TextNode(String(text)));
   }
+  // The wizard builds its step bodies from markup, so the parser below
+  // stands in for the browser's.
+  set innerHTML(html) {
+    this.textContent = "";
+    parseHtml(String(html)).childNodes.slice().forEach((n) => this.appendChild(n));
+  }
 
   // --- queries ---
   matches(selector) {
@@ -614,25 +620,48 @@ function loadAuthWizardPage(routes) {
 }
 
 /**
+ * The same page and sandbox, running the configure wizard (wizard.js) —
+ * so a test can drive `window.MUREO_WIZARD` against the real step bodies.
+ */
+function loadWizardPage(routes) {
+  return loadPage(routes, ["wizard.js"]);
+}
+
+/**
  * One top-level function of app.js, as the page runs it.
  *
  * app.js itself is not loaded (it boots the page: fetches the catalog and
  * the CSRF token, routes on the hash), so the MUREO stub below takes the
  * pure helpers from it by name instead of carrying a copy that could drift.
  */
-function appFunction(name) {
+function appFunction(name, globals) {
+  return appSource("  function " + name + "(", "function " + name, globals);
+}
+
+/** One top-level `const NAME = {...};` table of app.js, as the page has it. */
+function appConst(name) {
+  const prefix = "  const " + name + " = ";
+  return appSource(prefix, "const " + name, {}, prefix.length);
+}
+
+/**
+ * Evaluate the `{...}`-balanced piece of app.js that starts at `marker`,
+ * skipping `skip` characters of it, with `globals` as its free names.
+ */
+function appSource(marker, label, globals, skip) {
   const src = fs.readFileSync(path.join(WEB, "app.js"), "utf-8");
-  const start = src.indexOf("  function " + name + "(");
-  if (start === -1) throw new Error("app.js has no function " + name);
+  const start = src.indexOf(marker);
+  if (start === -1) throw new Error("app.js has no " + label);
   let depth = 0;
   for (let i = src.indexOf("{", start); i < src.length; i++) {
     if (src[i] === "{") depth += 1;
     if (src[i] === "}") depth -= 1;
     if (depth === 0) {
-      return vm.runInNewContext("(" + src.slice(start, i + 1) + ")", {});
+      const piece = src.slice(start + (skip || 0), i + 1);
+      return vm.runInNewContext("(" + piece + ")", globals || {});
     }
   }
-  throw new Error("app.js function " + name + " is not closed");
+  throw new Error("app.js " + label + " is not closed");
 }
 
 /** Build the browser-shaped context and run `files` in it, in order. */
@@ -671,6 +700,16 @@ function loadPage(routes, files) {
     });
   }
 
+  // MUREO.t returns the key it was handed, with any interpolated params
+  // appended — so an assertion is about WHICH string was chosen and what
+  // was put in it, never about English wording.
+  const t = (key, params) => {
+    const entries = Object.entries(params || {});
+    return entries.length
+      ? key + "|" + entries.map(([k, v]) => k + "=" + v).join(",")
+      : key;
+  };
+
   const store = new Map();
   const sandbox = {
     document: document,
@@ -685,21 +724,19 @@ function loadPage(routes, files) {
       setItem: (k, v) => store.set(k, String(v)),
       removeItem: (k) => store.delete(k),
     },
-    // MUREO.t returns the key it was handed, with any interpolated params
-    // appended — so an assertion is about WHICH string was chosen and what
-    // was put in it, never about English wording.
     MUREO: {
-      t: (key, params) => {
-        const entries = Object.entries(params || {});
-        return entries.length
-          ? key + "|" + entries.map(([k, v]) => k + "=" + v).join(",")
-          : key;
-      },
+      t: t,
       state: { status: {} },
       isDashboardRoute: () => true,
       loadStatus: () => Promise.resolve({}),
       postJson: () => Promise.resolve({ ok: true, body: {} }),
       postOutcome: appFunction("postOutcome"),
+      stepFailures: appFunction("stepFailures"),
+      stepFailureText: appFunction("stepFailureText", {
+        t: t,
+        STEP_NAME_KEYS: appConst("STEP_NAME_KEYS"),
+        STEP_ERROR_KEYS: appConst("STEP_ERROR_KEYS"),
+      }),
       toast: () => {},
       confirmAction: () => Promise.resolve(true),
       navigateToWizard: () => {},
@@ -737,6 +774,7 @@ module.exports = {
   isVisible,
   loadDashboardPage,
   loadAuthWizardPage,
+  loadWizardPage,
   settle,
   DISPLAY_BY_CLASS,
   HIDDEN_DISPLAY_BY_CLASS,

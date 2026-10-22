@@ -371,6 +371,35 @@ class TestPostSetupBasic:
         assert body == fake_result
         mock_install.assert_called_once()
 
+    def test_every_step_failed_is_a_500_with_the_steps(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """#891: the MCP step skipped and the other two failed is a failure."""
+        failed = {"status": "error", "error": "internal_error", "detail": "OSError"}
+        envelope = {
+            "mureo_mcp": {"status": "skipped", "detail": "multi_account_auth"},
+            "auth_hook": failed,
+            "skills": failed,
+        }
+        with patch("mureo.web.handlers.install_basic_setup", return_value=envelope):
+            status, body = post(wizard, "/api/setup/basic", {})
+        assert (status, body) == (
+            500,
+            {"error": "basic_setup_failed", "steps": envelope},
+        )
+
+    def test_some_steps_failed_is_the_envelope_at_200(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        envelope = {
+            "mureo_mcp": {"status": "ok"},
+            "auth_hook": {"status": "error", "error": "internal_error"},
+            "skills": {"status": "ok"},
+        }
+        with patch("mureo.web.handlers.install_basic_setup", return_value=envelope):
+            status, body = post(wizard, "/api/setup/basic", {})
+        assert (status, body) == (200, envelope)
+
 
 @pytest.mark.unit
 class TestSetupBasicMultiAccountGate:
@@ -2178,6 +2207,38 @@ class TestPostSetupBasicClear:
         assert status == 200, body
         assert body["mureo_mcp"]["status"] == "error"
         assert body["auth_hook"]["status"] == "ok"
+
+    def test_every_step_failed_is_a_500_with_the_steps(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """#891: nothing removed, the providers included, is a failure."""
+        failed = {"status": "error", "error": "internal_error", "detail": "OSError"}
+        envelope: dict[str, Any] = {
+            "mureo_mcp": failed,
+            "auth_hook": failed,
+            "skills": failed,
+            "providers": {"google-ads-official": failed},
+        }
+        with patch("mureo.web.handlers.clear_all_setup", return_value=envelope):
+            status, body = post(wizard, self.ROUTE, {})
+        assert (status, body) == (
+            500,
+            {"error": "basic_clear_failed", "steps": envelope},
+        )
+
+    def test_a_provider_removed_is_not_every_step_failed(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        failed = {"status": "error", "error": "internal_error", "detail": "OSError"}
+        envelope: dict[str, Any] = {
+            "mureo_mcp": failed,
+            "auth_hook": failed,
+            "skills": failed,
+            "providers": {"google-ads-official": {"status": "ok"}},
+        }
+        with patch("mureo.web.handlers.clear_all_setup", return_value=envelope):
+            status, body = post(wizard, self.ROUTE, {})
+        assert (status, body) == (200, envelope)
 
     def test_passes_wizard_home_through(self, wizard: ConfigureWizard) -> None:
         """The handler propagates ``self.wizard.home`` to ``clear_all_setup``
