@@ -10,12 +10,18 @@ HTTP 500), and :func:`send_result` sends it through ``send_error_json`` as
 the one failure contract of the configure web API (see
 ``docs/plugin-authoring.md``, "Failure contract").
 
+The multi-step routes (basic setup, clear-all) report one result per step
+in one body; :func:`send_steps` sends it as HTTP 200, or as the 500
+failure contract with the steps under ``steps`` when every step failed
+(#891).
+
 Imports nothing from ``mureo.web`` but ``_helpers``, so any action module
 can use it without pulling in the others.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -25,6 +31,8 @@ from mureo.web._helpers import send_error_json, send_json
 
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
+
+logger = logging.getLogger(__name__)
 
 #: Every non-error ``status`` an action answers with (HTTP 200).
 ACTION_STATUSES: Final[frozenset[str]] = frozenset(
@@ -57,6 +65,15 @@ ERROR_CODE_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]*$")
 
 #: The form of a failure's ``detail``: a code or an exception class name.
 DETAIL_PATTERN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+#: The 500 code of a basic setup in which every step failed (#891).
+BASIC_SETUP_FAILED: Final = "basic_setup_failed"
+
+#: The 500 code of a clear-all in which every step failed (#891).
+BASIC_CLEAR_FAILED: Final = "basic_clear_failed"
+
+#: The status of a step that was not attempted (it neither did nor failed).
+_SKIPPED_STATUS: Final = "skipped"
 
 
 @dataclass(frozen=True)
@@ -111,8 +128,9 @@ class ActionResult:
 
         A single-action route sends the result with :func:`send_result`
         instead; this form is for the envelopes that report several steps
-        in one 200 body (basic setup, clear-all), where an error step keeps
-        its ``status`` next to the contract's ``error`` / ``detail``.
+        in one body (basic setup, clear-all; see :func:`send_steps`), where
+        an error step keeps its ``status`` next to the contract's
+        ``error`` / ``detail``.
         """
         out: dict[str, Any] = {"status": self.status}
         if self.code is not None:
@@ -179,8 +197,71 @@ def send_result(
     send_json(handler, body)
 
 
+def _steps(envelope: Mapping[str, Any]) -> list[tuple[str, Mapping[str, Any]]]:
+    """The steps of a multi-step envelope, as ``(name, step)``.
+
+    A mapping with a ``status`` is a step; a mapping without one
+    (``providers``) holds one step per key, so it is flattened one level,
+    and there too only a mapping with a ``status`` is a step. The page
+    reads an envelope by the same rule (``stepFailures`` in ``app.js``).
+    """
+    steps: list[tuple[str, Mapping[str, Any]]] = []
+    for name, value in envelope.items():
+        if not isinstance(value, Mapping):
+            continue
+        if "status" in value:
+            steps.append((name, value))
+            continue
+        steps.extend(
+            (inner, step)
+            for inner, step in value.items()
+            if isinstance(step, Mapping) and "status" in step
+        )
+    return steps
+
+
+def every_step_failed(envelope: Mapping[str, Any]) -> bool:
+    """True when a step failed and no step did anything else (#891).
+
+    A ``skipped`` step was not attempted, so it neither rescues nor makes
+    the failure; any other non-error status (``ok``, ``noop``,
+    ``manual_required``, ...) is a step that went right. No steps at all is
+    not a failure.
+    """
+    statuses = [step.get("status") for _name, step in _steps(envelope)]
+    return ERROR_STATUS in statuses and all(
+        status in (ERROR_STATUS, _SKIPPED_STATUS) for status in statuses
+    )
+
+
+def send_steps(
+    handler: BaseHTTPRequestHandler,
+    envelope: Mapping[str, Any],
+    failure_code: str,
+) -> None:
+    """Send a multi-step envelope: 200 as is, or 500 when every step failed.
+
+    The 500 is the failure contract with ``failure_code`` and the envelope
+    under the ``steps`` context key, so the UI can still name each step.
+    """
+    if not every_step_failed(envelope):
+        send_json(handler, dict(envelope))
+        return
+    failed = ", ".join(
+        f"{name}={step.get('error')}"
+        for name, step in _steps(envelope)
+        if step.get("status") == ERROR_STATUS
+    )
+    logger.warning("%s: every step failed: %s", failure_code, failed)
+    send_error_json(
+        handler, FAILED_HTTP_STATUS, failure_code, extra={"steps": dict(envelope)}
+    )
+
+
 __all__ = [
     "ACTION_STATUSES",
+    "BASIC_CLEAR_FAILED",
+    "BASIC_SETUP_FAILED",
     "DETAIL_PATTERN",
     "ERROR_CODE_PATTERN",
     "ERROR_STATUS",
@@ -189,7 +270,9 @@ __all__ = [
     "SUCCESS_HTTP_STATUS",
     "ActionResult",
     "SuccessBody",
+    "every_step_failed",
     "refuse_error_status",
     "returncode_detail",
     "send_result",
+    "send_steps",
 ]

@@ -56,6 +56,10 @@
     host: "claude-code",
     basicInstallCompleted: false,
     basicInstallSkippedByAdvanced: false,
+    // #891: the steps the last basic install could not do ([{step, code}],
+    // MUREO.stepFailures), listed under the install button until a run
+    // succeeds.
+    basicInstallFailures: [],
     // #442: a multi-account backend (e.g. the agency layer) advertises
     // multi_account_auth via /api/status. GA4 auth is a single service
     // account, so under a multi-account backend the Setup-tab GA4 slot is
@@ -349,22 +353,61 @@
       MUREO.t("wizard.basic.advanced_skip") +
       ' <a data-advanced-skip>' + MUREO.t("wizard.skip") + "</a></div>";
 
-    wrap.querySelector("[data-basic-install]").addEventListener("click", async function () {
-      const res = await MUREO.postJson("/api/setup/basic", {});
-      if (res.ok) {
-        STATE.basicInstallCompleted = true;
-        await MUREO.loadStatus();
-        render();
-      } else {
-        MUREO.toast(MUREO.t("app.toast_setup_failed"), "error");
-      }
-    });
+    const installBtn = wrap.querySelector("[data-basic-install]");
+    installBtn.addEventListener("click", runBasicInstall);
+    if (STATE.basicInstallFailures.length > 0) {
+      wrap.insertBefore(buildBasicFailures(), installBtn.nextSibling);
+    }
     wrap.querySelector("[data-advanced-skip]").addEventListener("click", function () {
       STATE.basicInstallSkippedByAdvanced = true;
       MUREO.toast(MUREO.t("wizard.basic.advanced_skip_note"));
       updateNextEnabled();
     });
     return wrap;
+  }
+
+  // #891: the route answers 200 with one entry per step, or 500 with the
+  // same entries in ``steps`` when every step failed. Only a 200 with no
+  // failed step completes the basic step. A run starts with no list, so a
+  // failure that names no step never leaves the previous run's list up.
+  async function runBasicInstall() {
+    STATE.basicInstallFailures = [];
+    let res;
+    try {
+      res = await MUREO.postJson("/api/setup/basic", {});
+    } catch (_err) {
+      MUREO.toast(MUREO.t("app.toast_setup_failed"), "error");
+      render();
+      return;
+    }
+    const outcome = MUREO.postOutcome(res);
+    const steps = outcome.ok ? outcome.body : outcome.body && outcome.body.steps;
+    const failures = MUREO.stepFailures(steps);
+    if (outcome.ok && failures.length === 0) {
+      STATE.basicInstallCompleted = true;
+    } else if (failures.length > 0) {
+      STATE.basicInstallFailures = failures;
+      MUREO.toast(MUREO.t("wizard.basic.steps_failed"), "error");
+    } else {
+      MUREO.toast(MUREO.t("app.toast_setup_failed"), "error");
+      render();
+      return;
+    }
+    await MUREO.loadStatus();
+    render();
+  }
+
+  function buildBasicFailures() {
+    const list = document.createElement("ul");
+    list.className = "wizard-basic-failures";
+    list.setAttribute("role", "alert");
+    list.setAttribute("data-basic-failures", "");
+    STATE.basicInstallFailures.forEach(function (failure) {
+      const item = document.createElement("li");
+      item.textContent = MUREO.stepFailureText(failure);
+      list.appendChild(item);
+    });
+    return list;
   }
 
   function buildStepBody_platforms() {
