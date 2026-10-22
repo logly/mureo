@@ -308,8 +308,9 @@ test.describe("the ops history section", function () {
       .querySelectorAll("tr")
       .slice(1)
       .map((tr) => tr.querySelectorAll("td").map((td) => td.textContent));
+    // The primary row carries its label after the name (#894).
     assert.deepEqual(cells[0], [
-      "CPA",
+      "CPA" + "outcome.role_primary",
       "1,500",
       "1,900",
       "▲27%",
@@ -510,6 +511,181 @@ test.describe("the ops history section", function () {
       "<img src=x onerror=alert(1)> bold reason that is long enough"
     );
     assert.equal(rationale.querySelectorAll("img").length, 0);
+  });
+});
+
+// #894: the evaluation table in the operator's words. The primary row is
+// labelled, a reference row says so beside its verdict, the table's reason
+// follows it as a sentence, and a note the server read into parts is said
+// from those parts. A table written before any of this reads as it did.
+test.describe("the evaluation table, readable", function () {
+  const ROWS = [
+    {
+      metric: "cpa",
+      before: 100,
+      after: 80,
+      delta_pct: -20,
+      verdict: "inconclusive",
+      note: "insufficient_volume; lower_is_better; -20%",
+      role: "primary",
+      note_parts: {
+        kind: "direction",
+        direction: "lower_is_better",
+        noise_pct: null,
+        per_day: null,
+        raw_totals: false,
+        held_back: "insufficient_volume",
+        target: null,
+        zero_baseline: false,
+      },
+    },
+    {
+      metric: "clicks",
+      before: 900,
+      after: 950,
+      delta_pct: 5.6,
+      verdict: "inconclusive",
+      note: "within ±10% noise band",
+      role: "reference",
+      note_parts: {
+        kind: "band",
+        direction: null,
+        noise_pct: 10,
+        per_day: null,
+        raw_totals: false,
+        held_back: null,
+        target: null,
+        zero_baseline: false,
+      },
+    },
+  ];
+
+  function withTable(table) {
+    const ev = evaluation(table.overall, table.metrics);
+    ev.table = Object.assign({ overall: table.overall, basis: "expected" }, table);
+    return [item("t", "2026-10-03", { state: "evaluated", verdict: table.overall, evaluation: ev })];
+  }
+
+  async function expanded(table) {
+    const page = await openDetail(feed(true, withTable(table)));
+    const row = section(page).querySelector("[data-ops-history-row]");
+    row.click();
+    const detail = row.nextSibling;
+    const rows = detail.querySelector("[data-ops-history-evaluation]").querySelectorAll("tr").slice(1);
+    return { detail: detail, rows: rows };
+  }
+
+  function cellsOf(tr) {
+    return tr.querySelectorAll("td").map((td) => td.textContent);
+  }
+
+  test.it("labels the primary row", async function () {
+    const view = await expanded({
+      overall: "inconclusive",
+      primary: "cpa",
+      reason: "insufficient_volume",
+      metrics: ROWS,
+    });
+    const primary = view.rows[0];
+    assert.equal(primary.getAttribute("data-role"), "primary");
+    const label = primary.querySelector(".ops-history-eval-role");
+    assert.equal(label.textContent, "outcome.role_primary");
+    assert.equal(cellsOf(primary)[0], "CPA" + "outcome.role_primary");
+    assert.equal(cellsOf(primary)[4], "ops_history_section.verdict_inconclusive");
+  });
+
+  test.it("keeps a reference row's verdict and says it is a reference", async function () {
+    const view = await expanded({ overall: "improved", primary: "cpa", metrics: ROWS });
+    const reference = view.rows[1];
+    assert.equal(reference.getAttribute("data-role"), "reference");
+    assert.equal(
+      cellsOf(reference)[4],
+      "ops_history_section.verdict_inconclusive" + "outcome.role_reference"
+    );
+    assert.equal(reference.querySelectorAll(".ops-history-eval-role").length, 0);
+    const verdictCell = reference.querySelector(".ops-history-eval-verdict");
+    assert.ok(isVisible(verdictCell));
+    assert.ok(cascade(verdictCell, "opacity"), "the reference verdict is dimmed");
+  });
+
+  test.it("says each note from the parts the server read", async function () {
+    const view = await expanded({ overall: "improved", primary: "cpa", metrics: ROWS });
+    assert.equal(
+      cellsOf(view.rows[0])[5],
+      "outcome.note_held_back" + "outcome.note_join" + "outcome.note_lower_is_better"
+    );
+    assert.equal(cellsOf(view.rows[1])[5], "outcome.note_band|pct=10");
+  });
+
+  test.it("follows the table with its reason", async function () {
+    const view = await expanded({
+      overall: "inconclusive",
+      primary: "cpa",
+      reason: "insufficient_volume",
+      metrics: ROWS,
+    });
+    const reason = view.detail.querySelector("[data-ops-history-eval-reason]");
+    assert.equal(reason.textContent, "outcome.reason_insufficient_volume");
+    const table = view.detail.querySelector("[data-ops-history-evaluation]");
+    assert.equal(table.nextSibling, reason);
+  });
+
+  test.it("says nothing more when the table has no reason", async function () {
+    const view = await expanded({ overall: "improved", primary: "cpa", metrics: ROWS });
+    assert.equal(view.detail.querySelector("[data-ops-history-eval-reason]"), null);
+  });
+
+  test.it("reads an older table as it always did", async function () {
+    const legacy = [
+      { metric: "cpa", before: 100, after: 80, delta_pct: -20, verdict: "improved", note: "expected down" },
+    ];
+    const view = await expanded({ overall: "improved", metrics: legacy });
+    const row = view.rows[0];
+    assert.equal(row.getAttribute("data-role"), null);
+    assert.deepEqual(cellsOf(row), [
+      "CPA",
+      "100",
+      "80",
+      "▼20%",
+      "ops_history_section.verdict_improved",
+      "expected down",
+    ]);
+  });
+
+  test.it("labels an older table's primary from the table when rows carry no role", async function () {
+    const rows = [
+      { metric: "cpa", before: 100, after: 80, delta_pct: -20, verdict: "improved", note: "x" },
+      { metric: "ctr", before: 2, after: 2.1, delta_pct: 5, verdict: "inconclusive", note: "y" },
+    ];
+    const view = await expanded({ overall: "improved", primary: "cpa", metrics: rows });
+    assert.equal(view.rows[0].getAttribute("data-role"), "primary");
+    assert.equal(view.rows[1].getAttribute("data-role"), "reference");
+  });
+
+  test.it("puts the writer's note and an unknown reason on the page as text", async function () {
+    const rows = [
+      {
+        metric: "cpa",
+        before: 100,
+        after: 80,
+        delta_pct: -20,
+        verdict: "improved",
+        note: "<b>**hand**</b> written",
+        role: "primary",
+        note_parts: null,
+      },
+    ];
+    const view = await expanded({
+      overall: "improved",
+      primary: "cpa",
+      reason: "<img src=x onerror=alert(1)>",
+      metrics: rows,
+    });
+    assert.equal(cellsOf(view.rows[0])[5], "<b>hand</b> written");
+    assert.equal(view.rows[0].querySelectorAll("b").length, 0);
+    const reason = view.detail.querySelector("[data-ops-history-eval-reason]");
+    assert.equal(reason.textContent, "<img src=x onerror=alert(1)>");
+    assert.equal(view.detail.querySelectorAll("img").length, 0);
   });
 });
 

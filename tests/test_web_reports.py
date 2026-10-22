@@ -407,6 +407,84 @@ def test_recent_actions_are_newest_first(
     assert [e.action for e in doc.action_log] == ["action_1", "action_2", "action_3"]
 
 
+def _action_rows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *entries: ActionLogEntry
+) -> list[dict[str, Any]]:
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(tmp_path, StateDocument(version="2", action_log=tuple(entries)))
+    rows: list[dict[str, Any]] = build_report_summary()["recent_actions"]
+    return rows
+
+
+def _logged(evaluation: dict[str, Any] | None = None) -> ActionLogEntry:
+    return ActionLogEntry(
+        timestamp="2026-06-16T10:00:00+00:00",
+        action="outcome_evaluated" if evaluation else "budget_update",
+        platform="google_ads",
+        summary="Improved on cpa (primary).",
+        evaluation=evaluation,
+    )
+
+
+@pytest.mark.unit
+def test_every_action_row_has_one_shape(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (row,) = _action_rows(monkeypatch, tmp_path, _logged())
+    assert set(row) == {
+        "timestamp",
+        "action",
+        "platform",
+        "campaign_id",
+        "summary",
+        "observation_due",
+        "display_title",
+        "display_summary",
+        "evaluation",
+    }
+
+
+@pytest.mark.unit
+def test_an_evaluation_row_carries_its_verdict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The three keys the row's sentence is built from (#894) — not the
+    table: the rows and their notes stay on the ops history feed."""
+    table = {
+        "rules": 2,
+        "overall": "inconclusive",
+        "basis": "expected",
+        "primary": "cpa",
+        "reason": "insufficient_volume",
+        "noise_pct": 10.0,
+        "window": {"from": None, "to": None},
+        "metrics": [{"metric": "cpa", "note": "x"}],
+    }
+    (row,) = _action_rows(monkeypatch, tmp_path, _logged(table))
+    assert row["evaluation"] == {
+        "overall": "inconclusive",
+        "primary": "cpa",
+        "reason": "insufficient_volume",
+    }
+
+
+@pytest.mark.unit
+def test_a_missing_key_in_the_table_is_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    legacy = {"overall": "improved", "basis": "expected", "metrics": []}
+    (row,) = _action_rows(monkeypatch, tmp_path, _logged(legacy))
+    assert row["evaluation"] == {"overall": "improved", "primary": None, "reason": None}
+
+
+@pytest.mark.unit
+def test_an_entry_without_a_table_has_no_evaluation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (row,) = _action_rows(monkeypatch, tmp_path, _logged())
+    assert row["evaluation"] is None
+
+
 # ---------------------------------------------------------------------------
 # build_report_summary — empty / missing STATE.json
 # ---------------------------------------------------------------------------

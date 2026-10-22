@@ -125,6 +125,19 @@ PERIOD_KEYS: Final[tuple[str, ...]] = ("period", "days")
 #: evaluation re-writes a primary row's note and carries this part over.
 PER_DAY_MARKER: Final = "; per day over "
 
+#: The row notes, as ``str.format`` templates. The builders below fill them;
+#: :mod:`mureo.analysis.outcome_note` reads them back from the same strings,
+#: so the wording cannot change on one side only. The stored notes are
+#: English and stay as they are: the dashboard says them from the parts.
+NOTE_ZERO_BASELINE: Final = "baseline is zero/absent; change is not comparable"
+NOTE_NOISE_BAND: Final = "within ±{noise_pct:g}% noise band"
+NOTE_NEUTRAL: Final = "volume metric has no inherent good/bad direction"
+NOTE_DIRECTION: Final = "{direction}; {delta_pct:+g}%"
+NOTE_RAW_TOTALS: Final = "; raw totals, periods unknown"
+NOTE_PER_DAY: Final = PER_DAY_MARKER + "{before_days}d / {after_days}d"
+#: A primary row held back by a gate or a zero baseline leads with the code.
+NOTE_HELD_BACK: Final = "{reason}; {note}"
+
 
 class Verdict(str, Enum):
     """Outcome of a single metric (``str`` mixin → trivial JSON)."""
@@ -140,6 +153,12 @@ class _Direction(str, Enum):
     HIGHER_IS_BETTER = "higher_is_better"
     NEUTRAL = "neutral"
 
+
+#: The words :data:`NOTE_DIRECTION` fills ``direction`` with.
+NOTE_DIRECTION_WORDS: Final[tuple[str, ...]] = (
+    _Direction.LOWER_IS_BETTER.value,
+    _Direction.HIGHER_IS_BETTER.value,
+)
 
 # Known metric directions, matched case-insensitively against metric names.
 _METRIC_DIRECTION: dict[str, _Direction] = {
@@ -321,7 +340,7 @@ def evaluate_metric(
             after=after,
             delta_pct=None,
             verdict=Verdict.INCONCLUSIVE,
-            note="baseline is zero/absent; change is not comparable",
+            note=NOTE_ZERO_BASELINE,
         )
 
     delta_pct = round((after - before) / before * 100, 1)
@@ -333,7 +352,7 @@ def evaluate_metric(
             after=after,
             delta_pct=delta_pct,
             verdict=Verdict.INCONCLUSIVE,
-            note=f"within ±{noise_pct:g}% noise band",
+            note=NOTE_NOISE_BAND.format(noise_pct=noise_pct),
         )
 
     if direction is _Direction.NEUTRAL:
@@ -343,7 +362,7 @@ def evaluate_metric(
             after=after,
             delta_pct=delta_pct,
             verdict=Verdict.INCONCLUSIVE,
-            note="volume metric has no inherent good/bad direction",
+            note=NOTE_NEUTRAL,
         )
 
     improved = (
@@ -356,7 +375,7 @@ def evaluate_metric(
         after=after,
         delta_pct=delta_pct,
         verdict=verdict,
-        note=f"{direction.value}; {delta_pct:+g}%",
+        note=NOTE_DIRECTION.format(direction=direction.value, delta_pct=delta_pct),
     )
 
 
@@ -372,13 +391,12 @@ def _outcome_row(
         return evaluate_metric(metric, before, after, noise_pct=noise_pct)
     if days is None:
         outcome = evaluate_metric(metric, before, after, noise_pct=noise_pct)
-        return replace(outcome, note=f"{outcome.note}; raw totals, periods unknown")
+        return replace(outcome, note=f"{outcome.note}{NOTE_RAW_TOTALS}")
     outcome = evaluate_metric(
         metric, before / days[0], after / days[1], noise_pct=noise_pct
     )
-    return replace(
-        outcome, note=f"{outcome.note}{PER_DAY_MARKER}{days[0]}d / {days[1]}d"
-    )
+    per_day = NOTE_PER_DAY.format(before_days=days[0], after_days=days[1])
+    return replace(outcome, note=f"{outcome.note}{per_day}")
 
 
 def _count_floor(count_key: str, thresholds: OutcomeThresholds) -> int:
@@ -470,7 +488,11 @@ def evaluate_outcome(
         # Held back: the primary's row must not show the verdict withheld.
         outcomes = tuple(
             (
-                replace(o, verdict=Verdict.INCONCLUSIVE, note=f"{reason}; {o.note}")
+                replace(
+                    o,
+                    verdict=Verdict.INCONCLUSIVE,
+                    note=NOTE_HELD_BACK.format(reason=reason, note=o.note),
+                )
                 if o.metric == metric
                 else o
             )
@@ -498,6 +520,14 @@ __all__ = [
     "DEFAULT_PRIMARY_METRIC",
     "DEFAULT_THRESHOLDS",
     "GATE_REASONS",
+    "NOTE_DIRECTION",
+    "NOTE_DIRECTION_WORDS",
+    "NOTE_HELD_BACK",
+    "NOTE_NEUTRAL",
+    "NOTE_NOISE_BAND",
+    "NOTE_PER_DAY",
+    "NOTE_RAW_TOTALS",
+    "NOTE_ZERO_BASELINE",
     "OUTCOME_REASONS",
     "PERIOD_KEYS",
     "PER_DAY_MARKER",

@@ -265,6 +265,9 @@ mureo/
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer
 │   ├── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+│   ├── outcome_note.py  # An evaluation row's note read back into parts (#894), from the
+│   │                    #   NOTE_* templates outcome_eval / expected_eval write with.
+│   │                    #   Imports them; nothing imports it back except the served view
 │   ├── delivery_collapse.py # Delivery-collapse detection (#546) — weekday-aware baseline taken
 │   │                        #   from the platform's own daily delivery, never from action_log
 │   ├── delivery_collapse_config.py  # ## Guardrails -> CollapseThresholds (the only I/O half)
@@ -530,6 +533,12 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
   - `reports_format.js` → `window.MUREO_REPORTS_FORMAT` — the display
     vocabulary (flag labels and severities, param detail, numbers, periods,
     and which of a stored report's fields are headline figures).
+  - `outcome_text.js` → `window.MUREO_OUTCOME_TEXT` — an outcome
+    evaluation in words (#894): the verdict sentence of an action row, the
+    reason sentence and a row's role and note in the evaluation table. It
+    judges nothing: it words the server's `note_parts` and codes. Reads
+    `MUREO_REPORTS_FORMAT` at call time, so it loads after it and before
+    `reports_display.js` and `dashboard_ops_history_section.js`.
   - `reports_order.js` → `window.MUREO_REPORTS_ORDER` — the Reports index
     card order (localStorage, and the two ways the grid is reordered).
   - `reports_triage.js` → `window.MUREO_REPORTS_TRIAGE` — the multi-client

@@ -556,6 +556,92 @@ test.describe("the action log", function () {
     assert.equal(text.indexOf("*"), -1, "raw markers never reach the screen");
     assert.match(text, /Brand Search budget raised to 12,000/);
   });
+
+  // #894: an outcome record says its verdict in the operator's words and
+  // nothing else. The English summary written for the next agent is the
+  // work journal: it is not on the row and not behind a disclosure.
+  function evaluated(extra) {
+    return Object.assign(
+      {
+        timestamp: new Date().toISOString(),
+        action: "outcome_evaluated",
+        platform: "google_ads",
+        summary: "Inconclusive: insufficient_volume on cpa.",
+        observation_due: null,
+        display_title: null,
+        display_summary: null,
+        evaluation: { overall: "inconclusive", primary: "cpa", reason: "insufficient_volume" },
+      },
+      extra
+    );
+  }
+
+  test.it("says an outcome record's verdict as its title", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      recent_actions: [evaluated({})],
+    });
+    const name = page.root.querySelector(".report-action-name");
+    assert.equal(
+      name.textContent,
+      "outcome.summary|metric=CPA,verdict=ops_history_section.verdict_inconclusive" +
+        "outcome.summary_sep" +
+        "outcome.reason_insufficient_volume"
+    );
+    assert.equal(page.root.querySelector(".report-action-summary"), null);
+  });
+
+  test.it("never exposes the stored English note on an outcome row", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      recent_actions: [evaluated({})],
+    });
+    assert.equal(page.root.querySelector(".report-action-more"), null);
+    assert.equal(page.root.querySelector(".report-action-full"), null);
+    assert.equal(
+      page.root.textContent.indexOf("Inconclusive: insufficient_volume on cpa."),
+      -1
+    );
+  });
+
+  test.it("lets a display line win over the verdict", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      recent_actions: [evaluated({ display_title: "CPA check" })],
+    });
+    assert.equal(page.root.querySelector(".report-action-name").textContent, "CPA check");
+  });
+
+  test.it("shows the summary as before when the row carries no verdict", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      recent_actions: [evaluated({ evaluation: null })],
+    });
+    assert.equal(
+      page.root.querySelector(".report-action-summary").textContent,
+      "Inconclusive: insufficient_volume on cpa."
+    );
+    assert.equal(
+      page.root.querySelector(".report-action-name").textContent,
+      "Outcome evaluated"
+    );
+  });
+
+  test.it("shows the summary as before for a verdict it does not know", async function () {
+    const page = await openDetail({
+      display: FULL_DISPLAY,
+      platforms: FULL_PLATFORMS,
+      recent_actions: [evaluated({ evaluation: { overall: "great" } })],
+    });
+    assert.equal(
+      page.root.querySelector(".report-action-summary").textContent,
+      "Inconclusive: insufficient_volume on cpa."
+    );
+  });
 });
 
 // ---------------------------------------------------------------------

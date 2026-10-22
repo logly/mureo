@@ -105,6 +105,20 @@ _ROW_KEYS: Final[frozenset[str]] = frozenset(
 )
 _BASES: Final[tuple[str, ...]] = (BASIS_EXPECTED, BASIS_BIDDING_TARGET, BASIS_DEFAULT)
 
+#: A declared primary row's note, as ``str.format`` templates, read back by
+#: :mod:`mureo.analysis.outcome_note` from the same strings. A primary with
+#: no percentage change (a zero baseline) carries the evaluator's own note
+#: after the direction instead of the change and the band.
+NOTE_EXPECTED: Final = (
+    "expected {direction}; {delta_pct:+g}% (noise band ±{noise_pct:g}%)"
+)
+NOTE_EXPECTED_UNSCORED: Final = "expected {direction}; {note}"
+NOTE_TARGET: Final = "; target {target:g} {state}"
+NOTE_TARGET_REACHED: Final = "reached"
+NOTE_TARGET_NOT_REACHED: Final = "not reached"
+#: Follows the target on a per-day row: the raw figure it was compared with.
+NOTE_WINDOW_TOTAL: Final = " (window total {total:g})"
+
 #: ``bidding_details`` key -> the metric that target is set on, in order.
 _BIDDING_TARGETS: Final[tuple[tuple[str, str], ...]] = (
     ("target_roas", "roas"),
@@ -214,19 +228,21 @@ def _expected_note(
 ) -> str:
     per_day = outcome.note.find(PER_DAY_MARKER)
     if outcome.delta_pct is None:
-        note = f"expected {effect.direction}; {outcome.note}"
-    else:
-        note = (
-            f"expected {effect.direction}; {outcome.delta_pct:+g}% "
-            f"(noise band ±{noise_pct:g}%)"
-            f"{outcome.note[per_day:] if per_day >= 0 else ''}"
+        note = NOTE_EXPECTED_UNSCORED.format(
+            direction=effect.direction, note=outcome.note
         )
+    else:
+        note = NOTE_EXPECTED.format(
+            direction=effect.direction,
+            delta_pct=outcome.delta_pct,
+            noise_pct=noise_pct,
+        ) + (outcome.note[per_day:] if per_day >= 0 else "")
     if effect.target is not None:
         reached = _target_reached(total, effect, noise_pct)
-        state = "reached" if reached else "not reached"
-        note += f"; target {effect.target:g} {state}"
+        state = NOTE_TARGET_REACHED if reached else NOTE_TARGET_NOT_REACHED
+        note += NOTE_TARGET.format(target=effect.target, state=state)
         if per_day >= 0:
-            note += f" (window total {total:g})"
+            note += NOTE_WINDOW_TOTAL.format(total=total)
     return note
 
 
@@ -450,6 +466,12 @@ __all__ = [
     "BASIS_BIDDING_TARGET",
     "BASIS_DEFAULT",
     "BASIS_EXPECTED",
+    "NOTE_EXPECTED",
+    "NOTE_EXPECTED_UNSCORED",
+    "NOTE_TARGET",
+    "NOTE_TARGET_NOT_REACHED",
+    "NOTE_TARGET_REACHED",
+    "NOTE_WINDOW_TOTAL",
     "ROLE_PRIMARY",
     "ROLE_REFERENCE",
     "RULES_VERSION",

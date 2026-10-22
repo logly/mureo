@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 
 from mureo.analysis.expected_eval import build_evaluation, validate_evaluation_table
+from mureo.analysis.outcome_note import note_parts
 from mureo.context.auto_evaluation import (
     SKIP_NO_COMPARABLE_METRIC,
     ClosurePlan,
@@ -148,6 +149,12 @@ def _auto_table(path: Path) -> dict[str, Any]:
     assert isinstance(plan, ClosurePlan)
     assert plan.entry.evaluation is not None
     return plan.entry.evaluation
+
+
+def _served(stored: dict[str, Any]) -> dict[str, Any]:
+    """``stored`` as the view serves it: each row with its note read (#894)."""
+    rows = [{**r, "note_parts": note_parts(r["note"])} for r in stored["metrics"]]
+    return {**stored, "metrics": rows}
 
 
 def _table() -> dict[str, Any]:
@@ -619,7 +626,7 @@ class TestOpsHistoryReadsTheManualTable:
         assert items[0]["verdict"] == "improved"
         evaluation = items[0]["actions"][0]["evaluation"]
         assert evaluation["overall"] == "improved"
-        assert evaluation["table"] == auto
+        assert evaluation["table"] == _served(auto)
 
     async def test_the_counts_show_the_verdict(self, workspace: Path) -> None:
         path, _ = await _close_manually(workspace)
@@ -635,7 +642,7 @@ class TestOpsHistoryReadsTheManualTable:
         (item,) = body["items"]
         assert item["state"] == "evaluated"
         assert item["verdict"] == auto["overall"]
-        assert item["actions"][0]["evaluation"]["table"] == auto
+        assert item["actions"][0]["evaluation"]["table"] == _served(auto)
 
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,9 @@ carry flags and tokens). An action's ``before`` comes from
 ``after`` from ``applied_params``, what the call sent. ``approval`` is the
 external approval a change stated (#854): the entry's own on an action,
 the newest on the chain on a decision; recorded and shown, never verified.
+Each served evaluation row also carries ``note_parts`` (#894): its ``note``
+read by :func:`mureo.analysis.outcome_note.note_parts`, ``None`` when the
+note is not one the evaluator writes. It is added to the copy only.
 
 The date RULE is not here: the read surfaces bound items by the same rule
 as the other history sources (:mod:`mureo.context.ops_history_query`), using
@@ -52,6 +55,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.analysis.outcome_note import note_parts
 from mureo.context.approval import approval_to_dict
 from mureo.context.auto_evaluation import AutoSkip, plan_closure
 from mureo.context.decision_chain import chain_roots, group_chains
@@ -134,6 +138,30 @@ def _before_values(entry: ActionLogEntry) -> dict[str, Any] | None:
     return _values((entry.reversible_params or {}).get("params"))
 
 
+def _with_note_parts(row: Any) -> Any:
+    """A copy of one row with its note read into parts (#894)."""
+    if not isinstance(row, dict):
+        return copy.deepcopy(row)
+    note = row.get("note")
+    parts = note_parts(note) if isinstance(note, str) else None
+    return {**copy.deepcopy(row), "note_parts": parts}
+
+
+def _served_table(table: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The stored table as served: a copy, each row carrying ``note_parts``.
+
+    The stored table is never touched. A row that is not an object, and
+    ``metrics`` that is not a list, are copied as they are.
+    """
+    if table is None:
+        return None
+    served = copy.deepcopy(table)
+    rows = table.get("metrics")
+    if isinstance(rows, list):
+        served["metrics"] = [_with_note_parts(row) for row in rows]
+    return served
+
+
 def _evaluation_row(doc: StateDocument, index: int) -> dict[str, Any]:
     entry = doc.action_log[index]
     table = entry.evaluation or {}
@@ -143,7 +171,7 @@ def _evaluation_row(doc: StateDocument, index: int) -> dict[str, Any]:
         "overall": table.get("overall"),
         "summary": entry.summary,
         "reason": entry.reason,
-        "table": copy.deepcopy(entry.evaluation),
+        "table": _served_table(entry.evaluation),
     }
 
 

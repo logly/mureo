@@ -8,6 +8,7 @@ no decision covers, each with a DERIVED state.
 
 from __future__ import annotations
 
+import copy
 import json
 from datetime import date
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from mureo.analysis.outcome_note import note_parts
 from mureo.context.ops_history_view import build_ops_history_items
 from mureo.context.state_codec import parse_state
 from mureo.mcp import journal
@@ -321,6 +323,80 @@ class TestVerdictOrder:
         evaluation = items["H"]["actions"][0]["evaluation"]
         assert evaluation["overall"] == "improved"
         assert "rules" not in evaluation["table"]
+
+
+def _row(metric: str, note: Any, role: str = "reference") -> dict[str, Any]:
+    return {
+        "metric": metric,
+        "before": 100.0,
+        "after": 80.0,
+        "delta_pct": -20.0,
+        "verdict": "improved",
+        "note": note,
+        "role": role,
+    }
+
+
+def _served_table(metrics: Any) -> tuple[Any, Any]:
+    """The table served for entry 2, and the one stored there afterwards."""
+    document = _document()
+    document["action_log"][2]["evaluation"] = {
+        **_table("improved"),
+        "metrics": metrics,
+    }
+    doc = parse_state(json.dumps(document))
+    items = {
+        i["decision"]["decision_id"]: i
+        for i in build_ops_history_items(doc, today=TODAY)
+        if i["decision"]
+    }
+    return items["D"]["actions"][0]["evaluation"]["table"], doc.action_log[2]
+
+
+class TestNoteParts:
+    """Each served row carries its note read back into parts (#894)."""
+
+    def test_a_builder_note_is_read(self) -> None:
+        note = "expected down; -20% (noise band ±10%); target 85 reached"
+        table, _ = _served_table([_row("cpa", note, "primary")])
+        (row,) = table["metrics"]
+        assert row["note"] == note
+        assert row["note_parts"] == note_parts(note)
+        assert row["note_parts"]["kind"] == "expected"
+
+    def test_a_note_no_builder_writes_reads_as_none(self) -> None:
+        table, _ = _served_table([_row("cpa", "hand-written")])
+        assert table["metrics"][0]["note_parts"] is None
+
+    def test_a_note_that_is_not_a_string_reads_as_none(self) -> None:
+        table, _ = _served_table([_row("cpa", 5), _row("ctr", None)])
+        assert [r["note_parts"] for r in table["metrics"]] == [None, None]
+
+    def test_a_row_that_is_not_an_object_is_passed_through(self) -> None:
+        table, _ = _served_table(["junk", _row("cpa", "lower_is_better; -20%")])
+        assert table["metrics"][0] == "junk"
+        assert table["metrics"][1]["note_parts"]["kind"] == "direction"
+
+    def test_rows_that_are_not_a_list_are_passed_through(self) -> None:
+        table, _ = _served_table({"cpa": 1})
+        assert table["metrics"] == {"cpa": 1}
+
+    def test_the_stored_table_is_not_touched(self) -> None:
+        rows = [_row("cpa", "lower_is_better; -20%", "primary")]
+        document = _document()
+        document["action_log"][2]["evaluation"] = {
+            **_table("improved"),
+            "metrics": rows,
+        }
+        doc = parse_state(json.dumps(document))
+        stored = copy.deepcopy(doc.action_log[2].evaluation)
+        build_ops_history_items(doc, today=TODAY)
+        assert doc.action_log[2].evaluation == stored
+        assert "note_parts" not in doc.action_log[2].evaluation["metrics"][0]
+
+    def test_no_table_stays_none(self) -> None:
+        action = _items()["C"]["actions"][0]
+        assert action["evaluation"] is None
 
 
 @pytest.fixture

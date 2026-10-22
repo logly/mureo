@@ -556,6 +556,7 @@ function isVisible(el) {
 const DASHBOARD_FILES = [
   "reports_logic.js",
   "reports_format.js",
+  "outcome_text.js",
   "reports_sparkline.js",
   "reports_display.js",
   "reports_chart.js",

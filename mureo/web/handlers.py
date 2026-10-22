@@ -289,10 +289,9 @@ def _request_interactive_reexec() -> None:
     ).start()
 
 
-# #241 — the installed mureo version reported by ``GET /api/ping``. Read
-# once at import from the package's ``__version__`` (no ``importlib.metadata``
-# round-trip per request); the ping body carries only this string + the app
-# name, nothing environment-specific.
+# #241 — the installed mureo version reported by ``GET /api/ping``, read once
+# at import from ``__version__`` (no ``importlib.metadata`` round-trip per
+# request); the ping body carries only this + the app name, nothing else.
 try:
     from mureo import __version__ as mureo_version
 except Exception:  # noqa: BLE001 — never let a version lookup break import
@@ -321,6 +320,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "auth_wizards.js",
     "reports_logic.js",
     "reports_format.js",
+    "outcome_text.js",
     "reports_sparkline.js",
     "reports_display.js",
     "reports_chart.js",

@@ -266,6 +266,22 @@ const MODULES = [
   },
 ];
 
+/**
+ * Pure modules no dashboard.js binding reads — the page's other modules
+ * resolve them per call. They get every asset check below (one global, no
+ * CommonJS, the same bytes in Node and the browser) but not the dashboard.js
+ * guard ones, and they are not `reports_*.js`, so the directory check does
+ * not cover them: a row here is how they are covered.
+ */
+const STANDALONE_MODULES = [
+  {
+    file: "outcome_text.js",
+    global: "MUREO_OUTCOME_TEXT",
+    bound: ["reasonText", "summaryText", "noteText", "rowRole"],
+    moved: ["reasonText", "summaryText", "noteText", "rowRole"],
+  },
+];
+
 /** Every extracted module actually shipped, found rather than declared. */
 const SHIPPED_MODULES = fs
   .readdirSync(WEB)
@@ -289,7 +305,7 @@ test.describe("the module table covers what actually ships", function () {
   });
 
   test.it("gives each module a distinct global", function () {
-    const globals = MODULES.map(function (m) {
+    const globals = MODULES.concat(STANDALONE_MODULES).map(function (m) {
       return m.global;
     });
     assert.equal(new Set(globals).size, globals.length, "two modules share a global");
@@ -361,7 +377,7 @@ function loadModules(context, except) {
   }
 }
 
-for (const mod of MODULES) {
+for (const mod of MODULES.concat(STANDALONE_MODULES)) {
   test.describe(mod.file + " as a browser asset", function () {
     test.it("publishes its global with no CommonJS in scope", function () {
       const env = browserContext();

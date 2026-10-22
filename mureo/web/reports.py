@@ -453,6 +453,12 @@ def _action_row(entry: ActionLogEntry) -> dict[str, Any]:
     always present (``None`` where the entry has no display line), so the
     frontend reads one shape for every row and falls back for the entries
     written before these existed.
+
+    ``evaluation`` is the verdict of an outcome record (#894):
+    ``{overall, primary, reason}`` from its evaluation table, a key missing
+    from the table ``None``. Only these three — the row's sentence is built
+    from them; the rows and their notes stay on the ops history feed. Always
+    present too: ``None`` for an entry with no table.
     """
     return {
         "timestamp": entry.timestamp,
@@ -463,7 +469,18 @@ def _action_row(entry: ActionLogEntry) -> dict[str, Any]:
         "observation_due": entry.observation_due,
         "display_title": entry.display_title,
         "display_summary": entry.display_summary,
+        "evaluation": _action_verdict(entry.evaluation),
     }
+
+
+#: The evaluation-table keys a recent-actions row carries (#894).
+_ACTION_VERDICT_KEYS: tuple[str, ...] = ("overall", "primary", "reason")
+
+
+def _action_verdict(table: Any) -> dict[str, Any] | None:
+    if not isinstance(table, dict):
+        return None
+    return {key: table.get(key) for key in _ACTION_VERDICT_KEYS}
 
 
 # ---------------------------------------------------------------------------
