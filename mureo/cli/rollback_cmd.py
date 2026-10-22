@@ -67,11 +67,10 @@ def _load_plugin_reversals() -> None:
     imported (#863) — so without this every plugin entry would read
     ``not_supported`` here while the same entry is executable over MCP.
     """
-    # Imported here, like the journal readers in ``journal_cmd``: the server
-    # import costs a few tenths of a second of CPU on top of the CLI's own,
-    # and this module is imported by every ``mureo`` command
-    # (``cli/main.py``), so it is paid only when a rollback command runs (#486).
-    import mureo.mcp.server  # noqa: F401, PLC0415
+    # Startup cost (~300 ms CPU): this module is imported by every ``mureo``
+    # command (``cli/main.py``), so the MCP server, like the journal readers
+    # in ``journal_cmd``, is loaded only when a rollback command runs (#486).
+    import mureo.mcp.server  # noqa: F401, PLC0415 — startup cost (#486)
 
 
 def _load_plans(

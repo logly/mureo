@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
+from mureo.core.rotation import sibling_files
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -75,8 +77,11 @@ def verify_command(target: Path, *, as_json: bool) -> int:
     Every file of the record is walked as ONE chain, oldest first, so a
     line removed either side of a rotation is caught.
     """
-    from mureo.core.rotation import sibling_files
-    from mureo.mcp.journal_chain import verify_chain
+    # Startup cost (~300 ms CPU): ``mureo.mcp`` loads the MCP server at
+    # package import, so the chain walker is deferred to ``--verify`` (#486).
+    from mureo.mcp.journal_chain import (  # noqa: PLC0415 — startup cost (#486)
+        verify_chain,
+    )
 
     files = sibling_files(target)
     if not files:

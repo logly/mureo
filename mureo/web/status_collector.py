@@ -20,9 +20,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from mureo.amazon_ads.manifest import is_stale, manifest_age_days, manifest_path_for
+from mureo.auth import _coerce_never_expires
 from mureo.cli.skill_status import detect_workflow_skills
 from mureo.core import clock
+from mureo.credential_guard import is_guard_entry
 from mureo.web._helpers import read_json_safe
+from mureo.web.codex_mcp import installed_codex_server_ids, read_codex_server_env
 from mureo.web.env_var_writer import allowed_env_var_names, get_env_var_target
 from mureo.web.host_paths import HostPaths, get_host_paths
 from mureo.web.setup_state import SetupParts
@@ -156,8 +160,6 @@ def _detect_installed_providers(mcp_registry_path: Path) -> dict[str, bool]:
     A read-only parse is deterministic and race-safe for status display.
     """
     if mcp_registry_path.suffix == ".toml":
-        from mureo.web.codex_mcp import installed_codex_server_ids
-
         ids = installed_codex_server_ids(mcp_registry_path)
         installed = {pid: pid in ids for pid in OFFICIAL_PROVIDER_IDS}
         installed[MUREO_NATIVE_ID] = MUREO_NATIVE_ID in ids
@@ -184,8 +186,6 @@ def _detect_mureo_disable(mcp_registry_path: Path) -> dict[str, bool]:
     disabled (all ``False``) — never raises.
     """
     if mcp_registry_path.suffix == ".toml":
-        from mureo.web.codex_mcp import read_codex_server_env
-
         codex_env = read_codex_server_env(mcp_registry_path, MUREO_NATIVE_ID)
         return {
             p: codex_env.get("MUREO_DISABLE_" + p.upper()) == "1"
@@ -244,12 +244,6 @@ def _detect_amazon_manifest(credentials_path: Path) -> dict[str, Any]:
     or timestamp-less manifest reports ``present`` with an unknown age, and an
     unknown age is never called stale.
     """
-    from mureo.amazon_ads.manifest import (
-        is_stale,
-        manifest_age_days,
-        manifest_path_for,
-    )
-
     path = manifest_path_for(credentials_path)
     present = path.exists()
     age = manifest_age_days(path) if present else None
@@ -349,11 +343,7 @@ def _detect_meta_token(credentials_path: Path) -> dict[str, Any]:
     days_left = _days_until(raw_expiry)
     # Same boundary check the loader applies, from the same helper, so the
     # dashboard and the refresh path cannot disagree about what counts as
-    # "permanent" (#740). Imported at call time like the other cross-package
-    # imports in this module, so a status read does not drag in the whole
-    # credential stack at import.
-    from mureo.auth import _coerce_never_expires
-
+    # "permanent" (#740).
     never_expires = _coerce_never_expires(section.get("token_never_expires"))
     return {
         "access_token_age_days": age,
@@ -463,8 +453,6 @@ def _detect_auth_hook(host: str, settings_path: Path) -> bool:
     """
     if host == _HOST_DESKTOP:
         return False
-    from mureo.credential_guard import is_guard_entry
-
     path = settings_path.parent / "hooks.json" if host == _HOST_CODEX else settings_path
     hooks = read_json_safe(path).get("hooks")
     if not isinstance(hooks, dict):

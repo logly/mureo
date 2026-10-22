@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from mureo.web.instance import probe_mureo_instance, read_state_file
 from mureo.web.service import (
@@ -29,9 +29,6 @@ from mureo.web.service import (
     dashboard_url,
 )
 from mureo.web.service._common import service_command
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +149,8 @@ def status(*, home: Path | None = None, port: int = SERVICE_PORT) -> StatusResul
     Prefer the actually-bound port/url from configure.json so an ephemeral-port
     fallback (SERVICE_PORT busy at launch) is not misreported as "not running".
     """
-    from pathlib import Path as _Path
-
     installed = _task_exists()
-    persisted = read_state_file(home if home is not None else _Path.home())
+    persisted = read_state_file(home if home is not None else Path.home())
     if persisted is not None:
         effective_port = int(persisted["port"])
         url = str(persisted["url"])

@@ -6,13 +6,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from importlib import resources
 from pathlib import Path
 
 import typer
 
+# Read through the module (not bound to names here) so monkeypatched
+# wizard steps are honoured at call time.
+from mureo import auth_setup
 from mureo.cli._tty import confirm_or_default, is_tty
+from mureo.cli.setup_gemini import install_gemini_extension
 
 setup_app = typer.Typer(name="setup", help="Set up mureo for AI agent environments")
 
@@ -181,7 +186,11 @@ def _deploy_plugin_native_skills(dest: Path) -> None:
     rest, printing a one-line note instead.
     """
     try:
-        from mureo.cli.native_skills import install_native_skills
+        # ``mureo.cli.native_skills`` imports this module's data-path helpers
+        # at load.
+        from mureo.cli.native_skills import (  # noqa: PLC0415 — import cycle: mureo.cli.setup_cmd -> mureo.cli.native_skills (#879)
+            install_native_skills,
+        )
 
         count, _ = install_native_skills(dest)
         if count:
@@ -221,8 +230,6 @@ def setup_claude_code(
     4. Workflow commands installation
     5. Skills installation
     """
-    import asyncio
-
     typer.echo("=== mureo Setup for Claude Code ===\n")
 
     # 1. Authentication
@@ -241,28 +248,20 @@ def setup_claude_code(
         )
 
         if google:
-            from mureo.auth_setup import setup_google_ads
-
-            asyncio.run(setup_google_ads())
+            asyncio.run(auth_setup.setup_google_ads())
 
         if meta:
-            from mureo.auth_setup import setup_meta_ads
-
-            asyncio.run(setup_meta_ads())
+            asyncio.run(auth_setup.setup_meta_ads())
 
     # 2. MCP configuration
-    from mureo.auth_setup import install_mcp_config
-
-    mcp_result = install_mcp_config(scope="global")
+    mcp_result = auth_setup.install_mcp_config(scope="global")
     if mcp_result is not None:
         typer.echo(f"MCP configuration added: {mcp_result}")
     else:
         typer.echo("MCP configuration already exists.")
 
     # 3. Credential guard
-    from mureo.auth_setup import install_credential_guard
-
-    guard_result = install_credential_guard()
+    guard_result = auth_setup.install_credential_guard()
     if guard_result is not None:
         typer.echo(f"Credential guard installed: {guard_result}")
     else:
@@ -308,8 +307,6 @@ def setup_cursor(
     Cursor supports MCP but does not support slash commands,
     skills, or PreToolUse hooks.
     """
-    import asyncio
-
     typer.echo("=== mureo Setup for Cursor ===\n")
 
     should_skip, banner = _should_skip_auth(skip_auth)
@@ -327,23 +324,17 @@ def setup_cursor(
         )
 
         if google:
-            from mureo.auth_setup import setup_google_ads
-
-            asyncio.run(setup_google_ads())
+            asyncio.run(auth_setup.setup_google_ads())
 
         if meta:
-            from mureo.auth_setup import setup_meta_ads
-
-            asyncio.run(setup_meta_ads())
+            asyncio.run(auth_setup.setup_meta_ads())
 
     if not google and not meta and not should_skip:
         typer.echo("Setup skipped.")
         return
 
     # MCP config for Cursor (.cursor/mcp.json)
-    from mureo.auth_setup import install_mcp_config
-
-    result = install_mcp_config(scope="project")
+    result = auth_setup.install_mcp_config(scope="project")
     if result is not None:
         typer.echo(f"\nMCP config written to {result}")
     else:
@@ -381,9 +372,8 @@ def setup_codex(
     setup layer-for-layer; workflow commands are installed as Codex
     skills (invoked with ``$<command>`` or via ``/skills``).
     """
-    import asyncio
-
-    from mureo.cli.setup_codex import (
+    # ``mureo.cli.setup_codex`` imports this module's data-path helper at load.
+    from mureo.cli.setup_codex import (  # noqa: PLC0415 — import cycle: mureo.cli.setup_cmd -> mureo.cli.setup_codex (#879)
         install_codex_credential_guard,
         install_codex_mcp_config,
         install_codex_skills,
@@ -406,14 +396,10 @@ def setup_codex(
         )
 
         if google:
-            from mureo.auth_setup import setup_google_ads
-
-            asyncio.run(setup_google_ads())
+            asyncio.run(auth_setup.setup_google_ads())
 
         if meta:
-            from mureo.auth_setup import setup_meta_ads
-
-            asyncio.run(setup_meta_ads())
+            asyncio.run(auth_setup.setup_meta_ads())
 
     mcp_result = install_codex_mcp_config()
     if mcp_result is not None:
@@ -472,10 +458,6 @@ def setup_gemini(
     PreToolUse hook surface or the ``.md`` command format mureo bundles,
     so neither is installed here.
     """
-    import asyncio
-
-    from mureo.cli.setup_gemini import install_gemini_extension
-
     typer.echo("=== mureo Setup for Gemini CLI ===\n")
 
     should_skip, banner = _should_skip_auth(skip_auth)
@@ -492,14 +474,10 @@ def setup_gemini(
         )
 
         if google:
-            from mureo.auth_setup import setup_google_ads
-
-            asyncio.run(setup_google_ads())
+            asyncio.run(auth_setup.setup_google_ads())
 
         if meta:
-            from mureo.auth_setup import setup_meta_ads
-
-            asyncio.run(setup_meta_ads())
+            asyncio.run(auth_setup.setup_meta_ads())
 
     manifest = install_gemini_extension()
     typer.echo(f"\nGemini extension manifest written to {manifest}")

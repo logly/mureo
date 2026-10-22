@@ -6,12 +6,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import typer
 
+# Read through the module (not bound to names here) so monkeypatched
+# wizard steps are honoured at call time.
+from mureo import auth_setup
 from mureo.auth import (
     AmazonAdsCredentials,
+    GoogleAdsCredentials,
     MetaAdsCredentials,
     load_amazon_ads_credentials,
     load_google_ads_credentials,
@@ -185,10 +190,8 @@ def check_amazon() -> None:
 
 
 @auth_app.command("setup")  # type: ignore[untyped-decorator, unused-ignore]
-def auth_setup() -> None:
+def auth_setup_command() -> None:
     """Interactive setup wizard (terminal)."""
-    import asyncio
-
     typer.echo("=== mureo Setup Wizard ===")
     typer.echo("")
     # Amazon Ads gets no prompt here on purpose: it authenticates with
@@ -202,28 +205,20 @@ def auth_setup() -> None:
     meta = typer.confirm("Configure Meta Ads?", default=True)
 
     if google:
-        from mureo.auth_setup import setup_google_ads
-
-        asyncio.run(setup_google_ads())
+        asyncio.run(auth_setup.setup_google_ads())
 
     if meta:
-        from mureo.auth_setup import setup_meta_ads
-
-        asyncio.run(setup_meta_ads())
+        asyncio.run(auth_setup.setup_meta_ads())
 
     if not google and not meta:
         typer.echo("Setup skipped.")
         return
 
     # MCP configuration deployment
-    from mureo.auth_setup import setup_mcp_config
-
-    setup_mcp_config()
+    auth_setup.setup_mcp_config()
 
     # Credential guard hook
-    from mureo.auth_setup import install_credential_guard
-
-    result = install_credential_guard()
+    result = auth_setup.install_credential_guard()
     if result is not None:
         typer.echo(f"Credential guard installed: {result}")
         typer.echo("  AI agents are now blocked from reading ~/.mureo/credentials.json")
@@ -241,11 +236,6 @@ def auth_upgrade_google() -> None:
     to run a new OAuth flow with expanded scopes (Google Ads +
     Search Console). The new refresh_token replaces the old one.
     """
-    import asyncio
-
-    from mureo.auth import load_google_ads_credentials
-    from mureo.auth_setup import run_google_oauth, save_credentials
-
     creds = load_google_ads_credentials()
     if creds is None:
         typer.echo(
@@ -264,13 +254,11 @@ def auth_upgrade_google() -> None:
     typer.echo("")
 
     oauth_result = asyncio.run(
-        run_google_oauth(
+        auth_setup.run_google_oauth(
             client_id=creds.client_id,
             client_secret=creds.client_secret,
         )
     )
-
-    from mureo.auth import GoogleAdsCredentials
 
     updated_creds = GoogleAdsCredentials(
         developer_token=creds.developer_token,
@@ -281,7 +269,7 @@ def auth_upgrade_google() -> None:
         customer_id=creds.customer_id,
     )
 
-    save_credentials(google=updated_creds)
+    auth_setup.save_credentials(google=updated_creds)
 
     typer.echo("\nGoogle OAuth scopes upgraded successfully.")
     typer.echo("Search Console access is now available.")

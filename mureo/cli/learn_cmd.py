@@ -31,6 +31,8 @@ from enum import Enum
 
 import typer
 
+from mureo.core.runtime_context import get_runtime_context
+
 learn_app = typer.Typer(
     name="learn",
     help="Append insights to the diagnostic knowledge base.",
@@ -81,8 +83,6 @@ def learn_add(
     scope: _Scope = _SCOPE_OPTION,
 ) -> None:
     """Append an insight to the diagnostic knowledge base."""
-    from mureo.core.runtime_context import get_runtime_context
-
     store = get_runtime_context().knowledge_store
     if scope is _Scope.OPERATOR:
         store.append_operator_knowledge(text)
@@ -124,8 +124,6 @@ def learn_tiers() -> None:
     reporting ``absent`` would send the caller down the silent
     operator-only path and misroute a workspace-scoped insight.
     """
-    from mureo.core.runtime_context import get_runtime_context
-
     store = get_runtime_context().knowledge_store
     try:
         has_workspace = store.read_workspace_knowledge() is not None

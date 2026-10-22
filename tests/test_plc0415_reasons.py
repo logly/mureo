@@ -2,21 +2,20 @@
 
 ``PLC0415`` (import outside the module's top level) is on for the whole
 package. Ruff itself finds every function-local import, with ``--ignore-noqa``
-so that no suppression can hide one, and each one outside the ratcheted
-packages has to carry ``# noqa: PLC0415 — <reason>`` with one of the four
-reasons AGENTS.md lists. An ``import cycle`` reason names two real modules,
-and the second one is the module the statement imports. No file-level
-``# ruff: noqa`` may cover the rule.
+so that no suppression can hide one, and each one has to carry
+``# noqa: PLC0415 — <reason>`` with one of the four reasons AGENTS.md
+lists. An ``import cycle`` reason names two real modules, and the second
+one is the module the statement imports. No file-level ``# ruff: noqa``
+may cover the rule.
 
-The per-file ignore that switches the rule off for ``web`` / ``cli`` is
-temporary (#863 stage 4c) and only shrinks, and nothing else in the
-ruff config may switch the rule off.
+The rule stays in ``select``, and the ``tests/**`` per-file ignore is the
+only place in the ruff config that may switch it off: no per-file ignore
+under ``mureo/`` may list it.
 """
 
 from __future__ import annotations
 
 import ast
-import fnmatch
 import importlib.util
 import io
 import json
@@ -40,11 +39,8 @@ _PACKAGE_ROOT = pathlib.Path(mureo.__file__).resolve().parent
 _REPO_ROOT = _PACKAGE_ROOT.parent
 _RULE = "PLC0415"
 
-#: ``per-file-ignores`` globs allowed to switch the rule off under ``mureo/``.
-_PLC0415_RATCHET = frozenset({"mureo/web/**", "mureo/cli/**"})
-
 #: Every ``per-file-ignores`` key allowed to list the rule at all.
-_PLC0415_IGNORE_KEYS = _PLC0415_RATCHET | {"tests/**"}
+_PLC0415_IGNORE_KEYS = frozenset({"tests/**"})
 
 _NOQA = re.compile(
     r"#\s*noqa:\s*(?P<codes>[A-Z]+\d+(?:\s*,\s*[A-Z]+\d+)*)(?P<reason>.*)"
@@ -165,12 +161,8 @@ def _unreasoned_site(rel: str, line: int) -> str | None:
 
 @pytest.mark.unit
 def test_every_function_local_import_names_a_known_reason() -> None:
-    hits = [
-        (rel, line)
-        for rel, line in _plc0415_hits()
-        if not any(fnmatch.fnmatchcase(rel, glob) for glob in _PLC0415_RATCHET)
-    ]
-    assert hits, "ruff found no function-local import outside the ratchet"
+    hits = _plc0415_hits()
+    assert hits, "ruff found no function-local import under mureo/"
     unreasoned = [_unreasoned_site(rel, line) for rel, line in hits]
     assert [site for site in unreasoned if site is not None] == []
 
@@ -261,7 +253,7 @@ def _covers(codes: list[str]) -> bool:
 
 
 @pytest.mark.unit
-def test_plc0415_ratchet_only_shrinks() -> None:
+def test_plc0415_is_switched_off_only_for_tests() -> None:
     ruff = _ruff_config()
     lint = ruff.get("lint", {})
     assert _RULE in lint.get("select", [])

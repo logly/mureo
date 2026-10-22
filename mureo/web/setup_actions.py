@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 
     from mureo.providers.catalog import ProviderSpec
 
+# Read through the module (not bound to names here) so monkeypatched
+# ``install_mcp_config`` / ``install_credential_guard`` are honoured at
+# call time.
+from mureo import auth_setup
 from mureo.cli.native_skills import install_native_skills, remove_native_skills
 from mureo.cli.settings_remove import (
     remove_credential_guard,
@@ -32,6 +36,10 @@ from mureo.cli.setup_codex import (
     install_codex_credential_guard,
     remove_codex_credential_guard,
 )
+
+# Read through the modules (not bound to names here) so monkeypatched
+# provider installers and settings writers are honoured at call time.
+from mureo.providers import catalog, config_writer, installer, mureo_env
 from mureo.web.codex_mcp import (
     install_codex_mcp_block,
     install_codex_server_block,
@@ -52,6 +60,8 @@ from mureo.web.desktop_mcp import (
     set_mureo_disable_env_desktop,
     unset_mureo_disable_env_desktop,
 )
+from mureo.web.env_var_writer import build_provider_env
+from mureo.web.host_paths import get_host_paths
 from mureo.web.setup_state import PART_HOOK, PART_MCP, PART_SKILLS
 
 logger = logging.getLogger(__name__)
@@ -117,8 +127,6 @@ def _codex_hooks_path(home: Path | None) -> Path:
 
 def _codex_skills_dir(home: Path | None) -> Path:
     """``<home>/.codex/skills`` — Codex's own skill directory."""
-    from mureo.web.host_paths import get_host_paths
-
     return get_host_paths(_HOST_CODEX, home).skills_dir
 
 
@@ -168,11 +176,8 @@ def backfill_disable_for_installed_providers(
     never disabled.
     """
     try:
-        from mureo.providers.catalog import get_catalog
-        from mureo.web.host_paths import get_host_paths
-
         registry = get_host_paths(host, home).mcp_registry_path
-        for spec in get_catalog():
+        for spec in catalog.get_catalog():
             platform = spec.coexists_with_mureo_platform
             if not platform:
                 continue
@@ -216,9 +221,7 @@ def _apply_disable_env(
         env_var = "MUREO_DISABLE_" + platform.upper()
         changed = set_mureo_disable_env_codex(resolve_codex_config_path(home), env_var)
         return changed, True
-    from mureo.providers.mureo_env import set_mureo_disable_env
-
-    res = set_mureo_disable_env(platform, settings_path=registry)  # type: ignore[arg-type]
+    res = mureo_env.set_mureo_disable_env(platform, settings_path=registry)  # type: ignore[arg-type]
     return res.changed, res.mureo_block_present
 
 
@@ -232,9 +235,7 @@ def _registered_in_registry(host: str, provider_id: str, registry: Path) -> bool
     """
     if host == _HOST_CODEX:
         return is_codex_server_installed(registry, provider_id)
-    from mureo.providers.config_writer import is_provider_installed
-
-    return is_provider_installed(provider_id, settings_path=registry)
+    return config_writer.is_provider_installed(provider_id, settings_path=registry)
 
 
 def _disable_native_for(
@@ -272,8 +273,6 @@ def set_native_preference(
         return ActionResult(status="error", detail="invalid_platform")
 
     try:
-        from mureo.web.host_paths import get_host_paths
-
         registry = get_host_paths(host, home).mcp_registry_path
     except Exception as exc:  # noqa: BLE001
         logger.exception("set_native_preference path resolve failed")
@@ -284,17 +283,18 @@ def set_native_preference(
 
     # prefer_official: guard — the official path must really be usable.
     try:
-        from mureo.providers.catalog import get_catalog
-        from mureo.providers.config_writer import is_hosted_provider_connected
-
         spec = next(
-            (s for s in get_catalog() if s.coexists_with_mureo_platform == platform),
+            (
+                s
+                for s in catalog.get_catalog()
+                if s.coexists_with_mureo_platform == platform
+            ),
             None,
         )
         if spec is None:
             return ActionResult(status="error", detail="invalid_platform")
         if spec.install_kind == "hosted_http":
-            if not is_hosted_provider_connected(spec):
+            if not config_writer.is_hosted_provider_connected(spec):
                 return ActionResult(status="error", detail="connector_not_connected")
         elif not _registered_in_registry(host, spec.id, registry):
             return ActionResult(status="error", detail="provider_not_installed")
@@ -337,9 +337,7 @@ def _restore_native(
                 resolve_codex_config_path(home), env_var
             )
         else:
-            from mureo.providers.mureo_env import unset_mureo_disable_env
-
-            changed = unset_mureo_disable_env(
+            changed = mureo_env.unset_mureo_disable_env(
                 platform,  # type: ignore[arg-type]
                 settings_path=registry,
             ).changed
@@ -365,9 +363,7 @@ def install_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Actio
         result = _install_codex_mcp(home)
     else:
         try:
-            from mureo.auth_setup import install_mcp_config
-
-            res = install_mcp_config(scope="global")
+            res = auth_setup.install_mcp_config(scope="global")
         except Exception as exc:  # noqa: BLE001
             logger.exception("install_mureo_mcp failed")
             return ActionResult(status="error", detail=type(exc).__name__)
@@ -399,9 +395,7 @@ def install_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Actio
         if host == _HOST_CODEX:
             result = install_codex_credential_guard(_codex_hooks_path(home))
         else:
-            from mureo.auth_setup import install_credential_guard
-
-            result = install_credential_guard()
+            result = auth_setup.install_credential_guard()
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_auth_hook failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -496,8 +490,6 @@ def _credential_env_for(
     section = spec.coexists_with_mureo_platform
     if not section:
         return {}
-    from mureo.web.env_var_writer import build_provider_env
-
     return build_provider_env(
         (*spec.required_env, *spec.optional_env),
         section,
@@ -572,17 +564,7 @@ def _install_provider_code(
     registering into an unusable, credential-less state.
     """
     try:
-        from mureo.providers.catalog import get_provider
-        from mureo.providers.config_writer import (
-            add_provider_to_claude_settings,
-        )
-        from mureo.providers.installer import run_install
-        from mureo.providers.mureo_env import (
-            add_provider_and_disable_in_mureo,
-            unset_mureo_disable_env,
-        )
-
-        spec = get_provider(provider_id)
+        spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult(status="error", detail="unknown_provider")
     except Exception as exc:  # noqa: BLE001
@@ -609,7 +591,7 @@ def _install_provider_code(
         return ActionResult(status="manual_required", detail=spec.id)
 
     try:
-        result = run_install(spec, dry_run=False)
+        result = installer.run_install(spec, dry_run=False)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider subprocess failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -635,14 +617,14 @@ def _install_provider_code(
     credentialed = platform is not None and _is_credentialed(spec, extra_env)
     try:
         if credentialed:
-            add_provider_and_disable_in_mureo(spec, extra_env=extra_env)
+            mureo_env.add_provider_and_disable_in_mureo(spec, extra_env=extra_env)
         else:
-            add_provider_to_claude_settings(spec, extra_env=extra_env)
+            config_writer.add_provider_to_claude_settings(spec, extra_env=extra_env)
             if platform is not None:
                 # Clear any MUREO_DISABLE_<platform> a prior credentialed
                 # install left behind, so re-registering without full creds
                 # never leaves native off AND official unauthenticated.
-                unset_mureo_disable_env(platform)
+                mureo_env.unset_mureo_disable_env(platform)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider settings write failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -701,10 +683,7 @@ def _install_provider_desktop(
     ``credentials.json`` is never touched.
     """
     try:
-        from mureo.providers.catalog import get_provider
-        from mureo.providers.installer import run_install
-
-        spec = get_provider(provider_id)
+        spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult(status="error", detail="unknown_provider")
     except Exception as exc:  # noqa: BLE001
@@ -730,7 +709,7 @@ def _install_provider_desktop(
 
     if spec.install_argv:
         try:
-            result = run_install(spec, dry_run=False)
+            result = installer.run_install(spec, dry_run=False)
         except Exception as exc:  # noqa: BLE001
             logger.exception("install_provider (desktop) subprocess failed")
             return ActionResult(status="error", detail=type(exc).__name__)
@@ -773,10 +752,7 @@ def _install_provider_codex(
     ``credentials.json`` is never touched.
     """
     try:
-        from mureo.providers.catalog import get_provider
-        from mureo.providers.installer import run_install
-
-        spec = get_provider(provider_id)
+        spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult(status="error", detail="unknown_provider")
     except Exception as exc:  # noqa: BLE001
@@ -788,7 +764,7 @@ def _install_provider_codex(
 
     if spec.install_argv:
         try:
-            result = run_install(spec, dry_run=False)
+            result = installer.run_install(spec, dry_run=False)
         except Exception as exc:  # noqa: BLE001
             logger.exception("install_provider (codex) subprocess failed")
             return ActionResult(status="error", detail=type(exc).__name__)
@@ -846,9 +822,7 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
     config file is missing. ``credentials.json`` is never touched.
     """
     try:
-        from mureo.providers.catalog import get_provider
-
-        spec = get_provider(provider_id)
+        spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult(status="error", detail="unknown_provider")
     except Exception as exc:  # noqa: BLE001
@@ -896,9 +870,7 @@ def _remove_provider_codex(provider_id: str, home: Path | None) -> ActionResult:
     (``noop not_registered``). ``credentials.json`` is never touched.
     """
     try:
-        from mureo.providers.catalog import get_provider
-
-        spec = get_provider(provider_id)
+        spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult(status="error", detail="unknown_provider")
     except Exception as exc:  # noqa: BLE001
@@ -948,12 +920,7 @@ def remove_provider(
         return _remove_provider_codex(provider_id, home)
 
     try:
-        from mureo.providers.catalog import get_provider
-        from mureo.providers.config_writer import (
-            remove_provider_from_claude_settings,
-        )
-
-        get_provider(provider_id)
+        catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult(status="error", detail="unknown_provider")
     except Exception as exc:  # noqa: BLE001
@@ -961,7 +928,7 @@ def remove_provider(
         return ActionResult(status="error", detail=type(exc).__name__)
 
     try:
-        result = remove_provider_from_claude_settings(provider_id)
+        result = config_writer.remove_provider_from_claude_settings(provider_id)
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_provider failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -1009,9 +976,7 @@ def confirm_hosted_provider(
     (``unknown_provider`` / ``not_hosted`` / ``no_mureo_block``).
     """
     try:
-        from mureo.providers.catalog import get_provider
-
-        spec = get_provider(provider_id)
+        spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult(status="error", detail="unknown_provider")
     except Exception as exc:  # noqa: BLE001
@@ -1032,11 +997,7 @@ def confirm_hosted_provider(
             if not affirm:
                 return ActionResult(status="manual", detail=spec.id)
         else:
-            from mureo.providers.config_writer import (
-                hosted_provider_connectivity,
-            )
-
-            conn = hosted_provider_connectivity(spec)
+            conn = config_writer.hosted_provider_connectivity(spec)
             if conn == "not_connected":
                 return ActionResult(status="not_connected", detail=spec.id)
             if conn == "unknown" and not affirm:
@@ -1062,9 +1023,7 @@ def confirm_hosted_provider(
             )
             mureo_block_present = True  # Codex has no such signal
         else:
-            from mureo.providers.mureo_env import set_mureo_disable_env
-
-            env_result = set_mureo_disable_env(platform)
+            env_result = mureo_env.set_mureo_disable_env(platform)
             changed = env_result.changed
             mureo_block_present = env_result.mureo_block_present
     except Exception as exc:  # noqa: BLE001
@@ -1096,12 +1055,9 @@ def hosted_provider_status(host: str = _HOST_CODE) -> dict[str, bool]:
     """
     del host  # detection is CLI-based; absent ⇒ False (correct for Desktop)
     try:
-        from mureo.providers.catalog import get_catalog
-        from mureo.providers.config_writer import is_hosted_provider_connected
-
         return {
-            spec.id: is_hosted_provider_connected(spec)
-            for spec in get_catalog()
+            spec.id: config_writer.is_hosted_provider_connected(spec)
+            for spec in catalog.get_catalog()
             if spec.install_kind == "hosted_http"
         }
     except Exception:  # noqa: BLE001 — status probe must never raise
@@ -1243,9 +1199,11 @@ def _installed_official_providers(
         return [pid for pid in _OFFICIAL_PROVIDER_IDS if pid in installed]
 
     if host != _HOST_DESKTOP:
-        from mureo.providers.config_writer import is_provider_installed
-
-        return [pid for pid in _OFFICIAL_PROVIDER_IDS if is_provider_installed(pid)]
+        return [
+            pid
+            for pid in _OFFICIAL_PROVIDER_IDS
+            if config_writer.is_provider_installed(pid)
+        ]
 
     settings_path = resolve_desktop_config_path(home)
     if not settings_path.exists():

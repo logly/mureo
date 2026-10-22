@@ -42,6 +42,7 @@ from mureo.auth import (
     save_amazon_access_token,
 )
 from mureo.core.atomic_json import ConfigWriteError
+from mureo.core.scrub import PROSE, scrub_capped
 
 amazon_app = typer.Typer(name="amazon", help="Amazon Ads official-MCP bridge setup")
 
@@ -63,19 +64,15 @@ def _scrub_secrets(text: str) -> str:
     code>`` pass must run and an ambiguous root such as ``password:``
     counts with a space-padded colon.
 
-    The import stays at call time (#486 pattern, guarded by
-    ``tests/test_cli_import_hygiene.py``). It used to resolve
-    ``mureo.mcp.plugin_audit``, whose package ``__init__`` imports the MCP
-    server, which collects plugin tools AT IMPORT — and since #516 that
-    collection resolves the active ``RuntimeContext``, so a module-level
-    import here made *every* CLI command (``--help`` included) load
-    whatever a registered ``mureo.runtime_context_factory`` drags in.
-    ``mureo.core.scrub`` is the same redactor below that layer (#758 phase
-    2) and drags in nothing, but it does compile a dozen patterns at
-    import, and scrubbing is only ever needed on an error path.
+    The redactor is ``mureo.core.scrub`` (#758 phase 2), below the MCP
+    layer. It used to be ``mureo.mcp.plugin_audit``, whose package
+    ``__init__`` imports the MCP server, which collects plugin tools AT
+    IMPORT — and since #516 that collection resolves the active
+    ``RuntimeContext``, so importing it made *every* CLI command
+    (``--help`` included) load whatever a registered
+    ``mureo.runtime_context_factory`` drags in (#486, guarded by
+    ``tests/test_cli_import_hygiene.py``).
     """
-    from mureo.core.scrub import PROSE, scrub_capped
-
     return scrub_capped(text, MAX_ERROR_TEXT, mode=PROSE)
 
 

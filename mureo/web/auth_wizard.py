@@ -45,6 +45,7 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from mureo import auth_setup
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 from mureo.auth_setup import (
     build_google_flow,
@@ -92,8 +93,6 @@ def __getattr__(name: str) -> Any:
     """Resolve the deferred account-listing re-exports on first access."""
     if name not in _LAZY_REEXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from mureo import auth_setup
-
     # ``mureo.auth_setup`` owns the module map; going through it keeps a
     # single source of truth for where each helper actually lives.
     return getattr(auth_setup, name)
