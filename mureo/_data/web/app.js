@@ -138,6 +138,53 @@
     return { ok: false, code: (body && (body.error || body.detail)) || null, body: body };
   }
 
+  // #891: the multi-step routes (basic setup, clear-all) answer with one
+  // entry per step — the 200 body, or ``steps`` of the 500 they send when
+  // every step failed. An entry with a ``status`` is a step; an object
+  // without one (``providers``) holds one step per key. A basic step is
+  // named by its wizard label, a provider by its id; a code with no message
+  // here is shown as the code.
+  const STEP_NAME_KEYS = {
+    mureo_mcp: "wizard.basic.mureo_mcp",
+    auth_hook: "wizard.basic.auth_hook",
+    skills: "wizard.basic.skills",
+  };
+  const STEP_ERROR_KEYS = {
+    internal_error: "app.step_err_internal_error",
+    unknown_provider: "app.step_err_unknown_provider",
+  };
+
+  // The failed steps of ``steps``, as ``[{step, code}]``.
+  function stepFailures(steps) {
+    const isObject = function (value) {
+      return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+    };
+    if (!isObject(steps)) return [];
+    const failures = [];
+    const read = function (name, entry) {
+      if (isObject(entry) && entry.status === "error") {
+        failures.push({ step: name, code: entry.error || null });
+      }
+    };
+    Object.keys(steps).forEach(function (name) {
+      const entry = steps[name];
+      if (!isObject(entry) || "status" in entry) return read(name, entry);
+      Object.keys(entry).forEach(function (inner) {
+        read(inner, entry[inner]);
+      });
+    });
+    return failures;
+  }
+
+  // One failed step as "<step>: <message>", or "<step>" when it has no code.
+  function stepFailureText(failure) {
+    const nameKey = STEP_NAME_KEYS[failure.step];
+    const name = nameKey ? t(nameKey) : failure.step;
+    if (!failure.code) return name;
+    const codeKey = STEP_ERROR_KEYS[failure.code];
+    return name + ": " + (codeKey ? t(codeKey) : failure.code);
+  }
+
   function toast(message, kind) {
     // ``kind`` is optional and accepts ``"info"`` (default), ``"success"``,
     // or ``"error"`` — translated to a ``is-<kind>`` CSS class so app.css
@@ -257,6 +304,8 @@
     setLocale: setLocale,
     postJson: postJson,
     postOutcome: postOutcome,
+    stepFailures: stepFailures,
+    stepFailureText: stepFailureText,
     loadStatus: loadStatus,
     toast: toast,
     confirmAction: confirmAction,

@@ -65,13 +65,27 @@
       MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
       return;
     }
-    if (!res || !res.ok) {
+    // #891: 200 with one entry per step, or 500 with the same entries in
+    // ``steps`` when every step failed; a failure without them is a failed
+    // request.
+    const outcome = MUREO.postOutcome(res);
+    const failures = MUREO.stepFailures(
+      outcome.ok ? outcome.body : outcome.body && outcome.body.steps
+    );
+    if (!outcome.ok && failures.length === 0) {
       MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
       return;
     }
     await MUREO.loadStatus();
     renderAll();
-    MUREO.toast(MUREO.t("dashboard.clear_all_success"), "success");
+    if (failures.length === 0) {
+      MUREO.toast(MUREO.t("dashboard.clear_all_success"), "success");
+      return;
+    }
+    const items = failures
+      .map(MUREO.stepFailureText)
+      .join(MUREO.t("dashboard.clear_all_steps_failed_separator"));
+    MUREO.toast(MUREO.t("dashboard.clear_all_steps_failed", { items: items }), "error");
   }
 
   function wireBulkClearButton() {

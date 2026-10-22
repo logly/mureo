@@ -2849,9 +2849,9 @@ extension route that answers the same way is read the same way.
     never a file path, a sentence, an exception message or a platform's
     reply: the full error, scrubbed of secrets, stays in the server log.
   - The context keys in use are `region` (Amazon routes), `field`
-    (`/api/strategy/guardrails`) and `account_id`
-    (`/api/credentials/meta/token`). A context key never replaces `error`
-    or `detail`.
+    (`/api/strategy/guardrails`), `account_id`
+    (`/api/credentials/meta/token`) and `steps` (the multi-step routes,
+    below). A context key never replaces `error` or `detail`.
 - **Status**: `400` means the request was refused: bad, missing or unknown
   input, including an unknown id in the body (`unknown_provider` is always
   400 on a POST body). `409` means refused because of local state, and only
@@ -2860,7 +2860,8 @@ extension route that answers the same way is read the same way.
   (`internal_error` with the exception class name in `detail`,
   `install_failed`, `upgrade_failed`, `update_check_failed`,
   `picker_failed`, `demo_init_failed`, `bundle_import_failed`,
-  `byod_remove_failed`, `extension_handler_error`). `403` (CSRF / Host),
+  `byod_remove_failed`, `basic_setup_failed`, `basic_clear_failed`,
+  `extension_handler_error`). `403` (CSRF / Host),
   `413` (body too large) and `502` (an upstream platform failed) keep their
   meaning. `404` means an unknown path, including an unknown id that is
   part of the path (`/api/oauth/<provider>/...`,
@@ -2873,11 +2874,19 @@ extension route that answers the same way is read the same way.
   `needs_credentials`, `manual`, `not_connected`, `unverifiable`); a few
   routes have statuses of their own (`cancelled` from the file pickers,
   `checking` from `/api/updates` while a check runs). No route sends
-  `"status": "error"` with HTTP 200. Two things look similar and are not
-  failure bodies: the multi-step envelopes (`/api/setup/basic`,
-  `/api/setup/basic/clear`) are 200 bodies that report each step, and a
+  `"status": "error"` as the status of a 200 body.
+- **Multi-step routes** (`/api/setup/basic`, `/api/setup/basic/clear`):
+  the body reports each step under its own key (`mureo_mcp`, `auth_hook`,
+  `skills`; clear-all adds `providers`, one step per provider id), and a
   step that failed reads `{"status": "error", "error": "<code>",
-  "detail"?}`; and the OAuth status routes (`/api/oauth/<provider>/status`,
+  "detail"?}`. When every step failed — at least one is `error` and none
+  is anything but `error` or `skipped` — the route answers 500
+  `basic_setup_failed` / `basic_clear_failed` with those step entries
+  under `steps`, and no `detail`. Otherwise, including when only some
+  steps failed, it answers 200 with the step entries as the body. Either
+  way the UI reads the failed steps with `MUREO.stepFailures` (`app.js`)
+  and names each with `MUREO.stepFailureText`.
+- The OAuth status routes (`/api/oauth/<provider>/status`,
   `/api/credentials/plugins/<provider>/oauth/status`) answer 200 with the
   flow's state, whose `error` key is that state (`null` while nothing
   went wrong), not a failure of the request.
@@ -2891,7 +2900,9 @@ was given. The built-in actions return
 either, or the 200 body of a success. A success body that carries
 `"status": "error"` is a programming error: `send_result` raises instead
 of sending it, and the success result types refuse that status when they
-are built.
+are built. A multi-step route builds each step with `ActionResult.as_dict()`
+and sends the whole with `send_steps(handler, envelope, failure_code)`,
+which applies the every-step-failed rule above (`every_step_failed`).
 
 ### Lazy loading
 

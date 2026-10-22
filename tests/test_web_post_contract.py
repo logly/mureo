@@ -363,6 +363,65 @@ def test_failed_action_is_a_500_with_its_code(
     _assert_contract_body(body)
 
 
+#: The multi-step routes (#891): (route, the code of a run in which every
+#: step failed, the names each step's work is patched onto). A run where
+#: only some steps fail is a 200 envelope (tests/test_web_handlers.py).
+_EVERY_STEP_FAILED: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "/api/setup/basic",
+        "basic_setup_failed",
+        (
+            "mureo.web.setup_actions.auth_setup.install_mcp_config",
+            "mureo.web.setup_actions.auth_setup.install_credential_guard",
+            "mureo.web.setup_actions.install_skills",
+        ),
+    ),
+    (
+        "/api/setup/basic/clear",
+        "basic_clear_failed",
+        (
+            "mureo.web.setup_actions.remove_mcp_config",
+            "mureo.web.setup_actions.remove_credential_guard",
+            "mureo.web.setup_actions.remove_skills",
+        ),
+    ),
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("path", "code", "targets"),
+    [pytest.param(*case, id=case[0]) for case in _EVERY_STEP_FAILED],
+)
+def test_every_step_failed_is_a_500_with_the_steps(
+    tripwires: list[str],
+    wizard: ConfigureWizard,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    code: str,
+    targets: tuple[str, ...],
+) -> None:
+    def _fail(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError("disk")
+
+    for target in targets:
+        monkeypatch.setattr(target, _fail)
+    # The clear-all provider probe asks the `claude` CLI; no provider is
+    # registered in the temp HOME, so answer that without spawning it.
+    monkeypatch.setattr(
+        "mureo.web.setup_actions._installed_official_providers",
+        lambda *_args, **_kwargs: [],
+    )
+    status, body = post_refused(wizard, path, {})
+
+    failed = {"status": "error", "error": "internal_error", "detail": "OSError"}
+    steps = {"mureo_mcp": failed, "auth_hook": failed, "skills": failed}
+    if path.endswith("/clear"):
+        steps["providers"] = {}
+    assert (status, body) == (500, {"error": code, "steps": steps})
+    _assert_contract_body(body)
+
+
 class _BrokenRegistry:
     """A scenario registry that cannot be read."""
 

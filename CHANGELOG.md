@@ -36,14 +36,24 @@
   card no longer shows Graph's reply under its message.
   `GET /api/reports/ops-history` answers a bad `since` / `until` with the
   codes `since_invalid`, `until_invalid` and `until_before_since` instead
-  of a sentence. In `/api/setup/basic` and `/api/setup/basic/clear`, still
-  HTTP 200, a failed step now carries `"error": <code>` next to its
-  `"status": "error"`. The contract is written down in
+  of a sentence. In `/api/setup/basic` and `/api/setup/basic/clear`, a
+  failed step now carries `"error": <code>` next to its
+  `"status": "error"`; these routes stay HTTP 200 unless every step
+  failed, which is HTTP 500 (#891, below). The contract is written down in
   `docs/plugin-authoring.md` ("Failure contract").
 - **The setup wizard's provider install treats an already-registered
   provider as done** (#864). An install that answers `noop` (the provider
   was already registered) now completes the step, as `ok` does, instead of
   showing the install failure message.
+- **`/api/setup/basic` and `/api/setup/basic/clear` answer 500 when every
+  step failed** (#891). When at least one step failed and no step did
+  anything but fail or be skipped, the route now answers HTTP 500
+  `{"error": "basic_setup_failed" | "basic_clear_failed", "steps": <the
+  per-step entries>}` instead of HTTP 200. A run in which only some steps
+  failed, or none, is still HTTP 200 with the per-step entries as the body.
+  Each clear-all provider counts as a step of its own. `steps` joins the
+  failure contract's context keys (`docs/plugin-authoring.md`, "Failure
+  contract").
 - **The outcome verdict is read off one primary metric** (#888). Before,
   any regressed metric made the whole outcome `regressed`, so a CPA down
   30% with CTR down 11% read as a regression. Now the primary metric
@@ -157,6 +167,17 @@
   `period_unknown`, `zero_baseline`, `target_not_reached`, `no_change`)
   and the `basis` value `bidding_target`; `mureo_outcome_evaluate` returns
   `primary`, `basis` and `reason` (when set).
+
+### Fixed
+
+- **The configure UI shows which basic-setup / clear-all steps failed**
+  (#891). The setup wizard used to mark the basic step done on any HTTP
+  200, and Clear All said "Cleanup complete." the same way, even when a
+  step had failed. Now the wizard keeps the step open, lists each failed
+  step under the install button ("<step>: <reason>") until a run
+  succeeds, and refreshes the step marks; Clear All repaints and names the
+  failed steps in its message. A failure with no per-step entries still
+  shows the old "Setup failed" / "Removal failed" message.
 
 ## [0.31.0] - 2026-10-22
 

@@ -314,7 +314,8 @@ mureo/
 │   │                    #   web imports cli helper modules by public names; cli imports only the
 │   │                    #   web leaves (instance, service, report_clients) and configure_cmd;
 │   │                    #   no web submodule loads server.py unless it needs it (#863)
-│   ├── action_result.py # ActionResult + send_result: the one failure mapping of action routes (#864)
+│   ├── action_result.py # ActionResult + send_result: the one failure mapping of action routes (#864);
+│   │                    #   send_steps: multi-step envelope, 500 + "steps" only when every step failed (#891)
 │   └── auth_wizard.py   # Browser-based OAuth wizard spawned by web/oauth_bridge.py (per-platform creds)
 ├── demo/                # `mureo demo init` synthetic-bundle bootstrap (round-trips through BYOD)
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
