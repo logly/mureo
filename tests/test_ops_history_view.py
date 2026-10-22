@@ -262,6 +262,67 @@ class TestDerivedState:
         assert build_ops_history_items(parse_state("{}"), today=TODAY) == []
 
 
+def _two_evaluated(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any]:
+    """Decision H with two observed changes, each closed by ``first`` / ``second``."""
+    document = _document()
+    document["decisions"].append(_decision("H", "adopted", "2026-10-12"))
+    log = document["action_log"]
+    for table in (first, second):
+        index = len(log)
+        log.append(
+            _action(
+                decision_id="H",
+                observation_due="2026-10-13",
+                metrics_at_action={"cpa": 100},
+            )
+        )
+        log.append(
+            _action(
+                action="outcome_evaluated",
+                evaluation_of=index,
+                decision_id="H",
+                evaluation=table,
+            )
+        )
+    return document
+
+
+def _table(overall: str) -> dict[str, Any]:
+    return {
+        "rules": 2,
+        "overall": overall,
+        "basis": "default",
+        "primary": "cpa",
+        "metrics": [],
+    }
+
+
+class TestVerdictOrder:
+    """regressed > improved > held > inconclusive (#888)."""
+
+    @pytest.mark.parametrize(
+        ("first", "second", "verdict"),
+        [
+            ("held", "inconclusive", "held"),
+            ("held", "improved", "improved"),
+            ("regressed", "held", "regressed"),
+            ("held", "held", "held"),
+        ],
+    )
+    def test_the_item_verdict(self, first: str, second: str, verdict: str) -> None:
+        items = _items_of(_two_evaluated(_table(first), _table(second)))
+        assert items["H"]["state"] == "evaluated"
+        assert items["H"]["verdict"] == verdict
+
+    def test_a_table_without_rules_is_still_read(self) -> None:
+        legacy = {"overall": "improved", "basis": "expected", "metrics": []}
+        items = _items_of(_two_evaluated(legacy, _table("inconclusive")))
+        assert items["H"]["verdict"] == "improved"
+        evaluation = items["H"]["actions"][0]["evaluation"]
+        assert evaluation["overall"] == "improved"
+        assert "rules" not in evaluation["table"]
+
+
 @pytest.fixture
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     from mureo.core import clock

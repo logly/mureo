@@ -1,9 +1,9 @@
 """The ops history counts on each client card (#849).
 
-"Last 30 days: N changes · a improved · b regressed · c inconclusive · d
-observing" — counted here so the browser never counts. The items are the
-ones :mod:`mureo.context.ops_history_view` derives, read through the same
-date rule as every other history surface
+"Last 30 days: N changes · a improved · b regressed · h held · c
+inconclusive · d observing" — counted here so the browser never counts.
+The items are the ones :mod:`mureo.context.ops_history_view` derives, read
+through the same date rule as every other history surface
 (:func:`~mureo.context.ops_history_query.ops_history_items`), so the card
 and the detail section's default window cannot disagree about which
 changes the last 30 days hold.
@@ -14,7 +14,8 @@ What is counted:
   ``observing``, ``evaluated`` or ``skipped``. A decision still
   ``proposed`` / ``adopted`` with no change, or ``rejected`` / ``deferred``,
   changed nothing and is not a change.
-- ``improved`` / ``regressed``: evaluated items with that verdict.
+- ``improved`` / ``regressed`` / ``held``: evaluated items with that
+  verdict (``held``: an expected ``hold`` that held, #888).
 - ``regressed_open``: the regressed ones not rolled back — what the triage
   finding counts, since a reverted change needs nothing more.
 - ``inconclusive``: evaluated items with any other verdict, including none.
@@ -54,6 +55,7 @@ CHANGE_STATES: Final[frozenset[str]] = frozenset(
 
 _IMPROVED: Final = "improved"
 _REGRESSED: Final = "regressed"
+_HELD: Final = "held"
 
 
 def _zero() -> dict[str, int]:
@@ -62,6 +64,7 @@ def _zero() -> dict[str, int]:
         "improved": 0,
         "regressed": 0,
         "regressed_open": 0,
+        "held": 0,
         "inconclusive": 0,
         "observing": 0,
     }
@@ -84,7 +87,8 @@ def count_ops_history_items(items: Iterable[dict[str, Any]]) -> dict[str, int]:
             counts["observing"] += 1
         elif state == STATE_EVALUATED:
             verdict = item.get("verdict")
-            key = verdict if verdict in (_IMPROVED, _REGRESSED) else "inconclusive"
+            counted = (_IMPROVED, _REGRESSED, _HELD)
+            key = verdict if verdict in counted else "inconclusive"
             counts[key] += 1
             if key == _REGRESSED and not item.get("rolled_back"):
                 counts["regressed_open"] += 1

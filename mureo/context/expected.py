@@ -63,6 +63,9 @@ METRIC_ALIASES: Final[dict[str, str]] = {
     "conversion_rate": "cvr",
     "click_through_rate": "ctr",
     "return_on_ad_spend": "roas",
+    # A baseline's ``cost`` and a snapshot's ``spend`` are the same money
+    # (#888); ``spend`` is the STATE.json word, so it is the one kept.
+    "cost": "spend",
 }
 
 #: One entry per metric at most, so the vocabulary size is the bound.
@@ -75,13 +78,19 @@ EXPECTED_HORIZON_MAX_DAYS: Final[int] = 365
 #: Keys an entry may carry. Anything else is refused rather than dropped:
 #: a misspelled ``horizon`` silently ignored would read as "no horizon".
 _ALLOWED_KEYS: Final[frozenset[str]] = frozenset(
-    {"metric", "direction", "target", "horizon_days"}
+    {"metric", "direction", "target", "horizon_days", "primary"}
 )
 
 _SHAPE_HINT: Final = (
-    "expected must be an array of {metric, direction, target?, horizon_days?} "
-    "objects"
+    "expected must be an array of "
+    "{metric, direction, target?, horizon_days?, primary?} objects"
 )
+
+#: The code a declaration of several effects without exactly one
+#: ``primary: true`` is refused with (#888). It leads the ``ValueError``
+#: message, as ``write_denied: `` leads an automatic-closure skip, so a
+#: caller can match on it while the rest of the sentence says how to fix it.
+EXPECTED_PRIMARY_REQUIRED: Final = "expected_primary_required"
 
 
 @dataclass(frozen=True)
@@ -92,12 +101,15 @@ class ExpectedEffect:
     direction: One of :data:`EXPECTED_DIRECTIONS`.
     target: The figure the change aims for, in the metric's own unit.
     horizon_days: How many days after the change it should be judged.
+    primary: Whether this is the effect the verdict is read off (#888). One
+        declared effect is primary by itself; of several, exactly one is.
     """
 
     metric: str
     direction: str
     target: float | int | None = None
     horizon_days: int | None = None
+    primary: bool = False
 
     def __post_init__(self) -> None:
         """Normalise the two labels and refuse anything out of vocabulary."""
@@ -115,6 +127,10 @@ class ExpectedEffect:
             )
         _check_target(self.target)
         _check_horizon(self.horizon_days)
+        if not isinstance(self.primary, bool):
+            raise ValueError(
+                f"expected primary must be true or false; got {self.primary!r}"
+            )
 
 
 def _label(value: Any, name: str) -> str:
@@ -164,15 +180,38 @@ def _parse_item(item: Any) -> ExpectedEffect:
         direction=item["direction"],
         target=item.get("target"),
         horizon_days=item.get("horizon_days"),
+        primary=item.get("primary", False),
     )
 
 
-def parse_expected(raw: Any) -> tuple[ExpectedEffect, ...]:
+def _check_primary(effects: tuple[ExpectedEffect, ...]) -> None:
+    """Several effects need exactly one ``primary: true`` (#888)."""
+    if len(effects) < 2:
+        return
+    marked = sum(1 for effect in effects if effect.primary)
+    if marked != 1:
+        raise ValueError(
+            f"{EXPECTED_PRIMARY_REQUIRED}: expected declares {len(effects)} "
+            f"effects and marks {marked} primary; mark exactly one with "
+            '"primary": true, the metric the verdict is read off'
+        )
+
+
+def parse_expected(
+    raw: Any, *, require_primary: bool = True
+) -> tuple[ExpectedEffect, ...]:
     """Validate ``raw`` into effects, or raise ``ValueError`` naming why.
 
     ``None`` reads as "nothing declared" and returns ``()``. Every refusal
     names the offending part, because these messages are what an agent sees
     as ``invalid_args`` and has to correct from.
+
+    ``require_primary`` is the rule for a NEW declaration: several effects
+    need exactly one ``primary: true``, and a metric may not be named twice
+    under two synonyms (``cost`` and ``spend``). A stored declaration is
+    read with it off: one written before the rules existed may list several
+    effects and mark none (the evaluation then takes the first), or name
+    both synonyms; only the same name twice is refused there, as before.
     """
     if raw is None:
         return ()
@@ -185,9 +224,14 @@ def parse_expected(raw: Any) -> tuple[ExpectedEffect, ...]:
     effects = tuple(_parse_item(item) for item in raw)
     seen: set[str] = set()
     for effect in effects:
-        if effect.metric in seen:
+        # Canonical for a new declaration, so ``cost`` and ``spend`` are one
+        # metric; a stored one keeps the raw-name rule it was written under.
+        name = canonical_metric(effect.metric) if require_primary else effect.metric
+        if name in seen:
             raise ValueError(f"expected names metric {effect.metric!r} more than once")
-        seen.add(effect.metric)
+        seen.add(name)
+    if require_primary:
+        _check_primary(effects)
     return effects
 
 
@@ -200,6 +244,8 @@ def expected_to_list(effects: tuple[ExpectedEffect, ...]) -> list[dict[str, Any]
             item["target"] = effect.target
         if effect.horizon_days is not None:
             item["horizon_days"] = effect.horizon_days
+        if effect.primary:
+            item["primary"] = True
         rendered.append(item)
     return rendered
 
@@ -218,6 +264,7 @@ __all__ = [
     "EXPECTED_HORIZON_MAX_DAYS",
     "EXPECTED_MAX_ITEMS",
     "EXPECTED_METRICS",
+    "EXPECTED_PRIMARY_REQUIRED",
     "METRIC_ALIASES",
     "ExpectedEffect",
     "canonical_metric",

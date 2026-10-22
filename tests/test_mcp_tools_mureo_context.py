@@ -2540,7 +2540,7 @@ def _due_state(*, observation_due: str = "2026-07-20", fetched_at: str = "2026-0
                         "status": "ENABLED",
                         "metrics": {
                             "cpa": 5000,
-                            "conversions": 10,
+                            "conversions": 100,
                             "period": "LAST_30_DAYS",
                             "fetched_at": fetched_at,
                         },
@@ -2554,7 +2554,7 @@ def _due_state(*, observation_due: str = "2026-07-20", fetched_at: str = "2026-0
                 "action": "google_ads_budget_update",
                 "platform": "google_ads",
                 "campaign_id": "camp_1",
-                "metrics_at_action": {"cpa": 10000, "conversions": 5},
+                "metrics_at_action": {"cpa": 10000, "conversions": 50},
                 "observation_due": observation_due,
             }
         ],
@@ -2578,7 +2578,7 @@ async def test_state_get_closes_a_past_due_observation(
             "index": 0,
             "evaluation_index": 1,
             "overall": "improved",
-            "summary": "Improved on conversions, cpa.",
+            "summary": "Improved on cpa (primary).",
         }
     ]
     assert payload["auto_evaluation_skipped"] == []

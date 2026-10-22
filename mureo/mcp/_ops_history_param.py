@@ -147,6 +147,13 @@ EXPECTED_PROPERTY: Mapping[str, Any] = MappingProxyType(
                     "minimum": 1,
                     "maximum": EXPECTED_HORIZON_MAX_DAYS,
                 },
+                "primary": {
+                    "type": "boolean",
+                    "description": (
+                        "The effect the verdict is read off. One effect is "
+                        "primary by itself; with several, mark exactly one."
+                    ),
+                },
             },
             "required": ["metric", "direction"],
             "additionalProperties": False,
@@ -164,7 +171,8 @@ INJECTED_EXPECTED_PROPERTY: Mapping[str, Any] = MappingProxyType(
         "type": "array",
         "maxItems": EXPECTED_MAX_ITEMS,
         "description": (
-            "Expected effects [{metric, direction, target?, horizon_days?}]; "
+            "Expected effects [{metric, direction, target?, horizon_days?, "
+            "primary?}], exactly one primary:true when several; "
             f"metric {'/'.join(EXPECTED_METRICS)}; "
             f"direction {'/'.join(EXPECTED_DIRECTIONS)}."
         ),

@@ -106,6 +106,7 @@ from mureo.mcp._handlers_decisions import apply_decisions_scope
 from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
 from mureo.mcp._ops_history_param import parse_decision_id
 from mureo.mcp._ops_history_records import require_entry_fields
+from mureo.mcp._outcome_thresholds import load_outcome_thresholds
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -762,33 +763,32 @@ async def handle_outcome_evaluate(arguments: dict[str, Any]) -> list[TextContent
     Pure calculation (no state I/O), so it works for ANY platform — the caller
     supplies the two metric maps (typically an action_log entry's
     ``metrics_at_action`` as ``before`` and the current numbers as ``after``).
-    Returns per-metric and overall improved/regressed/inconclusive verdicts.
+    Returns every metric's row and the primary metric's verdict (#888), on
+    the workspace's ``## Guardrails`` thresholds unless ``noise_pct`` is set.
     """
     before = _require(arguments, "before")
     after = _require(arguments, "after")
     if not isinstance(before, dict) or not isinstance(after, dict):
         raise ValueError("before and after must be objects (metric name -> number)")
-    raw_noise = arguments.get("noise_pct", 10.0)
-    try:
-        noise_pct = float(raw_noise)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("noise_pct must be a number") from exc
-
-    report = evaluate_outcome(before, after, noise_pct=noise_pct)
-    return _json_result(
+    thresholds = load_outcome_thresholds(arguments.get("noise_pct"))
+    report = evaluate_outcome(before, after, thresholds=thresholds)
+    payload: dict[str, Any] = {
+        "overall": report.overall.value,
+        "summary": report.summary,
+        "primary": report.primary,
+        "basis": report.basis,
+    }
+    if report.reason is not None:
+        payload["reason"] = report.reason
+    payload["metrics"] = [
         {
-            "overall": report.overall.value,
-            "summary": report.summary,
-            "metrics": [
-                {
-                    "metric": m.metric,
-                    "before": m.before,
-                    "after": m.after,
-                    "delta_pct": m.delta_pct,
-                    "verdict": m.verdict.value,
-                    "note": m.note,
-                }
-                for m in report.metrics
-            ],
+            "metric": m.metric,
+            "before": m.before,
+            "after": m.after,
+            "delta_pct": m.delta_pct,
+            "verdict": m.verdict.value,
+            "note": m.note,
         }
-    )
+        for m in report.metrics
+    ]
+    return _json_result(payload)

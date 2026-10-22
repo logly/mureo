@@ -394,6 +394,28 @@ rule accepts `true` / `yes` / `on` / `1`; anything else (including a typo) reads
 as off. When a mutation is refused, the agent receives the guardrail's reason
 verbatim and should surface it to the operator rather than retrying.
 
+### Outcome verdict thresholds (#888)
+
+Four keys tune how `mureo_outcome_evaluate` and the automatic observation
+closure judge a change. They refuse nothing; they set when a verdict is
+trusted. All optional:
+
+```markdown
+- outcome_noise_pct: 10          # a primary metric moving less is "no_change"
+- outcome_min_conversions: 30    # per-side floor for cpa / cpl / roas / conversions
+- outcome_min_impressions: 1000  # per-side floor for ctr / cpm
+- outcome_min_clicks: 200        # per-side floor for cpc / cvr
+```
+
+The verdict is read off ONE primary metric, and only when both sides reach
+its floor; below it the result is `inconclusive` with
+`reason: insufficient_volume`. Raise the floors on a high-volume account to
+demand more evidence, lower them on a small one that would otherwise never
+be judged. A value that is not usable (not a number, `0`, a fractional
+count, a band above 100) keeps that one default and logs a warning. An
+explicit `noise_pct` passed to `mureo_outcome_evaluate` overrides
+`outcome_noise_pct` for that call.
+
 ## STATE.json
 
 ### File Structure

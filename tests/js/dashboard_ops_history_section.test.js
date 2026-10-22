@@ -12,7 +12,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { loadDashboardPage, settle, isVisible } = require("./dom_harness.js");
+const { loadDashboardPage, settle, isVisible, cascade } = require("./dom_harness.js");
 
 const TODAY = "2026-10-14";
 const FEED = "/api/reports/ops-history";
@@ -342,6 +342,34 @@ test.describe("the ops history section", function () {
     assert.equal(page.requests.length, before);
   });
 
+  test.it("labels and filters a held verdict", async function () {
+    const items = [item("held", "2026-10-05", { state: "evaluated", verdict: "held" })];
+    const page = await openDetail(feed(true, items));
+    const badge = section(page).querySelector(".ops-history-verdict");
+    assert.equal(badge.textContent, "ops_history_section.verdict_held");
+    const select = section(page).querySelector("[data-ops-history-verdict]");
+    assert.ok(select.querySelectorAll("option").some((o) => o.value === "held"));
+    change(select, "held");
+    assert.deepEqual(rowIds(page), ["held"]);
+  });
+
+  test.it("paints a held verdict apart from the other three", async function () {
+    const verdicts = ["held", "improved", "regressed", "inconclusive"];
+    const items = verdicts.map(function (v, i) {
+      return item(v, "2026-10-0" + (i + 1), { state: "evaluated", verdict: v });
+    });
+    const page = await openDetail(feed(true, items));
+    const colour = {};
+    section(page)
+      .querySelectorAll(".ops-history-verdict")
+      .forEach(function (badge) {
+        const verdict = verdicts.find((v) => badge.classList.contains("is-" + v));
+        colour[verdict] = cascade(badge, "color").value;
+      });
+    assert.equal(colour.held, "var(--report-blue-ink)");
+    assert.equal(new Set(verdicts.map((v) => colour[v])).size, 4);
+  });
+
   test.it("filters by platform from the platforms the items name", async function () {
     const page = await openDetail(feed(true, populated()));
     const select = section(page).querySelector("[data-ops-history-platform]");
@@ -398,6 +426,27 @@ test.describe("the ops history section", function () {
     const title = section(page).querySelector("[data-ops-history-title]");
     assert.equal(title.textContent, "</script><b>bold</b>");
     assert.equal(title.querySelectorAll("b").length, 0);
+  });
+
+  test.it("states the expected metric marked primary, not the first declared", async function () {
+    const rows = [
+      { metric: "cpa", before: 100, after: 80, delta_pct: -20, verdict: "improved", role: "primary" },
+      { metric: "ctr", before: 2, after: 1.5, delta_pct: -25, verdict: "regressed", role: "reference" },
+    ];
+    const items = [
+      item("marked", "2026-10-03", {
+        state: "evaluated",
+        verdict: "improved",
+        expected: [
+          { metric: "ctr", direction: "up" },
+          { metric: "cpa", direction: "down", primary: true },
+        ],
+        evaluation: evaluation("improved", rows),
+      }),
+    ];
+    const page = await openDetail(feed(true, items));
+    const cell = section(page).querySelector("[data-ops-history-metric]");
+    assert.equal(cell.textContent, "CPA 100 → 80 ▼20%");
   });
 
   test.it("falls back to the primary row, then to the first row", async function () {

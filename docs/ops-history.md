@@ -14,7 +14,7 @@ whether the reason and the expected effect are **required**.
 
 | Piece | Where | What it is |
 |---|---|---|
-| `expected` | Every mutating tool, `mureo_decision_record`, and `entry.expected` on `mureo_state_action_log_append` | The effects the change should have: an array of `{metric, direction, target?, horizon_days?}` |
+| `expected` | Every mutating tool, `mureo_decision_record`, and `entry.expected` on `mureo_state_action_log_append` | The effects the change should have: an array of `{metric, direction, target?, horizon_days?, primary?}` |
 | `decision_id` | Every mutating tool, and `entry.decision_id` on `mureo_state_action_log_append` | Links the change to a `proposed` or `adopted` decision already on record |
 | Decision record | `STATE.json` `decisions` | Created as `adopted` from the call's `reason` and `expected` when no `decision_id` is given |
 | `action_log[].decision_id` | `STATE.json` | Stamped on the change. It always names the **first** record of the decision's `supersedes` chain, so it stays stable when the decision is later updated |
@@ -29,7 +29,8 @@ whether the reason and the expected effect are **required**.
 
 ```json
 "expected": [
-  {"metric": "cpa", "direction": "down", "target": 4500, "horizon_days": 14},
+  {"metric": "cpa", "direction": "down", "target": 4500, "horizon_days": 14,
+   "primary": true},
   {"metric": "conversions", "direction": "hold"}
 ]
 ```
@@ -41,7 +42,11 @@ whether the reason and the expected effect are **required**.
   band).
 - `target` is an optional number, and `horizon_days` an optional whole
   number of days, from 1 to 365.
-- One entry per metric at most. Anything else is refused with
+- `primary` is an optional `true` / `false`: the effect the verdict is read
+  off (see [The evaluation table](#the-evaluation-table)). A single effect
+  is primary by itself; with several, exactly one must be `true`, or the
+  declaration is refused with `expected_primary_required`.
+- One entry per metric at most (`cost` and `spend` are one metric). Anything else is refused with
   `invalid_args`, before anything is written.
 
 ### External approval
@@ -221,8 +226,10 @@ automatic closure writes an `outcome_evaluated` entry carrying:
 
 ```json
 "evaluation": {
+  "rules": 2,
   "overall": "improved",
   "basis": "expected",
+  "primary": "cpa",
   "noise_pct": 10.0,
   "window": {"from": "2026-09-01", "to": "2026-09-18"},
   "metrics": [
@@ -237,21 +244,83 @@ automatic closure writes an `outcome_evaluated` entry carrying:
 }
 ```
 
-- The **declared** metrics are `primary` and decide `overall`. A metric
-  expected `up` or `down` counts as improved when it moved that way by at
-  least the noise band, and as regressed when it moved the other way. A
-  metric expected to `hold` counts as improved while it stays inside the
-  band.
+`rules: 2` marks the verdict rules below (#888). A table written before
+them has no `rules`, no `primary` and no `reason`; it is read as it is and
+never rewritten.
+
+- **One primary metric decides `overall`.** It is chosen in this order,
+  and `basis` names which rule chose it:
+  1. `expected`: the declared effect marked `"primary": true`. A single
+     declared effect is primary by itself; a declaration of several needs
+     exactly one marked and is refused otherwise
+     (`expected_primary_required`). A stored legacy declaration with
+     several effects and none marked uses the first.
+  2. `bidding_target`: the campaign snapshot's `bidding_details` —
+     `target_roas` makes `roas` primary, `target_cpa` makes `cpa` primary.
+  3. `default`: `cpa`, when both sides have conversions.
+  4. Otherwise `overall` is `inconclusive` with
+     `reason: "no_primary_metric"` and `primary` is `null`.
+
+  A declared primary stays the primary even when its metric has no
+  figures: the result is then `inconclusive` with `no_primary_metric`,
+  `primary` names the declared metric, and it is listed in
+  `expected_missing` — never a verdict on a metric the decision did not
+  name. The bidding target and the default apply only when nothing is
+  declared, and only when their metric has figures on both sides.
+  Every other metric is a `reference` row: judged by its own direction,
+  never deciding. A volume metric such as `spend` has no direction of its
+  own and is `inconclusive` as a reference row.
+- **Volume floor.** Both sides must reach the floor for the primary, on
+  the raw counts: conversions (30) for `cpa` / `cpl` / `roas` /
+  `conversions`, impressions (1,000) for `ctr` / `cpm`, clicks (200)
+  for `cpc` / `cvr`. Below it the result is `inconclusive` with
+  `insufficient_volume`, or `volume_unknown` when the count is missing.
+- **Periods.** Count metrics (`conversions`, `clicks`, `impressions`,
+  `spend`) are compared per day when both sides state their length — a
+  `days` number, or a `period` of `YESTERDAY` / `LAST_7_DAYS` /
+  `LAST_30_DAYS` — and the row's note says so. A count primary without
+  both is `inconclusive` with `period_unknown`; a count reference row
+  without both is compared as it is, and its note says
+  `raw totals, periods unknown`. Ratios (`cpa`, `ctr`, `cvr`, `roas`,
+  `cpc`, `cpm`) compare across periods of any length.
+- **Direction and target** of a declared primary:
+  - `up` / `down`: `improved` when it moved that way by at least the
+    noise band, `regressed` when it moved the other way, `inconclusive`
+    with `no_change` inside the band.
+  - `hold`: `held` inside the band, `regressed` outside it. With a
+    `target`, `held` within the band around the target.
+  - With a `target`, reaching it is `improved`, even inside the band. A
+    move the right way beyond the band that misses it is `inconclusive`
+    with `target_not_reached`.
+  - A target on a count metric is the total over the evaluation
+    window: it is compared with the raw `after` figure, not the
+    per-day row, and the note says `(window total N)`.
+- **Zero baseline.** A primary whose baseline is zero has no
+  percentage change: `inconclusive` with `zero_baseline`, unless a
+  declared target decides on its own.
+- `reason` is present only when set, and is one of `no_primary_metric`,
+  `insufficient_volume`, `volume_unknown`, `period_unknown`,
+  `zero_baseline`, `target_not_reached`, `no_change`.
+- **A held-back result is recorded, not left open.** When
+  `insufficient_volume`, `volume_unknown`, `period_unknown`,
+  `zero_baseline` or `no_primary_metric` holds the verdict back, the
+  primary's row is `inconclusive` too and its note leads with that code.
+  The automatic closure stores the result as `inconclusive` and closes
+  the observation like any other verdict. To judge the change anyway,
+  evaluate it manually with `mureo_outcome_evaluate` over a longer window
+  once both sides reach the floor.
+- The noise band and the three floors can be set per workspace in
+  STRATEGY.md `## Guardrails` (`outcome_noise_pct`,
+  `outcome_min_conversions`, `outcome_min_impressions`,
+  `outcome_min_clicks`).
 - Metric names are matched after normalising long forms to the
   vocabulary above: `cost_per_conversion` and `cost_per_acquisition` match
   `cpa`, `conversion_rate` matches `cvr`, `cost_per_click` matches `cpc`,
-  and so on.
-- Every other metric is kept as `reference`, judged by the evaluator's
-  own rules. A volume metric such as `spend` has no direction of its own
-  and is always `inconclusive` there.
-- With nothing declared, or no declared metric present on both sides,
-  `basis` is `default` and the evaluator's own direction rules decide, as
-  before. Declared metrics that were missing are listed in
+  `cost` matches `spend`, and so on. When a snapshot carries both a long
+  form and the short name, one row is kept: the short name's.
+- Two snapshots that state different `period` windows are skipped
+  (`period_mismatch`) only when the primary is a count metric.
+- Declared metrics with no figures on both sides are listed in
   `expected_missing`.
 - The schema reserves `control` (a comparison group) and `skipped_reason`.
   Neither is written in this phase.
@@ -308,8 +377,9 @@ recorded.
   decision carries `approval`, the newest one stated on its chain. Both
   are `null` when none was stated.
 - Each item has a derived `state`: `proposed`, `adopted`, `executed`,
-  `observing`, `evaluated` (with `verdict`), `skipped`, `rejected` or
-  `deferred`. It also has a `rolled_back` flag. Nothing about the state is
+  `observing`, `evaluated` (with `verdict`: `regressed` if any of its
+  changes regressed, else `improved`, else `held`, else `inconclusive`),
+  `skipped`, `rejected` or `deferred`. It also has a `rolled_back` flag. Nothing about the state is
   stored, so it can never disagree with the records.
 - `since` / `until` on these two sources compare the date of the item's
   timestamp (a decision's first record, or the uncovered change's own),
@@ -339,8 +409,9 @@ cannot be read, the section is left out too.
 - **One row per item**: its date, the decision's title, the platform, the
   state, the primary metric before and after with its change
   (`CPA 1,840 → 1,520 ▼17%`), and the verdict. The primary metric is the
-  first `expected` metric, or else the evaluation table's primary row, or
-  else its first row; a change not yet evaluated shows `—`.
+  `expected` metric marked `primary` (the first one for a legacy
+  declaration without a mark), or else the evaluation table's primary
+  row, or else its first row; a change not yet evaluated shows `—`.
 - **Order**: regressed first, then observing, then everything else, then
   improved. Newest first within each group.
 - **A change with no decision** is titled "(no decision recorded)".
@@ -372,16 +443,17 @@ All writer text is set as text, never as HTML.
 Where a client registry supplies the clients, the per-client summary
 (`/api/reports/summary`) carries an `ops_history` object:
 `{enabled, window_days, changes, improved, regressed, regressed_open,
-inconclusive, observing}`, counted over the last 30 days, today included
+held, inconclusive, observing}`, counted over the last 30 days, today included
 (the detail section's default window). `changes` counts items in state
-`executed`, `observing`, `evaluated` or `skipped`. An evaluated item whose
-verdict is neither improved nor regressed counts as inconclusive.
+`executed`, `observing`, `evaluated` or `skipped`. `held` counts the
+evaluated items whose verdict is `held`; an evaluated item with any
+other verdict that is not improved or regressed counts as inconclusive.
 `regressed_open` counts the regressed changes that were not rolled back. A
 single-workspace summary does not carry the key.
 
 - Each client card shows one line when the setting is on and the window
   holds at least one change: "Last 30 days: N changes · a improved ·
-  b regressed · c inconclusive · d observing".
+  b regressed · h held · c inconclusive · d observing".
 - A client with at least one regressed change that was not rolled back
   (`regressed_open`) raises an attention finding in the triage list
   ("1 regressed change", "N regressed changes"). It ranks after analysis

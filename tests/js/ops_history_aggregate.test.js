@@ -23,6 +23,7 @@ function opsHistory(enabled, counts) {
       improved: 0,
       regressed: 0,
       regressed_open: 0,
+      held: 0,
       inconclusive: 0,
       observing: 0,
     },
@@ -71,10 +72,11 @@ const SUMMARIES = {
   alpha: summaryFor(
     "alpha",
     opsHistory(true, {
-      changes: 5,
+      changes: 6,
       improved: 2,
       regressed: 1,
       regressed_open: 1,
+      held: 1,
       inconclusive: 1,
       observing: 1,
     })
@@ -111,8 +113,8 @@ test.describe("the aggregate line on a client card", function () {
     const line = card(page, "alpha").querySelector("[data-ops-history-aggregate]");
     assert.equal(
       line.textContent,
-      "ops_history_section.aggregate|days=30,n=5,improved=2,regressed=1," +
-        "inconclusive=1,observing=1"
+      "ops_history_section.aggregate|days=30,n=6,improved=2,regressed=1," +
+        "held=1,inconclusive=1,observing=1"
     );
   });
 

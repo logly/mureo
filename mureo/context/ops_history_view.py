@@ -15,7 +15,9 @@ Nothing here is stored. Each item's ``state`` is DERIVED from the records:
   yet closed);
 - ``evaluated``: every observed change has an evaluation; ``verdict`` is
   ``regressed`` if any regressed, else ``improved`` if any improved, else
-  ``inconclusive`` (``None`` when no evaluation stated one);
+  ``held`` if any held, else ``inconclusive`` (``None`` when no evaluation
+  stated one). A table written before #888 (no ``rules`` key) is read the
+  same way: only its ``overall`` is used;
 - ``skipped``: the automatic evaluation refused to decide (see
   ``skipped_reason`` on the action).
 
@@ -79,7 +81,12 @@ _STATE_ORDER: Final[tuple[str, ...]] = (
     STATE_SKIPPED,
     STATE_EXECUTED,
 )
-_VERDICT_ORDER: Final[tuple[str, ...]] = ("regressed", "improved", "inconclusive")
+_VERDICT_ORDER: Final[tuple[str, ...]] = (
+    "regressed",
+    "improved",
+    "held",
+    "inconclusive",
+)
 _ADOPTED: Final = "adopted"
 
 #: Sorts an undatable item last.

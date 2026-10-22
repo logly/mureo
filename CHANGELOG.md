@@ -40,6 +40,65 @@
   provider as done** (#864). An install that answers `noop` (the provider
   was already registered) now completes the step, as `ok` does, instead of
   showing the install failure message.
+- **The outcome verdict is read off one primary metric** (#888). Before,
+  any regressed metric made the whole outcome `regressed`, so a CPA down
+  30% with CTR down 11% read as a regression. Now the primary metric
+  decides and every other metric is a reference row. The primary is the
+  `expected` effect marked primary, else the campaign's bidding target
+  (`target_roas` → `roas`, `target_cpa` → `cpa`), else `cpa` when both sides
+  have conversions, else none (`inconclusive`, `no_primary_metric`). A
+  declared primary without figures stays the primary and is `inconclusive`
+  with `no_primary_metric`; the bidding target and `cpa` apply only when
+  nothing is declared. It is
+  judged only when both sides reach a volume floor (30 conversions for
+  cpa / cpl / roas / conversions, 1,000 impressions for ctr / cpm, 200
+  clicks for cpc / cvr). Count metrics are compared per day
+  when both day counts are known (`days`, or a `period` token). Synonyms
+  merge first, and `cost` is now an alias of `spend`. A declared target
+  decides: reaching it is `improved`, missing it the right way is
+  `inconclusive` (`target_not_reached`); on a count metric the target is
+  the total over the evaluation window. A zero baseline is
+  `inconclusive` with `zero_baseline`. When a gate or a zero baseline holds
+  the verdict back, the primary's row in the table is `inconclusive` too,
+  its note leading with the reason code, and the automatic closure still
+  closes the observation as `inconclusive`; re-evaluate it manually with
+  `mureo_outcome_evaluate` over a longer window to judge it. A count
+  reference row compared without day counts says `raw totals, periods
+  unknown` in its note. Two different stated periods skip
+  the automatic closure (`period_mismatch`) only when the primary is a
+  count. `evaluate_outcome(before, after, *, noise_pct=)` becomes
+  `evaluate_outcome(before, after, *, thresholds=, primary=)`, and the
+  `noise_pct` keyword of `build_evaluation` / `evaluation_from_report` becomes
+  `thresholds`, and `evaluation_from_report` takes the scored snapshot as
+  `after=`. A stored decision is read as it was written: one naming both
+  `cost` and `spend` still reads, while a new declaration may not name the
+  two. Stored tables are not rewritten.
+
+### Added
+
+- **The verdict `held`** (#888): an `expected` `hold` that stayed inside the
+  noise band (or near its target). Shown as "Held" in the ops history view.
+  It ranks between `improved` and `inconclusive` when a decision's verdict
+  is derived. The `ops_history` counts of the client summary gain a
+  `held` key, and the client card's ops history line
+  (`ops_history_section.aggregate`) shows it between regressed and
+  inconclusive: "… · 1 regressed · 1 held · 1 inconclusive · …" (the
+  Japanese string gains the same count). The badge is painted in the
+  information blue (`.ops-history-verdict.is-held`).
+- **`expected[].primary`** (#888): marks the effect the verdict is read off.
+  A declaration of several effects without exactly one primary is refused
+  with `expected_primary_required`. Stored declarations are read as they are;
+  with several and none marked, the first is primary.
+- **Outcome thresholds in STRATEGY.md `## Guardrails`** (#888):
+  `outcome_noise_pct`, `outcome_min_conversions`, `outcome_min_impressions`,
+  `outcome_min_clicks`. A value that cannot be used keeps its default and
+  logs a warning. `mureo_outcome_evaluate`'s `noise_pct` still overrides the
+  band for one call.
+- **The evaluation table** gains `rules: 2`, `primary`, `reason` (when set;
+  one of `no_primary_metric`, `insufficient_volume`, `volume_unknown`,
+  `period_unknown`, `zero_baseline`, `target_not_reached`, `no_change`)
+  and the `basis` value `bidding_target`; `mureo_outcome_evaluate` returns
+  `primary`, `basis` and `reason` (when set).
 
 ## [0.31.0] - 2026-10-22
 
