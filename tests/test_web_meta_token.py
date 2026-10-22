@@ -182,22 +182,25 @@ class TestMetaTokenRoute:
         assert data["meta_ads"]["access_token"] == "sys-tok"
 
     def test_invalid_token_returns_structured_error(
-        self, wizard: ConfigureWizard
+        self, wizard: ConfigureWizard, caplog: pytest.LogCaptureFixture
     ) -> None:
+        """#864: ``detail`` is the class name; Meta's reply is logged only."""
         from mureo.meta_ads.accounts import MetaTokenInvalidError
 
         async def _fake(token: str, **kwargs: Any) -> dict[str, Any]:
             raise MetaTokenInvalidError("Invalid OAuth access token. | subcode=463")
 
-        with patch(_PROBE, side_effect=_fake):
+        with patch(_PROBE, side_effect=_fake), caplog.at_level("WARNING"):
             status, body = post(
                 wizard,
                 "/api/credentials/meta/token",
                 {"access_token": "bad-tok"},
             )
-        assert status == 400
-        assert body["error"] == "token_invalid"
-        assert "Invalid OAuth access token." in body["detail"]
+        assert (status, body) == (
+            400,
+            {"error": "token_invalid", "detail": "MetaTokenInvalidError"},
+        )
+        assert "Invalid OAuth access token. | subcode=463" in caplog.text
 
     def test_missing_access_token_rejected(self, wizard: ConfigureWizard) -> None:
         status, body = post(
@@ -243,9 +246,10 @@ class TestMetaTokenRoute:
                 "/api/credentials/meta/token",
                 {"access_token": "sys-tok"},
             )
-        assert status == 400
-        assert body["error"] == "account_fetch_failed"
-        assert "listing failed" in body["detail"]
+        assert (status, body) == (
+            400,
+            {"error": "account_fetch_failed", "detail": "MetaAccountFetchError"},
+        )
 
     def test_save_rejects_inaccessible_account(self, wizard: ConfigureWizard) -> None:
         """A submitted account_id absent from the probe's account list is

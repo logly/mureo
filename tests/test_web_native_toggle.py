@@ -45,7 +45,7 @@ class TestSetNativePreference:
 
         r = set_native_preference("search_console", True, home=tmp_path)
         assert r.status == "error"
-        assert r.detail == "invalid_platform"
+        assert (r.code, r.http_status) == ("invalid_platform", 400)
 
     def test_prefer_official_blocked_when_provider_absent(self, tmp_path: Path) -> None:
         from mureo.web.setup_actions import set_native_preference
@@ -58,7 +58,7 @@ class TestSetNativePreference:
         ):
             r = set_native_preference("google_ads", True, home=tmp_path)
         assert r.status == "error"
-        assert r.detail == "provider_not_installed"
+        assert (r.code, r.http_status) == ("provider_not_installed", 400)
         assert "MUREO_DISABLE_GOOGLE_ADS" not in _env(cj)
 
     def test_prefer_official_allowed_when_provider_registered(
@@ -85,7 +85,7 @@ class TestSetNativePreference:
         ):
             r = set_native_preference("meta_ads", True, home=tmp_path)
         assert r.status == "error"
-        assert r.detail == "connector_not_connected"
+        assert (r.code, r.http_status) == ("connector_not_connected", 400)
 
     def test_prefer_official_meta_ok_when_connector_connected(
         self, tmp_path: Path
@@ -140,7 +140,7 @@ class TestSetNativePreference:
         _seed(cj, {"google-ads-official": _GA_OFFICIAL})  # no mureo block
         r = set_native_preference("google_ads", True, home=tmp_path)
         assert r.status == "error"
-        assert r.detail == "no_mureo_block"
+        assert (r.code, r.http_status) == ("no_mureo_block", 400)
 
     def test_idempotent_prefer_official(self, tmp_path: Path) -> None:
         from mureo.web.setup_actions import set_native_preference

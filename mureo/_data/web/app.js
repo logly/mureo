@@ -126,6 +126,18 @@
     return { ok: res.ok, status: res.status, body: body };
   }
 
+  // #864: the one reading of a postJson result. The configure API answers a
+  // refused or failed request with an HTTP error and ``{"error": <code>,
+  // "detail"?}``; a success is 2xx with the route's own body. ``ok`` is true
+  // only for a 2xx JSON object — the caller then compares ``body.status``
+  // against the statuses it handles. Otherwise ``code`` is ``body.error``,
+  // then ``body.detail``, else null (no response, or not JSON).
+  function postOutcome(res) {
+    const body = res && res.body && typeof res.body === "object" ? res.body : null;
+    if (res && res.ok && body) return { ok: true, code: null, body: body };
+    return { ok: false, code: (body && (body.error || body.detail)) || null, body: body };
+  }
+
   function toast(message, kind) {
     // ``kind`` is optional and accepts ``"info"`` (default), ``"success"``,
     // or ``"error"`` — translated to a ``is-<kind>`` CSS class so app.css
@@ -244,6 +256,7 @@
     applyTranslations: applyTranslations,
     setLocale: setLocale,
     postJson: postJson,
+    postOutcome: postOutcome,
     loadStatus: loadStatus,
     toast: toast,
     confirmAction: confirmAction,

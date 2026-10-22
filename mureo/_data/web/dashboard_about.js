@@ -123,8 +123,12 @@
     } catch (_err) {
       res = null;
     }
-    const ok = res && res.ok && res.body && res.body.status === "ok";
-    if (!ok) {
+    // A failed upgrade is HTTP 500 (#864). ``noop`` (no mureo package was
+    // found, so nothing was upgraded) gets the same "see the terminal" line
+    // as a failure: there is nothing to restart into.
+    const outcome = MUREO.postOutcome(res);
+    const st = outcome.ok ? outcome.body.status : null;
+    if (st !== "ok") {
       if (summary) setSummary(summary, "dashboard.about_update_failed");
       if (button) button.disabled = false;
       upgradeInProgress = false;
@@ -140,7 +144,7 @@
       button.disabled = false;
     }
     removeAboutNavBadge();
-    if (res.body.restarting) {
+    if (outcome.body.restarting) {
       // Always-on service: the daemon is restarting itself on the new code.
       // Show "restarting…", wait for it to come back, then reload so both the
       // UI and the running code are the new version — the operator does
@@ -221,21 +225,43 @@
     node.setAttribute("data-i18n", key);
   }
 
-  // Apply an /api/updates envelope to the About update area, handling every
-  // status: checking (a check is in flight), error (couldn't check), and ok
-  // (up-to-date vs updates available). Extracted so the passive render and the
-  // manual "check now" poll share one code path.
-  function applyUpdatesBody(body) {
+  // GET /api/updates, read through MUREO.postOutcome like a POST answer
+  // (#864): a failed check is HTTP 500 ``{"error": "update_check_failed"}``;
+  // no answer at all (network, no JSON) has no code.
+  async function fetchUpdates() {
+    try {
+      const res = await fetch("/api/updates");
+      const body = await res.json().catch(function () {
+        return null;
+      });
+      return MUREO.postOutcome({ ok: res.ok, body: body });
+    } catch (_err) {
+      return MUREO.postOutcome(null);
+    }
+  }
+
+  // A check has settled when it failed, or succeeded with a final status.
+  function updatesSettled(outcome) {
+    if (!outcome.ok) return Boolean(outcome.code);
+    return Boolean(outcome.body.status) && outcome.body.status !== "checking";
+  }
+
+  // Apply an /api/updates outcome to the About update area: checking (a check
+  // is in flight), a failure (couldn't check), and ok (up-to-date vs updates
+  // available). Extracted so the passive render and the manual "check now"
+  // poll share one code path. No answer at all leaves the area as it was.
+  function applyUpdates(outcome) {
     const summary = document.querySelector("[data-about-updates-summary]");
     const list = document.querySelector("[data-about-updates-list]");
     const button = document.querySelector("[data-about-update-button]");
     if (!summary || !list || !button) return;
-    if (!body || !body.status) return;
-    if (body.status === "checking") {
+    if (!outcome.ok && !outcome.code) return;
+    const body = outcome.body;
+    if (outcome.ok && body.status === "checking") {
       setSummary(summary, "dashboard.about_update_checking");
       return;
     }
-    if (body.status !== "ok") {
+    if (!outcome.ok || body.status !== "ok") {
       setSummary(summary, "dashboard.about_update_check_failed");
       button.hidden = true;
       return;
@@ -293,8 +319,8 @@
     } catch (_err) {
       res = null;
     }
-    const ok = res && res.ok && res.body && res.body.status === "ok";
-    if (!ok) {
+    const outcome = MUREO.postOutcome(res);
+    if (!(outcome.ok && outcome.body.status === "ok")) {
       if (status) setSummary(status, "dashboard.about_restart_failed");
       if (button) button.disabled = false;
       restartInProgress = false;
@@ -341,24 +367,19 @@
     const summary = document.querySelector("[data-about-updates-summary]");
     try {
       if (summary) setSummary(summary, "dashboard.about_update_checking");
-      let body = null;
+      let outcome = MUREO.postOutcome(null);
       const deadline = Date.now() + UPDATE_POLL_DEADLINE_MS;
       while (Date.now() < deadline) {
         await sleep(UPDATE_POLL_INTERVAL_MS);
-        try {
-          const res = await fetch("/api/updates");
-          body = res.ok ? await res.json() : null;
-        } catch (_e) {
-          body = null;
-        }
-        if (body && body.status && body.status !== "checking") break;
+        outcome = await fetchUpdates();
+        if (updatesSettled(outcome)) break;
       }
-      if (!body || body.status === "checking") {
+      if (!updatesSettled(outcome)) {
         // Poll exhausted without the check settling — don't leave a stuck
         // "Checking…"; surface that it couldn't complete.
         if (summary) setSummary(summary, "dashboard.about_update_check_failed");
       } else {
-        applyUpdatesBody(body);
+        applyUpdates(outcome);
       }
     } finally {
       // Always clear the guard — even if a render/DOM op throws — so the
@@ -394,24 +415,18 @@
     // even when everything is up to date or the last check errored / was cold.
     area.hidden = false;
     wireCheckButton();
-    let body = null;
-    try {
-      const res = await fetch("/api/updates");
-      body = res.ok ? await res.json() : null;
-    } catch (_err) {
-      body = null;
-    }
+    const outcome = await fetchUpdates();
     // A cold/stale cache answers "checking" while the background pip check
     // runs (the server starts it on this very fetch). The passive load must
     // then poll until it settles — otherwise the summary is stuck on
     // "Checking…" forever, since only the manual button used to poll. Fire it
     // without awaiting so renderAll() is not blocked; it repaints the DOM when
     // the check completes.
-    if (body && body.status === "checking") {
+    if (outcome.ok && outcome.body.status === "checking") {
       pollUpdatesUntilSettled();
       return;
     }
-    applyUpdatesBody(body);
+    applyUpdates(outcome);
   }
 
   // ----- Advanced: External advisor MCP -------------------------------

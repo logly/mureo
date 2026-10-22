@@ -2,11 +2,12 @@
 
 The module exposes:
 
-- ``PickResult`` — a ``@dataclass(frozen=True)`` envelope:
-  ``status`` ("ok" | "cancelled" | "error"), ``path`` (str | None),
+- ``PickResult`` — a ``@dataclass(frozen=True)`` envelope of a picker
+  that ran: ``status`` ("ok" | "cancelled"), ``path`` (str | None),
   ``detail`` (str | None), plus an ``as_dict()`` JSON projection.
-- ``pick_directory(title) -> PickResult`` / ``pick_file(title, patterns)
-  -> PickResult``.
+- ``pick_directory(title)`` / ``pick_file(title, patterns)`` return a
+  ``PickResult``, or ``ActionResult.failed("picker_failed", <reason>)``
+  when the picker could not run (#864).
 
 OS-aware contract:
 
@@ -16,13 +17,13 @@ OS-aware contract:
   the client ``title`` only appears as a trailing argv element, never
   shell-interpolated. stdout -> ``ok``; empty -> ``cancelled``;
   nonzero / FileNotFoundError / TimeoutExpired / tkinter-unavailable ->
-  ``error``.
+  ``picker_failed``.
 - **darwin** (macOS): shells out to ``osascript -e <CONST applescript>``
   (``choose folder`` / ``choose file``). The AppleScript body is a module
   constant with a baked-in prompt — the client ``title`` is IGNORED and
   never interpolated (zero AppleScript/shell injection). osascript exit
   ``-128`` / "User canceled" -> ``cancelled``; missing osascript
-  (FileNotFoundError) / other nonzero -> ``error``.
+  (FileNotFoundError) / other nonzero -> ``picker_failed``.
 
 ``subprocess.run`` is fully mocked — NO real subprocess, NO real Tk
 window, NO real osascript / Finder dialog is ever created.
@@ -39,6 +40,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mureo.web import native_picker  # noqa: E402
+from mureo.web.action_result import ActionResult
 
 
 def _completed(
@@ -80,6 +82,11 @@ class TestPickResult:
         assert dataclasses.is_dataclass(native_picker.PickResult)
         params = native_picker.PickResult.__dataclass_params__  # type: ignore[attr-defined]
         assert params.frozen is True
+
+    def test_error_status_is_refused(self) -> None:
+        """#864: a failure is an ``ActionResult``, never a PickResult."""
+        with pytest.raises(ValueError, match="a failure is an ActionResult"):
+            native_picker.PickResult(status="error", path=None, detail="failed")
 
     def test_mutation_raises_frozen_instance_error(self) -> None:
         result = native_picker.PickResult(status="ok", path="/abs/x", detail=None)
@@ -139,7 +146,7 @@ class TestPickDirectoryNonDarwin:
             return_value=_completed(returncode=1, stdout="", stderr="boom"),
         ):
             result = native_picker.pick_directory(title="t")
-        assert result.status == "error"
+        assert result == ActionResult.failed("picker_failed", "failed")
 
     def test_tkinter_unavailable_detail(self) -> None:
         with patch(
@@ -149,8 +156,7 @@ class TestPickDirectoryNonDarwin:
             ),
         ):
             result = native_picker.pick_directory(title="t")
-        assert result.status == "error"
-        assert result.detail == "tkinter_unavailable"
+        assert result == ActionResult.failed("picker_failed", "tkinter_unavailable")
 
     def test_file_not_found_is_error(self) -> None:
         with patch(
@@ -158,8 +164,7 @@ class TestPickDirectoryNonDarwin:
             side_effect=FileNotFoundError("python missing"),
         ):
             result = native_picker.pick_directory(title="t")
-        assert result.status == "error"
-        assert result.detail is not None
+        assert result == ActionResult.failed("picker_failed", "interpreter_missing")
 
     def test_timeout_expired_is_error_with_detail(self) -> None:
         with patch(
@@ -167,8 +172,7 @@ class TestPickDirectoryNonDarwin:
             side_effect=subprocess.TimeoutExpired(cmd="python", timeout=300),
         ):
             result = native_picker.pick_directory(title="t")
-        assert result.status == "error"
-        assert result.detail is not None
+        assert result == ActionResult.failed("picker_failed", "timeout")
 
     def test_unexpected_exception_is_error_not_raised(self) -> None:
         with patch(
@@ -176,7 +180,7 @@ class TestPickDirectoryNonDarwin:
             side_effect=RuntimeError("kaboom"),
         ):
             result = native_picker.pick_directory(title="t")
-        assert result.status == "error"
+        assert result == ActionResult.failed("picker_failed", "RuntimeError")
 
 
 @pytest.mark.unit
@@ -360,7 +364,7 @@ class TestPickerMacOS:
             ),
         ):
             result = native_picker.pick_file(title="t", patterns=("*.xlsx",))
-        assert result.status == "error"
+        assert result == ActionResult.failed("picker_failed", "failed")
 
     def test_missing_osascript_is_error_not_raised(self) -> None:
         """osascript not on PATH -> FileNotFoundError -> graceful error
@@ -370,8 +374,7 @@ class TestPickerMacOS:
             side_effect=FileNotFoundError("osascript missing"),
         ):
             result = native_picker.pick_directory(title="t")
-        assert result.status == "error"
-        assert result.detail is not None
+        assert result == ActionResult.failed("picker_failed", "interpreter_missing")
 
     def test_timeout_is_error(self) -> None:
         with patch(
@@ -379,7 +382,7 @@ class TestPickerMacOS:
             side_effect=subprocess.TimeoutExpired(cmd="osascript", timeout=300),
         ):
             result = native_picker.pick_file(title="t", patterns=("*.xlsx",))
-        assert result.status == "error"
+        assert result == ActionResult.failed("picker_failed", "timeout")
 
     def test_unexpected_exception_is_error_not_raised(self) -> None:
         with patch(
@@ -387,7 +390,7 @@ class TestPickerMacOS:
             side_effect=RuntimeError("kaboom"),
         ):
             result = native_picker.pick_directory(title="t")
-        assert result.status == "error"
+        assert result == ActionResult.failed("picker_failed", "RuntimeError")
 
 
 @pytest.mark.unit

@@ -1,5 +1,46 @@
 ## [Unreleased]
 
+### Changed
+
+- **The configure web API answers a refused or failed request with an HTTP
+  error and `{"error": <code>, "detail"?}`** (#864). A request that used to
+  get HTTP 200 with `{"status": "error", "detail": ...}` now gets 400 when
+  it is refused (bad, missing or unknown input) and 500 when the action was
+  attempted and failed. This applies to `POST /api/providers/install`,
+  `/api/providers/confirm`, `/api/providers/native-toggle`,
+  `/api/providers/remove`, `/api/setup/mcp/remove`, `/api/setup/hook/remove`,
+  `/api/setup/hook/install`, `/api/setup/skills/remove`,
+  `/api/setup/skills/install`, `/api/demo/init`, `/api/byod/import`,
+  `/api/byod/remove`, `/api/byod/clear`, `/api/upgrade`,
+  `/api/pick/directory`, `/api/pick/file` and `/api/updates/refresh`, and
+  to `GET /api/byod/status`, `GET /api/demo/scenarios` and
+  `GET /api/updates`. A failed upgrade is `upgrade_failed` (or
+  `internal_error`) and no longer carries `returncode`, `packages` or
+  pip's `output` (pip's output goes to the server log); a failed update
+  check is `update_check_failed`; a picker that could not open is
+  `picker_failed`. `error` is a snake_case code and `detail` is a short
+  code or an exception class name: the sentences and paths these routes
+  used to put in `detail` are now codes (`file_path_not_xlsx`,
+  `target_control_characters`, `invalid_platform_selection`, …), and
+  their successful answers no longer carry the written file's path or a
+  skill count (both go to the server log). The Meta token route
+  (`token_invalid`, `account_fetch_failed`) and the Amazon routes
+  (`manifest_refresh_failed`, `amazon_authorization_failed`,
+  `authorization_code_invalid`, and `manifest_detail` in a successful
+  exchange) now put the exception class name in `detail` instead of the
+  platform's reply, which goes to the server log only; the Meta token
+  card no longer shows Graph's reply under its message.
+  `GET /api/reports/ops-history` answers a bad `since` / `until` with the
+  codes `since_invalid`, `until_invalid` and `until_before_since` instead
+  of a sentence. In `/api/setup/basic` and `/api/setup/basic/clear`, still
+  HTTP 200, a failed step now carries `"error": <code>` next to its
+  `"status": "error"`. The contract is written down in
+  `docs/plugin-authoring.md` ("Failure contract").
+- **The setup wizard's provider install treats an already-registered
+  provider as done** (#864). An install that answers `noop` (the provider
+  was already registered) now completes the step, as `ok` does, instead of
+  showing the install failure message.
+
 ## [0.31.0] - 2026-10-22
 
 ### Changed

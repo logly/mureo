@@ -2,9 +2,11 @@
 
 Wraps the ``mureo byod`` CLI primitives (manifest read, bundle import,
 per-platform removal, clear-all) and returns JSON-friendly frozen result
-envelopes that the configure UI surfaces directly. Failures degrade to
-``status="error"`` envelopes rather than propagating exceptions, so a
-click in the configure UI never produces a 500.
+envelopes that the configure UI surfaces directly. Nothing raises: a
+success is a :class:`ByodResult`, a refused request (an invalid path, no
+single platform selected) is ``ActionResult.refused`` and an attempt that
+raised is ``ActionResult.failed`` — the route sends either with
+``send_result`` (#864).
 
 The bundle XLSX is referenced by a server-side file *path* (local-first
 tool): ``_validate_xlsx_path`` is the security core — it runs before any
@@ -27,6 +29,7 @@ from typing import Any
 from mureo.byod.bundle import BundleImportError, import_bundle
 from mureo.byod.installer import BYODImportError, clear_all, remove_platform
 from mureo.byod.runtime import SUPPORTED_PLATFORMS, byod_has, read_manifest
+from mureo.web.action_result import ActionResult, refuse_error_status
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +46,15 @@ _ALLOWED_SUFFIXES: frozenset[str] = frozenset({".xlsx", ".xlsm"})
 
 @dataclass(frozen=True)
 class ByodResult:
-    """JSON-friendly result envelope for every byod action."""
+    """JSON-friendly result of a byod action that succeeded."""
 
-    status: str  # "ok" | "noop" | "error"
+    status: str  # "ok" | "noop"
     detail: str | None = None
     platforms: tuple[dict[str, Any], ...] | None = None
     summary: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        refuse_error_status(self, self.status)
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"status": self.status}
@@ -68,25 +74,26 @@ def _validate_xlsx_path(path: object) -> str:
     carries NUL/control chars, has a non-allowed extension, contains
     ``..`` traversal, or whose ``realpath`` is not an existing regular
     file (this also defeats a ``.xlsx`` symlink pointing at a non-xlsx
-    or out-of-tree target). Returns the resolved path on success.
+    or out-of-tree target). The message is the refusal's error code.
+    Returns the resolved path on success.
     """
     if not isinstance(path, str):
-        raise ValueError("file_path must be a string")
+        raise ValueError("file_path_invalid")
     if not path.strip():
-        raise ValueError("file_path must not be empty")
+        raise ValueError("file_path_required")
     if any(ord(c) < 0x20 for c in path):
-        raise ValueError("file_path contains control characters")
+        raise ValueError("file_path_control_characters")
     if not os.path.isabs(path):
-        raise ValueError("file_path must be absolute")
+        raise ValueError("file_path_not_absolute")
     parts = path.replace("\\", "/").split("/")
     if ".." in parts:
-        raise ValueError("file_path must not contain '..' traversal")
+        raise ValueError("file_path_traversal")
     resolved = os.path.realpath(path)
     _, suffix = os.path.splitext(resolved)
     if suffix.lower() not in _ALLOWED_SUFFIXES:
-        raise ValueError("file_path must be a .xlsx or .xlsm file")
+        raise ValueError("file_path_not_xlsx")
     if not os.path.isfile(resolved):
-        raise ValueError("file_path is not an existing regular file")
+        raise ValueError("file_path_not_found")
     return resolved
 
 
@@ -98,18 +105,18 @@ def _safe_byod_has(platform: str) -> bool:
         return False
 
 
-def byod_status() -> ByodResult:
+def byod_status() -> ByodResult | ActionResult:
     """Report per-platform BYOD vs Live mode.
 
     Order follows ``SUPPORTED_PLATFORMS`` (google_ads, meta_ads). A
-    manifest read error degrades to an ``error`` envelope. No
-    credential material is ever read or surfaced.
+    manifest read error is a failed result. No credential material is
+    ever read or surfaced.
     """
     try:
         manifest = read_manifest()
     except Exception as exc:  # noqa: BLE001
         logger.exception("byod_status manifest read failed")
-        return ByodResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     active = manifest.get("platforms", {}) if isinstance(manifest, dict) else {}
     rows: list[dict[str, Any]] = []
@@ -128,36 +135,37 @@ def byod_status() -> ByodResult:
     return ByodResult(status="ok", platforms=tuple(rows))
 
 
-def byod_import(file_path: str, replace: bool) -> ByodResult:
+def byod_import(file_path: str, replace: bool) -> ByodResult | ActionResult:
     """Validate ``file_path`` then import the Sheet bundle.
 
-    Validation runs first; on failure ``import_bundle`` is NOT called.
-    ``BundleImportError`` / unexpected errors degrade to an ``error``
-    envelope. Raw file bytes are never read or echoed here.
+    Validation runs first; a refused path is a refused result with its own
+    code, and ``import_bundle`` is NOT called. ``BundleImportError`` /
+    unexpected errors are failed results. Raw file bytes are never read or
+    echoed here.
     """
     try:
         resolved = _validate_xlsx_path(file_path)
     except ValueError as exc:
-        return ByodResult(status="error", detail=str(exc))
+        return ActionResult.refused(str(exc))
 
     try:
         results = import_bundle(Path(resolved), replace=replace)
     except BundleImportError as exc:
         logger.warning("byod_import rejected bundle: %s", type(exc).__name__)
-        return ByodResult(status="error", detail="BundleImportError")
+        return ActionResult.failed("bundle_import_failed", "BundleImportError")
     except Exception as exc:  # noqa: BLE001
         logger.exception("byod_import unexpected failure")
-        return ByodResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     return ByodResult(status="ok", summary=dict(results))
 
 
-def byod_remove(google_ads: bool, meta_ads: bool) -> ByodResult:
+def byod_remove(google_ads: bool, meta_ads: bool) -> ByodResult | ActionResult:
     """Drop one platform's BYOD data.
 
-    Exactly one of ``google_ads`` / ``meta_ads`` must be True else an
-    ``error`` envelope is returned and ``remove_platform`` is NOT
-    called. A no-op removal is reported as ``noop``.
+    Exactly one of ``google_ads`` / ``meta_ads`` must be True else the
+    request is refused and ``remove_platform`` is NOT called. A no-op
+    removal is reported as ``noop``.
     """
     selected = [
         name
@@ -165,36 +173,33 @@ def byod_remove(google_ads: bool, meta_ads: bool) -> ByodResult:
         if flag
     ]
     if len(selected) != 1:
-        return ByodResult(
-            status="error",
-            detail="select exactly one of google_ads / meta_ads",
-        )
+        return ActionResult.refused("invalid_platform_selection")
     platform = selected[0]
     try:
         removed = remove_platform(platform)
     except BYODImportError as exc:
         logger.warning("byod_remove rejected: %s", type(exc).__name__)
-        return ByodResult(status="error", detail="BYODImportError")
+        return ActionResult.failed("byod_remove_failed", "BYODImportError")
     except Exception as exc:  # noqa: BLE001
         logger.exception("byod_remove unexpected failure")
-        return ByodResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not removed:
         return ByodResult(status="noop", detail=platform)
     return ByodResult(status="ok", detail=platform)
 
 
-def byod_clear() -> ByodResult:
+def byod_clear() -> ByodResult | ActionResult:
     """Wipe all BYOD data at ``~/.mureo/byod/``.
 
     A no-op clear (nothing on disk) is reported as ``noop``;
-    ``OSError`` / unexpected errors degrade to an ``error`` envelope.
+    ``OSError`` / unexpected errors are failed results.
     """
     try:
         cleared = clear_all()
     except Exception as exc:  # noqa: BLE001
         logger.exception("byod_clear failed")
-        return ByodResult(status="error", detail=type(exc).__name__)
+        return ActionResult.failed("internal_error", type(exc).__name__)
 
     if not cleared:
         return ByodResult(status="noop")

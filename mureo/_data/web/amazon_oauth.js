@@ -16,7 +16,7 @@
 //
 // No credential material is ever placed in the DOM: the requests carry
 // only the pasted code, and the responses carry only a region, a machine
-// error code, and a scrubbed detail. Every dynamic string is written
+// error code, and an exception class name. Every dynamic string is written
 // with textContent.
 
 (function () {
@@ -40,8 +40,8 @@
   };
 
   function errorKey(table, res, fallbackKey) {
-    const err = res && res.body ? res.body.error : null;
-    return (err && table[err]) || fallbackKey;
+    const code = MUREO.postOutcome(res).code;
+    return (code && table[code]) || fallbackKey;
   }
 
   async function postSafe(url, payload) {
@@ -66,8 +66,9 @@
     btn.disabled = true;
     const res = await postSafe(AUTHORIZE_URL_ENDPOINT, {});
     btn.disabled = false;
-    if (res && res.ok && res.body && res.body.authorize_url) {
-      window.open(res.body.authorize_url, "_blank", "noopener,noreferrer");
+    const outcome = MUREO.postOutcome(res);
+    if (outcome.ok && outcome.body.authorize_url) {
+      window.open(outcome.body.authorize_url, "_blank", "noopener,noreferrer");
       status.textContent = MUREO.t("dashboard.amazon_authorize_opening");
       return;
     }
@@ -92,11 +93,12 @@
     status.textContent = MUREO.t("dashboard.amazon_exchange_running");
     const res = await postSafe(EXCHANGE_ENDPOINT, { code_or_url: pasted });
     btn.disabled = false;
-    if (res && res.ok && res.body && res.body.status === "ok") {
+    const outcome = MUREO.postOutcome(res);
+    if (outcome.ok && outcome.body.status === "ok") {
       // The code is single-use — clear it so a retry cannot resend a
       // value Amazon has already burned.
       input.value = "";
-      reportSuccess(res.body, status);
+      reportSuccess(outcome.body, status);
       return;
     }
     const key = errorKey(

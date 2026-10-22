@@ -20,8 +20,9 @@ OS-aware strategy
 
 Either path degrades gracefully: a missing/erroring native tool
 (``osascript`` absent, tkinter unavailable, timeout, nonzero exit) yields
-a ``status="error"`` envelope so the server stays up and the UI falls
-back to manual path entry; the picker NEVER raises.
+``ActionResult.failed("picker_failed", <reason>)`` (HTTP 500, #864) so the
+server stays up and the UI falls back to manual path entry; the picker
+NEVER raises.
 
 Security
 --------
@@ -49,9 +50,14 @@ from __future__ import annotations
 import subprocess  # noqa: S404 - fixed argv, shell=False, see module docstring
 import sys
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
+
+from mureo.web.action_result import ActionResult, refuse_error_status
 
 _TIMEOUT_SECONDS = 300
+
+#: The ``error`` code of a picker that could not run or exited non-zero.
+_PICKER_FAILED: Final = "picker_failed"
 
 _TKINTER_UNAVAILABLE = "tkinter_unavailable"
 
@@ -118,11 +124,14 @@ raise SystemExit(0)
 
 @dataclass(frozen=True)
 class PickResult:
-    """Frozen JSON-projectable result of a native picker invocation."""
+    """Frozen JSON-projectable result of a picker that ran: ``ok`` / ``cancelled``."""
 
     status: str
     path: str | None
     detail: str | None = None
+
+    def __post_init__(self) -> None:
+        refuse_error_status(self, self.status)
 
     def as_dict(self) -> dict[str, Any]:
         body: dict[str, Any] = {"status": self.status}
@@ -137,9 +146,9 @@ def _is_macos() -> bool:
     return sys.platform == "darwin"
 
 
-def _invoke(argv: list[str]) -> subprocess.CompletedProcess[str] | PickResult:
+def _invoke(argv: list[str]) -> subprocess.CompletedProcess[str] | ActionResult:
     """Run ``argv`` (fixed list, shell=False, timeout); on any spawn
-    failure return a terminal error/cancel ``PickResult`` instead."""
+    failure return the failed ``ActionResult`` instead."""
     try:
         return subprocess.run(  # noqa: S603 - fixed argv, shell=False
             argv,
@@ -149,24 +158,24 @@ def _invoke(argv: list[str]) -> subprocess.CompletedProcess[str] | PickResult:
             shell=False,
         )
     except FileNotFoundError:
-        return PickResult(status="error", path=None, detail="interpreter_missing")
+        return ActionResult.failed(_PICKER_FAILED, "interpreter_missing")
     except subprocess.TimeoutExpired:
-        return PickResult(status="error", path=None, detail="timeout")
+        return ActionResult.failed(_PICKER_FAILED, "timeout")
     except Exception as exc:  # noqa: BLE001
-        return PickResult(status="error", path=None, detail=type(exc).__name__)
+        return ActionResult.failed(_PICKER_FAILED, type(exc).__name__)
 
 
-def _run(argv: list[str]) -> PickResult:
+def _run(argv: list[str]) -> PickResult | ActionResult:
     """Non-darwin (tkinter) outcome mapping. Never raises."""
     outcome = _invoke(argv)
-    if isinstance(outcome, PickResult):
+    if isinstance(outcome, ActionResult):
         return outcome
     completed = outcome
 
     if completed.returncode != 0:
         stderr = (completed.stderr or "").strip()
         detail = _TKINTER_UNAVAILABLE if _TKINTER_UNAVAILABLE in stderr else "failed"
-        return PickResult(status="error", path=None, detail=detail)
+        return ActionResult.failed(_PICKER_FAILED, detail)
 
     chosen = (completed.stdout or "").strip()
     if not chosen:
@@ -174,11 +183,11 @@ def _run(argv: list[str]) -> PickResult:
     return PickResult(status="ok", path=chosen, detail=None)
 
 
-def _run_macos(applescript: str) -> PickResult:
+def _run_macos(applescript: str) -> PickResult | ActionResult:
     """darwin osascript outcome mapping. ``applescript`` is always a
     module CONSTANT (no client interpolation). Never raises."""
     outcome = _invoke([_OSASCRIPT, "-e", applescript])
-    if isinstance(outcome, PickResult):
+    if isinstance(outcome, ActionResult):
         return outcome
     completed = outcome
 
@@ -186,7 +195,7 @@ def _run_macos(applescript: str) -> PickResult:
         stderr = (completed.stderr or "").strip()
         if _MACOS_CANCEL_CODE in stderr or _MACOS_CANCEL_TEXT in stderr:
             return PickResult(status="cancelled", path=None, detail=None)
-        return PickResult(status="error", path=None, detail="failed")
+        return ActionResult.failed(_PICKER_FAILED, "failed")
 
     chosen = (completed.stdout or "").strip()
     if not chosen:
@@ -194,7 +203,7 @@ def _run_macos(applescript: str) -> PickResult:
     return PickResult(status="ok", path=chosen, detail=None)
 
 
-def pick_directory(title: str, *, locale: str = "en") -> PickResult:
+def pick_directory(title: str, *, locale: str = "en") -> PickResult | ActionResult:
     """Open a native folder picker; return the chosen absolute path.
 
     ``locale`` selects the baked-in macOS prompt (#228) and must come
@@ -209,7 +218,7 @@ def pick_directory(title: str, *, locale: str = "en") -> PickResult:
 
 def pick_file(
     title: str, patterns: tuple[str, ...], *, locale: str = "en"
-) -> PickResult:
+) -> PickResult | ActionResult:
     """Open a native file picker filtered by ``patterns`` (e.g. xlsx).
 
     ``locale`` behaves exactly as in :func:`pick_directory`.

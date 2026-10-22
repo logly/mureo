@@ -62,9 +62,9 @@
         MUREO.toast(MUREO.t("dashboard.advisors_remove_failed"), "error");
         return;
       }
-      const body = (res && res.body) || {};
-      if (res && res.ok && body.status === "ok") {
-        renderAdvisorsList(body.advisors);
+      const outcome = MUREO.postOutcome(res);
+      if (outcome.ok && outcome.body.status === "ok") {
+        renderAdvisorsList(outcome.body.advisors);
         MUREO.toast(MUREO.t("dashboard.advisors_removed"), "success");
       } else {
         MUREO.toast(MUREO.t("dashboard.advisors_remove_failed"), "error");
@@ -128,7 +128,7 @@
 
   // Map a failed /api/advisors/add response to the most specific toast.
   function advisorAddErrorKey(res) {
-    const err = res && res.body && res.body.error;
+    const err = MUREO.postOutcome(res).code;
     if (err === "duplicate_name") return "dashboard.advisors_err_duplicate_name";
     if (err === "invalid_advisor") return "dashboard.advisors_err_invalid";
     return "dashboard.advisors_add_failed";
@@ -181,11 +181,11 @@
         MUREO.toast(MUREO.t("dashboard.advisors_add_failed"), "error");
         return;
       }
-      const body = (res && res.body) || {};
-      if (res && res.ok && body.status === "ok") {
+      const outcome = MUREO.postOutcome(res);
+      if (outcome.ok && outcome.body.status === "ok") {
         form.reset();
         syncAdvisorTransportFields(form);
-        renderAdvisorsList(body.advisors);
+        renderAdvisorsList(outcome.body.advisors);
         MUREO.toast(MUREO.t("dashboard.advisors_added"), "success");
       } else {
         MUREO.toast(MUREO.t(advisorAddErrorKey(res)), "error");

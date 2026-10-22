@@ -25,8 +25,9 @@ rather than fully simulating ``mureo upgrade --all``'s dependency
 resolution — close enough for an availability badge, and far faster.
 
 Fault isolation: any pip failure (non-zero exit, timeout, network down,
-unparseable JSON, OS error) degrades to ``status="error"`` with
-``any_update=False``. This function NEVER raises and NEVER produces a 500.
+unparseable JSON, OS error) is ``ActionResult.failed("update_check_failed")``
+(HTTP 500, #864), with the reason in the server log. This function NEVER
+raises.
 
 Non-blocking accessor: HTTP handlers must call :func:`get_update_status`,
 NOT :func:`check_for_updates` directly. The scoped pip check still reaches
@@ -48,7 +49,7 @@ import sys
 import threading
 import time
 from importlib import metadata
-from typing import Any, Final
+from typing import Any, Final, TypeAlias
 
 from packaging.version import InvalidVersion, Version
 
@@ -58,6 +59,7 @@ from mureo.installed_packages import (
     is_mureo_package,
 )
 from mureo.pip_env import pip_subprocess_env
+from mureo.web.action_result import ActionResult
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +97,20 @@ _POLL_INTERVAL_ENV: Final[str] = "MUREO_UPDATE_CHECK_INTERVAL_SECONDS"
 _DEFAULT_POLL_INTERVAL_SECONDS: Final[int] = 6 * 60 * 60
 
 
-def _error_result() -> dict[str, Any]:
-    """The degraded envelope used for every failure mode."""
+#: What a check (or the cache) holds: the success envelope or the failure.
+UpdateStatus: TypeAlias = dict[str, Any] | ActionResult
 
-    return {"status": "error", "any_update": False, "packages": []}
+
+def _error_result() -> ActionResult:
+    """The failed result used for every failure mode."""
+
+    return ActionResult.failed("update_check_failed")
+
+
+def _copy(result: UpdateStatus) -> UpdateStatus:
+    """A copy a caller may mutate; an ``ActionResult`` is already frozen."""
+
+    return result if isinstance(result, ActionResult) else dict(result)
 
 
 def _installed_mureo_versions() -> dict[str, str]:
@@ -234,13 +246,13 @@ def _outdated_from_report(
     return packages
 
 
-def check_for_updates() -> dict[str, Any]:
+def check_for_updates() -> UpdateStatus:
     """Return the ``GET /api/updates`` response payload.
 
-    Shape::
+    Shape of a success::
 
         {
-          "status": "ok" | "error",
+          "status": "ok",
           "any_update": bool,
           "packages": [{"name": str, "installed": str, "latest": str}, ...]
         }
@@ -248,8 +260,8 @@ def check_for_updates() -> dict[str, Any]:
     ``packages`` lists ONLY outdated mureo / ``mureo-*`` distributions
     (mureo itself included when outdated), sorted by canonical name.
     ``any_update`` is ``True`` iff at least one such package is listed.
-    On any pip failure the envelope degrades to ``status="error"`` /
-    ``any_update=False`` / empty ``packages`` — never an exception.
+    On any pip failure the result is ``ActionResult.failed(
+    "update_check_failed")`` — never an exception.
     """
     installed = _installed_mureo_versions()
     if not installed:
@@ -275,7 +287,7 @@ def check_for_updates() -> dict[str, Any]:
 # server is threaded, hence the lock around the shared cache state.
 
 _cache_lock = threading.Lock()
-_cached_result: dict[str, Any] | None = None
+_cached_result: UpdateStatus | None = None
 _cached_at_monotonic: float = 0.0
 _refresh_in_progress: bool = False
 #: Last spawned worker — exposed only so tests (and a future graceful
@@ -283,10 +295,10 @@ _refresh_in_progress: bool = False
 _refresh_thread: threading.Thread | None = None
 
 
-def _ttl_for(result: dict[str, Any]) -> int:
+def _ttl_for(result: UpdateStatus) -> int:
     """A success is cached far longer than a transient failure."""
 
-    return _OK_TTL_SECONDS if result.get("status") == "ok" else _ERROR_TTL_SECONDS
+    return _ERROR_TTL_SECONDS if isinstance(result, ActionResult) else _OK_TTL_SECONDS
 
 
 def _refresh_updates() -> None:
@@ -321,13 +333,14 @@ def _refresh_if_idle() -> None:
     _refresh_updates()  # clears _refresh_in_progress when done
 
 
-def get_update_status() -> dict[str, Any]:
+def get_update_status() -> UpdateStatus:
     """Non-blocking accessor for ``GET /api/updates``.
 
     Returns the cached envelope instantly so the request thread NEVER blocks
     on pip. On a cold or stale cache a single background refresh is started
     and the last-known result is returned — or the ``checking`` placeholder
-    on a cold start. Shape matches :func:`check_for_updates`.
+    on a cold start. Shape matches :func:`check_for_updates`; a failure
+    is the cached ``ActionResult``.
     """
 
     global _refresh_in_progress, _refresh_thread
@@ -337,7 +350,7 @@ def get_update_status() -> dict[str, Any]:
         # Inline ``cached is not None`` (rather than via a ``fresh`` flag) so the
         # type checker narrows ``cached`` to a dict in the return below.
         if cached is not None and (now - _cached_at_monotonic) < _ttl_for(cached):
-            return dict(cached)
+            return _copy(cached)
         start_refresh = not _refresh_in_progress
         if start_refresh:
             _refresh_in_progress = True
@@ -360,7 +373,7 @@ def get_update_status() -> dict[str, Any]:
     # Return a copy: a caller that mutates the result must never corrupt the
     # shared cache (read by other request threads). Shallow is enough — the
     # payload is read-only output. ``packages`` stays shared by reference.
-    return dict(cached) if cached is not None else dict(_CHECKING_RESULT)
+    return _copy(cached) if cached is not None else dict(_CHECKING_RESULT)
 
 
 # --- Periodic poll (always-on service) ---------------------------------------
@@ -473,7 +486,7 @@ def stop_periodic_update_check() -> None:
         worker.join(timeout=2.0)
 
 
-def request_update_refresh() -> dict[str, Any]:
+def request_update_refresh() -> UpdateStatus:
     """Invalidate the cache and kick off a fresh check; return immediately.
 
     Backs the About tab's "check for updates" button (#246). Drops the cached

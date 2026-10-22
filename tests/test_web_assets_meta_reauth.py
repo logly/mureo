@@ -126,11 +126,14 @@ class TestFailuresAreReportedInMureosWords:
         js = _read("auth_wizards_meta.js")
         assert "const msg = (res.body && res.body.detail) ||" not in js
 
-    def test_graph_detail_is_still_available_as_secondary_text(self) -> None:
+    def test_graph_detail_is_not_shown_at_all(self) -> None:
+        """#864: the response carries no Graph text (it is in the server
+        log); the card shows the localized message only."""
         js = _read("auth_wizards_meta.js")
         start = js.index("function reportError(")
         block = js[start : start + 500]
-        assert "res.body.detail" in block
+        assert "res.body.detail" not in block
+        assert "detail.hidden = true;" in block
         assert "MUREO.toast(msg" in block
 
 

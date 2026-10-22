@@ -42,7 +42,7 @@ from mureo.context.strategy import (
     read_strategy_file,
 )
 from mureo.fsutil import backup_file
-from mureo.web._helpers import send_json
+from mureo.web._helpers import send_error_json, send_json
 from mureo.web.guardrail_values import (
     StrategyGuardrailsError,
     content_with_bullets,
@@ -277,10 +277,8 @@ def _send_failure(
     handler: BaseHTTPRequestHandler, error: StrategyGuardrailsError
 ) -> None:
     status = 400 if error.code in _CALLER_FAULTS else 500
-    body: dict[str, Any] = {"error": error.code}
-    if error.field is not None:
-        body["field"] = error.field
-    send_json(handler, body, status=status)
+    extra = {"field": error.field} if error.field is not None else None
+    send_error_json(handler, status, error.code, extra=extra)
 
 
 def _resolve_path(client: str | None) -> Path:

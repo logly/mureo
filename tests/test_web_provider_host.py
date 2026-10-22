@@ -51,6 +51,7 @@ import pytest
 
 from mureo.providers.catalog import get_provider
 from mureo.providers.installer import InstallResult
+from mureo.web.action_result import ActionResult
 from mureo.web.setup_actions import install_provider, remove_provider
 
 _META = "meta-ads-official"  # hosted_http
@@ -251,8 +252,7 @@ class TestInstallProviderCodeHostUnchanged:
         ):
             result = setup_actions.install_provider(_GOOGLE)
 
-        assert result.status == "error"
-        assert result.detail == "install_returncode_2"
+        assert result == ActionResult.failed("install_failed", "install_returncode_2")
         mock_disable.assert_not_called()
 
     def test_unknown_provider_code_host_no_fs_write(self, tmp_path: Path) -> None:
@@ -262,7 +262,7 @@ class TestInstallProviderCodeHostUnchanged:
         result = setup_actions.install_provider("not-a-provider")
 
         assert result.status == "error"
-        assert result.detail == "unknown_provider"
+        assert (result.code, result.http_status) == ("unknown_provider", 400)
         assert not cfg.exists()
 
 
@@ -679,8 +679,7 @@ class TestInstallProviderDesktopHost:
                 _GOOGLE, host="claude-desktop", home=tmp_path
             )
 
-        assert result.status == "error"
-        assert result.detail == "install_returncode_3"
+        assert result == ActionResult.failed("install_failed", "install_returncode_3")
         assert not cfg.exists()
 
     def test_pipx_idempotent_re_add_no_rewrite(self, tmp_path: Path) -> None:
@@ -746,7 +745,7 @@ class TestInstallProviderDesktopHost:
             )
 
         assert result.status == "error"
-        assert result.detail == "unknown_provider"
+        assert (result.code, result.http_status) == ("unknown_provider", 400)
         assert not cfg.exists()
 
     def test_credentials_json_never_touched(self, tmp_path: Path) -> None:
@@ -883,7 +882,7 @@ class TestRemoveProviderDesktopHost:
             )
 
         assert result.status == "error"
-        assert result.detail == "unknown_provider"
+        assert (result.code, result.http_status) == ("unknown_provider", 400)
 
 
 @pytest.mark.unit
@@ -1296,14 +1295,14 @@ class TestConfirmHostedProvider:
 
         r = setup_actions.confirm_hosted_provider("nope")
         assert r.status == "error"
-        assert r.detail == "unknown_provider"
+        assert (r.code, r.http_status) == ("unknown_provider", 400)
 
     def test_non_hosted_rejected(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         r = setup_actions.confirm_hosted_provider(_GOOGLE)
         assert r.status == "error"
-        assert r.detail == "not_hosted"
+        assert (r.code, r.http_status) == ("not_hosted", 400)
 
     def _conn(self, monkeypatch: pytest.MonkeyPatch, value: str) -> None:
         """Patch the tri-state connectivity probe (the new API)."""
@@ -1389,7 +1388,7 @@ class TestConfirmHostedProvider:
         self._conn(monkeypatch, "connected")
         r = setup_actions.confirm_hosted_provider(_META)
         assert r.status == "error"
-        assert r.detail == "no_mureo_block"
+        assert (r.code, r.http_status) == ("no_mureo_block", 400)
 
     def test_desktop_host_without_affirm_is_manual(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions

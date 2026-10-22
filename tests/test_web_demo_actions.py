@@ -22,6 +22,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mureo.web.action_result import ActionResult
+
 # ---------------------------------------------------------------------------
 # list_demo_scenarios
 # ---------------------------------------------------------------------------
@@ -81,15 +83,23 @@ class TestListDemoScenarios:
         names = [s["name"] for s in as_dict["scenarios"]]
         assert names == sorted(names)
 
-    def test_registry_failure_degrades_to_error_envelope(self) -> None:
+    def test_registry_failure_is_a_failed_result(self) -> None:
+        """#864: a registry failure is ``internal_error`` (HTTP 500)."""
         from mureo.web import demo_actions
 
         with patch.object(demo_actions, "SCENARIOS", new=MagicMock()) as broken:
             broken.__iter__.side_effect = RuntimeError("registry boom")
             broken.items.side_effect = RuntimeError("registry boom")
             result = demo_actions.list_demo_scenarios()
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.failed("internal_error", "RuntimeError")
+
+    @pytest.mark.parametrize("result_type", ["DemoListResult", "DemoInitResult"])
+    def test_success_result_refuses_the_error_status(self, result_type: str) -> None:
+        """#864: a failure is an ``ActionResult``, never a success type."""
+        from mureo.web import demo_actions
+
+        with pytest.raises(ValueError, match="a failure is an ActionResult"):
+            getattr(demo_actions, result_type)(status="error")
 
 
 # ---------------------------------------------------------------------------
@@ -234,8 +244,7 @@ class TestInitDemoErrors:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.refused("unknown_scenario")
 
     def test_demo_init_error_returns_error_envelope(self, tmp_path: Path) -> None:
         from mureo.demo.installer import DemoInitError
@@ -251,8 +260,7 @@ class TestInitDemoErrors:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.failed("demo_init_failed", "DemoInitError")
 
     def test_exists_without_force_surfaces_error(self, tmp_path: Path) -> None:
         from mureo.demo.installer import DemoInitError
@@ -271,8 +279,7 @@ class TestInitDemoErrors:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.failed("demo_init_failed", "DemoInitError")
 
     def test_unexpected_exception_degrades_to_error(self, tmp_path: Path) -> None:
         from mureo.web import demo_actions
@@ -287,8 +294,7 @@ class TestInitDemoErrors:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.failed("internal_error", "RuntimeError")
 
     def test_error_envelope_does_not_leak_full_traceback(self, tmp_path: Path) -> None:
         from mureo.web import demo_actions
@@ -335,8 +341,7 @@ class TestInitDemoTargetValidation:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.refused("target_traversal")
         mock_mat.assert_not_called()
 
     @pytest.mark.parametrize("ctrl", ["bad\x00name", "tab\tname", "nl\nname"])
@@ -350,8 +355,7 @@ class TestInitDemoTargetValidation:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.refused("target_control_characters")
         mock_mat.assert_not_called()
 
     def test_empty_target_rejected(self) -> None:
@@ -364,8 +368,7 @@ class TestInitDemoTargetValidation:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.refused("target_required")
         mock_mat.assert_not_called()
 
     def test_absolute_target_under_tmp_is_accepted(self, tmp_path: Path) -> None:
@@ -425,8 +428,7 @@ class TestInitDemoTargetValidation:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.refused("target_invalid")
         mock_mat.assert_not_called()
 
     def test_symlink_escape_target_rejected(self, tmp_path: Path) -> None:
@@ -446,8 +448,7 @@ class TestInitDemoTargetValidation:
                 force=False,
                 skip_import=False,
             )
-        as_dict = result.as_dict() if hasattr(result, "as_dict") else result
-        assert as_dict["status"] == "error"
+        assert result == ActionResult.refused("target_traversal")
         mock_mat.assert_not_called()
 
 

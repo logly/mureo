@@ -453,7 +453,7 @@ class TestExchangeRouteSuccess:
         assert body["status"] == "ok"
         assert body["manifest"] == "failed"
         assert "LEAKED" not in json.dumps(body)
-        assert "***" in body["manifest_detail"]
+        assert body["manifest_detail"] == "RuntimeError"
         # ...and the tokens are still on disk.
         assert _read_section(wizard)["refresh_token"] == "Atzr|MINTED"
 
@@ -474,28 +474,48 @@ class TestExchangeRouteFailures:
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _reject)
         code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANstale"})
 
-        assert code == 400
-        assert body["error"] == "authorization_code_invalid"
-        assert "5 minutes" in body["detail"]
+        assert (code, body) == (
+            400,
+            {
+                "error": "authorization_code_invalid",
+                "detail": "AmazonAuthCodeError",
+                "region": "na",
+            },
+        )
 
-    def test_other_failure_is_502_with_scrubbed_detail(
-        self, wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+    def test_other_failure_is_502_with_the_class_name(
+        self,
+        wizard: ConfigureWizard,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
+        """#864: ``detail`` is the exception class name; the scrubbed
+        provider text goes to the server log only."""
         _write_credentials(wizard, {"client_id": "cid", "client_secret": "s"})
 
         def _boom(**_kw: Any) -> LwaTokens:
             raise AmazonAuthError("HTTP 500 while holding Bearer Atza|LEAKED-123")
 
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
-        code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        with caplog.at_level(logging.WARNING, logger="mureo.web.handlers"):
+            code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
 
-        assert code == 502
-        assert body["error"] == "amazon_authorization_failed"
-        assert "LEAKED" not in json.dumps(body)
-        assert "***" in body["detail"]
+        assert (code, body) == (
+            502,
+            {
+                "error": "amazon_authorization_failed",
+                "detail": "AmazonAuthError",
+                "region": "na",
+            },
+        )
+        assert "LEAKED" not in caplog.text
+        assert "HTTP 500 while holding ***" in caplog.text
 
-    def test_failure_detail_is_length_capped(
-        self, wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+    def test_logged_failure_is_length_capped(
+        self,
+        wizard: ConfigureWizard,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         _write_credentials(wizard, {"client_id": "cid", "client_secret": "s"})
 
@@ -503,8 +523,11 @@ class TestExchangeRouteFailures:
             raise AmazonAuthError("x" * 5000)
 
         monkeypatch.setattr("mureo.amazon_ads.lwa.exchange_authorization_code", _boom)
-        _code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
-        assert len(body["detail"]) == _MAX_STR
+        with caplog.at_level(logging.WARNING, logger="mureo.web.handlers"):
+            _code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
+        assert body["detail"] == "AmazonAuthError"
+        logged = [r.args[0] for r in caplog.records if "exchange" in r.msg]
+        assert [len(text) for text in logged] == [_MAX_STR]
 
     def test_the_scrubber_does_not_read_the_whole_failure(
         self, wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
@@ -530,7 +553,7 @@ class TestExchangeRouteFailures:
         _code, body = post_refused(wizard, _EXCHANGE_URL, {"code_or_url": "ANcode"})
 
         assert max(seen) == _MAX_STR + STRADDLE_MARGIN
-        assert len(body["detail"]) == _MAX_STR
+        assert body["detail"] == "AmazonAuthError"
 
     def test_no_secret_reaches_the_response_or_the_log(
         self,
@@ -560,8 +583,9 @@ class TestExchangeRouteFailures:
             assert "Atza|" not in sink
             assert "LEAKED-TOKEN-VALUE" not in sink
             assert "SECRET-CLIENT-SECRET" not in sink
-        # The key survives so the message still says what was rejected.
-        assert "client_secret=***" in body["detail"]
+        # The key survives so the log still says what was rejected.
+        assert "client_secret=***" in caplog.text
+        assert body["detail"] == "AmazonAuthError"
         # The failure is recorded — scrubbing must not mean silence.
         assert "Amazon authorization" in caplog.text
 

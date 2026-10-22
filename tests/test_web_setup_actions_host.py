@@ -35,7 +35,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mureo.web.setup_actions import ActionResult
+from mureo.web.action_result import ActionResult
 
 if TYPE_CHECKING:
     from pathlib import Path

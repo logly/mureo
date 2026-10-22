@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
+from mureo.web.action_result import ActionResult
 from mureo.web.upgrade_action import run_upgrade_all
 
 
@@ -49,8 +50,11 @@ class TestRunUpgradeAll:
         assert result["packages"] == targets
         assert "Successfully installed" in result["output"]
 
-    def test_nonzero_returncode_reports_error_with_output(self) -> None:
-        """A non-zero pip exit → ``error`` carrying the captured output."""
+    def test_nonzero_returncode_fails_and_logs_the_output(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A non-zero pip exit → ``upgrade_failed`` (HTTP 500, #864); pip's
+        output goes to the server log, not the response."""
         with (
             patch(
                 "mureo.web.upgrade_action.discover_all_mureo_packages",
@@ -62,11 +66,26 @@ class TestRunUpgradeAll:
                     returncode=1, stderr="Could not find a version"
                 ),
             ),
+            caplog.at_level("WARNING", logger="mureo.web.upgrade_action"),
         ):
             result = run_upgrade_all()
-        assert result["status"] == "error"
-        assert result["returncode"] == 1
-        assert "Could not find a version" in result["output"]
+        assert result == ActionResult.failed("upgrade_failed", "upgrade_returncode_1")
+        assert "Could not find a version" in caplog.text
+
+    def test_killed_pip_names_the_signal(self) -> None:
+        """A negative return code (killed by a signal) stays a valid detail."""
+        with (
+            patch(
+                "mureo.web.upgrade_action.discover_all_mureo_packages",
+                return_value=["mureo"],
+            ),
+            patch(
+                "mureo.web.upgrade_action.subprocess.run",
+                return_value=_completed(returncode=-9),
+            ),
+        ):
+            result = run_upgrade_all()
+        assert result == ActionResult.failed("upgrade_failed", "upgrade_signal_9")
 
     def test_targets_are_server_derived_only(self) -> None:
         """``run_upgrade_all`` takes no package list — discovery is the
@@ -115,8 +134,8 @@ class TestRunUpgradeAll:
             result = run_upgrade_all()
         assert len(result["output"]) <= 4000
 
-    def test_timeout_degrades_to_error(self) -> None:
-        """A pip timeout must degrade to an error envelope, never raise."""
+    def test_timeout_fails(self) -> None:
+        """A pip timeout is ``upgrade_failed``, never a raise."""
         with (
             patch(
                 "mureo.web.upgrade_action.discover_all_mureo_packages",
@@ -128,11 +147,10 @@ class TestRunUpgradeAll:
             ),
         ):
             result = run_upgrade_all()
-        assert result["status"] == "error"
-        assert result["packages"] == ["mureo"]
+        assert result == ActionResult.failed("upgrade_failed", "TimeoutExpired")
 
-    def test_oserror_degrades_to_error(self) -> None:
-        """A missing interpreter / OS error must degrade, never raise."""
+    def test_oserror_fails(self) -> None:
+        """A missing interpreter / OS error is ``upgrade_failed``, never a raise."""
         with (
             patch(
                 "mureo.web.upgrade_action.discover_all_mureo_packages",
@@ -144,17 +162,16 @@ class TestRunUpgradeAll:
             ),
         ):
             result = run_upgrade_all()
-        assert result["status"] == "error"
+        assert result == ActionResult.failed("upgrade_failed", "OSError")
 
-    def test_discovery_failure_degrades_to_error(self) -> None:
-        """If package discovery itself raises, the action still degrades."""
+    def test_discovery_failure_is_an_internal_error(self) -> None:
+        """If package discovery itself raises, the action fails, never raises."""
         with patch(
             "mureo.web.upgrade_action.discover_all_mureo_packages",
             side_effect=RuntimeError("metadata corrupt"),
         ):
             result = run_upgrade_all()
-        assert result["status"] == "error"
-        assert result["packages"] == []
+        assert result == ActionResult.failed("internal_error", "RuntimeError")
 
     def test_empty_target_list_is_noop_not_pip_call(self) -> None:
         """No mureo packages discovered → never invoke pip with no targets."""

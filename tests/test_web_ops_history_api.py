@@ -124,24 +124,24 @@ class TestEndpoint:
         assert (body["since"], body["until"]) == ("2026-10-05", "2026-10-14")
 
     @pytest.mark.parametrize(
-        ("query", "named"),
+        ("query", "code"),
         [
-            ("since=yesterday", "since"),
-            ("until=2026-13-01", "until"),
-            ("since=2026-10-05&until=2026-10-01", "before"),
+            ("since=yesterday", "since_invalid"),
+            ("until=2026-13-01", "until_invalid"),
+            ("since=2026-10-05&until=2026-10-01", "until_before_since"),
             # Forms date.fromisoformat accepts on 3.11+ but the API does not.
-            ("since=20261005", "since"),
-            ("until=2026-W41-1", "until"),
+            ("since=20261005", "since_invalid"),
+            ("until=2026-W41-1", "until_invalid"),
         ],
     )
-    def test_a_bad_date_is_a_400_with_a_plain_message(
-        self, wizard: ConfigureWizard, workspace: Path, query: str, named: str
+    def test_a_bad_date_is_a_400_with_its_code(
+        self, wizard: ConfigureWizard, workspace: Path, query: str, code: str
     ) -> None:
+        """#864: the body is a code that names the parameter, never a
+        sentence, and never echoes the value."""
         _write(workspace, _document(enabled=True))
         status, body = get(wizard, f"{ENDPOINT}?{query}")
-        assert status == 400
-        assert named in body["error"]
-        assert "yesterday" not in body["error"]
+        assert (status, body) == (400, {"error": code})
 
     def test_disabled_still_answers_with_enabled_false(
         self, wizard: ConfigureWizard, workspace: Path

@@ -127,18 +127,18 @@
         retryBtn.disabled = false;
         return;
       }
-      if (res.ok && res.body && res.body.status === "ok") {
+      const outcome = MUREO.postOutcome(res);
+      const st = outcome.ok ? res.body.status : null;
+      if (st === "ok" || st === "noop") { // noop: already registered
         await finishInstall(state, providerId, onComplete);
         return;
       }
-      if (res.body && res.body.status === "needs_credentials") {
+      if (st === "needs_credentials") {
         // Still short of full creds (e.g. the service-account path is missing).
         setStatus("wizard.providers_install.still_needs_credentials");
       } else {
         const tmpl = MUREO.t("wizard.providers_install.failed");
-        const detail = res.body
-          ? res.body.detail || res.body.status
-          : "request_failed";
+        const detail = outcome.ok ? res.body.detail || st : outcome.code || "request_failed";
         status.hidden = false;
         // Replacement via a function so a server-derived detail containing
         // "$" sequences (e.g. "$&", "$1") is inserted literally rather than
@@ -300,12 +300,12 @@
           return;
         }
         btn.disabled = false;
-        if (!res.ok || !res.body) {
-          fail(res && res.body ? res.body.detail : "request_failed");
-          return;
+        const outcome = MUREO.postOutcome(res);
+        if (!outcome.ok) {
+          return fail(outcome.code || "request_failed"); // error, then detail
         }
-        const st = res.body.status;
-        if (st === "ok") {
+        const st = outcome.body.status;
+        if (st === "ok" || st === "noop") { // noop: already registered
           await finishInstall(state, providerId, onComplete);
         } else if (st === "needs_credentials") {
           // The official server registered but cannot authenticate yet —
@@ -332,7 +332,7 @@
             onComplete();
           }
         } else {
-          fail(res.body.detail || st);
+          fail(outcome.body.detail || st);
         }
       });
       wrap.appendChild(btn);
@@ -627,7 +627,7 @@
         } catch (_e) {
           res = null;
         }
-        if (res && res.ok && res.body && res.body.status === "ok") {
+        if (MUREO.postOutcome(res).ok && res.body.status === "ok") {
           appendAmazonAuthorization(wrap, slot, doneBtn, status, onAllDone);
           return;
         }

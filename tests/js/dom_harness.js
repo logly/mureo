@@ -612,6 +612,28 @@ function loadAuthWizardPage(routes) {
   return loadPage(routes, AUTH_WIZARD_FILES);
 }
 
+/**
+ * One top-level function of app.js, as the page runs it.
+ *
+ * app.js itself is not loaded (it boots the page: fetches the catalog and
+ * the CSRF token, routes on the hash), so the MUREO stub below takes the
+ * pure helpers from it by name instead of carrying a copy that could drift.
+ */
+function appFunction(name) {
+  const src = fs.readFileSync(path.join(WEB, "app.js"), "utf-8");
+  const start = src.indexOf("  function " + name + "(");
+  if (start === -1) throw new Error("app.js has no function " + name);
+  let depth = 0;
+  for (let i = src.indexOf("{", start); i < src.length; i++) {
+    if (src[i] === "{") depth += 1;
+    if (src[i] === "}") depth -= 1;
+    if (depth === 0) {
+      return vm.runInNewContext("(" + src.slice(start, i + 1) + ")", {});
+    }
+  }
+  throw new Error("app.js function " + name + " is not closed");
+}
+
 /** Build the browser-shaped context and run `files` in it, in order. */
 function loadPage(routes, files) {
   const html = fs.readFileSync(path.join(WEB, "app.html"), "utf-8");
@@ -676,6 +698,7 @@ function loadPage(routes, files) {
       isDashboardRoute: () => true,
       loadStatus: () => Promise.resolve({}),
       postJson: () => Promise.resolve({ ok: true, body: {} }),
+      postOutcome: appFunction("postOutcome"),
       toast: () => {},
       confirmAction: () => Promise.resolve(true),
       navigateToWizard: () => {},
@@ -703,6 +726,7 @@ async function settle(ticks = 12) {
 }
 
 module.exports = {
+  appFunction,
   cascade,
   specificity,
   Element,

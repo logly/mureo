@@ -88,7 +88,7 @@ from mureo.core.runtime_context import (
     runtime_multi_account_auth,
     runtime_ui_plugin_credential_fields,
 )
-from mureo.core.scrub import scrub_capped
+from mureo.core.scrub import scrub_capped, scrub_text
 from mureo.core.secret_store import FilesystemSecretStore, SecretStoreError
 from mureo.logging_setup import safe_http_log_line
 from mureo.meta_ads.accounts import (
@@ -110,6 +110,7 @@ from mureo.web._helpers import (
     send_json,
 )
 from mureo.web.about import collect_about_info
+from mureo.web.action_result import ActionResult, send_result
 from mureo.web.advisors import (
     AdvisorActionError,
     add_advisor,
@@ -556,13 +557,13 @@ def _generate_amazon_manifest(
     """Run the Amazon manifest generator. Returns ``(written, detail)``.
 
     Exactly one side is meaningful: ``(path, "")`` on success,
-    ``(None, scrubbed_detail)`` on failure. Shared by the dashboard's
+    ``(None, <exception class name>)`` on failure. Shared by the dashboard's
     refresh button and the post-authorization refresh so the failure
     handling has ONE definition — the upstream error can quote an
     ``Authorization: Bearer …`` header, so it is scrubbed and capped
-    exactly once and the SAME string is what reaches both the log and
-    the caller's response. No traceback is logged for the same reason:
-    a nested frame's repr would persist the credential to disk.
+    before it is logged, and only the class name reaches the response
+    (#864). No traceback is logged for the same reason: a nested frame's
+    repr would persist the credential to disk.
 
     The destination comes from :func:`mureo.amazon_ads.manifest.manifest_path_for`
     — the single rule for where a manifest lives (beside the credentials
@@ -586,7 +587,7 @@ def _generate_amazon_manifest(
     except Exception as exc:  # noqa: BLE001 — any transport/auth failure
         detail = scrub_capped(f"{type(exc).__name__}: {exc}", _MAX_STR)
         logger.warning("Amazon manifest refresh failed: %s", detail)
-        return None, detail
+        return None, type(exc).__name__
     return written, ""
 
 
@@ -706,16 +707,16 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             # gate alone suffices like every other GET JSON endpoint.
             # Non-blocking: the slow pip check runs in a daemon thread and
             # its result is cached, so this handler never blocks (#244).
-            send_json(self, get_update_status())
+            send_result(self, get_update_status())
             return
         if path == "/api/extensions":
             self._serve_extensions_index()
             return
         if path == "/api/demo/scenarios":
-            send_json(self, list_demo_scenarios().as_dict())
+            send_result(self, list_demo_scenarios())
             return
         if path == "/api/byod/status":
-            send_json(self, byod_status().as_dict())
+            send_result(self, byod_status())
             return
         if path == "/api/strategy/currency":
             serve_strategy_currency(self)
@@ -948,30 +949,30 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         result = remove_mureo_mcp(
             home=self.wizard.home, host=self._resolve_host(payload)
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_setup_hook_remove(self, payload: dict[str, Any]) -> None:
         result = remove_auth_hook(
             home=self.wizard.home, host=self._resolve_host(payload)
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_setup_hook_install(self, payload: dict[str, Any]) -> None:
         # Per-row (re)install so the operator can restore the credential-guard
         # hook without re-running the full basic-setup wizard. Host is
         # client-authoritative (see _resolve_host), symmetric with the remove
-        # route. install_auth_hook swallows its own errors into an ``error``
-        # ActionResult, so this always sends a 200 envelope.
+        # route. install_auth_hook returns its failure as an ActionResult,
+        # which send_result answers with the failure contract (#864).
         result = install_auth_hook(
             home=self.wizard.home, host=self._resolve_host(payload)
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_setup_skills_remove(self, payload: dict[str, Any]) -> None:
         result = remove_workflow_skills(
             home=self.wizard.home, host=self._resolve_host(payload)
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_setup_skills_install(self, payload: dict[str, Any]) -> None:
         # Per-row (re)install of the workflow skills, symmetric with the
@@ -979,7 +980,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         result = install_workflow_skills(
             home=self.wizard.home, host=self._resolve_host(payload)
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_setup_basic_clear(self, payload: dict[str, Any]) -> None:
         envelope = clear_all_setup(
@@ -1011,8 +1012,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         metadata); the in-process read only fills the displayed version.
         """
         result = run_upgrade_all()
+        if isinstance(result, ActionResult):  # failed: nothing to restart into
+            send_result(self, result)
+            return
         restarting = False
-        if result.get("status") == "ok":
+        if result["status"] == "ok":
             importlib.invalidate_caches()
             request_update_refresh()
             restarting = is_managed_service()
@@ -1026,7 +1030,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # the handler thread reached the scheduling line).
         if restarting:
             _request_service_restart(self.wizard)
-        send_json(self, result)
+        send_result(self, result)
 
     def _post_restart(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         """Restart the running configure server (About tab button).
@@ -1069,7 +1073,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         Server-derived, read-only, fault-isolated like ``/api/updates``; the
         body is ignored. CSRF + Host gated like every other POST.
         """
-        send_json(self, request_update_refresh())
+        send_result(self, request_update_refresh())
 
     def _inject_saved_oauth_callback_urls(self, plugins: list[dict[str, Any]]) -> None:
         """Surface each OAuth provider's saved (non-secret) callback URL so
@@ -1221,7 +1225,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             host=snap.host,
             credentials_path=snap.paths.credentials_path,
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_providers_confirm(self, payload: dict[str, Any]) -> None:
         provider_id = str(payload.get("provider_id", "")).strip()
@@ -1234,7 +1238,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             host=self._resolve_host(payload),
             affirm=bool(payload.get("affirm", False)),
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_providers_hosted_status(  # noqa: ARG002
         self, payload: dict[str, Any]
@@ -1255,7 +1259,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             home=self.wizard.home,
             host=self._resolve_host(payload),
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_providers_remove(self, payload: dict[str, Any]) -> None:
         provider_id = str(payload.get("provider_id", "")).strip()
@@ -1265,7 +1269,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         result = remove_provider(
             provider_id, home=self.wizard.home, host=self.wizard.session.host
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     # ------------------------------------------------------------------
     # External advisor MCP (Advanced) — list / add / remove
@@ -1592,24 +1596,14 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                     app_secret=inspect_app_secret,
                 )
             )
-        except MetaAccountFetchError as exc:
-            # Token is valid but /me/adaccounts failed — a DISTINCT condition
-            # from an invalid token so the UI can tell the operator to retry
-            # rather than re-paste a "bad" token.
-            send_json(
-                self,
-                {"error": "account_fetch_failed", "detail": str(exc)},
-                status=400,
-            )
-            return
-        except MetaTokenInvalidError as exc:
-            # Surface Meta's own error.message (already scrubbed of the
-            # token) under a stable machine code so the UI can branch.
-            send_json(
-                self,
-                {"error": "token_invalid", "detail": str(exc)},
-                status=400,
-            )
+        except (MetaAccountFetchError, MetaTokenInvalidError) as exc:
+            # Token valid but /me/adaccounts failed is DISTINCT from an invalid
+            # token, so the UI says "retry" rather than "re-paste". Meta's own
+            # message (already token-redacted) goes to the log only (#864).
+            logger.warning("Meta token check failed: %s", scrub_text(str(exc)))
+            fetch = isinstance(exc, MetaAccountFetchError)
+            code = "account_fetch_failed" if fetch else "token_invalid"
+            send_error_json(self, 400, code, detail=type(exc).__name__)
             return
         except Exception:  # noqa: BLE001
             logger.exception("Meta token validation failed")
@@ -1667,10 +1661,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if account_id is not None:
             accessible = {acct.get("id") for acct in probe["accounts"]}
             if account_id not in accessible:
-                send_json(
+                send_error_json(
                     self,
-                    {"error": "account_not_accessible", "account_id": account_id},
-                    status=400,
+                    400,
+                    "account_not_accessible",
+                    extra={"account_id": account_id},
                 )
                 return
 
@@ -1765,14 +1760,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
 
         written, detail = _generate_amazon_manifest(creds, credentials_path)
         if written is None:
-            send_json(
+            send_error_json(
                 self,
-                {
-                    "error": "manifest_refresh_failed",
-                    "region": creds.region,
-                    "detail": detail,
-                },
-                status=502,
+                502,
+                "manifest_refresh_failed",
+                detail=detail,
+                extra={"region": creds.region},
             )
             return
 
@@ -1885,9 +1878,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     def _send_amazon_authorization_error(self, exc: Exception, region: str) -> None:
         """Report a failed exchange without ever echoing credentials.
 
-        The SAME scrubbed, capped string reaches the response and the log
-        (no traceback — a transport's error text can embed the bearer
-        token). A rejected code gets its own machine code so the UI can
+        The scrubbed, capped text goes to the log and only the exception
+        class name to the response (no traceback — a transport's error text
+        can embed the bearer token). A rejected code gets its own code so the UI can
         say "codes expire in 5 minutes, authorize again" instead of
         sending the operator to check their client secret.
         """
@@ -1900,18 +1893,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         detail = scrub_capped(str(exc), _MAX_STR)
         logger.warning("Amazon authorization exchange failed: %s", detail)
         rejected = isinstance(exc, lwa.AmazonAuthCodeError)
-        send_json(
+        send_error_json(
             self,
-            {
-                "error": (
-                    "authorization_code_invalid"
-                    if rejected
-                    else "amazon_authorization_failed"
-                ),
-                "region": region,
-                "detail": detail,
-            },
-            status=400 if rejected else 502,
+            400 if rejected else 502,
+            "authorization_code_invalid" if rejected else "amazon_authorization_failed",
+            detail=type(exc).__name__,
+            extra={"region": region},
         )
 
     def _post_demo_init(self, payload: dict[str, Any]) -> None:
@@ -1925,7 +1912,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             force=bool(payload.get("force", False)),
             skip_import=bool(payload.get("skip_import", False)),
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_byod_import(self, payload: dict[str, Any]) -> None:
         file_path = str(payload.get("file_path", "")).strip()
@@ -1936,17 +1923,17 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             file_path=file_path,
             replace=bool(payload.get("replace", False)),
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_byod_remove(self, payload: dict[str, Any]) -> None:
         result = byod_remove(
             google_ads=bool(payload.get("google_ads", False)),
             meta_ads=bool(payload.get("meta_ads", False)),
         )
-        send_json(self, result.as_dict())
+        send_result(self, result)
 
     def _post_byod_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        send_json(self, byod_clear().as_dict())
+        send_result(self, byod_clear())
 
     def _post_shutdown(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         """Stop the configure server so the terminal is freed.
@@ -1977,16 +1964,14 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # #228: the macOS prompt is keyed by the SESSION locale — never
         # by anything in the request body (zero-injection design).
         locale = self.wizard.session.locale
-        send_json(self, pick_directory(title=title, locale=locale).as_dict())
+        send_result(self, pick_directory(title=title, locale=locale))
 
     def _post_pick_file(self, payload: dict[str, Any]) -> None:
         title = str(payload.get("title", "Select a file"))
         kind = str(payload.get("kind", "xlsx"))
         patterns = ("*.xlsx", "*.xlsm") if kind == "xlsx" else ("*.*",)
         locale = self.wizard.session.locale
-        send_json(
-            self, pick_file(title=title, patterns=patterns, locale=locale).as_dict()
-        )
+        send_result(self, pick_file(title=title, patterns=patterns, locale=locale))
 
     def _post_oauth_start(
         self, provider: str, payload: dict[str, Any]
