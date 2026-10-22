@@ -5325,6 +5325,34 @@ label .muted,
   color: var(--ink-soft);
 }
 
+/* #894 — the evaluation table names the row it judged on and quiets the
+   reference rows: their verdict stays readable, it just does not lead. */
+.ops-history-eval-role,
+.ops-history-eval-reference {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: var(--type-caption-size);
+}
+
+.ops-history-eval tr[data-role="reference"] .ops-history-eval-verdict {
+  opacity: 0.6;
+}
+
+/* A long note must not squeeze the short columns: the headers, before,
+   after, change and verdict (columns 2-5) and the role label stay on one
+   line; only the metric and note columns wrap. */
+.ops-history-eval th,
+.ops-history-eval td:nth-child(n + 2):nth-child(-n + 5),
+.ops-history-eval-role {
+  white-space: nowrap;
+}
+
+.ops-history-eval-reason {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: var(--type-caption-size);
+}
+
 /* The client card's line: quiet, like the withheld-figures line above it. */
 .reports-client-card-ops {
   margin: 0;

@@ -438,6 +438,24 @@ recorded.
   timestamp (a decision's first record, or the uncovered change's own),
   by the same rule the `action_log` source uses. Items are sorted newest
   first by the full timestamp.
+- Each served evaluation row carries `note_parts`: its `note` read into
+  `{kind, direction, noise_pct, per_day, raw_totals, held_back, target,
+  zero_baseline}` by `mureo.analysis.outcome_note.note_parts`, from the
+  same templates the evaluator writes with. `kind` is `band`, `direction`,
+  `neutral`, `zero_baseline` or `expected`; `noise_pct` is the band a
+  `band` row stayed inside, or the band an `expected` row was judged
+  with (not a claim that it stayed inside it); `per_day` is
+  `{before_days, after_days}` or `null`; `held_back` is the reason code
+  the note leads with, or `null`; `target` is `{value, reached,
+  window_total}` or `null`; `zero_baseline` is `true` when the note says
+  the baseline was zero (a `zero_baseline` row, or an `expected` row
+  judged on its target alone), else `false`. A note
+  it cannot read (hand-written, or an older or newer form) gets
+  `note_parts: null`. `note_parts` is added to the served copy only;
+  nothing is stored.
+- The dashboard's `recent_actions` rows carry `evaluation`:
+  `{overall, primary, reason}` read off the entry's evaluation table, or
+  `null` when the entry has none.
 - For a custom view, `mureo.web.reports.build_ops_history(client, since,
   until)` returns the same items.
 
@@ -478,6 +496,23 @@ cannot be read, the section is left out too.
   deadline, the evaluation table (metric, before, after, change, verdict,
   note), the reason a change was not evaluated, and whether it was rolled
   back.
+- **The evaluation table in words**: the primary row's metric carries a
+  "primary" label; every other row keeps its verdict, dimmed, followed by
+  "(reference)". A table that states no roles (written before the
+  primary rule) shows neither. Each note is shown in the screen's
+  language from its `note_parts` ("lower is better; compared per day
+  (7d / 7d)"); an expected row names the band it was judged with
+  ("intended: should go up; noise band ±10%"), or says its baseline
+  was zero. A note without them is shown as stored. A table with a
+  `reason` states it as one sentence under the table ("Held back: the
+  volume is below the floor.").
+- **A recent action with an evaluation** is headed by its outcome
+  ("Outcome on CPA: Improved.", or "Outcome: Inconclusive. No primary
+  metric could be judged." without a primary), in the recent actions and
+  the client list alike. A `display_title` the writer set still comes
+  first. The stored `summary` (the English note written for the next
+  agent) is not shown on the row or behind a disclosure; the evaluation
+  itself is in the ops history drill-down.
 - **An external approval** is shown under the operation it was stated on,
   "Approved by Jane Operator on 2026-10-17 (ref REQ-2026-1017-04)". For a
   call that wrote no entry it is shown under the parameters sent, from

@@ -110,6 +110,22 @@
 
 ### Added
 
+- **The configure dashboard states an outcome evaluation in words** (#894).
+  The ops history's evaluation table marks the primary row ("primary"),
+  shows the other rows' verdicts dimmed with "(reference)", turns each
+  row's English working note into a localized one, and states the table's
+  `reason` as a sentence under it. A change in the action list is headed
+  by its outcome ("Outcome on CPA: Improved.") when it carries an
+  evaluation table; the stored `summary` (the agent's English note) is
+  not shown on that row, the detail being in the ops history. The
+  ops history API gives each served evaluation row `note_parts`: the
+  note read into `{kind, direction, noise_pct, per_day, raw_totals,
+  held_back, target, zero_baseline}` by
+  `mureo.analysis.outcome_note.note_parts`, or
+  `null` for a note it cannot read (the stored `note` is then shown as
+  is). The reports API gives each `recent_actions` row `evaluation`
+  (`{overall, primary, reason}`, or `null`). Nothing stored changes, and
+  the notes the evaluator writes are byte-for-byte the same.
 - **A missing baseline is filled from STATE.json** (#890).
   `mureo_state_action_log_append` gives an entry with a `campaign_id`
   and no `metrics_at_action`, that mureo made (no `origin`) and that is

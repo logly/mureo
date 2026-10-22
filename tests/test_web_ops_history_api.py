@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from mureo.analysis.outcome_eval import OUTCOME_REASONS
 from mureo.context.state_store import FilesystemStateStore
 from mureo.web.server import ConfigureWizard
 from tests.web_support import get, get_ok
@@ -282,9 +283,21 @@ class TestSummaryAggregate:
 
 _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 _MODULE = "dashboard_ops_history_section.js"
-_SECTION_KEY = re.compile(r"(?<![a-z_])ops_history_section\.[a-z_]+")
+# The outcome wording (#894): pure, no DOM, loaded before every reader.
+_TEXT_MODULE = "outcome_text.js"
+# A whole key: a key prefix the code completes at run time is not one.
+_SECTION_KEY = re.compile(r"(?<![a-z_])ops_history_section\.[a-z_]*[a-z](?![a-z_])")
+_OUTCOME_KEY = re.compile(r"(?<![a-z_])outcome\.[a-z_]*[a-z](?![a-z_])")
 # The module's own `t("key")` helper prefixes `ops_history_section.`.
 _T_CALL = re.compile(r'\bt\("([a-z_]*[a-z])"')
+# The one `outcome.` value that may be empty: no space between two
+# sentences in Japanese.
+_OUTCOME_MAY_BE_EMPTY = frozenset({"outcome.summary_sep"})
+# `outcome.` keys built from a value rather than spelled out.
+_OUTCOME_FAMILIES = {
+    "reason_": OUTCOME_REASONS,
+    "note_": ("lower_is_better", "higher_is_better"),
+}
 # Keys the module builds from a value rather than spells out.
 _FAMILIES = {
     "state_": (
@@ -297,7 +310,7 @@ _FAMILIES = {
         "rejected",
         "deferred",
     ),
-    "verdict_": ("improved", "regressed", "inconclusive"),
+    "verdict_": ("improved", "regressed", "inconclusive", "held"),
     "direction_": ("up", "down", "hold"),
 }
 
@@ -320,6 +333,29 @@ class TestAssets:
         )
         assert harness.index(f'"{_MODULE}"') < harness.index('"dashboard_reports.js"')
 
+    def test_the_wording_module_is_served_and_loaded_before_its_readers(
+        self,
+    ) -> None:
+        from mureo.web.handlers import _STATIC_ALLOWLIST
+
+        assert _TEXT_MODULE in _STATIC_ALLOWLIST
+        html = _read("app.html")
+        script = html.index(f"/static/{_TEXT_MODULE}")
+        assert html.index("/static/reports_format.js") < script
+        assert script < html.index("/static/reports_display.js")
+        assert script < html.index(f"/static/{_MODULE}")
+        harness = (Path(__file__).parent / "js" / "dom_harness.js").read_text(
+            encoding="utf-8"
+        )
+        position = harness.index(f'"{_TEXT_MODULE}"')
+        assert position < harness.index('"reports_display.js"')
+        assert position < harness.index(f'"{_MODULE}"')
+
+    def test_the_wording_module_knows_every_reason(self) -> None:
+        source = _read(_TEXT_MODULE)
+        for reason in OUTCOME_REASONS:
+            assert f'"{reason}"' in source
+
     def test_the_section_is_not_in_the_static_page(self) -> None:
         """It is built by the module, so a disabled workspace has none."""
         assert "data-ops-history-section" not in _read("app.html")
@@ -327,6 +363,7 @@ class TestAssets:
     @pytest.mark.parametrize("sink", ["innerHTML", "outerHTML", "insertAdjacentHTML"])
     def test_free_text_never_goes_through_an_html_sink(self, sink: str) -> None:
         assert sink not in _read(_MODULE)
+        assert sink not in _read(_TEXT_MODULE)
 
     def test_the_weak_rationale_threshold_is_one_documented_constant(self) -> None:
         assert "WEAK_RATIONALE_MIN_CHARS = 20" in _read(_MODULE)
@@ -335,7 +372,8 @@ class TestAssets:
 
     def test_every_key_is_translated_in_both_locales(self) -> None:
         used: set[str] = set()
-        for name in (_MODULE, "dashboard_reports_cards.js", "reports_triage.js"):
+        scanned = (_MODULE, _TEXT_MODULE, "dashboard_reports_cards.js")
+        for name in (*scanned, "reports_triage.js"):
             used |= set(_SECTION_KEY.findall(_read(name)))
         used |= {f"ops_history_section.{k}" for k in _T_CALL.findall(_read(_MODULE))}
         for prefix, values in _FAMILIES.items():
@@ -357,3 +395,25 @@ class TestAssets:
             "Before/after comparison is indicative; market and seasonal "
             "effects are included."
         )
+
+    def test_every_outcome_key_is_translated_in_both_locales(self) -> None:
+        used: set[str] = set()
+        for name in (_MODULE, _TEXT_MODULE, "reports_display.js"):
+            used |= set(_OUTCOME_KEY.findall(_read(name)))
+        for prefix, values in _OUTCOME_FAMILIES.items():
+            used |= {f"outcome.{prefix}{v}" for v in values}
+        assert {"outcome.role_primary", "outcome.summary"} <= used
+        i18n = json.loads(_read("i18n.json"))
+        for locale in ("en", "ja"):
+            for key in sorted(used):
+                assert key in i18n[locale], f"{key} missing from {locale!r}"
+                if key not in _OUTCOME_MAY_BE_EMPTY:
+                    assert str(i18n[locale][key]).strip() != ""
+        en = {k for k in i18n["en"] if k.startswith("outcome.")}
+        ja = {k for k in i18n["ja"] if k.startswith("outcome.")}
+        assert en == ja
+        assert used == en
+        assert i18n["ja"]["outcome.role_primary"] == "主指標"
+        assert i18n["en"]["outcome.summary"] == "Outcome on {metric}: {verdict}."
+        assert i18n["en"]["outcome.summary_sep"] == " "
+        assert i18n["ja"]["outcome.summary_sep"] == ""

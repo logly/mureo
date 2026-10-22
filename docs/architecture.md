@@ -169,6 +169,10 @@ mureo/
 ├── analysis/                # Cross-platform analysis utilities
 │   ├── lp_analyzer.py       # Landing page analysis
 │   ├── anomaly_detector.py  # CPA spike / CTR drop / zero-spend detection with sample-size gates
+│   ├── outcome_note.py      # Evaluation note -> parts (#894). Reads the NOTE_* templates of
+│   │                        #   outcome_eval / expected_eval (never the reverse); the served
+│   │                        #   ops history view adds its note_parts, and the browser's
+│   │                        #   outcome_text.js words them. Nothing stored changes
 │   └── tracking/            # Tracking-parameter consistency (#550)
 │       ├── checks.py        # Platform-neutral detector: account audit + pre-upload pre-flight
 │       ├── scheme.py        # URL -> recognized tracking parameters + comparable value shape

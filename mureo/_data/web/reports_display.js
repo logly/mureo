@@ -28,8 +28,9 @@
 // deprecated, it is what a client without a contract correctly shows.
 //
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
-// `window.MUREO_REPORTS_DISPLAY`. Reads one other module at call time,
-// `MUREO_REPORTS_FORMAT` — see `format()` — and holds no copy of it.
+// `window.MUREO_REPORTS_DISPLAY`. Reads two other modules at call time,
+// `MUREO_REPORTS_FORMAT` — see `format()` — and `MUREO_OUTCOME_TEXT` — see
+// `outcome()` — and holds no copy of either.
 
 (function () {
   "use strict";
@@ -98,6 +99,19 @@
       throw new Error(
         "reports_display.js needs MUREO_REPORTS_FORMAT — load " +
           "reports_format.js BEFORE reports_display.js"
+      );
+    }
+    return api;
+  }
+
+  // outcome_text.js, the one place an evaluation is put into words (#894).
+  // Read the same way and for the same reasons as `format()`.
+  function outcome() {
+    const api = typeof window !== "undefined" ? window.MUREO_OUTCOME_TEXT : null;
+    if (!api) {
+      throw new Error(
+        "reports_display.js needs MUREO_OUTCOME_TEXT — load " +
+          "outcome_text.js BEFORE reports_display.js"
       );
     }
     return api;
@@ -325,7 +339,7 @@
   /**
    * What one action-log row shows: `{title, summary, truncated, full}`.
    *
-   * Two shapes, and which one an entry gets is decided by the ENTRY, not by
+   * Three shapes, and which one an entry gets is decided by the ENTRY, not by
    * the client:
    *
    * - **It carries a display line** (#706). That line is shown and nothing
@@ -337,6 +351,14 @@
    *   :data:`LEGACY_SUMMARY_CHARS` with the whole string kept on `full` so
    *   the row can offer to open it. Nothing is lost, and nothing on screen is
    *   a wall.
+   *
+   * - **It is an outcome record without a display line** (#894). Its
+   *   verdict, as outcome_text.js says it, is the title, and nothing
+   *   else is shown — like a display line. The stored `summary` is the
+   *   English note written for the next agent (the work journal): it is
+   *   neither on the row nor behind a disclosure; the ops history
+   *   drill-down is where the detail belongs. A verdict this screen does
+   *   not know gets the legacy shape.
    *
    * `title` falls back to `null` rather than to the action name: the renderer
    * already draws the action name on its own line, and repeating it as a
@@ -350,6 +372,8 @@
       return { title: title, summary: short, truncated: false, full: null };
     }
     const legacy = stripEmphasis(action.summary);
+    const verdict = isObject(action.evaluation) ? outcome().summaryText(action.evaluation) : null;
+    if (verdict) return { title: verdict, summary: null, truncated: false, full: null };
     if (!legacy) return { title: null, summary: null, truncated: false, full: null };
     if (legacy.length <= LEGACY_SUMMARY_CHARS) {
       return { title: null, summary: legacy, truncated: false, full: null };

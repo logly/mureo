@@ -27,11 +27,13 @@
 
   const REPORTS_SHARED = window.MUREO_DASHBOARD_REPORTS_STATE;
   const DISPLAY = window.MUREO_REPORTS_DISPLAY;
-  if (!REPORTS_SHARED || !DISPLAY) {
+  // The evaluation table's wording (#894): one place for it, outcome_text.js.
+  const OUTCOME = window.MUREO_OUTCOME_TEXT;
+  if (!REPORTS_SHARED || !DISPLAY || !OUTCOME) {
     throw new Error(
-      "dashboard_ops_history_section.js needs MUREO_DASHBOARD_REPORTS_STATE " +
-        "and MUREO_REPORTS_DISPLAY — load dashboard_reports_state.js and " +
-        "reports_display.js BEFORE dashboard_ops_history_section.js"
+      "dashboard_ops_history_section.js needs MUREO_DASHBOARD_REPORTS_STATE, " +
+        "MUREO_REPORTS_DISPLAY and MUREO_OUTCOME_TEXT — load dashboard_reports_state.js, " +
+        "reports_display.js and outcome_text.js BEFORE dashboard_ops_history_section.js"
     );
   }
   const formatNumber = REPORTS_SHARED.formatNumber;
@@ -186,13 +188,19 @@
     return Object.keys(seen).sort();
   }
 
-  function evaluationRows(item) {
+  /** The first evaluation table with rows among the item's changes, or null. */
+  function evaluationTable(item) {
     const acts = item && Array.isArray(item.actions) ? item.actions : [];
     for (let i = 0; i < acts.length; i++) {
       const table = acts[i] && acts[i].evaluation && acts[i].evaluation.table;
-      if (table && Array.isArray(table.metrics) && table.metrics.length) return table.metrics;
+      if (table && Array.isArray(table.metrics) && table.metrics.length) return table;
     }
-    return [];
+    return null;
+  }
+
+  function evaluationRows(item) {
+    const table = evaluationTable(item);
+    return table ? table.metrics : [];
   }
 
   /** The row the list states: the expected metric marked primary (a legacy
@@ -529,32 +537,41 @@
     return wrap;
   }
 
-  function evaluationRow(row) {
+  // A role the table does not state (written before #888) adds nothing.
+  function evaluationRow(row, table) {
     const tr = el("tr");
-    const verdict = VERDICTS.indexOf(row.verdict) !== -1 ? verdictLabel(row.verdict) : NO_VALUE;
-    [
-      humanizeFlagWords(String(row.metric || "")),
-      formatValue(row.before),
-      formatValue(row.after),
-      deltaText(row.delta_pct) || NO_VALUE,
-      verdict,
-      clean(row.note) || "",
-    ].forEach(function (text) {
-      tr.appendChild(el("td", null, text));
-    });
+    const role = OUTCOME.rowRole(row, table);
+    if (role) tr.setAttribute("data-role", role);
+    const name = el("td", null, humanizeFlagWords(String(row.metric || "")));
+    const said = VERDICTS.indexOf(row.verdict) !== -1 ? verdictLabel(row.verdict) : NO_VALUE;
+    const verdict = el("td", "ops-history-eval-verdict", said);
+    const primary = role === "primary" ? MUREO.t("outcome.role_primary") : null;
+    if (primary) name.appendChild(el("span", "ops-history-eval-role", primary));
+    const reference = role === "reference" ? MUREO.t("outcome.role_reference") : null;
+    if (reference) verdict.appendChild(el("span", "ops-history-eval-reference", reference));
+    const delta = deltaText(row.delta_pct) || NO_VALUE;
+    const note = el("td", null, OUTCOME.noteText(row.note_parts) || clean(row.note) || "");
+    const cell = function (text) { return el("td", null, text); };
+    [name, cell(formatValue(row.before)), cell(formatValue(row.after)), cell(delta), verdict, note]
+      .forEach(function (td) { tr.appendChild(td); });
     return tr;
   }
 
   function buildEvaluation(item) {
-    const rows = evaluationRows(item);
-    if (!rows.length) return null;
+    const table = evaluationTable(item);
+    if (!table) return null;
     const wrap = block("eval_title");
     const parts = headedTable("ops-history-eval", EVAL_COLUMNS, false);
     parts.table.setAttribute("data-ops-history-evaluation", "");
-    rows.forEach(function (row) {
-      if (row && typeof row === "object") parts.body.appendChild(evaluationRow(row));
+    table.metrics.forEach(function (row) {
+      if (row && typeof row === "object") parts.body.appendChild(evaluationRow(row, table));
     });
     wrap.appendChild(parts.table);
+    if (typeof table.reason === "string" && table.reason) {
+      const reason = el("p", "ops-history-eval-reason", OUTCOME.reasonText(table.reason));
+      reason.setAttribute("data-ops-history-eval-reason", "");
+      wrap.appendChild(reason);
+    }
     return wrap;
   }
 
