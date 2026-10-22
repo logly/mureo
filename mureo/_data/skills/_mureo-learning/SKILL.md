@@ -32,7 +32,7 @@ Every action that modifies a campaign enters this lifecycle. The agent tracks it
 ```
 Action taken (e.g., add negative keywords)
     │
-    ├── Record metrics_at_action + observation_due in action_log
+    ├── Record observation_due + a baseline (metrics_at_action) in action_log
     │
     ▼
 [OBSERVING]  ── Do NOT draw conclusions yet
@@ -182,12 +182,12 @@ BAD (jumping to conclusions):
 
 ### /rescue
 - **DO**: Take emergency action when metrics are clearly critical (>30% off target for 7+ days)
-- **DO**: Record metrics_at_action for every change made
+- **DO**: Give every change a baseline (mureo fills a campaign's metrics_at_action when omitted)
 - **DO NOT**: Trigger rescue based on a single bad day
 - **THRESHOLD**: At least 3 consecutive days of critical metrics before rescue actions
 
 ### /search-term-cleanup, /creative-refresh, /budget-rebalance
-- **DO**: Record metrics_at_action and set observation_due when making changes
+- **DO**: Set observation_due when making changes; omit metrics_at_action to let mureo fill it
 - **DO**: Consult past VALIDATED learnings before proposing new changes
 - **DO NOT**: Reverse a previous action that is still in OBSERVING
 - **SAY**: "The budget increase from 4/1 is still in its observation window (due 4/8). I recommend waiting before making further budget changes to this campaign."
@@ -209,7 +209,7 @@ BAD (jumping to conclusions):
 
 ## Recording Outcomes in action_log
 
-When executing any write operation, record the context needed for future evaluation:
+When executing any write operation, record the context needed for future evaluation. On a campaign-level entry, omit `metrics_at_action`: mureo fills it from the campaign's STATE.json `metrics`, `period` and `fetched_at` included. Passed by hand, it is that campaign's `metrics` from `mureo_state_get` unchanged; figures the snapshot lacks (MTD spend, a segment) still take canonical names (`../_mureo-strategy/SKILL.md` → *Performance Metrics*) and a `period`:
 
 ```json
 {
@@ -225,21 +225,24 @@ When executing any write operation, record the context needed for future evaluat
     "clicks": 1200,
     "impressions": 37500,
     "ctr": 0.032,
-    "cost": 234000
+    "spend": 234000,
+    "period": "LAST_30_DAYS"
   },
   "observation_due": "2026-04-15"
 }
 ```
 
-**Which metrics to record** depends on the action type:
+If the append answers `baseline.source: "none"` with a `reason` (`baseline_stale`, `no_current_metrics`, `current_metrics_undated`, `platform_not_in_state`, `campaign_not_in_state`), nothing was filled: append the entry again with the campaign's figures from `mureo_state_get` passed as `metrics_at_action`.
+
+**Which metrics to record by hand** depends on the action type:
 
 | Action Type | Key Metrics to Record |
 |------------|----------------------|
-| Budget change | cost, impressions, clicks, conversions, cpa |
+| Budget change | spend, impressions, clicks, conversions, cpa |
 | Keyword change | impressions, clicks, conversions, cpa, ctr |
 | Creative change | impressions, clicks, ctr, conversions, cpa |
 | Targeting change | impressions, clicks, conversions, cpa, reach |
-| Bid strategy change | conversions, cpa, cost — plus `impression_share` on Google Ads, which reports it. `impression_share` is NOT in the canonical metric vocabulary (`../_mureo-strategy/SKILL.md` → *Performance Metrics*): record it in the action_log entry only, never as a STATE.json metric |
+| Bid strategy change | conversions, cpa, spend — plus `impression_share` on Google Ads, which reports it. `impression_share` is NOT in the canonical metric vocabulary (`../_mureo-strategy/SKILL.md` → *Performance Metrics*): record it in the action_log entry only, never as a STATE.json metric |
 
 ## Consulting Past Evidence
 
@@ -265,7 +268,7 @@ Before proposing any action, check the action_log for:
 ## Summary
 
 ```
-1. Every write action → record metrics_at_action + observation_due
+1. Every write action → record observation_due + a baseline (metrics_at_action, filled when omitted)
 2. Before the window passes → DO NOT evaluate, DO NOT reverse
 3. After the window passes → collect current metrics, check sample size
 4. Sufficient data + meaningful change → CANDIDATE

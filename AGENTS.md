@@ -225,6 +225,9 @@ mureo/
 │   │                    #   its own (#758 phase 5): the rule order, the fixed
 │   │                    #   skip vocabulary, and ONE locked write for the whole
 │   │                    #   pass. Pure decision + write, no MCP imports
+│   ├── action_baseline.py # The baseline an action_log append is missing
+│   │                    #   (#890): the campaign snapshot's metrics, whole,
+│   │                    #   plus `days`; refused when stale. Pure
 │   ├── actor_stamp.py   # `stamp_actor` — the WHO/WHY stamp shared by
 │   │                    #   `append_action_log` and the automatic closure, so a
 │   │                    #   mureo-written entry carries the same identity on both

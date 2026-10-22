@@ -207,8 +207,9 @@ that failed, and nothing is created in a workspace that has no
 `STATE.json`.
 
 If you also record the change with `mureo_state_action_log_append` (for
-example to give it `metrics_at_action` and an `observation_due` so it is
-evaluated), give the entry `action: "google_ads_budget_update"` and the
+example to give it an `observation_due` so it is evaluated; its
+`metrics_at_action` is filled from the campaign's snapshot when
+omitted, see below), give the entry `action: "google_ads_budget_update"` and the
 target (`entity_type: "budget"`, `entity_id: "b1"`): it then joins the
 call's decision by rule 4. Passing the decision's id as
 `entry.decision_id` links it whatever else the entry says.
@@ -219,6 +220,20 @@ Schema, which keeps the tool list small. mureo validates every item on the
 server and refuses a malformed one with `invalid_args`. The recording
 tools (`mureo_decision_record`, `mureo_state_action_log_append`) keep the
 full schema.
+
+## The baseline
+
+The baseline is the entry's `metrics_at_action`. When a campaign-level
+entry is appended with `mureo_state_action_log_append` without one,
+mureo fills it from STATE.json (#890): the campaign's `metrics`, copied
+whole (`period`, `fetched_at` and `result_indicator` included), plus
+`days` read from `period`, so counts compare per day. It is filled
+only for a change mureo made (no `origin`), never for an evaluation
+record, and only when the snapshot has metrics and its `fetched_at` is
+at most 2 days old (and at most a day ahead); otherwise nothing is
+written, and the append's
+`baseline` answer says why (`baseline_stale` for an old snapshot). A
+baseline the caller passes is stored as given, never merged.
 
 ## The evaluation table
 

@@ -72,6 +72,6 @@ Analyze budget allocation and suggest rebalancing across all campaigns.
 
 15. **Execute**: Use each platform's budget update tools to apply approved changes.
 
-16. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current cost, impressions, clicks, conversions, CPA, budget utilization) and `observation_due` (7 days from `server_now`'s date for budget changes).
+16. **Record outcome context**: For each campaign modified, log to `action_log` with `observation_due` (7 days from `server_now`'s date for budget changes); omit `metrics_at_action` and mureo fills it from the campaign's snapshot.
 
 17. **Update STATE.json** with new budget values, notes, and log the rebalancing action to `action_log`.

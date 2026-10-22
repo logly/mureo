@@ -186,7 +186,11 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         },
         "summary": {"type": "string"},
         "command": {"type": "string"},
-        "metrics_at_action": {"type": "object"},
+        "metrics_at_action": {
+            "type": "object",
+            "description": "Baseline metrics. Omit on a campaign change to fill "
+            "it from that campaign's STATE.json snapshot.",
+        },
         "observation_due": {"type": "string"},
         "reversible_params": {"type": "object"},
         "rollback_of": {
@@ -666,7 +670,10 @@ TOOLS: list[Tool] = [
             "Atomically append a single action_log entry to STATE.json. "
             "Use this whenever a workflow takes an action that should "
             "be evaluable later (budget changes, campaign pauses, "
-            "negative-keyword adds). Returns the updated state document."
+            "negative-keyword adds). An omitted metrics_at_action is "
+            "filled from a campaign snapshot fetched within 2 days; the "
+            "answer's ``baseline`` (source / reason) says whether it was. "
+            "Returns the updated state document."
         ),
         inputSchema={
             "type": "object",
