@@ -63,7 +63,7 @@ Run an emergency performance rescue workflow for underperforming campaigns.
 
 9. **Execute approved actions**: Only after I approve each recommendation, execute the changes using each platform's update tools.
 
-10. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CPA, conversions, clicks, cost, impressions) and `observation_due` (from `server_now`'s date: 7 days for budget changes, 14 days for keyword/creative changes).
+10. **Record outcome context**: For each campaign modified, log to `action_log` with `observation_due` (from `server_now`'s date: 7 days for budget changes, 14 days for keyword/creative changes); omit `metrics_at_action` and mureo fills it from the campaign's snapshot.
 
 11. **Update STATE.json**: Record all changes made in campaign notes with timestamps. Log all rescue actions to the `action_log` with platform, action type, and expected impact.
 

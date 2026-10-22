@@ -462,7 +462,7 @@ explicit `noise_pct` passed to `mureo_outcome_evaluate` overrides
       "campaign_id": "111222333",
       "command": "/search-term-cleanup",
       "summary": "Excluded informational queries misaligned with Persona",
-      "metrics_at_action": {"cpa": 5200, "conversions": 45, "clicks": 1200},
+      "metrics_at_action": {"cpa": 5200, "conversions": 45, "clicks": 1200, "period": "LAST_30_DAYS"},
       "observation_due": "2026-04-15"
     },
     {
@@ -840,7 +840,7 @@ its judgement on screen under your name, and you cannot vouch for it.
 | `campaign_id` | string | No | Campaign affected |
 | `command` | string | No | Slash command that initiated the action |
 | `summary` | string | No | Human-readable summary |
-| `metrics_at_action` | object | No | Key metrics at the time of action, for outcome evaluation — use the same canonical vocabulary as `metrics` above (e.g. `cpa`, `conversions`, `clicks`) |
+| `metrics_at_action` | object | No | The baseline for outcome evaluation. Omit it on a campaign-level change: mureo fills it from that campaign's STATE.json `metrics` (`period` and `fetched_at` included). Passed by hand, it is that `metrics` from `mureo_state_get` unchanged; figures the snapshot lacks (MTD spend, a segment) use the canonical names above (`spend`, `conversions`, `cpa`, ...) plus `period` |
 | `observation_due` | string | No | ISO 8601 date when the outcome should be evaluated |
 | `display_title` | string | No | What this action was, for the dashboard row — ≤40 characters, plain text. Over the bound the append is **refused**, never truncated |
 | `display_summary` | string | No | One sentence under the title, ≤120 characters, plain text (no markdown — `**bold**` reaches a person as asterisks). The row shows these two and stops there; the full `summary` is drill-down only, so keep writing it as fully as the next agent needs |

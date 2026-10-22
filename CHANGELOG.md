@@ -2,6 +2,10 @@
 
 ### Changed
 
+- **`analysis_anomalies_check` medians its baseline per day** (#890):
+  counts in an `action_log` baseline that states its window (`days`, or
+  a `period` such as `LAST_30_DAYS`) are divided by it, one that states
+  none still counts as one day, and `spend` fills the cost as `cost` does.
 - **The configure web API answers a refused or failed request with an HTTP
   error and `{"error": <code>, "detail"?}`** (#864). A request that used to
   get HTTP 200 with `{"status": "error", "detail": ...}` now gets 400 when
@@ -96,6 +100,24 @@
 
 ### Added
 
+- **A missing baseline is filled from STATE.json** (#890).
+  `mureo_state_action_log_append` gives an entry with a `campaign_id`
+  and no `metrics_at_action`, that mureo made (no `origin`) and that is
+  not an evaluation record, the campaign's snapshot `metrics` as its
+  baseline: copied whole (`period`, `fetched_at`, `result_indicator`)
+  plus `days` from `period`, so the automatic closure no longer skips it
+  with `no_baseline` and compares counts per day. Only a snapshot with
+  metrics fetched at most 2 days ago (and at most a day ahead) is used
+  (`mureo.context.action_baseline.BASELINE_MAX_AGE_DAYS`); otherwise
+  nothing is filled. A baseline the caller passes is stored as given.
+  The answer gains a top-level `baseline`:
+  `{"source": "caller" | "state_snapshot" | "none", "reason"?}`, with
+  `reason` (`platform_not_in_state`, `campaign_not_in_state`,
+  `no_current_metrics`, `current_metrics_undated`, or the new
+  `baseline_stale`) only when an eligible entry was not filled. It is
+  not written to STATE.json. The skills now omit `metrics_at_action` on
+  campaign-level changes and give a hand-written one canonical names
+  and a `period`.
 - **`evaluation` in the `mureo_outcome_evaluate` answer, and its
   `evaluation_of` input** (#889). The answer carries the evaluation table
   automatic closure stores, next to the existing keys, which are read off

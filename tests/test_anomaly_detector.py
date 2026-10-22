@@ -318,6 +318,90 @@ class TestBaselineFromHistory:
         assert baseline.cpa == 1000
 
 
+def _history_entry(metrics: dict[str, object]) -> ActionLogEntry:
+    return ActionLogEntry(
+        timestamp="2026-04-01",
+        action="update",
+        platform="google_ads",
+        campaign_id="123",
+        metrics_at_action=metrics,
+    )
+
+
+@pytest.mark.unit
+class TestBaselinePerDay:
+    """A baseline that states its window counts per day (#890).
+
+    ``mureo_state_action_log_append`` fills a missing baseline from the
+    campaign snapshot: a ``LAST_30_DAYS`` total, not one day. Mixed into the
+    median as it is, one such entry would dwarf every daily row.
+    """
+
+    def test_counts_of_a_stated_window_are_divided_into_days(self) -> None:
+        log = (
+            # 1,000 a day over 30 days.
+            _history_entry(
+                {
+                    "spend": 30_000,
+                    "impressions": 60_000,
+                    "clicks": 1_500,
+                    "conversions": 60,
+                    "period": "LAST_30_DAYS",
+                    "fetched_at": "2026-04-01T09:00:00+09:00",
+                }
+            ),
+            # 1,100 a day over 7 days, stated as ``days``.
+            _history_entry(
+                {
+                    "spend": 7_700,
+                    "impressions": 14_000,
+                    "clicks": 350,
+                    "conversions": 14,
+                    "days": 7,
+                }
+            ),
+            # One day, no window stated.
+            _history_entry(
+                {"cost": 900, "impressions": 2_100, "clicks": 52, "conversions": 2}
+            ),
+        )
+
+        baseline = baseline_from_history("123", log, min_entries=3)
+
+        assert baseline is not None
+        assert baseline.cost == 1_000
+        assert baseline.impressions == 2_000
+        assert baseline.clicks == 50
+        assert baseline.conversions == 2
+        # Ratios are per entry, and a ratio is the same over any window:
+        # 30000/60, 7700/14, 900/2 -> median 500.
+        assert baseline.cpa == 500
+
+    def test_spend_alone_is_the_cost(self) -> None:
+        log = tuple(_history_entry({"spend": value}) for value in (900, 1_000, 1_100))
+
+        baseline = baseline_from_history("123", log, min_entries=3)
+
+        assert baseline is not None
+        assert baseline.cost == 1_000
+
+    @pytest.mark.parametrize("period", [None, "THIS_MONTH"])
+    def test_an_entry_without_a_readable_window_counts_as_one_day(
+        self, period: str | None
+    ) -> None:
+        metrics: dict[str, object] = {"cost": 5_000, "conversions": 10}
+        if period is not None:
+            metrics["period"] = period
+        log = tuple(_history_entry(dict(metrics)) for _ in range(3))
+
+        baseline = baseline_from_history("123", log, min_entries=3)
+
+        assert baseline is not None
+        assert baseline.cost == 5_000
+        assert baseline.conversions == 10
+        assert baseline.cpa == 500
+
+
 @pytest.mark.unit
 class TestAnomalyFields:
     def test_anomaly_is_frozen_dataclass(self) -> None:

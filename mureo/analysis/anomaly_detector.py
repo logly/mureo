@@ -25,10 +25,16 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from mureo.analysis.outcome_eval import (
+    COUNT_METRICS,
+    canonical_metrics,
+    period_days,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
     from mureo.context.models import ActionLogEntry
 
@@ -240,6 +246,42 @@ def _check_ctr_drop(
     )
 
 
+def _per_day(metrics: Mapping[str, object]) -> dict[str, float]:
+    """``metrics`` under canonical names, its counts per day.
+
+    Names go through :func:`~mureo.analysis.outcome_eval.canonical_metrics`,
+    so ``cost`` and ``spend`` are one figure (``spend``) and values that are
+    not numbers (``"N/A"``) are left out. A count
+    (:data:`~mureo.analysis.outcome_eval.COUNT_METRICS`) is divided by the
+    days the entry states (:func:`~mureo.analysis.outcome_eval.period_days`);
+    an entry that states none counts as one day.
+    """
+    figures = canonical_metrics(metrics)
+    days = period_days(metrics) or 1
+    return {
+        name: value / days if name in COUNT_METRICS else value
+        for name, value in figures.items()
+    }
+
+
+def _ratio(
+    figures: Mapping[str, float], name: str, numerator: str, denominator: str
+) -> float | None:
+    """``figures[name]``, else ``numerator / denominator`` of the same entry."""
+    value = figures.get(name)
+    if value is not None:
+        return value
+    top, bottom = figures.get(numerator), figures.get(denominator)
+    if top is None or bottom is None or bottom <= 0:
+        return None
+    return top / bottom
+
+
+def _median_of(values: Iterable[float | None]) -> float | None:
+    present = [v for v in values if v is not None]
+    return statistics.median(present) if present else None
+
+
 def baseline_from_history(
     campaign_id: str,
     action_log: Iterable[ActionLogEntry],
@@ -252,72 +294,41 @@ def baseline_from_history(
     action during a CPA spike) would otherwise pull the baseline
     toward the bad state and suppress future alerts.
 
+    Counts (spend, impressions, clicks, conversions) are medianed **per
+    day**: an entry that states its window — a ``days`` number, or a
+    ``period`` such as ``LAST_30_DAYS`` — has its counts divided by that
+    many days, as a baseline filled from a campaign snapshot does (#890).
+    An entry that states no window, or one that cannot be read, counts as
+    ONE day, which is how every hand-written baseline before #890 was
+    read. Names are canonicalised first, so ``cost`` and ``spend`` both
+    fill :attr:`CampaignMetrics.cost`.
+
     Ratio metrics (CPA, CTR) are computed **per entry first** and then
     medianed, so the returned baseline CPA is a real median daily CPA
     rather than ``median(cost) / median(conversions)`` — those two can
-    diverge on noisy days and mismatch the real historical reality.
+    diverge on noisy days and mismatch the real historical reality. Both
+    sides of an entry's ratio cover the same window, so dividing its
+    counts into days does not change it.
 
     Returns ``None`` if fewer than ``min_entries`` usable entries
     exist. Default is 7 (one week) — enough that median resists one
     or two outlier days. Callers that deliberately want a tighter
-    window can pass a smaller ``min_entries``.
+    window can pass a smaller ``min_entries``. A value that is not a
+    number is skipped; it never takes out the whole baseline.
     """
     relevant = [
-        entry.metrics_at_action
+        _per_day(entry.metrics_at_action)
         for entry in action_log
         if entry.campaign_id == campaign_id and entry.metrics_at_action is not None
     ]
     if len(relevant) < min_entries:
         return None
-
-    def _numeric(m: dict[str, Any], key: str) -> float | None:
-        # Tolerate malformed entries (string-typed values, "N/A", empty strings)
-        # that can appear when action_log is loaded from JSON written by a
-        # platform with inconsistent typing. One bad row must not take out the
-        # whole baseline.
-        raw = m.get(key)
-        if raw is None:
-            return None
-        try:
-            return float(raw)
-        except (TypeError, ValueError):
-            return None
-
-    def _median_of(values: list[float]) -> float | None:
-        return statistics.median(values) if values else None
-
-    per_entry_cpas: list[float] = []
-    per_entry_ctrs: list[float] = []
-    for m in relevant:
-        cpa = _numeric(m, "cpa")
-        if cpa is None:
-            cost = _numeric(m, "cost")
-            conv = _numeric(m, "conversions")
-            if cost is not None and conv is not None and conv > 0:
-                cpa = cost / conv
-        if cpa is not None:
-            per_entry_cpas.append(cpa)
-
-        ctr = _numeric(m, "ctr")
-        if ctr is None:
-            clicks = _numeric(m, "clicks")
-            impressions = _numeric(m, "impressions")
-            if clicks is not None and impressions is not None and impressions > 0:
-                ctr = clicks / impressions
-        if ctr is not None:
-            per_entry_ctrs.append(ctr)
-
-    costs = [v for v in (_numeric(m, "cost") for m in relevant) if v is not None]
-    imps = [v for v in (_numeric(m, "impressions") for m in relevant) if v is not None]
-    clks = [v for v in (_numeric(m, "clicks") for m in relevant) if v is not None]
-    convs = [v for v in (_numeric(m, "conversions") for m in relevant) if v is not None]
-
     return CampaignMetrics(
         campaign_id=campaign_id,
-        cost=_median_of(costs) or 0.0,
-        impressions=int(_median_of(imps) or 0),
-        clicks=int(_median_of(clks) or 0),
-        conversions=_median_of(convs) or 0.0,
-        cpa=_median_of(per_entry_cpas),
-        ctr=_median_of(per_entry_ctrs),
+        cost=_median_of(m.get("spend") for m in relevant) or 0.0,
+        impressions=int(_median_of(m.get("impressions") for m in relevant) or 0),
+        clicks=int(_median_of(m.get("clicks") for m in relevant) or 0),
+        conversions=_median_of(m.get("conversions") for m in relevant) or 0.0,
+        cpa=_median_of(_ratio(m, "cpa", "spend", "conversions") for m in relevant),
+        ctr=_median_of(_ratio(m, "ctr", "clicks", "impressions") for m in relevant),
     )

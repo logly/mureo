@@ -62,7 +62,7 @@ Review and clean up search terms and keywords across all platforms.
 
 11. **Execute**: Use each platform's keyword management tools to apply approved changes (add negative keywords, add positive keywords, adjust bids).
 
-12. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CPA, conversions, clicks, CTR, impressions, cost) and `observation_due` (14 days from `server_now`'s date). This enables evidence-based evaluation later. Keyword and negative-keyword changes are **not** auto-recorded, so this step is what puts them in the batch at all — an entry you do not append is invisible to any later revert.
+12. **Record outcome context**: For each campaign modified, log to `action_log` with `observation_due` (14 days from `server_now`'s date); omit `metrics_at_action` and mureo fills it from the campaign's snapshot. This enables evidence-based evaluation later. Keyword and negative-keyword changes are **not** auto-recorded, so this step is what puts them in the batch at all — an entry you do not append is invisible to any later revert.
 
 13. **Close the batch**: call `mureo_batch_end` and report the returned `batch_id` and member count to the operator, so undoing this pass later is `rollback_plan_get` with that id rather than a reconstruction from memory.
 

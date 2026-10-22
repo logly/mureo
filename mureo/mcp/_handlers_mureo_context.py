@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING, Any, Final
 from mureo.analysis.expected_eval import validate_evaluation_table
 from mureo.analysis.outcome_eval import outcome_summary
 from mureo.analysis.report_flags import normalize_flags
+from mureo.context.action_baseline import with_baseline
 from mureo.context.approval import parse_approval
 from mureo.context.batch import BatchError
 from mureo.context.errors import ContextFileError
@@ -98,8 +99,8 @@ from mureo.context.strategy import (
 )
 
 # Read through the module (not bound to a name here) so a monkeypatched
-# ``get_runtime_context`` is honoured at call time.
-from mureo.core import runtime_context
+# ``get_runtime_context`` / frozen ``server_now`` is honoured at call time.
+from mureo.core import clock, runtime_context
 from mureo.core.clock import server_now_iso
 from mureo.fsutil import backup_file
 from mureo.mcp._auto_evaluation_hook import _auto_evaluate
@@ -379,14 +380,13 @@ async def handle_state_action_log_append(
     action = _require(raw, "action")
     platform = _require(raw, "platform")
     path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
-    # Validate the closure indices against the CURRENT log length before the
-    # append. The log is append-only so its length only grows; an index that
-    # is valid now stays valid, and reading once here avoids a stray value
-    # silently hiding an open observation. (A benign race can only make a
-    # just-appended sibling entry un-referenceable, never mis-close another.)
-    log_len = len(read_state_file(path).action_log)
-    validate_closure_index(raw, "rollback_of", log_len)
-    validate_closure_index(raw, "evaluation_of", log_len)
+    # Validate the closure indices against the CURRENT log length (append-only,
+    # so a valid index stays valid; a benign race can only make a just-appended
+    # sibling un-referenceable, never mis-close another). The same read is the
+    # campaign snapshot a missing baseline is filled from (#890).
+    current = read_state_file(path)
+    validate_closure_index(raw, "rollback_of", len(current.action_log))
+    validate_closure_index(raw, "evaluation_of", len(current.action_log))
     evaluation, summary = _closure_evaluation(raw)
     # ``timestamp`` is stamped SERVER-side (#460). A model-supplied value is
     # accepted by the schema (dropping the property would break existing
@@ -443,6 +443,7 @@ async def handle_state_action_log_append(
         # shown, never verified.
         approval=parse_approval(raw.get("approval")),
     )
+    entry, baseline = with_baseline(current, entry, clock.server_now().date())
     require_entry_fields(path, entry, raw.get("expected"))
     try:
         doc = append_action_log(path, entry, expected=raw.get("expected"))
@@ -450,7 +451,7 @@ async def handle_state_action_log_append(
         # A refused batch_id is caller error, not a server fault: report it as
         # the tool's own refusal rather than as an unhandled exception.
         raise ValueError(str(exc)) from exc
-    return _json_result(_state_to_dict(doc))
+    return _json_result({**_state_to_dict(doc), "baseline": baseline})
 
 
 def _require_known_account_id(arguments: dict[str, Any]) -> Any:
