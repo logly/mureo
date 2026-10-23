@@ -171,49 +171,6 @@ def _period_to_range(period: str, *, anchor: date | None = None) -> tuple[date, 
     return anchor - timedelta(days=6), anchor  # default: last 7 days
 
 
-# Verb prefixes that should never silently no-op in BYOD mode.
-# Anything matching one of these returns ``skipped_in_byod_readonly``
-# instead of an empty list, so a curious agent never mistakes a mutation
-# for a successful call.
-_MUTATION_PREFIXES = (
-    "create_",
-    "update_",
-    "delete_",
-    "remove_",
-    "add_",
-    "send_",
-    "upload_",
-    "pause_",
-    "resume_",
-    "enable_",
-    "disable_",
-    "apply_",
-    "publish_",
-    "submit_",
-    "attach_",
-    "detach_",
-    "approve_",
-    "reject_",
-    "cancel_",
-    "set_",
-    "patch_",
-    # A Performance Max text swap (#590): a text Asset is immutable, so the
-    # client method is named for what it does — replace_ matches no generic
-    # prefix above, and without this entry a BYOD call would fall through to
-    # the empty-list read stub and read as a write that quietly did nothing.
-    "replace_",
-    # Meta-specific mutation verbs whose method names do not match any
-    # of the generic prefixes above: boost_post / boost_instagram_post,
-    # end_split_test, duplicate_lead_form, and export_leads_to_csv (the
-    # last writes a local file only, but is still a state-producing
-    # operation that must not silently no-op as an empty read).
-    "boost_",
-    "end_",
-    "duplicate_",
-    "export_",
-)
-
-
 def _async_empty_list() -> Callable[..., Any]:
     async def _stub(*_: Any, **__: Any) -> list[Any]:
         return []

@@ -53,7 +53,6 @@ if TYPE_CHECKING:
 
     from mureo.core.policy import PolicyGate
     from mureo.mcp._journal_hook import JournalledCall
-    from mureo.mcp.tool_provider import MCPToolProvider
 
 from mureo.amazon_ads.provider import amazon_ads_disabled, register_amazon_provider
 
@@ -84,6 +83,7 @@ from mureo.mcp._plugin_declarations import (
     _register_plugin_pattern_fallbacks,
     _register_plugin_read_only_hints,
 )
+from mureo.mcp._plugin_tables import _PLUGIN_DISPATCH, _PLUGIN_SEMANTICS
 from mureo.mcp._reason_param import inject_reason_params, mutating_predicate
 from mureo.mcp._result_decorations import (
     _capture_plugin_reversal,
@@ -106,7 +106,6 @@ from mureo.mcp.exclusion_preflight import (
 from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
 from mureo.mcp.plugin_semantics import (
-    ToolSemantics,
     derive_semantics,
     record_mutation_action_log,
 )
@@ -333,11 +332,16 @@ def _discover_with_amazon() -> tuple[Any, ...]:
 
 
 _PLUGIN_TOOLS: list[Tool]
-_PLUGIN_DISPATCH: dict[str, MCPToolProvider]
-_PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
+_PLUGIN_TOOLS, _collected_dispatch = collect_plugin_tools(
     reserved_names=_RESERVED_BUILTIN_NAMES,
     discover=_discover_with_amazon,
 )
+# ``_PLUGIN_DISPATCH`` is the dict object :mod:`mureo.mcp._plugin_tables`
+# holds (#879); refilled in place so a reload of this module refreshes every
+# holder of it.
+_PLUGIN_DISPATCH.clear()
+_PLUGIN_DISPATCH.update(_collected_dispatch)
+del _collected_dispatch
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)
 _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
 
@@ -367,9 +371,15 @@ _PLUGIN_THROTTLER = Throttler(PLUGIN_THROTTLE)
 # can never be paired with a first distribution's tool, which is what re-keying
 # by ``(distribution, name)`` would have bought; what identity is needed for is
 # the *message*, and that is emitted where identity lives, at collection.
-_PLUGIN_SEMANTICS: dict[str, ToolSemantics] = {
-    t.name: derive_semantics(t) for t in _PLUGIN_TOOLS
-}
+#
+# The dict object is the one :mod:`mureo.mcp._plugin_tables` holds (#879),
+# refilled in place like ``_PLUGIN_DISPATCH`` above.
+# Derived into a local first, so a failing ``derive_semantics`` on reload
+# leaves the previous table intact rather than empty.
+_derived_semantics = {t.name: derive_semantics(t) for t in _PLUGIN_TOOLS}
+_PLUGIN_SEMANTICS.clear()
+_PLUGIN_SEMANTICS.update(_derived_semantics)
+del _derived_semantics
 _PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
     name: Throttler(sem.throttle)
     for name, sem in _PLUGIN_SEMANTICS.items()

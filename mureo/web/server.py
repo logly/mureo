@@ -60,7 +60,7 @@ _COOKED_REASSERT_SECONDS = 1.0
 def _resolve_static_dir() -> Path:
     """Locate the bundled ``mureo/_data/web`` directory.
 
-    Mirrors ``cli.setup_cmd._get_data_path`` — tries ``importlib.resources``
+    Mirrors ``cli._skill_paths.get_data_path`` — tries ``importlib.resources``
     first (pip install) and falls back to the source-tree layout.
     """
     try:

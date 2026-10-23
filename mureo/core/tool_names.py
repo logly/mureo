@@ -45,13 +45,8 @@ from __future__ import annotations
 
 import unicodedata
 
-# An upward ``core -> byod`` edge, kept for now and tracked in #879: the write
-# vocabulary below is single-sourced from the BYOD client's mutation prefixes,
-# and ``_write_verbs()`` reads it once at import, so this is a load-time
-# dependency on a higher layer wherever the import is written.
-from mureo.byod._client_common import _MUTATION_PREFIXES
-
 __all__ = [
+    "MUTATION_PREFIXES",
     "READ_ONLY_PREFIXES",
     "WRITE_VERBS",
     "is_read_only_tool_name",
@@ -90,10 +85,57 @@ def is_read_only_tool_name(name: str) -> bool:
     )
 
 
+#: Mutation method-name prefixes: the authoritative mutation vocabulary
+#: (AGENTS.md). The list lives here, in ``core``, and the BYOD clients
+#: (:mod:`mureo.byod._client_common`) import it to refuse a mutation in
+#: read-only mode, so the two cannot drift and ``core`` imports nothing from
+#: ``byod`` (#879).
+#:
+#: Anything matching one of these returns ``skipped_in_byod_readonly`` in BYOD
+#: mode instead of an empty list, so a curious agent never mistakes a mutation
+#: for a successful call.
+MUTATION_PREFIXES: tuple[str, ...] = (
+    "create_",
+    "update_",
+    "delete_",
+    "remove_",
+    "add_",
+    "send_",
+    "upload_",
+    "pause_",
+    "resume_",
+    "enable_",
+    "disable_",
+    "apply_",
+    "publish_",
+    "submit_",
+    "attach_",
+    "detach_",
+    "approve_",
+    "reject_",
+    "cancel_",
+    "set_",
+    "patch_",
+    # A Performance Max text swap (#590): a text Asset is immutable, so the
+    # client method is named for what it does — replace_ matches no generic
+    # prefix above, and without this entry a BYOD call would fall through to
+    # the empty-list read stub and read as a write that quietly did nothing.
+    "replace_",
+    # Meta-specific mutation verbs whose method names do not match any
+    # of the generic prefixes above: boost_post / boost_instagram_post,
+    # end_split_test, duplicate_lead_form, and export_leads_to_csv (the
+    # last writes a local file only, but is still a state-producing
+    # operation that must not silently no-op as an empty read).
+    "boost_",
+    "end_",
+    "duplicate_",
+    "export_",
+)
+
+
 #: Verbs that make a name a write whatever else it says.
 #:
-#: Single-sourced from ``mureo.byod._client_common._MUTATION_PREFIXES``, which
-#: AGENTS.md calls the authoritative mutation vocabulary, so the two cannot
+#: Single-sourced from :data:`MUTATION_PREFIXES` above, so the two cannot
 #: drift and a verb learned in one place is known in the other. The extras
 #: below are shapes that vocabulary has no reason to carry (it names Python
 #: client methods, not MCP tools).
@@ -101,10 +143,9 @@ def is_read_only_tool_name(name: str) -> bool:
 #: Only ever used to REFUSE a reading, never to assert that a name is a write,
 #: so an omission costs a missed read rather than a missed mutation.
 #:
-#: Computed once at import, from the ``_MUTATION_PREFIXES`` imported at the top
-#: (an upward ``core -> byod`` edge, #879).
+#: Computed once at import, from :data:`MUTATION_PREFIXES`.
 def _write_verbs() -> frozenset[str]:
-    return frozenset(p.rstrip("_") for p in _MUTATION_PREFIXES) | {
+    return frozenset(p.rstrip("_") for p in MUTATION_PREFIXES) | {
         "put",
         "post",
         "write",

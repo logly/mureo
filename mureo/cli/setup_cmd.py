@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-from importlib import resources
 from pathlib import Path
 
 import typer
@@ -16,7 +15,14 @@ import typer
 # Read through the module (not bound to names here) so monkeypatched
 # wizard steps are honoured at call time.
 from mureo import auth_setup
+from mureo.cli import _skill_paths
 from mureo.cli._tty import confirm_or_default, is_tty
+from mureo.cli.native_skills import install_native_skills
+from mureo.cli.setup_codex import (
+    install_codex_credential_guard,
+    install_codex_mcp_config,
+    install_codex_skills,
+)
 from mureo.cli.setup_gemini import install_gemini_extension
 
 setup_app = typer.Typer(name="setup", help="Set up mureo for AI agent environments")
@@ -58,33 +64,6 @@ def _warn_unused_ads_flags(
         )
 
 
-def _get_data_path(subdir: str) -> Path:
-    """Resolve the path to bundled data files.
-
-    Works both in development (source tree) and after pip install
-    (package data).
-    """
-    # Try importlib.resources first (pip install)
-    try:
-        ref = resources.files("mureo") / "_data" / subdir
-        # Materialize to a real path
-        with resources.as_file(ref) as p:
-            if p.exists():
-                return Path(p)
-    except (TypeError, FileNotFoundError):
-        pass
-
-    # Fallback: source tree layout
-    pkg_root = Path(__file__).parent.parent
-    data_path = pkg_root / "_data" / subdir
-    if data_path.exists():
-        return data_path
-
-    raise FileNotFoundError(
-        f"Bundled data not found: {subdir}. " f"Ensure mureo is installed correctly."
-    )
-
-
 def install_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     """Copy skill directories to the target directory.
 
@@ -97,37 +76,22 @@ def install_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     dest = target_dir or (Path.home() / ".claude" / "skills")
     dest.mkdir(parents=True, exist_ok=True)
 
-    src = _get_data_path("skills")
+    src = _skill_paths.get_data_path("skills")
     count = 0
     for skill_dir in sorted(src.iterdir()):
         if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
             dest_skill = dest / skill_dir.name
-            _replace_dest(dest_skill)
+            _skill_paths.replace_dest(dest_skill)
             shutil.copytree(skill_dir, dest_skill)
             count += 1
 
     return count, dest
 
 
-def _replace_dest(path: Path) -> None:
-    """Remove ``path`` in preparation for ``shutil.copytree``.
-
-    ``shutil.rmtree`` refuses symlinks by design (to avoid nuking the
-    link's target). A developer who has symlinked a bundled skill dir
-    at their own dev copy would otherwise crash re-running setup with
-    ``OSError: Cannot call rmtree on a symbolic link``. Unlink the
-    symlink itself and leave the target intact.
-    """
-    if path.is_symlink():
-        path.unlink()
-    elif path.exists():
-        shutil.rmtree(path)
-
-
 def remove_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     """Remove bundle-driven skill directories from ``target_dir``.
 
-    The allow-list is derived from ``_get_data_path("skills")`` — only
+    The allow-list is derived from ``_skill_paths.get_data_path("skills")`` — only
     bundle children that contain a ``SKILL.md`` are eligible for removal.
     User-installed skills outside that allow-list (including ones that
     coincidentally share the ``_mureo-`` prefix) are NEVER touched.
@@ -140,7 +104,7 @@ def remove_skills(target_dir: Path | None = None) -> tuple[int, Path]:
 
     Symlinks in ``target_dir`` are ``unlink``-ed rather than ``rmtree``-ed
     so the dev copy at the link's target is preserved (mirrors
-    ``_replace_dest``).
+    ``_skill_paths.replace_dest``).
 
     Args:
         target_dir: Destination directory. Defaults to ``~/.claude/skills``.
@@ -151,7 +115,7 @@ def remove_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     dest = target_dir or (Path.home() / ".claude" / "skills")
 
     try:
-        src = _get_data_path("skills")
+        src = _skill_paths.get_data_path("skills")
     except FileNotFoundError:
         return 0, dest
 
@@ -186,12 +150,6 @@ def _deploy_plugin_native_skills(dest: Path) -> None:
     rest, printing a one-line note instead.
     """
     try:
-        # ``mureo.cli.native_skills`` imports this module's data-path helpers
-        # at load.
-        from mureo.cli.native_skills import (  # noqa: PLC0415 — import cycle: mureo.cli.setup_cmd -> mureo.cli.native_skills (#879)
-            install_native_skills,
-        )
-
         count, _ = install_native_skills(dest)
         if count:
             typer.echo(f"  {count} plugin native skills installed to {dest}")
@@ -372,13 +330,6 @@ def setup_codex(
     setup layer-for-layer; workflow commands are installed as Codex
     skills (invoked with ``$<command>`` or via ``/skills``).
     """
-    # ``mureo.cli.setup_codex`` imports this module's data-path helper at load.
-    from mureo.cli.setup_codex import (  # noqa: PLC0415 — import cycle: mureo.cli.setup_cmd -> mureo.cli.setup_codex (#879)
-        install_codex_credential_guard,
-        install_codex_mcp_config,
-        install_codex_skills,
-    )
-
     typer.echo("=== mureo Setup for Codex CLI ===\n")
 
     should_skip, banner = _should_skip_auth(skip_auth)

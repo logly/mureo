@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.byod._client_common import (
     _DAILY_DELIVERY_DEFAULT_DAYS,
-    _MUTATION_PREFIXES,
     _async_byod_blocked,
     _async_empty_list,
     _byod_delivery_rows,
@@ -24,6 +23,7 @@ from mureo.byod._client_common import (
     _to_float,
     _to_int,
 )
+from mureo.core.tool_names import MUTATION_PREFIXES
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -254,6 +254,6 @@ class ByodMetaAdsClient:
     def __getattr__(self, name: str) -> Callable[..., Any]:
         if name.startswith("_"):
             raise AttributeError(name)
-        if any(name.startswith(verb) for verb in _MUTATION_PREFIXES):
+        if any(name.startswith(verb) for verb in MUTATION_PREFIXES):
             return _async_byod_blocked(name)
         return _async_empty_list()

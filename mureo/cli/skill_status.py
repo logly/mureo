@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from mureo import __version__
-from mureo.cli.setup_cmd import _get_data_path
+from mureo.cli import _skill_paths
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -121,7 +121,7 @@ def _shipped_skill_versions() -> dict[str, str | None]:
     source files they were copied from is right in both cases.
     """
     try:
-        src = _get_data_path("skills")
+        src = _skill_paths.get_data_path("skills")
         return {
             d.name: _read_skill_version(d / "SKILL.md")
             for d in sorted(src.iterdir())

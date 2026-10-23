@@ -12,10 +12,11 @@ plugin's ``## Guardrails`` caps without a per-plugin hand-rolled gate.
 
 Every function takes what it needs as an argument and holds no module state of
 its own. That is what made the extraction safe and is what keeps it safe: the
-maps themselves — ``_PLUGIN_SEMANTICS`` / ``_PLUGIN_DISPATCH`` — and the calls
-that feed them in stay in ``server.py``'s module body, because the env-gating
-suite re-triggers the whole registration by ``importlib.reload``-ing that one
-module and a registrar that had captured a map at import would go stale.
+filling of the maps — ``_PLUGIN_SEMANTICS`` / ``_PLUGIN_DISPATCH``, whose dict
+objects live in :mod:`mureo.mcp._plugin_tables` (#879) — and the calls that
+feed them in stay in ``server.py``'s module body, because the env-gating suite
+re-triggers the whole registration by ``importlib.reload``-ing that one module
+and a registrar that had captured a map's contents at import would go stale.
 
 Best-effort throughout: a registry failure logs and moves on. A guardrail hint
 that cannot be published must never take the server down at startup.

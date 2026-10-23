@@ -24,6 +24,7 @@ from mureo.creative_studio.providers import (
     NotSupportedError,
     available_providers,
 )
+from mureo.creative_studio.providers import _base as base
 from mureo.creative_studio.providers import fal as fal_mod
 from mureo.creative_studio.providers import google_images as google_mod
 from mureo.creative_studio.providers import openai_images as openai_mod
@@ -142,13 +143,13 @@ def test_fal_capabilities_omit_supported_sizes() -> None:
 def test_secret_env_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_store = type("S", (), {"load": lambda self, key: {}})()
     fake_ctx = type("C", (), {"secret_store": fake_store})()
-    monkeypatch.setattr(registry, "get_runtime_context", lambda: fake_ctx)
+    monkeypatch.setattr(base, "get_runtime_context", lambda: fake_ctx)
 
     monkeypatch.setenv("OPENAI_API_KEY", "env-openai-abc")
-    assert registry._creative_studio_secret("openai_api_key") == "env-openai-abc"
+    assert base._creative_studio_secret("openai_api_key") == "env-openai-abc"
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    assert registry._creative_studio_secret("openai_api_key") is None
+    assert base._creative_studio_secret("openai_api_key") is None
 
 
 @pytest.mark.unit
@@ -157,9 +158,9 @@ def test_secret_store_takes_precedence_over_env(
 ) -> None:
     fake_store = type("S", (), {"load": lambda self, key: {"fal_key": "store-value"}})()
     fake_ctx = type("C", (), {"secret_store": fake_store})()
-    monkeypatch.setattr(registry, "get_runtime_context", lambda: fake_ctx)
+    monkeypatch.setattr(base, "get_runtime_context", lambda: fake_ctx)
     monkeypatch.setenv("FAL_KEY", "env-value")
-    assert registry._creative_studio_secret("fal_key") == "store-value"
+    assert base._creative_studio_secret("fal_key") == "store-value"
 
 
 @pytest.mark.unit

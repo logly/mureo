@@ -3,7 +3,7 @@
 These tests pin the symmetric ``remove_skills`` counterpart of
 ``install_skills``. Per CTO decision #2 in the planner HANDOFF
 ``feat-web-config-ui-phase1-uninstall.md``: removal MUST be
-bundle-driven (allow-list from ``_get_data_path("skills")``), NOT
+bundle-driven (allow-list from ``get_data_path("skills")``), NOT
 prefix-based. A prefix-based remove would leave non-prefixed bundle
 skills (``daily-check``, ``onboard``, etc.) behind on uninstall.
 
@@ -284,8 +284,8 @@ class TestRemoveSkillsSafety:
 class TestRemoveSkillsAllowListSource:
     def test_uses_get_data_path_skills_for_allow_list(self, tmp_path: Path) -> None:
         """The remove allow-list is derived from
-        ``_get_data_path("skills")`` — verify by patching
-        ``_get_data_path`` to return a synthetic bundle dir."""
+        ``get_data_path("skills")`` — verify by patching
+        ``get_data_path`` to return a synthetic bundle dir."""
         from mureo.cli.setup_cmd import remove_skills
 
         # Synthetic install-bundle source containing only one skill.
@@ -297,7 +297,7 @@ class TestRemoveSkillsAllowListSource:
         _make_skill_dir(target, "only-one", "installed-bundle")
         _make_skill_dir(target, "third-party", "user-installed")
 
-        with patch("mureo.cli.setup_cmd._get_data_path", return_value=fake_src):
+        with patch("mureo.cli._skill_paths.get_data_path", return_value=fake_src):
             count, _ = remove_skills(target_dir=target)
 
         # Only the bundle member is removed.
@@ -332,7 +332,7 @@ class TestRemoveSkillsAllowListSource:
         )
         bundle_skill = _make_skill_dir(target, "real-skill", "installed")
 
-        with patch("mureo.cli.setup_cmd._get_data_path", return_value=fake_src):
+        with patch("mureo.cli._skill_paths.get_data_path", return_value=fake_src):
             count, _ = remove_skills(target_dir=target)
 
         # Only ``real-skill`` is in the allow-list.
@@ -348,7 +348,7 @@ class TestRemoveSkillsAllowListSource:
     def test_bundle_source_missing_is_graceful_noop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """If ``_get_data_path("skills")`` cannot resolve (rare — broken
+        """If ``get_data_path("skills")`` cannot resolve (rare — broken
         install), the remove function MUST no-op gracefully (planner
         HANDOFF L172 — "bundle dir absent at import resolution →
         graceful skip"). Crucially: the destination dir is left alone."""
@@ -357,7 +357,7 @@ class TestRemoveSkillsAllowListSource:
         def _missing(_: str) -> Path:
             raise FileNotFoundError("synthetic missing bundle")
 
-        monkeypatch.setattr("mureo.cli.setup_cmd._get_data_path", _missing)
+        monkeypatch.setattr("mureo.cli._skill_paths.get_data_path", _missing)
 
         target = tmp_path / "skills"
         _make_skill_dir(target, "daily-check", "user-orphan")

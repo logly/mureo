@@ -228,6 +228,7 @@ mureo/
 │   ├── main.py              # Entry point (mureo command) — registers all 12 sub-command groups
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor / codex / gemini (Typer handlers)
 │   ├── setup_codex.py       # Codex install-kit (MCP config, credential guard, workflow-command skills, shared skills)
+│   ├── _skill_paths.py      # get_data_path / replace_dest, shared by setup_cmd, setup_codex, native_skills, skill_status (#879)
 │   ├── setup_gemini.py      # Gemini extension manifest (~/.gemini/extensions/mureo/gemini-extension.json)
 │   ├── native_skills.py     # Deploy/remove plugin `mureo.native_skills` slash skills (#439)
 │   ├── auth_cmd.py          # mureo auth setup (terminal) / status / check-*
@@ -247,6 +248,9 @@ mureo/
 ├── mcp/                     # MCP server
 │   ├── __main__.py                        # python -m mureo.mcp entry point
 │   ├── server.py                          # MCP server setup (stdio transport)
+│   ├── _plugin_tables.py                  # _PLUGIN_DISPATCH / _PLUGIN_SEMANTICS dict objects, below server so
+│   │                                      #   the journal hook imports them at top level; server fills
+│   │                                      #   them in place at load (and on reload) (#879)
 │   ├── _helpers.py                        # Shared handler utilities
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules
@@ -283,6 +287,8 @@ mureo/
 │                            #   imports context (#863): the filesystem StateStore default lives in
 │                            #   mureo.context.state_store, and runtime_context reaches it by object
 │                            #   reference (DEFAULT_STATE_STORE_REF); mureo.core still exports the name.
+│                            #   tool_names.py owns MUTATION_PREFIXES, which the BYOD clients
+│                            #   import; core imports nothing from byod (#879).
 │                            #   tool_failure.py is the MCP failure-envelope reader (failure_of);
 │                            #   the writer stays in mcp/_helpers.py, which re-exports it (#863).
 │                            #   tool_failure.exception_text is the one exception-to-text formatter,
@@ -309,6 +315,9 @@ mureo/
 ├── providers/              # Official-MCP provider catalog (Google Ads / Meta / GA4 install kits)
 ├── learning/                # /learn knowledge base + advisor federation client
 ├── creative_studio/         # Creative Studio: image providers, art-direction scoring, HTML/CSS composer
+│                            #   providers/_base.py holds the ImageProvider protocol and the helpers the
+│                            #   built-in providers share; providers/__init__.py (the registry) imports
+│                            #   the built-ins at top level and re-exports the public names (#879).
 ├── analytics/               # Analytics-module protocol + registry (mureo.analytics entry-point group)
 ├── change_import/           # Import changes made outside mureo into action_log (#545)
 │   ├── models.py            # ExternalChange / ChangeFeedResult / ChangeImportOutcome

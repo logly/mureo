@@ -440,5 +440,5 @@ def test_builtin_skill_names_empty_when_bundle_missing(monkeypatch) -> None:
     def _boom(_subdir: str) -> object:
         raise FileNotFoundError("bundle missing")
 
-    monkeypatch.setattr(ns, "_get_data_path", _boom)
+    monkeypatch.setattr("mureo.cli._skill_paths.get_data_path", _boom)
     assert ns.builtin_skill_names() == set()

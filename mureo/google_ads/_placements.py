@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads._placement_mappers import (
+    EXCLUSION_KINDS,
     map_negative_placement,
     map_placement_performance,
 )
@@ -36,26 +37,6 @@ if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
 
 logger = logging.getLogger(__name__)
-
-#: Tool-facing exclusion kind → (Google Ads criterion type, criterion
-#: sub-message, field on that sub-message carrying the value). The criterion
-#: types double as the GAQL type filter below; they are whitelisted literals,
-#: never caller input.
-EXCLUSION_KINDS: dict[str, tuple[str, str, str]] = {
-    "website": ("PLACEMENT", "placement", "url"),
-    "mobile_application": ("MOBILE_APPLICATION", "mobile_application", "app_id"),
-    "mobile_app_category": (
-        "MOBILE_APP_CATEGORY",
-        "mobile_app_category",
-        "mobile_app_category_constant",
-    ),
-}
-
-#: Google Ads criterion type → tool-facing exclusion kind (the reverse map,
-#: used when shaping read rows).
-CRITERION_TYPE_TO_KIND: dict[str, str] = {
-    spec[0]: kind for kind, spec in EXCLUSION_KINDS.items()
-}
 
 _TYPE_FILTER = ", ".join(f"'{spec[0]}'" for spec in EXCLUSION_KINDS.values())
 

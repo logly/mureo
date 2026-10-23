@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from mureo import credential_guard
-from mureo.cli.setup_cmd import _get_data_path
+from mureo.cli import _skill_paths
 
 logger = logging.getLogger(__name__)
 
@@ -293,27 +293,12 @@ def install_codex_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     dest = target_dir or (Path.home() / ".codex" / "skills")
     dest.mkdir(parents=True, exist_ok=True)
 
-    src = _get_data_path("skills")
+    src = _skill_paths.get_data_path("skills")
     count = 0
     for skill_dir in sorted(src.iterdir()):
         if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
             target = dest / skill_dir.name
-            _replace_dest(target)
+            _skill_paths.replace_dest(target)
             shutil.copytree(skill_dir, target)
             count += 1
     return count, dest
-
-
-def _replace_dest(path: Path) -> None:
-    """Remove ``path`` in preparation for a fresh copytree/mkdir.
-
-    ``shutil.rmtree`` refuses symlinks by design (to avoid nuking the
-    link's target). Operators who have symlinked a bundled skill name
-    at their own dev copy would otherwise see ``mureo setup codex``
-    crash on re-run with ``OSError: Cannot call rmtree on a symbolic
-    link``. Unlink the symlink and leave the target intact.
-    """
-    if path.is_symlink():
-        path.unlink()
-    elif path.exists():
-        shutil.rmtree(path)

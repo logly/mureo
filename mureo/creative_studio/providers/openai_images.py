@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from mureo.creative_studio.providers import (
+from mureo.creative_studio.providers._base import (
     _GPT_IMAGE_SIZES,
     _creative_studio_secret,
     _size_capabilities,

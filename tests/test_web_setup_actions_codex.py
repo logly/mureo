@@ -173,9 +173,9 @@ def test_clear_all_removes_codex_skills_not_claude(home: Path) -> None:
 
     sa.clear_all_setup(home=home, host="codex")
     # The codex skill dirs the bundle owns are gone.
-    from mureo.cli.setup_cmd import _get_data_path
+    from mureo.cli._skill_paths import get_data_path
 
-    bundled = {p.name for p in _get_data_path("skills").iterdir() if p.is_dir()}
+    bundled = {p.name for p in get_data_path("skills").iterdir() if p.is_dir()}
     remaining = (
         {p.name for p in codex_skills.iterdir()} if codex_skills.exists() else set()
     )

@@ -47,7 +47,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from mureo.creative_studio.providers import (
+from mureo.creative_studio.providers._base import (
     _FIELD_TO_ENV,
     _GPT_IMAGE_SIZES,
     NotSupportedError,

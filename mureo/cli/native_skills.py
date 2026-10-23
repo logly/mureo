@@ -40,7 +40,7 @@ from importlib.metadata import entry_points
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from mureo.cli.setup_cmd import _get_data_path, _replace_dest
+from mureo.cli import _skill_paths
 from mureo.core.providers.registry import NATIVE_SKILLS_ENTRY_POINT_GROUP
 
 if TYPE_CHECKING:
@@ -110,7 +110,7 @@ def builtin_skill_names() -> set[str]:
     plugin deploy still proceeds rather than crashing.
     """
     try:
-        src = _get_data_path("skills")
+        src = _skill_paths.get_data_path("skills")
     except FileNotFoundError:
         return set()
     return {
@@ -302,7 +302,7 @@ def install_native_skills(
                     f"that escapes the plugin root {root!s}; skipped for safety"
                 )
                 continue
-            _replace_dest(target)
+            _skill_paths.replace_dest(target)
             # Subtree verified contained above, so the default deref-symlinks
             # behaviour cannot pull in a file from outside the plugin.
             shutil.copytree(skill_dir, target)
@@ -315,7 +315,7 @@ def install_native_skills(
             )
             # Clean up a partial target so a failed copy leaves no debris.
             with contextlib.suppress(OSError):
-                _replace_dest(target)
+                _skill_paths.replace_dest(target)
             continue
         count += 1
     return count, dest

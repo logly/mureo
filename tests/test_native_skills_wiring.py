@@ -10,8 +10,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import mureo.cli.native_skills as native_skills
-from mureo.cli import upgrade_cmd
+from mureo.cli import setup_cmd, upgrade_cmd
 from mureo.cli.setup_cmd import _deploy_plugin_native_skills
 from mureo.cli.upgrade_cmd import _refresh_native_skills
 
@@ -22,7 +21,7 @@ def test_deploy_helper_is_best_effort(tmp_path: Path, monkeypatch) -> None:
     def _boom(dest: Path, **_kw: object) -> tuple[int, Path]:
         raise RuntimeError("plugin exploded")
 
-    monkeypatch.setattr(native_skills, "install_native_skills", _boom)
+    monkeypatch.setattr(setup_cmd, "install_native_skills", _boom)
     # Must not raise.
     _deploy_plugin_native_skills(tmp_path / "skills")
 

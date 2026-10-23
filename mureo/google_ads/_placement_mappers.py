@@ -34,6 +34,28 @@ from mureo.google_ads.mappers import (
 
 # === Negative Placements (delivery-surface exclusions, #544) ===
 
+#: Tool-facing exclusion kind → (Google Ads criterion type, criterion
+#: sub-message, field on that sub-message carrying the value). The criterion
+#: types double as the GAQL type filter in :mod:`mureo.google_ads._placements`;
+#: they are whitelisted literals, never caller input. Kept here, below the
+#: placements mixin that also reads it, so the row mapper needs no import
+#: back into the mixin (#879).
+EXCLUSION_KINDS: dict[str, tuple[str, str, str]] = {
+    "website": ("PLACEMENT", "placement", "url"),
+    "mobile_application": ("MOBILE_APPLICATION", "mobile_application", "app_id"),
+    "mobile_app_category": (
+        "MOBILE_APP_CATEGORY",
+        "mobile_app_category",
+        "mobile_app_category_constant",
+    ),
+}
+
+#: Google Ads criterion type → tool-facing exclusion kind (the reverse map,
+#: used when shaping read rows).
+CRITERION_TYPE_TO_KIND: dict[str, str] = {
+    spec[0]: kind for kind, spec in EXCLUSION_KINDS.items()
+}
+
 
 def map_negative_placement(
     criterion: Any,
@@ -49,12 +71,6 @@ def map_negative_placement(
     vocabulary; ``criterion_type`` keeps the raw Google Ads enum name so a
     row is still readable if Google adds a type mureo does not map yet.
     """
-    # Imported here rather than at module import time: the placements mixin
-    # imports this module, so a module-level import would close a cycle.
-    from mureo.google_ads._placements import (  # noqa: PLC0415 — import cycle: mureo.google_ads._placement_mappers -> mureo.google_ads._placements (#879)
-        CRITERION_TYPE_TO_KIND,
-    )
-
     criterion_type = map_enum_name(criterion.type_, CRITERION_TYPE_MAP)
     kind = CRITERION_TYPE_TO_KIND.get(criterion_type)
     if kind == "website":
