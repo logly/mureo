@@ -199,6 +199,7 @@ def test_dual_tree_population_covers_foundation_and_operational_skills() -> None
         "_mureo-google-ads",
         "_mureo-learning",
         "_mureo-meta-ads",
+        "_mureo-report-persist",
         "_mureo-shared",
         "_mureo-state-schema",
         "_mureo-strategy",

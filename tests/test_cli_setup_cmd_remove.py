@@ -44,6 +44,7 @@ _BUNDLE_NAMES = (
     "_mureo-google-ads",
     "_mureo-learning",
     "_mureo-meta-ads",
+    "_mureo-report-persist",
     "_mureo-shared",
     "_mureo-state-schema",
     "_mureo-strategy",

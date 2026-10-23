@@ -52,8 +52,20 @@ _REQUIRED = (
 )
 
 
+#: A skill whose report steps live in a shared foundation skill rather than
+#: in its own file: ``daily-check``'s steps 12-15 (report summary, rollups,
+#: day-grain history, display contract) moved there verbatim (#903).
+_REPORT_STEPS_IN = {"daily-check": "_mureo-report-persist"}
+
+
 def _packaged(skill: str) -> Path:
     return _ROOT / "mureo" / "_data" / "skills" / skill / "SKILL.md"
+
+
+def _report_steps(skill: str) -> str:
+    """The packaged text holding ``skill``'s report steps."""
+    path = _packaged(_REPORT_STEPS_IN.get(skill, skill))
+    return path.read_text(encoding="utf-8")
 
 
 def _mirror(skill: str) -> Path:
@@ -67,7 +79,7 @@ def test_the_two_copies_are_byte_identical(skill: str) -> None:
 
 @pytest.mark.parametrize("skill", _SKILLS)
 def test_the_report_step_states_the_division_of_labour(skill: str) -> None:
-    body = _packaged(skill).read_text(encoding="utf-8")
+    body = _report_steps(skill)
     assert "mureo_state_report_set" in body, "skill list is stale"
     for phrase in _REQUIRED:
         assert phrase in body, f"{skill}: missing {phrase!r}"
@@ -77,7 +89,7 @@ def test_the_report_step_states_the_division_of_labour(skill: str) -> None:
 def test_the_raw_number_rule_is_shown_not_just_named(skill: str) -> None:
     """A figure written as ``"¥773,957"`` renders as nothing — the observed
     failure — so the rule is shown with the string it refuses."""
-    body = _packaged(skill).read_text(encoding="utf-8")
+    body = _report_steps(skill)
     assert "773957" in body
     assert "¥773,957" in body
 
@@ -112,5 +124,5 @@ def test_the_worked_example_shows_the_paragraph_and_the_split() -> None:
     assert '"spend": 773957' in body
     assert '"code": "invalid_traffic_suspected"' in body
     # The example is one click away from the skill that produced the wall.
-    daily = _packaged("daily-check").read_text(encoding="utf-8")
+    daily = _report_steps("daily-check")
     assert "`../_mureo-strategy/SKILL.md` → *Reports section*" in daily

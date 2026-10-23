@@ -283,7 +283,7 @@ Skill availability by host:
 
 | Host | Skill triggering | Notes |
 |---|---|---|
-| Claude Code | `/daily-check`, `/budget-rebalance`, … | All 20 operational skills + 7 foundation skills available locally |
+| Claude Code | `/daily-check`, `/budget-rebalance`, … | All 20 operational skills + 8 foundation skills available locally |
 | Claude Desktop chat | natural language ("run a daily check") | Skills must be registered to claude.ai (manual upload or marketplace) |
 | Cowork | natural language | Same registration story as chat |
 | OpenAI Codex | `$daily-check` / the `/skills` picker, or natural language | Skills install to `~/.codex/skills` (CLI / IDE / desktop app share them) |

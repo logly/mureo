@@ -283,7 +283,7 @@ mureo auth check-meta
 
 | ホスト | skill の起動 | 補足 |
 |---|---|---|
-| Claude Code | `/daily-check` / `/budget-rebalance` ... | 操作系 20 + foundation 7 すべてローカルで利用可 |
+| Claude Code | `/daily-check` / `/budget-rebalance` ... | 操作系 20 + foundation 8 すべてローカルで利用可 |
 | Claude Desktop チャット | 自然言語(「日次チェックして」) | claude.ai に登録された skill のみ表示(手動 upload またはマーケット経由) |
 | Cowork | 自然言語 | チャットと同じ登録要件 |
 | OpenAI Codex | `$daily-check` / `/skills` ピッカー、または自然言語 | skill は `~/.codex/skills` に配置(CLI / IDE / デスクトップアプリで共有) |

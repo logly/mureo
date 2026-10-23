@@ -5,7 +5,8 @@ PR-A added a canonical flag vocabulary + validation and PR-C renders
 structured flags as coarse, localizable chips with a ``params`` drill-down.
 This test pins that daily-check's SKILL.md instructs the structured
 ``{code, severity, params}`` shape (not the old detail-in-the-slug string),
-in BOTH the packaged copy and the repo-root mirror, kept byte-identical.
+in BOTH the packaged copy and the repo-root mirror, kept byte-identical. The
+report step (daily-check step 12) lives in ``_mureo-report-persist`` (#903).
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
+from tests.test_report_structure_skills import _report_steps
 
 pytestmark = pytest.mark.unit
 
@@ -22,7 +25,7 @@ _MIRROR = _ROOT / "skills" / "daily-check" / "SKILL.md"
 
 
 def _body() -> str:
-    return _PACKAGED.read_text(encoding="utf-8")
+    return _report_steps("daily-check")
 
 
 def test_daily_check_copies_are_byte_identical() -> None:

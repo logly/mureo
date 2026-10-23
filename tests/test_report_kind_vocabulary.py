@@ -35,6 +35,7 @@ from pathlib import Path
 import pytest
 
 from mureo.core.report_kinds import REPORT_KINDS
+from tests.test_report_structure_skills import _REPORT_STEPS_IN, _report_steps
 
 pytestmark = pytest.mark.unit
 
@@ -49,13 +50,19 @@ _INSTRUCTED_KIND = re.compile(r'report="([a-z_]+)"')
 
 
 def _instructed_kinds(tree: Path) -> dict[str, set[str]]:
-    """``{skill directory: {kind, ...}}`` for every SKILL.md under ``tree``."""
+    """``{skill directory: {kind, ...}}`` for every SKILL.md under ``tree``.
+
+    A kind instructed in a shared skill that holds another skill's report
+    steps (``_REPORT_STEPS_IN``) is credited to the skill that runs them.
+    """
+    owner = {shared: skill for skill, shared in _REPORT_STEPS_IN.items()}
     found: dict[str, set[str]] = {}
     for skill_md in sorted(tree.glob("*/SKILL.md")):
         body = skill_md.read_text(encoding="utf-8")
         kinds = set(_INSTRUCTED_KIND.findall(body))
         if kinds:
-            found[skill_md.parent.name] = kinds
+            name = skill_md.parent.name
+            found.setdefault(owner.get(name, name), set()).update(kinds)
     return found
 
 
@@ -127,7 +134,8 @@ def test_the_vocabulary_names_the_skill_that_writes_each_kind() -> None:
 @pytest.mark.parametrize("kind,skill", sorted(REPORT_KINDS.items()))
 def test_each_named_skill_exists_and_instructs_its_kind(kind: str, skill: str) -> None:
     """Named by directory, so the table points at something real."""
-    body = (_PACKAGED_SKILLS / skill / "SKILL.md").read_text(encoding="utf-8")
+    assert (_PACKAGED_SKILLS / skill / "SKILL.md").is_file()
+    body = _report_steps(skill)
     assert f'report="{kind}"' in body
 
 
