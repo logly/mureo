@@ -515,11 +515,11 @@ class TestMcpMetaUploadFile:
         creds = MetaAdsCredentials(access_token="tok")
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client",
+                "mureo.auth.create_meta_ads_client",
                 return_value=mock_client,
             ),
         ):

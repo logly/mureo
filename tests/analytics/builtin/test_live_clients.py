@@ -14,7 +14,7 @@ from mureo.analytics.builtin._live_clients import (
     fetch_google_ads_metrics,
     fetch_meta_ads_metrics,
 )
-from mureo.client_factory import GOOGLE_ADS_THROTTLER
+from mureo.client_factory import GOOGLE_ADS_THROTTLER, META_ADS_THROTTLER
 
 
 def _meta_creds() -> Any:
@@ -318,7 +318,7 @@ async def test_fetch_google_ads_metrics_live_client_gets_the_shared_throttler() 
 @pytest.mark.asyncio
 async def test_fetch_meta_ads_metrics_raises_when_creds_missing() -> None:
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_meta_ads_credentials", return_value=None),
         pytest.raises(NoCredentialsError),
     ):
@@ -350,7 +350,7 @@ async def test_fetch_meta_ads_performance_rows_raises_when_creds_missing() -> No
     )
 
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_meta_ads_credentials", return_value=None),
         pytest.raises(NoCredentialsError, match="meta_ads"),
     ):
@@ -573,10 +573,10 @@ async def test_fetch_meta_ads_per_campaign_metrics_keys_by_campaign() -> None:
         ]
     )
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_meta_ads_credentials", return_value=_meta_creds()),
         patch(
-            "mureo.client_factory.get_meta_ads_client",
+            "mureo.auth.create_meta_ads_client",
             return_value=fake_client,
         ),
     ):
@@ -652,10 +652,10 @@ async def test_fetch_meta_ads_metrics_returns_current_and_baseline() -> None:
         ]
     )
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_meta_ads_credentials", return_value=_meta_creds()),
         patch(
-            "mureo.client_factory.get_meta_ads_client",
+            "mureo.auth.create_meta_ads_client",
             return_value=fake_client,
         ),
     ):
@@ -664,3 +664,19 @@ async def test_fetch_meta_ads_metrics_returns_current_and_baseline() -> None:
     assert current.cost == 100.0
     assert baseline is not None
     assert baseline.cost == 200.0
+
+
+@pytest.mark.asyncio
+async def test_fetch_meta_ads_metrics_live_client_gets_the_shared_throttler() -> None:
+    """Analytics uses the same process-wide Meta Ads rate limiter as the
+    MCP tools (#875), not an unthrottled client of its own."""
+    fake_client = AsyncMock()
+    fake_client.get_performance_report = AsyncMock(return_value=[])
+    with (
+        patch("mureo.client_factory.byod_has", return_value=False),
+        patch("mureo.auth.load_meta_ads_credentials", return_value=_meta_creds()),
+        patch("mureo.auth.create_meta_ads_client", return_value=fake_client) as factory,
+    ):
+        await fetch_meta_ads_metrics("act_x", window_days=7)
+
+    assert factory.call_args.kwargs["throttler"] is META_ADS_THROTTLER

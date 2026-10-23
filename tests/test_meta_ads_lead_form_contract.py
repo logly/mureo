@@ -123,12 +123,10 @@ class TestFollowUpActionUrlRequired:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
             pytest.raises(ValueError, match="follow_up_action_url"),
         ):
             await mod.handle_tool(

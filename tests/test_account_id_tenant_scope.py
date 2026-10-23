@@ -250,9 +250,9 @@ class TestMetaAccountIdScoping:
 
         creds = MagicMock(account_id="act_111")
         with (
-            patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
+            patch("mureo.client_factory.byod_has", return_value=False),
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
             patch(
@@ -260,10 +260,10 @@ class TestMetaAccountIdScoping:
                 return_value=frozenset({"act_111"}),
             ),
             patch(
-                "mureo.mcp._meta_ads_client.refresh_meta_token_if_needed",
+                "mureo.auth.refresh_meta_token_if_needed",
                 new=AsyncMock(),
             ),
-            patch("mureo.mcp._meta_ads_client.create_meta_ads_client") as factory,
+            patch("mureo.auth.create_meta_ads_client") as factory,
         ):
             with pytest.raises(ValueError, match="refused"):
                 await handlers._get_client({"account_id": "act_999"})
@@ -275,9 +275,9 @@ class TestMetaAccountIdScoping:
 
         creds = MagicMock(account_id=None)
         with (
-            patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
+            patch("mureo.client_factory.byod_has", return_value=False),
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
             patch(
@@ -285,11 +285,11 @@ class TestMetaAccountIdScoping:
                 return_value=frozenset({"111"}),
             ),
             patch(
-                "mureo.mcp._meta_ads_client.refresh_meta_token_if_needed",
+                "mureo.auth.refresh_meta_token_if_needed",
                 new=AsyncMock(return_value=creds),
             ),
             patch("mureo.mcp._meta_ads_client.register_client_for_cleanup"),
-            patch("mureo.mcp._meta_ads_client.create_meta_ads_client") as factory,
+            patch("mureo.auth.create_meta_ads_client") as factory,
         ):
             await handlers._get_client({"account_id": "act_111"})
         factory.assert_called_once()

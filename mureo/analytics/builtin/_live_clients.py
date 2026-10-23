@@ -17,7 +17,8 @@ pairs aggregated across the requested account. ``baseline`` may be
 
 Failure modes:
 
-- :class:`NoCredentialsError` — credentials are unset in live mode.
+- :class:`NoCredentialsError` — credentials are unset in live mode
+  (raised by the shared openers in :mod:`mureo.client_factory`, #875).
   The adapter catches this and returns an empty anomaly tuple, since
   the absence of credentials is a configuration issue rather than an
   anomaly to report.
@@ -39,27 +40,16 @@ from mureo.analytics.builtin._common import (
 from mureo.analytics.builtin._common import (
     meta_row_conversions as _meta_row_conversions,
 )
-from mureo.byod import runtime as byod_runtime
 
 # NoCredentialsError is defined with the shared opener (#875); imported here so
 # the adapters keep importing it from this module.
 from mureo.client_factory import AccountIdRefused, NoCredentialsError
 from mureo.context.state import load_conversion_action_types
-from mureo.core.account_scope import (
-    canonical_meta_account_id,
-    resolve_account_id,
-)
-from mureo.core.credential_source import (
-    call_source,
-    current_meta_source,
-)
 from mureo.google_ads._date_ranges import _get_comparison_date_ranges
 from mureo.meta_ads._period import previous_period
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    from mureo.core.credential_source import MetaCredentialSource
 
 
 class DeliveryDataUnavailableError(RuntimeError):
@@ -79,7 +69,7 @@ class AccountNotAvailableError(NoCredentialsError):
 
     Raised for a scope refusal — the #411 allow-list refuses the
     ``account_id`` (out-of-set, empty allow-list, or an ambiguous
-    multi-account default) — and for a non-numeric id. A subclass of
+    multi-account default) — and for a non-numeric Google Ads id. A subclass of
     :class:`NoCredentialsError` so every adapter's existing
     ``except NoCredentialsError`` renders the same graceful "not available"
     sentinel — a workspace-scope violation degrades like missing credentials
@@ -510,80 +500,26 @@ def _aggregate_meta_metrics(
 
 
 async def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
-    """Parallel to :func:`_open_google_ads_client` for Meta Ads.
-
-    A coroutine (#726) because it awaits ``refresh_meta_token_if_needed``
-    before handing the credentials to the client factory, the way
-    ``mureo.mcp._handlers_meta_ads`` always has. Without it an install whose
-    Meta traffic is analytics-only — ``mureo_analytics_run``, the report
-    skills' anomaly and diagnosis passes — never renewed a refresh-eligible
-    token, so it aged out under a code path perfectly able to extend it. All
-    four callers here are already ``async``.
+    """Open a Meta Ads client (live or BYOD) through the shared opener (#875).
 
     Returns ``(client, resolved_account_id)`` — the resolved id is
-    canonicalized to the ``act_`` form (tenant-scoped or not), so callers use
-    the same value the client was opened with (#435). A workspace-scope refusal
-    raises :class:`AccountNotAvailableError`.
+    canonicalized to the ``act_`` form, so callers label / look up
+    conversions with the same value the client was opened with (#435).
+    Missing credentials raise :class:`NoCredentialsError`. The opener
+    refreshes a file-sourced token near its expiry (#726), so an install
+    whose Meta traffic is analytics-only still renews it.
 
-    Workspace scoping (#411/#413): ``account_id`` is bound to the active
-    client's allow-list via ``resolve_account_id`` before use — a
-    non-tenant-scoped run passes it through unchanged, a tenant-scoped run
-    refuses an out-of-allow-list id (fail-closed). Enforcing here means a
-    future tool that wires a caller-supplied id into the AnalyticsModule
-    Protocol cannot silently bypass #411 scoping.
+    The opener binds ``account_id`` to the workspace allow-list (#411/#413),
+    so a future tool that wires a caller-supplied id into the AnalyticsModule
+    Protocol cannot bypass scoping. Its :class:`AccountIdRefused` (a scope
+    refusal) becomes :class:`AccountNotAvailableError`, which the adapters
+    render as "not available" (#435). Any other ``ValueError`` (credential
+    loading, client construction) is a fault and propagates unchanged.
     """
-    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
-        load_meta_ads_credentials,
-        refresh_meta_token_if_needed,
-    )
-
-    # Bind the account to the workspace allow-list (#411/#413) before it
-    # reaches the client factory; a refusal degrades gracefully (#435).
     try:
-        account_id = resolve_account_id(account_id, None)
-    except ValueError as exc:
+        return await client_factory.open_meta_ads_client(account_id)
+    except AccountIdRefused as exc:
         raise AccountNotAvailableError(str(exc)) from exc
-
-    # Canonicalize to the ``act_`` form the Meta client requires. The
-    # tenant-scoped resolver already does this, but the non-scoped path returns
-    # the id verbatim — a bare id would otherwise raise a raw ValueError from
-    # the client factory, escaping the adapters' graceful handler (#435).
-    account_id = canonical_meta_account_id(account_id)
-
-    meta = current_meta_source()
-    if meta is not None:
-        return _meta_client_from_source(meta, account_id), account_id
-
-    # Read through the module (``mureo.byod.runtime.byod_has`` patches apply);
-    # the factory binds its own copy, patched as ``mureo.client_factory.byod_has``.
-    if byod_runtime.byod_has("meta_ads"):
-        client = client_factory.get_meta_ads_client(creds=None, account_id=account_id)
-        return client, account_id
-
-    creds = load_meta_ads_credentials()
-    if creds is None:
-        raise NoCredentialsError("meta_ads credentials not configured")
-    # No-op unless the token is near its expiry AND the app pair is stored;
-    # a failed exchange logs and returns the original credentials, so this
-    # never turns a working analytics call into an error.
-    creds = await refresh_meta_token_if_needed(creds)
-    return client_factory.get_meta_ads_client(creds, account_id), account_id
-
-
-def _meta_client_from_source(meta_ads: MetaCredentialSource, account_id: str) -> object:
-    """Open a live Meta Ads client from an active credential source (#821).
-
-    The source wins over BYOD mode and the credentials file, and owns the
-    token lifecycle, so no refresh is attempted here.
-    """
-    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import create_meta_ads_client  # noqa: PLC0415 — startup cost (#809)
-
-    creds = call_source("meta_ads", meta_ads.load_credentials)
-    if creds is None:
-        raise NoCredentialsError("meta_ads credentials not configured")
-    return create_meta_ads_client(creds, account_id)
 
 
 async def fetch_meta_ads_metrics(

@@ -119,7 +119,8 @@ mureo/
 ├── logging_setup.py         # `mureo configure` log handlers (~/.mureo/logs/configure.log, rotated) + HTTP access-log scrubbing (#581)
 ├── client_factory.py        # Per-platform BYOD-vs-live client factory, shared by every
 │                            #   live-client opener (MCP handlers, analytics, change import);
-│                            #   open_google_ads_client is the one Google Ads opener (#875)
+│                            #   open_google_ads_client / open_meta_ads_client are the one
+│                            #   Google Ads / Meta Ads openers (#875)
 ├── throttle.py              # Rate limiting (token bucket + rolling hourly cap)
 ├── installed_packages.py    # The installed mureo / mureo-* distributions (PEP 503 names), shared
 │                            #   by `mureo upgrade` and the dashboard's About / update / upgrade (#863)
@@ -412,7 +413,9 @@ Claude Code ─MCP──▶ mureo MCP server
                             no ──▶ create_*_client (Live API) ──▶ Google Ads / Meta / SC / GA4 API
 ```
 
-Google Ads has one opener for all three callers, `open_google_ads_client` in `mureo/client_factory.py` (#875). It returns `(client, resolved_customer_id)` and owns the precedence (an active credential source, then BYOD, then the credentials file), the workspace scoping (`resolve_customer_id`, on every path; BYOD with no `customer_id`, or with `"byod"` itself, opens as `"byod"` unchecked), the numeric id check, and the shared `GOOGLE_ADS_THROTTLER`. It raises `NoCredentialsError` when no credentials are configured and `AccountIdRefused` (a `ValueError` subclass) on a scope refusal or a non-numeric id; any other exception from credential loading or client construction is a fault and propagates unchanged. Each caller maps the two to its own result: the MCP tools return the no-credentials result, analytics turns `AccountIdRefused` (and only that) into `AccountNotAvailableError`, and change import lets both surface as an `ERROR` outcome (it returns no client in BYOD mode before calling the opener, since BYOD has no change history). The Meta openers are still separate.
+Google Ads has one opener for all three callers, `open_google_ads_client` in `mureo/client_factory.py` (#875). It returns `(client, resolved_customer_id)` and owns the precedence (an active credential source, then BYOD, then the credentials file), the workspace scoping (`resolve_customer_id`, on every path; BYOD with no `customer_id`, or with `"byod"` itself, opens as `"byod"` unchecked), the numeric id check, and the shared `GOOGLE_ADS_THROTTLER`. It raises `NoCredentialsError` when no credentials are configured and `AccountIdRefused` (a `ValueError` subclass) on a scope refusal or a non-numeric id; any other exception from credential loading or client construction is a fault and propagates unchanged. Each caller maps the two to its own result: the MCP tools return the no-credentials result, analytics turns `AccountIdRefused` (and only that) into `AccountNotAvailableError`, and change import lets both surface as an `ERROR` outcome (it returns no client in BYOD mode before calling the opener, since BYOD has no change history).
+
+Meta Ads has the same shape for its two callers (the MCP tools and analytics), `open_meta_ads_client` in `mureo/client_factory.py` (#875). It is a coroutine because it refreshes a file-sourced token near its expiry (`refresh_meta_token_if_needed`, #726); a credential source's token is used as-is (the source owns its lifecycle, #821) and BYOD has none. It returns `(client, resolved_account_id)`, binds the id to the workspace allow-list (`resolve_account_id`) and canonicalizes it to the `act_` form (a bare id is prefixed); BYOD with no `account_id`, or with `"act_byod"` itself, opens as `"act_byod"` unchecked. Every live client gets the shared `META_ADS_THROTTLER`. The failures and their mapping are the Google Ads ones: `NoCredentialsError`, `AccountIdRefused` (a scope refusal), and analytics turns only `AccountIdRefused` into `AccountNotAvailableError`.
 
 ### Defense-in-Depth for AI Agents
 
@@ -520,8 +523,8 @@ server.py :: _create_server()
         │     │
         │     └── _HANDLERS[name](args)
         │           │
-        │       │   ├── load_meta_ads_credentials()
-        │       │   ├── create_meta_ads_client(creds, account_id)
+        │       │   ├── await open_meta_ads_client(account_id)  (credentials,
+        │       │   │     scoping, token refresh, META_ADS_THROTTLER — client_factory)
         │           └── client.method() → list[TextContent]
         │
     │   ├── name in _SEARCH_CONSOLE_NAMES? → handle_search_console_tool(name, args)
@@ -580,7 +583,7 @@ Each platform throttler combines two mechanisms:
 
 ### Integration
 
-- **Module-level singletons** -- one `Throttler` instance per platform, shared across all MCP tool calls in the same process. Google Ads' is `GOOGLE_ADS_THROTTLER` in `mureo/client_factory.py`, so the analytics modules and change import share it too (#875).
+- **Module-level singletons** -- one `Throttler` instance per platform, shared across all MCP tool calls in the same process. Google Ads' is `GOOGLE_ADS_THROTTLER` and Meta Ads' is `META_ADS_THROTTLER`, both in `mureo/client_factory.py`, so the analytics modules (and, for Google Ads, change import) share them too (#875).
 - **Transparent** -- tool handlers call `await throttler.acquire()` before making API requests. No configuration is needed from the user.
 - **Graceful** -- when the token bucket is empty, `acquire()` awaits until a token becomes available rather than raising an error.
 

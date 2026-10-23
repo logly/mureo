@@ -2,8 +2,9 @@
 
 The MCP handlers, the analytics adapters and change import open their
 clients here (#863: it sits below ``mureo.mcp``, so none of them loads the
-MCP server to reach it). Google Ads has one opener for all three,
-:func:`open_google_ads_client` (#875).
+MCP server to reach it). Google Ads and Meta Ads each have one opener,
+:func:`open_google_ads_client` (MCP tools, analytics and change import) and
+:func:`open_meta_ads_client` (MCP tools and analytics) (#875).
 
 Per-platform auto-detection: if BYOD data is registered for a platform
 (``~/.mureo/byod/manifest.json`` lists it), this factory returns a
@@ -24,8 +25,12 @@ from mureo.byod.clients import ByodGoogleAdsClient, ByodMetaAdsClient
 # ``mureo.byod.runtime.byod_has`` (which only callers' own checks read through).
 from mureo.byod.runtime import byod_data_dir, byod_has
 from mureo.core import credential_source
-from mureo.core.account_scope import resolve_customer_id
-from mureo.throttle import GOOGLE_ADS_THROTTLE, Throttler
+from mureo.core.account_scope import (
+    canonical_meta_account_id,
+    resolve_account_id,
+    resolve_customer_id,
+)
+from mureo.throttle import GOOGLE_ADS_THROTTLE, META_ADS_THROTTLE, Throttler
 
 #: One per process: every live Google Ads client — MCP tools, analytics and
 #: change import alike — shares this rate limiter (#875). ``Throttler`` holds
@@ -34,10 +39,21 @@ from mureo.throttle import GOOGLE_ADS_THROTTLE, Throttler
 #: opener from a worker thread is fine.
 GOOGLE_ADS_THROTTLER = Throttler(GOOGLE_ADS_THROTTLE)
 
+#: One per process: every live Meta Ads client — MCP tools and analytics
+#: alike — shares this rate limiter (#875). ``Throttler`` holds an
+#: ``asyncio.Lock``, so the shared instance is for coroutines on one event
+#: loop; :func:`open_meta_ads_client` itself never awaits it.
+META_ADS_THROTTLER = Throttler(META_ADS_THROTTLE)
+
 #: The ``customer_id`` a BYOD client is opened with when none is given.
 _BYOD_CUSTOMER_ID = "byod"
 
+#: The ``account_id`` a BYOD Meta client is opened with when none is given.
+_BYOD_META_ACCOUNT_ID = "act_byod"
+
 _GOOGLE_ADS_NO_CREDENTIALS = "google_ads credentials are not configured"
+
+_META_ADS_NO_CREDENTIALS = "meta_ads credentials are not configured"
 
 
 class NoCredentialsError(RuntimeError):
@@ -54,8 +70,8 @@ class NoCredentialsError(RuntimeError):
 
 
 class AccountIdRefused(ValueError):  # noqa: N818
-    """Raised by the opener when the id is outside the workspace scope or is
-    not numeric.
+    """Raised by an opener when the id is outside the workspace scope or (a
+    Google Ads ``customer_id``) is not numeric.
 
     Distinct from faults in credential loading or client construction, which
     propagate as whatever they raise (a plain ``ValueError`` included).
@@ -189,3 +205,87 @@ def get_meta_ads_client(
     )
 
     return _real(creds, account_id, throttler=throttler)
+
+
+async def open_meta_ads_client(account_id: str | None = None) -> tuple[Any, str]:
+    """Return ``(client, resolved_account_id)`` for the active configuration.
+
+    Precedence: an active credential source → BYOD → the credentials file.
+    Raises :class:`NoCredentialsError` when no credentials are configured and
+    :class:`AccountIdRefused` when the workspace scope refuses the id.
+
+    The id is bound to the workspace allow-list (#411/#413) on every path,
+    then canonicalized to the ``act_`` form (a bare id is prefixed). The one
+    exception is BYOD mode with no ``account_id`` or with ``"act_byod"``
+    itself: there are no credentials to default from, so the BYOD client is
+    opened as ``"act_byod"`` without the scope check. Any other id in BYOD
+    mode is scoped like a live one. Every live client gets
+    :data:`META_ADS_THROTTLER`. A coroutine because a file-sourced token is
+    refreshed when near its expiry (#726); a source's token is used as-is
+    (the source owns the token lifecycle, #821) and BYOD has none.
+
+    Test patch sites: ``mureo.auth.load_meta_ads_credentials``,
+    ``mureo.auth.create_meta_ads_client`` and
+    ``mureo.auth.refresh_meta_token_if_needed`` (looked up at call time),
+    ``mureo.client_factory.byod_has`` and
+    ``mureo.core.credential_source.current_meta_source``.
+    """
+    meta = credential_source.current_meta_source()
+    if meta is None and byod_has("meta_ads"):
+        resolved = (
+            _resolve_meta_account_id(account_id, None)
+            if account_id and account_id != _BYOD_META_ACCOUNT_ID
+            else _BYOD_META_ACCOUNT_ID
+        )
+        client = get_meta_ads_client(
+            creds=None, account_id=resolved, throttler=META_ADS_THROTTLER
+        )
+        return client, resolved
+    return await _open_live_meta_ads_client(meta, account_id)
+
+
+async def _open_live_meta_ads_client(
+    meta: credential_source.MetaCredentialSource | None,
+    account_id: str | None,
+) -> tuple[Any, str]:
+    """Load credentials (source or file), scope the id and build a live client.
+
+    Only a file-sourced token is refreshed; a failed exchange logs and keeps
+    the original credentials, so the refresh never turns a working call into
+    an error.
+    """
+    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
+    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
+        create_meta_ads_client,
+        load_meta_ads_credentials,
+        refresh_meta_token_if_needed,
+    )
+
+    creds = (
+        load_meta_ads_credentials()
+        if meta is None
+        else credential_source.call_source("meta_ads", meta.load_credentials)
+    )
+    if creds is None:
+        raise NoCredentialsError(_META_ADS_NO_CREDENTIALS)
+
+    # getattr, not attribute access: the default must not be evaluated
+    # eagerly against credential objects that lack the field (the old
+    # ``or``-chain short-circuited when an explicit id was passed).
+    resolved = _resolve_meta_account_id(account_id, getattr(creds, "account_id", None))
+    if meta is None:
+        creds = await refresh_meta_token_if_needed(creds)
+    client = create_meta_ads_client(creds, resolved, throttler=META_ADS_THROTTLER)
+    return client, resolved
+
+
+def _resolve_meta_account_id(requested: str | None, default: str | None) -> str:
+    """Bind the id to the workspace allow-list, then canonicalize it to ``act_``.
+
+    A scope refusal raises :class:`AccountIdRefused`.
+    """
+    try:
+        account_id = resolve_account_id(requested, default)
+    except ValueError as exc:
+        raise AccountIdRefused(str(exc)) from exc
+    return canonical_meta_account_id(account_id)

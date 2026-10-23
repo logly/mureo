@@ -469,12 +469,10 @@ class TestLeadFormsMcpHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_lead_forms_list",
@@ -495,12 +493,10 @@ class TestLeadFormsMcpHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_lead_forms_get",
@@ -517,12 +513,10 @@ class TestLeadFormsMcpHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_lead_forms_create",
@@ -547,12 +541,10 @@ class TestLeadFormsMcpHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_lead_forms_create",
@@ -577,12 +569,10 @@ class TestLeadFormsMcpHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_leads_get",
@@ -600,12 +590,10 @@ class TestLeadFormsMcpHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_leads_get_by_ad",
@@ -622,12 +610,10 @@ class TestLeadFormsMcpHandlers:
         creds, client = _mock_meta_ads_context()
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
             pytest.raises(ValueError, match="page_id"),
         ):
             await mod.handle_tool("meta_ads_lead_forms_list", {"account_id": "act_123"})
@@ -635,9 +621,7 @@ class TestLeadFormsMcpHandlers:
     async def test_leads_no_credentials(self) -> None:
         """Returns error text when no credentials are present."""
         mod = _import_meta_ads_tools()
-        with patch(
-            "mureo.mcp._meta_ads_client.load_meta_ads_credentials", return_value=None
-        ):
+        with patch("mureo.auth.load_meta_ads_credentials", return_value=None):
             result = await mod.handle_tool(
                 "meta_ads_leads_get",
                 {"account_id": "act_123", "form_id": "form_1"},

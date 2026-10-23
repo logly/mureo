@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
-from mureo.client_factory import GOOGLE_ADS_THROTTLER
+from mureo.client_factory import GOOGLE_ADS_THROTTLER, META_ADS_THROTTLER
 from mureo.core.credential_source import CredentialSource, use_credential_source
 
 pytestmark = pytest.mark.unit
@@ -63,6 +63,7 @@ def _live_unscoped(monkeypatch: pytest.MonkeyPatch) -> None:
         "mureo.core.account_scope.runtime_meta_account_ids", lambda: None
     )
     monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: True)
+    monkeypatch.setattr("mureo.client_factory.byod_has", lambda platform: True)
     monkeypatch.setattr("mureo.auth.load_google_ads_credentials", _refuse)
     monkeypatch.setattr("mureo.auth.load_meta_ads_credentials", _refuse)
     monkeypatch.setattr("mureo.client_factory.get_google_ads_client", _refuse)
@@ -116,7 +117,7 @@ class TestAnalyticsMeta:
             client, account_id = await _open_meta_ads_client("123")
         assert client is factory.return_value
         assert account_id == "act_123"
-        factory.assert_called_once_with(_META, "act_123")
+        factory.assert_called_once_with(_META, "act_123", throttler=META_ADS_THROTTLER)
         refresh.assert_not_awaited()
 
     async def test_source_without_credentials_raises_no_credentials(self) -> None:

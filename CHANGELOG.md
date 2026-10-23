@@ -57,7 +57,7 @@
 ### Changed
 
 - **Analytics and external change import use the MCP tools' Google Ads
-  rate limiter and errors** (#875). The analytics modules and
+  and Meta Ads rate limiters and errors** (#875). The analytics modules and
   `external_changes_import` now open Google Ads clients through the same
   opener as the MCP tools, `mureo.client_factory.open_google_ads_client`,
   so their live calls share the one process-wide Google Ads throttle
@@ -69,6 +69,21 @@
   (the id BYOD `list_accounts` returns) is given. Analytics reports only
   those refusals as "not available"; a `ValueError` from credential loading
   or client construction now propagates instead of being relabelled.
+  Meta Ads follows the same pattern: the analytics modules and the MCP
+  tools open Meta Ads clients through `mureo.client_factory.open_meta_ads_client`,
+  so analytics shares the MCP tools' process-wide Meta Ads throttle (it had
+  none) and raises the same `NoCredentialsError` / `AccountIdRefused`. The
+  MCP Meta Ads tools now accept a bare `account_id` (`123` is opened as
+  `act_123`, as analytics already did) instead of refusing it for a missing
+  `act_` prefix. In BYOD mode the MCP Meta Ads tools now bind an id other
+  than `act_byod` (the default) to the workspace scope as well. Analytics
+  reports only `AccountIdRefused` as "not available" for Meta Ads too.
+  Two analytics behaviours change with it: an empty Meta Ads account id now
+  falls back to the credentials' `account_id` (still inside the workspace
+  scope) instead of being reported "not available", and credentials are
+  loaded before the scope check, so an out-of-scope id with no credentials
+  raises `NoCredentialsError` rather than `AccountNotAvailableError` (the
+  adapters render both the same way).
 - **The date-range argument names are documented** (#866):
   `period` (a reporting window: a constant or an explicit range),
   `start_date` / `end_date` (two explicit dates for an API without
