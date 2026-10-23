@@ -355,3 +355,77 @@ def test_default_spec_token_auth_style_is_basic() -> None:
         state="x",
     )
     assert spec.token_auth_style == "basic"
+
+
+# ---------------------------------------------------------------------------
+# token_headers — the callback exchange sends the provider's declared extra
+# token-request headers, and none when the provider declares none.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def headers_wizard(tmp_path: Path) -> Iterator[Any]:
+    creds_path = tmp_path / ".mureo" / "credentials.json"
+    creds_path.parent.mkdir(parents=True)
+    spec = PluginOAuthSpec(
+        provider="broker_ads",
+        target_field="refresh_token",
+        token_url="https://broker.example.com/oauth/token",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:8765/oauth/callback",
+        state="state-xyz",
+        token_headers=(("X-Example", "abc"),),
+    )
+    wiz = WebAuthWizard(credentials_path=creds_path, plugin_oauth=spec)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    wiz.wait_until_ready(timeout=2.0)
+    try:
+        yield wiz
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
+
+
+def _complete_callback(wiz: Any) -> Any:
+    from mureo.oauth_authcode import AuthCodeResult
+
+    with patch(
+        "mureo.web.auth_wizard.exchange_authorization_code",
+        return_value=AuthCodeResult(refresh_token="RT", access_token="AT"),
+    ) as mock_exchange:
+        opener = urllib.request.build_opener(_NoRedirect())
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            opener.open(
+                _url(wiz, "/oauth/callback?code=AC&state=state-xyz"),
+                timeout=2.0,
+            )
+        assert exc.value.code == 302
+    return mock_exchange
+
+
+@pytest.mark.unit
+def test_plugin_callback_passes_declared_token_headers(headers_wizard: Any) -> None:
+    mock_exchange = _complete_callback(headers_wizard)
+    assert mock_exchange.call_args.kwargs["headers"] == {"X-Example": "abc"}
+
+
+@pytest.mark.unit
+def test_plugin_callback_passes_no_headers_by_default(plugin_wizard: Any) -> None:
+    mock_exchange = _complete_callback(plugin_wizard)
+    assert mock_exchange.call_args.kwargs["headers"] is None
+
+
+@pytest.mark.unit
+def test_default_spec_token_headers_is_empty() -> None:
+    spec = PluginOAuthSpec(
+        provider="p",
+        target_field="refresh_token",
+        token_url="https://a.test/token",
+        client_id="c",
+        client_secret="s",
+        redirect_uri="http://127.0.0.1:1/oauth/callback",
+        state="x",
+    )
+    assert spec.token_headers == ()

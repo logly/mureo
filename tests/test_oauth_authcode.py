@@ -106,8 +106,15 @@ class _FakeClient:
     def __exit__(self, *exc: Any) -> None:
         return None
 
-    def post(self, url: str, *, data: Any = None, auth: Any = None) -> _FakeResponse:
-        _FakeClient.last_call = {"url": url, "data": data, "auth": auth}
+    def post(
+        self, url: str, *, data: Any = None, auth: Any = None, headers: Any = None
+    ) -> _FakeResponse:
+        _FakeClient.last_call = {
+            "url": url,
+            "data": data,
+            "auth": auth,
+            "headers": headers,
+        }
         return _FakeResponse({"refresh_token": "RT-xyz", "access_token": "AT-abc"})
 
 
@@ -182,7 +189,7 @@ def test_exchange_raises_when_no_refresh_token(
 ) -> None:
     class _NoRefresh(_FakeClient):
         def post(
-            self, url: str, *, data: Any = None, auth: Any = None
+            self, url: str, *, data: Any = None, auth: Any = None, headers: Any = None
         ) -> _FakeResponse:
             return _FakeResponse({"access_token": "AT-only"})
 
@@ -201,7 +208,7 @@ def test_exchange_raises_when_no_refresh_token(
 def test_exchange_wraps_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Boom(_FakeClient):
         def post(
-            self, url: str, *, data: Any = None, auth: Any = None
+            self, url: str, *, data: Any = None, auth: Any = None, headers: Any = None
         ) -> _FakeResponse:
             raise httpx.ConnectError("boom")
 
@@ -235,6 +242,111 @@ def test_exchange_never_logs_secrets(
     assert "SENSITIVE_CODE" not in caplog.text
     assert "RT-xyz" not in caplog.text
     assert blob  # silence "unused" — the b64 line documents what we guard.
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("client_auth", ["basic", "body"])
+def test_exchange_sends_extra_headers(
+    monkeypatch: pytest.MonkeyPatch, client_auth: str
+) -> None:
+    """``headers`` reach the token request whichever client-auth style is
+    used, alongside (not instead of) the client authentication."""
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _FakeClient)
+    result = exchange_authorization_code(
+        token_url="https://a.test/token",
+        code="AC",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:1/oauth/callback",
+        client_auth=client_auth,
+        headers={"X-Example": "abc"},
+    )
+    assert result.refresh_token == "RT-xyz"
+    assert _FakeClient.last_call["headers"] == {"X-Example": "abc"}
+    if client_auth == "basic":
+        assert _FakeClient.last_call["auth"] == ("CID", "SECRET")
+    else:
+        assert _FakeClient.last_call["data"]["client_id"] == "CID"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("client_auth", ["basic", "body"])
+def test_exchange_sends_no_extra_headers_by_default(
+    monkeypatch: pytest.MonkeyPatch, client_auth: str
+) -> None:
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _FakeClient)
+    exchange_authorization_code(
+        token_url="https://a.test/token",
+        code="AC",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:1/oauth/callback",
+        client_auth=client_auth,
+    )
+    assert _FakeClient.last_call["headers"] is None
+
+
+@pytest.mark.unit
+def test_exchange_error_never_includes_header_values(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failing exchange with declared headers surfaces no header value,
+    neither in the exception nor in any log record."""
+
+    class _Boom(_FakeClient):
+        def post(
+            self,
+            url: str,
+            *,
+            data: Any = None,
+            auth: Any = None,
+            headers: Any = None,
+        ) -> _FakeResponse:
+            raise httpx.ConnectError(f"boom {headers}")
+
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _Boom)
+    with caplog.at_level("DEBUG"), pytest.raises(OAuthExchangeError) as exc:
+        exchange_authorization_code(
+            token_url="https://a.test/token",
+            code="AC",
+            client_id="CID",
+            client_secret="SECRET",
+            redirect_uri="http://127.0.0.1:1/oauth/callback",
+            headers={"X-Example": "SENSITIVE_HEADER"},
+        )
+    assert "SENSITIVE_HEADER" not in str(exc.value)
+    assert "SENSITIVE_HEADER" not in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Authorization": "Bearer x"},  # reserved: client authentication
+        {"host": "evil.test"},  # reserved, any case
+        {"X-Example": "abc\r\nX-Injected: 1"},  # CRLF injection
+        {"X-Example": " abc"},  # leading whitespace
+        {"X-Example": ""},  # empty value
+        {"X-Example": "a", "x-example": "b"},  # repeated case-insensitively
+    ],
+)
+def test_exchange_rejects_invalid_headers_before_sending(
+    monkeypatch: pytest.MonkeyPatch, headers: dict[str, str]
+) -> None:
+    """The exchange applies the same header check as the provider reader,
+    so a direct caller cannot bypass it; nothing is sent."""
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _FakeClient)
+    monkeypatch.setattr(_FakeClient, "last_call", {})
+    with pytest.raises(ValueError, match="^headers: "):
+        exchange_authorization_code(
+            token_url="https://a.test/token",
+            code="AC",
+            client_id="CID",
+            client_secret="SECRET",
+            redirect_uri="http://127.0.0.1:1/oauth/callback",
+            headers=headers,
+        )
+    assert _FakeClient.last_call == {}
 
 
 # ---------------------------------------------------------------------------

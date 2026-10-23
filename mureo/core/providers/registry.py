@@ -90,6 +90,7 @@ from mureo.core.providers.credentials import (
     AccountCredentialField,
     AccountOAuthConfig,
 )
+from mureo.oauth_authcode import validate_token_headers
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -619,7 +620,10 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
     When declared, the value must be an :class:`AccountOAuthConfig`
     (``TypeError`` otherwise) and its three ``*_field`` references must
     name keys of the provider's own ``account_credential_fields``
-    (``ValueError`` otherwise). Both checks fail loudly at this boundary
+    (``ValueError`` otherwise); ``token_headers`` is checked by
+    :func:`mureo.oauth_authcode.validate_token_headers` (``TypeError`` for
+    the shape, ``ValueError`` for a name or value). All checks fail loudly
+    at this boundary
     — a mis-typed declaration or a typo'd field name would otherwise
     surface only as a dead "Authenticate" button or a credential written
     under a key nothing reads.
@@ -634,9 +638,12 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
 
     Raises:
         TypeError: ``account_oauth`` is present but not an
-            :class:`AccountOAuthConfig`.
+            :class:`AccountOAuthConfig`, or ``token_headers`` is not a
+            tuple of ``(name, value)`` ``str`` pairs.
         ValueError: A ``*_field`` reference does not name a declared
-            ``account_credential_fields`` key.
+            ``account_credential_fields`` key, or a ``token_headers``
+            entry has an invalid, reserved or repeated name or a value
+            that is not non-empty visible ASCII.
     """
     raw_name = getattr(provider, "name", None)
     identity = raw_name if isinstance(raw_name, str) and raw_name else repr(provider)
@@ -664,7 +671,18 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
             f"{identity}.account_oauth.accounts_field={config.accounts_field!r} "
             f"does not name a declared account_credential_fields key"
         )
+    _validate_token_headers(identity, config.token_headers)
     return config
+
+
+def _validate_token_headers(identity: str, headers: object) -> None:
+    """Fail loudly on a malformed ``AccountOAuthConfig.token_headers``.
+
+    Delegates to :func:`mureo.oauth_authcode.validate_token_headers`, the
+    single check the token exchange also applies, so a malformed
+    declaration fails here, at the boundary, not mid-exchange.
+    """
+    validate_token_headers(headers, where=f"{identity}.account_oauth.token_headers")
 
 
 def get_oauth_account_lister(provider: object) -> Callable[..., object] | None:
