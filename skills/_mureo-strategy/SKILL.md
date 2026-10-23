@@ -493,7 +493,7 @@ explicit `noise_pct` passed to `mureo_outcome_evaluate` overrides
 | `campaign_id` | string | Yes | Campaign identifier |
 | `campaign_name` | string | Yes | Human-readable name |
 | `status` | string | Yes | `ENABLED`, `PAUSED`, or `REMOVED` |
-| `bidding_strategy_type` | string | No | The platform's OWN name for the strategy, verbatim (Google Ads e.g. `MAXIMIZE_CONVERSIONS`, `TARGET_CPA`). Omit for a platform that does not select delivery by a bid — see `../_mureo-shared/SKILL.md` → *Status vocabulary contract* |
+| `bidding_strategy_type` | string | No | The platform's OWN name for the strategy, verbatim (Google Ads e.g. `MAXIMIZE_CONVERSIONS`, `TARGET_CPA`). Omit for a platform that does not select delivery by a bid — see `../_mureo-state-schema/SKILL.md` → *Status vocabulary contract* |
 | `bidding_details` | object | No | Strategy-specific details (target_cpa, target_roas, etc.); omitted alongside `bidding_strategy_type` |
 | `daily_budget` | number | No | Daily budget in currency units |
 | `device_targeting` | array | No | Device bid modifiers |
@@ -692,7 +692,7 @@ Pass the key the account is already stored under; a write that would create a
 both keys. Existing entries are never merged or deleted (they usually hold
 different partial figures), so writes to a key that already exists always
 succeed and reconciling a duplicated document stays the operator's call. See
-`../_mureo-shared/SKILL.md` → *STATE.json Schema*.
+`../_mureo-state-schema/SKILL.md` → *STATE.json Schema*.
 
 On the read side the dashboard no longer adds such entries up silently: when
 it finds two keys resolving to one account it **withholds the client total**

@@ -200,6 +200,7 @@ def test_dual_tree_population_covers_foundation_and_operational_skills() -> None
         "_mureo-learning",
         "_mureo-meta-ads",
         "_mureo-shared",
+        "_mureo-state-schema",
         "_mureo-strategy",
     }, f"foundation skills dropped out of the pair test: {sorted(foundation)}"
 

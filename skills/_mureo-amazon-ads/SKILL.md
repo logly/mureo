@@ -270,7 +270,7 @@ When you persist Amazon ads into STATE.json (`ads[]` on the campaign
 snapshot — `/sync-state` and `/daily-check` both do this):
 
 - Record Amazon's `state` as the ad's **`status`** (verbatim, per
-  `../_mureo-shared/SKILL.md` → *Status vocabulary contract*).
+  `../_mureo-state-schema/SKILL.md` → *Status vocabulary contract*).
 - **Leave `effective_status` unset.** `AdState` requires only `ad_id`
   precisely so a platform with no delivery status omits the field instead of
   having one invented for it. Copying `state` into `effective_status` would

@@ -53,6 +53,14 @@
 - **`diagnose_campaign_delivery` is split into one method per section**
   (#865), sharing a private accumulator; no change in results, API calls
   or log messages.
+- **The STATE.json schema moved to its own shared skill,
+  `_mureo-state-schema`** (#866). The *STATE.json Schema* section and its
+  *Status vocabulary contract* moved out of `_mureo-shared` unchanged, so
+  that file has room again under the skill size limit with CRLF line
+  endings. `mureo setup` installs and removes the new skill with the
+  others. A reader of `_mureo-shared` → *STATE.json Schema* finds a
+  pointer to `../_mureo-state-schema/SKILL.md` there, and the skills that
+  cited either section now cite the new file.
 
 ### Security
 

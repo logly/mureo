@@ -347,8 +347,9 @@ skills/                          # Native slash skills — deployed to ~/.claude
 ├── competitive-scan/            # Auction analysis with Market Context
 ├── sync-state/                  # Manual STATE.json synchronization
 ├── learn/                       # Save diagnostic insights to knowledge base
-├── ... (26 skill dirs total)    # weekly-report, goal-review, monthly-report, tracking-health, …
+├── ... (27 skill dirs total)    # weekly-report, goal-review, monthly-report, tracking-health, …
 ├── _mureo-strategy/             # Shared: STRATEGY.md / STATE.json conventions
+├── _mureo-state-schema/         # Shared: STATE.json schema + status vocabulary contract (Code `Write`)
 ├── _mureo-learning/             # Shared: evidence-based decision framework
 └── _mureo-pro-diagnosis/        # Shared: learnable diagnostic knowledge base (grows with /learn)
 ```
