@@ -63,6 +63,7 @@ from mureo.context.state import (
     set_report,
     write_state_file,
 )
+from tests.test_report_structure_skills import _report_steps
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -1274,19 +1275,18 @@ class TestTheMcpTool:
 # ---------------------------------------------------------------------------
 
 
-def test_daily_check_folds_the_rows_it_already_has_into_the_history() -> None:
+def test_the_day_grain_step_folds_the_rows_it_already_has_into_the_history() -> None:
     """Zero extra platform API calls: the delivery-collapse step already
     fetched the daily rows, and the step that discards them is where the
-    history comes from."""
-    body = (
-        Path(__file__).resolve().parent.parent / "skills/daily-check/SKILL.md"
-    ).read_text(encoding="utf-8")
+    history comes from. The step lives in ``_mureo-report-persist`` (#903)."""
+    body = _report_steps("daily-check")
     assert "mureo_state_platform_daily_set" in body
     assert "no extra" in body.lower() or "zero extra" in body.lower()
 
 
 def test_the_shipped_skill_copy_carries_the_step_too() -> None:
     root = Path(__file__).resolve().parent.parent
-    source = (root / "skills/daily-check/SKILL.md").read_bytes()
-    packaged = (root / "mureo/_data/skills/daily-check/SKILL.md").read_bytes()
-    assert source == packaged
+    for skill in ("daily-check", "_mureo-report-persist"):
+        source = (root / "skills" / skill / "SKILL.md").read_bytes()
+        packaged = (root / "mureo/_data/skills" / skill / "SKILL.md").read_bytes()
+        assert source == packaged, skill

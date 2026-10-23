@@ -172,6 +172,15 @@
   `GoogleCampaignSpec` in `mureo/demo/scenarios/_base.py`, and the
   seasonality-trap scenario uses the shared date and ad-group helpers.
   Scenario output is unchanged.
+- **`daily-check`'s persistence steps moved to their own shared skill,
+  `_mureo-report-persist`** (#903, follow-up to #866). Steps 12–15 —
+  the report summary, the per-window per-platform rollups, the day-grain
+  history and the display contract — moved out of `daily-check`
+  unchanged, so that file has room again under the skill size limit with
+  CRLF line endings. `mureo setup` installs and removes the new skill
+  with the others. Each of those steps in `daily-check` is now one line
+  that points at its section in `../_mureo-report-persist/SKILL.md`, and
+  `daily-check` lists the new skill in its PREREQUISITE line.
 
 ### Security
 

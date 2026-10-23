@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 # Number of skills shipped in mureo/_data/skills/. Update this constant
 # whenever a skill is added or removed from the packaged set.
-EXPECTED_PACKAGED_SKILLS = 27
+EXPECTED_PACKAGED_SKILLS = 28
 
 
 @pytest.mark.unit
@@ -46,6 +46,7 @@ def test_install_skills(tmp_path: Path) -> None:
     # Foundation skills (referenced as PREREQUISITE by the operational ones)
     assert (dest / "_mureo-shared" / "SKILL.md").exists()
     assert (dest / "_mureo-state-schema" / "SKILL.md").exists()
+    assert (dest / "_mureo-report-persist" / "SKILL.md").exists()
     assert (dest / "_mureo-strategy" / "SKILL.md").exists()
     assert (dest / "_mureo-google-ads" / "SKILL.md").exists()
     assert (dest / "_mureo-meta-ads" / "SKILL.md").exists()

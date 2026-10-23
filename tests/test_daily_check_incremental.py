@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.test_report_structure_skills import _report_steps
+
 pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -81,8 +83,11 @@ def test_stays_readable_under_the_size_budget() -> None:
       substituted, and the blank line before it. Without it the hard-coded
       tool names read as "built-in only" and a variant of a built-in drops to
       the best-effort plugin path; the rule itself lives in ``_mureo-shared``.
+    - #903: lowered to 142 — steps 12-15 moved verbatim to
+      ``_mureo-report-persist`` and each became a one-line pointer, so the
+      file fits the parser's size limit with CRLF line endings.
     """
-    assert len(_body().splitlines()) <= 187
+    assert len(_body().splitlines()) <= 142
 
 
 def test_two_modes_documented() -> None:
@@ -167,10 +172,31 @@ def test_output_discipline_forbids_raw_tables() -> None:
 
 def test_incremental_still_persists_the_summary() -> None:
     """Persistence (steps 11-13) survives — it is what makes tomorrow's diff
-    possible."""
-    body = _body()
+    possible. Steps 12-15 live in ``_mureo-report-persist`` (#903)."""
+    body = _report_steps("daily-check")
     assert "mureo_state_report_set" in body
     assert "mureo_state_platform_metrics_set" in body
+
+
+@pytest.mark.parametrize(
+    "step,section",
+    [
+        (12, "Report summary"),
+        (13, "Per-window per-platform rollups"),
+        (14, "Day-grain history"),
+        (15, "Display contract"),
+    ],
+)
+def test_each_persistence_step_points_at_a_section_that_exists(
+    step: int, section: str
+) -> None:
+    """Each of steps 12-15 is a one-line pointer (#903); a pointer whose
+    section was renamed or dropped would send the run nowhere."""
+    line = next(
+        ln for ln in _body().splitlines() if ln.startswith(f"{step}. **Persist")
+    )
+    assert f"→ *{section}*" in line
+    assert f"\n## {section}\n" in _report_steps("daily-check")
 
 
 def test_evidence_check_closes_the_observation_with_an_evaluation_record() -> None:

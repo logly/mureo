@@ -69,6 +69,7 @@ from mureo.core.display_contract import (
     DISPLAY_SOURCE_MAX_CHARS,
     HIGHLIGHT_TONE_RULE,
 )
+from tests.test_report_structure_skills import _report_steps
 
 pytestmark = pytest.mark.unit
 
@@ -132,7 +133,7 @@ def test_the_skill_list_matches_the_report_writing_one() -> None:
 
 @pytest.mark.parametrize("skill", _SKILLS)
 def test_the_display_step_states_the_contract(skill: str) -> None:
-    body = _body(skill)
+    body = _report_steps(skill)
     for phrase in _REQUIRED:
         assert phrase in body, f"{skill}: missing {phrase!r}"
 
@@ -144,7 +145,7 @@ def test_the_bounds_are_pasted_verbatim_from_the_code(skill: str) -> None:
     A paraphrase would pass a phrase-by-phrase check and still tell an agent
     a different number from the one the tool enforces the day either changes.
     """
-    assert DISPLAY_CONTRACT_RULE in _body(skill)
+    assert DISPLAY_CONTRACT_RULE in _report_steps(skill)
 
 
 @pytest.mark.parametrize("skill", _SKILLS)
@@ -157,14 +158,14 @@ def test_the_overwrite_rule_is_pasted_verbatim(skill: str) -> None:
     caller holds it — so the instruction has to reach the caller, verbatim,
     or the loss is silent.
     """
-    assert DISPLAY_OVERWRITE_RULE in _body(skill)
+    assert DISPLAY_OVERWRITE_RULE in _report_steps(skill)
 
 
 @pytest.mark.parametrize("skill", _SKILLS)
 def test_the_skill_is_told_to_name_itself(skill: str) -> None:
     """Last-writer-wins costs a reader the ability to tell WHOSE answer
     survived; ``source`` is what pays that back, so every writer states it."""
-    body = _body(skill)
+    body = _report_steps(skill)
     assert "- `source`: your own skill name" in body
     assert f"at most {DISPLAY_SOURCE_MAX_CHARS} characters" in body
     # …and the server owns the clock, as it does for every other timestamp
@@ -176,13 +177,15 @@ def test_the_skill_is_told_to_name_itself(skill: str) -> None:
 def test_the_tone_map_is_pasted_verbatim(skill: str) -> None:
     """A chip is a severity in fewer characters. Mapped by feel, the same
     finding ends up amber on one client's card and red on another's."""
-    assert HIGHLIGHT_TONE_RULE in _body(skill)
+    assert HIGHLIGHT_TONE_RULE in _report_steps(skill)
 
 
 @pytest.mark.parametrize("skill", _SKILLS)
 def test_the_tone_map_sits_on_the_highlights_bullet(skill: str) -> None:
     """Where the chips are composed, not stranded elsewhere in the step."""
-    line = next(ln for ln in _body(skill).splitlines() if HIGHLIGHT_TONE_RULE in ln)
+    line = next(
+        ln for ln in _report_steps(skill).splitlines() if HIGHLIGHT_TONE_RULE in ln
+    )
     assert "`highlights`" in line, f"{skill}: the tone map is not on the chips"
 
 
@@ -194,7 +197,7 @@ def test_the_display_write_comes_after_the_report_write(skill: str) -> None:
     reaches no new verdict, which is only true if the verdicts already exist
     when it runs.
     """
-    body = _body(skill)
+    body = _report_steps(skill)
     assert body.index("mureo_state_report_set") < body.index(
         "mureo_state_display_set"
     ), f"{skill}: the display step is instructed before the report it renders"
@@ -203,7 +206,7 @@ def test_the_display_write_comes_after_the_report_write(skill: str) -> None:
 @pytest.mark.parametrize("skill", _SKILLS)
 def test_every_section_of_the_contract_is_instructed(skill: str) -> None:
     """All five, or the dashboard has a hole no refusal would ever report."""
-    body = _body(skill)
+    body = _report_steps(skill)
     for section in (
         "`nav_message`",
         "`highlights`",
@@ -222,7 +225,7 @@ def test_the_closed_row_state_vocabulary_is_shown(skill: str) -> None:
     reached for a word outside the set needs to see what the alternatives
     ARE, before the call rather than in the refusal.
     """
-    body = _body(skill)
+    body = _report_steps(skill)
     for state in BREAKDOWN_STATES:
         assert f"`{state}`" in body, f"{skill}: {state!r} missing from the set"
 
@@ -319,7 +322,19 @@ def test_daily_check_states_the_one_writer_rule() -> None:
     writing different sections in one run do not compose — the second wins
     outright. Stated where the contract is written most often.
     """
-    body = _body("daily-check")
+    body = _report_steps("daily-check")
     assert "**One writer per run — and you may not be the first today.**" in body
     assert "REPLACES" in body
     assert "never call twice" in body
+
+
+def test_daily_check_names_its_source_on_the_display_step() -> None:
+    """The display step lives in ``_mureo-report-persist`` (#903), whose
+    text says "your own skill name"; the pointer in ``daily-check`` is what
+    tells the run which name that is."""
+    line = next(
+        ln
+        for ln in _body("daily-check").splitlines()
+        if ln.startswith("15. **Persist the display contract**")
+    )
+    assert "write `source` as `daily-check`" in line

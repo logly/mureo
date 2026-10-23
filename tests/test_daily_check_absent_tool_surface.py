@@ -25,6 +25,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.test_report_structure_skills import _report_steps
+
 pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -68,11 +70,13 @@ def test_stays_readable_under_the_size_budget() -> None:
     that names the STATE.json the run read, then #758 phase 5's two for the
     observations ``mureo_state_get`` closes by itself, then #825's two for the
     note that a namespaced built-in variant is used with its prefix
-    substituted. The reason the number is what it is lives with the same pin
-    in ``test_daily_check_incremental``; the two are deliberately kept equal,
+    substituted; #903 then lowered it to 142 when steps 12-15 moved to
+    ``_mureo-report-persist``. The reason the number is what it is lives
+    with the same pin in ``test_daily_check_incremental``; the two are
+    deliberately kept equal,
     so a budget raised in one file and forgotten in the other fails here.
     """
-    assert len(_body().splitlines()) <= 187
+    assert len(_body().splitlines()) <= 142
 
 
 def test_names_the_absent_tool_surface_condition() -> None:
@@ -148,8 +152,9 @@ def test_does_not_contradict_the_native_tools_fallback() -> None:
 
 def test_unchecked_platform_numbers_are_not_persisted() -> None:
     """Steps 12-13 write the figures tomorrow's incremental run diffs against.
-    An invented number persisted there becomes the next run's baseline."""
-    body = _body()
+    An invented number persisted there becomes the next run's baseline.
+    Both steps live in ``_mureo-report-persist`` (#903)."""
+    body = _report_steps("daily-check")
     kpi_lines = [ln for ln in body.splitlines() if "`kpis`:" in ln]
     assert kpi_lines, "step 12's kpis convention is gone"
     assert "measured only" in kpi_lines[0].lower()
