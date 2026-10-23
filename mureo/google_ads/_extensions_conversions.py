@@ -194,10 +194,12 @@ class _ConversionsMixin:
                     action["cost_per_conversion"] = round(total_cost / total_cv, 0)
                 else:
                     action["cost_per_conversion"] = 0
-        except Exception:
-            logger.warning("Failed to retrieve cost per campaign; CPA returned as 0")
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            logger.warning(
+                "Failed to retrieve cost per campaign (%s)", type(exc).__name__
+            )
             for action in actions:
-                action["cost_per_conversion"] = 0
+                action["cost_per_conversion"] = None
 
         # Retrieve CV performance by landing page
         lp_campaign_filter = ""
@@ -237,7 +239,7 @@ class _ConversionsMixin:
                         "clicks": int(row.metrics.clicks),
                     }
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001 — the LP breakdown is optional
             logger.warning("Failed to retrieve CV by landing page")
 
         # Sort by CV count descending

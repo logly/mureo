@@ -73,7 +73,7 @@ def probe_mureo_instance(
     try:
         # ``url`` is always a literal ``http://`` loopback probe — the scheme is
         # not user-controlled, so B310/S310's file:// / custom-scheme concern
-        # does not apply. (``# noqa`` silences ruff; ``# nosec`` silences bandit.)
+        # does not apply. (The noqa marker silences ruff; nosec silences bandit.)
         with urllib.request.urlopen(
             url, timeout=timeout
         ) as resp:  # noqa: S310 # nosec B310

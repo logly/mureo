@@ -34,6 +34,7 @@ from mureo.mcp._helpers import (
     _failure_result,
     _json_result,
     _require,
+    exception_text,
     failure_of,
 )
 from mureo.rollback import (
@@ -198,7 +199,9 @@ async def handle_plan_get(arguments: dict[str, Any]) -> list[TextContent]:
         state_file = _resolve_state_file(arguments)
         kind, selector = _selector(arguments)
     except ValueError as exc:
-        return _failure_result("invalid_arguments", str(exc), refused=True, plan=None)
+        return _failure_result(
+            "invalid_arguments", exception_text(exc), refused=True, plan=None
+        )
 
     if not state_file.exists():
         detail = f"STATE.json not found: {state_file}"
@@ -207,7 +210,7 @@ async def handle_plan_get(arguments: dict[str, Any]) -> list[TextContent]:
         doc = read_state_file(state_file)
     except ContextFileError as exc:
         return _failure_result(
-            "state_file_unreadable", str(exc), refused=True, plan=None
+            "state_file_unreadable", exception_text(exc), refused=True, plan=None
         )
 
     if kind == "batch_id":
@@ -284,7 +287,7 @@ async def handle_apply(arguments: dict[str, Any]) -> list[TextContent]:
     try:
         state_file = _resolve_state_file(arguments)
     except ValueError as exc:
-        return _failure_result("invalid_arguments", str(exc), refused=True)
+        return _failure_result("invalid_arguments", exception_text(exc), refused=True)
     index = int(_require(arguments, "index"))
     confirm = _is_truthy_confirm(_require(arguments, "confirm"))
 
@@ -296,13 +299,12 @@ async def handle_apply(arguments: dict[str, Any]) -> list[TextContent]:
             dispatcher=_get_dispatcher(),
         )
     except RollbackExecutionError as exc:
-        return _failure_result("rollback_refused", str(exc), refused=True)
-    except Exception as exc:
-        # Log the full exception (including type and message) server-side
-        # only; the MCP response deliberately returns a generic message so
-        # raw SDK errors cannot leak tokens or account identifiers to the
-        # model context.
-        logger.exception("rollback_apply dispatch failed")
+        return _failure_result("rollback_refused", exception_text(exc), refused=True)
+    except Exception as exc:  # noqa: BLE001 — generic failure envelope
+        # Class name only, in the log and in the response: a raw SDK error's
+        # text (and a traceback through its ``__cause__``) can carry tokens
+        # or account identifiers (#603).
+        logger.error("rollback_apply dispatch failed (%s)", type(exc).__name__)
         return _failure_result(
             "rollback_dispatch_failed",
             (

@@ -92,7 +92,7 @@ def list_demo_scenarios() -> DemoListResult | ActionResult:
                     "default": name == DEFAULT_SCENARIO,
                 }
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("list_demo_scenarios failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
     return DemoListResult(status="ok", scenarios=tuple(rows))
@@ -155,7 +155,7 @@ def init_demo(
     except DemoInitError as exc:
         logger.warning("init_demo failed: %s", type(exc).__name__)
         return ActionResult.failed("demo_init_failed", "DemoInitError")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("init_demo unexpected failure")
         return ActionResult.failed("internal_error", type(exc).__name__)
 

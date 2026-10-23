@@ -14,9 +14,9 @@ from mureo.google_ads._diagnostics import (
     _LEARNING_STATUS_DESC,
     _PRIMARY_STATUS_REASON_DESC,
     _REASON_IS_ISSUE,
-    _SMART_BIDDING_STRATEGIES,
     _DiagnosticsMixin,
 )
+from mureo.google_ads._enum_names import SMART_BIDDING_STRATEGIES
 
 # ---------------------------------------------------------------------------
 # Mock client class for tests
@@ -330,8 +330,8 @@ class TestDiagnosticsConstants:
             assert key.startswith("LEARNING_")
 
     def test_smart_bidding_strategies(self) -> None:
-        assert "MAXIMIZE_CONVERSIONS" in _SMART_BIDDING_STRATEGIES
-        assert "TARGET_CPA" in _SMART_BIDDING_STRATEGIES
+        assert "MAXIMIZE_CONVERSIONS" in SMART_BIDDING_STRATEGIES
+        assert "TARGET_CPA" in SMART_BIDDING_STRATEGIES
 
 
 # ---------------------------------------------------------------------------
@@ -694,7 +694,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert result["performance_last_30_days"] == "Retrieval failed"
+        assert result["performance_last_30_days"] is None
 
     @pytest.mark.asyncio
     async def test_sitelinks_exception(self, client: _MockDiagClient) -> None:
@@ -706,7 +706,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert result["sitelinks_count"] == 0
+        assert result["sitelinks_count"] is None
 
     @pytest.mark.asyncio
     async def test_billing_check_failure(self, client: _MockDiagClient) -> None:
@@ -728,7 +728,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = _search_side_effect
 
         result = await client.diagnose_campaign_delivery("123")
-        assert result["billing_setup"] == "Verification failed"
+        assert result["billing_setup"] is None
 
     @pytest.mark.asyncio
     async def test_impression_share_warnings(self, client: _MockDiagClient) -> None:

@@ -54,7 +54,7 @@ class _BudgetAnalysisMixin:
                 m = _safe_metrics(perf)
                 cost = float(m.get("cost", 0))
                 convs = float(m.get("conversions", 0))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — excluded and listed
                 # Class name only. A traceback would print the GoogleAdsException
                 # repr, which carries the request metadata (developer token,
                 # authorization header) — see mureo/google_ads/accounts.py for the
@@ -188,23 +188,30 @@ class _BudgetAnalysisMixin:
                     budget_info.get("daily_budget", 0) if budget_info else 0
                 )
                 camp["budget_id"] = budget_info.get("id", "") if budget_info else ""
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — partial read; failures warned
                 logger.warning(
                     "Failed to retrieve budget for campaign %s (%s)",
                     cid,
                     type(exc).__name__,
                 )
-                camp["current_daily_budget"] = 0
-                camp["budget_id"] = ""
+                camp["current_daily_budget"] = None
+                camp["budget_id"] = None
 
-        # Reallocation logic: move from inefficient to efficient
+        # Reallocation logic: move from inefficient to efficient. A campaign
+        # whose budget could not be read (None) is in neither list: a
+        # proposal needs a current budget to start from.
         inefficient = [
             c
             for c in campaigns
             if c.get("verdict") == "INEFFICIENT"
-            and c.get("current_daily_budget", 0) > 0
+            and (c.get("current_daily_budget") or 0) > 0
         ]
-        efficient = [c for c in campaigns if c.get("verdict") == "EFFICIENT"]
+        efficient = [
+            c
+            for c in campaigns
+            if c.get("verdict") == "EFFICIENT"
+            and c.get("current_daily_budget") is not None
+        ]
 
         reallocation_plan: list[dict[str, Any]] = []
         total_freed: float = 0.0
@@ -226,7 +233,7 @@ class _BudgetAnalysisMixin:
                     "change_amount": -reduction,
                     "reason": (
                         f"Efficiency ratio {camp.get('efficiency_ratio', 0)} "
-                        f"(CPA: ¥{camp.get('cpa', 0):,.0f})"
+                        f"(CPA: ¥{(camp.get('cpa') or 0):,.0f})"
                     ),
                 }
             )
@@ -248,7 +255,7 @@ class _BudgetAnalysisMixin:
                         "change_amount": per_campaign,
                         "reason": (
                             f"Efficiency ratio {camp.get('efficiency_ratio', 0)} "
-                            f"(CPA: ¥{camp.get('cpa', 0):,.0f})"
+                            f"(CPA: ¥{(camp.get('cpa') or 0):,.0f})"
                         ),
                     }
                 )

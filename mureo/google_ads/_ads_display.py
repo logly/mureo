@@ -26,6 +26,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.tool_failure import exception_text
 from mureo.google_ads._mutate_errors import _wrap_mutate_error
 from mureo.google_ads._rda_validator import (
     RDAValidationResult,
@@ -92,8 +93,13 @@ class _DisplayAdsMixin:
         )
         try:
             response = await self._search(query)
-        except Exception as exc:  # pragma: no cover - defensive
-            raise ValueError(f"Failed to verify ad group {ad_group_id}: {exc}") from exc
+        except Exception as exc:  # noqa: BLE001 — re-raised as ValueError
+            # Curated, never ``str(exc)``, and ``from None``: a
+            # GoogleAdsException's text and a printed ``__cause__`` both carry
+            # the request metadata (#603).
+            raise ValueError(
+                f"Failed to verify ad group {ad_group_id}: {exception_text(exc)}"
+            ) from None
 
         for row in response:
             channel_type = row.campaign.advertising_channel_type
@@ -131,7 +137,7 @@ class _DisplayAdsMixin:
                 asset = await self.upload_image_asset(path)
                 uploaded.append(asset)
                 logo_assets.append(asset)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — re-raised as RDAUploadError
             orphans = [a["resource_name"] for a in uploaded]
             logger.warning(
                 "RDA image upload failed after %d successful uploads. "
@@ -139,10 +145,11 @@ class _DisplayAdsMixin:
                 len(uploaded),
                 orphans,
             )
+            # ``from None``: a printed ``__cause__`` carries the grpc repr (#603).
             raise RDAUploadError(
-                f"RDA image upload failed: {exc}",
+                f"RDA image upload failed: {exception_text(exc)}",
                 orphaned_assets=orphans,
-            ) from exc
+            ) from None
         return marketing_assets, square_assets, logo_assets
 
     def _build_rda_operation(
@@ -302,7 +309,7 @@ class _DisplayAdsMixin:
         loop = asyncio.get_running_loop()
         try:
             response = await loop.run_in_executor(None, _do_mutate)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — re-raised as RDAUploadError
             # Surface the orphaned assets so they can be cleaned up
             orphans = (
                 [a["resource_name"] for a in marketing_assets]
@@ -315,10 +322,11 @@ class _DisplayAdsMixin:
                 len(orphans),
                 orphans,
             )
+            # ``from None``: a printed ``__cause__`` carries the grpc repr (#603).
             raise RDAUploadError(
-                f"RDA creation failed: {exc}",
+                f"RDA creation failed: {exception_text(exc)}",
                 orphaned_assets=orphans,
-            ) from exc
+            ) from None
 
         return {
             "resource_name": response.results[0].resource_name,

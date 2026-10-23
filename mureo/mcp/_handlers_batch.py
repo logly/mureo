@@ -28,6 +28,7 @@ from mureo.mcp._helpers import (
     _failure_result,
     _json_result,
     _require,
+    exception_text,
     resolve_workspace_path,
 )
 
@@ -58,7 +59,7 @@ async def handle_batch_begin(arguments: dict[str, Any]) -> list[TextContent]:
     try:
         record = begin_batch(path, label=label)
     except BatchError as exc:
-        return _failure_result("batch_refused", str(exc), refused=True)
+        return _failure_result("batch_refused", exception_text(exc), refused=True)
     return _json_result({"status": "open", **_record_to_dict(record)})
 
 
@@ -76,7 +77,7 @@ async def handle_batch_end(arguments: dict[str, Any]) -> list[TextContent]:
     try:
         record, indices = end_batch(path)
     except BatchError as exc:
-        return _failure_result("batch_refused", str(exc), refused=True)
+        return _failure_result("batch_refused", exception_text(exc), refused=True)
     doc = read_state_file(path)
     return _json_result(
         {

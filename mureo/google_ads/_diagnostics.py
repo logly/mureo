@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from mureo.google_ads._enum_names import (
     CRITERION_SYSTEM_SERVING_STATUS_MAP,
     KEYWORD_MATCH_TYPE_MAP,
+    SMART_BIDDING_STRATEGIES,
     map_enum_name,
 )
 from mureo.google_ads.mappers import (
@@ -101,16 +102,6 @@ _LEARNING_STATUS_DESC: dict[str, str] = {
     "LEARNING_CONVERSION_TYPE_CHANGE": "Conversion settings were changed; readjusting",
     "LEARNING_CONVERSION_SETTING_CHANGE": "Conversion settings were changed; readjusting",
 }
-
-# Smart bidding strategies (require conversion tracking)
-_SMART_BIDDING_STRATEGIES: frozenset[str] = frozenset(
-    {
-        "MAXIMIZE_CONVERSIONS",
-        "TARGET_CPA",
-        "TARGET_ROAS",
-        "MAXIMIZE_CONVERSION_VALUE",
-    }
-)
 
 
 class _DiagnosticsMixin:
@@ -514,20 +505,23 @@ class _DiagnosticsMixin:
                     "clicks": 0,
                     "cost": 0,
                 }
-        except Exception:
-            result["performance_last_30_days"] = "Retrieval failed"
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            # Class name only. A traceback would print the GoogleAdsException
+            # repr, which carries the request metadata (developer token,
+            # authorization header) — see mureo/google_ads/accounts.py for the
+            # full reasoning (#603).
+            logger.warning(
+                "Failed to retrieve last-30-day performance (%s)", type(exc).__name__
+            )
+            result["performance_last_30_days"] = None
 
         # 7. Sitelink count
         try:
             sitelinks = await self.list_sitelinks(campaign_id)
             result["sitelinks_count"] = len(sitelinks)
-        except Exception as exc:
-            # Class name only. A traceback would print the GoogleAdsException
-            # repr, which carries the request metadata (developer token,
-            # authorization header) — see mureo/google_ads/accounts.py for the
-            # full reasoning (#603).
-            logger.debug("Failed to retrieve sitelink count (%s)", type(exc).__name__)
-            result["sitelinks_count"] = 0
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            logger.warning("Failed to retrieve sitelink count (%s)", type(exc).__name__)
+            result["sitelinks_count"] = None
 
         # 8. Billing setup check
         try:
@@ -544,12 +538,13 @@ class _DiagnosticsMixin:
                     "No active billing setup. "
                     "Please configure a payment method in Google Ads dashboard"
                 )
-        except Exception:
-            result["billing_setup"] = "Verification failed"
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            logger.warning("Failed to retrieve billing setup (%s)", type(exc).__name__)
+            result["billing_setup"] = None
 
         # --- NEW: 8. Conversion tracking check (smart bidding only) ---
         strategy = bidding.get("strategy", "")
-        if strategy in _SMART_BIDDING_STRATEGIES:
+        if strategy in SMART_BIDDING_STRATEGIES:
             try:
                 cv_query = """
                     SELECT
@@ -567,65 +562,68 @@ class _DiagnosticsMixin:
                         "there are 0 active conversion actions. "
                         "Please configure conversion tracking"
                     )
-            except Exception:
-                result["active_conversion_actions"] = "Verification failed"
+            except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+                logger.warning(
+                    "Failed to retrieve active conversion actions (%s)",
+                    type(exc).__name__,
+                )
+                result["active_conversion_actions"] = None
 
         # --- Conversion action performance (last 30 days) ---
         # cost_per_conversion cannot be fetched simultaneously with segments.conversion_action_name,
-        # so fetch campaign total cost separately and calculate CPA by CV proportion
-        try:
-            cv_by_action_query = f"""
-                SELECT
-                    segments.conversion_action_name,
-                    metrics.conversions,
-                    metrics.conversions_value
-                FROM campaign
-                WHERE campaign.id = {campaign_id}
-                    AND segments.date DURING LAST_30_DAYS
-                    AND metrics.conversions > 0
-            """
-            cv_by_action_response = await self._search(cv_by_action_query)  # type: ignore[attr-defined]
+        # so fetch campaign total cost separately and calculate CPA by CV proportion.
+        # The CPA is derived from the 30-day totals: without them it is null.
+        perf_30d = result["performance_last_30_days"]
+        if perf_30d is None:
+            result["conversion_actions_detail"] = None
+        else:
+            try:
+                cv_by_action_query = f"""
+                    SELECT
+                        segments.conversion_action_name,
+                        metrics.conversions,
+                        metrics.conversions_value
+                    FROM campaign
+                    WHERE campaign.id = {campaign_id}
+                        AND segments.date DURING LAST_30_DAYS
+                        AND metrics.conversions > 0
+                """
+                cv_by_action_response = await self._search(cv_by_action_query)  # type: ignore[attr-defined]
 
-            # Get campaign total cost and CV count for CPA calculation
-            total_cost = float(
-                result.get("performance_last_30_days", {}).get("cost", 0)
-            )
-            total_cv = float(
-                result.get("performance_last_30_days", {}).get("conversions", 0)
-            )
-            campaign_cpa = total_cost / total_cv if total_cv > 0 else 0
+                # Get campaign total cost and CV count for CPA calculation
+                total_cost = float(perf_30d.get("cost", 0))
+                total_cv = float(perf_30d.get("conversions", 0))
+                campaign_cpa = total_cost / total_cv if total_cv > 0 else 0
 
-            conversion_actions_detail: list[dict[str, Any]] = []
-            for row in cv_by_action_response:
-                action_name = str(getattr(row.segments, "conversion_action_name", ""))
-                conversions = float(row.metrics.conversions)
-                # Estimate CPA by CV proportion
-                action_cpa = campaign_cpa if total_cv > 0 else 0
-                conversion_actions_detail.append(
-                    {
-                        "name": action_name,
-                        "conversions": conversions,
-                        "conversions_value": float(
-                            getattr(row.metrics, "conversions_value", 0)
-                        ),
-                        "cost_per_conversion": round(action_cpa, 0),
-                    }
+                conversion_actions_detail: list[dict[str, Any]] = []
+                for row in cv_by_action_response:
+                    action_name = str(
+                        getattr(row.segments, "conversion_action_name", "")
+                    )
+                    conversions = float(row.metrics.conversions)
+                    # Estimate CPA by CV proportion
+                    action_cpa = campaign_cpa if total_cv > 0 else 0
+                    conversion_actions_detail.append(
+                        {
+                            "name": action_name,
+                            "conversions": conversions,
+                            "conversions_value": float(
+                                getattr(row.metrics, "conversions_value", 0)
+                            ),
+                            "cost_per_conversion": round(action_cpa, 0),
+                        }
+                    )
+                # Sort by CV count descending
+                conversion_actions_detail.sort(
+                    key=lambda x: x["conversions"], reverse=True
                 )
-            # Sort by CV count descending
-            conversion_actions_detail.sort(key=lambda x: x["conversions"], reverse=True)
-            result["conversion_actions_detail"] = conversion_actions_detail
-        except Exception as exc:
-            # Never the exception itself (see above). This one wraps a GAQL
-            # search, so the curated server-side failure message is both safe
-            # and the thing worth reading; anything else falls back to the
-            # class name.
-            detail = (
-                self._extract_error_detail(exc)  # type: ignore[attr-defined]
-                if hasattr(exc, "failure")
-                else type(exc).__name__
-            )
-            logger.debug("Failed to retrieve conversion action performance: %s", detail)
-            result["conversion_actions_detail"] = []
+                result["conversion_actions_detail"] = conversion_actions_detail
+            except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+                logger.warning(
+                    "Failed to retrieve conversion action performance (%s)",
+                    type(exc).__name__,
+                )
+                result["conversion_actions_detail"] = None
 
         # --- NEW: 9. Impression share check ---
         try:
@@ -666,14 +664,12 @@ class _DiagnosticsMixin:
                             f"of impressions due to insufficient ad rank"
                         )
                 break  # First row only
-        except Exception as exc:
-            # GAQL search again — curated detail, class name otherwise.
-            detail = (
-                self._extract_error_detail(exc)  # type: ignore[attr-defined]
-                if hasattr(exc, "failure")
-                else type(exc).__name__
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            logger.warning(
+                "Failed to retrieve impression share (%s)", type(exc).__name__
             )
-            logger.debug("Failed to retrieve impression share: %s", detail)
+            # No row leaves the key out; a failed read is null.
+            result["impression_share"] = None
 
         # Generate recommended actions
         if bidding.get("strategy") == "TARGET_IMPRESSION_SHARE":
@@ -721,7 +717,7 @@ class _DiagnosticsMixin:
 
         # Smart bidding + no CV configured recommended action
         if (
-            strategy in _SMART_BIDDING_STRATEGIES
+            strategy in SMART_BIDDING_STRATEGIES
             and result.get("active_conversion_actions") == 0
         ):
             recommendations.append(

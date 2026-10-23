@@ -17,7 +17,6 @@ import functools
 import inspect
 import json
 import logging
-from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +41,7 @@ from mureo.core.tool_failure import API_ERROR_CODE as API_ERROR_CODE
 from mureo.core.tool_failure import API_ERROR_PREFIX as API_ERROR_PREFIX
 from mureo.core.tool_failure import FAILURE_STATUSES as FAILURE_STATUSES
 from mureo.core.tool_failure import Failure as Failure
+from mureo.core.tool_failure import exception_text as exception_text
 from mureo.core.tool_failure import failure_of as failure_of
 from mureo.core.tool_failure import is_auth_error_result as is_auth_error_result
 from mureo.core.tool_failure import is_error_result as is_error_result
@@ -81,7 +81,7 @@ async def _close_clients(bucket: list[Any]) -> None:
             result = close()
             if inspect.isawaitable(result):
                 await result
-        except Exception:  # noqa: BLE001 - cleanup must not mask the handler result
+        except Exception:  # noqa: BLE001 — cleanup must not mask the handler result
             logger.debug("client cleanup failed", exc_info=True)
 
 
@@ -223,40 +223,6 @@ def _no_creds_result(msg: str) -> list[TextContent]:
     return _auth_error_result(AUTH_CAUSE_NO_CREDENTIALS, msg)
 
 
-def exception_text(exc: BaseException) -> str:
-    """Turn a caught exception into text an operator may safely see.
-
-    The ONE place a caught exception becomes operator-visible text, because
-    ``str(exc)`` is not safe for every exception mureo catches.
-    ``GoogleAdsException`` does not curate its ``__str__``: formatting it
-    prints the underlying ``grpc.Call`` repr, which carries
-    ``debug_error_string()`` and with it the request metadata — the
-    developer token and the ``authorization`` header. The curated text is
-    the server-side ``failure.errors[0].message`` (#603). The mutation
-    paths learned that in #603; every read path returned ``str(exc)``, and
-    since #758 that text is also copied into the journal.
-
-    Duck-typed on ``failure.errors`` rather than imported from
-    :mod:`mureo.google_ads.client`, like
-    :func:`mureo.core.auth_failure._is_google_ads_auth_failure`: this module
-    is shared by every platform and must not depend on the Google client.
-    """
-    errors = getattr(getattr(exc, "failure", None), "errors", None)
-    if isinstance(errors, Iterable):
-        # A platform-shaped failure: ``str(exc)`` is off limits even when the
-        # curated message is missing, so an empty ``errors`` costs the detail,
-        # never the credential.
-        for error in errors:
-            message = str(getattr(error, "message", "") or "")
-            if message:
-                return message
-        return type(exc).__name__
-    # Every other exception mureo catches already curates its own message,
-    # so the operator-facing text stays exactly what it was; only an empty
-    # message falls back to the type name so the envelope is never blank.
-    return str(exc) or type(exc).__name__
-
-
 def api_error_handler(
     func: Callable[..., Coroutine[Any, Any, list[TextContent]]],
 ) -> Callable[..., Coroutine[Any, Any, list[TextContent]]]:
@@ -273,8 +239,17 @@ def api_error_handler(
         except ValueError:
             # Re-raise errors such as missing required parameters for the caller to handle
             raise
-        except Exception as exc:
-            logger.exception("%s failed", func.__name__)
+        except Exception as exc:  # noqa: BLE001 — becomes the error result
+            # No traceback: it would print the exception's own text and its
+            # ``__cause__`` chain, which for a platform failure carry the
+            # request metadata (#603). The curated text is what the caller
+            # gets back.
+            logger.error(
+                "%s failed (%s): %s",
+                func.__name__,
+                type(exc).__name__,
+                exception_text(exc),
+            )
             # An auth failure is a different outcome, not a worse error: it
             # means this platform produced NO data, so a report built on the
             # platforms that did answer is partial. Flattening it into the

@@ -1396,7 +1396,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         except AdvisorActionError as exc:
             send_error_json(self, 400, exc.code)
             return
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — every write fault is one code
             # A malformed existing file (ConfigWriteError) or any other
             # write fault — never echo the exception (it may carry a path
             # fragment); log it server-side and return a generic envelope.
@@ -1411,7 +1411,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         except AdvisorActionError as exc:
             send_error_json(self, 400, exc.code)
             return
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — every write fault is one code
             logger.exception("advisor remove failed")
             send_error_json(self, 400, "write_failed")
             return
@@ -1454,7 +1454,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         except ValueError:
             send_error_json(self, 400, "write_failed")
             return
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — every write fault is one code
             logger.exception("env_var write failed")
             send_error_json(self, 500, "internal_error")
             return
@@ -1471,7 +1471,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         except ValueError:
             send_error_json(self, 400, "section_not_allowed")
             return
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — every write fault is one code
             logger.exception("credentials remove failed")
             send_error_json(self, 500, "internal_error")
             return
@@ -1569,7 +1569,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # on, and the inspection is skipped the same way.
         try:
             stored_before = load_meta_ads_credentials(credentials_path)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — an unreadable file means no stored pair
             logger.exception("Meta credentials pre-read failed")
             stored_before = None
         inspect_app_id = app_id or (stored_before.app_id if stored_before else None)
@@ -1602,7 +1602,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             code = "account_fetch_failed" if fetch else "token_invalid"
             send_error_json(self, 400, code, detail=type(exc).__name__)
             return
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — any other fault is internal_error
             logger.exception("Meta token validation failed")
             send_error_json(self, 500, "internal_error")
             return
@@ -1687,7 +1687,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 ),
                 account_id=account_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — every write fault is one code
             logger.exception("Meta token save failed")
             send_error_json(self, 500, "internal_error")
             return
@@ -2261,7 +2261,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             logger.exception("web extension %r raised in %s %s", name, method, subpath)
             try:
                 send_error_json(self, 500, "extension_handler_error")
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — the 500 envelope is best-effort
                 logger.debug(
                     "web extension %r already wrote a partial response; "
                     "the 500 envelope could not be appended",

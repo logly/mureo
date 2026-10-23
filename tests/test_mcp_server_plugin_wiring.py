@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mcp.types import TextContent, Tool, ToolAnnotations
@@ -13,6 +13,7 @@ from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import ProviderEntry
 from mureo.rollback.planner import _plugin_reversal_keys
 from tests._server_reload import reloaded_server
+from tests.test_mcp_exception_text_routing import _CURATED, _SECRET, _platform_shaped
 
 
 class _Plugin:
@@ -311,6 +312,25 @@ class TestPluginAuditAndThrottle:
             # ...and the server is NOT dead — a built-in still dispatches.
             names = {t.name for t in await mod.handle_list_tools()}
             assert "rollback_plan_get" in names
+
+    async def test_plugin_exception_audit_carries_curated_text(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The audit records ``exception_text``, never the exception's repr (#865)."""
+        import json
+
+        from mureo.mcp import plugin_audit
+
+        log = tmp_path / "plugin_audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+        exc = _platform_shaped(RuntimeError)
+        monkeypatch.setattr(_BoomPlugin, "handle_mcp_tool", AsyncMock(side_effect=exc))
+        with reloaded_server(_boom_discover) as mod, pytest.raises(RuntimeError):
+            await mod.handle_call_tool("boom_plugin_explode", {"x": 1})
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+        assert rec["ok"] is False
+        assert rec["error"] == _CURATED
+        assert _SECRET not in log.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

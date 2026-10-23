@@ -2709,7 +2709,9 @@ async def test_a_failing_closure_degrades_to_an_error_field(
     # The read itself still answered with the document.
     assert payload["platforms"]["google_ads"]["campaigns"][0]["campaign_id"] == "camp_1"
     assert (cwd_to_tmp / "STATE.json").read_bytes() == before
-    assert "scoring is broken" in caplog.text
+    # Class name only, no traceback (#865, #603).
+    assert "(RuntimeError)" in caplog.text
+    assert "scoring is broken" not in caplog.text
 
 
 def test_state_get_schema_carries_the_auto_evaluate_switch() -> None:

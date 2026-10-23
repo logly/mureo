@@ -3,10 +3,18 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.google_ads._enum_names import SMART_BIDDING_STRATEGIES
+
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
 
 logger = logging.getLogger(__name__)
+
+#: Funnel bottlenecks that are critical, and the issue each one reports.
+_FUNNEL_ISSUES = {
+    "no_delivery": "Impressions in the last 7 days are 0",
+    "no_clicks": "Clicks in the last 7 days are 0",
+}
 
 
 class _MonitoringMixin:
@@ -50,9 +58,10 @@ class _MonitoringMixin:
 
         # 1. Campaign basic information
         campaign: dict[str, Any] | None = None
+        campaign_read = True
         try:
             campaign = await self.get_campaign(campaign_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             # Class name only. A traceback would print the GoogleAdsException
             # repr, which carries the request metadata (developer token,
             # authorization header) — see mureo/google_ads/accounts.py for the
@@ -60,13 +69,15 @@ class _MonitoringMixin:
             logger.warning(
                 "Failed to retrieve campaign information (%s)", type(exc).__name__
             )
+            issues.append("Failed to retrieve campaign information")
+            campaign_read = False
         result["campaign"] = campaign
 
         # 2. Delivery diagnostics
-        diagnosis: dict[str, Any] = {}
+        diagnosis: dict[str, Any] | None = None
         try:
             diagnosis = await self.diagnose_campaign_delivery(campaign_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve delivery diagnostics (%s)", type(exc).__name__
             )
@@ -74,25 +85,27 @@ class _MonitoringMixin:
         result["diagnosis"] = diagnosis
 
         # 3. Previous day performance
-        performance: list[dict[str, Any]] = []
+        performance: list[dict[str, Any]] | None = None
         try:
             performance = await self.get_performance_report(
                 campaign_id=campaign_id, period="YESTERDAY"
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve previous day performance (%s)", type(exc).__name__
             )
             issues.append("Failed to retrieve previous day performance")
         result["performance"] = performance
 
-        # Extract metrics
+        # Extract metrics; unknown (None) when the read failed, not 0
         metrics = performance[0].get("metrics", {}) if performance else {}
-        impressions = int(metrics.get("impressions", 0))
+        impressions = (
+            int(metrics.get("impressions", 0)) if performance is not None else None
+        )
 
         # Status determination
-        has_issues = bool(diagnosis.get("issues"))
-        has_warnings = bool(diagnosis.get("warnings"))
+        has_issues = bool((diagnosis or {}).get("issues"))
+        has_warnings = bool((diagnosis or {}).get("warnings"))
         campaign_status = (campaign or {}).get("status", "")
 
         if has_issues:
@@ -108,11 +121,15 @@ class _MonitoringMixin:
             or impressions == 0
         )
         is_warning = has_warnings or (
-            not is_critical and impressions > 0 and impressions < 10
+            not is_critical and impressions is not None and 0 < impressions < 10
         )
+        all_read = campaign_read and diagnosis is not None and performance is not None
 
         if is_critical:
             status = "critical"
+        elif not all_read:
+            # Nothing read proves a problem, and a failed read hides any.
+            status = "unknown"
         elif is_warning:
             status = "warning"
             if has_warnings:
@@ -136,6 +153,11 @@ class _MonitoringMixin:
             result["summary"] = (
                 f"Campaign {campaign_id} delivery needs attention. "
                 f"Warnings detected: {', '.join(issues)}"
+            )
+        elif status == "unknown":
+            result["summary"] = (
+                f"Campaign {campaign_id} delivery could not be evaluated. "
+                f"Issues: {', '.join(issues)}"
             )
         else:
             result["summary"] = (
@@ -161,12 +183,12 @@ class _MonitoringMixin:
         }
 
         # 1. Last 7 days performance
-        perf: list[dict[str, Any]] = []
+        perf: list[dict[str, Any]] | None = None
         try:
             perf = await self.get_performance_report(
                 campaign_id=campaign_id, period="LAST_7_DAYS"
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve performance report (%s)", type(exc).__name__
             )
@@ -176,32 +198,32 @@ class _MonitoringMixin:
         cost = float(metrics.get("cost", 0))
         conversions = float(metrics.get("conversions", 0))
 
-        # 2. Calculate CPA
+        # 2. Calculate CPA (unknown, not "0 conversions", when the read failed)
+        current_cpa: float | None = None
         if conversions > 0:
             current_cpa = round(cost / conversions, 1)
-            result["current_cpa"] = current_cpa
-        else:
-            current_cpa = None
-            result["current_cpa"] = None
+        elif perf is not None:
             issues.append(
                 "Cannot calculate CPA because there are 0 conversions in the last 7 days"
             )
+        result["current_cpa"] = current_cpa
 
         # 3. Cost analysis
-        cost_analysis: dict[str, Any] = {}
+        cost_analysis: dict[str, Any] | None = None
         try:
             cost_analysis = await self.investigate_cost_increase(campaign_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning("Failed to retrieve cost analysis (%s)", type(exc).__name__)
             issues.append("Failed to retrieve cost analysis")
         result["cost_analysis"] = cost_analysis
 
-        # Wasteful search terms (top 5)
-        wasteful_terms = cost_analysis.get("wasteful_search_terms", [])
-        if isinstance(wasteful_terms, list):
-            result["wasteful_terms"] = wasteful_terms[:5]
+        # Wasteful search terms (top 5), null when the cost analysis failed
+        if cost_analysis is None:
+            result["wasteful_terms"] = None
         else:
-            result["wasteful_terms"] = []
+            wasteful_terms = cost_analysis.get("wasteful_search_terms", [])
+            is_list = isinstance(wasteful_terms, list)
+            result["wasteful_terms"] = wasteful_terms[:5] if is_list else []
 
         # 4. Calculate deviation rate and determine status
         if current_cpa is not None:
@@ -223,8 +245,8 @@ class _MonitoringMixin:
                     f"Current: {current_cpa:,.0f} / target: {target_cpa:,.0f}"
                 )
         else:
-            # No conversions
-            status = "warning"
+            # No conversions, or no performance read at all
+            status = "warning" if perf is not None else "unknown"
             result["deviation_pct"] = None
 
         result["status"] = status
@@ -253,6 +275,11 @@ class _MonitoringMixin:
                     f"Current CPA: {current_cpa:,.0f} yen / Target: {target_cpa:,.0f} yen"
                     f" (deviation: {result['deviation_pct']}%). Urgent action required"
                 )
+        elif status == "unknown":
+            result["summary"] = (
+                f"Campaign {campaign_id} CPA could not be evaluated: the "
+                "performance report could not be retrieved"
+            )
         else:
             result["summary"] = (
                 f"Campaign {campaign_id} has 0 conversions in the last 7 days, so "
@@ -277,12 +304,12 @@ class _MonitoringMixin:
         }
 
         # 1. Last 7 days performance
-        perf: list[dict[str, Any]] = []
+        perf: list[dict[str, Any]] | None = None
         try:
             perf = await self.get_performance_report(
                 campaign_id=campaign_id, period="LAST_7_DAYS"
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve performance report (%s)", type(exc).__name__
             )
@@ -293,20 +320,33 @@ class _MonitoringMixin:
         clicks = int(metrics.get("clicks", 0))
         conversions = float(metrics.get("conversions", 0))
 
-        # 2. Calculate daily average CV
+        # 2. Calculate daily average CV (unknown when the read failed)
         daily_cv = round(conversions / 7, 2)
-        result["current_cv_daily"] = daily_cv
+        result["current_cv_daily"] = daily_cv if perf is not None else None
 
         # 3. Comprehensive performance analysis
         performance_analysis: dict[str, Any] = {}
         try:
             performance_analysis = await self.analyze_performance(campaign_id)
-        except Exception as exc:
+            result["performance_analysis"] = performance_analysis
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve performance analysis (%s)", type(exc).__name__
             )
             issues.append("Failed to retrieve performance analysis")
-        result["performance_analysis"] = performance_analysis
+            result["performance_analysis"] = None
+
+        if perf is None:
+            # Nothing to measure against the target: derive nothing.
+            result["deviation_pct"] = None
+            result["status"] = "unknown"
+            result["bottleneck"] = None
+            result["issues"] = issues
+            result["summary"] = (
+                f"Campaign {campaign_id} CV count could not be evaluated: the "
+                "performance report could not be retrieved"
+            )
+            return result
 
         # 4. Calculate deviation rate
         if target_cv_daily > 0:
@@ -407,46 +447,53 @@ class _MonitoringMixin:
 
         # 1. Campaign basic information
         campaign: dict[str, Any] | None = None
+        campaign_read = True
         try:
             campaign = await self.get_campaign(campaign_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve campaign information (%s)", type(exc).__name__
             )
+            issues.append("Failed to retrieve campaign information")
+            campaign_read = False
 
-        # 2. Conversion tracking configuration
-        cv_actions: list[dict[str, Any]] = []
+        # 2. Conversion tracking configuration; has_cv_issue is unknown (None)
+        # when the action list could not be read
+        cv_actions: list[dict[str, Any]] | None = None
         try:
             cv_actions = await self.list_conversion_actions()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve conversion action list (%s)", type(exc).__name__
             )
             issues.append("Failed to retrieve conversion action list")
 
-        total_actions = len(cv_actions)
-        enabled_actions = sum(
-            1 for a in cv_actions if a.get("status", "").upper() == "ENABLED"
-        )
-        has_cv_issue = total_actions == 0 or enabled_actions == 0
-        result["conversion_tracking"] = {
-            "total_actions": total_actions,
-            "enabled_actions": enabled_actions,
-            "has_issue": has_cv_issue,
-            "actions": cv_actions,
-        }
-        if has_cv_issue:
-            issues.append("No active conversion actions are configured")
+        has_cv_issue: bool | None = None
+        result["conversion_tracking"] = None
+        if cv_actions is not None:
+            total_actions = len(cv_actions)
+            enabled_actions = sum(
+                1 for a in cv_actions if a.get("status", "").upper() == "ENABLED"
+            )
+            has_cv_issue = total_actions == 0 or enabled_actions == 0
+            result["conversion_tracking"] = {
+                "total_actions": total_actions,
+                "enabled_actions": enabled_actions,
+                "has_issue": has_cv_issue,
+                "actions": cv_actions,
+            }
+            if has_cv_issue:
+                issues.append("No active conversion actions are configured")
 
         # 3. Bidding x CV alignment check
-        bidding_strategy = (campaign or {}).get("bidding_strategy", "")
-        smart_bidding_types = {
-            "MAXIMIZE_CONVERSIONS",
-            "TARGET_CPA",
-            "TARGET_ROAS",
-            "MAXIMIZE_CONVERSION_VALUE",
-        }
-        is_smart = bidding_strategy.upper() in smart_bidding_types
+        bidding_strategy = (
+            (campaign or {}).get("bidding_strategy", "") if campaign_read else None
+        )
+        is_smart = (
+            bidding_strategy.upper() in SMART_BIDDING_STRATEGIES
+            if bidding_strategy is not None
+            else None
+        )
         bidding_issue: str | None = None
         if is_smart and has_cv_issue:
             bidding_issue = (
@@ -457,67 +504,48 @@ class _MonitoringMixin:
         result["bidding_cv_alignment"] = {
             "strategy": bidding_strategy,
             "is_smart_bidding": is_smart,
-            "cv_tracking_configured": not has_cv_issue,
+            "cv_tracking_configured": (
+                None if has_cv_issue is None else not has_cv_issue
+            ),
             "issue": bidding_issue,
         }
 
-        # 4. Funnel data (last 7 days)
-        perf: list[dict[str, Any]] = []
+        # 4. Funnel data (last 7 days); null when the report could not be read
+        perf: list[dict[str, Any]] | None = None
         try:
             perf = await self.get_performance_report(
                 campaign_id=campaign_id, period="LAST_7_DAYS"
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve performance report (%s)", type(exc).__name__
             )
             issues.append("Failed to retrieve performance report")
 
         metrics = perf[0].get("metrics", {}) if perf else {}
-        impressions = int(metrics.get("impressions", 0))
         clicks = int(metrics.get("clicks", 0))
         conversions = float(metrics.get("conversions", 0))
         cost = float(metrics.get("cost", 0))
-        ctr = round(clicks / impressions * 100, 2) if impressions > 0 else None
-        cvr = round(conversions / clicks * 100, 2) if clicks > 0 else None
-
-        if impressions == 0:
-            bottleneck = "no_delivery"
-            issues.append("Impressions in the last 7 days are 0")
-        elif clicks == 0:
-            bottleneck = "no_clicks"
-            issues.append("Clicks in the last 7 days are 0")
-        elif conversions == 0:
-            bottleneck = "no_conversions"
-        else:
-            bottleneck = None
-
-        result["funnel"] = {
-            "period": "LAST_7_DAYS",
-            "impressions": impressions,
-            "clicks": clicks,
-            "conversions": conversions,
-            "cost": cost,
-            "ctr": ctr,
-            "cvr": cvr,
-            "bottleneck": bottleneck,
-        }
+        funnel = self._build_funnel(metrics) if perf is not None else None
+        bottleneck = funnel["bottleneck"] if funnel is not None else None
+        if bottleneck in _FUNNEL_ISSUES:
+            issues.append(_FUNNEL_ISSUES[bottleneck])
+        result["funnel"] = funnel
 
         # 5. Delivery diagnostics
-        diagnosis: dict[str, Any] = {}
         try:
             diagnosis = await self.diagnose_campaign_delivery(campaign_id)
-        except Exception as exc:
+            result["delivery_diagnosis"] = {
+                "issues": diagnosis.get("issues", []),
+                "warnings": diagnosis.get("warnings", []),
+                "recommendations": diagnosis.get("recommendations", []),
+            }
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve delivery diagnostics (%s)", type(exc).__name__
             )
             issues.append("Failed to retrieve delivery diagnostics")
-
-        result["delivery_diagnosis"] = {
-            "issues": diagnosis.get("issues", []),
-            "warnings": diagnosis.get("warnings", []),
-            "recommendations": diagnosis.get("recommendations", []),
-        }
+            result["delivery_diagnosis"] = None
 
         # 6. Search term quality (only when clicks > 0)
         search_term_quality: dict[str, Any] | None = None
@@ -552,21 +580,19 @@ class _MonitoringMixin:
                         f"Zero-CV search terms account for "
                         f"{round(zero_cv_cost / cost * 100, 1)}% of total cost"
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — partial read; failures warned
                 logger.warning(
                     "Failed to retrieve search terms report (%s)", type(exc).__name__
                 )
                 issues.append("Failed to retrieve search terms report")
         result["search_term_quality"] = search_term_quality
 
-        # Status determination
-        if (
-            has_cv_issue
-            or bidding_issue
-            or bottleneck == "no_delivery"
-            or bottleneck == "no_clicks"
-        ):
+        # Status determination: critical only on what was read; "unknown" when
+        # a read the verdict rests on failed and nothing read proves critical
+        if has_cv_issue or bidding_issue or bottleneck in _FUNNEL_ISSUES:
             status = "critical"
+        elif not campaign_read or cv_actions is None or perf is None:
+            status = "unknown"
         elif conversions == 0:
             status = "warning"
         else:
@@ -575,12 +601,12 @@ class _MonitoringMixin:
         result["status"] = status
         result["issues"] = issues
 
-        if status != "healthy":
+        if status in ("critical", "warning"):
             result["suggested_workflow"] = "cv_acquisition"
 
         # Recommended actions
         result["recommended_actions"] = self._build_cv_recommendations(
-            has_cv_issue=has_cv_issue,
+            has_cv_issue=bool(has_cv_issue),
             bidding_issue=bidding_issue,
             bottleneck=bottleneck,
             search_term_quality=search_term_quality,
@@ -593,10 +619,15 @@ class _MonitoringMixin:
                 f"Campaign {campaign_id} has not acquired any conversions."
                 f"Critical issues detected: {', '.join(issues[:3])}"
             )
+        elif status == "unknown":
+            result["summary"] = (
+                f"Campaign {campaign_id} could not be fully diagnosed. "
+                f"Issues: {', '.join(issues)}"
+            )
         elif status == "warning":
             result["summary"] = (
                 f"Campaign {campaign_id} has 0 conversions."
-                f"Imp={impressions:,}, Click={clicks:,}, CV=0."
+                f"Imp={int(metrics.get('impressions', 0)):,}, Click={clicks:,}, CV=0."
                 f"Planning an improvement strategy is recommended"
             )
         else:
@@ -606,6 +637,31 @@ class _MonitoringMixin:
             )
 
         return result
+
+    @staticmethod
+    def _build_funnel(metrics: dict[str, Any]) -> dict[str, Any]:
+        """The LAST_7_DAYS funnel and its bottleneck, from a metrics row that was read."""
+        impressions = int(metrics.get("impressions", 0))
+        clicks = int(metrics.get("clicks", 0))
+        conversions = float(metrics.get("conversions", 0))
+        if impressions == 0:
+            bottleneck: str | None = "no_delivery"
+        elif clicks == 0:
+            bottleneck = "no_clicks"
+        elif conversions == 0:
+            bottleneck = "no_conversions"
+        else:
+            bottleneck = None
+        return {
+            "period": "LAST_7_DAYS",
+            "impressions": impressions,
+            "clicks": clicks,
+            "conversions": conversions,
+            "cost": float(metrics.get("cost", 0)),
+            "ctr": round(clicks / impressions * 100, 2) if impressions > 0 else None,
+            "cvr": round(conversions / clicks * 100, 2) if clicks > 0 else None,
+            "bottleneck": bottleneck,
+        }
 
     @staticmethod
     def _build_cv_recommendations(
@@ -650,7 +706,7 @@ class _MonitoringMixin:
             )
             priority += 1
 
-        if bottleneck in ("no_delivery", "no_clicks"):
+        if bottleneck in _FUNNEL_ISSUES:
             actions.append(
                 {
                     "priority": priority,

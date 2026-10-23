@@ -171,7 +171,7 @@ def load_workspace_convention() -> TrackingConvention | None:
         if not path.is_file():
             return None
         return parse_tracking_convention(path.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001 - an unreadable STRATEGY.md is not fatal
+    except Exception:  # noqa: BLE001 — an unreadable STRATEGY.md is not fatal
         logger.warning(
             "tracking pre-flight: could not read %s; using default parameter sets",
             STRATEGY_FILENAME,
@@ -212,14 +212,16 @@ def _refusal(findings: Sequence[TrackingFinding]) -> list[TextContent]:
     )
 
 
-def _fail_open(reason: str, *, exc: BaseException | None = None) -> PreflightOutcome:
+def _fail_open(reason: str) -> PreflightOutcome:
     """Let the create proceed, having counted and logged the miss.
 
     EVERY way the check can fail to run goes through here, including the
     ones that raise nothing. An integration that returns empty data
     instead of erroring is precisely the case where "a permanently
     broken guardrail and a quiet one look identical", so excluding it
-    from the counter would hollow out the escalation below.
+    from the counter would hollow out the escalation below. ``reason``
+    names an exception by its class only; no traceback is logged, since
+    it would print the platform exception's text (#603).
     """
     global _consecutive_failures
     _consecutive_failures += 1
@@ -230,12 +232,9 @@ def _fail_open(reason: str, *, exc: BaseException | None = None) -> PreflightOut
             "unchecked",
             _consecutive_failures,
             reason,
-            exc_info=exc,
         )
     else:
-        logger.warning(
-            "tracking pre-flight did not run (%s); proceeding", reason, exc_info=exc
-        )
+        logger.warning("tracking pre-flight did not run (%s); proceeding", reason)
     return PreflightOutcome(
         note=(
             f"NOT CHECKED: the tracking-parameter pre-flight did not run "
@@ -325,8 +324,8 @@ async def google_ads_create_preflight(
             records_from_google_ads_ads(rows),
             convention=load_workspace_convention(),
         )
-    except Exception as exc:  # noqa: BLE001 - a read failure must not block a create
-        return _fail_open(f"{type(exc).__name__} while reading the account", exc=exc)
+    except Exception as exc:  # noqa: BLE001 — a read failure must not block a create
+        return _fail_open(f"{type(exc).__name__} while reading the account")
     _consecutive_failures = 0
     if not report.findings:
         return PreflightOutcome()

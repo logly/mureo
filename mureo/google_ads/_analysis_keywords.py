@@ -68,7 +68,7 @@ class _KeywordsAnalysisMixin:
         )
         try:
             response = await self._search(query)
-        except Exception:
+        except Exception:  # noqa: BLE001 — a failed read yields no keywords
             logger.warning(
                 "Failed to retrieve keyword performance: campaign_id=%s", campaign_id
             )
@@ -253,7 +253,7 @@ class _KeywordsAnalysisMixin:
         )
         try:
             response = await self._search(query)
-        except Exception:
+        except Exception:  # noqa: BLE001 — a failed read becomes an error result
             logger.warning(
                 "Failed to retrieve data for keyword duplicate detection: campaign_id=%s",
                 campaign_id,

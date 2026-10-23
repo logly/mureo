@@ -6,6 +6,7 @@ Mocks _search / _get_service / _client to eliminate any external API calls.
 
 from __future__ import annotations
 
+import logging
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -834,9 +835,9 @@ class TestGetConversionPerformance:
 
     @pytest.mark.asyncio
     async def test_cost_query_failure_fallback(
-        self, client: _MockExtensionsClient
+        self, client: _MockExtensionsClient, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """When cost fetch fails, CPA is returned as 0."""
+        """When cost fetch fails, CPA is null (unknown), not 0 (#865)."""
         cv_row = MagicMock()
         cv_row.campaign.id = 1
         cv_row.campaign.name = "Campaign A"
@@ -852,9 +853,12 @@ class TestGetConversionPerformance:
                 [],  # LP
             ]
         )
-        result = await client.get_conversion_performance()
+        with caplog.at_level(logging.WARNING):
+            result = await client.get_conversion_performance()
         assert result["total_conversions"] == 3.0
-        assert result["actions"][0]["cost_per_conversion"] == 0
+        assert result["actions"][0]["cost_per_conversion"] is None
+        messages = [r.getMessage() for r in caplog.records]
+        assert "Failed to retrieve cost per campaign (RuntimeError)" in messages
 
     @pytest.mark.asyncio
     async def test_lp_query_failure_graceful(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.tool_failure import exception_text
 from mureo.google_ads._enum_names import DEVICE_MAP, map_enum_name
 
 if TYPE_CHECKING:
@@ -59,8 +60,10 @@ class _AuctionAnalysisMixin:
 
         try:
             rows = await self._search(query)
-        except Exception as exc:
-            return {"error": f"Failed to retrieve device performance data: {exc}"}
+        except Exception as exc:  # noqa: BLE001 — a failed read becomes an error result
+            return {
+                "error": f"Failed to retrieve device performance data: {exception_text(exc)}"
+            }
 
         if not rows:
             return {
@@ -187,8 +190,10 @@ class _AuctionAnalysisMixin:
 
         try:
             rows = await self._search(query)
-        except Exception as exc:
-            return {"error": f"Failed to retrieve daily CPC data: {exc}"}
+        except Exception as exc:  # noqa: BLE001 — a failed read becomes an error result
+            return {
+                "error": f"Failed to retrieve daily CPC data: {exception_text(exc)}"
+            }
 
         if not rows:
             return {
@@ -369,12 +374,14 @@ class _AuctionAnalysisMixin:
 
         try:
             rows = await self._search(query)
-        except Exception as exc:
-            logger.warning("Failed to retrieve auction insights data: %s", exc)
+        except Exception as exc:  # noqa: BLE001 — a failed read becomes an error result
+            logger.warning(
+                "Failed to retrieve auction insights data (%s)", type(exc).__name__
+            )
             return [
                 {
                     "error": "auction_insights_unavailable",
-                    "reason": str(exc),
+                    "reason": exception_text(exc),
                     "hint": "Auction insights require sufficient impression data. "
                     "Try a longer period or a campaign with more traffic.",
                 }

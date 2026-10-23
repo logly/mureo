@@ -19,6 +19,7 @@ from typing import Any, cast
 import httpx
 
 from mureo._image_validation import validate_image_file
+from mureo.core.tool_failure import exception_text
 from mureo.core.url_guard import UnsafeUrlError, validate_public_url
 
 logger = logging.getLogger(__name__)
@@ -532,8 +533,10 @@ class CreativesMixin:
                 image_bytes = base64.b64encode(resp.content).decode("utf-8")
         except UnsafeUrlError as exc:
             return {"error": f"Refusing to follow image redirect: {exc}"}
-        except Exception as exc:
-            return {"error": f"Failed to download image from {image_url}: {exc}"}
+        except Exception as exc:  # noqa: BLE001 — a failed download is an error result
+            return {
+                "error": f"Failed to download image from {image_url}: {exception_text(exc)}"
+            }
 
         data: dict[str, Any] = {
             "bytes": image_bytes,

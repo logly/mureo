@@ -303,7 +303,8 @@ TOOLS: list[Tool] = [
             "conversions, conversions_value, clicks}]}. Only rows with "
             "conversions > 0 are included. cost_per_conversion is "
             "computed via a separate GAQL because GAQL cannot SELECT "
-            "cost_per_conversion alongside segments.conversion_action_name. "
+            "cost_per_conversion alongside segments.conversion_action_name; "
+            "it is null when that cost read fails. "
             "Read-only. For campaign-level metrics use "
             "google_ads_performance_report."
         ),

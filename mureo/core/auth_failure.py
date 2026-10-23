@@ -122,7 +122,7 @@ def _is_google_ads_auth_failure(exc: BaseException) -> bool:
             continue
         try:
             name = which("error_code")
-        except Exception:  # noqa: BLE001 - classification must never itself raise
+        except Exception:  # noqa: BLE001 — classification must never itself raise
             continue
         if name in _GOOGLE_ADS_AUTH_ONEOFS:
             return True

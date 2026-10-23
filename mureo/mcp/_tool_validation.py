@@ -325,7 +325,7 @@ class LazyToolValidators(Mapping[str, Draft202012Validator]):
                 f"served depends on the MCP framework's check ({_one_line(exc)})"
             )
             return None, problem, None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — any compile fault refuses the tool
             # Anything else (a RecursionError from a pathological ``$ref``
             # cycle, a jsonschema bug) used to stop the server from starting.
             # Compiling is lazy now, so the equivalent is that this one tool

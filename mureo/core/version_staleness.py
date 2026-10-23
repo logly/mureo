@@ -75,7 +75,8 @@ def staleness_warning(
                 return None
         except InvalidVersion:
             return None
-    except Exception:  # pragma: no cover - packaging always present (dependency)
+    except Exception as exc:  # noqa: BLE001 — bad version metadata  # pragma: no cover
+        logger.warning("Version comparison failed (%s)", type(exc).__name__)
         return None
 
     return (

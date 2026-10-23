@@ -35,6 +35,7 @@ from mureo.context.auto_evaluation import close_due_observations
 # Reached through the module so a test that freezes the clock is seen
 # here too (see ``mureo.core.clock``).
 from mureo.core import clock
+from mureo.mcp._helpers import exception_text
 from mureo.mcp._outcome_thresholds import load_outcome_thresholds
 
 if TYPE_CHECKING:
@@ -119,13 +120,17 @@ def _auto_evaluate(path: Path, arguments: dict[str, Any]) -> dict[str, Any]:
             thresholds=load_outcome_thresholds(),
         )
     except Exception as exc:  # noqa: BLE001 — a read must not fail on this
+        # Class name only, and no traceback: a platform exception's str /
+        # repr carries the request metadata (#603).
         logger.warning(
             "automatic observation closure failed for %s; returning the "
-            "document unchanged",
+            "document unchanged (%s)",
             path,
-            exc_info=True,
+            type(exc).__name__,
         )
-        fragment["auto_evaluation_error"] = f"{type(exc).__name__}: {exc}"
+        fragment["auto_evaluation_error"] = (
+            f"{type(exc).__name__}: {exception_text(exc)}"
+        )
         return fragment
     fragment["auto_evaluations"] = [
         {

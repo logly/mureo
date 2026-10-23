@@ -50,7 +50,7 @@ def build_query(
 
     try:
         state = state_store.read_state()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — missing context pieces are dropped
         logger.debug("context_builder: state read failed (%s)", exc)
         state = None
 
@@ -78,7 +78,7 @@ def build_query(
 
     try:
         strategy = state_store.read_strategy()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — missing context pieces are dropped
         logger.debug("context_builder: strategy read failed (%s)", exc)
         strategy = []
 

@@ -492,7 +492,7 @@ class _AdsMixin:
                             " Please pause existing ads before enabling."
                         ),
                     }
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — advisory; Google enforces it
                 # Advisory guard only — Google still enforces the RSA limit
                 # server-side. But do not silently bypass it: log at WARNING and
                 # thread a caveat into the result so the caller knows the

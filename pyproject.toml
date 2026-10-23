@@ -116,7 +116,13 @@ line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM", "TCH", "PLC0415"]
+# BLE (flake8-blind-except) flags `except Exception` / `except BaseException`.
+# A broad except stays where a wider set of exceptions is genuinely possible
+# (platform clients, plugin isolation, best-effort hints), and then it names
+# why on the line: `# noqa: BLE001 — <reason>`. Where the failing call and its
+# exception types are known, the except is narrowed instead. No path is
+# excused, tests/ included (tests/test_ble001_reasons.py, #865).
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM", "TCH", "PLC0415", "BLE"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]

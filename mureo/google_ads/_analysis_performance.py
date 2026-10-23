@@ -87,13 +87,14 @@ class _PerformanceAnalysisMixin:
             if campaign:
                 bidding = campaign.get("bidding_details") or {}
                 target_cpa = bidding.get("target_cpa")
-                if target_cpa is None:
-                    target_cpa = None
                 if target_cpa is not None and target_cpa > 0:
                     return float(target_cpa), "bidding_strategy"
-        except Exception:
-            logger.debug(
-                "Failed to retrieve target CPA from bidding strategy: %s", campaign_id
+        except Exception as exc:  # noqa: BLE001 — fall through to the next CPA source
+            logger.warning(
+                "Failed to retrieve target CPA from the bidding strategy for "
+                "campaign %s (%s)",
+                campaign_id,
+                type(exc).__name__,
             )
 
         # Calculate from actual CPA
@@ -106,8 +107,12 @@ class _PerformanceAnalysisMixin:
             convs = float(m.get("conversions", 0))
             if convs > 0:
                 return round(cost / convs, 0), "actual"
-        except Exception:
-            logger.debug("Failed to calculate actual CPA: %s", campaign_id)
+        except Exception as exc:  # noqa: BLE001 — fall through to the next CPA source
+            logger.warning(
+                "Failed to retrieve actual CPA for campaign %s (%s)",
+                campaign_id,
+                type(exc).__name__,
+            )
 
         return None, "none"
 
@@ -286,7 +291,7 @@ class _PerformanceAnalysisMixin:
             )
             insights.extend(perf_insights)
             result.update(cpa_info)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             # Class name only. A traceback would print the GoogleAdsException
             # repr, which carries the request metadata (developer token,
             # authorization header) — see mureo/google_ads/accounts.py for the
@@ -294,7 +299,9 @@ class _PerformanceAnalysisMixin:
             logger.warning(
                 "Failed to retrieve performance comparison (%s)", type(exc).__name__
             )
-            result["performance_current"] = "Retrieval failed"
+            result["performance_current"] = None
+            result["performance_previous"] = None
+            result["changes"] = None
 
         # 3. Top 20 search terms
         try:
@@ -307,11 +314,11 @@ class _PerformanceAnalysisMixin:
                 reverse=True,
             )
             result["top_search_terms"] = sorted_terms[:20]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve search terms report (%s)", type(exc).__name__
             )
-            result["top_search_terms"] = "Retrieval failed"
+            result["top_search_terms"] = None
 
         # 4. Google recommendations
         try:
@@ -319,19 +326,19 @@ class _PerformanceAnalysisMixin:
             result["recommendations_from_google"] = recommendations[:10]
             if recommendations:
                 recs.append(f"Google has {len(recommendations)} recommendations")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve recommendations (%s)", type(exc).__name__
             )
-            result["recommendations_from_google"] = "Retrieval failed"
+            result["recommendations_from_google"] = None
 
         # 5. Recent change history
         try:
             changes_history = await self.list_change_history()
             result["recent_changes"] = changes_history[:10]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning("Failed to retrieve change history (%s)", type(exc).__name__)
-            result["recent_changes"] = "Retrieval failed"
+            result["recent_changes"] = None
 
         # 6. Analysis summary
         result["issues"] = issues
@@ -354,29 +361,34 @@ class _PerformanceAnalysisMixin:
 
         result: dict[str, Any] = {"campaign_id": campaign_id}
 
-        # 1. 7-day vs prior 7-day performance comparison (non-overlapping)
-        current_m: dict[str, Any] = {}
-        previous_m: dict[str, Any] = {}
-        changes: dict[str, float | None] = {}
+        # 1. 7-day vs prior 7-day performance comparison (non-overlapping), and
+        # 2. the cost increase breakdown (CPC increase vs click increase) built
+        # from it. Both are null when the comparison could not be read.
+        cpc_change: float | None = None
         try:
             current_m, previous_m, changes = await self._fetch_performance_comparison(
                 campaign_id, "LAST_7_DAYS"
             )
-            result["performance_current_7d"] = current_m
-            result["performance_previous_7d"] = previous_m
-            result["changes"] = changes
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve performance comparison (%s)", type(exc).__name__
             )
-            result["performance_current_7d"] = "Retrieval failed"
-
-        # 2. Cost increase breakdown (CPC increase vs click increase)
-        cost_breakdown, breakdown_findings, cpc_change, clicks_change = (
-            self._build_cost_breakdown(current_m, previous_m)
-        )
-        result["cost_breakdown"] = cost_breakdown
-        findings.extend(breakdown_findings)
+            for key in (
+                "performance_current_7d",
+                "performance_previous_7d",
+                "changes",
+                "cost_breakdown",
+            ):
+                result[key] = None
+        else:
+            result["performance_current_7d"] = current_m
+            result["performance_previous_7d"] = previous_m
+            result["changes"] = changes
+            cost_breakdown, breakdown_findings, cpc_change, _ = (
+                self._build_cost_breakdown(current_m, previous_m)
+            )
+            result["cost_breakdown"] = cost_breakdown
+            findings.extend(breakdown_findings)
 
         # 3. Search term change analysis
         try:
@@ -385,10 +397,12 @@ class _PerformanceAnalysisMixin:
             result["wasteful_search_terms"] = term_analysis["wasteful_search_terms"]
             if term_analysis["finding"]:
                 findings.append(term_analysis["finding"])
-        except Exception as exc:
-            logger.warning("Search term analysis failed (%s)", type(exc).__name__)
-            result["new_search_terms"] = "Retrieval failed"
-            result["wasteful_search_terms"] = "Retrieval failed"
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            logger.warning(
+                "Failed to retrieve search term changes (%s)", type(exc).__name__
+            )
+            result["new_search_terms"] = None
+            result["wasteful_search_terms"] = None
 
         # 4. Bid and budget change history
         try:
@@ -409,9 +423,9 @@ class _PerformanceAnalysisMixin:
                 findings.append(
                     f"There are {len(bid_budget_changes)} recent bid/budget-related changes"
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning("Failed to retrieve change history (%s)", type(exc).__name__)
-            result["bid_budget_changes"] = "Retrieval failed"
+            result["bid_budget_changes"] = None
 
         # 5. Negative keyword candidates
         await self._find_negative_keyword_candidates(campaign_id, result, actions)
@@ -476,7 +490,10 @@ class _PerformanceAnalysisMixin:
             existing_neg_texts = {n.get("text", "").lower() for n in existing_negatives}
             result["existing_negative_keywords_count"] = len(existing_negatives)
 
-            if isinstance(result.get("wasteful_search_terms"), list):
+            if result.get("wasteful_search_terms") is None:
+                # The terms read failed: the candidates are unknown, not none.
+                result["negative_keyword_candidates"] = None
+            elif isinstance(result.get("wasteful_search_terms"), list):
                 neg_candidates = [
                     t
                     for t in result["wasteful_search_terms"]
@@ -488,9 +505,12 @@ class _PerformanceAnalysisMixin:
                         f"There are {len(neg_candidates)} search terms with cost but no conversions. "
                         "Consider adding them as negative keywords"
                     )
-        except Exception as exc:
-            logger.warning("Negative keyword analysis failed (%s)", type(exc).__name__)
-            result["negative_keyword_candidates"] = "Retrieval failed"
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            logger.warning(
+                "Failed to retrieve negative keyword candidates (%s)",
+                type(exc).__name__,
+            )
+            result["negative_keyword_candidates"] = None
 
     # =================================================================
     # 3. Cross-campaign health check
@@ -552,9 +572,9 @@ class _PerformanceAnalysisMixin:
                         "recommendations": diag.get("recommendations", []),
                     }
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — partial read; failures warned
                 logger.warning(
-                    "Failed to run detailed diagnostics for campaign %s (%s)",
+                    "Failed to retrieve detailed diagnostics for campaign %s (%s)",
                     cid,
                     type(exc).__name__,
                 )
@@ -562,7 +582,9 @@ class _PerformanceAnalysisMixin:
                     {
                         "campaign_id": cid,
                         "name": camp_summary["name"],
-                        "error": "Detailed diagnostics retrieval failed",
+                        "issues": None,
+                        "warnings": None,
+                        "recommendations": None,
                     }
                 )
         result["detailed_diagnostics"] = detailed_diagnostics

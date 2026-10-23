@@ -296,7 +296,8 @@ mureo/
 │   └── builtin/         # Native feeds — google_ads only today; see docs/change-import.md
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
 │   ├── tool_failure.py  # The MCP failure-envelope READER (failure_of / is_error_result, #863); the
-│   │                    #   writer stays in mcp/_helpers.py, which re-exports these names
+│   │                    #   writer stays in mcp/_helpers.py, which re-exports these names.
+│   │                    #   exception_text: the one exception-to-text formatter (#603, #865)
 │   ├── credential_source.py # Per-call credential-source ABI (#821); mcp/credential_source.py
 │   │                    #   re-exports the same objects (#863)
 │   ├── account_scope.py # Workspace account scoping (#411): resolve_customer_id / resolve_account_id,
@@ -459,7 +460,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 - File size limit: 800 lines
 - Function size limit: 50 lines
 - Formatter: **black** (line-length 88)
-- Linter: **ruff** (select: E, F, I, N, W, UP, B, A, SIM, TCH)
+- Linter: **ruff** (select: E, F, I, N, W, UP, B, A, SIM, TCH, PLC0415, BLE)
 - Type checker: **mypy** (strict mode)
 
 ## Consistency Rules
@@ -470,7 +471,7 @@ Structure drifts before logic breaks: a second error envelope, a helper that dup
 - **Reuse before writing.** Before adding a helper, search for one with the same purpose — not only the same name — and diff the bodies. A byte-identical or near-identical copy is a defect; mixin type stubs that resolve to one implementation are not.
 - **No function-local imports to break an import cycle.** Fix the dependency direction instead. If one is unavoidable, comment the reason on the import and open an issue (#863). Startup-cost deferrals stay documented as such. Ruff enforces this (`PLC0415`): a function-local import under `mureo/` carries `# noqa: PLC0415 — <reason>` with exactly one of `startup cost (#NNN)` (a heavy import kept off a hot entry point, with a `# Startup cost (~X CPU): ...` line above it), `optional dependency` (not a required dependency; the `ImportError` is handled at the site), `import cycle: mureo.<a> -> mureo.<b> (#879)` (a real load-time cycle not yet removed; `<b>` is the module the statement imports, and #879 is the cycle inventory) or `PEP 562 re-export (#863)`. `tests/test_plc0415_reasons.py` runs ruff with `--ignore-noqa` and checks every site it finds; a file-level `# ruff: noqa` that covers the rule is refused. No per-file ignore under `mureo/` may list the rule: the `tests/**` entry is the only place in the ruff config that switches it off.
 - **One name per concept.** Check the existing vocabulary (`period`, `customer_id`, `account_id`, `platform`, …) before introducing a parameter, field or key name.
-- **No silent broad excepts.** `except Exception` carries a `noqa: BLE001` with the reason, or narrows the type (#865).
+- **No silent broad excepts.** Narrow the type where the failing call and its exception types are known. Otherwise `except Exception` carries `# noqa: BLE001 — <reason>` (at least two words, not a placeholder such as `reason` or `todo`), and a broad except that continues logs at WARNING. Ruff enforces this (`BLE`, for `mureo/` and `tests/` alike): `tests/test_ble001_reasons.py` runs ruff with `--ignore-noqa` over both trees (tests are not exempt) and checks every site it finds; a file-level `# ruff: noqa` that covers the rule is refused, and no ignore or per-file ignore may list it (#865). A failed partial read inside a composite result sets its key to `None` and logs `Failed to retrieve <what> (<ExceptionClass>)` at WARNING: no stand-in strings, zeros or empty containers.
 - **Docs move with the code.** `docs/architecture.md`, `AGENTS.md`, skill files and `CHANGELOG.md` are updated in the same PR as the change they describe.
 - **Review the structure, not only the logic.** A review rejects, or asks for a justification of, any new helper, new failure shape, new lazy import or new name that the diff introduces. "Tests green" does not settle it.
 - **Limits belong in lint.** The 50-line function and 800-line file limits above are rules for lint to enforce (tracked with #865), not for reviewers to remember; until the lint rule lands, review checks them and an overrun needs an issue.

@@ -1193,7 +1193,10 @@ operations that fall outside the shared Protocol, which hand-written
 Every plugin tool call is, automatically and without you opting in:
 
 - **Audited** — appended (secret-masked) to `~/.mureo/plugin_audit.jsonl`.
-  `ok` records whether the dispatch raised. If your handler reports a
+  `ok` records whether the dispatch raised; a raised exception is
+  recorded as `mureo.core.tool_failure.exception_text(exc)` (the curated
+  platform message when the exception carries `failure.errors`, else its
+  message), never its `repr`. If your handler reports a
   platform-side refusal *without* raising, return it as mureo's canonical
   `API error: ...` text envelope: the record is then additionally marked
   `platform_ok: false` with the reason, and the call is **not** promoted

@@ -284,6 +284,8 @@ mureo/
 │                            #   reference (DEFAULT_STATE_STORE_REF); mureo.core still exports the name.
 │                            #   tool_failure.py is the MCP failure-envelope reader (failure_of);
 │                            #   the writer stays in mcp/_helpers.py, which re-exports it (#863).
+│                            #   tool_failure.exception_text is the one exception-to-text formatter,
+│                            #   used by mcp and the platform packages alike (#603, #865).
 │                            #   rollback, policy, amazon_ads and core never import mureo.mcp (#863):
 │                            #   the server publishes what they need at load — plugin reversal keys
 │                            #   (rollback.planner.set_plugin_reversal_keys) and built-in tool names
@@ -439,6 +441,7 @@ The base class (`GoogleAdsApiClient`) provides:
 - `_get_service(name)`: access to Google Ads service objects
 - Input validation: `_validate_id()`, `_validate_status()`, `_validate_match_type()`, `_validate_date()`
 - Error handling: `_wrap_mutate_error()` decorator that catches `GoogleAdsException` and returns user-friendly messages
+- Partial reads: in a composite result (diagnostics, performance analysis, monitoring, budget reallocation) a read that fails sets its key to `None` and logs `Failed to retrieve <what> (<ExceptionClass>)` at WARNING; derived insights skip a `None` input, and a `google_ads_monitoring_*` verdict that rests on a failed read is `status: "unknown"` unless data that was read proves `critical` (#865)
 
 ### Meta Ads Client -- 17 Mixins
 

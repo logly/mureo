@@ -122,7 +122,7 @@ def test_all_models_are_frozen_dataclasses(model_cls: type) -> None:
             # instance to attempt mutation on.
             kwargs[f.name] = _synthesize_value(hints.get(f.name, str))
         instance = model_cls(**kwargs)
-    except Exception as exc:  # pragma: no cover - synthesis fallback
+    except Exception as exc:  # noqa: BLE001 — skip on any fault  # pragma: no cover
         pytest.skip(f"Could not synthesize instance for {model_cls.__name__}: {exc}")
 
     with pytest.raises(dataclasses.FrozenInstanceError):
