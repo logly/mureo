@@ -511,6 +511,47 @@ account_oauth = AccountOAuthConfig(
 )
 ```
 
+#### Token request headers (`token_headers`)
+
+`token_headers` (default `()`) is a tuple of `(name, value)` pairs sent as
+extra HTTP headers on the authorization-code exchange the configure wizard
+performs against `token_url` — for example an installation identifier a
+brokering token endpoint requires. That exchange is the only request that
+sends them; a provider that refreshes tokens itself must send them in its own
+requests. Nothing is added to the authorize URL.
+
+`account_oauth` is read from the provider **class**, so the values are fixed
+when the plugin module is imported; they cannot be computed per run. Do not
+put secrets here: the value lives in plugin code and is sent to the token
+endpoint on every exchange. It is not written to logs or failure messages.
+
+Names must be RFC 7230 tokens, must not be one the token request sets itself
+(`Host`, `Content-Length`, `Content-Type`, `Transfer-Encoding`, `Connection`,
+`Authorization`, `Cookie`) and must not repeat case-insensitively; values must
+be non-empty visible ASCII with no leading or trailing whitespace.
+`get_account_oauth_config` and the exchange itself reject anything else.
+
+```python
+import os
+
+from mureo.core.providers import AccountOAuthConfig
+
+# Read once, when the plugin module is imported.
+INSTALLATION_ID = os.environ.get("EXAMPLE_INSTALLATION_ID", "unset")
+
+
+class ExampleProvider:
+    ...
+    account_oauth = AccountOAuthConfig(
+        authorize_url="https://broker.example.com/oauth/authorize",
+        token_url="https://broker.example.com/oauth/token",
+        client_id_field="client_id",
+        client_secret_field="client_secret",
+        target_field="refresh_token",
+        token_headers=(("X-Installation-Id", INSTALLATION_ID),),
+    )
+```
+
 #### Post-auth account picker (`list_oauth_accounts`)
 
 A provider whose `AccountOAuthConfig` names an `accounts_field` can also

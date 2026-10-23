@@ -425,6 +425,40 @@ def test_start_400_when_callback_url_invalid(wizard: ConfigureWizard) -> None:
 
 
 @pytest.mark.unit
+def test_start_400_when_token_headers_invalid(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A provider declaring a reserved ``token_headers`` name fails the
+    reader's validation, so start answers the existing clean 400 before
+    the bridge is touched."""
+
+    class _BadHeaders:
+        name = "broker_ads"
+        display_name = "Broker Ads"
+        capabilities = frozenset()
+        account_credential_fields = _FIELDS
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://broker.example.com/oauth/authorize",
+            token_url="https://broker.example.com/oauth/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            token_headers=(("Authorization", "Bearer x"),),
+        )
+
+    monkeypatch.setitem(default_registry._entries, "broker_ads", _entry(_BadHeaders))
+    with patch.object(wizard.oauth_bridge, "start_plugin_oauth") as mock_start:
+        status, body = post(
+            wizard,
+            "/api/credentials/plugins/broker_ads/oauth/start",
+            _authenticate_payload(),
+        )
+    assert status == 400
+    assert body["error"] == "invalid_oauth_config"
+    mock_start.assert_not_called()
+
+
+@pytest.mark.unit
 def test_start_404_for_unknown_provider(wizard: ConfigureWizard) -> None:
     status, body = post(wizard, "/api/credentials/plugins/nope_ads/oauth/start")
     assert status == 404

@@ -283,6 +283,7 @@ class OAuthBridge:
             callback_path=callback_path,
             persist_values=dict(persist_values or {}),
             token_auth_style=oauth_config.token_auth_style,
+            token_headers=oauth_config.token_headers,
         )
         consent_url = build_authorization_code_url(
             authorize_url=oauth_config.authorize_url,

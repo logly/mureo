@@ -517,6 +517,44 @@ class TestStartPluginOAuth:
         finally:
             bridge.cancel("yahoo_ads")
 
+    def test_threads_token_headers(
+        self,
+        patched_wizard_class: Any,
+        fake_configure_wizard: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A provider declaring ``token_headers`` has them pinned onto the
+        spec so the callback exchange sends them to the token endpoint."""
+        from mureo.core.providers import AccountOAuthConfig
+
+        config = AccountOAuthConfig(
+            authorize_url="https://broker.example.com/oauth/authorize",
+            token_url="https://broker.example.com/oauth/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            token_headers=(("X-Example", "abc"),),
+        )
+        bridge = OAuthBridge()
+        try:
+            result = bridge.start_plugin_oauth(
+                provider="broker_ads",
+                configure_wizard=fake_configure_wizard,
+                oauth_config=config,
+                client_id="CID",
+                client_secret="SECRET",
+                callback_url=self._CALLBACK_URL,
+                credentials_path=tmp_path / "creds.json",
+            )
+            spec = patched_wizard_class.instances[0].plugin_oauth
+            assert spec.token_headers == (("X-Example", "abc"),)
+            # Token-request headers never leak into the consent URL.
+            assert result.url is not None
+            assert "X-Example" not in result.url
+            assert "abc" not in result.url
+        finally:
+            bridge.cancel("broker_ads")
+
     def test_builds_external_consent_url_and_pins_spec(
         self,
         patched_wizard_class: Any,
@@ -569,6 +607,8 @@ class TestStartPluginOAuth:
             assert spec.persist_values["oauth_callback_url"] == self._CALLBACK_URL
             # Token-endpoint auth style defaults to Basic (regression).
             assert spec.token_auth_style == "basic"
+            # No extra token-request headers unless declared.
+            assert spec.token_headers == ()
             assert spec.state  # non-empty CSRF nonce
             # The same state + redirect_uri are echoed into the consent URL.
             assert f"state={spec.state}" in result.url

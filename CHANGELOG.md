@@ -1,5 +1,22 @@
 ## [Unreleased]
 
+### Added
+
+- **Providers can declare extra HTTP headers for token requests**
+  (#922). A provider whose token endpoint is a broker rather than the
+  platform itself may need to identify the installation to that broker on
+  every token request; the authorization-code exchange used to send only
+  the form body and the client authentication, so there was no way to add
+  a header. `AccountOAuthConfig.token_headers` declares `(name, value)`
+  pairs, and the configure wizard sends them on the authorization-code
+  exchange, alongside the client authentication and never in the
+  authorize URL. `get_account_oauth_config` and the exchange itself reject
+  a name that is not an RFC 7230 token, one the token request sets itself
+  (`Host`, `Content-Length`, `Content-Type`, `Transfer-Encoding`,
+  `Connection`, `Authorization`, `Cookie`) or one repeated
+  case-insensitively, and a value that is not non-empty visible ASCII. A
+  provider that refreshes tokens itself sends them in its own requests.
+
 ### Changed
 
 - **The journal, auto-evaluation and rollback hooks no longer import

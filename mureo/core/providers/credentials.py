@@ -190,6 +190,18 @@ class AccountOAuthConfig:
             selected per-client at runtime, not pinned once at configure
             time (#337). Declarative only — the OSS layer carries the
             mechanism; the plugin supplies the lister behaviour and values.
+        token_headers: Extra HTTP headers, as ``(name, value)`` pairs,
+            sent on the authorization-code exchange the configure wizard
+            performs against ``token_url`` — for example an installation
+            identifier a brokering token endpoint requires. That exchange
+            is the only request that sends them; a provider that refreshes
+            tokens itself must send them in its own requests. Read from the
+            provider class, so fixed when the plugin is imported. Do not put
+            secrets here: the value lives in plugin code and is sent to the
+            token endpoint on every exchange (it is not written to logs or
+            failure messages). Checked by
+            :func:`mureo.oauth_authcode.validate_token_headers`. Default:
+            empty tuple (no extra headers).
     """
 
     authorize_url: str
@@ -204,6 +216,7 @@ class AccountOAuthConfig:
     accounts_field: str | None = None
     callback_hint: str | None = None
     callback_hint_i18n: Mapping[str, str] = field(default_factory=dict)
+    token_headers: tuple[tuple[str, str], ...] = field(default=(), repr=False)
 
 
 __all__ = ["AccountCredentialField", "AccountOAuthConfig"]

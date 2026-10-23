@@ -1201,6 +1201,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
                 client_secret=spec.client_secret,
                 redirect_uri=spec.redirect_uri,
                 client_auth=spec.token_auth_style,
+                headers=dict(spec.token_headers) or None,
             )
         except OAuthExchangeError:
             # Message-free log: the helper already guarantees no secret is
@@ -1385,6 +1386,9 @@ class PluginOAuthSpec:
     # (#201 follow-up): ``"basic"`` (default) or ``"body"`` for providers that
     # reject HTTP Basic, e.g. Yahoo! JAPAN biz-oauth.
     token_auth_style: str = "basic"
+    # Extra ``(name, value)`` headers for the token request, copied from
+    # ``AccountOAuthConfig.token_headers``; empty sends none.
+    token_headers: tuple[tuple[str, str], ...] = field(default=(), repr=False)
 
 
 class WebAuthWizard:
