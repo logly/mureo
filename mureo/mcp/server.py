@@ -67,6 +67,7 @@ from mureo.core.policy import POLICY_GATES_ENTRY_POINT_GROUP, PolicyDecision
 from mureo.core.providers import registry as _registry
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.core.throttle_store import ProcessLocalThrottleStore
+from mureo.mcp import _server_slots
 from mureo.mcp._helpers import exception_text, is_error_result
 from mureo.mcp._journal_hook import capture_client_info, journal_call, take_rationale
 from mureo.mcp._ops_history_param import (
@@ -1041,6 +1042,33 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     raise ValueError(f"Unknown tool: {name}")
 
 
+def _tool_families_view() -> tuple[tuple[frozenset[str], str], ...]:
+    """``(tool names, journal family label)`` pairs, in :func:`_dispatch_tool`
+    order, so the journal can never name a different branch than the one
+    that ran (#758).
+
+    Published to :mod:`mureo.mcp._server_slots` for the journal hook (#879).
+    The name sets are read from this module's globals at CALL time, not
+    captured here, so a test that rebinds one (``monkeypatch.setattr``) or
+    reloads the module is answered from the current binding.
+    """
+    return (
+        (_GOOGLE_ADS_NAMES, "google_ads"),
+        (_META_ADS_NAMES, "meta_ads"),
+        (_SEARCH_CONSOLE_NAMES, "search_console"),
+        (_ROLLBACK_NAMES, "rollback"),
+        (_BATCH_NAMES, "batch"),
+        (_CHANGE_IMPORT_NAMES, "change_import"),
+        (_ANALYSIS_NAMES, "analysis"),
+        (_MUREO_CONTEXT_NAMES, "mureo_context"),
+        (_ANALYTICS_REGISTRY_NAMES, "analytics"),
+        (_LEARNING_NAMES, "learning"),
+        (_LEARNING_PREFLIGHT_NAMES, "learning_preflight"),
+        (_CREATIVE_STUDIO_NAMES, "creative_studio"),
+        (_PLUGIN_NAMES, "plugin"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # MCP server setup & entry point
 # ---------------------------------------------------------------------------
@@ -1180,3 +1208,16 @@ async def main() -> None:
             write_stream,
             server.create_initialization_options(),
         )
+
+
+# Published for the hook modules below this one (#879): they import
+# :mod:`mureo.mcp._server_slots` at top level instead of this module. Last, so
+# every name assigned here exists; a reload re-publishes the fresh objects.
+_server_slots.tool_families = _tool_families_view
+# Bound at publish time on purpose: no test monkeypatches ``handle_call_tool``.
+_server_slots.dispatcher = handle_call_tool
+# A lambda, not the function: resolved from this module's globals per call, so
+# a monkeypatched ``_evaluate_policy_gates`` steers the hooks too.
+_server_slots.policy_evaluator = lambda name, arguments: _evaluate_policy_gates(
+    name, arguments
+)

@@ -10,12 +10,12 @@ call: applying a batch is a loop over the plan's ``apply_order``, so each
 reversal keeps its own result instead of being folded into one summary status
 that would have to gloss over partial failure.
 
-The dispatcher used by ``rollback_apply`` is resolved lazily via
-:func:`_get_dispatcher` so that ``mureo.mcp.server`` and this module
-do not form an import cycle — ``server.handle_call_tool`` imports
-this module transitively through ``tools_rollback`` at module load
-time, and this module imports ``handle_call_tool`` only at call
-time. Tests monkey-patch ``_get_dispatcher`` to inject a fake.
+The dispatcher used by ``rollback_apply`` is resolved at call time via
+:func:`_get_dispatcher`, from the slot ``server`` publishes in
+:mod:`mureo.mcp._server_slots` at the end of its load. ``server`` imports
+this module transitively through ``tools_rollback`` at module load time, so
+importing ``server.handle_call_tool`` here would close an import cycle
+(#879 stage 2). Tests monkey-patch ``_get_dispatcher`` to inject a fake.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from mureo.context.state import read_state_file
 # Read through the module (not bound to a name here) so a monkeypatched
 # ``get_runtime_context`` is honoured at call time.
 from mureo.core import runtime_context
+from mureo.mcp import _server_slots
 from mureo.mcp._helpers import (
     _failure_result,
     _json_result,
@@ -58,14 +59,14 @@ logger = logging.getLogger(__name__)
 def _get_dispatcher() -> Callable[[str, dict[str, Any]], Awaitable[list[Any]]]:
     """Return the MCP call-tool dispatcher.
 
-    Lazy import breaks the ``server → tools_rollback → _handlers_rollback
-    → server`` cycle. Tests replace this via ``monkeypatch``.
-    """
-    from mureo.mcp.server import (  # noqa: PLC0415 — import cycle: mureo.mcp._handlers_rollback -> mureo.mcp.server (#879)
-        handle_call_tool,
-    )
+    Read from :mod:`mureo.mcp._server_slots`, which breaks the ``server →
+    tools_rollback → _handlers_rollback → server`` cycle. Tests replace this
+    via ``monkeypatch``.
 
-    return handle_call_tool
+    Raises:
+        RuntimeError: ``mureo.mcp.server`` has not published its dispatcher.
+    """
+    return _server_slots.require_dispatcher()
 
 
 def _resolve_state_file(arguments: dict[str, Any]) -> Path:

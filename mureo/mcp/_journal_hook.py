@@ -30,11 +30,12 @@ reloaded run (#879). A test that wants this hook to see a fake plugin must
 change those dicts in place (``monkeypatch.setitem`` on the
 :mod:`mureo.mcp._plugin_tables` objects) or reload ``server``; rebinding
 ``server._PLUGIN_DISPATCH`` with ``monkeypatch.setattr`` is not seen here.
-The built-in name sets are still read from
-``mureo.mcp.server`` **lazily, inside** :func:`tool_family`: ``server``
-imports this module at load time, and those sets are built there from the
-env gates and the tool modules, so a top-level import back would close the
-cycle (#879).
+The family name sets are built in ``server`` from the env gates and the tool
+modules, and ``server`` imports this module at load time, so a top-level
+import back would close a cycle. Instead :func:`tool_family` asks the view
+``server`` publishes in :mod:`mureo.mcp._server_slots` at the end of its load
+(#879 stage 2); the view reads ``server``'s name sets at call time, so a
+reload or a ``monkeypatch.setattr`` on one of them is seen here.
 """
 
 from __future__ import annotations
@@ -46,7 +47,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
-from mureo.mcp import journal
+from mureo.mcp import _server_slots, journal
 from mureo.mcp._helpers import API_ERROR_CODE, exception_text, failure_of
 from mureo.mcp._plugin_tables import _PLUGIN_DISPATCH, _PLUGIN_SEMANTICS
 from mureo.mcp._reason_param import split_call_reason
@@ -57,25 +58,6 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Iterator
 
 logger = logging.getLogger(__name__)
-
-#: ``server`` name-set attribute → journal ``family`` label, in the order
-#: :func:`mureo.mcp.server._dispatch_tool` tests them, so the journal can
-#: never name a different branch than the one that ran.
-_FAMILIES: tuple[tuple[str, str], ...] = (
-    ("_GOOGLE_ADS_NAMES", "google_ads"),
-    ("_META_ADS_NAMES", "meta_ads"),
-    ("_SEARCH_CONSOLE_NAMES", "search_console"),
-    ("_ROLLBACK_NAMES", "rollback"),
-    ("_BATCH_NAMES", "batch"),
-    ("_CHANGE_IMPORT_NAMES", "change_import"),
-    ("_ANALYSIS_NAMES", "analysis"),
-    ("_MUREO_CONTEXT_NAMES", "mureo_context"),
-    ("_ANALYTICS_REGISTRY_NAMES", "analytics"),
-    ("_LEARNING_NAMES", "learning"),
-    ("_LEARNING_PREFLIGHT_NAMES", "learning_preflight"),
-    ("_CREATIVE_STUDIO_NAMES", "creative_studio"),
-    ("_PLUGIN_NAMES", "plugin"),
-)
 
 #: Every ``outcome`` a record can carry — the verdicts :class:`JournalledCall`
 #: sets below, in the order the dispatcher can reach them. Stated as a
@@ -144,13 +126,14 @@ def take_rationale(
 
 
 def tool_family(name: str) -> str:
-    """Return the journal ``family`` label for tool ``name``."""
-    from mureo.mcp import (  # noqa: PLC0415 — import cycle: mureo.mcp._journal_hook -> mureo.mcp.server (#879)
-        server,
-    )
+    """Return the journal ``family`` label for tool ``name``.
 
-    for attribute, family in _FAMILIES:
-        if name in getattr(server, attribute, frozenset()):
+    Raises:
+        RuntimeError: ``mureo.mcp.server`` has not published its family view
+            (see :mod:`mureo.mcp._server_slots`).
+    """
+    for names, family in _server_slots.require_tool_families()():
+        if name in names:
             return family
     return UNKNOWN_FAMILY
 

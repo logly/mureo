@@ -1,5 +1,25 @@
 ## [Unreleased]
 
+### Changed
+
+- **The journal, auto-evaluation and rollback hooks no longer import
+  `mureo.mcp.server` from inside functions** (internal, #879 stage 2).
+  The server publishes what they need through `mureo/mcp/_server_slots.py`
+  at the end of its load (and again on reload): the family name sets
+  `_journal_hook.tool_family` classifies by (the `(names, family)` table
+  moved from `_journal_hook._FAMILIES` into `server._tool_families_view`,
+  which reads the name sets at call time), the policy-gate evaluator
+  `_auto_evaluation_hook` asks before an automatic closure writes, and the
+  dispatcher `rollback_apply` re-enters. A hook called before the server
+  has loaded raises `RuntimeError` naming the unset slot.
+  `tests/test_import_cycles_stage2.py` imports each hook and the slots
+  module in a fresh interpreter and checks the slots are published, scans
+  the three hook sources (AST) for any import of `mureo.mcp.server`, and
+  fails on any `mureo/mcp` line that still carries the `PLC0415` / `#879`
+  marker. No #879 import cycle
+  is left in `mureo/mcp`; other packages still carry #879 function-local
+  imports.
+
 ### Fixed
 
 - **google_ads: the shared-budget refusal for Smart Bidding strategies now

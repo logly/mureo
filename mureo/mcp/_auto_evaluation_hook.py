@@ -35,6 +35,7 @@ from mureo.context.auto_evaluation import close_due_observations
 # Reached through the module so a test that freezes the clock is seen
 # here too (see ``mureo.core.clock``).
 from mureo.core import clock
+from mureo.mcp import _server_slots
 from mureo.mcp._helpers import exception_text
 from mureo.mcp._outcome_thresholds import load_outcome_thresholds
 
@@ -87,14 +88,16 @@ def _policy_denial(tool_name: str) -> str | None:
     inspects arguments (the built-in ``## Guardrails`` one does) therefore
     sees nothing to object to, which is the correct answer for a record
     that changes no ad account.
-    """
-    # Lazy: ``mureo.mcp.server`` imports the tool modules, one of which
-    # imports this one for the schema property above.
-    from mureo.mcp.server import (  # noqa: PLC0415 — import cycle: mureo.mcp._auto_evaluation_hook -> mureo.mcp.server (#879)
-        _evaluate_policy_gates,
-    )
 
-    decision = _evaluate_policy_gates(tool_name, {})
+    The gates are reached through :mod:`mureo.mcp._server_slots`, where
+    ``server`` publishes its evaluator at load: ``server`` imports the tool
+    modules, one of which imports this one for the schema property above, so
+    importing ``server`` back would close a cycle (#879 stage 2).
+
+    Raises:
+        RuntimeError: ``mureo.mcp.server`` has not published its evaluator.
+    """
+    decision = _server_slots.require_policy_evaluator()(tool_name, {})
     if decision is None:
         return None
     return decision.reason.strip() or UNSTATED_DENIAL

@@ -92,6 +92,7 @@ mureo/
 │   │                                      #   TAIL is the one thing it cannot prove — say so, always
 │   ├── _journal_hook.py                   # Dispatcher hook: family/mutating classification, one record per call (#758)
 │   ├── _plugin_tables.py                  # Plugin dispatch / semantics dict objects, below server; server fills them in place at load (#879)
+│   ├── _server_slots.py                   # Family view / dispatcher / policy evaluator slots, below server; server publishes them at load for the journal, auto-evaluation and rollback hooks (#879)
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules
 │   ├── _handlers_google_ads.py            # Google Ads base handlers
@@ -108,7 +109,7 @@ mureo/
 │   ├── tools_search_console.py            # Search Console tool definitions
 │   ├── _handlers_search_console.py        # Search Console handlers
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
-│   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
+│   ├── _handlers_rollback.py              # Rollback handlers (dispatcher read from _server_slots)
 │   ├── tools_batch.py                     # mureo_batch_begin / _end / _status (#549)
 │   ├── _handlers_batch.py                 # Batch lifecycle handlers
 │   ├── tools_change_import.py             # mureo_external_changes_import (#545)
