@@ -23,6 +23,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mureo.client_factory import GOOGLE_ADS_THROTTLER
+
 _CUSTOMER_ID = "1234567890"
 _SLOW_BUILD_SECONDS = 0.2
 
@@ -115,9 +117,9 @@ def live_google_ads():
     from mureo.mcp import _handlers_google_ads as handlers
 
     with (
-        patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch(
-            "mureo.mcp._google_ads_client.load_google_ads_credentials",
+            "mureo.auth.load_google_ads_credentials",
             return_value=_creds(),
         ),
         patch(
@@ -156,7 +158,7 @@ class TestHandlerClientHelper:
         client = _fake_client()
         factory = _RecordingFactory(client)
         loop_thread = threading.current_thread()
-        with patch("mureo.mcp._google_ads_client.create_google_ads_client", factory):
+        with patch("mureo.auth.create_google_ads_client", factory):
             result = await live_google_ads._get_client({})
         assert result is client
         assert len(factory.threads) == 1
@@ -164,26 +166,26 @@ class TestHandlerClientHelper:
 
     async def test_loop_stays_responsive_while_building(self, live_google_ads) -> None:
         factory = _RecordingFactory(_fake_client(), delay=_SLOW_BUILD_SECONDS)
-        with patch("mureo.mcp._google_ads_client.create_google_ads_client", factory):
+        with patch("mureo.auth.create_google_ads_client", factory):
             ticks = await _ticks_while_building(
                 factory, live_google_ads._get_client({})
             )
         assert ticks >= 10
 
     async def test_constructor_arguments_are_unchanged(self, live_google_ads) -> None:
-        with patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory:
+        with patch("mureo.auth.create_google_ads_client") as factory:
             await live_google_ads._get_client({"customer_id": "111-222-3333"})
         factory.assert_called_once()
         assert factory.call_args.args[1] == "111-222-3333"
-        assert factory.call_args.kwargs == {"throttler": live_google_ads._throttler}
+        assert factory.call_args.kwargs == {"throttler": GOOGLE_ADS_THROTTLER}
 
     async def test_missing_credentials_still_return_none(self, live_google_ads) -> None:
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=None,
             ),
-            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
+            patch("mureo.auth.create_google_ads_client") as factory,
         ):
             assert await live_google_ads._get_client({}) is None
         factory.assert_not_called()
@@ -195,7 +197,7 @@ class TestHandlerEndToEnd:
         client = _fake_client()
         factory = _RecordingFactory(client)
         loop_thread = threading.current_thread()
-        with patch("mureo.mcp._google_ads_client.create_google_ads_client", factory):
+        with patch("mureo.auth.create_google_ads_client", factory):
             result = await live_google_ads.handle_campaigns_list({})
         assert json.loads(result[0].text) == [{"id": "1", "name": "c"}]
         client.list_campaigns.assert_awaited_once()
@@ -207,7 +209,7 @@ class TestHandlerEndToEnd:
         client = MagicMock()
         client.list_sitelinks = AsyncMock(return_value=[])
         factory = _RecordingFactory(client)
-        with patch("mureo.mcp._google_ads_client.create_google_ads_client", factory):
+        with patch("mureo.auth.create_google_ads_client", factory):
             result = await ext.handle_sitelinks_list({"campaign_id": "1"})
         assert json.loads(result[0].text) == []
         client.list_sitelinks.assert_awaited_once()
@@ -218,7 +220,7 @@ class TestHandlerEndToEnd:
         client = MagicMock()
         client.get_network_performance_report = AsyncMock(return_value=[])
         factory = _RecordingFactory(client)
-        with patch("mureo.mcp._google_ads_client.create_google_ads_client", factory):
+        with patch("mureo.auth.create_google_ads_client", factory):
             result = await analysis.handle_network_performance_report({})
         assert json.loads(result[0].text) == []
         client.get_network_performance_report.assert_awaited_once()
@@ -232,7 +234,7 @@ class TestOtherAsyncCallers:
         client = _fake_client()
         factory = _RecordingFactory(client)
         loop_thread = threading.current_thread()
-        with patch("mureo.mcp._google_ads_client.create_google_ads_client", factory):
+        with patch("mureo.auth.create_google_ads_client", factory):
             result = await exclusion_sources.google_ads_client({})
         assert result is client
         assert factory.threads[0] is not loop_thread
@@ -245,7 +247,7 @@ class TestOtherAsyncCallers:
         client = _fake_client()
         factory = _RecordingFactory(client)
         loop_thread = threading.current_thread()
-        with patch("mureo.mcp._google_ads_client.create_google_ads_client", factory):
+        with patch("mureo.auth.create_google_ads_client", factory):
             status = await native_reversal._read_status(
                 ("google_ads", "campaigns", ()), {"campaign_id": "1"}
             )

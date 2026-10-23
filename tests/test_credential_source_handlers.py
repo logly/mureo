@@ -92,10 +92,10 @@ class TestGoogleAdsGetClient:
         from mureo.mcp import _handlers_google_ads as handlers
 
         with (
-            patch("mureo.mcp._google_ads_client.byod_has", return_value=byod),
-            patch("mureo.mcp._google_ads_client.load_google_ads_credentials", _refuse),
-            patch("mureo.mcp._google_ads_client.get_google_ads_client", _refuse),
-            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
+            patch("mureo.client_factory.byod_has", return_value=byod),
+            patch("mureo.auth.load_google_ads_credentials", _refuse),
+            patch("mureo.client_factory.get_google_ads_client", _refuse),
+            patch("mureo.auth.create_google_ads_client") as factory,
             use_credential_source(CredentialSource(google=source)),
         ):
             client = await handlers._get_client(args)
@@ -152,8 +152,8 @@ class TestGoogleAdsGetClient:
         from mureo.mcp import _handlers_google_ads as handlers
 
         with (
-            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
-            patch("mureo.mcp._google_ads_client.load_google_ads_credentials", _refuse),
+            patch("mureo.client_factory.byod_has", return_value=False),
+            patch("mureo.auth.load_google_ads_credentials", _refuse),
             use_credential_source(CredentialSource(google=_GoogleSource(None))),
         ):
             result = await handlers.handle_campaigns_list({"customer_id": "1"})
@@ -164,8 +164,8 @@ class TestGoogleAdsGetClient:
 
         loader = MagicMock(return_value=None)
         with (
-            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
-            patch("mureo.mcp._google_ads_client.load_google_ads_credentials", loader),
+            patch("mureo.client_factory.byod_has", return_value=False),
+            patch("mureo.auth.load_google_ads_credentials", loader),
             use_credential_source(CredentialSource(meta_ads=_MetaSource(_META))),
         ):
             assert await handlers._get_client({"customer_id": "1"}) is None
@@ -378,8 +378,8 @@ class TestOAuthCredentialsOffTheLoop:
         loop_thread = threading.get_ident()
         source = _ThreadRecordingSource(_GOOGLE)
         with (
-            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
-            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
+            patch("mureo.client_factory.byod_has", return_value=False),
+            patch("mureo.auth.create_google_ads_client") as factory,
             use_credential_source(CredentialSource(google=source)),
         ):
             await handlers._get_client({"customer_id": "1"})

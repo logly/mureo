@@ -202,11 +202,11 @@ class TestGoogleAdsBudgetPeriodHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -228,11 +228,11 @@ class TestGoogleAdsBudgetPeriodHandlers:
         creds, client = _mock_google_ads_context()
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
             pytest.raises(ValueError, match="required"),
@@ -249,11 +249,11 @@ class TestGoogleAdsBudgetPeriodHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -279,11 +279,11 @@ class TestGoogleAdsBudgetPeriodHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -314,11 +314,11 @@ class TestGoogleAdsCriteriaReadHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -342,11 +342,11 @@ class TestGoogleAdsCriteriaReadHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -368,11 +368,11 @@ class TestGoogleAdsCriteriaReadHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -391,11 +391,11 @@ class TestGoogleAdsCriteriaReadHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -422,11 +422,11 @@ class TestGoogleAdsCampaignHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -445,11 +445,11 @@ class TestGoogleAdsCampaignHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -471,11 +471,11 @@ class TestGoogleAdsCampaignHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -498,11 +498,11 @@ class TestGoogleAdsCampaignHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -533,11 +533,11 @@ class TestGoogleAdsCampaignHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -559,11 +559,11 @@ class TestGoogleAdsCampaignHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -594,11 +594,11 @@ class TestGoogleAdsAdGroupHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -620,11 +620,11 @@ class TestGoogleAdsAdGroupHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -647,11 +647,11 @@ class TestGoogleAdsAdGroupHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -682,11 +682,11 @@ class TestGoogleAdsAdHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -705,11 +705,11 @@ class TestGoogleAdsAdHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -733,11 +733,11 @@ class TestGoogleAdsAdHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -768,11 +768,11 @@ class TestGoogleAdsAdHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -816,11 +816,11 @@ class TestGoogleAdsKeywordHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -838,11 +838,11 @@ class TestGoogleAdsKeywordHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -865,11 +865,11 @@ class TestGoogleAdsKeywordHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -892,11 +892,11 @@ class TestGoogleAdsKeywordHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -915,11 +915,11 @@ class TestGoogleAdsKeywordHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -938,11 +938,11 @@ class TestGoogleAdsKeywordHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -961,11 +961,11 @@ class TestGoogleAdsKeywordHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -998,11 +998,11 @@ class TestGoogleAdsBudgetHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1021,11 +1021,11 @@ class TestGoogleAdsBudgetHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1054,11 +1054,11 @@ class TestGoogleAdsAnalysisHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1077,11 +1077,11 @@ class TestGoogleAdsAnalysisHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1100,11 +1100,11 @@ class TestGoogleAdsAnalysisHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1123,11 +1123,11 @@ class TestGoogleAdsAnalysisHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1146,11 +1146,11 @@ class TestGoogleAdsAnalysisHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1169,11 +1169,11 @@ class TestGoogleAdsAnalysisHandlers:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1199,7 +1199,7 @@ class TestGoogleAdsErrorHandling:
         """Returns error text when customer_id is missing and credentials.json has none."""
         mod = _import_google_ads_tools()
         with patch(
-            "mureo.mcp._google_ads_client.load_google_ads_credentials",
+            "mureo.auth.load_google_ads_credentials",
             return_value=None,
         ):
             result = await mod.handle_tool("google_ads_campaigns_list", {})
@@ -1215,7 +1215,7 @@ class TestGoogleAdsErrorHandling:
         """Returns error text when no credentials are present."""
         mod = _import_google_ads_tools()
         with patch(
-            "mureo.mcp._google_ads_client.load_google_ads_credentials",
+            "mureo.auth.load_google_ads_credentials",
             return_value=None,
         ):
             result = await mod.handle_tool(
@@ -1232,11 +1232,11 @@ class TestGoogleAdsErrorHandling:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):
@@ -1256,11 +1256,11 @@ class TestGoogleAdsErrorHandling:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
         ):

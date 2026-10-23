@@ -114,9 +114,9 @@ def _unscoped_live() -> Iterator[None]:
             "mureo.mcp._handlers_search_console.runtime_search_console_sites",
             return_value=None,
         ),
-        patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
-        patch("mureo.mcp._google_ads_client.load_google_ads_credentials", _refuse),
+        patch("mureo.auth.load_google_ads_credentials", _refuse),
         patch(
             "mureo.mcp._handlers_search_console.load_google_ads_credentials", _refuse
         ),
@@ -185,9 +185,9 @@ class TestStrictHandlers:
 
         factory = MagicMock()
         with (
-            patch("mureo.mcp._google_ads_client.byod_has", return_value=True),
-            patch("mureo.mcp._google_ads_client.create_google_ads_client", factory),
-            patch("mureo.mcp._google_ads_client.get_google_ads_client", _refuse),
+            patch("mureo.client_factory.byod_has", return_value=True),
+            patch("mureo.auth.create_google_ads_client", factory),
+            patch("mureo.client_factory.get_google_ads_client", _refuse),
             use_credential_source(
                 CredentialSource(meta_ads=_MetaSource(), strict=True)
             ),
@@ -243,7 +243,7 @@ class TestStrictHandlers:
 
         google = _GoogleSource()
         with (
-            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
+            patch("mureo.auth.create_google_ads_client") as factory,
             use_credential_source(CredentialSource(google=google, strict=True)),
         ):
             client = await handlers._get_client({"customer_id": "1"})
@@ -255,7 +255,7 @@ class TestStrictHandlers:
 
         loader = MagicMock(return_value=None)
         with (
-            patch("mureo.mcp._google_ads_client.load_google_ads_credentials", loader),
+            patch("mureo.auth.load_google_ads_credentials", loader),
             use_credential_source(
                 CredentialSource(meta_ads=_MetaSource(), strict=False)
             ),
@@ -353,7 +353,7 @@ class TestCuratedErrorsReachTheClient:
 
         with (
             caplog.at_level(logging.DEBUG),
-            patch("mureo.mcp._google_ads_client.create_google_ads_client"),
+            patch("mureo.auth.create_google_ads_client"),
             use_credential_source(CredentialSource(google=source)),
         ):
             result = await handlers.handle_campaigns_list({"customer_id": "1"})
@@ -573,11 +573,11 @@ class TestNoSourceFactoryCall:
 
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=_GOOGLE,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 narrow_factory,
             ),
         ):
@@ -589,7 +589,7 @@ class TestNoSourceFactoryCall:
 
         google = _GoogleSource()
         with (
-            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
+            patch("mureo.auth.create_google_ads_client") as factory,
             use_credential_source(CredentialSource(google=google)),
         ):
             await handlers._get_client({"customer_id": "1"})

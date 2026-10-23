@@ -762,11 +762,11 @@ class TestLazyPublicNames:
         client.list_campaigns.return_value = [{"id": "1", "name": "Test"}]
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=MagicMock(),
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=client,
             ),
             patch(

@@ -37,15 +37,16 @@ import pytest
 def _no_ambient_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Force the live-client credential lookups to resolve as "absent".
 
-    ``_open_google_ads_client`` / ``_open_meta_ads_client`` read these names
-    from their modules at call time (``mureo.byod.runtime`` through the
-    module, ``mureo.auth`` by a local import), so patching the module
-    attributes (``mureo.byod.runtime.byod_has`` and the two
-    ``mureo.auth.load_*_credentials`` functions) is enough to make the live
-    fallback raise :class:`NoCredentialsError`. The no-fetcher adapter tests
-    can then never reach a real API, no matter what credentials happen to be
-    present in the process environment.
+    ``_open_meta_ads_client`` reads ``mureo.byod.runtime.byod_has`` through
+    the module; the shared Google Ads opener behind ``_open_google_ads_client``
+    reads ``mureo.client_factory.byod_has`` (bound at import, #875); both
+    import ``mureo.auth`` locally at call time. Patching those attributes and
+    the two ``mureo.auth.load_*_credentials`` functions is enough to make the
+    live fallback raise :class:`NoCredentialsError`. The no-fetcher adapter
+    tests can then never reach a real API, no matter what credentials happen
+    to be present in the process environment.
     """
     monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda *a, **k: False)
+    monkeypatch.setattr("mureo.client_factory.byod_has", lambda *a, **k: False)
     monkeypatch.setattr("mureo.auth.load_google_ads_credentials", lambda *a, **k: None)
     monkeypatch.setattr("mureo.auth.load_meta_ads_credentials", lambda *a, **k: None)
