@@ -90,7 +90,7 @@ class BaseProvider(Protocol):
 
     * ``account_credential_fields: tuple[AccountCredentialField, ...]``
       — declares the per-account credential fields the provider needs
-      (e.g., Google Ads ``customer_id``, Meta Ads ``ad_account_id``).
+      (e.g., Google Ads ``customer_id``, Meta Ads ``account_id``).
       Tooling that introspects providers (the ``mureo providers …``
       CLI, configuration wizards, plugin authoring docs) reads this
       via :func:`mureo.core.providers.get_account_credential_fields`

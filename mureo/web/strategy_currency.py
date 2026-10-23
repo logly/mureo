@@ -45,7 +45,7 @@ from mureo.core.providers.models import (
 from mureo.fsutil import backup_file
 from mureo.policy.currency_units import parse_currency_code
 from mureo.policy.strategy_gate import GUARDRAILS_BULLET_RE, GUARDRAILS_HEADING
-from mureo.web._helpers import send_error_json, send_json
+from mureo.web._helpers import send_error_json, send_failure, send_json
 from mureo.web.report_clients import state_store_for_client
 
 if TYPE_CHECKING:
@@ -90,6 +90,11 @@ CURRENCY_OPTIONS: tuple[dict[str, Any], ...] = tuple(
 _CURRENCY_CODES: frozenset[str] = frozenset(
     str(option["code"]) for option in CURRENCY_OPTIONS
 )
+
+
+#: Refusals the caller can fix (a 400); anything else is a fault on our
+#: side (a 500).
+_CALLER_FAULTS = frozenset({"no_workspace", "invalid_currency"})
 
 
 class StrategyCurrencyError(Exception):
@@ -332,15 +337,6 @@ def _envelope(client: str | None, path: Path, state: dict[str, Any]) -> dict[str
     }
 
 
-def _send_failure(
-    handler: BaseHTTPRequestHandler, error: StrategyCurrencyError
-) -> None:
-    """A refusal the caller can fix is a 400; a fault on our side is a 500."""
-    caller_fault = {"no_workspace", "invalid_currency"}
-    status = 400 if error.code in caller_fault else 500
-    send_error_json(handler, status, error.code)
-
-
 def serve_strategy_currency(handler: BaseHTTPRequestHandler) -> None:
     """GET ``/api/strategy/currency`` — the current code and the options.
 
@@ -353,7 +349,7 @@ def serve_strategy_currency(handler: BaseHTTPRequestHandler) -> None:
         path = strategy_path_for_client(client)
         state = read_currency(path)
     except StrategyCurrencyError as exc:
-        _send_failure(handler, exc)
+        send_failure(handler, exc.code, _CALLER_FAULTS)
         return
     send_json(handler, _envelope(client, path, state))
 
@@ -382,7 +378,7 @@ def post_strategy_currency(
         path = strategy_path_for_client(client)
         state = write_currency(path, code)
     except StrategyCurrencyError as exc:
-        _send_failure(handler, exc)
+        send_failure(handler, exc.code, _CALLER_FAULTS)
         return
     send_json(handler, _envelope(client, path, state))
 

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-from datetime import datetime, timezone
 
 from mureo.byod.runtime import (
     SUPPORTED_PLATFORMS,
@@ -25,16 +24,13 @@ from mureo.byod.runtime import (
     read_manifest,
     write_manifest,
 )
+from mureo.core.clock import server_now_iso
 
 logger = logging.getLogger(__name__)
 
 
 class BYODImportError(RuntimeError):
     """Raised when a BYOD operation fails for any reason."""
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
 def remove_platform(platform: str) -> bool:
@@ -70,7 +66,7 @@ def remove_platform(platform: str) -> bool:
         shutil.rmtree(dst_dir)
 
     if manifest["platforms"]:
-        manifest["imported_on"] = _now_iso()
+        manifest["imported_on"] = server_now_iso()
         write_manifest(manifest)
     else:
         # Last platform removed. Drop the manifest file (so byod_has

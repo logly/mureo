@@ -80,6 +80,50 @@
   others. A reader of `_mureo-shared` → *STATE.json Schema* finds a
   pointer to `../_mureo-state-schema/SKILL.md` there, and the skills that
   cited either section now cite the new file.
+- **The provider adapters accept a campaign id only as 1 to 20 ASCII
+  digits** (#866). `GoogleAdsAdapter.daily_report` and
+  `MetaAdsAdapter.daily_report` (`mureo.adapters`) used `str.isdigit()`,
+  which also accepts `"²"`, Arabic-Indic or full-width digits and ids of
+  any length; those now raise the same `ValueError` as a non-digit id.
+  This is the rule the GAQL validator already applies.
+- **The BYOD workbook adapters are renamed** (#866):
+  `mureo.byod.adapters.google_ads.GoogleAdsAdapter` is now
+  `GoogleAdsWorkbookAdapter` and `mureo.byod.adapters.meta_ads.MetaAdsAdapter`
+  is now `MetaAdsWorkbookAdapter`, so they no longer share a name with the
+  provider adapters. `mureo.adapters.google_ads.GoogleAdsAdapter` and
+  `mureo.adapters.meta_ads.MetaAdsAdapter` are unchanged.
+- **Meta Graph error details read the same everywhere** (#866, #605).
+  The Meta API client, the token inspection and validation probes and the
+  token refresh now share one formatter
+  (`mureo/meta_ads/_graph_error.py`): `message`, `error_user_title`,
+  `error_user_msg`, then `code=`, `subcode=` and `fbtrace_id=`, joined
+  with ` | `, newlines collapsed. On every path `message`,
+  `error_user_title` and `error_user_msg` are cut at 200 characters with
+  a trailing `...`, and `code`, `subcode` and `fbtrace_id` at 32 (the
+  client used to print them whole). A field is kept when it is present
+  and not blank, so `code=0` shows and `subcode=0` is no longer dropped.
+  The client gains `code=`, the token inspection and validation errors
+  gain `code=`, `error_user_title` and `error_user_msg`, the refresh
+  error gains `error_user_title`, `error_user_msg` and `fbtrace_id`, and
+  page-token requests report every field instead of `message` only. None
+  of them quotes the raw response body any more: a body without a usable
+  `error` object now reads "no error detail in response body" in the
+  client's request errors (non-JSON bodies quoted up to 500 characters
+  of the body; a JSON body without an `error` object gave an empty
+  detail), the page-token request errors and the token inspection and
+  validation errors (which quoted up to 200), and the client's error log
+  carries the same formatted detail instead of the raw body (up to 500
+  characters).
+- **Duplicated helpers have one definition each, and stale docs are
+  corrected** (#866). The demo scenarios' sheet-row and date helpers
+  live in `mureo/demo/scenarios/_base.py` (scenario output is
+  unchanged), the Meta `_safe_float` in `meta_ads/_conversion_count.py`,
+  `jsonable` in `mcp/_helpers.py` and the configure endpoints'
+  `send_failure` in `web/_helpers.py`. The BYOD import timestamps now
+  come from `mureo.core.clock.server_now_iso` (same format). The
+  architecture tree's `adapters/` line, the provider docstring's Meta
+  field name (`account_id`) and the BYOD bundle importer's docstring
+  (which still called Meta BYOD a follow-up) are corrected.
 
 ### Security
 

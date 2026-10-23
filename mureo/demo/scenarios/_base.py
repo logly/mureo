@@ -10,13 +10,13 @@ instance — adding a new one is "drop a module under
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import date, datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Protocol, TypeVar
 
 from mureo.byod.adapters.google_ads import _synthetic_id as _byod_synthetic_id
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-    from datetime import date
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -67,3 +67,139 @@ def campaign_id(name: str) -> str:
     they diverge in the future we'd need per-platform branches here.
     """
     return _byod_synthetic_id("camp", name)
+
+
+class GoogleCampaignSpec(Protocol):
+    """Per-campaign Google Ads rates a scenario's ad-group rows derive from."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def daily_impr(self) -> int: ...
+
+    @property
+    def ctr(self) -> float: ...
+
+    @property
+    def cpc(self) -> float: ...
+
+    @property
+    def cvr(self) -> float: ...
+
+
+_SpecT = TypeVar("_SpecT", bound=GoogleCampaignSpec)
+
+
+def date_for_day(day: int, *, end_date: date, days: int) -> date:
+    """Return the calendar date of day index ``day`` (0 = first day)."""
+    return end_date - timedelta(days=days - 1 - day)
+
+
+def action_iso(
+    day: int, hour: int = 10, minute: int = 0, *, end_date: date, days: int
+) -> str:
+    """Build a ``YYYY-MM-DDTHH:MM:SS+09:00`` timestamp for ``day``."""
+    d = date_for_day(day, end_date=end_date, days=days)
+    dt = datetime(
+        d.year, d.month, d.day, hour, minute, tzinfo=timezone(timedelta(hours=9))
+    )
+    return dt.isoformat(timespec="seconds")
+
+
+def build_google_ad_groups_rows(
+    campaigns: Sequence[_SpecT],
+    ad_groups: Iterable[tuple[str, str, float]],
+    *,
+    end_date: date,
+    days: int,
+    impr_factor: Callable[[str, int], float] | None = None,
+    is_active: Callable[[_SpecT, int], bool] | None = None,
+) -> list[list[object]]:
+    """Build the daily ``ad_groups`` sheet (header first).
+
+    Args:
+        campaigns: Campaign specs; ``ad_groups`` refers to them by name.
+        ad_groups: ``(campaign_name, ad_group_name, share_of_campaign)``.
+        end_date: Last calendar day in the data.
+        days: Length of the data period in days.
+        impr_factor: Per-``(campaign_name, day)`` impression multiplier
+            for scenarios whose story moves demand (default ``1.0``).
+        is_active: Per-``(campaign, day)`` filter for scenarios whose
+            campaigns start mid-period; inactive days emit no row.
+    """
+    rows: list[list[object]] = [
+        [
+            "day",
+            "campaign",
+            "ad_group",
+            "impressions",
+            "clicks",
+            "cost",
+            "conversions",
+        ]
+    ]
+    by_camp = {c.name: c for c in campaigns}
+    for camp_name, ag_name, share in ad_groups:
+        c = by_camp[camp_name]
+        for d in range(days):
+            if is_active is not None and not is_active(c, d):
+                continue
+            day_iso = date_for_day(d, end_date=end_date, days=days).isoformat()
+            factor = impr_factor(camp_name, d) if impr_factor is not None else 1.0
+            impr = int(round(c.daily_impr * share * factor))
+            clicks = int(round(impr * c.ctr))
+            cost = round(clicks * c.cpc, 2)
+            conv = round(clicks * c.cvr, 2)
+            rows.append([day_iso, camp_name, ag_name, impr, clicks, cost, conv])
+    return rows
+
+
+def build_google_search_terms_rows(
+    search_terms: Iterable[Sequence[object]],
+) -> list[list[object]]:
+    """Build the aggregated ``search_terms`` sheet (header first).
+
+    Each entry is ``(search_term, campaign, ad_group, impressions,
+    clicks, cost, conversions)``.
+    """
+    rows: list[list[object]] = [
+        [
+            "search_term",
+            "campaign",
+            "ad_group",
+            "impressions",
+            "clicks",
+            "cost",
+            "conversions",
+        ]
+    ]
+    for term, camp, ag, impr, clicks, cost, conv in search_terms:
+        rows.append([term, camp, ag, impr, clicks, cost, conv])
+    return rows
+
+
+def build_google_keywords_rows(
+    keywords: Iterable[Sequence[object]],
+) -> list[list[object]]:
+    """Build the aggregated ``keywords`` sheet (header first).
+
+    Each entry is ``(keyword, match_type, quality_score, campaign,
+    ad_group, impressions, clicks, cost, conversions)``.
+    """
+    rows: list[list[object]] = [
+        [
+            "keyword",
+            "match_type",
+            "quality_score",
+            "campaign",
+            "ad_group",
+            "impressions",
+            "clicks",
+            "cost",
+            "conversions",
+        ]
+    ]
+    for kw, mt, qs, camp, ag, impr, clicks, cost, conv in keywords:
+        rows.append([kw, mt, qs, camp, ag, impr, clicks, cost, conv])
+    return rows

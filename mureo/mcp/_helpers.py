@@ -13,10 +13,12 @@ check to drift. One definition, imported by name.
 from __future__ import annotations
 
 import contextvars
+import dataclasses
 import functools
 import inspect
 import json
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -173,6 +175,28 @@ def resolve_workspace_path(
             f"{resolved} is not inside {workspace}"
         ) from exc
     return resolved
+
+
+def jsonable(value: Any) -> Any:
+    """Recursively convert a result model into JSON-native data.
+
+    Frozen dataclasses become dicts, enums become their ``.value``, and
+    tuples become lists — so the mixed ``tuple[dataclass, ...]`` /
+    nested-tuple shapes the models use serialize deterministically without
+    leaking ``repr`` artifacts.
+    """
+    if isinstance(value, Enum):
+        return value.value
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {
+            field.name: jsonable(getattr(value, field.name))
+            for field in dataclasses.fields(value)
+        }
+    if isinstance(value, (list, tuple)):
+        return [jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: jsonable(item) for key, item in value.items()}
+    return value
 
 
 def _json_result(data: Any) -> list[TextContent]:

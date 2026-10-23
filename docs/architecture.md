@@ -157,6 +157,7 @@ mureo/
 │   ├── _ad_rules.py         # AdRulesMixin (automated rules)
 │   ├── _page_posts.py       # PagePostsMixin (page posts, boost, page photos)
 │   ├── _instagram.py        # InstagramMixin (accounts, media, boost)
+│   ├── _graph_error.py      # Graph error detail formatter (never the raw body)
 │   └── _hash_utils.py       # SHA-256 hashing utilities for CAPI user data
 ├── amazon_ads/              # Amazon Ads official-MCP bridge (mureo-mediated, #113/#121)
 │   ├── bridge.py            # AmazonAdsBridge — MCPToolProvider (pure mcp_tools() + forwarding handler)
@@ -317,7 +318,7 @@ mureo/
 │   ├── importer.py          # Window, action_log write, per-platform outcome
 │   └── builtin/google_ads.py  # change_event feed (the only native feed today)
 ├── byod/                    # Bring Your Own Data (XLSX bundle importer + CSV-backed read-only clients)
-├── adapters/                # BYOD per-platform header-signature adapters
+├── adapters/                # Protocol reference implementation (mureo.core.providers); BYOD adapters: byod/adapters/
 ├── demo/                    # Synthetic demo workspace scaffolding
 └── web/                     # `mureo configure` local dashboard (stdlib http.server + static assets)
     │                        #   Layer rule with cli (#863): web imports cli helper modules

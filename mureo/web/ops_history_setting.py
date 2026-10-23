@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.context.settings import ops_history_enabled, set_ops_history_enabled
 from mureo.context.state import read_state_file
-from mureo.web._helpers import send_error_json, send_json
+from mureo.web._helpers import send_error_json, send_failure, send_json
 from mureo.web.report_clients import state_store_for_client
 from mureo.web.strategy_currency import _payload_client, _query_client
 
@@ -115,13 +115,6 @@ def _envelope(client: str | None, path: Path, state: dict[str, Any]) -> dict[str
     return {"status": "ok", "client": client, "path": str(path), **state}
 
 
-def _send_failure(
-    handler: BaseHTTPRequestHandler, error: OpsHistorySettingError
-) -> None:
-    status = 400 if error.code in _CALLER_FAULTS else 500
-    send_error_json(handler, status, error.code)
-
-
 def serve_ops_history_setting(handler: BaseHTTPRequestHandler) -> None:
     """GET ``/api/settings/ops_history`` — the switch's current value."""
     client = _query_client(handler.path)
@@ -129,7 +122,7 @@ def serve_ops_history_setting(handler: BaseHTTPRequestHandler) -> None:
         path = state_path_for_client(client)
         state = read_setting(path)
     except OpsHistorySettingError as exc:
-        _send_failure(handler, exc)
+        send_failure(handler, exc.code, _CALLER_FAULTS)
         return
     send_json(handler, _envelope(client, path, state))
 
@@ -152,6 +145,6 @@ def post_ops_history_setting(
         path = state_path_for_client(client)
         state = write_setting(path, enabled)
     except OpsHistorySettingError as exc:
-        _send_failure(handler, exc)
+        send_failure(handler, exc.code, _CALLER_FAULTS)
         return
     send_json(handler, _envelope(client, path, state))

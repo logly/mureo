@@ -7,12 +7,14 @@ and the context manager.
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from mureo.core.auth_failure import PlatformAuthError
+from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL
 from mureo.meta_ads.client import (
     MetaAdsApiClient,
 )
@@ -293,6 +295,93 @@ class TestAuthFailureClassification:
         with pytest.raises(RuntimeError) as excinfo:
             await client._get("/test")
         assert not isinstance(excinfo.value, PlatformAuthError)
+
+
+@pytest.mark.unit
+class TestErrorDetail:
+    """The detail after ``path=...):`` is the shared Graph error format, and
+    never the raw response body (#605, #866)."""
+
+    _MARKER = "RAW-BODY-MARKER-c0ffee"
+
+    @pytest.fixture()
+    def client(self) -> MetaAdsApiClient:
+        return MetaAdsApiClient("token", "act_123")
+
+    def _resp(self, body: object) -> MagicMock:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 400
+        mock_resp.headers = {}
+        mock_resp.text = f"<html>{self._MARKER}</html>"
+        if body is None:
+            mock_resp.json.side_effect = ValueError("not JSON")
+        else:
+            mock_resp.json.return_value = body
+        return mock_resp
+
+    @pytest.mark.asyncio
+    async def test_envelope_fields_in_the_shared_format(
+        self, client: MetaAdsApiClient
+    ) -> None:
+        body = {
+            "error": {
+                "message": "Invalid parameter",
+                "error_user_title": "Bad budget",
+                "error_user_msg": "Budget too low.",
+                "code": 100,
+                "error_subcode": 1885650,
+                "fbtrace_id": "AbC123",
+            }
+        }
+        client._http = MagicMock()
+        client._http.get = AsyncMock(return_value=self._resp(body))
+        with pytest.raises(RuntimeError) as excinfo:
+            await client._get("/test")
+        assert str(excinfo.value) == (
+            "Meta API request failed (status=400, path=/test): Invalid parameter | "
+            "Bad budget | Budget too low. | code=100 | subcode=1885650 | "
+            "fbtrace_id=AbC123"
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_json_body_is_not_echoed(self, client: MetaAdsApiClient) -> None:
+        client._http = MagicMock()
+        client._http.get = AsyncMock(return_value=self._resp(None))
+        with pytest.raises(RuntimeError) as excinfo:
+            await client._get("/test")
+        assert self._MARKER not in str(excinfo.value)
+        assert str(excinfo.value).endswith(f"): {GRAPH_ERROR_NO_DETAIL}")
+
+    @pytest.mark.asyncio
+    async def test_error_log_carries_the_detail_not_the_body(
+        self, client: MetaAdsApiClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        body = {"error": {"message": "Invalid parameter", "code": 100}}
+        client._http = MagicMock()
+        client._http.get = AsyncMock(return_value=self._resp(body))
+        with (
+            caplog.at_level(logging.ERROR, logger="mureo.meta_ads.client"),
+            pytest.raises(RuntimeError),
+        ):
+            await client._get("/test")
+        assert self._MARKER not in caplog.text
+        assert "detail=Invalid parameter | code=100" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_page_token_request_does_not_echo_the_body(
+        self, client: MetaAdsApiClient
+    ) -> None:
+        client._http = MagicMock()
+        client._http.get = AsyncMock(return_value=self._resp(None))
+        with (
+            patch.object(
+                client, "get_page_access_token", AsyncMock(return_value="page-tok")
+            ),
+            pytest.raises(RuntimeError) as excinfo,
+        ):
+            await client._get_as_page("123", "/123/feed")
+        assert self._MARKER not in str(excinfo.value)
+        assert str(excinfo.value).endswith(f"): {GRAPH_ERROR_NO_DETAIL}")
 
 
 # ---------------------------------------------------------------------------

@@ -12,11 +12,13 @@ Pipeline:
         ▼
   openpyxl ``Workbook``
         │
-        └─ GoogleAdsAdapter →  ``~/.mureo/byod/google_ads/``
+        ├─ GoogleAdsWorkbookAdapter →  ``~/.mureo/byod/google_ads/``
+        └─ MetaAdsWorkbookAdapter   →  ``~/.mureo/byod/meta_ads/``
 
-GA4 and Search Console BYOD paths were removed in Phase 1 of the
-BYOD redesign — those platforms remain accessible via the existing
-Live API OAuth path. Meta Ads BYOD will land in a follow-up.
+Each adapter claims the workbook by header signature (``has_tab``); the
+two are registered in ``_BUNDLE_ADAPTERS``. GA4 and Search Console BYOD
+paths were removed in Phase 1 of the BYOD redesign — those platforms
+remain accessible via the existing Live API OAuth path.
 
 Manifest update is atomic. Either the dispatched platform's section is
 written to ``manifest.json`` together with on-disk files, or nothing
@@ -31,16 +33,15 @@ import logging
 import secrets
 import shutil
 import zipfile
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mureo.byod.adapters.google_ads import (
-    GoogleAdsAdapter,
+    GoogleAdsWorkbookAdapter,
     UnsupportedFormatError,
 )
 from mureo.byod.adapters.meta_ads import (
-    MetaAdsAdapter,
+    MetaAdsWorkbookAdapter,
 )
 from mureo.byod.adapters.meta_ads import (
     UnsupportedFormatError as _MetaUnsupportedFormatError,
@@ -51,6 +52,7 @@ from mureo.byod.runtime import (
     read_manifest,
     write_manifest,
 )
+from mureo.core.clock import server_now_iso
 
 if TYPE_CHECKING:
     from openpyxl.workbook.workbook import Workbook
@@ -66,13 +68,9 @@ class BundleImportError(RuntimeError):
 # is checked, and the adapter is dispatched only when its required tab
 # is present.
 _BUNDLE_ADAPTERS: list[tuple[str, type[Any]]] = [
-    ("google_ads", GoogleAdsAdapter),
-    ("meta_ads", MetaAdsAdapter),
+    ("google_ads", GoogleAdsWorkbookAdapter),
+    ("meta_ads", MetaAdsWorkbookAdapter),
 ]
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
 def _short_token() -> str:
@@ -242,7 +240,7 @@ def import_bundle(
                     "campaigns": result.campaigns,
                     "ad_groups": result.ad_groups,
                     "source_format": result.source_format,
-                    "imported_at": _now_iso(),
+                    "imported_at": server_now_iso(),
                     "source_file_sha256": src_sha,
                     "source_filename": src.name,
                 }
@@ -301,7 +299,7 @@ def import_bundle(
                         cleanup_exc,
                     )
 
-        manifest["imported_on"] = _now_iso()
+        manifest["imported_on"] = server_now_iso()
         write_manifest(manifest)
         return results
     finally:
@@ -313,6 +311,6 @@ def import_bundle(
 def _empty_manifest() -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
-        "imported_on": _now_iso(),
+        "imported_on": server_now_iso(),
         "platforms": {},
     }

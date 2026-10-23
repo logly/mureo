@@ -17,7 +17,7 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
     from http.server import BaseHTTPRequestHandler
     from pathlib import Path
 
@@ -222,6 +222,24 @@ def send_error_json(
         if key not in _FAILURE_BODY_KEYS:
             body[key] = value
     send_json(handler, body, status=status)
+
+
+def send_failure(
+    handler: BaseHTTPRequestHandler,
+    code: str,
+    caller_faults: Collection[str],
+    *,
+    field: str | None = None,
+) -> None:
+    """Send a refusal through :func:`send_error_json`.
+
+    A ``code`` in ``caller_faults`` (a refusal the caller can fix) is a 400;
+    any other code is a fault on our side, a 500. ``field`` names the input
+    the refusal is about and is sent only when given.
+    """
+    status = 400 if code in caller_faults else 500
+    extra = {"field": field} if field is not None else None
+    send_error_json(handler, status, code, extra=extra)
 
 
 def read_json_safe(path: Path) -> dict[str, Any]:

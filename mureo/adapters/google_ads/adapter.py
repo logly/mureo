@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Awaitable, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -84,10 +85,15 @@ logger = logging.getLogger(__name__)
 
 # Static digit-only check for GAQL ``campaign.id = X`` interpolation.
 # Re-derived locally (instead of importing the private gaql_validator)
-# so the adapter stays inside its import allowlist.
+# so the adapter stays inside its import allowlist. Same rule as the
+# validator: ASCII ``[0-9]`` (``str.isdigit`` also accepts ``²`` and
+# Arabic-Indic digits) capped at 20 digits (int64 fits).
+_CAMPAIGN_ID_RE = re.compile(r"[0-9]{1,20}")
+
+
 def _validate_campaign_id(value: str) -> str:
-    """Return ``value`` if it is a bare digit string, else raise ``ValueError``."""
-    if not isinstance(value, str) or not value or not value.isdigit():
+    """Return ``value`` if it is 1-20 ASCII digits, else raise ``ValueError``."""
+    if not isinstance(value, str) or not _CAMPAIGN_ID_RE.fullmatch(value):
         raise ValueError(
             f"invalid campaign_id: {value!r} (must be digits-only, GAQL safety)"
         )

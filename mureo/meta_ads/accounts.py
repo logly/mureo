@@ -33,6 +33,7 @@ import httpx
 
 from mureo.logging_setup import one_log_line, truncate_text
 from mureo.meta_ads._api_version import GRAPH_API_BASE
+from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL, format_graph_error
 
 logger = logging.getLogger(__name__)
 
@@ -182,29 +183,11 @@ class MetaTokenInspectUnavailable(MetaTokenInspectError):  # noqa: N818
     """
 
 
-#: Bounds on platform-authored text that reaches a raised message or a log
-#: record. Same numbers as ``mureo.auth``; both bound the text with
-#: :func:`mureo.logging_setup.truncate_text` / ``one_log_line`` — see
-#: :func:`_bounded`.
-_GRAPH_ERROR_MESSAGE_MAX_CHARS = 200
-_GRAPH_ERROR_CODE_MAX_CHARS = 32
-
 #: Cap on Graph's ``debug_token`` ``type`` before it is echoed to a caller.
 #: Graph documents a short enum (``USER``, ``PAGE``, ``APP``, …), but it is
 #: still platform-authored text crossing into a response body, and the UI
 #: that renders it has not been written yet.
 _TOKEN_TYPE_MAX_CHARS = 200
-
-
-def _bounded(value: str, limit: int) -> str:
-    """One log line, at most ``limit`` characters.
-
-    Reuses :func:`mureo.logging_setup.truncate_text` /
-    :func:`~mureo.logging_setup.one_log_line` rather than re-deriving them —
-    one definition of "what mureo does to text a platform wrote" (#605),
-    shared with ``mureo.auth``.
-    """
-    return truncate_text(one_log_line(value), limit)
 
 
 def _required_oauth_scopes() -> list[str]:
@@ -214,43 +197,6 @@ def _required_oauth_scopes() -> list[str]:
     scopes" that the interactive wizard in ``mureo.auth_setup`` requests too.
     """
     return [s.strip() for s in META_OAUTH_SCOPES.split(",") if s.strip()]
-
-
-def _format_graph_error(payload: Any, fallback: str) -> str:
-    """Render a Meta Graph API error body the way ``client._request`` does.
-
-    Prefers ``error.message`` and appends ``subcode=`` / ``fbtrace_id=``
-    when Graph supplies them so operators can quote them in a support
-    ticket. Falls back to ``fallback`` (typically the raw response text)
-    when the body is not the expected error envelope.
-
-    Every part is bounded and collapsed to one line first. This string ends
-    up in a raised message and, via
-    :func:`validate_meta_access_token`, in a ``logger.info`` record — and
-    ``error.message`` is text Meta chose, of unbounded length, that may
-    contain newlines. Unbounded it floods the log; with newlines it can
-    forge a second log record. Same treatment, same limits, as
-    ``mureo.auth._graph_error_detail`` (#605).
-    """
-
-    err = payload.get("error", {}) if isinstance(payload, dict) else {}
-    if not isinstance(err, dict):
-        return _bounded(fallback, _GRAPH_ERROR_MESSAGE_MAX_CHARS)
-    parts: list[str] = []
-    if err.get("message"):
-        parts.append(
-            _bounded(str(err["message"]), _GRAPH_ERROR_MESSAGE_MAX_CHARS),
-        )
-    for field_name, label in (
-        ("error_subcode", "subcode"),
-        ("fbtrace_id", "fbtrace_id"),
-    ):
-        value = err.get(field_name)
-        if value:
-            parts.append(f"{label}={_bounded(str(value), _GRAPH_ERROR_CODE_MAX_CHARS)}")
-    if parts:
-        return " | ".join(parts)
-    return _bounded(fallback, _GRAPH_ERROR_MESSAGE_MAX_CHARS)
 
 
 #: The ``debug_token`` fields mureo keeps. The response also carries
@@ -442,7 +388,9 @@ async def inspect_meta_access_token(
             except ValueError:
                 payload = {}
             if response.status_code != 200:
-                detail = _scrub(_format_graph_error(payload, response.text[:500]))
+                detail = _scrub(
+                    format_graph_error(payload, fallback=GRAPH_ERROR_NO_DETAIL)
+                )
                 raise MetaTokenInspectError(f"Meta token inspection failed: {detail}")
     except MetaTokenInspectError:
         raise
@@ -459,7 +407,9 @@ async def inspect_meta_access_token(
     token_type = data.get("type")
     info: dict[str, Any] = {
         "type": (
-            _bounded(str(token_type), _TOKEN_TYPE_MAX_CHARS) if token_type else None
+            truncate_text(one_log_line(str(token_type)), _TOKEN_TYPE_MAX_CHARS)
+            if token_type
+            else None
         ),
     }
     for field in _DEBUG_TOKEN_TIMESTAMP_FIELDS:
@@ -536,7 +486,8 @@ async def validate_meta_access_token(
                 payload = {}
             if response.status_code != 200:
                 detail = _redact(
-                    _format_graph_error(payload, response.text[:500]), access_token
+                    format_graph_error(payload, fallback=GRAPH_ERROR_NO_DETAIL),
+                    access_token,
                 )
                 raise MetaTokenInvalidError(f"Meta token validation failed: {detail}")
             for row in payload.get("data", []) or []:

@@ -31,10 +31,18 @@ identical bundle.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
-from mureo.demo.scenarios._base import Scenario, campaign_id
+from mureo.demo.scenarios._base import (
+    Scenario,
+    action_iso,
+    build_google_ad_groups_rows,
+    build_google_keywords_rows,
+    build_google_search_terms_rows,
+    campaign_id,
+    date_for_day,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -63,10 +71,6 @@ _META_PAUSE_END_DAY = 54  # inclusive — pause covers Day 50-54
 _BRAND_DIP_START_DAY = 53
 _BRAND_DIP_END_DAY = 57  # inclusive
 _BRAND_DIP_FACTOR = 0.60  # 40% drop
-
-
-def _date_for_day(d: int) -> date:
-    return _END_DATE - timedelta(days=_DAYS - 1 - d)
 
 
 # ---------------------------------------------------------------------------
@@ -101,8 +105,13 @@ _GADS_AD_GROUPS = (
 )
 
 
-def _brand_dip_factor(day: int) -> float:
-    """Return Brand-Exact's per-day demand multiplier."""
+def _brand_dip_factor(campaign_name: str, day: int) -> float:
+    """Return a campaign's per-day demand multiplier.
+
+    Only Brand - Exact dips; every other campaign stays at ``1.0``.
+    """
+    if campaign_name != "Brand - Exact":
+        return 1.0
     if _BRAND_DIP_START_DAY <= day <= _BRAND_DIP_END_DAY:
         return _BRAND_DIP_FACTOR
     return 1.0
@@ -350,77 +359,15 @@ def _build_google_campaigns_rows() -> list[list[object]]:
     ]
     for c in _GADS_CAMPAIGNS:
         for d in range(_DAYS):
-            day_iso = _date_for_day(d).isoformat()
+            day_iso = date_for_day(d, end_date=_END_DATE, days=_DAYS).isoformat()
             # Only Brand - Exact reflects the halo dip; Meta upstream
             # exposure is what carries demand into branded search.
-            factor = _brand_dip_factor(d) if c.name == "Brand - Exact" else 1.0
+            factor = _brand_dip_factor(c.name, d)
             impr = int(round(c.daily_impr * factor))
             clicks = int(round(impr * c.ctr))
             cost = round(clicks * c.cpc, 2)
             conv = round(clicks * c.cvr, 2)
             rows.append([day_iso, c.name, impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_ad_groups_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "day",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    by_camp = {c.name: c for c in _GADS_CAMPAIGNS}
-    for camp_name, ag_name, share in _GADS_AD_GROUPS:
-        c = by_camp[camp_name]
-        for d in range(_DAYS):
-            day_iso = _date_for_day(d).isoformat()
-            factor = _brand_dip_factor(d) if camp_name == "Brand - Exact" else 1.0
-            impr = int(round(c.daily_impr * share * factor))
-            clicks = int(round(impr * c.ctr))
-            cost = round(clicks * c.cpc, 2)
-            conv = round(clicks * c.cvr, 2)
-            rows.append([day_iso, camp_name, ag_name, impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_search_terms_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "search_term",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    for term, camp, ag, impr, clicks, cost, conv in _GADS_SEARCH_TERMS:
-        rows.append([term, camp, ag, impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_keywords_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "keyword",
-            "match_type",
-            "quality_score",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    for kw, mt, qs, camp, ag, impr, clicks, cost, conv in _GADS_KEYWORDS:
-        rows.append([kw, mt, qs, camp, ag, impr, clicks, cost, conv])
     return rows
 
 
@@ -504,7 +451,7 @@ def _build_meta_ads_rows() -> list[list[object]]:
         ]
     ]
     for d in range(_DAYS):
-        date_iso = _date_for_day(d).isoformat()
+        date_iso = date_for_day(d, end_date=_END_DATE, days=_DAYS).isoformat()
         for ad in _META_ADS:
             if _meta_is_paused(ad, d):
                 continue  # paused day — omit row entirely
@@ -606,17 +553,9 @@ _META_ADS_STATE_CAMPAIGNS = (
 )
 
 
-def _action_iso(day: int, hour: int = 10, minute: int = 0) -> str:
-    d = _date_for_day(day)
-    dt = datetime(
-        d.year, d.month, d.day, hour, minute, tzinfo=timezone(timedelta(hours=9))
-    )
-    return dt.isoformat(timespec="seconds")
-
-
 _ACTION_LOG = (
     {
-        "timestamp": _action_iso(10, 9, 0),
+        "timestamp": action_iso(10, 9, 0, end_date=_END_DATE, days=_DAYS),
         "action": "Increased Awareness - Storm Damage budget by +25%",
         "platform": "meta_ads",
         "campaign_id": campaign_id("Awareness - Storm Damage"),
@@ -628,10 +567,10 @@ _ACTION_LOG = (
             "meta_awareness_results_per_day": 22,
             "google_brand_calls_per_day": 17.5,
         },
-        "observation_due": _date_for_day(24).isoformat(),
+        "observation_due": date_for_day(24, end_date=_END_DATE, days=_DAYS).isoformat(),
     },
     {
-        "timestamp": _action_iso(35, 14, 0),
+        "timestamp": action_iso(35, 14, 0, end_date=_END_DATE, days=_DAYS),
         "action": "Paused 2 underperforming creative variants on Conversion - Free Inspection",
         "platform": "meta_ads",
         "campaign_id": campaign_id("Conversion - Free Inspection"),
@@ -643,10 +582,12 @@ _ACTION_LOG = (
             "meta_conversion_results_per_day": 43,
             "google_brand_calls_per_day": 17.5,
         },
-        "observation_due": _date_for_day(49).isoformat(),
+        "observation_due": date_for_day(49, end_date=_END_DATE, days=_DAYS).isoformat(),
     },
     {
-        "timestamp": _action_iso(_META_PAUSE_START_DAY, 11, 0),
+        "timestamp": action_iso(
+            _META_PAUSE_START_DAY, 11, 0, end_date=_END_DATE, days=_DAYS
+        ),
         "action": "Paused Retargeting - Site Visitors for 5-day controlled test",
         "platform": "meta_ads",
         "campaign_id": campaign_id("Retargeting - Site Visitors"),
@@ -661,7 +602,9 @@ _ACTION_LOG = (
             "meta_retargeting_results_per_day": 40,
             "google_brand_calls_per_day": 17.5,
         },
-        "observation_due": _date_for_day(_META_PAUSE_END_DAY + 9).isoformat(),
+        "observation_due": date_for_day(
+            _META_PAUSE_END_DAY + 9, end_date=_END_DATE, days=_DAYS
+        ).isoformat(),
     },
 )
 
@@ -731,9 +674,15 @@ _STRATEGY_MD = """# STRATEGY — SkyRoof (demo: Halo Effect)
 
 _SHEET_ROWS: Mapping[str, Sequence[Sequence[object]]] = {
     "campaigns": _build_google_campaigns_rows(),
-    "ad_groups": _build_google_ad_groups_rows(),
-    "search_terms": _build_google_search_terms_rows(),
-    "keywords": _build_google_keywords_rows(),
+    "ad_groups": build_google_ad_groups_rows(
+        _GADS_CAMPAIGNS,
+        _GADS_AD_GROUPS,
+        end_date=_END_DATE,
+        days=_DAYS,
+        impr_factor=_brand_dip_factor,
+    ),
+    "search_terms": build_google_search_terms_rows(_GADS_SEARCH_TERMS),
+    "keywords": build_google_keywords_rows(_GADS_KEYWORDS),
     "meta_ads": _build_meta_ads_rows(),
 }
 

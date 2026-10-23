@@ -24,10 +24,8 @@ participate in the same handler-call audit path as other analysis tools.
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
-from enum import Enum
 from typing import Any
 
 from mcp.types import TextContent, Tool
@@ -47,7 +45,12 @@ from mureo.core.platform_keys import (
     plugin_platform_key_matches,
     plugin_platform_parts,
 )
-from mureo.mcp._helpers import _failure_result, _require, exception_text
+from mureo.mcp._helpers import (
+    _failure_result,
+    _require,
+    exception_text,
+    jsonable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -186,28 +189,6 @@ async def _handle_modules_list(
         )
 
     return [TextContent(type="text", text=json.dumps({"modules": payload}))]
-
-
-def _jsonable(value: Any) -> Any:
-    """Recursively convert an analytics result model into JSON-native data.
-
-    Frozen dataclasses become dicts, enums become their ``.value``, and
-    tuples become lists — so the mixed ``tuple[dataclass, ...]`` /
-    nested-tuple shapes the models use serialize deterministically without
-    leaking ``repr`` artifacts.
-    """
-    if isinstance(value, Enum):
-        return value.value
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: _jsonable(getattr(value, field.name))
-            for field in dataclasses.fields(value)
-        }
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _jsonable(item) for key, item in value.items()}
-    return value
 
 
 async def _invoke_capability(
@@ -416,7 +397,7 @@ async def _handle_analytics_run(arguments: dict[str, Any]) -> list[TextContent]:
                 "capability": capability.value,
                 "account_id": account_id,
                 "source_distribution": plugin_source(module),
-                "result": _jsonable(result),
+                "result": jsonable(result),
             }
         )
     except STOP_EXCEPTIONS:

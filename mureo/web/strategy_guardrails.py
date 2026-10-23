@@ -42,7 +42,7 @@ from mureo.context.strategy import (
     read_strategy_file,
 )
 from mureo.fsutil import backup_file
-from mureo.web._helpers import send_error_json, send_json
+from mureo.web._helpers import send_failure, send_json
 from mureo.web.guardrail_values import (
     StrategyGuardrailsError,
     content_with_bullets,
@@ -273,14 +273,6 @@ def _envelope(client: str | None, path: Path, state: dict[str, Any]) -> dict[str
     return {"status": "ok", "client": client, "path": str(path), **state}
 
 
-def _send_failure(
-    handler: BaseHTTPRequestHandler, error: StrategyGuardrailsError
-) -> None:
-    status = 400 if error.code in _CALLER_FAULTS else 500
-    extra = {"field": error.field} if error.field is not None else None
-    send_error_json(handler, status, error.code, extra=extra)
-
-
 def _resolve_path(client: str | None) -> Path:
     try:
         return strategy_path_for_client(client)
@@ -299,7 +291,7 @@ def serve_strategy_guardrails(handler: BaseHTTPRequestHandler) -> None:
         path = _resolve_path(client)
         state = read_guardrails(path, lang=_request_lang(handler))
     except StrategyGuardrailsError as exc:
-        _send_failure(handler, exc)
+        send_failure(handler, exc.code, _CALLER_FAULTS, field=exc.field)
         return
     send_json(handler, _envelope(client, path, state))
 
@@ -318,6 +310,6 @@ def post_strategy_guardrails(
         path = _resolve_path(client)
         state = write_guardrails(path, changes, lang=_request_lang(handler))
     except StrategyGuardrailsError as exc:
-        _send_failure(handler, exc)
+        send_failure(handler, exc.code, _CALLER_FAULTS, field=exc.field)
         return
     send_json(handler, _envelope(client, path, state))

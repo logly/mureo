@@ -30,7 +30,14 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from mureo.demo.scenarios._base import Scenario, campaign_id
+from mureo.demo.scenarios._base import (
+    Scenario,
+    action_iso,
+    build_google_keywords_rows,
+    build_google_search_terms_rows,
+    campaign_id,
+    date_for_day,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -72,10 +79,6 @@ def _days_iso() -> list[str]:
     return [
         (_END_DATE - timedelta(days=_DAYS - 1 - i)).isoformat() for i in range(_DAYS)
     ]
-
-
-def _date_for_day(d: int) -> date:
-    return _END_DATE - timedelta(days=_DAYS - 1 - d)
 
 
 # ---------------------------------------------------------------------------
@@ -349,42 +352,6 @@ def _build_google_ad_groups_rows() -> list[list[object]]:
     return rows
 
 
-def _build_google_search_terms_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "search_term",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    for term, camp, ag, impr, clicks, cost, conv in _GADS_SEARCH_TERMS:
-        rows.append([term, camp, ag, impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_keywords_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "keyword",
-            "match_type",
-            "quality_score",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    for kw, mt, qs, camp, ag, impr, clicks, cost, conv in _GADS_KEYWORDS:
-        rows.append([kw, mt, qs, camp, ag, impr, clicks, cost, conv])
-    return rows
-
-
 # ---------------------------------------------------------------------------
 # Meta Ads — phased: pixel break + 3 escalating actions
 # ---------------------------------------------------------------------------
@@ -529,7 +496,7 @@ def _build_meta_ads_rows() -> list[list[object]]:
     for d in range(_DAYS):
         phase = _phase_for_day(d)
         pf = _pixel_factor(d)
-        date_iso = _date_for_day(d).isoformat()
+        date_iso = date_for_day(d, end_date=_END_DATE, days=_DAYS).isoformat()
         for ad in _META_ADS:
             spend = ad.spend[phase]
             if spend == 0:
@@ -632,15 +599,6 @@ _META_ADS_STATE_CAMPAIGNS = (
 )
 
 
-def _action_iso(day: int, hour: int = 10, minute: int = 0) -> str:
-    """Build a ``YYYY-MM-DDTHH:MM:SS+09:00`` timestamp for ``day``."""
-    d = _date_for_day(day)
-    dt = datetime(
-        d.year, d.month, d.day, hour, minute, tzinfo=timezone(timedelta(hours=9))
-    )
-    return dt.isoformat(timespec="seconds")
-
-
 # Derive each action's metrics from the same row arithmetic the
 # bundle uses. ``end_day_inclusive`` is the day BEFORE the action so
 # the snapshot reflects what the manager was looking at when they
@@ -652,7 +610,9 @@ _a3_meta_cpa, _a3_meta_rpd = _meta_metrics_window(_ACTION_PAUSE_LEAD_FORM_DAY - 
 
 _ACTION_LOG = (
     {
-        "timestamp": _action_iso(_ACTION_BUDGET_BUMP_DAY, 10, 0),
+        "timestamp": action_iso(
+            _ACTION_BUDGET_BUMP_DAY, 10, 0, end_date=_END_DATE, days=_DAYS
+        ),
         "action": (
             "Increased Meta total budget by +40% across all Awareness "
             "and Conversion ads"
@@ -668,10 +628,14 @@ _ACTION_LOG = (
             "meta_results_per_day": _a1_meta_rpd,
             "google_cpa": _GOOGLE_CPA_BASELINE,
         },
-        "observation_due": _date_for_day(_ACTION_BUDGET_BUMP_DAY + 9).isoformat(),
+        "observation_due": date_for_day(
+            _ACTION_BUDGET_BUMP_DAY + 9, end_date=_END_DATE, days=_DAYS
+        ).isoformat(),
     },
     {
-        "timestamp": _action_iso(_ACTION_PAUSE_AWARENESS_DAY, 14, 30),
+        "timestamp": action_iso(
+            _ACTION_PAUSE_AWARENESS_DAY, 14, 30, end_date=_END_DATE, days=_DAYS
+        ),
         "action": "Paused Awareness - Carousel campaign",
         "platform": "meta_ads",
         "campaign_id": campaign_id("Awareness - Carousel"),
@@ -685,10 +649,14 @@ _ACTION_LOG = (
             "meta_results_per_day": _a2_meta_rpd,
             "google_cpa": _GOOGLE_CPA_BASELINE,
         },
-        "observation_due": _date_for_day(_ACTION_PAUSE_AWARENESS_DAY + 14).isoformat(),
+        "observation_due": date_for_day(
+            _ACTION_PAUSE_AWARENESS_DAY + 14, end_date=_END_DATE, days=_DAYS
+        ).isoformat(),
     },
     {
-        "timestamp": _action_iso(_ACTION_PAUSE_LEAD_FORM_DAY, 11, 0),
+        "timestamp": action_iso(
+            _ACTION_PAUSE_LEAD_FORM_DAY, 11, 0, end_date=_END_DATE, days=_DAYS
+        ),
         "action": "Paused Lead Form - Waitlist campaign",
         "platform": "meta_ads",
         "campaign_id": campaign_id("Lead Form - Waitlist"),
@@ -702,7 +670,9 @@ _ACTION_LOG = (
             "meta_results_per_day": _a3_meta_rpd,
             "google_cpa": _GOOGLE_CPA_BASELINE,
         },
-        "observation_due": _date_for_day(_ACTION_PAUSE_LEAD_FORM_DAY + 14).isoformat(),
+        "observation_due": date_for_day(
+            _ACTION_PAUSE_LEAD_FORM_DAY + 14, end_date=_END_DATE, days=_DAYS
+        ).isoformat(),
     },
 )
 
@@ -778,8 +748,8 @@ _STRATEGY_MD = """# STRATEGY — FlavorBox (demo: Seasonality Trap)
 _SHEET_ROWS: Mapping[str, Sequence[Sequence[object]]] = {
     "campaigns": _build_google_campaigns_rows(),
     "ad_groups": _build_google_ad_groups_rows(),
-    "search_terms": _build_google_search_terms_rows(),
-    "keywords": _build_google_keywords_rows(),
+    "search_terms": build_google_search_terms_rows(_GADS_SEARCH_TERMS),
+    "keywords": build_google_keywords_rows(_GADS_KEYWORDS),
     "meta_ads": _build_meta_ads_rows(),
 }
 

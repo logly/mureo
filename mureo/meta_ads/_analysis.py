@@ -9,20 +9,16 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from mureo.context.state import load_conversion_action_types
-from mureo.meta_ads._conversion_count import count_conversions_from_actions
+from mureo.meta_ads._conversion_count import (
+    _safe_float,
+    count_conversions_from_actions,
+)
 from mureo.meta_ads._period import previous_period as _previous_period
 
 if TYPE_CHECKING:
     from collections.abc import Collection
 
 logger = logging.getLogger(__name__)
-
-
-def _safe_float(v: Any) -> float:
-    try:
-        return float(v or 0)
-    except (ValueError, TypeError):
-        return 0.0
 
 
 def _extract_cv(

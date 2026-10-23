@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Awaitable
 from datetime import date
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -108,13 +109,19 @@ _CAMPAIGN_STATUS_TO_WIRE: dict[CampaignStatus, str] = {
 }
 
 
+# ASCII ``[0-9]`` (``str.isdigit`` also accepts ``²`` and Arabic-Indic
+# digits) capped at 20 digits — the same rule as the GAQL validator,
+# re-derived here so the adapter stays inside its import allowlist.
+_CAMPAIGN_ID_RE = re.compile(r"[0-9]{1,20}")
+
+
 def _validate_campaign_id(value: str) -> str:
-    """Return ``value`` if it is a bare digit string, else raise ``ValueError``.
+    """Return ``value`` if it is 1-20 ASCII digits, else raise ``ValueError``.
 
     Meta node IDs are integers under the hood; the digits-only check
     blocks query-parameter injection (mirror of P1-09's GAQL safety).
     """
-    if not isinstance(value, str) or not value or not value.isdigit():
+    if not isinstance(value, str) or not _CAMPAIGN_ID_RE.fullmatch(value):
         raise ValueError(
             f"invalid campaign_id: {value!r} (must be digits-only for the "
             "Meta insights endpoint)"

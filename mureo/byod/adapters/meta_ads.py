@@ -540,7 +540,7 @@ def _detect_meta_sheet(workbook: Workbook) -> str | None:
 
 
 @dataclass
-class MetaAdsAdapter:
+class MetaAdsWorkbookAdapter:
     """Workbook-aware Meta Ads BYOD adapter."""
 
     @classmethod

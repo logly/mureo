@@ -707,6 +707,32 @@ def test_daily_report_rejects_non_digit_campaign_id(
     assert mock_client.search_gaql.await_count == 0
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "campaign_id",
+    ["²", "١٢٣", "1" * 21, ""],
+    ids=["superscript-two", "arabic-indic", "21-digits", "empty"],
+)
+def test_daily_report_rejects_non_ascii_or_overlong_campaign_id(
+    adapter: GoogleAdsAdapter, mock_client: Mock, campaign_id: str
+) -> None:
+    """``str.isdigit`` accepts Unicode digits of any length; the guard
+    is 1-20 ASCII digits, the same rule as the GAQL validator (#866)."""
+    mock_client.search_gaql.return_value = []
+    with pytest.raises(ValueError, match="invalid campaign_id"):
+        adapter.daily_report(campaign_id, date(2024, 1, 1), date(2024, 1, 2))
+    assert mock_client.search_gaql.await_count == 0
+
+
+@pytest.mark.unit
+def test_daily_report_accepts_ten_digit_campaign_id(
+    adapter: GoogleAdsAdapter, mock_client: Mock
+) -> None:
+    mock_client.search_gaql.return_value = []
+    adapter.daily_report("1234567890", date(2024, 1, 1), date(2024, 1, 2))
+    assert mock_client.search_gaql.await_count == 1
+
+
 # ---------------------------------------------------------------------------
 # Case 5 — KeywordProvider methods
 # ---------------------------------------------------------------------------

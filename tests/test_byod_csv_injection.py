@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from mureo.byod.adapters.google_ads import GoogleAdsAdapter
-from mureo.byod.adapters.meta_ads import MetaAdsAdapter
+from mureo.byod.adapters.google_ads import GoogleAdsWorkbookAdapter
+from mureo.byod.adapters.meta_ads import MetaAdsWorkbookAdapter
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -84,7 +84,7 @@ class TestGoogleAdsCsvInjection:
             ],
         }
         dst = tmp_path / "google_ads"
-        GoogleAdsAdapter().normalize_from_workbook(_make_workbook(tabs), dst)
+        GoogleAdsWorkbookAdapter().normalize_from_workbook(_make_workbook(tabs), dst)
 
         camp = _read_rows(dst / "campaigns.csv")
         assert len(camp) == 1
@@ -116,7 +116,7 @@ class TestGoogleAdsCsvInjection:
             ],
         }
         dst = tmp_path / "google_ads"
-        GoogleAdsAdapter().normalize_from_workbook(_make_workbook(tabs), dst)
+        GoogleAdsWorkbookAdapter().normalize_from_workbook(_make_workbook(tabs), dst)
         camp = _read_rows(dst / "campaigns.csv")
         assert camp[0]["name"] == "Brand Search"
 
@@ -134,7 +134,7 @@ class TestGoogleAdsCsvInjection:
             ],
         }
         dst = tmp_path / "google_ads"
-        GoogleAdsAdapter().normalize_from_workbook(_make_workbook(tabs), dst)
+        GoogleAdsWorkbookAdapter().normalize_from_workbook(_make_workbook(tabs), dst)
         kw = _read_rows(dst / "keywords.csv")
         assert kw[0]["clicks"] == "5"
         assert kw[0]["cost"] == "12.5"
@@ -169,7 +169,7 @@ class TestMetaAdsResultIndicatorSanitized:
             ],
         }
         dst = tmp_path / "meta_ads"
-        MetaAdsAdapter().normalize_from_workbook(_make_workbook(tabs), dst)
+        MetaAdsWorkbookAdapter().normalize_from_workbook(_make_workbook(tabs), dst)
         rows = _read_rows(dst / "metrics_daily.csv")
         assert len(rows) == 1
         _assert_defanged(rows[0]["result_indicator"])

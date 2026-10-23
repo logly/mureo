@@ -17,8 +17,6 @@ caller-supplied path), and the delivery rows come in as arguments.
 
 from __future__ import annotations
 
-import dataclasses
-import enum
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -45,6 +43,7 @@ from mureo.mcp._helpers import (
     _opt,
     _require,
     exception_text,
+    jsonable,
 )
 
 if TYPE_CHECKING:
@@ -53,22 +52,6 @@ if TYPE_CHECKING:
     from mcp.types import TextContent
 
     from mureo.analysis.delivery_collapse import DeliverySeries
-
-
-def _jsonable(value: Any) -> Any:
-    """Frozen dataclasses -> dicts, enums -> values, tuples -> lists."""
-    if isinstance(value, enum.Enum):
-        return value.value
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: _jsonable(getattr(value, field.name))
-            for field in dataclasses.fields(value)
-        }
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _jsonable(item) for key, item in value.items()}
-    return value
 
 
 def _coerce_int(value: Any, field: str) -> int:
@@ -136,7 +119,7 @@ async def handle_delivery_collapse_check(
             "platform": arguments.get("platform"),
             "evaluated_campaigns": len(series),
             "baseline_source": BASELINE_SOURCE,
-            "thresholds": _jsonable(thresholds),
+            "thresholds": jsonable(thresholds),
             "thresholds_source": source,
             # The one state the detector has no opinion on: when every
             # campaign stops reporting at once, a total outage and a
@@ -147,7 +130,7 @@ async def handle_delivery_collapse_check(
             "unreported_days": (
                 max(0, (evaluated_through - reported).days - 1) if reported else 0
             ),
-            "signals": _jsonable(signals),
+            "signals": jsonable(signals),
         }
     )
 
@@ -253,9 +236,9 @@ async def handle_delivery_collapse_diagnose(
     except ValueError as exc:
         return _failure_result("invalid_arguments", exception_text(exc))
 
-    payload = _jsonable(diagnosis)
+    payload = jsonable(diagnosis)
     payload["status"] = "ok"
-    payload["signal"] = _jsonable(signal)
+    payload["signal"] = jsonable(signal)
     return _json_result(payload)
 
 
