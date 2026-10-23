@@ -325,6 +325,24 @@ _DECISION_FIELD_VALUES: dict[str, Any] = {
     ),
 }
 
+#: A stored decision record the model refuses (an unknown ``status``), kept
+#: OPAQUE with this dict as its ``raw`` (#882). ``raw`` cannot sit beside the
+#: other distinctive values on one record — a record with ``raw`` is never
+#: read — so it is covered by a second record carried in ``decisions``.
+_OPAQUE_DECISION_RAW: dict[str, Any] = {
+    "decision_id": "dec-opaque-hand-written",
+    "status": "maybe-later",
+    "raw_marker": "decision-raw",
+}
+_OPAQUE_DECISION = DecisionRecord(
+    decision_id="dec-opaque-hand-written",
+    recorded_at="",
+    status="",
+    title="",
+    rationale="",
+    raw=_OPAQUE_DECISION_RAW,
+)
+
 #: One distinctive value per :class:`WorkspaceSettings` field (#848).
 _SETTINGS_FIELD_VALUES: dict[str, Any] = {"ops_history_enabled": True}
 
@@ -395,8 +413,17 @@ _DOCUMENT_FIELD_VALUES: dict[str, Any] = {
     },
     "batches": (BatchRecord(**_BATCH_FIELD_VALUES),),
     "display": DisplayContract(**_DISPLAY_FIELD_VALUES),
-    "decisions": (DecisionRecord(**_DECISION_FIELD_VALUES),),
+    "decisions": (DecisionRecord(**_DECISION_FIELD_VALUES), _OPAQUE_DECISION),
     "settings": WorkspaceSettings(**_SETTINGS_FIELD_VALUES),
+    # #882: a platform value the model cannot hold — the whole ``platforms``
+    # object is kept, as written. The one ``raw`` shape that survives beside
+    # a populated ``platforms``.
+    "raw": {
+        "platforms": {
+            _PLATFORM: platform_state_to_dict(PlatformState(**_PLATFORM_FIELD_VALUES)),
+            "kept-platform": "a hand-written note",
+        }
+    },
 }
 
 #: Every model the STATE.json codec maps, with the map that must cover it.
@@ -415,7 +442,7 @@ _CODEC_MODELS: tuple[tuple[type, dict[str, Any]], ...] = (
     (DisplayBreakdown, _DISPLAY_BREAKDOWN_FIELD_VALUES),
     (DisplayBreakdownRow, _DISPLAY_BREAKDOWN_ROW_FIELD_VALUES),
     (DisplayStatedValue, _DISPLAY_STATED_VALUE_FIELD_VALUES),
-    (DecisionRecord, _DECISION_FIELD_VALUES),
+    (DecisionRecord, {**_DECISION_FIELD_VALUES, "raw": _OPAQUE_DECISION_RAW}),
     (WorkspaceSettings, _SETTINGS_FIELD_VALUES),
 )
 

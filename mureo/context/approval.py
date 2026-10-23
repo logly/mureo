@@ -18,15 +18,12 @@ only leaf modules.
 
 from __future__ import annotations
 
-import logging
 import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Final
 
 from mureo.context.iso_time import iso_date
-
-logger = logging.getLogger(__name__)
 
 #: Longest ``reference``. Ticket and request ids are far shorter; the bound
 #: is what STATE.json and one dashboard line can carry.
@@ -172,24 +169,6 @@ def parse_approval(value: Any) -> ApprovalRef | None:
     )
 
 
-def tolerant_approval(value: Any, *, strict: bool) -> ApprovalRef | None:
-    """:func:`parse_approval` for a stored value, by the codec's two modes.
-
-    ``strict=True`` (the writer contract) raises exactly as
-    :func:`parse_approval` does. ``strict=False`` (the read-only view)
-    drops a malformed value and keeps the record it is on: the approval is
-    an annotation on the history, not the history itself. Logged at DEBUG
-    without the value, which is free text an operator typed.
-    """
-    if strict:
-        return parse_approval(value)
-    try:
-        return parse_approval(value)
-    except ValueError:
-        logger.debug("dropping a malformed stored approval; the record is kept")
-        return None
-
-
 def approval_to_dict(ref: ApprovalRef) -> dict[str, str]:
     """Serialise an approval: the three keys, as stored."""
     return {
@@ -207,5 +186,4 @@ __all__ = [
     "ApprovalRef",
     "approval_to_dict",
     "parse_approval",
-    "tolerant_approval",
 ]

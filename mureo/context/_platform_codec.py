@@ -50,10 +50,11 @@ A campaign's or platform's ``raw`` holds only what that re-emission reads
 
 A value with no enclosing entry — a top-level ``campaigns`` that is not a
 list of objects, a ``platforms`` value or a platform value that is not an
-object, a top-level value that is not an object — is refused by
-:func:`mureo.context.state_codec.parse_state` with a ``ValueError`` naming
-the section (in both modes, except the top-level ``campaigns``, which the
-read-only view reads tolerantly). Keeping those verbatim is #882.
+object — is kept on the document itself
+(:attr:`~mureo.context.models.StateDocument.raw`, #882) by
+:func:`mureo.context.state_codec.parse_state` and written back verbatim
+until a writer fills that section. Only a top-level value that is not an
+object is still refused, with a ``ValueError``.
 
 Dependency-free beyond stdlib and :mod:`mureo.context.models` /
 :mod:`mureo.context._preserve` — the discipline ``state_codec`` keeps.

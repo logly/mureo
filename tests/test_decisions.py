@@ -479,20 +479,24 @@ class TestDecisionCodec:
             "rationale",
         }
 
-    def test_strict_parse_raises_on_a_malformed_record(self) -> None:
-        with pytest.raises(ValueError):
-            parse_decisions([{"decision_id": "dec-1"}], strict=True)
-
-    def test_tolerant_parse_skips_a_malformed_record(
-        self, caplog: pytest.LogCaptureFixture
+    @pytest.mark.parametrize("strict", [True, False])
+    def test_a_malformed_record_is_kept_opaque_in_both_modes(
+        self, strict: bool
     ) -> None:
-        raw = [decision_to_dict(_record()), {"decision_id": "dec-broken"}]
-        with caplog.at_level(logging.DEBUG, logger="mureo.context._decision_codec"):
-            parsed = parse_decisions(raw, strict=False)
-        assert [d.decision_id for d in parsed] == ["dec-20260919T101233-1f4c9a02"]
-        assert "dec-broken" in caplog.text
+        """#882: a refused record no longer blocks the writer or vanishes
+        from the view — both modes keep it in place, opaque."""
+        broken = {"decision_id": "dec-broken"}
+        raw = [decision_to_dict(_record()), broken]
+        parsed = parse_decisions(raw, strict=strict)
+        assert [d.decision_id for d in parsed] == [
+            "dec-20260919T101233-1f4c9a02",
+            "dec-broken",
+        ]
+        assert parsed[0].raw is None
+        assert parsed[1].raw == broken
+        assert decision_to_dict(parsed[1]) == broken
 
-    def test_the_skip_log_names_the_id_and_not_the_record(
+    def test_the_opaque_log_names_the_error_type_and_not_the_record(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """The record is free text an agent wrote. Logging it whole would
@@ -501,8 +505,9 @@ class TestDecisionCodec:
         a second file under different rules."""
         raw = [{"decision_id": "dec-broken", "rationale": "api_key=sk-live-SECRET"}]
         with caplog.at_level(logging.DEBUG, logger="mureo.context._decision_codec"):
-            assert parse_decisions(raw, strict=False) == ()
-        assert "dec-broken" in caplog.text
+            (opaque,) = parse_decisions(raw, strict=False)
+        assert opaque.raw == raw[0]
+        assert "ValueError" in caplog.text
         assert "sk-live-SECRET" not in caplog.text
 
     def test_a_record_with_no_usable_id_still_logs_something(
@@ -513,16 +518,25 @@ class TestDecisionCodec:
         assert "skipping" in caplog.text
         assert "not an object" not in caplog.text
 
-    @pytest.mark.parametrize("raw", [None, "nope", 7])
-    def test_a_non_list_section_reads_as_empty_when_tolerant(self, raw: object) -> None:
-        assert parse_decisions(raw, strict=False) == ()
+    def test_a_non_object_record_raises_when_strict(self) -> None:
+        with pytest.raises(ValueError, match="must be an object"):
+            parse_decisions(["not an object"], strict=True)
 
-    def test_a_non_list_section_raises_when_strict(self) -> None:
-        with pytest.raises(ValueError, match="decisions"):
-            parse_decisions("nope", strict=True)
+    @pytest.mark.parametrize("strict", [True, False])
+    @pytest.mark.parametrize("raw", ["nope", 7, {"a": 1}])
+    def test_a_non_list_section_is_kept_on_the_document(
+        self, raw: object, strict: bool
+    ) -> None:
+        """#882: kept whole on ``StateDocument.raw`` in both modes."""
+        doc = parse_state(json.dumps({"decisions": raw}), strict=strict)
+        assert doc.decisions == ()
+        assert doc.raw == {"decisions": raw}
 
-    def test_missing_section_is_empty_in_strict_mode_too(self) -> None:
-        assert parse_decisions(None, strict=True) == ()
+    @pytest.mark.parametrize("strict", [True, False])
+    def test_missing_section_is_empty_in_both_modes(self, strict: bool) -> None:
+        doc = parse_state(json.dumps({"decisions": None}), strict=strict)
+        assert doc.decisions == ()
+        assert doc.raw is None
 
     def test_state_get_shape_carries_the_section(self, tmp_path: Path) -> None:
         path = tmp_path / "STATE.json"

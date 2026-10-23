@@ -459,16 +459,22 @@ class TestStateFileErrorHandling:
         assert doc.reports == {"daily": {"verdict": "Healthy"}}
 
     @pytest.mark.unit
-    def test_parse_state_strict_true_is_default_and_still_raises(self) -> None:
-        """The default (strict) path still refuses a top-level ``campaigns``
-        that is not a list of objects — it has no enclosing entry to be kept
-        in (#881) — and names the section, not the content."""
+    def test_parse_state_keeps_a_top_level_campaigns_it_cannot_hold(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A top-level ``campaigns`` that is not a list of objects has no
+        enclosing entry to be kept in, so both modes keep it on the document
+        (#882) and the writers write it back as found — logging the section,
+        not the content. The read-only view still reads the object entry."""
         data = {"campaigns": [{"id": "x", "name": "variant"}, "secret-ish note"]}
-        with pytest.raises(ValueError, match="top-level 'campaigns'") as excinfo:
-            parse_state(json.dumps(data))
-        assert "secret-ish" not in str(excinfo.value)
-        tolerant = parse_state(json.dumps(data), strict=False)
-        assert [c.campaign_id for c in tolerant.campaigns] == [""]
+        with caplog.at_level("DEBUG"):
+            doc = parse_state(json.dumps(data))
+            tolerant = parse_state(json.dumps(data), strict=False)
+        assert doc.campaigns == ()
+        assert doc.raw == tolerant.raw == {"campaigns": data["campaigns"]}
+        assert json.loads(render_state(doc))["campaigns"] == data["campaigns"]
+        assert "secret-ish" not in caplog.text
+        assert len(tolerant.campaigns) == 1
 
     @pytest.mark.unit
     def test_parse_state_strict_false_tolerates_missing_account_id(self) -> None:

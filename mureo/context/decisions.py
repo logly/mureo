@@ -37,6 +37,7 @@ import secrets
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.context._preserve import copied_raw, is_opaque_decision, refuse_if_kept
 from mureo.context.approval import parse_approval
 from mureo.context.batch import ID_ENTROPY_BYTES, BatchError, find_batch
 from mureo.context.expected import ExpectedEffect, parse_expected
@@ -44,6 +45,7 @@ from mureo.core import actor
 from mureo.core.scrub import scrub_text
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from mureo.context.approval import ApprovalRef
@@ -178,6 +180,19 @@ class DecisionRecord:
         shown, never verified. The newest record's wins, like
         ``applied_params``. ``None`` on every record written before it
         existed, which therefore gains no key on the next write.
+    raw: The on-disk dict of a stored record the codec cannot re-emit from
+        its fields alone (#882), in one of two cases. A record the model
+        REFUSED — a hand-authored one missing a required key or failing a
+        bound — is kept OPAQUE, in place: none of its fields is validated
+        or read except ``decision_id`` (when it is a non-blank string the
+        model would not strip; ``""`` otherwise), every other field holds
+        its empty default (``status`` included, which is how an opaque
+        record is told apart), and the codec writes ``raw`` back verbatim.
+        Readers never match it (:func:`parsed_decisions`). A record the
+        model TAKES that carries keys the codec does not know keeps ``raw``
+        too and is validated and read like any other; the codec re-emits
+        its unknown keys, the ``action_log`` rule (#859). ``None`` on every
+        record mureo constructs.
 
     Every bound below is enforced on the WRITE path and **refused, never
     truncated** (the #706 rule): the caller still holds the sentence and can
@@ -205,9 +220,21 @@ class DecisionRecord:
     journal_call_id: str | None = None
     journal_tool: str | None = None
     approval: ApprovalRef | None = None
+    # Appended after every pre-#882 field, same positional-compatibility rule
+    # as ``ActionLogEntry``.
+    raw: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        """Validate every bound and take a defensive copy of ``metrics``."""
+        """Validate every bound and take a defensive copy of ``metrics``.
+
+        An opaque record (#882, see
+        :func:`mureo.context._preserve.is_opaque_decision`) is validated not
+        at all: the model already refused it, and it is kept only to be
+        written back.
+        """
+        object.__setattr__(self, "raw", copied_raw(self.raw))
+        if is_opaque_decision(self):
+            return
         object.__setattr__(self, "approval", parse_approval(self.approval))
         self._validate_required_text()
         self._validate_optional_text()
@@ -234,8 +261,7 @@ class DecisionRecord:
             object.__setattr__(self, name, value.strip())
         if self.status not in DECISION_STATUSES:
             raise ValueError(
-                f"status must be one of {list(DECISION_STATUSES)}; "
-                f"got {self.status!r}"
+                f"status must be one of {list(DECISION_STATUSES)}; got {self.status!r}"
             )
         _bounded(self, "title", DECISION_TITLE_MAX_CHARS)
         _bounded(self, "rationale", DECISION_RATIONALE_MAX_CHARS)
@@ -381,12 +407,33 @@ def _optional_label(record: DecisionRecord, name: str) -> None:
     object.__setattr__(record, name, value.strip())
 
 
+def parsed_decisions(doc: StateDocument) -> tuple[DecisionRecord, ...]:
+    """The records the model took, in write order — opaque ones left out.
+
+    An opaque record (#882) is a hand-authored one the model refused, see
+    :func:`mureo.context._preserve.is_opaque_decision`. It stays in
+    ``doc.decisions`` at its on-disk
+    position so the write keeps it, but none of its fields was validated —
+    its ``status``, ``supersedes`` and ``expected`` are empty defaults, not
+    what it says — so no reader may match, chain or evaluate against it. A
+    record the model took with unknown keys (``raw`` set too) is returned
+    like any other. Every reader of the
+    trail goes through here; only the writer's duplicate-id check and the
+    positional lookup of a just-written record read ``doc.decisions``
+    directly.
+    """
+    return tuple(record for record in doc.decisions if not is_opaque_decision(record))
+
+
 def decision_by_id(doc: StateDocument, decision_id: str) -> DecisionRecord | None:
-    """Return the record ``decision_id`` names, or ``None``."""
+    """Return the record ``decision_id`` names, or ``None``.
+
+    Never an opaque record (see :func:`parsed_decisions`).
+    """
     wanted = decision_id.strip() if isinstance(decision_id, str) else ""
     if not wanted:
         return None
-    for record in doc.decisions:
+    for record in parsed_decisions(doc):
         if record.decision_id == wanted:
             return record
     return None
@@ -406,11 +453,12 @@ def latest_decisions(
     rendering of the trail, and the skill step that asks "what did we
     already propose about this?" before proposing it again. Pure: it takes
     a document, never a path, so a caller that already holds one does not
-    re-read the file.
+    re-read the file. Opaque records are left out (see
+    :func:`parsed_decisions`).
     """
     if limit <= 0:
         return ()
-    return tuple(reversed(doc.decisions[-limit:]))
+    return tuple(reversed(parsed_decisions(doc)[-limit:]))
 
 
 def _check_related_actions(doc: StateDocument, record: DecisionRecord) -> None:
@@ -449,8 +497,12 @@ def _check_unique_id(doc: StateDocument, record: DecisionRecord) -> None:
     The MCP tool mints the id server-side and cannot collide in practice;
     this refuses the library caller, the replay and the hand-built record
     that can.
+
+    Reads ``doc.decisions`` whole, opaque records included (#882): no reader
+    matches an opaque record, but it is still written back under its id, so
+    a new record under that id would leave the file with two of one id.
     """
-    if decision_by_id(doc, record.decision_id) is not None:
+    if any(r.decision_id == record.decision_id for r in doc.decisions):
         raise ValueError(
             f"decision_id {record.decision_id!r} is already on record. Ids are "
             "minted per record (see new_decision_id); reusing one would make "
@@ -495,9 +547,8 @@ def append_decision(path: Path, record: DecisionRecord) -> tuple[StateDocument, 
         The written document and the record's index in ``decisions``.
 
     Raises:
-        ValueError: ``decision_id`` is already on record, a
-            ``related_actions`` index is out of range, or ``supersedes``
-            names no recorded decision.
+        ValueError: ``decisions`` is not a list (#882), the id is on record,
+            an index is out of range, or ``supersedes`` names no decision.
         BatchError: ``batch_id`` names no declared batch.
     """
     # Lazy: ``mureo.context.state`` ↔ ``mureo.context.decisions`` cycle inside
@@ -510,6 +561,7 @@ def append_decision(path: Path, record: DecisionRecord) -> tuple[StateDocument, 
 
     def _build(doc: StateDocument) -> StateDocument:
         nonlocal position
+        refuse_if_kept(doc, "decisions", "recording a decision")
         _check_unique_id(doc, record)
         _check_related_actions(doc, record)
         _check_supersedes(doc, record)
@@ -543,4 +595,5 @@ __all__ = [
     "decision_by_id",
     "latest_decisions",
     "new_decision_id",
+    "parsed_decisions",
 ]

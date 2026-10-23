@@ -27,6 +27,11 @@ Which decision an appended entry belongs to, in order:
    ``expected`` effects and its ``metrics_at_action``.
 8. Nothing, when the change carries no reason.
 
+A ``decisions`` kept as written because it is not a list (#882) cannot be
+recorded into: a reasoned change that would get a new decision (rule 7, or
+a reasoned batch) is recorded without one and logged once at WARNING; an
+explicit ``decision_id`` and :func:`record_call_decision` are refused.
+
 Nothing else is joined. A change is never attached to an earlier decision
 because it is "probably" the same one — a wrong link is worse than a
 visible duplicate, which the operator can at least see.
@@ -43,9 +48,11 @@ after it succeeded.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.context._preserve import refuse_if_kept
 from mureo.context.batch import active_batch
 from mureo.context.decision_chain import (
     chain_expected,
@@ -54,7 +61,11 @@ from mureo.context.decision_chain import (
     group_chains,
     latest_in_chain,
 )
-from mureo.context.decisions import DecisionRecord, new_decision_id
+from mureo.context.decisions import (
+    DecisionRecord,
+    new_decision_id,
+    parsed_decisions,
+)
 from mureo.context.expected import parse_expected
 from mureo.context.ops_fields import (
     derive_call_title,
@@ -81,6 +92,16 @@ ADOPTED: Final = "adopted"
 
 #: Title of the decision a reasoned ``mureo_batch_begin`` opens.
 BATCH_TITLE_PREFIX: Final = "Batch: "
+
+#: Logged when a reasoned change is recorded without the decision it would
+#: get because ``decisions`` is kept as written (#882); ``%s`` is ``entry`` /
+#: ``batch``. Names the section only, never the value.
+_UNLINKED_OVER_KEPT: Final = (
+    "STATE.json: 'decisions' is kept as written; %s recorded without a "
+    "decision link; fix the file by hand"
+)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -219,6 +240,7 @@ def _join(
     batch_id: str | None = None,
 ) -> tuple[StateDocument, str]:
     """Link to an existing decision, adopting it if it is still a proposal."""
+    refuse_if_kept(doc, "decisions", "recording a decision")
     root = check_linkable(doc, decision_id)
     record = _adoption(doc, root, request, batch_id)
     if record is not None:
@@ -259,7 +281,7 @@ def batch_decision_root(doc: StateDocument, batch_id: str | None) -> str | None:
     if batch_id is None:
         return None
     roots = chain_roots(doc)
-    for record in doc.decisions:
+    for record in parsed_decisions(doc):
         if record.batch_id != batch_id:
             continue
         root = roots.get(record.decision_id, record.decision_id)
@@ -312,6 +334,7 @@ def _join_call(
         return None
     latest = latest_in_chain(doc, root)
     if latest is not None and request.expected and not chain_expected(doc, root):
+        refuse_if_kept(doc, "decisions", "recording a decision")
         doc = replace(doc, decisions=(*doc.decisions, _successor(doc, latest, request)))
     return doc, _stamp(entry, root)
 
@@ -393,13 +416,27 @@ def _with_approval(
     return entry, replace(request, approval=entry.approval)
 
 
+def _decisions_kept(doc: StateDocument, recorded: str) -> bool:
+    """Whether ``decisions`` is kept as written (#882), warning once if so.
+
+    A reasoned change over it is still recorded, without the decision it
+    would get: refusing it would block every reasoned change until the file
+    is fixed, and recording the decision would replace the kept value.
+    """
+    kept = doc.raw is not None and "decisions" in doc.raw
+    if kept:
+        logger.warning(_UNLINKED_OVER_KEPT, recorded)
+    return kept
+
+
 def link_entry(
     doc: StateDocument, entry: ActionLogEntry, request: LinkRequest
 ) -> tuple[StateDocument, ActionLogEntry]:
     """Return ``doc`` with any new decision record, and the stamped entry.
 
     Raises:
-        ValueError: ``entry.decision_id`` is set and not linkable.
+        ValueError: ``entry.decision_id`` is set and not linkable, or is set
+            over a ``decisions`` kept as written (#882).
     """
     if entry.evaluation_of is not None:
         return doc, _inherit_evaluated(doc, entry)
@@ -418,6 +455,8 @@ def link_entry(
         linked = _join_call(doc, entry, request)
     if linked is not None or request.reason is None:
         return linked or (doc, entry)
+    if _decisions_kept(doc, "entry"):
+        return doc, entry
     record = _new_decision(entry, request)
     doc = replace(doc, decisions=(*doc.decisions, record))
     return doc, _stamp(entry, record.decision_id)
@@ -432,12 +471,13 @@ def link_batch(
     creates one. Neither means the batch has no decision of its own.
 
     Raises:
-        ValueError: ``request.explicit_id`` is not linkable.
+        ValueError: ``request.explicit_id`` is not linkable, or is set over a
+            ``decisions`` kept as written (#882).
     """
     if request.explicit_id is not None:
         doc, _ = _join(doc, request.explicit_id, request, batch_id=batch.batch_id)
         return doc
-    if request.reason is None:
+    if request.reason is None or _decisions_kept(doc, "batch"):
         return doc
     session, client = _actor()
     record = DecisionRecord(
@@ -481,6 +521,7 @@ def _call_decision(
     batch_root = batch_decision_root(doc, None if batch is None else batch.batch_id)
     if batch_root is not None or (request.reason is None and request.approval is None):
         return doc, batch_root
+    refuse_if_kept(doc, "decisions", "recording a decision")
     session, client = _actor()
     campaign_id = request.arguments.get("campaign_id")
     campaign = None if campaign_id is None else str(campaign_id)
@@ -512,7 +553,8 @@ def record_call_decision(
     root id of the decision the call carried out, or ``None`` for none.
 
     Raises:
-        ValueError: ``request.explicit_id`` is not linkable.
+        ValueError: ``request.explicit_id`` is not linkable, or a decision
+            would be recorded over a ``decisions`` kept as written (#882).
     """
     # Lazy: ``mureo.context.state`` ↔ ``mureo.context.ops_linkage`` cycle inside
     # ``context`` (#863, later stage).

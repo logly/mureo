@@ -506,6 +506,11 @@ def _record_unentried(
         root = ops_linkage.record_call_decision(
             path, request, tool=name, platform=_platform_of(name)
         )
+    except ValueError as exc:
+        # A refusal (an unlinkable id, a ``decisions`` kept as written, #882)
+        # says all there is to say; a traceback would only add noise.
+        logger.warning("could not record the decision of %r: %s", name, exc)
+        return
     except Exception:  # noqa: BLE001 — the change itself already succeeded
         logger.warning("could not record the decision of %r", name, exc_info=True)
         return

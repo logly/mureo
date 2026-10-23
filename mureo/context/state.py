@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
     from mureo.context.models import ActionLogEntry, CampaignSnapshot
 
+from mureo.context._preserve import refuse_if_kept
 from mureo.context.action_log_guard import guard_action_log_shrink
 from mureo.context.actor_stamp import stamp_actor
 from mureo.context.batch import (
@@ -146,13 +147,10 @@ def _fsync_dir(parent: Path) -> None:
 def read_state_file(path: Path, *, strict: bool = True) -> StateDocument:
     """Read a STATE.json file and return a StateDocument.
 
-    Returns a default StateDocument if the file does not exist. ``strict`` is
-    forwarded to :func:`parse_state`: pass ``strict=False`` from the read-only
-    Reports view so a section the writer contract refuses (a malformed
-    ``decisions`` record, an ``action_log`` entry that is not an object, a
-    top-level ``campaigns`` that is not a list of objects) is skipped instead
-    of raising and blanking the whole document. A hand-written platform,
-    campaign or ad entry reads the same in both modes (#881).
+    Returns a default StateDocument if the file does not exist. Pass
+    ``strict=False`` (for :func:`parse_state`) from the read-only Reports view
+    to skip a non-object ``action_log`` entry or ``decisions`` record instead
+    of failing; every other hand-written shape is kept (#881 / #882).
     """
     if not path.exists():
         return StateDocument()
@@ -545,8 +543,9 @@ def append_action_log(
             never truncated, and refused BEFORE the file is opened — so a
             rejected append leaves the log exactly as it was and the caller
             still holds the sentence it can shorten. Also raised for an
-            invalid ``expected``, and for an ``entry.decision_id`` that names
-            no decision or a rejected / deferred one.
+            invalid ``expected``, an ``entry.decision_id`` that names no
+            decision or a rejected / deferred one, and a non-list
+            ``action_log`` on disk (#882).
     """
     # Outside the lock: the dashboard's one-line rendering is a WRITE rule, so
     # this is the moment to refuse it. An entry already on disk is history and
@@ -566,6 +565,7 @@ def append_action_log(
     request = call_request(reason, server_now_iso(), expected)
 
     def _build(doc: StateDocument) -> StateDocument:
+        refuse_if_kept(doc, "action_log", "recording an entry")
         if entry.batch_id is not None:
             ensure_joinable(doc, entry.batch_id)
         stamped = stamp_batch(entry, active_batch(doc)) if join_active_batch else entry

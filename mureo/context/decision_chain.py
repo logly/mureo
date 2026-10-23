@@ -8,12 +8,17 @@ carries in ``decision_id``. These helpers answer the questions every reader
 of the chain asks: where does it start, what is its latest status, and
 what did it expect.
 
+A record the model refused (#882) is never part of a chain: every helper
+reads :func:`~mureo.context.decisions.parsed_decisions`.
+
 Pure: documents in, values out.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
+from mureo.context.decisions import parsed_decisions
 
 if TYPE_CHECKING:
     from mureo.context.decisions import DecisionRecord
@@ -28,7 +33,7 @@ def chain_roots(doc: StateDocument) -> dict[str, str]:
     hand-edited file, ends the walk at the last record reached rather than
     looping or raising: a reader must always get an answer.
     """
-    parents = {r.decision_id: r.supersedes for r in doc.decisions}
+    parents = {r.decision_id: r.supersedes for r in parsed_decisions(doc)}
     roots: dict[str, str] = {}
     for decision_id in parents:
         current = decision_id
@@ -46,7 +51,7 @@ def group_chains(doc: StateDocument) -> dict[str, tuple[DecisionRecord, ...]]:
     """Every chain's records keyed by its root, in write order, in one pass."""
     roots = chain_roots(doc)
     grouped: dict[str, list[DecisionRecord]] = {}
-    for record in doc.decisions:
+    for record in parsed_decisions(doc):
         root = roots.get(record.decision_id, record.decision_id)
         grouped.setdefault(root, []).append(record)
     return {root: tuple(records) for root, records in grouped.items()}
@@ -60,7 +65,9 @@ def chain_root(doc: StateDocument, decision_id: str) -> str | None:
 def chain_records(doc: StateDocument, root_id: str) -> tuple[DecisionRecord, ...]:
     """Every record in the chain rooted at ``root_id``, in write order."""
     roots = chain_roots(doc)
-    return tuple(r for r in doc.decisions if roots.get(r.decision_id) == root_id)
+    return tuple(
+        r for r in parsed_decisions(doc) if roots.get(r.decision_id) == root_id
+    )
 
 
 def latest_in_chain(doc: StateDocument, decision_id: str) -> DecisionRecord | None:

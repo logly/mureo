@@ -201,14 +201,17 @@ mureo/
 │   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
 │   ├── _platform_codec.py   # The platform / campaign / ad entries' two codec halves (#881) —
 │   │                        #   a hand-authored entry is kept and written back in its own shape
-│   ├── _preserve.py         # The one re-emit rule for an entry kept with its on-disk dict
-│   │                        #   (#859 action_log, #881 platform / campaign / ad)
+│   ├── _preserve.py         # The one re-emit rule for an entry kept with its on-disk dict,
+│   │                        #   and the copy of that dict (#859 action_log, #881 platform /
+│   │                        #   campaign / ad, #882 decisions), and the one refusal to record
+│   │                        #   into a `decisions` / `action_log` kept as written (#882)
 │   ├── decisions.py         # The `decisions` section (#758 phase 3): the record, the bounds,
 │   │                        #   the append_decision writer and the pure queries. Append-only,
 │   │                        #   because `display.proposals` is replaced whole on every
 │   │                        #   dashboard write and so cannot be a history
-│   ├── _decision_codec.py   # That section's two codec halves — strict like action_log's,
-│   │                        #   because a decision record IS history
+│   ├── _decision_codec.py   # That section's two codec halves — like action_log's, a
+│   │                        #   refused record is kept opaque in place and unknown keys
+│   │                        #   are written back (#882), because a decision record IS history
 │   ├── expected.py          # `expected` effects (#848): {metric, direction, target?, horizon_days?, primary?}
 │   ├── settings.py          # The `settings` section: ops_history.enabled (#848)
 │   ├── decision_chain.py    # A decision's `supersedes` chain: root, latest, expected

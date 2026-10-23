@@ -64,7 +64,7 @@ from mureo.core.platform_keys import is_plugin_platform_key, plugin_distribution
 from mureo.core.report_kinds import REPORT_KINDS
 from mureo.core.rotation import sibling_files
 from mureo.mcp import journal
-from mureo.mcp._helpers import _json_result, resolve_workspace_path
+from mureo.mcp._helpers import _json_result, read_kept_as_empty, resolve_workspace_path
 from mureo.mcp._history_ops import decisions_section, ops_history_section
 from mureo.mcp._journal_hook import JOURNAL_OUTCOMES
 from mureo.mcp.journal_read import (
@@ -307,10 +307,11 @@ def _rendered_action_log(path: Path) -> list[dict[str, Any]]:
 
     Rendered through the document codec rather than read field by field,
     so an entry gained by a later phase appears here without this module
-    being taught about it.
+    being taught about it. A log kept as written because it is not a list
+    reads as empty (#882).
     """
-    entries = json.loads(render_state(read_state_file(path))).get("action_log", [])
-    return [entry for entry in entries if isinstance(entry, dict)]
+    rendered = read_kept_as_empty(json.loads(render_state(read_state_file(path))))
+    return [entry for entry in rendered["action_log"] if isinstance(entry, dict)]
 
 
 def _action_log_matches(entry: dict[str, Any], query: HistoryQuery) -> bool:

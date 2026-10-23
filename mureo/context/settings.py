@@ -50,7 +50,7 @@ class WorkspaceSettings:
 
 
 #: Fields the codec maps, for :mod:`mureo.context.state_codec`'s
-#: import-time coverage check (the same splice ``DECISION_COVERAGE`` uses).
+#: import-time coverage check, spliced into its ``_CODEC_COVERAGE`` table.
 SETTINGS_COVERAGE: tuple[type, frozenset[str], str] = (
     WorkspaceSettings,
     frozenset({"ops_history_enabled"}),
