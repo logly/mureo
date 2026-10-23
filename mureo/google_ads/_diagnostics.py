@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
@@ -104,6 +105,28 @@ _LEARNING_STATUS_DESC: dict[str, str] = {
 }
 
 
+@dataclass
+class _DeliveryDiagnosis:
+    """What the sections of ``diagnose_campaign_delivery`` share and fill in."""
+
+    campaign_id: str
+    campaign_data: dict[str, Any]
+    result: dict[str, Any]
+    issues: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
+    primary_reasons: list[str] = field(default_factory=list)
+    bidding: dict[str, Any] = field(default_factory=dict)
+    enabled_kws: list[dict[str, Any]] = field(default_factory=list)
+    rarely_served_kws: list[str] = field(default_factory=list)
+    ad_response: list[Any] = field(default_factory=list)
+    enabled_ads: list[dict[str, Any]] = field(default_factory=list)
+    locations: list[dict[str, Any]] = field(default_factory=list)
+    perf_30d: dict[str, Any] | None = None
+    strategy: str = ""
+    active_cv_count: int | None = None
+
+
 class _DiagnosticsMixin:
     """Mixin providing campaign diagnostics."""
 
@@ -176,55 +199,75 @@ class _DiagnosticsMixin:
         Systematically check causes of non-delivery and return issues and recommended actions.
         """
         self._validate_id(campaign_id, "campaign_id")
-        issues: list[str] = []
-        warnings: list[str] = []
-        recommendations: list[str] = []
-
-        # 1. Campaign basic information + bidding strategy details
         campaign_data = await self.get_campaign(campaign_id)
         if not campaign_data:
             return {"error": f"Campaign ID {campaign_id} not found"}
 
-        result: dict[str, Any] = {
-            "campaign": campaign_data,
-        }
+        diag = _DeliveryDiagnosis(
+            campaign_id=campaign_id,
+            campaign_data=campaign_data,
+            result={"campaign": campaign_data},
+        )
+        self._check_campaign_basics(diag)
+        self._check_bidding_status(diag)
+        self._check_schedule_and_budget(diag)
+        await self._check_ad_groups(diag)
+        await self._check_keywords(diag)
+        self._summarize_keywords(diag)
+        await self._check_ads(diag)
+        self._summarize_rsa_assets(diag)
+        self._summarize_ad_groups(diag)
+        await self._check_location_targeting(diag)
+        await self._check_performance(diag)
+        await self._check_sitelinks(diag)
+        await self._check_billing(diag)
+        await self._check_conversion_tracking(diag)
+        await self._check_conversion_action_performance(diag)
+        await self._check_impression_share(diag)
+        self._build_recommendations(diag)
+        self._build_reason_recommendations(diag)
+        self._build_diagnosis(diag)
+        return diag.result
 
-        # Status check
+    def _check_campaign_basics(self, diag: _DeliveryDiagnosis) -> None:
+        """Campaign basic information: status, serving status and primary status."""
+        campaign_data = diag.campaign_data
         if campaign_data["status"] != "ENABLED":
-            issues.append(
+            diag.issues.append(
                 f"Campaign status is {campaign_data['status']}. "
                 "Must be ENABLED for delivery"
             )
         serving_st = campaign_data.get("serving_status", "")
         if serving_st and serving_st != "SERVING":
-            issues.append(f"Serving status is {serving_st} (not SERVING)")
+            diag.issues.append(f"Serving status is {serving_st} (not SERVING)")
 
-        # --- NEW: primary_status / primary_status_reasons analysis ---
+        # primary_status / primary_status_reasons analysis
         primary_st = campaign_data.get("primary_status", "")
         if primary_st and primary_st != "ELIGIBLE":
-            issues.append(
+            diag.issues.append(
                 f"Campaign primary_status is {primary_st} "
                 "(non-ELIGIBLE may indicate delivery issues)"
             )
 
-        primary_reasons: list[str] = campaign_data.get("primary_status_reasons", [])
-        if primary_reasons:
-            result["primary_status_reasons_detail"] = []
-            for reason in primary_reasons:
+        diag.primary_reasons = campaign_data.get("primary_status_reasons", [])
+        if diag.primary_reasons:
+            diag.result["primary_status_reasons_detail"] = []
+            for reason in diag.primary_reasons:
                 ja = _PRIMARY_STATUS_REASON_DESC.get(reason, reason)
-                result["primary_status_reasons_detail"].append(
+                diag.result["primary_status_reasons_detail"].append(
                     {"reason": reason, "description": ja}
                 )
                 if reason in _REASON_IS_ISSUE:
-                    issues.append(f"[{reason}] {ja}")
+                    diag.issues.append(f"[{reason}] {ja}")
                 elif reason not in ("UNSPECIFIED", "UNKNOWN"):
-                    warnings.append(f"[{reason}] {ja}")
+                    diag.warnings.append(f"[{reason}] {ja}")
 
-        # --- NEW: Bidding strategy system status ---
-        bidding_sys_st = campaign_data.get("bidding_strategy_system_status", "")
+    def _check_bidding_status(self, diag: _DeliveryDiagnosis) -> None:
+        """Bidding strategy system status, with the learning period called out."""
+        bidding_sys_st = diag.campaign_data.get("bidding_strategy_system_status", "")
         if bidding_sys_st:
             if bidding_sys_st.startswith("MISCONFIGURED"):
-                issues.append(
+                diag.issues.append(
                     f"Bidding strategy system status is {bidding_sys_st}. "
                     "Please review bidding strategy settings"
                 )
@@ -233,7 +276,7 @@ class _DiagnosticsMixin:
                 learning_reason = _LEARNING_STATUS_DESC.get(
                     bidding_sys_st, "Bidding strategy is in learning phase"
                 )
-                result["learning_status"] = {
+                diag.result["learning_status"] = {
                     "status": bidding_sys_st,
                     "description": learning_reason,
                     "message": (
@@ -248,14 +291,16 @@ class _DiagnosticsMixin:
                         "potentially cause unstable performance."
                     ),
                 }
-                warnings.append(
+                diag.warnings.append(
                     f"Bidding strategy is in learning phase ({bidding_sys_st}). "
                     "We recommend waiting 1-2 weeks for stabilization"
                 )
             elif bidding_sys_st.startswith("LIMITED"):
-                warnings.append(f"Bidding strategy is limited ({bidding_sys_st})")
+                diag.warnings.append(f"Bidding strategy is limited ({bidding_sys_st})")
 
-        # --- NEW: Campaign date range check ---
+    def _check_schedule_and_budget(self, diag: _DeliveryDiagnosis) -> None:
+        """Campaign date range, budget and bidding strategy settings."""
+        campaign_data = diag.campaign_data
         today = date.today()
         start_date_str = campaign_data.get("start_date", "")
         end_date_str = campaign_data.get("end_date", "")
@@ -263,7 +308,7 @@ class _DiagnosticsMixin:
             try:
                 start_d = date.fromisoformat(start_date_str)
                 if start_d > today:
-                    issues.append(
+                    diag.issues.append(
                         f"Campaign start date is in the future ({start_date_str}). "
                         "Delivery will not begin until the start date"
                     )
@@ -273,7 +318,7 @@ class _DiagnosticsMixin:
             try:
                 end_d = date.fromisoformat(end_date_str)
                 if end_d < today:
-                    issues.append(
+                    diag.issues.append(
                         f"Campaign end date has passed ({end_date_str}). "
                         "Delivery has stopped"
                     )
@@ -284,24 +329,26 @@ class _DiagnosticsMixin:
         budget_daily = campaign_data.get("budget_daily", 0)
         budget_status = campaign_data.get("budget_status", "")
         if budget_status != "ENABLED":
-            issues.append(f"Budget status is {budget_status}")
+            diag.issues.append(f"Budget status is {budget_status}")
         if budget_daily <= 0:
-            issues.append("Daily budget is ¥0")
+            diag.issues.append("Daily budget is ¥0")
 
         # Bidding strategy check
-        bidding = campaign_data.get("bidding_details", {})
-        if bidding.get("issue"):
-            issues.append(f"Bidding strategy issue: {bidding['issue']}")
+        diag.bidding = campaign_data.get("bidding_details", {})
+        if diag.bidding.get("issue"):
+            diag.issues.append(f"Bidding strategy issue: {diag.bidding['issue']}")
 
-        # 2. Ad group check
+    async def _check_ad_groups(self, diag: _DeliveryDiagnosis) -> None:
+        """Ad group check."""
         ad_groups = await self.list_ad_groups(
-            campaign_id=campaign_id, status_filter="ENABLED"
+            campaign_id=diag.campaign_id, status_filter="ENABLED"
         )
-        result["ad_groups_enabled_count"] = len(ad_groups)
+        diag.result["ad_groups_enabled_count"] = len(ad_groups)
         if not ad_groups:
-            issues.append("No active ad groups")
+            diag.issues.append("No active ad groups")
 
-        # 3. Keyword check (with system_serving_status)
+    async def _check_keywords(self, diag: _DeliveryDiagnosis) -> None:
+        """Keyword check (with system_serving_status)."""
         kw_query = f"""
             SELECT
                 ad_group_criterion.keyword.text,
@@ -311,12 +358,10 @@ class _DiagnosticsMixin:
                 ad_group_criterion.system_serving_status
             FROM ad_group_criterion
             WHERE ad_group_criterion.type = 'KEYWORD'
-                AND campaign.id = {campaign_id}
+                AND campaign.id = {diag.campaign_id}
                 AND ad_group_criterion.status = 'ENABLED'
         """
         kw_response = await self._search(kw_query)  # type: ignore[attr-defined]
-        enabled_kws = []
-        rarely_served_kws: list[str] = []
         for row in kw_response:
             kw = row.ad_group_criterion
             approval = map_criterion_approval_status(kw.approval_status)
@@ -330,7 +375,7 @@ class _DiagnosticsMixin:
                 if hasattr(kw, "system_serving_status")
                 else ""
             )
-            enabled_kws.append(
+            diag.enabled_kws.append(
                 {
                     "text": kw.keyword.text,
                     "match_type": map_enum_name(
@@ -341,21 +386,26 @@ class _DiagnosticsMixin:
                 }
             )
             if "RARELY_SERVED" in sys_status:
-                rarely_served_kws.append(kw.keyword.text)
-        result["keywords_enabled_count"] = len(enabled_kws)
+                diag.rarely_served_kws.append(kw.keyword.text)
+        diag.result["keywords_enabled_count"] = len(diag.enabled_kws)
+
+    def _summarize_keywords(self, diag: _DeliveryDiagnosis) -> None:
+        """Disapproved, rarely served and duplicated keywords."""
+        enabled_kws = diag.enabled_kws
         disapproved_kws = [
             k for k in enabled_kws if k["approval_status"] == "DISAPPROVED"
         ]
         if not enabled_kws:
-            issues.append("No active keywords")
+            diag.issues.append("No active keywords")
         if disapproved_kws:
-            warnings.append(
+            diag.warnings.append(
                 f"{len(disapproved_kws)} keywords are disapproved: "
                 + ", ".join(k["text"] for k in disapproved_kws[:5])
             )
-        # --- NEW: RARELY_SERVED keyword detection ---
+        # RARELY_SERVED keyword detection
+        rarely_served_kws = diag.rarely_served_kws
         if rarely_served_kws:
-            warnings.append(
+            diag.warnings.append(
                 f"{len(rarely_served_kws)} keywords are rarely being displayed"
                 f" (RARELY_SERVED): {', '.join(rarely_served_kws[:5])}"
             )
@@ -368,10 +418,11 @@ class _DiagnosticsMixin:
             if t in seen and t not in duplicated:
                 duplicated.append(t)
             seen.add(t)
-        result["keyword_duplicates_count"] = len(duplicated)
-        result["keyword_duplicates"] = duplicated
+        diag.result["keyword_duplicates_count"] = len(duplicated)
+        diag.result["keyword_duplicates"] = duplicated
 
-        # 4. Ad check (including RSA and ad group-level aggregation)
+    async def _check_ads(self, diag: _DeliveryDiagnosis) -> None:
+        """Ad check: enabled ads and their policy approval status."""
         ad_query = f"""
             SELECT
                 ad_group.id, ad_group.name,
@@ -383,35 +434,50 @@ class _DiagnosticsMixin:
                 ad_group_ad.policy_summary.approval_status,
                 ad_group_ad.policy_summary.review_status
             FROM ad_group_ad
-            WHERE campaign.id = {campaign_id}
+            WHERE campaign.id = {diag.campaign_id}
                 AND ad_group_ad.status = 'ENABLED'
         """
-        ad_response = await self._search(ad_query)  # type: ignore[attr-defined]
-        enabled_ads = []
-        rsa_headline_counts: list[int] = []
-        rsa_description_counts: list[int] = []
-        rsa_headline_texts: list[str] = []
-        rsa_description_texts: list[str] = []
-        ad_group_ad_map: dict[str, dict[str, Any]] = {}
-        final_urls_set: set[str] = set()
-        for row in ad_response:
+        diag.ad_response = await self._search(ad_query)  # type: ignore[attr-defined]
+        for row in diag.ad_response:
             ad = row.ad_group_ad
             approval = map_approval_status(ad.policy_summary.approval_status)
             review = map_review_status(ad.policy_summary.review_status)
-            ad_type = map_ad_type(ad.ad.type_)
-            enabled_ads.append(
+            diag.enabled_ads.append(
                 {
                     "ad_id": str(ad.ad.id),
-                    "ad_type": ad_type,
+                    "ad_type": map_ad_type(ad.ad.type_),
                     "approval_status": approval,
                     "review_status": review,
                 }
             )
-            # Collect final_urls
-            for url in list(getattr(ad.ad, "final_urls", [])):
-                final_urls_set.add(str(url))
-            # RSA headline/description count + text
-            if ad_type == "RESPONSIVE_SEARCH_AD":
+        diag.result["ads_enabled_count"] = len(diag.enabled_ads)
+
+        enabled_ads = diag.enabled_ads
+        disapproved_ads = [
+            a for a in enabled_ads if a["approval_status"] == "DISAPPROVED"
+        ]
+        limited_ads = [
+            a for a in enabled_ads if a["approval_status"] == "APPROVED_LIMITED"
+        ]
+        if not enabled_ads:
+            diag.issues.append("No active ads")
+        if disapproved_ads:
+            diag.issues.append(f"{len(disapproved_ads)} ads are disapproved")
+        if limited_ads:
+            diag.warnings.append(
+                f"{len(limited_ads)} ads have limited approval (APPROVED_LIMITED). "
+                "They may not be shown to some audiences"
+            )
+
+    def _summarize_rsa_assets(self, diag: _DeliveryDiagnosis) -> None:
+        """RSA headline / description counts and texts."""
+        rsa_headline_counts: list[int] = []
+        rsa_description_counts: list[int] = []
+        rsa_headline_texts: list[str] = []
+        rsa_description_texts: list[str] = []
+        for row in diag.ad_response:
+            ad = row.ad_group_ad
+            if map_ad_type(ad.ad.type_) == "RESPONSIVE_SEARCH_AD":
                 headlines = list(getattr(ad.ad.responsive_search_ad, "headlines", []))
                 descriptions = list(
                     getattr(ad.ad.responsive_search_ad, "descriptions", [])
@@ -426,7 +492,24 @@ class _DiagnosticsMixin:
                     text = getattr(d, "text", "")
                     if text and text not in rsa_description_texts:
                         rsa_description_texts.append(text)
-            # Ad group-level aggregation
+
+        diag.result["has_rsa"] = len(rsa_headline_counts) > 0
+        diag.result["rsa_min_headlines"] = (
+            min(rsa_headline_counts) if rsa_headline_counts else 0
+        )
+        diag.result["rsa_min_descriptions"] = (
+            min(rsa_description_counts) if rsa_description_counts else 0
+        )
+        diag.result["rsa_headline_texts"] = rsa_headline_texts
+        diag.result["rsa_description_texts"] = rsa_description_texts
+
+    def _summarize_ad_groups(self, diag: _DeliveryDiagnosis) -> None:
+        """Final URLs and ad group-level ad counts."""
+        ad_group_ad_map: dict[str, dict[str, Any]] = {}
+        final_urls_set: set[str] = set()
+        for row in diag.ad_response:
+            for url in list(getattr(row.ad_group_ad.ad, "final_urls", [])):
+                final_urls_set.add(str(url))
             ag_id = str(row.ad_group.id)
             ag_name = str(row.ad_group.name)
             if ag_id not in ad_group_ad_map:
@@ -436,75 +519,45 @@ class _DiagnosticsMixin:
                     "ad_count": 0,
                 }
             ad_group_ad_map[ag_id]["ad_count"] += 1
+        diag.result["ad_final_urls"] = sorted(final_urls_set)
+        diag.result["ad_group_ad_counts"] = list(ad_group_ad_map.values())
 
-        result["ads_enabled_count"] = len(enabled_ads)
-        result["has_rsa"] = len(rsa_headline_counts) > 0
-        result["rsa_min_headlines"] = (
-            min(rsa_headline_counts) if rsa_headline_counts else 0
-        )
-        result["rsa_min_descriptions"] = (
-            min(rsa_description_counts) if rsa_description_counts else 0
-        )
-        result["rsa_headline_texts"] = rsa_headline_texts
-        result["rsa_description_texts"] = rsa_description_texts
-        result["ad_final_urls"] = sorted(final_urls_set)
-        result["ad_group_ad_counts"] = list(ad_group_ad_map.values())
-
-        disapproved_ads = [
-            a for a in enabled_ads if a["approval_status"] == "DISAPPROVED"
-        ]
-        limited_ads = [
-            a for a in enabled_ads if a["approval_status"] == "APPROVED_LIMITED"
-        ]
-        if not enabled_ads:
-            issues.append("No active ads")
-        if disapproved_ads:
-            issues.append(f"{len(disapproved_ads)} ads are disapproved")
-        if limited_ads:
-            warnings.append(
-                f"{len(limited_ads)} ads have limited approval (APPROVED_LIMITED). "
-                "They may not be shown to some audiences"
-            )
-
-        # 5. Location targeting check
+    async def _check_location_targeting(self, diag: _DeliveryDiagnosis) -> None:
+        """Location targeting check."""
         loc_query = f"""
             SELECT
                 campaign_criterion.location.geo_target_constant,
                 campaign_criterion.negative
             FROM campaign_criterion
-            WHERE campaign.id = {campaign_id}
+            WHERE campaign.id = {diag.campaign_id}
                 AND campaign_criterion.type = 'LOCATION'
         """
         loc_response = await self._search(loc_query)  # type: ignore[attr-defined]
-        locations = []
         for row in loc_response:
             cc = row.campaign_criterion
-            locations.append(
+            diag.locations.append(
                 {
                     "geo_target": str(cc.location.geo_target_constant),
                     "negative": bool(cc.negative),
                 }
             )
-        result["location_targeting_count"] = len(locations)
-        if not locations:
-            warnings.append(
+        diag.result["location_targeting_count"] = len(diag.locations)
+        if not diag.locations:
+            diag.warnings.append(
                 "No location targeting set (worldwide). "
                 "If targeting Japan only, set geoTargetConstants/2392 (Japan)"
             )
 
-        # 6. Performance (last 30 days)
+    async def _check_performance(self, diag: _DeliveryDiagnosis) -> None:
+        """Performance (last 30 days); a failed read leaves it null."""
         try:
             perf = await self.get_performance_report(
-                campaign_id=campaign_id, period="LAST_30_DAYS"
+                campaign_id=diag.campaign_id, period="LAST_30_DAYS"
             )
             if perf:
-                result["performance_last_30_days"] = perf[0].get("metrics", {})
+                diag.perf_30d = perf[0].get("metrics", {})
             else:
-                result["performance_last_30_days"] = {
-                    "impressions": 0,
-                    "clicks": 0,
-                    "cost": 0,
-                }
+                diag.perf_30d = {"impressions": 0, "clicks": 0, "cost": 0}
         except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             # Class name only. A traceback would print the GoogleAdsException
             # repr, which carries the request metadata (developer token,
@@ -513,17 +566,19 @@ class _DiagnosticsMixin:
             logger.warning(
                 "Failed to retrieve last-30-day performance (%s)", type(exc).__name__
             )
-            result["performance_last_30_days"] = None
+        diag.result["performance_last_30_days"] = diag.perf_30d
 
-        # 7. Sitelink count
+    async def _check_sitelinks(self, diag: _DeliveryDiagnosis) -> None:
+        """Sitelink count."""
         try:
-            sitelinks = await self.list_sitelinks(campaign_id)
-            result["sitelinks_count"] = len(sitelinks)
+            sitelinks = await self.list_sitelinks(diag.campaign_id)
+            diag.result["sitelinks_count"] = len(sitelinks)
         except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning("Failed to retrieve sitelink count (%s)", type(exc).__name__)
-            result["sitelinks_count"] = None
+            diag.result["sitelinks_count"] = None
 
-        # 8. Billing setup check
+    async def _check_billing(self, diag: _DeliveryDiagnosis) -> None:
+        """Billing setup check."""
         try:
             billing_query = """
                 SELECT billing_setup.id, billing_setup.status
@@ -532,19 +587,22 @@ class _DiagnosticsMixin:
             """
             billing_response = await self._search(billing_query)  # type: ignore[attr-defined]
             has_billing = any(True for _ in billing_response)
-            result["billing_setup"] = "APPROVED" if has_billing else "Not configured"
+            diag.result["billing_setup"] = (
+                "APPROVED" if has_billing else "Not configured"
+            )
             if not has_billing:
-                issues.append(
+                diag.issues.append(
                     "No active billing setup. "
                     "Please configure a payment method in Google Ads dashboard"
                 )
         except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning("Failed to retrieve billing setup (%s)", type(exc).__name__)
-            result["billing_setup"] = None
+            diag.result["billing_setup"] = None
 
-        # --- NEW: 8. Conversion tracking check (smart bidding only) ---
-        strategy = bidding.get("strategy", "")
-        if strategy in SMART_BIDDING_STRATEGIES:
+    async def _check_conversion_tracking(self, diag: _DeliveryDiagnosis) -> None:
+        """Conversion tracking check (smart bidding only)."""
+        diag.strategy = diag.bidding.get("strategy", "")
+        if diag.strategy in SMART_BIDDING_STRATEGIES:
             try:
                 cv_query = """
                     SELECT
@@ -554,11 +612,11 @@ class _DiagnosticsMixin:
                     WHERE conversion_action.status = 'ENABLED'
                 """
                 cv_response = await self._search(cv_query)  # type: ignore[attr-defined]
-                active_cv_count = sum(1 for _ in cv_response)
-                result["active_conversion_actions"] = active_cv_count
-                if active_cv_count == 0:
-                    issues.append(
-                        f"Using smart bidding ({strategy}), but "
+                diag.active_cv_count = sum(1 for _ in cv_response)
+                diag.result["active_conversion_actions"] = diag.active_cv_count
+                if diag.active_cv_count == 0:
+                    diag.issues.append(
+                        f"Using smart bidding ({diag.strategy}), but "
                         "there are 0 active conversion actions. "
                         "Please configure conversion tracking"
                     )
@@ -567,65 +625,69 @@ class _DiagnosticsMixin:
                     "Failed to retrieve active conversion actions (%s)",
                     type(exc).__name__,
                 )
-                result["active_conversion_actions"] = None
+                diag.result["active_conversion_actions"] = None
 
-        # --- Conversion action performance (last 30 days) ---
+    async def _check_conversion_action_performance(
+        self, diag: _DeliveryDiagnosis
+    ) -> None:
+        """Conversion action performance (last 30 days)."""
+        try:
+            await self._summarize_conversion_actions(diag)
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            logger.warning(
+                "Failed to retrieve conversion action performance (%s)",
+                type(exc).__name__,
+            )
+            diag.result["conversion_actions_detail"] = None
+
+    async def _summarize_conversion_actions(self, diag: _DeliveryDiagnosis) -> None:
+        """Conversions per conversion action, with the CPA from the 30-day totals."""
         # cost_per_conversion cannot be fetched simultaneously with segments.conversion_action_name,
         # so fetch campaign total cost separately and calculate CPA by CV proportion.
         # The CPA is derived from the 30-day totals: without them it is null.
-        perf_30d = result["performance_last_30_days"]
+        perf_30d = diag.perf_30d
         if perf_30d is None:
-            result["conversion_actions_detail"] = None
-        else:
-            try:
-                cv_by_action_query = f"""
+            diag.result["conversion_actions_detail"] = None
+            return
+        # Indented as it was inside the former try block: the GAQL text is unchanged.
+        cv_by_action_query = f"""
                     SELECT
                         segments.conversion_action_name,
                         metrics.conversions,
                         metrics.conversions_value
                     FROM campaign
-                    WHERE campaign.id = {campaign_id}
+                    WHERE campaign.id = {diag.campaign_id}
                         AND segments.date DURING LAST_30_DAYS
                         AND metrics.conversions > 0
                 """
-                cv_by_action_response = await self._search(cv_by_action_query)  # type: ignore[attr-defined]
+        cv_by_action_response = await self._search(cv_by_action_query)  # type: ignore[attr-defined]
+        # Get campaign total cost and CV count for CPA calculation
+        total_cost = float(perf_30d.get("cost", 0))
+        total_cv = float(perf_30d.get("conversions", 0))
+        campaign_cpa = total_cost / total_cv if total_cv > 0 else 0
 
-                # Get campaign total cost and CV count for CPA calculation
-                total_cost = float(perf_30d.get("cost", 0))
-                total_cv = float(perf_30d.get("conversions", 0))
-                campaign_cpa = total_cost / total_cv if total_cv > 0 else 0
+        conversion_actions_detail: list[dict[str, Any]] = []
+        for row in cv_by_action_response:
+            action_name = str(getattr(row.segments, "conversion_action_name", ""))
+            conversions = float(row.metrics.conversions)
+            # Estimate CPA by CV proportion
+            action_cpa = campaign_cpa if total_cv > 0 else 0
+            conversion_actions_detail.append(
+                {
+                    "name": action_name,
+                    "conversions": conversions,
+                    "conversions_value": float(
+                        getattr(row.metrics, "conversions_value", 0)
+                    ),
+                    "cost_per_conversion": round(action_cpa, 0),
+                }
+            )
+        # Sort by CV count descending
+        conversion_actions_detail.sort(key=lambda x: x["conversions"], reverse=True)
+        diag.result["conversion_actions_detail"] = conversion_actions_detail
 
-                conversion_actions_detail: list[dict[str, Any]] = []
-                for row in cv_by_action_response:
-                    action_name = str(
-                        getattr(row.segments, "conversion_action_name", "")
-                    )
-                    conversions = float(row.metrics.conversions)
-                    # Estimate CPA by CV proportion
-                    action_cpa = campaign_cpa if total_cv > 0 else 0
-                    conversion_actions_detail.append(
-                        {
-                            "name": action_name,
-                            "conversions": conversions,
-                            "conversions_value": float(
-                                getattr(row.metrics, "conversions_value", 0)
-                            ),
-                            "cost_per_conversion": round(action_cpa, 0),
-                        }
-                    )
-                # Sort by CV count descending
-                conversion_actions_detail.sort(
-                    key=lambda x: x["conversions"], reverse=True
-                )
-                result["conversion_actions_detail"] = conversion_actions_detail
-            except Exception as exc:  # noqa: BLE001 — partial read; failures warned
-                logger.warning(
-                    "Failed to retrieve conversion action performance (%s)",
-                    type(exc).__name__,
-                )
-                result["conversion_actions_detail"] = None
-
-        # --- NEW: 9. Impression share check ---
+    async def _check_impression_share(self, diag: _DeliveryDiagnosis) -> None:
+        """Impression share check."""
         try:
             is_query = f"""
                 SELECT
@@ -633,7 +695,7 @@ class _DiagnosticsMixin:
                     metrics.search_rank_lost_impression_share,
                     metrics.search_budget_lost_impression_share
                 FROM campaign
-                WHERE campaign.id = {campaign_id}
+                WHERE campaign.id = {diag.campaign_id}
                     AND segments.date DURING LAST_30_DAYS
             """
             is_response = await self._search(is_query)  # type: ignore[attr-defined]
@@ -652,14 +714,14 @@ class _DiagnosticsMixin:
                 if budget_lost is not None:
                     is_data["budget_lost_pct"] = round(float(budget_lost) * 100, 1)
                 if is_data:
-                    result["impression_share"] = is_data
+                    diag.result["impression_share"] = is_data
                     if is_data.get("budget_lost_pct", 0) > 20:
-                        warnings.append(
+                        diag.warnings.append(
                             f"Missing {is_data['budget_lost_pct']}% "
                             f"of impressions due to budget constraints"
                         )
                     if is_data.get("rank_lost_pct", 0) > 30:
-                        warnings.append(
+                        diag.warnings.append(
                             f"Missing {is_data['rank_lost_pct']}% "
                             f"of impressions due to insufficient ad rank"
                         )
@@ -669,67 +731,70 @@ class _DiagnosticsMixin:
                 "Failed to retrieve impression share (%s)", type(exc).__name__
             )
             # No row leaves the key out; a failed read is null.
-            result["impression_share"] = None
+            diag.result["impression_share"] = None
 
-        # Generate recommended actions
+    def _build_recommendations(self, diag: _DeliveryDiagnosis) -> None:
+        """Generate recommended actions for the bidding strategy and locations."""
+        bidding = diag.bidding
         if bidding.get("strategy") == "TARGET_IMPRESSION_SHARE":
             if bidding.get("cpc_bid_ceiling", 0) == 0:
-                recommendations.append(
+                diag.recommendations.append(
                     "Set a max CPC for the bidding strategy (e.g., ¥500-¥2,000). "
                     "¥0 prevents auction participation"
                 )
             if bidding.get("target_fraction_percent", 0) == 0:
-                recommendations.append("Set a target impression share (e.g., 50%-80%)")
+                diag.recommendations.append(
+                    "Set a target impression share (e.g., 50%-80%)"
+                )
             if bidding.get("location", "UNSPECIFIED") == "UNSPECIFIED":
-                recommendations.append(
+                diag.recommendations.append(
                     "Specify ad placement (ANYWHERE_ON_PAGE / TOP_OF_PAGE / "
                     "ABSOLUTE_TOP_OF_PAGE)"
                 )
-        if not locations:
-            recommendations.append(
+        if not diag.locations:
+            diag.recommendations.append(
                 "Add Japan (geoTargetConstants/2392) to location targeting"
             )
 
-        # --- NEW: Recommended actions based on primary_status_reasons ---
-        for reason in primary_reasons:
+    def _build_reason_recommendations(self, diag: _DeliveryDiagnosis) -> None:
+        """Recommended actions based on primary_status_reasons and conversion tracking."""
+        for reason in diag.primary_reasons:
             if reason == "BIDDING_STRATEGY_MISCONFIGURED":
-                recommendations.append(
+                diag.recommendations.append(
                     "Please review bidding strategy settings. "
                     "Use campaigns.get to check detailed parameters and "
                     "verify that required parameters such as max CPC and target CPA are configured"
                 )
             elif reason == "BUDGET_CONSTRAINED":
-                recommendations.append(
+                diag.recommendations.append(
                     "Consider increasing the daily budget. "
                     "The current budget is missing impression opportunities. "
                     "Use budget.update to adjust the budget"
                 )
             elif reason == "SEARCH_VOLUME_LIMITED":
-                recommendations.append(
+                diag.recommendations.append(
                     "Consider adding keywords or changing match types. "
                     "Switching to broad match or adding related keywords can expand search volume"
                 )
             elif reason == "HAS_ADS_DISAPPROVED":
-                recommendations.append(
+                diag.recommendations.append(
                     "Check and fix disapproved ads. "
                     "Use ads.policy to check disapproval reasons and revise to comply with policies"
                 )
 
         # Smart bidding + no CV configured recommended action
-        if (
-            strategy in SMART_BIDDING_STRATEGIES
-            and result.get("active_conversion_actions") == 0
-        ):
-            recommendations.append(
+        if diag.strategy in SMART_BIDDING_STRATEGIES and diag.active_cv_count == 0:
+            diag.recommendations.append(
                 "Please configure conversion actions. "
                 "You can set them up from Tools > Conversions in the Google Ads dashboard. "
                 "After configuration, install tags via Google Tag Manager or similar"
             )
 
-        result["issues"] = issues
-        result["warnings"] = warnings
-        result["recommendations"] = recommendations
-        result["diagnosis"] = (
-            "No issues" if not issues else f"{len(issues)} issues found"
+    def _build_diagnosis(self, diag: _DeliveryDiagnosis) -> None:
+        """Assemble the issue, warning and recommendation lists and the verdict."""
+        diag.result["issues"] = diag.issues
+        diag.result["warnings"] = diag.warnings
+        diag.result["recommendations"] = diag.recommendations
+        diag.result["diagnosis"] = (
+            "No issues" if not diag.issues else f"{len(diag.issues)} issues found"
         )
-        return result

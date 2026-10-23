@@ -130,7 +130,7 @@ mureo/
 │   ├── _keywords.py         # _KeywordsMixin (add/remove/suggest)
 │   ├── _extensions.py       # _ExtensionsMixin (sitelinks, callouts, conversions, targeting)
 │   ├── _monitoring.py       # _MonitoringMixin (anomaly detection, reports)
-│   ├── _diagnostics.py      # _DiagnosticsMixin (campaign diagnosis)
+│   ├── _diagnostics.py      # _DiagnosticsMixin (campaign diagnosis, one method per delivery check)
 │   ├── _analysis.py         # _AnalysisMixin (auction insights, CPC trends, device analysis)
 │   ├── _creative.py         # _CreativeMixin (LP analysis, RSA insights)
 │   ├── _media.py            # _MediaMixin (image asset upload)
