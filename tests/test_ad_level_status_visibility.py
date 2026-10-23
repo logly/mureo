@@ -247,7 +247,7 @@ def test_standard_flow_bounds_ad_fetch_to_active_campaigns(skill: str) -> None:
     The filter must be stated in a **platform-agnostic** way — a bare
     ``ACTIVE`` literal is Meta's vocabulary and silently excludes Google
     Ads' ``ENABLED`` and a Protocol plugin's ``enabled`` (see
-    ``_mureo-shared`` → *Status vocabulary contract*).
+    ``_mureo-state-schema`` → *Status vocabulary contract*).
     """
     body = _skill_body(skill)
     assert "active campaigns only" in body.lower()
@@ -451,9 +451,9 @@ def test_shared_documents_the_status_vocabulary_contract() -> None:
     """Nothing documented which spelling a plugin platform is expected to
     write into STATE.json, so the diff's comparison had nothing to agree with
     (#480c)."""
-    body = _skill_body("_mureo-shared")
+    body = _skill_body("_mureo-state-schema")
     assert "Status vocabulary contract" in body, (
-        "_mureo-shared documents no status-vocabulary contract, so a plugin "
+        "_mureo-state-schema documents no status-vocabulary contract, so a plugin "
         "author cannot know which spelling lands in STATE.json."
     )
     lowered = body.lower()

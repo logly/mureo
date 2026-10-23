@@ -231,10 +231,9 @@ def test_shared_contract_covers_pricing_and_selection_fields() -> None:
     'store it verbatim, do not translate it, omit it where the platform has no
     such thing'. Pricing and delivery-selection fields live under the same
     rule — not under a second one written next to it."""
-    body = _skill_body("_mureo-shared")
+    body = _skill_body("_mureo-state-schema")
     start = body.index("### Status vocabulary contract")
-    end = body.index("\n## ", start)
-    section = body[start:end]
+    section = body[start:].split("\n## ", 1)[0]
 
     assert "bidding_strategy_type" in section
     assert "bidding_details" in section

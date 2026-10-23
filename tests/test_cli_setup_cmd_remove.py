@@ -37,7 +37,7 @@ def _make_skill_dir(parent: Path, name: str, content: str = "skill body") -> Pat
 
 
 # Bundle children present in ``mureo/_data/skills/`` (per AGENTS.md
-# architecture overview L116-L119). Pinned here so the test does not
+# architecture overview, ``skills/`` tree). Pinned here so the test does not
 # depend on filesystem inspection at runtime.
 _BUNDLE_NAMES = (
     "_mureo-amazon-ads",
@@ -45,6 +45,7 @@ _BUNDLE_NAMES = (
     "_mureo-learning",
     "_mureo-meta-ads",
     "_mureo-shared",
+    "_mureo-state-schema",
     "_mureo-strategy",
     "ad-fatigue-check",
     "audience-review",
