@@ -1,0 +1,153 @@
+{
+  "active_conversion_actions": 0,
+  "ad_final_urls": [
+    "https://example.com/a",
+    "https://example.com/b",
+    "https://example.com/c"
+  ],
+  "ad_group_ad_counts": [
+    {
+      "ad_count": 2,
+      "ad_group_id": "1",
+      "name": "AG1"
+    },
+    {
+      "ad_count": 1,
+      "ad_group_id": "2",
+      "name": "AG2"
+    }
+  ],
+  "ad_groups_enabled_count": 2,
+  "ads_enabled_count": 3,
+  "billing_setup": "APPROVED",
+  "campaign": {
+    "bidding_details": {
+      "optional_target_cpa": 3000.0,
+      "strategy": "MAXIMIZE_CONVERSIONS"
+    },
+    "bidding_strategy_system_status": "LEARNING_BUDGET_CHANGE",
+    "budget_daily": 5000,
+    "budget_status": "ENABLED",
+    "end_date": "2020-01-01",
+    "id": "123",
+    "name": "Golden campaign",
+    "primary_status": "LIMITED",
+    "primary_status_reasons": [
+      "BUDGET_CONSTRAINED",
+      "HAS_ADS_DISAPPROVED",
+      "BIDDING_STRATEGY_MISCONFIGURED",
+      "SEARCH_VOLUME_LIMITED",
+      "UNKNOWN",
+      "SOME_FUTURE_REASON"
+    ],
+    "serving_status": "SUSPENDED",
+    "start_date": "2099-01-01",
+    "status": "ENABLED"
+  },
+  "conversion_actions_detail": [
+    {
+      "conversions": 3.0,
+      "conversions_value": 45000.0,
+      "cost_per_conversion": 5000.0,
+      "name": "Purchase"
+    },
+    {
+      "conversions": 2.0,
+      "conversions_value": 0.0,
+      "cost_per_conversion": 5000.0,
+      "name": "Signup"
+    }
+  ],
+  "diagnosis": "8 issues found",
+  "has_rsa": true,
+  "impression_share": {
+    "budget_lost_pct": 23.0,
+    "rank_lost_pct": 35.0,
+    "search_impression_share": 42.0
+  },
+  "issues": [
+    "Serving status is SUSPENDED (not SERVING)",
+    "Campaign primary_status is LIMITED (non-ELIGIBLE may indicate delivery issues)",
+    "[HAS_ADS_DISAPPROVED] There are disapproved ads",
+    "[BIDDING_STRATEGY_MISCONFIGURED] Bidding strategy is misconfigured",
+    "Campaign start date is in the future (2099-01-01). Delivery will not begin until the start date",
+    "Campaign end date has passed (2020-01-01). Delivery has stopped",
+    "1 ads are disapproved",
+    "Using smart bidding (MAXIMIZE_CONVERSIONS), but there are 0 active conversion actions. Please configure conversion tracking"
+  ],
+  "keyword_duplicates": [
+    "shoes"
+  ],
+  "keyword_duplicates_count": 1,
+  "keywords_enabled_count": 5,
+  "learning_status": {
+    "description": "Budget was changed; readjusting",
+    "message": "⚠️ This campaign is currently in the [Learning Period].\nReason: Budget was changed; readjusting\nDuring the learning period (typically 1-2 weeks), avoid the following:\n• Changing bidding strategy settings (target CPA/ROAS, etc.)\n• Major budget changes (20% or more)\n• Adding or removing large numbers of keywords\n• Changing conversion settings\nThese changes may reset the learning phase and potentially cause unstable performance.",
+    "status": "LEARNING_BUDGET_CHANGE"
+  },
+  "location_targeting_count": 2,
+  "performance_last_30_days": {
+    "clicks": 50,
+    "conversions": 5.0,
+    "cost": 25000.0,
+    "impressions": 1000
+  },
+  "primary_status_reasons_detail": [
+    {
+      "description": "Missing display opportunities due to insufficient budget",
+      "reason": "BUDGET_CONSTRAINED"
+    },
+    {
+      "description": "There are disapproved ads",
+      "reason": "HAS_ADS_DISAPPROVED"
+    },
+    {
+      "description": "Bidding strategy is misconfigured",
+      "reason": "BIDDING_STRATEGY_MISCONFIGURED"
+    },
+    {
+      "description": "Search volume is insufficient",
+      "reason": "SEARCH_VOLUME_LIMITED"
+    },
+    {
+      "description": "UNKNOWN",
+      "reason": "UNKNOWN"
+    },
+    {
+      "description": "SOME_FUTURE_REASON",
+      "reason": "SOME_FUTURE_REASON"
+    }
+  ],
+  "recommendations": [
+    "Consider increasing the daily budget. The current budget is missing impression opportunities. Use budget.update to adjust the budget",
+    "Check and fix disapproved ads. Use ads.policy to check disapproval reasons and revise to comply with policies",
+    "Please review bidding strategy settings. Use campaigns.get to check detailed parameters and verify that required parameters such as max CPC and target CPA are configured",
+    "Consider adding keywords or changing match types. Switching to broad match or adding related keywords can expand search volume",
+    "Please configure conversion actions. You can set them up from Tools > Conversions in the Google Ads dashboard. After configuration, install tags via Google Tag Manager or similar"
+  ],
+  "rsa_description_texts": [
+    "Description A",
+    "Description B",
+    "Description C"
+  ],
+  "rsa_headline_texts": [
+    "Headline A",
+    "Headline B",
+    "Headline C",
+    "Headline D"
+  ],
+  "rsa_min_descriptions": 1,
+  "rsa_min_headlines": 2,
+  "sitelinks_count": 3,
+  "warnings": [
+    "[BUDGET_CONSTRAINED] Missing display opportunities due to insufficient budget",
+    "[SEARCH_VOLUME_LIMITED] Search volume is insufficient",
+    "[SOME_FUTURE_REASON] SOME_FUTURE_REASON",
+    "Bidding strategy is in learning phase (LEARNING_BUDGET_CHANGE). We recommend waiting 1-2 weeks for stabilization",
+    "2 keywords are disapproved: boots, sandals",
+    "3 keywords are rarely being displayed (RARELY_SERVED): Shoes, shoes, sandals",
+    "1 ads have limited approval (APPROVED_LIMITED). They may not be shown to some audiences",
+    "Missing 23.0% of impressions due to budget constraints",
+    "Missing 35.0% of impressions due to insufficient ad rank"
+  ]
+}

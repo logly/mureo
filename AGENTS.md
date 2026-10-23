@@ -44,7 +44,7 @@ mureo/
 │   ├── _analysis.py     # AnalysisMixin aggregator, composing the split modules below
 │   ├── _analysis_auction.py / _analysis_btob.py / _analysis_budget.py    # + _analysis_constants.py
 │   ├── _analysis_keywords.py / _analysis_performance.py / _analysis_rsa.py / _analysis_search_terms.py
-│   ├── _diagnostics.py  # DiagnosticsMixin (campaign diagnosis)
+│   ├── _diagnostics.py  # DiagnosticsMixin (campaign diagnosis, one method per delivery check)
 │   ├── _extensions.py   # ExtensionsMixin aggregator, composing the split modules below
 │   ├── _extensions_callouts.py / _extensions_conversions.py / _extensions_sitelinks.py / _extensions_targeting.py
 │   ├── _monitoring.py   # MonitoringMixin (anomaly detection/reporting)

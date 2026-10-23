@@ -1,0 +1,106 @@
+{
+  "active_conversion_actions": null,
+  "ad_final_urls": [],
+  "ad_group_ad_counts": [],
+  "ad_groups_enabled_count": 0,
+  "ads_enabled_count": 0,
+  "billing_setup": null,
+  "campaign": {
+    "bidding_details": {
+      "optional_target_cpa": 3000.0,
+      "strategy": "MAXIMIZE_CONVERSIONS"
+    },
+    "bidding_strategy_system_status": "LEARNING_BUDGET_CHANGE",
+    "budget_daily": 5000,
+    "budget_status": "ENABLED",
+    "end_date": "2020-01-01",
+    "id": "123",
+    "name": "Golden campaign",
+    "primary_status": "LIMITED",
+    "primary_status_reasons": [
+      "BUDGET_CONSTRAINED",
+      "HAS_ADS_DISAPPROVED",
+      "BIDDING_STRATEGY_MISCONFIGURED",
+      "SEARCH_VOLUME_LIMITED",
+      "UNKNOWN",
+      "SOME_FUTURE_REASON"
+    ],
+    "serving_status": "SUSPENDED",
+    "start_date": "2099-01-01",
+    "status": "ENABLED"
+  },
+  "conversion_actions_detail": null,
+  "diagnosis": "9 issues found",
+  "has_rsa": false,
+  "impression_share": null,
+  "issues": [
+    "Serving status is SUSPENDED (not SERVING)",
+    "Campaign primary_status is LIMITED (non-ELIGIBLE may indicate delivery issues)",
+    "[HAS_ADS_DISAPPROVED] There are disapproved ads",
+    "[BIDDING_STRATEGY_MISCONFIGURED] Bidding strategy is misconfigured",
+    "Campaign start date is in the future (2099-01-01). Delivery will not begin until the start date",
+    "Campaign end date has passed (2020-01-01). Delivery has stopped",
+    "No active ad groups",
+    "No active keywords",
+    "No active ads"
+  ],
+  "keyword_duplicates": [],
+  "keyword_duplicates_count": 0,
+  "keywords_enabled_count": 0,
+  "learning_status": {
+    "description": "Budget was changed; readjusting",
+    "message": "⚠️ This campaign is currently in the [Learning Period].\nReason: Budget was changed; readjusting\nDuring the learning period (typically 1-2 weeks), avoid the following:\n• Changing bidding strategy settings (target CPA/ROAS, etc.)\n• Major budget changes (20% or more)\n• Adding or removing large numbers of keywords\n• Changing conversion settings\nThese changes may reset the learning phase and potentially cause unstable performance.",
+    "status": "LEARNING_BUDGET_CHANGE"
+  },
+  "location_targeting_count": 0,
+  "performance_last_30_days": {
+    "clicks": 1,
+    "cost": 300.0,
+    "impressions": 10
+  },
+  "primary_status_reasons_detail": [
+    {
+      "description": "Missing display opportunities due to insufficient budget",
+      "reason": "BUDGET_CONSTRAINED"
+    },
+    {
+      "description": "There are disapproved ads",
+      "reason": "HAS_ADS_DISAPPROVED"
+    },
+    {
+      "description": "Bidding strategy is misconfigured",
+      "reason": "BIDDING_STRATEGY_MISCONFIGURED"
+    },
+    {
+      "description": "Search volume is insufficient",
+      "reason": "SEARCH_VOLUME_LIMITED"
+    },
+    {
+      "description": "UNKNOWN",
+      "reason": "UNKNOWN"
+    },
+    {
+      "description": "SOME_FUTURE_REASON",
+      "reason": "SOME_FUTURE_REASON"
+    }
+  ],
+  "recommendations": [
+    "Add Japan (geoTargetConstants/2392) to location targeting",
+    "Consider increasing the daily budget. The current budget is missing impression opportunities. Use budget.update to adjust the budget",
+    "Check and fix disapproved ads. Use ads.policy to check disapproval reasons and revise to comply with policies",
+    "Please review bidding strategy settings. Use campaigns.get to check detailed parameters and verify that required parameters such as max CPC and target CPA are configured",
+    "Consider adding keywords or changing match types. Switching to broad match or adding related keywords can expand search volume"
+  ],
+  "rsa_description_texts": [],
+  "rsa_headline_texts": [],
+  "rsa_min_descriptions": 0,
+  "rsa_min_headlines": 0,
+  "sitelinks_count": null,
+  "warnings": [
+    "[BUDGET_CONSTRAINED] Missing display opportunities due to insufficient budget",
+    "[SEARCH_VOLUME_LIMITED] Search volume is insufficient",
+    "[SOME_FUTURE_REASON] SOME_FUTURE_REASON",
+    "Bidding strategy is in learning phase (LEARNING_BUDGET_CHANGE). We recommend waiting 1-2 weeks for stabilization",
+    "No location targeting set (worldwide). If targeting Japan only, set geoTargetConstants/2392 (Japan)"
+  ]
+}

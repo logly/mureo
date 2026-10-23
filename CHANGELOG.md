@@ -50,6 +50,9 @@
   (`# noqa: BLE001 — <reason>`, checked by `tests/test_ble001_reasons.py`)
   or narrows its type. Six sites were narrowed, and broad excepts that
   continued silently now log a WARNING.
+- **`diagnose_campaign_delivery` is split into one method per section**
+  (#865), sharing a private accumulator; no change in results, API calls
+  or log messages.
 
 ### Security
 
