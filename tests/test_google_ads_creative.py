@@ -6,11 +6,23 @@ research_creative and helper methods.
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from mureo.google_ads._creative import _CreativeMixin
+
+_CREATIVE_LOGGER = "mureo.google_ads._creative"
+
+
+def _warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == _CREATIVE_LOGGER and r.levelno >= logging.WARNING
+    ]
+
 
 # ---------------------------------------------------------------------------
 # Mock client class for tests
@@ -203,6 +215,20 @@ class TestBuildContextSummary:
         summary = _CreativeMixin._build_context_summary(result)
         assert "Target Keywords" in summary
 
+    def test_failed_reads_are_stated_not_retrieved(self) -> None:
+        """None (read failed) is unknown, distinct from an empty list."""
+        result = {
+            "lp_analysis": {"error": "failed"},
+            "existing_ads": None,
+            "search_term_insights": None,
+            "existing_keywords": None,
+        }
+        summary = _CreativeMixin._build_context_summary(result)
+        assert "[Existing Ads] could not be retrieved" in summary
+        assert "[Converting Search Terms] could not be retrieved" in summary
+        assert "[Target Keywords] could not be retrieved" in summary
+        assert summary != "No LP analysis data"
+
     def test_no_data(self) -> None:
         result = {
             "lp_analysis": {"error": "no data"},
@@ -285,24 +311,34 @@ class TestResearchCreative:
         assert "context_summary" in result
 
     @pytest.mark.asyncio
-    async def test_partial_failure_handled(self, client: _MockCreativeClient) -> None:
-        """The remaining steps still run when some steps fail."""
-        with patch.object(
-            client, "analyze_landing_page", new_callable=AsyncMock
-        ) as mock_lp:
+    async def test_partial_failure_handled(
+        self, client: _MockCreativeClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A failed read keeps its key with None and warns with the class only."""
+        with (
+            caplog.at_level(logging.WARNING, logger=_CREATIVE_LOGGER),
+            patch.object(
+                client, "analyze_landing_page", new_callable=AsyncMock
+            ) as mock_lp,
+        ):
             mock_lp.return_value = {"error": "failed"}
             with patch.object(
                 client, "_fetch_existing_ads", new_callable=AsyncMock
             ) as mock_ads:
-                mock_ads.side_effect = RuntimeError("API error")
+                mock_ads.side_effect = RuntimeError("secret-bearing API error")
 
                 result = await client.research_creative(
                     campaign_id="123",
                     url="https://example.com",
                 )
 
-        assert result["existing_ads"] == "fetch_failed"
+        assert "existing_ads" in result
+        assert result["existing_ads"] is None
         assert "lp_analysis" in result
+        assert "[Existing Ads] could not be retrieved" in result["context_summary"]
+        warnings = _warnings(caplog)
+        assert warnings == ["Failed to retrieve existing ads (RuntimeError)"]
+        assert not any("secret-bearing" in m for m in warnings)
 
     @pytest.mark.asyncio
     async def test_with_ad_group_id(self, client: _MockCreativeClient) -> None:
@@ -355,7 +391,7 @@ class TestResearchCreative:
                         url="https://example.com",
                     )
 
-        assert result["search_term_insights"] == "fetch_failed"
+        assert result["search_term_insights"] is None
 
     @pytest.mark.asyncio
     async def test_keyword_suggestions_failure(
@@ -387,7 +423,7 @@ class TestResearchCreative:
                         url="https://example.com",
                     )
 
-        assert result["keyword_suggestions"] == "fetch_failed"
+        assert result["keyword_suggestions"] is None
 
     @pytest.mark.asyncio
     async def test_existing_keywords_failure(self, client: _MockCreativeClient) -> None:
@@ -417,7 +453,7 @@ class TestResearchCreative:
                         url="https://example.com",
                     )
 
-        assert result["existing_keywords"] == "fetch_failed"
+        assert result["existing_keywords"] is None
 
     @pytest.mark.asyncio
     async def test_empty_seeds_no_suggestions(

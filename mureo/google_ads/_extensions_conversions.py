@@ -202,6 +202,25 @@ class _ConversionsMixin:
                 action["cost_per_conversion"] = None
 
         # Retrieve CV performance by landing page
+        landing_pages = await self._landing_page_breakdown(date_clause, campaign_id)
+
+        # Sort by CV count descending
+        actions.sort(key=lambda x: x["conversions"], reverse=True)
+
+        total_conversions = sum(a["conversions"] for a in actions)
+        return {
+            "period": period,
+            "campaign_id": campaign_id,
+            "total_conversions": total_conversions,
+            "actions": actions,
+            "daily_details": daily_details,
+            "landing_pages": landing_pages,
+        }
+
+    async def _landing_page_breakdown(
+        self, date_clause: str, campaign_id: str | None
+    ) -> list[dict[str, Any]] | None:
+        """CV performance by landing page; ``None`` (unknown) when the read fails."""
         lp_campaign_filter = ""
         if campaign_id:
             lp_campaign_filter = f"AND campaign.id = {campaign_id}"
@@ -220,40 +239,28 @@ class _ConversionsMixin:
                 {lp_campaign_filter}
             ORDER BY metrics.conversions DESC
         """
-        landing_pages: list[dict[str, Any]] = []
         try:
             lp_response = await self._search(lp_query)  # type: ignore[attr-defined]
-            for row in lp_response:
-                landing_pages.append(
-                    {
-                        "date": str(getattr(row.segments, "date", "")),
-                        "landing_page_url": str(
-                            row.landing_page_view.unexpanded_final_url
-                        ),
-                        "campaign_id": str(row.campaign.id),
-                        "campaign_name": str(row.campaign.name),
-                        "conversions": float(row.metrics.conversions),
-                        "conversions_value": float(
-                            getattr(row.metrics, "conversions_value", 0)
-                        ),
-                        "clicks": int(row.metrics.clicks),
-                    }
-                )
-        except Exception:  # noqa: BLE001 — the LP breakdown is optional
-            logger.warning("Failed to retrieve CV by landing page")
-
-        # Sort by CV count descending
-        actions.sort(key=lambda x: x["conversions"], reverse=True)
-
-        total_conversions = sum(a["conversions"] for a in actions)
-        return {
-            "period": period,
-            "campaign_id": campaign_id,
-            "total_conversions": total_conversions,
-            "actions": actions,
-            "daily_details": daily_details,
-            "landing_pages": landing_pages,
-        }
+            return [
+                {
+                    "date": str(getattr(row.segments, "date", "")),
+                    "landing_page_url": str(row.landing_page_view.unexpanded_final_url),
+                    "campaign_id": str(row.campaign.id),
+                    "campaign_name": str(row.campaign.name),
+                    "conversions": float(row.metrics.conversions),
+                    "conversions_value": float(
+                        getattr(row.metrics, "conversions_value", 0)
+                    ),
+                    "clicks": int(row.metrics.clicks),
+                }
+                for row in lp_response
+            ]
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            # Class name only (#603).
+            logger.warning(
+                "Failed to retrieve CV by landing page (%s)", type(exc).__name__
+            )
+            return None
 
     async def get_conversion_action(
         self, conversion_action_id: str

@@ -25,7 +25,11 @@ from mureo.google_ads._asset_groups import _AssetGroupsMixin
 from mureo.google_ads._asset_groups_images import _AssetGroupImagesMixin
 from mureo.google_ads._creative import _CreativeMixin
 from mureo.google_ads._diagnostics import _DiagnosticsMixin
-from mureo.google_ads._enum_names import AD_NETWORK_TYPE_MAP, map_enum_name
+from mureo.google_ads._enum_names import (
+    AD_NETWORK_TYPE_MAP,
+    SMART_BIDDING_STRATEGIES,
+    map_enum_name,
+)
 from mureo.google_ads._extensions import _ExtensionsMixin
 from mureo.google_ads._gaql_validator import (
     escape_string_literal as _gaql_escape_string_literal,
@@ -80,13 +84,6 @@ _VALID_STATUSES = frozenset({"ENABLED", "PAUSED", "REMOVED"})
 # by the Pro BudgetGuard on the Managed side; the OSS client only refuses
 # values so large they can only be a mistake.
 _MAX_BUDGET_AMOUNT_MICROS = 1_000_000_000_000_000
-_SMART_BIDDING_STRATEGIES = frozenset(
-    {
-        "MAXIMIZE_CONVERSIONS",
-        "TARGET_CPA",
-        "TARGET_ROAS",
-    }
-)
 _VALID_MATCH_TYPES = frozenset({"BROAD", "PHRASE", "EXACT"})
 _VALID_RECOMMENDATION_TYPES = frozenset(
     {
@@ -464,7 +461,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     ) -> None:
         """Validate compatibility between shared budgets and smart bidding strategies."""
         self._validate_id(budget_id, "budget_id")
-        if bidding_strategy.upper() not in _SMART_BIDDING_STRATEGIES:
+        if bidding_strategy.upper() not in SMART_BIDDING_STRATEGIES:
             return
         query = f"""
             SELECT campaign_budget.explicitly_shared

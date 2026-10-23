@@ -207,9 +207,13 @@ class TestRequest:
 
         with (
             patch("mureo.meta_ads.client.asyncio.sleep", new_callable=AsyncMock),
-            pytest.raises(RuntimeError, match="request failed"),
+            pytest.raises(RuntimeError, match="request failed") as excinfo,
         ):
             await client._get("/test")
+        # Class name only, not the transport error text (#900).
+        assert str(excinfo.value) == (
+            "Meta API request failed (path=/test): ConnectError"
+        )
 
     @pytest.mark.asyncio
     async def test_unsupported_method_raises(self, client: MetaAdsApiClient) -> None:

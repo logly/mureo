@@ -10,6 +10,7 @@ network call is made and no credential file is read.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -848,3 +849,57 @@ async def test_edit_visual_provider_failure_is_provider_failed(
     assert payload["status"] == "error"
     assert payload["error"] == "provider_failed"
     assert "image edit failed: upstream 500" in payload["detail"]
+
+
+# ---------------------------------------------------------------------------
+# A broken provider is logged by class name only (#900)
+# ---------------------------------------------------------------------------
+
+_SECRET = "provider-token-SECRET-1234"
+
+
+class _ProviderHTTPError(Exception):
+    """Stands in for a provider / HTTP exception carrying request detail."""
+
+
+class _BrokenConfigProvider(_FakeProvider):
+    def is_configured(self) -> bool:
+        raise _ProviderHTTPError(_SECRET)
+
+
+class _BrokenCapabilitiesProvider(_FakeProvider):
+    def capabilities(self) -> dict:
+        raise _ProviderHTTPError(_SECRET)
+
+
+def _assert_class_name_only(caplog: pytest.LogCaptureFixture, expected: str) -> None:
+    records = [r for r in caplog.records if r.name == mod.logger.name]
+    assert [r.getMessage() for r in records] == [expected]
+    assert all(r.exc_info is None for r in records)
+    assert all(_SECRET not in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_broken_is_configured_logs_class_name_only(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    provider = _BrokenConfigProvider()
+    with caplog.at_level(logging.DEBUG, logger=mod.logger.name):
+        assert mod._safe_is_configured(provider) is False
+    _assert_class_name_only(
+        caplog,
+        f"is_configured failed for provider {provider!r} (_ProviderHTTPError)",
+    )
+
+
+@pytest.mark.unit
+def test_broken_capabilities_logs_class_name_only(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    provider = _BrokenCapabilitiesProvider()
+    monkeypatch.setattr(mod, "available_providers", lambda: [provider])
+    with caplog.at_level(logging.DEBUG, logger=mod.logger.name):
+        assert mod._resolve_edit_provider(None) is None
+    _assert_class_name_only(
+        caplog, f"capabilities() failed for {provider!r} (_ProviderHTTPError)"
+    )

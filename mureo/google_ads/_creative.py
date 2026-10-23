@@ -17,6 +17,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Context-summary marker for a section whose read failed (``None`` in the
+# result): unknown, which must not read as "nothing found".
+_NOT_RETRIEVED = "could not be retrieved"
+
 
 class _CreativeMixin:
     """Mixin providing composite ad creative tools."""
@@ -81,7 +85,9 @@ class _CreativeMixin:
     ) -> dict[str, Any]:
         """Macro tool that collects LP analysis + existing ads + search terms + keyword suggestions.
 
-        Each step is isolated with try-except so one failure does not affect the whole.
+        Each step is isolated with try-except so one failure does not affect
+        the whole: a step whose read fails keeps its key with ``None``
+        (unknown, not empty) and logs one warning with the exception class.
         """
         self._validate_id(campaign_id, "campaign_id")
         if ad_group_id:
@@ -101,24 +107,24 @@ class _CreativeMixin:
             result["existing_ads"] = await self._fetch_existing_ads(
                 campaign_id, ad_group_id
             )
-        except Exception as exc:  # noqa: BLE001 — one part must not fail the rest
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             # Class name only. A traceback would print the GoogleAdsException
             # repr, which carries the request metadata (developer token,
             # authorization header) — see mureo/google_ads/accounts.py for the
             # full reasoning (#603).
             logger.warning("Failed to retrieve existing ads (%s)", type(exc).__name__)
-            result["existing_ads"] = "fetch_failed"
+            result["existing_ads"] = None
 
         # --- 3. Search term insights ---
         try:
             result["search_term_insights"] = await self._extract_search_term_insights(
                 campaign_id, ad_group_id
             )
-        except Exception as exc:  # noqa: BLE001 — one part must not fail the rest
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve search term insights (%s)", type(exc).__name__
             )
-            result["search_term_insights"] = "fetch_failed"
+            result["search_term_insights"] = None
 
         # --- 4. Keyword suggestions ---
         try:
@@ -127,22 +133,22 @@ class _CreativeMixin:
                 result["keyword_suggestions"] = await self.suggest_keywords(seeds)
             else:
                 result["keyword_suggestions"] = []
-        except Exception as exc:  # noqa: BLE001 — one part must not fail the rest
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve keyword suggestions (%s)", type(exc).__name__
             )
-            result["keyword_suggestions"] = "fetch_failed"
+            result["keyword_suggestions"] = None
 
         # --- 5. Existing keywords ---
         try:
             result["existing_keywords"] = await self.list_keywords(
                 campaign_id=campaign_id
             )
-        except Exception as exc:  # noqa: BLE001 — one part must not fail the rest
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
             logger.warning(
                 "Failed to retrieve existing keywords (%s)", type(exc).__name__
             )
-            result["existing_keywords"] = "fetch_failed"
+            result["existing_keywords"] = None
 
         # --- 6. Context summary for LLM ---
         result["context_summary"] = self._build_context_summary(result)
@@ -261,32 +267,41 @@ class _CreativeMixin:
         return seeds[:5]
 
     @staticmethod
-    def _build_context_summary(result: dict[str, Any]) -> str:
-        """Summarize research results as context string for LLM."""
-        parts: list[str] = []
+    def _lp_summary_lines(lp: Any) -> list[str]:
+        """Context-summary lines for the LP analysis section."""
+        if not isinstance(lp, dict) or lp.get("error"):
+            return []
+        parts = ["[LP Information]"]
+        if lp.get("title"):
+            parts.append(f"Title: {lp['title']}")
+        if lp.get("meta_description"):
+            parts.append(f"Description: {lp['meta_description']}")
+        if lp.get("h1_texts"):
+            parts.append(f"H1 Headings: {', '.join(lp['h1_texts'])}")
+        if lp.get("cta_texts"):
+            parts.append(f"CTA: {', '.join(lp['cta_texts'])}")
+        if lp.get("features"):
+            parts.append(f"Features: {', '.join(lp['features'][:5])}")
+        if lp.get("prices"):
+            parts.append(f"Prices: {', '.join(lp['prices'])}")
+        if lp.get("industry_hints"):
+            parts.append(f"Industry: {', '.join(lp['industry_hints'])}")
+        return parts
 
-        # LP information
-        lp = result.get("lp_analysis", {})
-        if isinstance(lp, dict) and not lp.get("error"):
-            parts.append("[LP Information]")
-            if lp.get("title"):
-                parts.append(f"Title: {lp['title']}")
-            if lp.get("meta_description"):
-                parts.append(f"Description: {lp['meta_description']}")
-            if lp.get("h1_texts"):
-                parts.append(f"H1 Headings: {', '.join(lp['h1_texts'])}")
-            if lp.get("cta_texts"):
-                parts.append(f"CTA: {', '.join(lp['cta_texts'])}")
-            if lp.get("features"):
-                parts.append(f"Features: {', '.join(lp['features'][:5])}")
-            if lp.get("prices"):
-                parts.append(f"Prices: {', '.join(lp['prices'])}")
-            if lp.get("industry_hints"):
-                parts.append(f"Industry: {', '.join(lp['industry_hints'])}")
+    @staticmethod
+    def _build_context_summary(result: dict[str, Any]) -> str:
+        """Summarize research results as context string for LLM.
+
+        A section whose read failed (``None``) is stated as not retrieved,
+        so it does not read as "nothing found".
+        """
+        parts = _CreativeMixin._lp_summary_lines(result.get("lp_analysis", {}))
 
         # High-performance elements from existing ads
         ads = result.get("existing_ads", [])
-        if isinstance(ads, list) and ads:
+        if ads is None:
+            parts.append(f"\n[Existing Ads] {_NOT_RETRIEVED}")
+        elif isinstance(ads, list) and ads:
             parts.append("\n[Top Performing Existing Ads]")
             for ad in ads[:3]:
                 parts.append(
@@ -296,7 +311,9 @@ class _CreativeMixin:
 
         # Search term insights
         insights = result.get("search_term_insights", {})
-        if isinstance(insights, dict):
+        if insights is None:
+            parts.append(f"\n[Converting Search Terms] {_NOT_RETRIEVED}")
+        elif isinstance(insights, dict):
             high_cv = insights.get("high_cv_terms", [])
             if high_cv:
                 cv_terms = [t.get("search_term", "") for t in high_cv[:5]]
@@ -304,7 +321,9 @@ class _CreativeMixin:
 
         # Target keywords
         keywords = result.get("existing_keywords", [])
-        if isinstance(keywords, list) and keywords:
+        if keywords is None:
+            parts.append(f"\n[Target Keywords] {_NOT_RETRIEVED}")
+        elif isinstance(keywords, list) and keywords:
             kw_texts = [kw.get("text", "") for kw in keywords[:10] if kw.get("text")]
             if kw_texts:
                 parts.append(f"\n[Target Keywords]\n{', '.join(kw_texts)}")

@@ -343,8 +343,12 @@ def _coerce_count(raw: Any) -> int | None:
 def _safe_is_configured(provider: ImageProvider) -> bool:
     try:
         return bool(provider.is_configured())
-    except Exception:  # noqa: BLE001 — a broken provider is simply unavailable
-        logger.debug("is_configured failed for provider %r", provider, exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — a broken provider is simply unavailable
+        # Class name only: provider code can raise a provider / HTTP exception
+        # whose text or traceback is not ours to write to the log.
+        logger.debug(
+            "is_configured failed for provider %r (%s)", provider, type(exc).__name__
+        )
         return False
 
 
@@ -574,8 +578,10 @@ def _resolve_edit_provider(provider_arg: str | None) -> ImageProvider | None:
         try:
             if provider.capabilities().get("edit"):
                 return provider
-        except Exception:  # noqa: BLE001 — a broken provider is simply skipped
-            logger.debug("capabilities() failed for %r", provider, exc_info=True)
+        except Exception as exc:  # noqa: BLE001 — a broken provider is simply skipped
+            logger.debug(
+                "capabilities() failed for %r (%s)", provider, type(exc).__name__
+            )
     return None
 
 

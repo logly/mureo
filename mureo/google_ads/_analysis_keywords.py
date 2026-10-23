@@ -66,13 +66,7 @@ class _KeywordsAnalysisMixin:
             f"AND segments.date {date_clause} "
             "AND ad_group_criterion.status != 'REMOVED'"
         )
-        try:
-            response = await self._search(query)
-        except Exception:  # noqa: BLE001 — a failed read yields no keywords
-            logger.warning(
-                "Failed to retrieve keyword performance: campaign_id=%s", campaign_id
-            )
-            return []
+        response = await self._search(query)
         results: list[dict[str, Any]] = []
         for row in response:
             cost_micros = row.metrics.cost_micros
@@ -105,28 +99,59 @@ class _KeywordsAnalysisMixin:
         period: str = "LAST_30_DAYS",
         target_cpa: float | None = None,
     ) -> dict[str, Any]:
-        """Audit keywords and suggest improvement actions."""
-        self._validate_id(campaign_id, "campaign_id")
+        """Audit keywords and suggest improvement actions.
 
-        effective_target = target_cpa
+        When the keyword performance read fails, ``total_keywords`` and the
+        sections derived from it (``avg_cvr``, ``recommendations``,
+        ``summary``) are ``None`` (unknown, not "no keywords").
+        """
+        self._validate_id(campaign_id, "campaign_id")
 
         # Resolve target CPA
         resolved_cpa, cpa_source = await self._resolve_target_cpa(
-            campaign_id, explicit=effective_target
+            campaign_id, explicit=target_cpa
         )
 
         # Keyword performance retrieval
-        kw_perf = await self._get_keyword_performance(campaign_id, period)
+        kw_perf: list[dict[str, Any]] | None
+        try:
+            kw_perf = await self._get_keyword_performance(campaign_id, period)
+        except Exception as exc:  # noqa: BLE001 — partial read; failures warned
+            # Class name only (#603).
+            logger.warning(
+                "Failed to retrieve keyword performance (%s)", type(exc).__name__
+            )
+            kw_perf = None
 
+        result: dict[str, Any] = {
+            "campaign_id": campaign_id,
+            "period": period,
+            "target_cpa": resolved_cpa,
+            "target_cpa_source": cpa_source,
+            "total_keywords": None,
+            "avg_cvr": None,
+            "recommendations": None,
+            "summary": None,
+        }
+        if kw_perf is None:
+            return result
+        return {**result, **self._keyword_audit_sections(kw_perf, resolved_cpa)}
+
+    @classmethod
+    def _keyword_audit_sections(
+        cls,
+        kw_perf: list[dict[str, Any]],
+        resolved_cpa: float | None,
+    ) -> dict[str, Any]:
+        """The audit sections derived from a keyword performance read."""
         # Calculate average CVR
         total_clicks = sum(float(k["metrics"]["clicks"]) for k in kw_perf)
         total_convs = sum(float(k["metrics"]["conversions"]) for k in kw_perf)
         avg_cvr = total_convs / total_clicks if total_clicks > 0 else 0.0
 
         recommendations: list[dict[str, Any]] = []
-
         for kw in kw_perf:
-            rec = self._evaluate_keyword(kw, resolved_cpa, avg_cvr)
+            rec = cls._evaluate_keyword(kw, resolved_cpa, avg_cvr)
             if rec is not None:
                 recommendations.append(rec)
 
@@ -135,10 +160,6 @@ class _KeywordsAnalysisMixin:
         recommendations.sort(key=lambda x: priority_order.get(x["priority"], 99))
 
         return {
-            "campaign_id": campaign_id,
-            "period": period,
-            "target_cpa": resolved_cpa,
-            "target_cpa_source": cpa_source,
             "total_keywords": len(kw_perf),
             "avg_cvr": round(avg_cvr, 4),
             "recommendations": recommendations,

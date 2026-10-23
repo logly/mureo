@@ -16,6 +16,7 @@ _run_report / _search and friends are mocked.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
@@ -979,6 +980,9 @@ class TestSearchTermsAnalysisMixin:
 # =====================================================================
 
 
+_KEYWORDS_LOGGER = "mureo.google_ads._analysis_keywords"
+
+
 class TestKeywordsAnalysisMixin:
     """Tests for _KeywordsAnalysisMixin."""
 
@@ -1034,10 +1038,33 @@ class TestKeywordsAnalysisMixin:
 
     @pytest.mark.unit
     async def test_get_keyword_performance_exception(self) -> None:
+        """The read itself raises; the composite caller decides (#900)."""
         client = self._make_client()
-        client._search.side_effect = Exception("API error")
-        results = await client._get_keyword_performance("123")
-        assert results == []
+        client._search.side_effect = RuntimeError("API error")
+        with pytest.raises(RuntimeError):
+            await client._get_keyword_performance("123")
+
+    @pytest.mark.unit
+    async def test_audit_keywords_read_failure_is_null(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A failed keyword read is unknown (None), not "no keywords" (#900)."""
+        client = self._make_client()
+        client._search.side_effect = RuntimeError("secret-bearing API error")
+        with caplog.at_level(logging.WARNING, logger=_KEYWORDS_LOGGER):
+            result = await client.audit_keywords("123", target_cpa=3000.0)
+
+        for key in ("total_keywords", "avg_cvr", "recommendations", "summary"):
+            assert key in result
+            assert result[key] is None
+        assert result["target_cpa"] == 3000.0
+        messages = [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == _KEYWORDS_LOGGER and r.levelno >= logging.WARNING
+        ]
+        assert messages == ["Failed to retrieve keyword performance (RuntimeError)"]
+        assert not any("secret-bearing" in m for m in messages)
 
     @pytest.mark.unit
     def test_evaluate_keyword_rule1_broad_no_cv(self) -> None:

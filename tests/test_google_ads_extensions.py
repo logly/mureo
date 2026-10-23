@@ -862,9 +862,9 @@ class TestGetConversionPerformance:
 
     @pytest.mark.asyncio
     async def test_lp_query_failure_graceful(
-        self, client: _MockExtensionsClient
+        self, client: _MockExtensionsClient, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Returns normally even when per-LP CV fetch fails."""
+        """A failed per-LP CV read is null (unknown), not [] (#900)."""
         cv_row = MagicMock()
         cv_row.campaign.id = 1
         cv_row.campaign.name = "Campaign A"
@@ -884,9 +884,14 @@ class TestGetConversionPerformance:
                 RuntimeError("lp fail"),  # LP fetch failure
             ]
         )
-        result = await client.get_conversion_performance()
+        with caplog.at_level(logging.WARNING):
+            result = await client.get_conversion_performance()
         assert result["total_conversions"] == 2.0
-        assert result["landing_pages"] == []
+        assert "landing_pages" in result
+        assert result["landing_pages"] is None
+        messages = [r.getMessage() for r in caplog.records]
+        assert "Failed to retrieve CV by landing page (RuntimeError)" in messages
+        assert not any("lp fail" in m for m in messages)
 
     @pytest.mark.asyncio
     async def test_with_lp_data(self, client: _MockExtensionsClient) -> None:

@@ -459,6 +459,8 @@ TOOLS: list[Tool] = [
             "bid), match-type-tighten candidates (broad stealing spend), "
             "and unused keyword-planner ideas. Each item includes "
             "criterion_id, text, spend, conversions, and a reason string. "
+            "When the keyword performance read fails, total_keywords, "
+            "avg_cvr, recommendations and summary are null. "
             "Read-only — recommendations are not applied. Materialize "
             "accepted ones via google_ads_keywords_pause / add / "
             "negative_keywords.add."
