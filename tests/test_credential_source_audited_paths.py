@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
+from mureo.client_factory import GOOGLE_ADS_THROTTLER
 from mureo.core.credential_source import CredentialSource, use_credential_source
 
 pytestmark = pytest.mark.unit
@@ -81,7 +82,10 @@ class TestAnalyticsGoogle:
         assert client is factory.return_value
         assert account_id == "123-456-7890"
         factory.assert_called_once_with(
-            _GOOGLE, "123-456-7890", oauth_credentials=source.oauth
+            _GOOGLE,
+            "123-456-7890",
+            throttler=GOOGLE_ADS_THROTTLER,
+            oauth_credentials=source.oauth,
         )
 
     def test_source_without_credentials_raises_no_credentials(self) -> None:
@@ -142,7 +146,10 @@ class TestChangeFeedGoogle:
             client = GoogleAdsChangeFeed()._open_client("1112223333")
         assert client is factory.return_value
         factory.assert_called_once_with(
-            _GOOGLE, "1112223333", oauth_credentials=source.oauth
+            _GOOGLE,
+            "1112223333",
+            throttler=GOOGLE_ADS_THROTTLER,
+            oauth_credentials=source.oauth,
         )
 
     def test_source_without_credentials_raises(self) -> None:

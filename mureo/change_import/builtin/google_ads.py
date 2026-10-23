@@ -34,8 +34,7 @@ from typing import TYPE_CHECKING, Any
 from mureo import client_factory
 from mureo.byod import runtime as byod_runtime
 from mureo.change_import.models import ChangeFeedResult, ExternalChange
-from mureo.core.account_scope import resolve_customer_id
-from mureo.core.credential_source import call_source, current_google_source
+from mureo.core.credential_source import current_google_source
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -287,40 +286,21 @@ class GoogleAdsChangeFeed:
     def _open_client(self, account_id: str) -> Any:
         """Open a live Google Ads client, or ``None`` in BYOD mode.
 
-        ``mureo.auth`` is imported locally, which keeps registry import cheap
-        and free of auth side effects; the client factory and
-        ``mureo.byod.runtime`` are looked up through their modules. Missing
-        credentials raise out of here on purpose: the importer turns that
-        into an ``ERROR`` outcome, which is the honest answer — the window was
-        not checked. Returning an empty result would report it as quiet.
+        The shared opener (#875) supplies the credential precedence, the
+        workspace scoping (#411/#413, so change import cannot become a way to
+        read an account the workspace is not scoped to) and the shared rate
+        limiter. Missing credentials raise its ``NoCredentialsError`` out of
+        here on purpose: the importer turns that into an ``ERROR`` outcome,
+        which is the honest answer — the window was not checked. Returning an
+        empty result would report it as quiet.
         """
-        # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-        from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
-            create_google_ads_client,
-            load_google_ads_credentials,
-        )
-
-        # An active credential source wins over BYOD mode and the
-        # credentials file, as it does for the MCP handlers (#821).
-        google = current_google_source()
-        # Read through the module (``mureo.byod.runtime.byod_has`` patches apply);
-        # the factory binds its own copy, patched as ``mureo.client_factory.byod_has``.
-        if google is None and byod_runtime.byod_has("google_ads"):
+        # An active credential source wins over BYOD mode, as it does in the
+        # opener (#821). Read through the module (``mureo.byod.runtime.byod_has``
+        # patches apply); the opener reads ``mureo.client_factory.byod_has``.
+        if current_google_source() is None and byod_runtime.byod_has("google_ads"):
             return None
-        # Bind the account to the workspace allow-list (#411/#413) before it
-        # reaches the client factory, so change import cannot become a way to
-        # read an account the workspace is not scoped to.
-        resolved = resolve_customer_id(account_id, None)
-        if google is not None:
-            creds = call_source("google", google.load_credentials)
-            if creds is None:
-                raise RuntimeError("google_ads credentials are not configured")
-            oauth = call_source("google", google.oauth_credentials, creds)
-            return create_google_ads_client(creds, resolved, oauth_credentials=oauth)
-        creds = load_google_ads_credentials()
-        if creds is None:
-            raise RuntimeError("google_ads credentials are not configured")
-        return client_factory.get_google_ads_client(creds, resolved)
+        client, _ = client_factory.open_google_ads_client(account_id)
+        return client
 
 
 __all__ = ["GoogleAdsChangeFeed"]

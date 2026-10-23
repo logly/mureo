@@ -144,11 +144,11 @@ class TestCallToolCampaignsList:
         mock_creds = MagicMock()
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=mock_creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=mock_client,
             ),
         ):
@@ -184,11 +184,11 @@ class TestCallToolCampaignsGet:
         mock_creds = MagicMock()
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=mock_creds,
             ),
             patch(
-                "mureo.mcp._google_ads_client.create_google_ads_client",
+                "mureo.auth.create_google_ads_client",
                 return_value=mock_client,
             ),
         ):
@@ -220,7 +220,7 @@ class TestCallToolErrors:
         mod = _import_server_module()
 
         with patch(
-            "mureo.mcp._google_ads_client.load_google_ads_credentials",
+            "mureo.auth.load_google_ads_credentials",
             return_value=None,
         ):
             result = await mod.handle_call_tool("google_ads_campaigns_list", {})
@@ -233,7 +233,7 @@ class TestCallToolErrors:
         mock_creds = MagicMock()
         with (
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=mock_creds,
             ),
             pytest.raises(ValueError, match="campaign_id"),
@@ -248,7 +248,7 @@ class TestCallToolErrors:
         mod = _import_server_module()
 
         with patch(
-            "mureo.mcp._google_ads_client.load_google_ads_credentials",
+            "mureo.auth.load_google_ads_credentials",
             return_value=None,
         ):
             result = await mod.handle_call_tool(

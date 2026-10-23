@@ -26,10 +26,11 @@ def stub_factories(monkeypatch: pytest.MonkeyPatch):
     """Stub BYOD + the client factories so a test exercises only the scoping
     step, never real credentials or the network. Returns (sentinels, calls)."""
     monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: True)
+    monkeypatch.setattr("mureo.client_factory.byod_has", lambda platform: True)
     sentinel_g, sentinel_m = object(), object()
     calls: dict[str, str | None] = {}
 
-    def fake_google(creds=None, customer_id=None):
+    def fake_google(creds=None, customer_id=None, throttler=None):
         calls["google"] = customer_id
         return sentinel_g
 
@@ -77,10 +78,31 @@ def test_google_allows_in_allowlist(monkeypatch, stub_factories) -> None:
 def test_google_not_tenant_scoped_passes_through(monkeypatch, stub_factories) -> None:
     sentinel_g, _sm, calls = stub_factories
     _scope_google(monkeypatch, None)  # no allow-list active
-    client, resolved = _live_clients._open_google_ads_client("acct-x")
+    client, resolved = _live_clients._open_google_ads_client("123-456")
     assert client is sentinel_g
-    assert resolved == "acct-x"
-    assert calls["google"] == "acct-x"
+    assert resolved == "123-456"
+    assert calls["google"] == "123-456"
+
+
+def test_google_non_numeric_id_is_not_available(monkeypatch, stub_factories) -> None:
+    _scope_google(monkeypatch, None)
+    with pytest.raises(_live_clients.AccountNotAvailableError):
+        _live_clients._open_google_ads_client("acct-1")
+
+
+def test_google_credential_loader_fault_propagates(monkeypatch) -> None:
+    """A ``ValueError`` from credential loading is a fault, not a refusal: it
+    must not be relabelled as "account not available"."""
+    _scope_google(monkeypatch, None)
+    monkeypatch.setattr("mureo.client_factory.byod_has", lambda platform: False)
+
+    def broken_loader():
+        raise ValueError("boom")
+
+    monkeypatch.setattr("mureo.auth.load_google_ads_credentials", broken_loader)
+    with pytest.raises(ValueError, match="boom") as excinfo:
+        _live_clients._open_google_ads_client("1112223333")
+    assert type(excinfo.value) is ValueError
 
 
 async def test_meta_refuses_out_of_allowlist(monkeypatch, stub_factories) -> None:

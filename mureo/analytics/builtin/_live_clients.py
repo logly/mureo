@@ -40,15 +40,17 @@ from mureo.analytics.builtin._common import (
     meta_row_conversions as _meta_row_conversions,
 )
 from mureo.byod import runtime as byod_runtime
+
+# NoCredentialsError is defined with the shared opener (#875); imported here so
+# the adapters keep importing it from this module.
+from mureo.client_factory import AccountIdRefused, NoCredentialsError
 from mureo.context.state import load_conversion_action_types
 from mureo.core.account_scope import (
     canonical_meta_account_id,
     resolve_account_id,
-    resolve_customer_id,
 )
 from mureo.core.credential_source import (
     call_source,
-    current_google_source,
     current_meta_source,
 )
 from mureo.google_ads._date_ranges import _get_comparison_date_ranges
@@ -57,21 +59,7 @@ from mureo.meta_ads._period import previous_period
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mureo.core.credential_source import (
-        GoogleCredentialSource,
-        MetaCredentialSource,
-    )
-
-
-class NoCredentialsError(RuntimeError):
-    """Raised when the platform's credentials are missing.
-
-    Distinct subclass so the adapter can catch this case and return an
-    honest empty result rather than surfacing a noisy error to the
-    workflow. Subclasses signal other "cannot fetch this account, degrade
-    gracefully" conditions (see :class:`AccountNotAvailableError`) and are
-    caught by the same ``except NoCredentialsError`` in every adapter method.
-    """
+    from mureo.core.credential_source import MetaCredentialSource
 
 
 class DeliveryDataUnavailableError(RuntimeError):
@@ -89,8 +77,9 @@ class DeliveryDataUnavailableError(RuntimeError):
 class AccountNotAvailableError(NoCredentialsError):
     """The account cannot be fetched in the active workspace scope (#413/#435).
 
-    Raised when the #411 allow-list refuses the ``account_id`` (out-of-set,
-    empty allow-list, or an ambiguous multi-account default). A subclass of
+    Raised for a scope refusal — the #411 allow-list refuses the
+    ``account_id`` (out-of-set, empty allow-list, or an ambiguous
+    multi-account default) — and for a non-numeric id. A subclass of
     :class:`NoCredentialsError` so every adapter's existing
     ``except NoCredentialsError`` renders the same graceful "not available"
     sentinel — a workspace-scope violation degrades like missing credentials
@@ -150,79 +139,24 @@ def _aggregate_google_metrics(
 
 
 def _open_google_ads_client(account_id: str) -> tuple[object, str]:
-    """Resolve credentials + open a Google Ads client (live or BYOD).
+    """Open a Google Ads client (live or BYOD) through the shared opener (#875).
 
-    Returns ``(client, resolved_account_id)`` — the resolved id (possibly
-    canonicalized) so callers label / look up conversions with the same value
-    the client was opened with (#435). A workspace-scope refusal raises
-    :class:`AccountNotAvailableError`.
+    Returns ``(client, resolved_account_id)`` — the resolved id so callers
+    label / look up conversions with the same value the client was opened
+    with (#435). Missing credentials raise :class:`NoCredentialsError`.
 
-    Workspace scoping (#411/#413): ``account_id`` is bound to the active
-    client's allow-list via ``resolve_customer_id`` before use — a
-    non-tenant-scoped run passes it through unchanged, a tenant-scoped run
-    refuses an out-of-allow-list id (fail-closed). Enforcing here means a
-    future tool that wires a caller-supplied id into the AnalyticsModule
-    Protocol cannot silently bypass #411 scoping.
-
-    Raises :class:`NoCredentialsError` in live mode when credentials
-    are missing. BYOD mode is detected by the client factory itself
-    (:mod:`mureo.client_factory`), so this helper does not re-check
-    ``byod_has`` — keeping the BYOD branching in one place avoids
-    drift if the factory's policy changes.
-
-    ``mureo.auth`` is imported locally (startup cost). Test patch sites:
-    ``mureo.auth.load_google_ads_credentials``, ``mureo.byod.runtime.byod_has``
-    (this opener's check only — the factory's is ``mureo.client_factory.byod_has``)
-    and ``mureo.client_factory.get_google_ads_client``.
+    The opener binds ``account_id`` to the workspace allow-list (#411/#413),
+    so a future tool that wires a caller-supplied id into the AnalyticsModule
+    Protocol cannot bypass scoping. Its :class:`AccountIdRefused` (a scope
+    refusal or a non-numeric id) becomes :class:`AccountNotAvailableError`,
+    which the adapters render as "not available" (#435). Any other
+    ``ValueError`` (credential loading, client construction) is a fault and
+    propagates unchanged.
     """
-    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
-        load_google_ads_credentials,
-    )
-
-    # Bind the account to the workspace allow-list (#411/#413) before it
-    # reaches the client factory; a refusal degrades gracefully (#435).
     try:
-        account_id = resolve_customer_id(account_id, None)
-    except ValueError as exc:
+        return client_factory.open_google_ads_client(account_id)
+    except AccountIdRefused as exc:
         raise AccountNotAvailableError(str(exc)) from exc
-
-    google = current_google_source()
-    if google is not None:
-        return _google_client_from_source(google, account_id), account_id
-
-    # Read through the module (``mureo.byod.runtime.byod_has`` patches apply);
-    # the factory binds its own copy, patched as ``mureo.client_factory.byod_has``.
-    if byod_runtime.byod_has("google_ads"):
-        client = client_factory.get_google_ads_client(
-            creds=None, customer_id=account_id
-        )
-        return client, account_id
-
-    creds = load_google_ads_credentials()
-    if creds is None:
-        raise NoCredentialsError("google_ads credentials not configured")
-    return client_factory.get_google_ads_client(creds, account_id), account_id
-
-
-def _google_client_from_source(
-    google: GoogleCredentialSource, account_id: str
-) -> object:
-    """Open a live Google Ads client from an active credential source (#821).
-
-    The source wins over BYOD mode and the credentials file, the same
-    precedence as the MCP handlers; ``None`` from it is "no credentials".
-    """
-    # Startup cost (~0.5 s CPU): mureo.auth is deferred to first client build (#809).
-    from mureo.auth import (  # noqa: PLC0415 — startup cost (#809)
-        create_google_ads_client,
-    )
-
-    creds = call_source("google", google.load_credentials)
-    if creds is None:
-        raise NoCredentialsError("google_ads credentials not configured")
-    oauth = call_source("google", google.oauth_credentials, creds)
-    return create_google_ads_client(creds, account_id, oauth_credentials=oauth)
 
 
 async def fetch_google_ads_metrics(

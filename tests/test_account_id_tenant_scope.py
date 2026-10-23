@@ -374,16 +374,16 @@ class TestGoogleCustomerIdScoping:
 
         creds = MagicMock(customer_id="111", login_customer_id="999")
         with (
-            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+            patch("mureo.client_factory.byod_has", return_value=False),
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
                 "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=frozenset({"111"}),
             ),
-            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
+            patch("mureo.auth.create_google_ads_client") as factory,
         ):
             with pytest.raises(ValueError, match="refused"):
                 await handlers._get_client({"customer_id": "222"})
@@ -394,16 +394,16 @@ class TestGoogleCustomerIdScoping:
 
         creds = MagicMock(customer_id=None, login_customer_id=None)
         with (
-            patch("mureo.mcp._google_ads_client.byod_has", return_value=False),
+            patch("mureo.client_factory.byod_has", return_value=False),
             patch(
-                "mureo.mcp._google_ads_client.load_google_ads_credentials",
+                "mureo.auth.load_google_ads_credentials",
                 return_value=creds,
             ),
             patch(
                 "mureo.core.account_scope.runtime_google_ads_customer_ids",
                 return_value=frozenset({"111-222-3333"}),
             ),
-            patch("mureo.mcp._google_ads_client.create_google_ads_client") as factory,
+            patch("mureo.auth.create_google_ads_client") as factory,
         ):
             await handlers._get_client({"customer_id": "1112223333"})
         factory.assert_called_once()

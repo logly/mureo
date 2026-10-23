@@ -14,6 +14,7 @@ from mureo.analytics.builtin._live_clients import (
     fetch_google_ads_metrics,
     fetch_meta_ads_metrics,
 )
+from mureo.client_factory import GOOGLE_ADS_THROTTLER
 
 
 def _meta_creds() -> Any:
@@ -178,11 +179,11 @@ def test_aggregate_meta_metrics_handles_missing_actions() -> None:
 @pytest.mark.asyncio
 async def test_fetch_google_ads_metrics_raises_when_creds_missing() -> None:
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=None),
         pytest.raises(NoCredentialsError),
     ):
-        await fetch_google_ads_metrics("acct-1", window_days=7)
+        await fetch_google_ads_metrics("1234567890", window_days=7)
 
 
 @pytest.mark.asyncio
@@ -213,14 +214,14 @@ async def test_fetch_google_ads_metrics_returns_current_and_baseline() -> None:
         ]
     )
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=object()),
         patch(
-            "mureo.client_factory.get_google_ads_client",
+            "mureo.auth.create_google_ads_client",
             return_value=fake_client,
         ),
     ):
-        current, baseline = await fetch_google_ads_metrics("acct-1", window_days=7)
+        current, baseline = await fetch_google_ads_metrics("1234567890", window_days=7)
 
     assert current.cost == 100.0
     assert baseline is not None
@@ -255,14 +256,14 @@ async def test_fetch_google_ads_metrics_returns_none_baseline_when_zero_spend() 
         ]
     )
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=object()),
         patch(
-            "mureo.client_factory.get_google_ads_client",
+            "mureo.auth.create_google_ads_client",
             return_value=fake_client,
         ),
     ):
-        current, baseline = await fetch_google_ads_metrics("acct-1", window_days=7)
+        current, baseline = await fetch_google_ads_metrics("1234567890", window_days=7)
 
     assert current.cost == 50.0
     assert baseline is None
@@ -277,18 +278,36 @@ async def test_fetch_google_ads_metrics_uses_byod_when_registered() -> None:
         ]
     )
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=True),
+        patch("mureo.client_factory.byod_has", return_value=True),
         patch(
             "mureo.client_factory.get_google_ads_client",
             return_value=fake_client,
         ) as get_client,
     ):
-        await fetch_google_ads_metrics("byod-acct", window_days=7)
+        await fetch_google_ads_metrics("1234567890", window_days=7)
 
     # BYOD path must pass creds=None.
     get_client.assert_called_once()
     _, kwargs = get_client.call_args
     assert kwargs["creds"] is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_google_ads_metrics_live_client_gets_the_shared_throttler() -> None:
+    """Analytics uses the same process-wide Google Ads rate limiter as the
+    MCP tools (#875), not an unthrottled client of its own."""
+    fake_client = AsyncMock()
+    fake_client.get_performance_report = AsyncMock(return_value=[])
+    with (
+        patch("mureo.client_factory.byod_has", return_value=False),
+        patch("mureo.auth.load_google_ads_credentials", return_value=object()),
+        patch(
+            "mureo.auth.create_google_ads_client", return_value=fake_client
+        ) as factory,
+    ):
+        await fetch_google_ads_metrics("1234567890", window_days=7)
+
+    assert factory.call_args.kwargs["throttler"] is GOOGLE_ADS_THROTTLER
 
 
 # ---------------------------------------------------------------------------
@@ -317,11 +336,11 @@ async def test_fetch_google_ads_performance_rows_raises_when_creds_missing() -> 
     )
 
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=None),
         pytest.raises(NoCredentialsError, match="google_ads"),
     ):
-        await fetch_google_ads_performance_rows("acct-1", "LAST_7_DAYS")
+        await fetch_google_ads_performance_rows("1234567890", "LAST_7_DAYS")
 
 
 @pytest.mark.asyncio
@@ -463,14 +482,16 @@ async def test_fetch_google_ads_per_campaign_metrics_keys_by_campaign() -> None:
         ]
     )
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=object()),
         patch(
-            "mureo.client_factory.get_google_ads_client",
+            "mureo.auth.create_google_ads_client",
             return_value=fake_client,
         ),
     ):
-        result = await fetch_google_ads_per_campaign_metrics("acct", window_days=7)
+        result = await fetch_google_ads_per_campaign_metrics(
+            "1234567890", window_days=7
+        )
 
     assert set(result.keys()) == {"camp_A", "camp_B"}
     current_a, baseline_a = result["camp_A"]
@@ -507,14 +528,16 @@ async def test_fetch_google_ads_per_campaign_metrics_baseline_none_for_new_campa
         ]
     )
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", return_value=object()),
         patch(
-            "mureo.client_factory.get_google_ads_client",
+            "mureo.auth.create_google_ads_client",
             return_value=fake_client,
         ),
     ):
-        result = await fetch_google_ads_per_campaign_metrics("acct", window_days=7)
+        result = await fetch_google_ads_per_campaign_metrics(
+            "1234567890", window_days=7
+        )
     _, baseline = result["new_camp"]
     assert baseline is None
 

@@ -14,6 +14,19 @@
 
 ### Changed
 
+- **Analytics and external change import use the MCP tools' Google Ads
+  rate limiter and errors** (#875). The analytics modules and
+  `external_changes_import` now open Google Ads clients through the same
+  opener as the MCP tools, `mureo.client_factory.open_google_ads_client`,
+  so their live calls share the one process-wide Google Ads throttle
+  (they had none), and they raise the same missing-credentials error
+  (`NoCredentialsError`, now defined in `mureo.client_factory`) and the
+  same scope / id-format errors (`AccountIdRefused`, a `ValueError`
+  subclass). A Google Ads `customer_id` must now be numeric (hyphens
+  allowed) on every path, including BYOD when an id other than `"byod"`
+  (the id BYOD `list_accounts` returns) is given. Analytics reports only
+  those refusals as "not available"; a `ValueError` from credential loading
+  or client construction now propagates instead of being relabelled.
 - **The date-range argument names are documented** (#866):
   `period` (a reporting window: a constant or an explicit range),
   `start_date` / `end_date` (two explicit dates for an API without

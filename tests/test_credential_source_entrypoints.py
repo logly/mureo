@@ -102,12 +102,11 @@ async def test_google_ads_handle_tool_uses_the_source() -> None:
 
     rows = [{"id": "1", "name": "Brand"}]
     spy = _Spy(_fake_client("list_campaigns", rows))
-    file_loader, auth_loader = _refusing_loader(), _refusing_loader()
+    auth_loader = _refusing_loader()
     source = _GoogleSource()
     with (
-        patch("mureo.mcp._google_ads_client.load_google_ads_credentials", file_loader),
         patch("mureo.auth.load_google_ads_credentials", auth_loader),
-        patch("mureo.mcp._google_ads_client.create_google_ads_client", spy),
+        patch("mureo.auth.create_google_ads_client", spy),
         use_credential_source(CredentialSource(google=source)),
     ):
         result = await tools_google_ads.handle_tool(
@@ -119,7 +118,6 @@ async def test_google_ads_handle_tool_uses_the_source() -> None:
     args, kwargs = spy.calls[0]
     assert args == (_GOOGLE, "1112223333")
     assert kwargs["oauth_credentials"] is source.oauth
-    file_loader.assert_not_called()
     auth_loader.assert_not_called()
 
 

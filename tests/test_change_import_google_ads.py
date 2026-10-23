@@ -27,6 +27,7 @@ from mureo.change_import.builtin.google_ads import (
     GoogleAdsChangeFeed,
     _row_to_change,
 )
+from mureo.client_factory import GOOGLE_ADS_THROTTLER
 from mureo.google_ads._extensions_targeting import CHANGE_HISTORY_ROW_LIMIT
 from mureo.mcp import server as mcp_server
 from mureo.mcp._handlers_change_import import handle_external_changes_import
@@ -371,6 +372,29 @@ class TestGoogleFeed:
 
         assert result.changes == ()
         assert "BYOD" in result.unavailable_reason
+
+    def test_the_live_client_gets_the_shared_throttler(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Change import uses the same process-wide Google Ads rate limiter as
+        the MCP tools (#875), not an unthrottled client of its own."""
+        calls: list[dict[str, Any]] = []
+
+        def fake_create(creds: Any, customer_id: str, **kwargs: Any) -> object:
+            calls.append(kwargs)
+            return object()
+
+        monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: False)
+        monkeypatch.setattr("mureo.client_factory.byod_has", lambda platform: False)
+        monkeypatch.setattr(
+            "mureo.core.account_scope.runtime_google_ads_customer_ids", lambda: None
+        )
+        monkeypatch.setattr("mureo.auth.load_google_ads_credentials", object)
+        monkeypatch.setattr("mureo.auth.create_google_ads_client", fake_create)
+
+        GoogleAdsChangeFeed()._open_client("1112223333")
+
+        assert calls == [{"throttler": GOOGLE_ADS_THROTTLER}]
 
     @pytest.mark.asyncio
     async def test_byod_reaches_the_blind_spots_list(
