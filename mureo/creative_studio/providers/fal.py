@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from mureo.creative_studio.providers import (
+from mureo.creative_studio.providers._base import (
     NotSupportedError,
     _creative_studio_secret,
     provider_error,

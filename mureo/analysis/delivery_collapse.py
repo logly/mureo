@@ -52,6 +52,10 @@ from typing import TYPE_CHECKING, Any
 from mureo.context.strategy import parse_strategy
 from mureo.core import clock
 
+# ``strategy_gate`` owns the canonical heading name so the two cannot
+# drift onto different sections.
+from mureo.policy.strategy_gate import GUARDRAILS_HEADING
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -761,12 +765,6 @@ def _valid_threshold(field: str, raw: str) -> float | int | None:
 
 def collapse_thresholds_from_strategy_text(text: str) -> CollapseThresholds:
     """Extract thresholds from full STRATEGY.md text (defaults if absent)."""
-    # ``strategy_gate`` owns the canonical heading name so the two cannot
-    # drift onto different sections.
-    from mureo.policy.strategy_gate import (  # noqa: PLC0415 — import cycle: mureo.analysis.delivery_collapse -> mureo.policy.strategy_gate (#879)
-        GUARDRAILS_HEADING,
-    )
-
     for entry in parse_strategy(text):
         if entry.title.strip().lower() == GUARDRAILS_HEADING:
             return collapse_thresholds_from_guardrails_text(entry.content)

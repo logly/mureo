@@ -91,6 +91,7 @@ mureo/
 │   │                                      #   hash chain across files, and verify_chain. A truncated
 │   │                                      #   TAIL is the one thing it cannot prove — say so, always
 │   ├── _journal_hook.py                   # Dispatcher hook: family/mutating classification, one record per call (#758)
+│   ├── _plugin_tables.py                  # Plugin dispatch / semantics dict objects, below server; server fills them in place at load (#879)
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules
 │   ├── _handlers_google_ads.py            # Google Ads base handlers
@@ -157,6 +158,7 @@ mureo/
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── setup_cmd.py     # `mureo setup claude-code` / `cursor` / `codex` / `gemini`
 │   ├── setup_codex.py   # Codex install-kit: MCP, credential guard, operational + foundation skills
+│   ├── _skill_paths.py  # get_data_path / replace_dest, shared by the skill installers (#879)
 │   ├── setup_gemini.py  # Gemini extension manifest at ~/.gemini/extensions/mureo/
 │   ├── native_skills.py # Deploy/remove plugin native slash skills via `mureo.native_skills` group (#439)
 │   ├── configure_cmd.py # `mureo configure` — open the local web configuration UI
@@ -314,6 +316,8 @@ mureo/
 │   └── learning_reset.py     # Reset-class + learning-state pre-flight the gate refuses on
 ├── learning/            # Read-side /learn companion: insight federation across configured sources
 ├── creative_studio/     # Creator-grade ad-creative (image) generation via pluggable providers
+│                        #   (providers/_base.py: ImageProvider protocol + shared helpers, below the
+│                        #   registry in providers/__init__.py and the built-in providers, #879)
 ├── byod/                # Bring Your Own Data — CSV-backed offline analysis (see BYOD Mode below)
 ├── web/                 # Local `mureo configure` UI — stdlib http.server on 127.0.0.1 (no web framework)
 │   │                    #   web imports cli helper modules by public names; cli imports only the
@@ -613,7 +617,7 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 
 When working on mureo:
 - New ad-platform handlers MUST call `mureo/client_factory.get_*_client(...)` for the BYOD path; real-mode dispatch can call `create_*_client` directly to keep test mocks at `mureo.mcp._handlers_*.create_*_client` working.
-- BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`, `boost_`, `end_`, `duplicate_`, `export_`) return `{"status": "skipped_in_byod_readonly"}`. The authoritative list is `_MUTATION_PREFIXES` in `mureo/byod/clients.py` (26 prefixes).
+- BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`, `replace_`, `boost_`, `end_`, `duplicate_`, `export_`) return `{"status": "skipped_in_byod_readonly"}`. The authoritative list is `MUTATION_PREFIXES` in `mureo/core/tool_names.py` (26 prefixes; the BYOD clients import it from there, #879).
 - New bundle adapters live in `mureo/byod/adapters/<platform>.py` and must implement `has_tab(workbook)` (returns True when the workbook contains the adapter's required sheet/header signature) and `normalize_from_workbook(workbook, dst_dir)` (writes CSVs to `dst_dir`, returns an `ImportResult`). Both adapters (Google Ads and Meta Ads) import the shared helper `sanitize_cell` from `mureo/byod/adapters/_csv_safe.py` and apply it to every user-controlled cell against CSV injection (it prefixes formula triggers `=`, `+`, `-`, `@`, tab, CR with a single quote), then write to the mureo internal schema documented in `docs/byod.md`.
 - Bundle imports MUST never escape `~/.mureo/byod/` — `bundle.py` and `installer.remove_platform` both enforce path-traversal guards.
 - See `docs/byod.md` for the user-facing walkthrough and the recommended Saved Report configuration for Meta Ads (multilingual: 9 locales).

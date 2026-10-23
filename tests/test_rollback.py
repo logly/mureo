@@ -551,7 +551,7 @@ class TestHyphenNamespacedToolNames:
         This surface reports what an operator can be asked to undo, so a
         mutation misread here is a real gap hidden inside a batch that claims
         full coverage. The vocabulary is single-sourced from
-        ``mureo.byod._client_common._MUTATION_PREFIXES``, which AGENTS.md
+        ``mureo.core.tool_names.MUTATION_PREFIXES``, which AGENTS.md
         calls authoritative, so a verb learned there is known here too.
 
         The guarded reading is confined to THIS surface. The plugin-facing

@@ -22,11 +22,19 @@ Three jobs:
   the dispatcher's exits, splitting the injected ``reason`` off the
   arguments and filing it under its own key (#758 phase 2).
 
-The name-set lookups import ``mureo.mcp.server`` **lazily, inside the
-functions**: ``server`` imports this module at load time, so a top-level
-import back would close the cycle. Resolving through the module object
-also means a test that reloads ``server`` (the plugin fixtures do) is
-answered from the reloaded module, not from a stale snapshot.
+The plugin maps (``_PLUGIN_SEMANTICS`` / ``_PLUGIN_DISPATCH``) are
+imported at top level from :mod:`mureo.mcp._plugin_tables`, which sits below
+``server``; ``server`` refills those same objects in place at load, so a
+test that reloads ``server`` (the plugin fixtures do) is answered from the
+reloaded run (#879). A test that wants this hook to see a fake plugin must
+change those dicts in place (``monkeypatch.setitem`` on the
+:mod:`mureo.mcp._plugin_tables` objects) or reload ``server``; rebinding
+``server._PLUGIN_DISPATCH`` with ``monkeypatch.setattr`` is not seen here.
+The built-in name sets are still read from
+``mureo.mcp.server`` **lazily, inside** :func:`tool_family`: ``server``
+imports this module at load time, and those sets are built there from the
+env gates and the tool modules, so a top-level import back would close the
+cycle (#879).
 """
 
 from __future__ import annotations
@@ -40,6 +48,7 @@ from typing import TYPE_CHECKING, Any
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp import journal
 from mureo.mcp._helpers import API_ERROR_CODE, exception_text, failure_of
+from mureo.mcp._plugin_tables import _PLUGIN_DISPATCH, _PLUGIN_SEMANTICS
 from mureo.mcp._reason_param import split_call_reason
 from mureo.mcp.tool_provider import plugin_source
 from mureo.rollback.executor import is_rollback_dispatch_active
@@ -150,21 +159,13 @@ def tool_mutating(name: str, family: str) -> bool:
     """Whether ``name`` is a mutation, by the dispatcher's own rules."""
     if family != _PLUGIN_FAMILY:
         return is_mutating_builtin_tool(name)
-    from mureo.mcp import (  # noqa: PLC0415 — import cycle: mureo.mcp._journal_hook -> mureo.mcp.server (#879)
-        server,
-    )
-
-    semantics = server._PLUGIN_SEMANTICS.get(name)
+    semantics = _PLUGIN_SEMANTICS.get(name)
     return True if semantics is None else bool(semantics.mutating)
 
 
 def plugin_source_of(name: str) -> str | None:
     """The distribution that supplied plugin tool ``name``, else ``None``."""
-    from mureo.mcp import (  # noqa: PLC0415 — import cycle: mureo.mcp._journal_hook -> mureo.mcp.server (#879)
-        server,
-    )
-
-    provider = server._PLUGIN_DISPATCH.get(name)
+    provider = _PLUGIN_DISPATCH.get(name)
     return None if provider is None else plugin_source(provider)
 
 

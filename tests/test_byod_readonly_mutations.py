@@ -1,7 +1,7 @@
 """BYOD read-only guard regression tests for Meta mutation methods.
 
 ``ByodMetaAdsClient`` blocks writes via ``__getattr__``: any method name
-whose prefix is in ``_MUTATION_PREFIXES`` returns
+whose prefix is in ``MUTATION_PREFIXES`` returns
 ``{"status": "skipped_in_byod_readonly", ...}`` instead of silently
 no-op'ing as an empty list. Four real POST/mutation methods
 (``boost_post``, ``boost_instagram_post``, ``end_split_test``,

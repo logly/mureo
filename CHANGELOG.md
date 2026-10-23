@@ -181,6 +181,30 @@
   with the others. Each of those steps in `daily-check` is now one line
   that points at its section in `../_mureo-report-persist/SKILL.md`, and
   `daily-check` lists the new skill in its PREREQUISITE line.
+- **Ten function-local imports kept open by import cycles are gone**
+  (internal, #879 stage 1). The shared names moved one layer down, so
+  both sides of each pair import at top level: the skill installers'
+  data-path helpers into `mureo/cli/_skill_paths.py`
+  (`get_data_path`, `replace_dest`; `setup_codex` no longer has its own
+  copy of `replace_dest`), the mutation-prefix list into
+  `mureo.core.tool_names.MUTATION_PREFIXES` (`core` no longer imports
+  `byod`; the BYOD clients import it from there, and `mureo.byod.clients`
+  no longer exports `_MUTATION_PREFIXES`), the plugin dispatch / semantics maps into
+  `mureo/mcp/_plugin_tables.py` (the same dict objects, filled in place by
+  the server at load), the negative-placement kind tables into
+  `mureo/google_ads/_placement_mappers.py`, and the image-provider
+  protocol and shared helpers into
+  `mureo/creative_studio/providers/_base.py`
+  (`mureo.creative_studio.providers` still exports the public names).
+  `tests/test_import_cycles_stage1.py` imports each side first in a fresh
+  interpreter. Three `mcp` sites remain and, with the other remaining
+  cycles, stay tracked in #879. `_auto_evaluation_hook.py` calls
+  `server._evaluate_policy_gates`, which runs the policy gates on server
+  state. `_handlers_rollback.py` calls `server.handle_call_tool`, the
+  dispatcher itself (`server` -> `tools_rollback` -> `_handlers_rollback`
+  -> `server`). `_journal_hook.py`'s `tool_family` reads the built-in
+  name sets that `server` builds at load from the env gates and the tool
+  modules.
 
 ### Security
 
