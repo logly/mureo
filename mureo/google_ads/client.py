@@ -34,7 +34,10 @@ from mureo.google_ads._gaql_validator import (
     format_between_clause as _gaql_format_between_clause,
 )
 from mureo.google_ads._gaql_validator import (
-    parse_between_clause as _gaql_parse_between_clause,
+    is_explicit_period_range as _gaql_is_explicit_period_range,
+)
+from mureo.google_ads._gaql_validator import (
+    parse_period_range as _gaql_parse_period_range,
 )
 from mureo.google_ads._gaql_validator import (
     resolve_derived_date_range as _gaql_resolve_derived_date_range,
@@ -1253,7 +1256,10 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         Predefined period -> ``DURING LAST_7_DAYS`` format
         Derived period (``LAST_90_DAYS``) -> the explicit window it stands
         for, because Google Ads has no 90-day constant (#717)
-        Custom range -> ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`` format
+        Custom range, in either spelling -> ``BETWEEN 'YYYY-MM-DD' AND
+        'YYYY-MM-DD'`` format:
+            ``YYYY-MM-DD..YYYY-MM-DD`` (the spelling Meta Ads takes too, #866)
+            ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`` (GAQL spelling)
 
         The return value can be used directly as ``WHERE segments.date {return_value}``.
         Every branch validates its components against the GAQL whitelist so
@@ -1264,8 +1270,8 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         if not isinstance(period, str):
             raise ValueError(f"Invalid period: {period!r}")
 
-        if period.strip().upper().startswith("BETWEEN"):
-            return _gaql_format_between_clause(*_gaql_parse_between_clause(period))
+        if _gaql_is_explicit_period_range(period):
+            return _gaql_format_between_clause(*_gaql_parse_period_range(period))
 
         derived = _gaql_resolve_derived_date_range(period, clock.server_now().date())
         if derived is not None:

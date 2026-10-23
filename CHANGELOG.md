@@ -1,7 +1,26 @@
 ## [Unreleased]
 
+### Added
+
+- **Google Ads `period` accepts `YYYY-MM-DD..YYYY-MM-DD`** (#866), the
+  explicit-range spelling Meta Ads already takes, so one spelling works
+  on both platforms. Both endpoints are inclusive and the range is held
+  to the same checks as the GAQL spelling (valid dates, end not before
+  start, at most 730 days); it is sent to Google Ads as the same
+  `BETWEEN` clause. The GAQL spelling
+  `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'` keeps working, and the
+  period-over-period tools take both. Meta Ads is unchanged and still
+  refuses the GAQL spelling.
+
 ### Changed
 
+- **The date-range argument names are documented** (#866):
+  `period` (a reporting window: a constant or an explicit range),
+  `start_date` / `end_date` (two explicit dates for an API without
+  constants) and `since` / `until` (bounds on mureo's own records) are
+  three concepts, each keeping its name. See "Date ranges" in
+  `docs/mcp-server.md`; `docs/plugin-authoring.md` asks plugin tools to
+  name a reporting window `period`.
 - **A Google Ads read that fails inside a composite tool is now `null`**
   (#865). `google_ads_performance_analyze`,
   `google_ads_cost_increase_investigate` and `google_ads_campaigns_diagnose`

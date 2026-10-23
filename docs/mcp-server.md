@@ -1253,8 +1253,19 @@ The Meta Ads account ID must start with `act_` (e.g., `"act_1234567890"`).
 ### Common Optional Parameters
 
 - `status_filter`: Filter by entity status (`"ENABLED"`, `"PAUSED"`, etc.)
-- `period`: Time range for reports (`"LAST_7_DAYS"`, `"LAST_30_DAYS"` for Google Ads; `"today"`, `"yesterday"`, `"last_7d"`, `"last_30d"` for Meta Ads)
 - `limit`: Maximum number of results to return (Meta Ads, default: 50)
+
+#### Date ranges
+
+Three argument names carry a date range, one per kind of window. Tool arguments are a compatibility surface, so each keeps its name and none is an alias of another:
+
+| Name | Meaning | Where |
+|------|---------|-------|
+| `period` | A reporting window handed to the platform: a named constant **or** an explicit inclusive range | Google Ads and Meta Ads reporting and analysis tools |
+| `start_date` / `end_date` | Two explicit inclusive `YYYY-MM-DD` dates, for an API that takes only dates and no constants | `google_ads_change_history_list`, the Search Console tools |
+| `since` / `until` | Inclusive UTC bounds on mureo's own records | `mureo_history_query` (dates); `mureo_external_changes_import` takes `since` only (an ISO 8601 date or datetime) |
+
+`period` constants are per platform: `"LAST_7_DAYS"`, `"LAST_30_DAYS"` for Google Ads; `"today"`, `"yesterday"`, `"last_7d"`, `"last_30d"` for Meta Ads. An explicit `period` range is written `YYYY-MM-DD..YYYY-MM-DD` on both platforms, both endpoints inclusive; Google Ads also takes the GAQL spelling `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`.
 
 ### Keywords Input Format
 

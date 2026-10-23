@@ -76,6 +76,7 @@ def test_resolve_single_day_range_is_supported() -> None:
         "..2026-05-14",  # missing since
         " last_7d ",  # whitespace-padded preset name; no implicit strip
         "2026-05-01 .. 2026-05-14",  # whitespace around separator
+        "BETWEEN '2026-05-01' AND '2026-05-14'",  # GAQL spelling is Google-only
     ],
 )
 def test_resolve_unknown_value_raises_value_error(bad: str) -> None:

@@ -1811,6 +1811,11 @@ These are what providers **accept**:
 - **Dates**: `datetime.date` (day-grain in the account's timezone) on
   every reporting / scheduling field. No `int` epoch seconds at the
   Protocol boundary.
+- **Reporting windows in MCP tool arguments**: a plugin tool that takes
+  a reporting window names the argument `period` and accepts an
+  explicit range as `YYYY-MM-DD..YYYY-MM-DD` (both endpoints
+  inclusive), the spelling the built-in Google Ads and Meta Ads tools
+  share.
 
 ### Constructing entities
 
