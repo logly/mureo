@@ -35,7 +35,13 @@ from mureo.context.state import read_state_file
 # Read through the module (not bound to a name here) so a monkeypatched
 # ``get_runtime_context`` is honoured at call time.
 from mureo.core import runtime_context
-from mureo.mcp._helpers import _failure_result, _json_result, _opt, _require
+from mureo.mcp._helpers import (
+    _failure_result,
+    _json_result,
+    _opt,
+    _require,
+    exception_text,
+)
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -171,7 +177,7 @@ async def handle_anomalies_check(arguments: dict[str, Any]) -> list[TextContent]
     try:
         state_file = _resolve_state_file(arguments)
     except ValueError as exc:
-        return _failure_result("invalid_arguments", str(exc), anomalies=[])
+        return _failure_result("invalid_arguments", exception_text(exc), anomalies=[])
 
     current_raw = _require(arguments, "current")
     current = _build_current_metrics(current_raw)

@@ -38,7 +38,7 @@ if sys.platform == "win32":  # pragma: no cover - Windows CI only
 
     try:  # real package present? (won't be on Windows, but be safe)
         import simple_term_menu as _stm_real  # noqa: F401
-    except Exception:
+    except (ImportError, NotImplementedError):
         _stm_stub = _types.ModuleType("simple_term_menu")
 
         class _StubTerminalMenu:  # patched per-test; never truly used

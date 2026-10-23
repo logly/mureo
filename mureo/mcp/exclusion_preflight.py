@@ -126,7 +126,9 @@ async def _sample(
         raise
     except BaseException as exc:  # noqa: BLE001 — a read failure is not a refusal
         logger.warning(
-            "exclusion delivery read failed for %r", surface.tool, exc_info=True
+            "exclusion delivery read failed for %r (%s)",
+            surface.tool,
+            type(exc).__name__,
         )
         return DeliverySample(
             records=None,
@@ -192,8 +194,10 @@ async def exclusion_impact_preflight(
         )
     except STOP_EXCEPTIONS:
         raise
-    except BaseException:  # noqa: BLE001 — must never break a tool call
-        logger.warning("exclusion impact pre-flight failed for %r", name, exc_info=True)
+    except BaseException as exc:  # noqa: BLE001 — must never break a tool call
+        logger.warning(
+            "exclusion impact pre-flight failed for %r (%s)", name, type(exc).__name__
+        )
         return _NOT_A_SURFACE
 
 

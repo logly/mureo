@@ -156,13 +156,18 @@ class TestEvaluateDeliveryGoal:
 
     @pytest.mark.asyncio
     async def test_exception_handling(self, client: _MockMonitoringClient) -> None:
-        """Exceptions from each method are swallowed."""
+        """Exceptions from each method are swallowed; nothing read, so unknown."""
         client.get_campaign = AsyncMock(side_effect=RuntimeError("fail"))
         client.diagnose_campaign_delivery = AsyncMock(side_effect=RuntimeError("fail"))
         client.get_performance_report = AsyncMock(side_effect=RuntimeError("fail"))
 
         result = await client.evaluate_delivery_goal("123")
-        assert result["status"] in ("critical", "warning")
+        assert result["status"] == "unknown"
+        assert result["issues"] == [
+            "Failed to retrieve campaign information",
+            "Failed to retrieve delivery diagnostics",
+            "Failed to retrieve previous day performance",
+        ]
 
 
 # ---------------------------------------------------------------------------

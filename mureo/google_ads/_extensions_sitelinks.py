@@ -89,7 +89,7 @@ class _SitelinksMixin:
                     mapped["level"] = "account"
                     results.append(mapped)
                     seen_ids.add(mapped.get("id"))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — account-level sitelinks are optional
             # Never the exception itself: a traceback would print the
             # GoogleAdsException repr, which carries the request metadata
             # (developer token, authorization header) — see
@@ -102,7 +102,7 @@ class _SitelinksMixin:
                 if hasattr(exc, "failure")
                 else type(exc).__name__
             )
-            logger.debug("Failed to retrieve account-level sitelinks: %s", detail)
+            logger.warning("Failed to retrieve account-level sitelinks: %s", detail)
 
         return results
 

@@ -428,7 +428,7 @@ class _TargetingMixin:
                     op_type,
                     new_modifier,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — one device must not stop the rest
                 detail = (
                     self._extract_error_detail(exc)  # type: ignore[attr-defined]
                     if hasattr(exc, "failure")

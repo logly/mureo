@@ -75,7 +75,7 @@ class _BtoBAnalysisMixin:
         """B2B optimization check for ad schedule."""
         try:
             schedules = await self.list_schedule_targeting(campaign_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — one check must not stop the rest
             # Class name only. A traceback would print the GoogleAdsException
             # repr, which carries the request metadata (developer token,
             # authorization header) — see mureo/google_ads/accounts.py for the
@@ -124,7 +124,7 @@ class _BtoBAnalysisMixin:
         """B2B optimization check for device CPA."""
         try:
             device_result = await self.analyze_device_performance(campaign_id, period)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — one check must not stop the rest
             logger.warning(
                 "B2B device check failed for campaign %s (%s)",
                 campaign_id,
@@ -187,7 +187,7 @@ class _BtoBAnalysisMixin:
             search_terms = await self.get_search_terms_report(
                 campaign_id=campaign_id, period=period
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — one check must not stop the rest
             logger.warning(
                 "B2B search terms check failed for campaign %s (%s)",
                 campaign_id,

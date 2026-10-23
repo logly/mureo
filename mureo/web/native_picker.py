@@ -161,7 +161,7 @@ def _invoke(argv: list[str]) -> subprocess.CompletedProcess[str] | ActionResult:
         return ActionResult.failed(_PICKER_FAILED, "interpreter_missing")
     except subprocess.TimeoutExpired:
         return ActionResult.failed(_PICKER_FAILED, "timeout")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any picker fault is picker_failed
         return ActionResult.failed(_PICKER_FAILED, type(exc).__name__)
 
 

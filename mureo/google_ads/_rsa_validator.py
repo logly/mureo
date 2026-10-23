@@ -70,7 +70,7 @@ def _is_valid_url(url: str) -> bool:
     try:
         parsed = urllib.parse.urlparse(url)
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
-    except Exception:
+    except ValueError:
         return False
 
 

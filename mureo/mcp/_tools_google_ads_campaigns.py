@@ -229,7 +229,10 @@ TOOLS: list[Tool] = [
             "primary_status, and primary_status_reasons (e.g. "
             "LIMITED_BY_BUDGET, AD_GROUPS_PAUSED, KEYWORDS_DISAPPROVED, "
             "NO_ELIGIBLE_ADS), each annotated with a plain-language "
-            "description and a remediation hint. Read-only — does not "
+            "description and a remediation hint. A supporting read that "
+            "fails (30-day performance, sitelinks, billing, conversion "
+            "actions, impression share) is null rather than aborting the "
+            "call. Read-only — does not "
             "change anything. Use this before pulling raw performance "
             "reports; it narrows the problem space."
         ),

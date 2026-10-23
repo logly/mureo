@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.tool_failure import exception_text
 from mureo.google_ads._enum_names import (
     ASSET_FIELD_TYPE_MAP,
     ASSET_PERFORMANCE_LABEL_MAP,
@@ -158,8 +159,10 @@ class _RsaAnalysisMixin:
 
         try:
             asset_data = await self.analyze_rsa_assets(campaign_id, period)
-        except Exception as exc:
-            return {"error": f"Failed to retrieve RSA asset data: {exc}"}
+        except Exception as exc:  # noqa: BLE001 — a failed read becomes an error result
+            return {
+                "error": f"Failed to retrieve RSA asset data: {exception_text(exc)}"
+            }
 
         if not asset_data.get("headlines") and not asset_data.get("descriptions"):
             return {

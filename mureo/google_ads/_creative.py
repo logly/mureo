@@ -62,8 +62,8 @@ class _CreativeMixin:
             analyzer = LPAnalyzer()
             lp_content = await analyzer.analyze(url)
             return asdict(lp_content)
-        except Exception as exc:
-            logger.warning("LP analysis failed: url=%s, error=%s", url, exc)
+        except Exception as exc:  # noqa: BLE001 — LP analysis is best-effort
+            logger.warning("LP analysis failed: url=%s (%s)", url, type(exc).__name__)
             return {
                 "url": url,
                 "error": "LP analysis failed. Please verify the URL is correct.",
@@ -101,7 +101,7 @@ class _CreativeMixin:
             result["existing_ads"] = await self._fetch_existing_ads(
                 campaign_id, ad_group_id
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — one part must not fail the rest
             # Class name only. A traceback would print the GoogleAdsException
             # repr, which carries the request metadata (developer token,
             # authorization header) — see mureo/google_ads/accounts.py for the
@@ -114,7 +114,7 @@ class _CreativeMixin:
             result["search_term_insights"] = await self._extract_search_term_insights(
                 campaign_id, ad_group_id
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — one part must not fail the rest
             logger.warning(
                 "Failed to retrieve search term insights (%s)", type(exc).__name__
             )
@@ -127,7 +127,7 @@ class _CreativeMixin:
                 result["keyword_suggestions"] = await self.suggest_keywords(seeds)
             else:
                 result["keyword_suggestions"] = []
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — one part must not fail the rest
             logger.warning(
                 "Failed to retrieve keyword suggestions (%s)", type(exc).__name__
             )
@@ -138,7 +138,7 @@ class _CreativeMixin:
             result["existing_keywords"] = await self.list_keywords(
                 campaign_id=campaign_id
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — one part must not fail the rest
             logger.warning(
                 "Failed to retrieve existing keywords (%s)", type(exc).__name__
             )

@@ -95,7 +95,7 @@ def _install_desktop_mcp(home: Path | None) -> ActionResult:
         wrote = install_desktop_mcp_block(
             config_path, sys.executable, ["-m", "mureo.mcp"]
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_mureo_mcp (desktop) failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -121,7 +121,7 @@ def _install_codex_mcp(home: Path | None) -> ActionResult:
         wrote = install_codex_mcp_block(
             config_path, sys.executable, ["-m", "mureo.mcp"]
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_mureo_mcp (codex) failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -257,7 +257,7 @@ def set_native_preference(
 
     try:
         registry = get_host_paths(host, home).mcp_registry_path
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("set_native_preference path resolve failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -281,7 +281,7 @@ def set_native_preference(
                 return ActionResult.refused("connector_not_connected")
         elif not _registered_in_registry(host, spec.id, registry):
             return ActionResult.refused("provider_not_installed")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("set_native_preference guard failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -296,7 +296,7 @@ def _prefer_official(
         changed, mureo_block_present = _apply_disable_env(
             host, platform, home, registry
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("set_native_preference set failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
     if not mureo_block_present:
@@ -325,7 +325,7 @@ def _restore_native(
                 settings_path=registry,
             ).changed
         return ActionResult(status="ok" if changed else "noop", detail=platform)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("set_native_preference unset failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -347,7 +347,7 @@ def install_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Actio
     else:
         try:
             res = auth_setup.install_mcp_config(scope="global")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
             logger.exception("install_mureo_mcp failed")
             return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -379,7 +379,7 @@ def install_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Actio
             result = install_codex_credential_guard(_codex_hooks_path(home))
         else:
             result = auth_setup.install_credential_guard()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_auth_hook failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -400,7 +400,7 @@ def install_workflow_skills(
     try:
         target = _codex_skills_dir(home) if host == _HOST_CODEX else None
         count, dest = install_skills(target_dir=target)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_workflow_skills failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -548,7 +548,7 @@ def _install_provider_code(
         spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult.refused("unknown_provider")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_provider import/resolve failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -573,7 +573,7 @@ def _install_provider_code(
 
     try:
         result = installer.run_install(spec, dry_run=False)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_provider subprocess failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -605,7 +605,7 @@ def _install_provider_code(
                 # install left behind, so re-registering without full creds
                 # never leaves native off AND official unauthenticated.
                 mureo_env.unset_mureo_disable_env(platform)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_provider settings write failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -666,7 +666,7 @@ def _install_provider_desktop(
         spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult.refused("unknown_provider")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_provider (desktop) import/resolve failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -690,7 +690,7 @@ def _install_provider_desktop(
     if spec.install_argv:
         try:
             result = installer.run_install(spec, dry_run=False)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
             logger.exception("install_provider (desktop) subprocess failed")
             return ActionResult.failed("internal_error", type(exc).__name__)
         if result.returncode != 0:
@@ -705,7 +705,7 @@ def _install_provider_desktop(
     try:
         config_path = resolve_desktop_config_path(home)
         wrote = install_desktop_server_block(config_path, spec.id, block)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_provider (desktop) config write failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -734,7 +734,7 @@ def _install_provider_codex(
         spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult.refused("unknown_provider")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_provider (codex) import/resolve failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -744,7 +744,7 @@ def _install_provider_codex(
     if spec.install_argv:
         try:
             result = installer.run_install(spec, dry_run=False)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
             logger.exception("install_provider (codex) subprocess failed")
             return ActionResult.failed("internal_error", type(exc).__name__)
         if result.returncode != 0:
@@ -759,7 +759,7 @@ def _install_provider_codex(
     try:
         config_path = resolve_codex_config_path(home)
         wrote = install_codex_server_block(config_path, spec.id, block)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_provider (codex) config write failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -803,7 +803,7 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
         spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult.refused("unknown_provider")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_provider (desktop) import/resolve failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -819,7 +819,7 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
         try:
             config_path = resolve_desktop_config_path(home)
             changed = unset_mureo_disable_env_desktop(config_path, env_var)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
             logger.exception("remove_provider (desktop) unset-env failed")
             return ActionResult.failed("internal_error", type(exc).__name__)
         if not changed:
@@ -829,7 +829,7 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
     try:
         config_path = resolve_desktop_config_path(home)
         removed = remove_desktop_server_block(config_path, provider_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_provider (desktop) failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -851,7 +851,7 @@ def _remove_provider_codex(provider_id: str, home: Path | None) -> ActionResult:
         spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult.refused("unknown_provider")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_provider (codex) import/resolve failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -863,7 +863,7 @@ def _remove_provider_codex(provider_id: str, home: Path | None) -> ActionResult:
         env_var = "MUREO_DISABLE_" + platform.upper()
         try:
             changed = unset_mureo_disable_env_codex(config_path, env_var)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
             logger.exception("remove_provider (codex) unset-env failed")
             return ActionResult.failed("internal_error", type(exc).__name__)
         if not changed:
@@ -872,7 +872,7 @@ def _remove_provider_codex(provider_id: str, home: Path | None) -> ActionResult:
 
     try:
         removed = remove_codex_server_block(config_path, provider_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_provider (codex) failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -901,13 +901,13 @@ def remove_provider(
         catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult.refused("unknown_provider")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_provider import/resolve failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
     try:
         result = config_writer.remove_provider_from_claude_settings(provider_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_provider failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -957,7 +957,7 @@ def confirm_hosted_provider(
         spec = catalog.get_provider(provider_id)
     except KeyError:
         return ActionResult.refused("unknown_provider")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("confirm_hosted_provider import/resolve failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -1004,7 +1004,7 @@ def confirm_hosted_provider(
             env_result = mureo_env.set_mureo_disable_env(platform)
             changed = env_result.changed
             mureo_block_present = env_result.mureo_block_present
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("confirm_hosted_provider failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -1053,7 +1053,7 @@ def _remove_desktop_mcp(home: Path | None) -> ActionResult:
     try:
         config_path = resolve_desktop_config_path(home)
         removed = remove_desktop_mcp_block(config_path)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_mureo_mcp (desktop) failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -1074,7 +1074,7 @@ def remove_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Action
     if host == _HOST_CODEX:
         try:
             changed = remove_codex_mcp_block(resolve_codex_config_path(home))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
             logger.exception("remove_mureo_mcp (codex) failed")
             return ActionResult.failed("internal_error", type(exc).__name__)
         if not changed:
@@ -1083,7 +1083,7 @@ def remove_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Action
 
     try:
         result = remove_mcp_config()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_mureo_mcp failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -1110,7 +1110,7 @@ def remove_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Action
                 return ActionResult(status="noop", detail="not_installed")
             return ActionResult(status="ok")
         result = remove_credential_guard()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_auth_hook failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -1130,7 +1130,7 @@ def remove_workflow_skills(
     try:
         target = _codex_skills_dir(home) if host == _HOST_CODEX else None
         count, dest = remove_skills(target_dir=target)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("remove_workflow_skills failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -1204,7 +1204,7 @@ def _safe_step(fn: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
     """
     try:
         result = fn(*args, **kwargs)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — one failed step must not stop the chain
         logger.exception("clear_all_setup step %s failed", getattr(fn, "__name__", fn))
         return ActionResult.failed("internal_error", type(exc).__name__).as_dict()
     if isinstance(result, ActionResult):

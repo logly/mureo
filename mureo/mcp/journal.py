@@ -219,7 +219,7 @@ def _workspace_id() -> str:
     """The bound workspace identifier, or the default when unresolvable."""
     try:
         return runtime_context.get_runtime_context().workspace_id
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — fall back to the default workspace
         logger.debug("journal: workspace_id unavailable", exc_info=True)
         return runtime_context.DEFAULT_WORKSPACE_ID
 

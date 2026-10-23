@@ -640,7 +640,7 @@ async def refresh_meta_token_if_needed(
             # otherwise fails silently on every Meta call (#578).
             logger.warning("Failed to refresh Meta Ads token: %s", exc)
             return credentials
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — keep the current token
             # Transport-level failures. httpx exception text can embed the
             # request URL, so name the type and stop there; no exc_info, whose
             # traceback re-prints str(exc) and follows __cause__ (#603, #605).
@@ -657,7 +657,7 @@ async def refresh_meta_token_if_needed(
         resolved = path if path is not None else runtime_credentials_path()
         try:
             _save_meta_token(resolved, new_token, new_obtained_at, new_expires_at)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — the new token still serves this run
             # The refreshed token works for THIS process (returned below) but is
             # not on disk, so every future process re-refreshes from the aging
             # stored token. If the underlying cause (read-only mount, bad perms,

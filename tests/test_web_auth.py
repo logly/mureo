@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import http.client
 import io
+import logging
 import socket
 import sys
 import threading
@@ -38,6 +39,8 @@ from mureo.web.auth_wizard import (  # noqa: I001
     render_meta_account_picker,
     render_meta_secrets_form,
 )
+from tests.test_mcp_exception_text_routing import _platform_shaped
+from tests.test_platform_exception_logs import _assert_class_name_only
 
 if TYPE_CHECKING:
     from http.client import HTTPResponse
@@ -516,6 +519,24 @@ class TestGoogleAdsCallbackRoute:
             _fetch(wizard, "/google-ads/callback?code=abc&state=attacker-state")
         assert exc_info.value.code == 403
 
+    def test_exchange_failure_logs_class_name_only(
+        self, wizard: Any, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A failed code exchange is logged by class, without a traceback (#865)."""
+        wizard.session.google_flow = MagicMock()
+        wizard.session.google_oauth_state = "state-xyz"
+        exc = _platform_shaped(RuntimeError)
+
+        with (
+            caplog.at_level(logging.DEBUG),
+            patch("mureo.web.auth_wizard.exchange_google_code", side_effect=exc),
+            pytest.raises(urllib.error.HTTPError) as exc_info,
+        ):
+            _fetch(wizard, "/google-ads/callback?code=AUTH_CODE&state=state-xyz")
+
+        assert exc_info.value.code == 400
+        _assert_class_name_only(caplog, exc, logging.ERROR)
+
 
 class TestMetaAdsFormRoute:
     def test_serves_form_with_csrf_token(self, wizard: Any) -> None:
@@ -791,6 +812,25 @@ class TestMetaAdsCallbackRoute:
         # account_id absent or explicitly null when listing failed.
         assert m.get("account_id") is None
         assert wizard.session.meta_app_id is None
+
+    def test_exchange_failure_logs_class_name_only(
+        self, wizard: Any, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A failed code exchange is logged by class, without a traceback (#865)."""
+        wizard.session.meta_app_id = "APP-123"
+        wizard.session.meta_app_secret = "SECRET-abc"
+        wizard.session.meta_oauth_state = "state-xyz"
+        exc = _platform_shaped(RuntimeError)
+
+        with (
+            caplog.at_level(logging.DEBUG),
+            patch("mureo.web.auth_wizard.exchange_meta_code", side_effect=exc),
+            pytest.raises(urllib.error.HTTPError) as exc_info,
+        ):
+            _fetch(wizard, "/meta-ads/callback?code=AUTH_CODE&state=state-xyz")
+
+        assert exc_info.value.code == 400
+        _assert_class_name_only(caplog, exc, logging.ERROR)
 
 
 class TestSecurityHardening:

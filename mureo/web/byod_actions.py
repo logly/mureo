@@ -100,7 +100,7 @@ def _validate_xlsx_path(path: object) -> str:
 def _safe_byod_has(platform: str) -> bool:
     try:
         return byod_has(platform)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — a failed probe reads as not imported
         logger.exception("byod_has failed for %s", platform)
         return False
 
@@ -114,7 +114,7 @@ def byod_status() -> ByodResult | ActionResult:
     """
     try:
         manifest = read_manifest()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("byod_status manifest read failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -153,7 +153,7 @@ def byod_import(file_path: str, replace: bool) -> ByodResult | ActionResult:
     except BundleImportError as exc:
         logger.warning("byod_import rejected bundle: %s", type(exc).__name__)
         return ActionResult.failed("bundle_import_failed", "BundleImportError")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("byod_import unexpected failure")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -180,7 +180,7 @@ def byod_remove(google_ads: bool, meta_ads: bool) -> ByodResult | ActionResult:
     except BYODImportError as exc:
         logger.warning("byod_remove rejected: %s", type(exc).__name__)
         return ActionResult.failed("byod_remove_failed", "BYODImportError")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("byod_remove unexpected failure")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
@@ -197,7 +197,7 @@ def byod_clear() -> ByodResult | ActionResult:
     """
     try:
         cleared = clear_all()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("byod_clear failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 

@@ -437,7 +437,10 @@ async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent
             n=1 if fan_out else n,
         )
     except Exception as exc:  # noqa: BLE001 — surface as an error envelope
-        logger.warning("creative_studio_generate_visual failed", exc_info=True)
+        # Class name only: a traceback's ``__cause__`` URL carries the key.
+        logger.warning(
+            "creative_studio_generate_visual failed (%s)", type(exc).__name__
+        )
         return _error(
             "provider_failed", f"visual generation failed: {exception_text(exc)}"
         )
@@ -601,7 +604,7 @@ async def _handle_edit_visual(arguments: dict[str, Any]) -> list[TextContent]:
             allowed_extensions=_ALLOWED_IMAGE_EXTENSIONS,
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _error("invalid_arguments", f"invalid image path: {exc}")
+        return _error("invalid_arguments", f"invalid image path: {exception_text(exc)}")
 
     provider = _resolve_edit_provider(provider_arg)
     if provider is None:
@@ -624,10 +627,11 @@ async def _handle_edit_visual(arguments: dict[str, Any]) -> list[TextContent]:
     except NotSupportedError as exc:
         return _error(
             "invalid_arguments",
-            f"provider {provider.name!r} does not support image editing: {exc}",
+            f"provider {provider.name!r} does not support image editing: "
+            f"{exception_text(exc)}",
         )
     except Exception as exc:  # noqa: BLE001 — surface as an error envelope
-        logger.warning("creative_studio_edit_visual failed", exc_info=True)
+        logger.warning("creative_studio_edit_visual failed (%s)", type(exc).__name__)
         return _error("provider_failed", f"image edit failed: {exception_text(exc)}")
 
     out_path = write_bytes(_next_free_edit_path(in_path), edited)
@@ -639,7 +643,9 @@ async def _handle_edit_visual(arguments: dict[str, Any]) -> list[TextContent]:
             allowed_extensions=_ALLOWED_IMAGE_EXTENSIONS,
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _error("provider_failed", f"edited image failed validation: {exc}")
+        return _error(
+            "provider_failed", f"edited image failed validation: {exception_text(exc)}"
+        )
 
     sha = sha256_of(out_path)
     _studio_audit(
@@ -674,7 +680,9 @@ async def _handle_compose(arguments: dict[str, Any]) -> list[TextContent]:
             allowed_extensions=_COMPOSE_INPUT_EXTENSIONS,
         )
     except (ValueError, FileNotFoundError) as exc:
-        return _error("invalid_arguments", f"invalid visual path: {exc}")
+        return _error(
+            "invalid_arguments", f"invalid visual path: {exception_text(exc)}"
+        )
 
     if template not in composer.TEMPLATES:
         valid = ", ".join(composer.TEMPLATES)
@@ -706,9 +714,9 @@ async def _handle_compose(arguments: dict[str, Any]) -> list[TextContent]:
         )
     except RuntimeError as exc:
         # Missing 'creative' extra — surface the pip hint verbatim.
-        return _error("provider_unavailable", str(exc))
+        return _error("provider_unavailable", exception_text(exc))
     except Exception as exc:  # noqa: BLE001 — surface as an error envelope
-        logger.warning("creative_studio_compose failed", exc_info=True)
+        logger.warning("creative_studio_compose failed (%s)", type(exc).__name__)
         return _error("provider_failed", f"composition failed: {exception_text(exc)}")
 
     manifest_data: dict[str, Any] = {

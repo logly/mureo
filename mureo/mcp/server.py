@@ -68,7 +68,7 @@ from mureo.core.policy import POLICY_GATES_ENTRY_POINT_GROUP, PolicyDecision
 from mureo.core.providers import registry as _registry
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.core.throttle_store import ProcessLocalThrottleStore
-from mureo.mcp._helpers import is_error_result
+from mureo.mcp._helpers import exception_text, is_error_result
 from mureo.mcp._journal_hook import capture_client_info, journal_call, take_rationale
 from mureo.mcp._ops_history_param import (
     enforce_ops_call,
@@ -551,7 +551,7 @@ def _policy_gate_entry_points() -> tuple[Any, ...] | None:
     """
     try:
         eps = entry_points(group=POLICY_GATES_ENTRY_POINT_GROUP)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — unreadable metadata means zero gates
         # importlib.metadata blowing up is rare but possible on weird
         # environments (unusual install layout, corrupted metadata).
         # Log so operators have a signal rather than silently treating
@@ -643,7 +643,7 @@ def _load_policy_gates() -> tuple[PolicyGate, ...]:
                 cls = ep.load()
                 classes[index] = cls
             instance = cls()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — one bad gate is skipped
             logger.warning(
                 "policy gate '%s' failed to load (%s); skipping",
                 getattr(ep, "name", "?"),
@@ -715,7 +715,7 @@ def _evaluate_policy_gates(
     for gate in (*_builtin_policy_gates(), *_load_policy_gates()):
         try:
             decision = gate.evaluate(name, arguments)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — a raising gate abstains
             logger.warning(
                 "policy gate %r raised on '%s' (%s); abstain",
                 type(gate).__name__,
@@ -774,7 +774,7 @@ def _maybe_append_staleness_warning(result: list[Any]) -> list[Any]:
         _staleness_warned = True
         logger.warning("%s", warning)
         return [*result, TextContent(type="text", text=warning)]
-    except Exception:  # noqa: BLE001 - a version check must never break a tool call
+    except Exception:  # noqa: BLE001 — a version check must never break a tool call
         logger.debug("staleness warning check failed", exc_info=True)
         return result
 
@@ -961,7 +961,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
             result = await provider.handle_mcp_tool(name, arguments)
         except KeyboardInterrupt:
             raise
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:  # noqa: BLE001 — recorded, then re-raised
             # Record the failed call, then re-raise unchanged so the MCP
             # framework surfaces a clean tool error exactly as before
             # (no server crash, no silently-swallowed error).
@@ -970,7 +970,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
                 arguments=arguments,
                 source=source,
                 ok=False,
-                error=repr(exc),
+                # Curated, never ``repr``: see ``_journal_hook.failed`` (#603).
+                error=exception_text(exc),
             )
             raise
         # The call returned, so ``ok`` (= "did not raise") stays True. But a

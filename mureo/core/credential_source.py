@@ -238,7 +238,7 @@ def call_source(platform: str, method: Callable[..., _T], *args: Any) -> _T:
     """
     try:
         return method(*args)
-    except Exception as exc:  # noqa: BLE001 - any source failure is curated
+    except Exception as exc:  # noqa: BLE001 — any source failure is curated
         name = type(exc).__name__
         logger.warning("credential source failed for %s (%s)", platform, name)
         raise CredentialSourceError(

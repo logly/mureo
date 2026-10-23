@@ -439,14 +439,14 @@ async def inspect_meta_access_token(
             )
             try:
                 payload = response.json()
-            except Exception:
+            except ValueError:
                 payload = {}
             if response.status_code != 200:
                 detail = _scrub(_format_graph_error(payload, response.text[:500]))
                 raise MetaTokenInspectError(f"Meta token inspection failed: {detail}")
     except MetaTokenInspectError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — re-raised as MetaTokenInspectError
         raise MetaTokenInspectError(
             f"Meta token inspection failed: {_scrub(str(exc))}"
         ) from None
@@ -532,7 +532,7 @@ async def validate_meta_access_token(
             )
             try:
                 payload = response.json()
-            except Exception:
+            except ValueError:
                 payload = {}
             if response.status_code != 200:
                 detail = _redact(
@@ -545,7 +545,7 @@ async def validate_meta_access_token(
     except MetaTokenInvalidError:
         # Already scrubbed + framed above — do not re-wrap.
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — re-raised as MetaTokenInvalidError
         scrubbed = _redact(str(exc), access_token)
         raise MetaTokenInvalidError(
             f"Meta token validation failed: {scrubbed}"
@@ -560,7 +560,7 @@ async def validate_meta_access_token(
     # error type so the caller never mislabels it as an invalid token.
     try:
         raw_accounts = await list_meta_ad_accounts(access_token)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — re-raised as MetaAccountFetchError
         scrubbed = _redact(str(exc), access_token)
         raise MetaAccountFetchError(
             f"Meta ad-account listing failed: {scrubbed}"
@@ -677,7 +677,7 @@ async def list_meta_ad_accounts(access_token: str) -> MetaAdAccountList:
                     )
                     accounts.truncated = True
         return accounts
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — re-raised with the token redacted
         # Scrub the access token before it lands in operator logs or UI.
         # From page 2 onward the token lives in ``next_url`` itself, so
         # an HTTPStatusError from httpx (which embeds the request URL in

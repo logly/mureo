@@ -11,7 +11,9 @@ the API spelling from these maps (#588).
 Every map is derived from the vendored SDK enum rather than transcribed by
 hand, so it cannot go stale against the API version. The maps that predate
 #588 still live beside their mappers in :mod:`mureo.google_ads.mappers`, which
-is at its 800-line budget; new ones belong here.
+is at its 800-line budget; new ones belong here. ``SMART_BIDDING_STRATEGIES``
+is the one hand-written set: the strategy names that require conversion
+tracking, which no SDK enum spells out.
 """
 
 from __future__ import annotations
@@ -158,3 +160,14 @@ MINUTE_OF_HOUR_MAP: dict[int, str] = {
 AD_NETWORK_TYPE_MAP: dict[int, str] = {
     member.value: member.name for member in AdNetworkTypeEnum.AdNetworkType  # type: ignore[attr-defined]
 }
+
+#: Smart bidding strategies: they optimise toward conversions, so they
+#: require conversion tracking (``campaign.bidding_strategy`` spelling).
+SMART_BIDDING_STRATEGIES: frozenset[str] = frozenset(
+    {
+        "MAXIMIZE_CONVERSIONS",
+        "TARGET_CPA",
+        "TARGET_ROAS",
+        "MAXIMIZE_CONVERSION_VALUE",
+    }
+)

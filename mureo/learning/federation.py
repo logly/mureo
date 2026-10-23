@@ -154,8 +154,8 @@ async def search_one(
             "advisor %s: timed out after %.1fs", source.name, source.timeout_sec
         )
         return ()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("advisor %s: failed (%s)", source.name, exc)
+    except Exception as exc:  # noqa: BLE001 — one advisor must not fail the search
+        logger.warning("advisor %s: failed (%s)", source.name, type(exc).__name__)
         return ()
 
 

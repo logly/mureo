@@ -15,6 +15,10 @@ and :func:`is_auth_error_result` are its yes/no forms. They only read
 layers below :mod:`mureo.mcp` (rollback, the Amazon bridge) can ask "did this
 call fail?" without importing the server.
 
+:func:`exception_text` is the one place a caught exception becomes the text
+such an envelope (or a library result) carries. It lives here, not in
+:mod:`mureo.mcp`, so the platform packages can use it too (#603, #865).
+
 The writer stays in :mod:`mureo.mcp._helpers` (``_failure_result``,
 ``_auth_error_result``, ``_json_result``, ``api_error_handler``) because it
 builds MCP ``TextContent``; that module re-exports every name defined here,
@@ -24,6 +28,7 @@ so the two halves keep one vocabulary.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from typing import Any, NamedTuple
 
 from mureo.core.auth_failure import AUTH_ERROR_STATUS, is_auth_failure_payload
@@ -137,3 +142,37 @@ def is_error_result(result: list[Any] | None) -> bool:
     either (#862). :func:`failure_of` is the one reader of all three.
     """
     return failure_of(result) is not None
+
+
+def exception_text(exc: BaseException) -> str:
+    """Turn a caught exception into text an operator may safely see.
+
+    The ONE place a caught exception becomes operator-visible text, because
+    ``str(exc)`` is not safe for every exception mureo catches.
+    ``GoogleAdsException`` does not curate its ``__str__``: formatting it
+    prints the underlying ``grpc.Call`` repr, which carries
+    ``debug_error_string()`` and with it the request metadata — the
+    developer token and the ``authorization`` header. The curated text is
+    the server-side ``failure.errors[0].message`` (#603). The mutation
+    paths learned that in #603; every read path returned ``str(exc)``, and
+    since #758 that text is also copied into the journal.
+
+    Duck-typed on ``failure.errors`` rather than imported from
+    :mod:`mureo.google_ads.client`, like
+    :func:`mureo.core.auth_failure._is_google_ads_auth_failure`: this module
+    is shared by every platform and must not depend on the Google client.
+    """
+    errors = getattr(getattr(exc, "failure", None), "errors", None)
+    if isinstance(errors, Iterable):
+        # A platform-shaped failure: ``str(exc)`` is off limits even when the
+        # curated message is missing, so an empty ``errors`` costs the detail,
+        # never the credential.
+        for error in errors:
+            message = str(getattr(error, "message", "") or "")
+            if message:
+                return message
+        return type(exc).__name__
+    # Every other exception mureo catches already curates its own message,
+    # so the operator-facing text stays exactly what it was; only an empty
+    # message falls back to the type name so the envelope is never blank.
+    return str(exc) or type(exc).__name__

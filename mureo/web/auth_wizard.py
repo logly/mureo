@@ -785,8 +785,10 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             result = exchange_google_code(sess.google_flow, code)
-        except Exception:
-            logger.exception("Google token exchange failed")
+        except Exception as exc:  # noqa: BLE001 — shown as an error page
+            # Class name only: the exchange error can carry the code, the
+            # client secret or the platform's reply.
+            logger.error("Google token exchange failed (%s)", type(exc).__name__)
             self._send_html(
                 render_error(
                     "Google rejected the authorization. "
@@ -823,7 +825,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             return
         try:
             accounts = _run_async(_reexport("list_accessible_accounts")(probe_creds))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — the account list is optional here
             # Log only the exception class — the google-ads SDK
             # sometimes embeds request arguments (which could include
             # the developer_token / client_secret) in exception
@@ -1024,8 +1026,10 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
                     redirect_uri=redirect_uri,
                 )
             )
-        except Exception:
-            logger.exception("Meta token exchange failed")
+        except Exception as exc:  # noqa: BLE001 — shown as an error page
+            # Class name only: the exchange error can carry the code, the
+            # client secret or the platform's reply.
+            logger.error("Meta token exchange failed (%s)", type(exc).__name__)
             self._send_html(
                 render_error(
                     "Facebook rejected the authorization. "
@@ -1057,7 +1061,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             return
         try:
             accounts = _run_async(_reexport("list_meta_ad_accounts")(access_token))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — the account list is optional here
             # See Google-side comment above: don't emit the traceback
             # because it may contain the access_token in the request
             # URL / exception args.

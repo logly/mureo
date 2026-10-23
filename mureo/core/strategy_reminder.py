@@ -220,7 +220,7 @@ def _read_strategy_reminder(tool_name: str) -> str | None:
         ctx = get_runtime_context()
         entries = list(ctx.state_store.read_strategy())
         return build_reminder_text(entries)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — a reminder must never break a tool call
         logger.debug(
             "strategy reminder: build failed for tool %s (%s); skipping reminder",
             tool_name,

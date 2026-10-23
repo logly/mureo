@@ -1,3 +1,80 @@
+## [Unreleased]
+
+### Changed
+
+- **A Google Ads read that fails inside a composite tool is now `null`**
+  (#865). `google_ads_performance_analyze`,
+  `google_ads_cost_increase_investigate` and `google_ads_campaigns_diagnose`
+  used to put the string `"Retrieval failed"` or `"Verification failed"`,
+  `0` (sitelink count) or `[]` (conversion action detail) in a key whose
+  read failed; that key is now `null`. A `google_ads_health_check_all`
+  entry whose diagnostics failed carries `issues`, `warnings` and
+  `recommendations` as `null` instead of an `error` sentence.
+  `google_ads_budget_reallocation` reports a campaign whose budget read
+  failed with `current_daily_budget` and `budget_id` `null` (was `0` and
+  `""`) and proposes no change for it. The four `google_ads_monitoring_*`
+  tools put `null` in a part they could not retrieve (was `{}` or `[]`)
+  and still name it in `issues`. Each failure is logged at WARNING with
+  the exception class name only. Consumers matching the old strings or
+  `0` should test for `null`.
+  Nothing is derived from a failed read any more, and the monitoring tools
+  gain the status `"unknown"`: it is reported when a read the verdict
+  rests on failed and nothing that was read is critical (a critical
+  finding from data that was read still wins). A failed performance read
+  no longer reports "impressions are 0" or "0 conversions": in
+  `google_ads_monitoring_zero_conversions` `funnel` is `null`, in
+  `google_ads_monitoring_cpa_goal` `current_cpa` and `deviation_pct` are
+  `null`, and in `google_ads_monitoring_cv_goal` `current_cv_daily`,
+  `deviation_pct` and `bottleneck` are `null`. A failed conversion action
+  read in `google_ads_monitoring_zero_conversions` no longer reports "No
+  active conversion actions" or the smart-bidding mismatch, and leaves
+  `cv_tracking_configured` `null`; a failed campaign read there leaves
+  `strategy` and `is_smart_bidding` `null` and, as in the delivery goal,
+  is named in `issues`. `suggested_workflow` is set only for `critical`
+  and `warning`. `google_ads_performance_analyze` and
+  `google_ads_cost_increase_investigate` put `null` in
+  `performance_previous` / `performance_previous_7d`, `changes` and
+  `cost_breakdown` (was a breakdown of zeros) when the comparison read
+  failed, and `negative_keyword_candidates` is `null` (was absent) when
+  the search term read failed. `google_ads_conversions_performance`
+  reports `cost_per_conversion` as `null` (was `0`) when the cost read
+  failed. `google_ads_budget_reallocation` no longer fails on an
+  inefficient campaign without conversions.
+- **Failure details from the delivery-collapse, rollback, batch,
+  anomaly-check and Creative Studio compose tools go through
+  `exception_text`** (#865), so an exception shaped like a platform
+  failure contributes its curated message rather than its `str()`.
+  Other exceptions read as before.
+- **ruff `BLE` (flake8-blind-except) is enabled for `mureo/` and `tests/`**
+  (#865). A broad `except` names its reason on the line
+  (`# noqa: BLE001 — <reason>`, checked by `tests/test_ble001_reasons.py`)
+  or narrows its type. Six sites were narrowed, and broad excepts that
+  continued silently now log a WARNING.
+
+### Security
+
+- **More exception text is kept out of results and logs** (#865, #603).
+  `exception_text` moved to `mureo.core.tool_failure` (still importable
+  from `mureo.mcp._helpers`) so the platform packages can use it. The
+  device performance, CPC trend, auction insights and RSA audit errors,
+  the Meta image download error, the landing page validation error, the
+  Creative Studio path and validation errors and the automatic evaluation
+  error now go through it. The auction insights, landing page analysis
+  and automatic evaluation logs name the exception class only; the
+  automatic evaluation log no longer carries a traceback.
+  `google_ads_ads_create_display` builds its ad group check, image upload
+  and creation errors with it and no longer chains the platform exception
+  to them, so a printed traceback cannot show its `repr`. The plugin audit's `error` for a raised
+  call is it instead of the exception's `repr`, so it no longer names
+  the exception class. The MCP API error log (`<tool> failed`) now
+  carries the class name and `exception_text` instead of a traceback.
+  These logs name the exception class only, without a traceback: the
+  Creative Studio generate, edit and compose failures (whose traceback
+  printed the provider's HTTP error, and with it Gemini's `?key=`), the
+  tracking and exclusion pre-flights, the rollback dispatch failure, an
+  advisor search failure, and the setup wizard's Google and Meta token
+  exchange failures.
+
 ## [0.32.0] - 2026-10-23
 
 ### Changed

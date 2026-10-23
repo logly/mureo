@@ -39,7 +39,13 @@ from mureo.analysis.delivery_collapse import (
 )
 from mureo.analysis.delivery_collapse_config import load_collapse_thresholds
 from mureo.core import clock
-from mureo.mcp._helpers import _failure_result, _json_result, _opt, _require
+from mureo.mcp._helpers import (
+    _failure_result,
+    _json_result,
+    _opt,
+    _require,
+    exception_text,
+)
 
 if TYPE_CHECKING:
     from datetime import date
@@ -119,7 +125,7 @@ async def handle_delivery_collapse_check(
         series = _series_from_arguments(arguments)
         as_of = _parse_as_of(arguments)
     except ValueError as exc:
-        return _failure_result("invalid_arguments", str(exc), signals=[])
+        return _failure_result("invalid_arguments", exception_text(exc), signals=[])
 
     thresholds, source = load_collapse_thresholds()
     signals = detect_delivery_collapses(series, thresholds=thresholds, as_of=as_of)
@@ -211,7 +217,7 @@ async def handle_delivery_collapse_diagnose(
         changes = _changes_from_arguments(arguments)
         checks = _checks_from_arguments(arguments)
     except ValueError as exc:
-        return _failure_result("invalid_arguments", str(exc))
+        return _failure_result("invalid_arguments", exception_text(exc))
 
     target = next((s for s in series if s.campaign_id == campaign_id), None)
     if target is None:
@@ -245,7 +251,7 @@ async def handle_delivery_collapse_diagnose(
             ),
         )
     except ValueError as exc:
-        return _failure_result("invalid_arguments", str(exc))
+        return _failure_result("invalid_arguments", exception_text(exc))
 
     payload = _jsonable(diagnosis)
     payload["status"] = "ok"

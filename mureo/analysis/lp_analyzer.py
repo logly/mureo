@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup, Tag
 
+from mureo.core.tool_failure import exception_text
 from mureo.core.url_guard import validate_public_url
 
 logger = logging.getLogger(__name__)
@@ -112,10 +113,12 @@ class LPAnalyzer:
             html = await self._fetch_html(url)
         except ValueError as exc:
             # Return validation errors (SSRF protection, etc.) as-is
-            logger.warning("LP URL validation failed: url=%s, error=%s", url, exc)
-            return LPContent(url=url, error=str(exc))
-        except Exception as exc:
-            logger.warning("Failed to fetch LP: url=%s, error=%s", url, exc)
+            logger.warning(
+                "LP URL validation failed: url=%s (%s)", url, type(exc).__name__
+            )
+            return LPContent(url=url, error=exception_text(exc))
+        except Exception as exc:  # noqa: BLE001 — a failed fetch is LPContent.error
+            logger.warning("Failed to fetch LP: url=%s (%s)", url, type(exc).__name__)
             return LPContent(
                 url=url,
                 error="Failed to fetch LP. Please verify the URL is correct.",
@@ -123,8 +126,8 @@ class LPAnalyzer:
 
         try:
             return self._parse_html(url, html)
-        except Exception as exc:
-            logger.warning("HTML parsing failed: url=%s, error=%s", url, exc)
+        except Exception as exc:  # noqa: BLE001 — a parse failure is LPContent.error
+            logger.warning("HTML parsing failed: url=%s (%s)", url, type(exc).__name__)
             return LPContent(
                 url=url,
                 error="Failed to analyze LP. The page format may not be supported.",
@@ -355,7 +358,7 @@ class LPAnalyzer:
         try:
             parsed = urlparse(url)
             return parsed.netloc.replace("www.", "")
-        except Exception:
+        except ValueError:
             return ""
 
     @staticmethod

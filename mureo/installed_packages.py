@@ -11,8 +11,11 @@ Stdlib only, so either layer imports it without loading the other (#863).
 
 from __future__ import annotations
 
+import logging
 import re
 from importlib import metadata
+
+logger = logging.getLogger(__name__)
 
 # PEP 503: lowercase, separators normalised to '-'.
 _NORMALIZE_RE = re.compile(r"[-_.]+")
@@ -47,7 +50,10 @@ def discover_all_mureo_packages() -> list[str]:
             # wrap it because a single broken dist-info in the venv must
             # not crash ``mureo upgrade --all``.
             name = dist.name
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — skip a broken dist-info
+            logger.warning(
+                "Skipped an unreadable distribution (%s)", type(exc).__name__
+            )
             continue
         if not name or not is_mureo_package(name):
             continue

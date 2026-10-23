@@ -109,7 +109,7 @@ def _raise_meta_api_error(resp: httpx.Response, method: str, path: str) -> NoRet
         raw = payload.get("error") if isinstance(payload, dict) else None
         error = raw if isinstance(raw, dict) else {}
         detail = _meta_error_detail(error)
-    except Exception:  # noqa: BLE001 - an unparseable body still has to be reported
+    except Exception:  # noqa: BLE001 — an unparseable body still has to be reported
         detail = error_body
     message = (
         f"Meta API request failed (status={resp.status_code}, path={path}): {detail}"
@@ -554,7 +554,7 @@ class MetaAdsApiClient(
                 err = resp.json().get("error", {})
                 parts = [v for k in ("message",) if (v := err.get(k))]
                 detail = " | ".join(parts) if parts else resp.text[:500]
-            except Exception:
+            except (ValueError, AttributeError):
                 detail = resp.text[:500]
             raise RuntimeError(
                 f"Meta API request failed "

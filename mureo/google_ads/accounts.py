@@ -100,7 +100,7 @@ def _describe_customer(
                 bool(row.customer.manager),
                 _enum_name(row.customer.status),
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — account details are best-effort
         # Class name only — see the note above list_accessible_customers.
         logger.debug(
             "Failed to retrieve account info: %s (%s)",
@@ -141,7 +141,7 @@ def _traverse_children(ga_service: Any, mcc_id: str, add: Callable[..., None]) -
                 level=int(child.level),
                 status=_enum_name(child.status),
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — one MCC's children are best-effort
         # Class name only — see the note above list_accessible_customers.
         logger.warning(
             "Failed to retrieve child accounts for MCC %s (%s)",
@@ -267,7 +267,7 @@ def _list_accessible_accounts_sync(
     try:
         customer_service = base_client.get_service("CustomerService")
         response = customer_service.list_accessible_customers()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — re-raised as GoogleAdsAccountListError
         # Class name only. GoogleAdsException does not curate its __str__:
         # it never calls super().__init__ with a safe message, so
         # BaseException keeps the raw constructor args and formatting the
