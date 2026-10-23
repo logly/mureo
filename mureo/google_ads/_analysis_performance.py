@@ -484,7 +484,11 @@ class _PerformanceAnalysisMixin:
         result: dict[str, Any],
         actions: list[str],
     ) -> None:
-        """Identify negative keyword candidates."""
+        """Identify negative keyword candidates.
+
+        When the negatives read fails, both ``existing_negative_keywords_count``
+        and ``negative_keyword_candidates`` are ``None`` (unknown).
+        """
         try:
             existing_negatives = await self.list_negative_keywords(campaign_id)
             existing_neg_texts = {n.get("text", "").lower() for n in existing_negatives}
@@ -510,6 +514,7 @@ class _PerformanceAnalysisMixin:
                 "Failed to retrieve negative keyword candidates (%s)",
                 type(exc).__name__,
             )
+            result["existing_negative_keywords_count"] = None
             result["negative_keyword_candidates"] = None
 
     # =================================================================

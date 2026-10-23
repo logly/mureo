@@ -1650,6 +1650,21 @@ class TestCheckBudgetBiddingCompatibility:
             )
 
     @pytest.mark.asyncio
+    async def test_shared_budget_maximize_conversion_value_refused(self) -> None:
+        """Maximize conversion value is a smart strategy too (#900)."""
+        client = _make_client()
+        row = MagicMock()
+        row.campaign_budget.explicitly_shared = True
+
+        with (
+            patch.object(client, "_search", return_value=[row]),
+            pytest.raises(ValueError, match="not compatible with shared budget"),
+        ):
+            await client._check_budget_bidding_compatibility(
+                "100", "MAXIMIZE_CONVERSION_VALUE"
+            )
+
+    @pytest.mark.asyncio
     async def test_非共有予算_OK(self) -> None:
         client = _make_client()
         row = MagicMock()

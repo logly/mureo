@@ -124,6 +124,42 @@
   architecture tree's `adapters/` line, the provider docstring's Meta
   field name (`account_id`) and the BYOD bundle importer's docstring
   (which still called Meta BYOD a follow-up) are corrected.
+- **`google_ads_creative_research` reports a failed part as `null`**
+  (#900, #865). `existing_ads`, `search_term_insights`,
+  `keyword_suggestions` and `existing_keywords` were the string
+  `"fetch_failed"` when their read failed; they are now `null`, and
+  `context_summary` says "could not be retrieved" for that section
+  instead of leaving it out. Each failure is logged at WARNING with the
+  exception class name only. Consumers matching `"fetch_failed"` should
+  test for `null`.
+- **More failed Google Ads reads are `null` instead of empty** (#900,
+  #865). `google_ads_keywords_audit` puts `null` in `total_keywords`,
+  `avg_cvr`, `recommendations` and `summary` (was `0`, `0.0`, `[]` and
+  zero counts) when the keyword performance read fails.
+  `google_ads_cost_increase_investigate` puts `null` in
+  `existing_negative_keywords_count` (was absent) and
+  `negative_keyword_candidates` when the negative keyword read fails.
+  `google_ads_conversions_performance` reports `landing_pages` as `null`
+  (was `[]`) when the landing page read fails. Each failure is logged at
+  WARNING with the exception class name only.
+- **A shared budget is refused for `MAXIMIZE_CONVERSION_VALUE` too**
+  (#900). Creating a campaign on an explicitly shared budget with a
+  smart bidding strategy raises the existing "not compatible with shared
+  budgets" `ValueError`; the check used a private three-member set that
+  missed Maximize conversion value, and now uses the shared
+  `SMART_BIDDING_STRATEGIES`. Google treats Maximize conversions and
+  Maximize conversion value alike with shared budgets
+  (https://support.google.com/google-ads/answer/6263057).
+- **A Meta API transport failure names the exception class** (#900).
+  After the retries, the error reads
+  `Meta API request failed (path=...): <ExceptionClass>` instead of
+  quoting the httpx error text.
+- **`tests/test_log_exc_info_sweep.py` covers `mureo/web`** (#900). A new
+  `exc_info=` or `logger.exception()` site there is refused; the existing
+  ones are listed per function in an allow-list that can only shrink.
+- **The Creative Studio provider checks log the exception class name**
+  (#900). A provider whose `is_configured` or `capabilities()` raises is
+  logged with the class name instead of a traceback.
 
 ### Security
 

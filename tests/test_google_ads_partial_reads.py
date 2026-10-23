@@ -266,7 +266,7 @@ async def test_analyze_performance_failed_part_is_null(
         ("list_change_history", ("bid_budget_changes",), "change history"),
         (
             "list_negative_keywords",
-            ("negative_keyword_candidates",),
+            ("existing_negative_keywords_count", "negative_keyword_candidates"),
             "negative keyword candidates",
         ),
     ],

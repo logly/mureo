@@ -363,7 +363,7 @@ class MetaAdsApiClient(
                     await asyncio.sleep(backoff)
                     continue
                 raise RuntimeError(
-                    f"Meta API request failed (path={path}): {exc}"
+                    f"Meta API request failed (path={path}): {type(exc).__name__}"
                 ) from exc
 
         raise RuntimeError(
