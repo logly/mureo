@@ -171,6 +171,10 @@ assert_dir() {
 # 1. Fresh venv + install
 # ---------------------------------------------------------------------------
 "$PYTHON_BIN" -m venv "$VENV_DIR"
+# Upgrade pip first: pip < 26.2.2 reads its own bundled certifi, which still
+# carries the compromised emSign root (#910).
+run_step --exit-only "pip install --upgrade pip" \
+    "$VENV_PYTHON" -m pip install --disable-pip-version-check --quiet --upgrade pip
 # --exit-only: the noise gate is about MUREO's output. pip emits its own
 # internal DeprecationWarnings on some interpreter/pip combinations, and a
 # genuine install failure shows up as a non-zero exit anyway.

@@ -24,6 +24,9 @@ RUN groupadd --system mureo && useradd --system --gid mureo --create-home mureo
 
 WORKDIR /app
 
+# pip < 26.2.2 ships a trust store with the compromised emSign root.
+RUN pip install --no-cache-dir --upgrade pip
+
 # Install dependencies first in a cacheable layer.
 # We create an empty package stub so `pip install .` resolves deps
 # without needing the full source tree; sources are copied next.

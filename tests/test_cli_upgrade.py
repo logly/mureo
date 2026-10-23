@@ -20,11 +20,14 @@ The unit-of-isolation is ``mureo.cli.upgrade_cmd``:
 * If ``python -m pip --version`` exits non-zero with ``No module named
   pip`` on stderr we bootstrap with ``ensurepip`` once and retry; any
   other failure is surfaced verbatim.
+* pip itself is upgraded before the packages (#910); a failed self-upgrade
+  is reported on stderr and the package upgrade still runs.
 * pip's exit code is propagated as the CLI exit code.
 """
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -55,6 +58,14 @@ class _FakeDist:
     @property
     def metadata(self) -> dict[str, str]:
         return {"Name": self.name}
+
+
+def _is_package_install(cmd: list[str]) -> bool:
+    """True for the package ``pip install``, not the pip self-upgrade (#910).
+
+    Only the package install carries the ``--`` sentinel before its targets.
+    """
+    return "install" in cmd and "--" in cmd
 
 
 def _runner() -> CliRunner:
@@ -112,7 +123,9 @@ def test_upgrade_default_upgrades_mureo_self(fake_pip: MagicMock) -> None:
     result = _runner().invoke(_app(), ["upgrade"])
 
     assert result.exit_code == 0, result.stderr
-    install_calls = [c for c in fake_pip.call_args_list if "install" in c.args[0]]
+    install_calls = [
+        c for c in fake_pip.call_args_list if _is_package_install(c.args[0])
+    ]
     assert len(install_calls) == 1
     cmd = install_calls[0].args[0]
     assert cmd[:3] == [sys.executable, "-m", "pip"]
@@ -160,7 +173,7 @@ def test_upgrade_named_package_with_version(fake_pip: MagicMock) -> None:
 
     assert result.exit_code == 0, result.stderr
     install_cmd = [
-        c.args[0] for c in fake_pip.call_args_list if "install" in c.args[0]
+        c.args[0] for c in fake_pip.call_args_list if _is_package_install(c.args[0])
     ][0]
     assert install_cmd[-1] == "mureo-logly-bridge==1.2.3"
     assert install_cmd[install_cmd.index("--") + 1 :] == ["mureo-logly-bridge==1.2.3"]
@@ -189,7 +202,7 @@ def test_upgrade_all_discovers_mureo_and_mureo_prefixed(
 
     assert result.exit_code == 0, result.stderr
     install_cmd = [
-        c.args[0] for c in fake_pip.call_args_list if "install" in c.args[0]
+        c.args[0] for c in fake_pip.call_args_list if _is_package_install(c.args[0])
     ][0]
     targets = install_cmd[install_cmd.index("--") + 1 :]
     assert set(targets) == {
@@ -208,7 +221,9 @@ def test_upgrade_all_invokes_pip_once_for_atomic_resolution(
 
     _runner().invoke(_app(), ["upgrade", "--all"])
 
-    install_calls = [c for c in fake_pip.call_args_list if "install" in c.args[0]]
+    install_calls = [
+        c for c in fake_pip.call_args_list if _is_package_install(c.args[0])
+    ]
     assert (
         len(install_calls) == 1
     ), "pip must be called once so resolver sees the full set"
@@ -295,7 +310,7 @@ def test_upgrade_bootstraps_pip_when_missing(fake_pip: MagicMock) -> None:
     assert len(ensurepip_calls) == 1
     assert ensurepip_calls[0][:3] == [sys.executable, "-m", "ensurepip"]
     # pip install must still run after the bootstrap, with the original target.
-    install_cmds = [c for c in calls if "install" in c and "ensurepip" not in c]
+    install_cmds = [c for c in calls if _is_package_install(c)]
     assert len(install_cmds) == 1
     assert install_cmds[0][-1] == "mureo"
     assert "--upgrade" in install_cmds[0]
@@ -335,7 +350,7 @@ def test_upgrade_propagates_pip_exit_code(fake_pip: MagicMock) -> None:
     def _side_effect(
         cmd: list[str], *_: Any, **__: Any
     ) -> subprocess.CompletedProcess[str]:
-        if "install" in cmd:
+        if _is_package_install(cmd):
             return subprocess.CompletedProcess(
                 cmd, returncode=42, stdout="", stderr="boom"
             )
@@ -346,6 +361,97 @@ def test_upgrade_propagates_pip_exit_code(fake_pip: MagicMock) -> None:
     result = _runner().invoke(_app(), ["upgrade"])
 
     assert result.exit_code == 42
+
+
+# ---------------------------------------------------------------------------
+# pip self-upgrade before the packages (#910)
+# ---------------------------------------------------------------------------
+
+
+_SELF_UPGRADE_CMD = [sys.executable, "-m", "pip", "install", "--upgrade", "pip"]
+
+
+def test_dry_run_prints_pip_self_upgrade_before_install(fake_pip: MagicMock) -> None:
+    result = _runner().invoke(_app(), ["upgrade", "--dry-run"])
+
+    assert result.exit_code == 0, result.stderr
+    assert fake_pip.call_args_list == []
+    lines = result.stdout.splitlines()
+    assert lines == [
+        shlex.join(_SELF_UPGRADE_CMD),
+        shlex.join(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "--", "mureo"]
+        ),
+    ]
+
+
+def test_upgrade_self_upgrades_pip_before_installing_packages(
+    fake_pip: MagicMock,
+) -> None:
+    result = _runner().invoke(_app(), ["upgrade"])
+
+    assert result.exit_code == 0, result.stderr
+    install_cmds = [
+        c.args[0] for c in fake_pip.call_args_list if "install" in c.args[0]
+    ]
+    assert install_cmds == [
+        _SELF_UPGRADE_CMD,
+        [sys.executable, "-m", "pip", "install", "--upgrade", "--", "mureo"],
+    ]
+
+
+def test_failed_pip_self_upgrade_warns_and_still_installs(
+    fake_pip: MagicMock,
+) -> None:
+    def _side_effect(
+        cmd: list[str], *_: Any, **__: Any
+    ) -> subprocess.CompletedProcess[str]:
+        if cmd == _SELF_UPGRADE_CMD:
+            return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="")
+        if _is_package_install(cmd):
+            return subprocess.CompletedProcess(cmd, returncode=3, stdout="", stderr="")
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+    fake_pip.side_effect = _side_effect
+
+    result = _runner().invoke(_app(), ["upgrade"])
+
+    assert (
+        "pip self-upgrade failed with exit code 1; "
+        "continuing with the installed pip." in result.stderr
+    )
+    assert [
+        c.args[0] for c in fake_pip.call_args_list if _is_package_install(c.args[0])
+    ]
+    # The CLI exit code is the package install's, not the self-upgrade's.
+    assert result.exit_code == 3
+
+
+def test_pip_self_upgrade_oserror_warns_and_still_installs(
+    fake_pip: MagicMock,
+) -> None:
+    def _side_effect(
+        cmd: list[str], *_: Any, **__: Any
+    ) -> subprocess.CompletedProcess[str]:
+        if cmd == _SELF_UPGRADE_CMD:
+            raise OSError("no such executable")
+        if _is_package_install(cmd):
+            return subprocess.CompletedProcess(cmd, returncode=3, stdout="", stderr="")
+        return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+
+    fake_pip.side_effect = _side_effect
+
+    result = _runner().invoke(_app(), ["upgrade"])
+
+    assert (
+        "pip self-upgrade failed with OSError; "
+        "continuing with the installed pip." in result.stderr
+    )
+    assert [
+        c.args[0] for c in fake_pip.call_args_list if _is_package_install(c.args[0])
+    ]
+    # The CLI exit code is the package install's.
+    assert result.exit_code == 3
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +483,7 @@ def test_upgrade_all_always_includes_mureo_self(
 
     assert result.exit_code == 0, result.stderr
     install_cmd = [
-        c.args[0] for c in fake_pip.call_args_list if "install" in c.args[0]
+        c.args[0] for c in fake_pip.call_args_list if _is_package_install(c.args[0])
     ][0]
     targets = install_cmd[install_cmd.index("--") + 1 :]
     assert targets[0] == "mureo"
@@ -393,7 +499,7 @@ def test_upgrade_all_dedups_case_and_separator_variants(
 
     assert result.exit_code == 0, result.stderr
     install_cmd = [
-        c.args[0] for c in fake_pip.call_args_list if "install" in c.args[0]
+        c.args[0] for c in fake_pip.call_args_list if _is_package_install(c.args[0])
     ][0]
     targets = install_cmd[install_cmd.index("--") + 1 :]
     # mureo (belt-and-braces) + exactly one mureo-foo, no duplicates.
@@ -541,7 +647,7 @@ def test_failed_upgrade_skips_post_upgrade_refresh(
     failed upgrade."""
 
     def _fail(cmd: list[str], *_: Any, **__: Any) -> subprocess.CompletedProcess[str]:
-        rc = 1 if "install" in cmd else 0
+        rc = 1 if _is_package_install(cmd) else 0
         return subprocess.CompletedProcess(cmd, returncode=rc, stdout="", stderr="x")
 
     fake_pip.side_effect = _fail

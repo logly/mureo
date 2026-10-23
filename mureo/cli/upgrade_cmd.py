@@ -25,6 +25,11 @@ Design contract
   mode "No module named pip" triggers an ``ensurepip --upgrade``
   bootstrap; every other pip failure is surfaced verbatim so we do not
   silently bypass permission / network errors.
+- pip itself is upgraded (``python -m pip install --upgrade pip``) before
+  the package targets are resolved: pip < 26.2.2 always reads its own
+  vendored certifi, so an outdated pip resolves the upgrade over a trust
+  store that may still carry a compromised root. A failed self-upgrade is
+  reported on stderr and the package upgrade still runs.
 - pip's stdout / stderr is streamed straight through to the terminal
   (no capture) so progress and error context reach the operator.
 - pip's exit code is propagated as the CLI exit code, enabling
@@ -59,7 +64,11 @@ from mureo.cli.skill_status import (
 )
 from mureo.credential_guard import is_guard_entry
 from mureo.installed_packages import canonicalise, discover_all_mureo_packages
-from mureo.pip_env import pip_subprocess_env
+from mureo.pip_env import (
+    pip_install_cmd,
+    pip_self_upgrade_cmd,
+    pip_subprocess_env,
+)
 from mureo.web.service import SERVICE_PORT
 
 upgrade_app = typer.Typer(
@@ -133,18 +142,79 @@ def _bootstrap_pip() -> int:
     return proc.returncode
 
 
+def _ensure_pip_available() -> None:
+    """Make sure ``python -m pip`` works; raise ``typer.Exit`` otherwise.
+
+    Only "No module named pip" triggers an ``ensurepip`` bootstrap; every
+    other failure is surfaced verbatim.
+    """
+
+    ok, stderr = _pip_is_available()
+    if ok:
+        return
+    if "No module named pip" not in stderr:
+        typer.echo(f"`python -m pip --version` failed:\n{stderr}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(
+        "pip is not available in this venv — bootstrapping with ensurepip...",
+        err=True,
+    )
+    rc = _bootstrap_pip()
+    if rc != 0:
+        typer.echo(
+            f"ensurepip failed with exit code {rc}; aborting upgrade.",
+            err=True,
+        )
+        raise typer.Exit(code=rc)
+    # Verify the bootstrap actually wired pip in — broken site-packages /
+    # stale ``__pycache__`` can leave the venv in a state where ensurepip
+    # succeeds but ``import pip`` still fails.
+    ok_after, stderr_after = _pip_is_available()
+    if not ok_after:
+        typer.echo(
+            "ensurepip succeeded but `python -m pip --version` is "
+            f"still failing:\n{stderr_after}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+def _run_pip_self_upgrade() -> int:
+    """Invoke ``pip install --upgrade pip``; return exit code.
+
+    pip < 26.2.2 always loads its vendored certifi, ignoring the OS trust
+    store, so the pip that resolves the upgrade must itself be current
+    before the mureo packages are resolved. In a pipx venv without pip,
+    ``_ensure_pip_available`` has already installed it via ensurepip, and
+    ``sys.executable -m pip`` resolves to that copy, so it is the one to
+    upgrade. A failure (non-zero exit or ``OSError``) is reported on stderr
+    and returns non-zero; the caller still runs the package upgrade.
+    """
+
+    try:
+        # UTF-8 child stdio for the same reason as _run_pip_install.
+        rc = subprocess.run(
+            pip_self_upgrade_cmd(), env=pip_subprocess_env(), check=False
+        ).returncode
+        failure = f"exit code {rc}"
+    except OSError as exc:
+        rc = 1
+        failure = type(exc).__name__
+    if rc != 0:
+        # Not fatal: the package upgrade still runs with the pip that is
+        # already installed, so the operator is no worse off than before.
+        typer.echo(
+            f"pip self-upgrade failed with {failure}; "
+            "continuing with the installed pip.",
+            err=True,
+        )
+    return rc
+
+
 def _run_pip_install(targets: list[str]) -> int:
     """Invoke ``pip install --upgrade -- <targets>``; return exit code."""
 
-    cmd = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "--upgrade",
-        "--",
-        *targets,
-    ]
+    cmd = pip_install_cmd(targets)
     # UTF-8 child stdio so streaming pip output to a cp932 console never crashes
     # pip on a non-cp932 char (e.g. U+00B7 in a package's metadata). See pip_env.
     proc = subprocess.run(cmd, env=pip_subprocess_env(), check=False)
@@ -410,7 +480,7 @@ def upgrade(
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="Print the pip command that would run; do not invoke pip.",
+        help="Print the pip commands that would run; do not invoke pip.",
     ),
     no_refresh: bool = typer.Option(
         False,
@@ -427,51 +497,18 @@ def upgrade(
 
     targets = _resolve_targets(packages or [], all_)
 
-    cmd_preview = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "--upgrade",
-        "--",
-        *targets,
-    ]
     if dry_run:
         # shlex.join keeps the preview shell-safe and copy-pasteable —
         # ``sys.executable`` on macOS pipx installs typically contains
         # spaces (e.g. ``Library/Application Support/pipx/...``).
-        typer.echo(shlex.join(cmd_preview))
+        typer.echo(shlex.join(pip_self_upgrade_cmd()))
+        typer.echo(shlex.join(pip_install_cmd(targets)))
         return
 
-    ok, stderr = _pip_is_available()
-    if not ok:
-        if "No module named pip" in stderr:
-            typer.echo(
-                "pip is not available in this venv — bootstrapping with "
-                "ensurepip...",
-                err=True,
-            )
-            rc = _bootstrap_pip()
-            if rc != 0:
-                typer.echo(
-                    f"ensurepip failed with exit code {rc}; aborting upgrade.",
-                    err=True,
-                )
-                raise typer.Exit(code=rc)
-            # Verify the bootstrap actually wired pip in — broken
-            # site-packages / stale ``__pycache__`` can leave the venv in a
-            # state where ensurepip succeeds but ``import pip`` still fails.
-            ok_after, stderr_after = _pip_is_available()
-            if not ok_after:
-                typer.echo(
-                    "ensurepip succeeded but `python -m pip --version` is "
-                    f"still failing:\n{stderr_after}",
-                    err=True,
-                )
-                raise typer.Exit(code=1)
-        else:
-            typer.echo(f"`python -m pip --version` failed:\n{stderr}", err=True)
-            raise typer.Exit(code=1)
+    _ensure_pip_available()
+
+    # A failed self-upgrade is reported inside and never stops the upgrade.
+    _run_pip_self_upgrade()
 
     rc = _run_pip_install(targets)
     if rc != 0:
