@@ -35,6 +35,7 @@ from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
 from mureo.demo.scenarios._base import (
+    GoogleCampaignSpec,
     Scenario,
     action_iso,
     build_google_ad_groups_rows,
@@ -78,20 +79,11 @@ _BRAND_DIP_FACTOR = 0.60  # 40% drop
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class _GAdsCampaignSpec:
-    name: str
-    daily_impr: int
-    ctr: float
-    cpc: float
-    cvr: float
-
-
 _GADS_CAMPAIGNS = (
-    _GAdsCampaignSpec("Brand - Exact", 200, 0.25, 80.0, 0.35),
-    _GAdsCampaignSpec("Generic - Roof Repair JP", 1500, 0.06, 350.0, 0.080),
-    _GAdsCampaignSpec("Generic - Local Roofer JP", 1200, 0.05, 320.0, 0.090),
-    _GAdsCampaignSpec("Retargeting - Branded Search", 400, 0.12, 180.0, 0.15),
+    GoogleCampaignSpec("Brand - Exact", 200, 0.25, 80.0, 0.35),
+    GoogleCampaignSpec("Generic - Roof Repair JP", 1500, 0.06, 350.0, 0.080),
+    GoogleCampaignSpec("Generic - Local Roofer JP", 1200, 0.05, 320.0, 0.090),
+    GoogleCampaignSpec("Retargeting - Branded Search", 400, 0.12, 180.0, 0.15),
 )
 
 

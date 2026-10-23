@@ -52,6 +52,7 @@ from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
 from mureo.demo.scenarios._base import (
+    GoogleCampaignSpec,
     Scenario,
     action_iso,
     build_google_ad_groups_rows,
@@ -92,24 +93,14 @@ _VIOLATION_LAL_STACK_DAY = 60  # rule 3: LAL 4%/7%/10% added
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class _GAdsCampaignSpec:
-    name: str
-    daily_impr: int
-    ctr: float
-    cpc: float
-    cvr: float
-    start_day: int = 0  # 0 = active from Day 0
-
-
 _GADS_CAMPAIGNS = (
-    _GAdsCampaignSpec("Brand - Exact", 600, 0.22, 90.0, 0.18),
-    _GAdsCampaignSpec("Generic - Fitness Apps", 4000, 0.04, 220.0, 0.06),
-    _GAdsCampaignSpec("Generic - Workout Plans", 5500, 0.03, 180.0, 0.045),
-    _GAdsCampaignSpec("Retargeting - App Visitors", 1000, 0.10, 150.0, 0.12),
+    GoogleCampaignSpec("Brand - Exact", 600, 0.22, 90.0, 0.18),
+    GoogleCampaignSpec("Generic - Fitness Apps", 4000, 0.04, 220.0, 0.06),
+    GoogleCampaignSpec("Generic - Workout Plans", 5500, 0.03, 180.0, 0.045),
+    GoogleCampaignSpec("Retargeting - App Visitors", 1000, 0.10, 150.0, 0.12),
     # *** STRATEGY VIOLATION (rule 1) — competitor-name bidding ***
     # Active only from Day 30 (the new manager's launch day).
-    _GAdsCampaignSpec(
+    GoogleCampaignSpec(
         "Competitor Names",
         2400,
         0.025,
@@ -375,7 +366,7 @@ _GADS_KEYWORDS = (
 )
 
 
-def _gads_campaign_active(spec: _GAdsCampaignSpec, day: int) -> bool:
+def _gads_campaign_active(spec: GoogleCampaignSpec, day: int) -> bool:
     return day >= spec.start_day
 
 

@@ -27,12 +27,14 @@ same scenario produces an identical bundle.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
 from mureo.demo.scenarios._base import (
+    GoogleCampaignSpec,
     Scenario,
     action_iso,
+    build_google_ad_groups_rows,
     build_google_keywords_rows,
     build_google_search_terms_rows,
     campaign_id,
@@ -75,12 +77,6 @@ _ACTION_PAUSE_AWARENESS_DAY = 35  # Awareness Carousel paused
 _ACTION_PAUSE_LEAD_FORM_DAY = 50  # Lead Form paused
 
 
-def _days_iso() -> list[str]:
-    return [
-        (_END_DATE - timedelta(days=_DAYS - 1 - i)).isoformat() for i in range(_DAYS)
-    ]
-
-
 # ---------------------------------------------------------------------------
 # Google Ads — stable throughout the period
 # ---------------------------------------------------------------------------
@@ -91,10 +87,10 @@ def _days_iso() -> list[str]:
 
 _GADS_CAMPAIGNS = (
     # name, daily_impr, ctr, cpc_jpy, cvr
-    ("Brand - Exact", 600, 0.22, 60.0, 0.12),
-    ("Generic - Sensitive Skin", 5000, 0.04, 150.0, 0.05),
-    ("Generic - Discovery", 8000, 0.025, 175.0, 0.030),
-    ("Retargeting - Search", 1500, 0.08, 225.0, 0.14),
+    GoogleCampaignSpec("Brand - Exact", 600, 0.22, 60.0, 0.12),
+    GoogleCampaignSpec("Generic - Sensitive Skin", 5000, 0.04, 150.0, 0.05),
+    GoogleCampaignSpec("Generic - Discovery", 8000, 0.025, 175.0, 0.030),
+    GoogleCampaignSpec("Retargeting - Search", 1500, 0.08, 225.0, 0.14),
 )
 
 # Each ad group: (parent_campaign, ad_group_name, share_of_campaign)
@@ -317,38 +313,13 @@ def _build_google_campaigns_rows() -> list[list[object]]:
     rows: list[list[object]] = [
         ["day", "campaign", "impressions", "clicks", "cost", "conversions"]
     ]
-    days = _days_iso()
-    for name, base_impr, ctr, cpc, cvr in _GADS_CAMPAIGNS:
-        for d in days:
-            clicks = int(round(base_impr * ctr))
-            cost = round(clicks * cpc, 2)
-            conv = round(clicks * cvr, 2)
-            rows.append([d, name, base_impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_ad_groups_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "day",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    by_campaign = {c[0]: c for c in _GADS_CAMPAIGNS}
-    days = _days_iso()
-    for camp_name, ag_name, share in _GADS_AD_GROUPS:
-        _, base_impr, ctr, cpc, cvr = by_campaign[camp_name]
-        for d in days:
-            impr = int(round(base_impr * share))
-            clicks = int(round(impr * ctr))
-            cost = round(clicks * cpc, 2)
-            conv = round(clicks * cvr, 2)
-            rows.append([d, camp_name, ag_name, impr, clicks, cost, conv])
+    for c in _GADS_CAMPAIGNS:
+        for d in range(_DAYS):
+            day_iso = date_for_day(d, end_date=_END_DATE, days=_DAYS).isoformat()
+            clicks = int(round(c.daily_impr * c.ctr))
+            cost = round(clicks * c.cpc, 2)
+            conv = round(clicks * c.cvr, 2)
+            rows.append([day_iso, c.name, c.daily_impr, clicks, cost, conv])
     return rows
 
 
@@ -747,7 +718,9 @@ _STRATEGY_MD = """# STRATEGY — FlavorBox (demo: Seasonality Trap)
 
 _SHEET_ROWS: Mapping[str, Sequence[Sequence[object]]] = {
     "campaigns": _build_google_campaigns_rows(),
-    "ad_groups": _build_google_ad_groups_rows(),
+    "ad_groups": build_google_ad_groups_rows(
+        _GADS_CAMPAIGNS, _GADS_AD_GROUPS, end_date=_END_DATE, days=_DAYS
+    ),
     "search_terms": build_google_search_terms_rows(_GADS_SEARCH_TERMS),
     "keywords": build_google_keywords_rows(_GADS_KEYWORDS),
     "meta_ads": _build_meta_ads_rows(),

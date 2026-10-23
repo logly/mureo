@@ -160,6 +160,18 @@
 - **The Creative Studio provider checks log the exception class name**
   (#900). A provider whose `is_configured` or `capabilities()` raises is
   logged with the class name instead of a traceback.
+- **A non-JSON body from `/me/permissions` now fails token validation**
+  (#907). A 200 from `/me/permissions` whose body is not JSON used to
+  read as "no permissions granted" and moved on to the account listing;
+  token validation now fails with "Meta token validation failed: no
+  error detail in response body", as it does for a JSON body that is
+  not an object (which used to fail with an unrelated internal error).
+  `inspect_meta_access_token` is unchanged: a non-JSON 200 still reports
+  every field as unknown. Neither quotes the body.
+- **The demo scenarios share one Google Ads campaign spec** (#907):
+  `GoogleCampaignSpec` in `mureo/demo/scenarios/_base.py`, and the
+  seasonality-trap scenario uses the shared date and ad-group helpers.
+  Scenario output is unchanged.
 
 ### Security
 

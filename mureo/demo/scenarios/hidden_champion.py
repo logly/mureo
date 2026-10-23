@@ -33,6 +33,7 @@ from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
 from mureo.demo.scenarios._base import (
+    GoogleCampaignSpec,
     Scenario,
     action_iso,
     build_google_ad_groups_rows,
@@ -67,20 +68,11 @@ _BRAND = "PulseGrid"
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class _GAdsCampaignSpec:
-    name: str
-    daily_impr: int
-    ctr: float
-    cpc: float
-    cvr: float
-
-
 _GADS_CAMPAIGNS = (
-    _GAdsCampaignSpec("Brand - Exact", 800, 0.20, 350.0, 0.16),
-    _GAdsCampaignSpec("Generic - APM Tools", 4500, 0.05, 1100.0, 0.040),
-    _GAdsCampaignSpec("Generic - Observability Discovery", 6000, 0.045, 950.0, 0.045),
-    _GAdsCampaignSpec("Retargeting - Trial Users", 1200, 0.10, 400.0, 0.18),
+    GoogleCampaignSpec("Brand - Exact", 800, 0.20, 350.0, 0.16),
+    GoogleCampaignSpec("Generic - APM Tools", 4500, 0.05, 1100.0, 0.040),
+    GoogleCampaignSpec("Generic - Observability Discovery", 6000, 0.045, 950.0, 0.045),
+    GoogleCampaignSpec("Retargeting - Trial Users", 1200, 0.10, 400.0, 0.18),
 )
 
 

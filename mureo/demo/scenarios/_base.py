@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Protocol, TypeVar
+from typing import TYPE_CHECKING
 
 from mureo.byod.adapters.google_ads import _synthetic_id as _byod_synthetic_id
 
@@ -69,26 +69,25 @@ def campaign_id(name: str) -> str:
     return _byod_synthetic_id("camp", name)
 
 
-class GoogleCampaignSpec(Protocol):
-    """Per-campaign Google Ads rates a scenario's ad-group rows derive from."""
+@dataclass(frozen=True)
+class GoogleCampaignSpec:
+    """Per-campaign Google Ads rates a scenario's rows derive from.
 
-    @property
-    def name(self) -> str: ...
+    Attributes:
+        name: Campaign name as it appears in the sheets.
+        daily_impr: Baseline daily impressions.
+        ctr: Click-through rate.
+        cpc: Cost per click.
+        cvr: Conversion rate per click.
+        start_day: First active day index; ``0`` = active from day 0.
+    """
 
-    @property
-    def daily_impr(self) -> int: ...
-
-    @property
-    def ctr(self) -> float: ...
-
-    @property
-    def cpc(self) -> float: ...
-
-    @property
-    def cvr(self) -> float: ...
-
-
-_SpecT = TypeVar("_SpecT", bound=GoogleCampaignSpec)
+    name: str
+    daily_impr: int
+    ctr: float
+    cpc: float
+    cvr: float
+    start_day: int = 0
 
 
 def date_for_day(day: int, *, end_date: date, days: int) -> date:
@@ -108,13 +107,13 @@ def action_iso(
 
 
 def build_google_ad_groups_rows(
-    campaigns: Sequence[_SpecT],
+    campaigns: Sequence[GoogleCampaignSpec],
     ad_groups: Iterable[tuple[str, str, float]],
     *,
     end_date: date,
     days: int,
     impr_factor: Callable[[str, int], float] | None = None,
-    is_active: Callable[[_SpecT, int], bool] | None = None,
+    is_active: Callable[[GoogleCampaignSpec, int], bool] | None = None,
 ) -> list[list[object]]:
     """Build the daily ``ad_groups`` sheet (header first).
 
