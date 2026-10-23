@@ -457,11 +457,11 @@ class TestVideoHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=MetaAdsCredentials(access_token="tok"),
             ),
             patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client",
+                "mureo.auth.create_meta_ads_client",
                 return_value=client,
             ),
         ):
@@ -497,7 +497,7 @@ class TestVideoHandlers:
         from mureo.mcp.tools_meta_ads import handle_tool
 
         with patch(
-            "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+            "mureo.auth.load_meta_ads_credentials",
             return_value=None,
         ):
             result = await handle_tool("meta_ads_videos_get", {"video_id": "video_42"})
@@ -535,7 +535,7 @@ class TestVideoHandlers:
         from mureo.mcp.tools_meta_ads import handle_tool
 
         with patch(
-            "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+            "mureo.auth.load_meta_ads_credentials",
             return_value=None,
         ):
             result = await handle_tool(

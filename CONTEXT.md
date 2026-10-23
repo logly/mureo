@@ -35,7 +35,7 @@ platforms. All outputs are structured JSON — designed for machine consumption.
    Deleted entities cannot be restored.
 
 4. **Validate IDs.** Google Ads `customer_id` is a 10-digit numeric string (no hyphens).
-   Meta Ads `account_id` must start with `act_`.
+   Meta Ads `account_id`: use the `act_` form (a bare numeric id is prefixed).
 
 5. **Respect learning periods.** Smart Bidding campaigns have a learning period.
    Avoid changing bidding strategy, target CPA, or budget during learning.

@@ -28,13 +28,13 @@ def stub_meta(monkeypatch: pytest.MonkeyPatch):
     """Stub the client factory and the scope resolver; return the opened creds."""
     opened: dict[str, object] = {}
 
-    def fake_client(creds=None, account_id=None):
+    def fake_client(creds=None, account_id=None, throttler=None):
         opened["creds"] = creds
         opened["account_id"] = account_id
         return object()
 
-    monkeypatch.setattr("mureo.client_factory.get_meta_ads_client", fake_client)
-    monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: False)
+    monkeypatch.setattr("mureo.auth.create_meta_ads_client", fake_client)
+    monkeypatch.setattr("mureo.client_factory.byod_has", lambda platform: False)
 
     monkeypatch.setattr(
         "mureo.core.account_scope.runtime_meta_account_ids", lambda: None
@@ -78,10 +78,10 @@ async def test_byod_never_touches_the_refresh(monkeypatch) -> None:
     """BYOD carries no credentials to renew; calling the refresh there would
     be a pointless read of a credentials file that may not exist."""
 
-    monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: True)
+    monkeypatch.setattr("mureo.client_factory.byod_has", lambda platform: True)
     monkeypatch.setattr(
         "mureo.client_factory.get_meta_ads_client",
-        lambda creds=None, account_id=None: object(),
+        lambda creds=None, account_id=None, throttler=None: object(),
     )
 
     monkeypatch.setattr(

@@ -25,7 +25,6 @@ pytestmark = pytest.mark.unit
 def stub_factories(monkeypatch: pytest.MonkeyPatch):
     """Stub BYOD + the client factories so a test exercises only the scoping
     step, never real credentials or the network. Returns (sentinels, calls)."""
-    monkeypatch.setattr("mureo.byod.runtime.byod_has", lambda platform: True)
     monkeypatch.setattr("mureo.client_factory.byod_has", lambda platform: True)
     sentinel_g, sentinel_m = object(), object()
     calls: dict[str, str | None] = {}
@@ -34,7 +33,7 @@ def stub_factories(monkeypatch: pytest.MonkeyPatch):
         calls["google"] = customer_id
         return sentinel_g
 
-    def fake_meta(creds=None, account_id=None):
+    def fake_meta(creds=None, account_id=None, throttler=None):
         calls["meta"] = account_id
         return sentinel_m
 
@@ -102,6 +101,21 @@ def test_google_credential_loader_fault_propagates(monkeypatch) -> None:
     monkeypatch.setattr("mureo.auth.load_google_ads_credentials", broken_loader)
     with pytest.raises(ValueError, match="boom") as excinfo:
         _live_clients._open_google_ads_client("1112223333")
+    assert type(excinfo.value) is ValueError
+
+
+async def test_meta_credential_loader_fault_propagates(monkeypatch) -> None:
+    """A ``ValueError`` from credential loading is a fault, not a refusal: it
+    must not be relabelled as "account not available"."""
+    _scope_meta(monkeypatch, None)
+    monkeypatch.setattr("mureo.client_factory.byod_has", lambda platform: False)
+
+    def broken_loader():
+        raise ValueError("boom")
+
+    monkeypatch.setattr("mureo.auth.load_meta_ads_credentials", broken_loader)
+    with pytest.raises(ValueError, match="boom") as excinfo:
+        await _live_clients._open_meta_ads_client("act_111")
     assert type(excinfo.value) is ValueError
 
 

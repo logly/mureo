@@ -1248,7 +1248,7 @@ The Google Ads customer ID is a 10-digit number (e.g., `"1234567890"`). Dashes a
 
 ### Meta Ads: `account_id`
 
-The Meta Ads account ID must start with `act_` (e.g., `"act_1234567890"`).
+The Meta Ads account ID takes the `act_` form (e.g., `"act_1234567890"`); a bare numeric ID is prefixed with `act_`.
 
 ### Common Optional Parameters
 

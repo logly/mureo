@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
+from mureo.client_factory import META_ADS_THROTTLER
 from mureo.core.credential_source import CredentialSource, use_credential_source
 
 pytestmark = pytest.mark.unit
@@ -285,34 +286,34 @@ class TestMetaGetClient:
 
         refresh = AsyncMock(side_effect=AssertionError("refresh must not run"))
         with (
-            patch("mureo.mcp._meta_ads_client.byod_has", return_value=byod),
-            patch("mureo.mcp._meta_ads_client.load_meta_ads_credentials", _refuse),
-            patch("mureo.mcp._meta_ads_client.get_meta_ads_client", _refuse),
-            patch("mureo.mcp._meta_ads_client.refresh_meta_token_if_needed", refresh),
+            patch("mureo.client_factory.byod_has", return_value=byod),
+            patch("mureo.auth.load_meta_ads_credentials", _refuse),
+            patch("mureo.client_factory.get_meta_ads_client", _refuse),
+            patch("mureo.auth.refresh_meta_token_if_needed", refresh),
             patch("mureo.mcp._meta_ads_client.register_client_for_cleanup"),
-            patch("mureo.mcp._meta_ads_client.create_meta_ads_client") as factory,
+            patch("mureo.auth.create_meta_ads_client") as factory,
             use_credential_source(CredentialSource(meta_ads=source)),
         ):
             client = await handlers._get_client(args)
         return client, factory, refresh
 
     async def test_source_credentials_reach_the_factory_unrefreshed(self) -> None:
-        from mureo.mcp import _handlers_meta_ads as handlers
-
         client, factory, refresh = await self._get(
             _MetaSource(_META), {"account_id": "act_123"}
         )
         assert client is factory.return_value
-        factory.assert_called_once_with(_META, "act_123", throttler=handlers._throttler)
+        factory.assert_called_once_with(_META, "act_123", throttler=META_ADS_THROTTLER)
         refresh.assert_not_awaited()
 
     async def test_account_id_defaults_from_source_credentials(self) -> None:
         _, factory, _ = await self._get(_MetaSource(_META), {})
         assert factory.call_args.args[1] == "act_555"
 
-    async def test_act_prefix_check_still_applies(self) -> None:
-        with pytest.raises(ValueError, match="must start with 'act_'"):
-            await self._get(_MetaSource(_META), {"account_id": "123"})
+    async def test_a_bare_account_id_is_prefixed(self) -> None:
+        """The shared opener canonicalizes a bare id to ``act_`` (#875);
+        the MCP path used to refuse it."""
+        _, factory, _ = await self._get(_MetaSource(_META), {"account_id": "123"})
+        assert factory.call_args.args[1] == "act_123"
 
     async def test_source_without_credentials_returns_none(self) -> None:
         client, factory, _ = await self._get(_MetaSource(None), {})

@@ -115,13 +115,11 @@ def _unscoped_live() -> Iterator[None]:
             return_value=None,
         ),
         patch("mureo.client_factory.byod_has", return_value=False),
-        patch("mureo.mcp._meta_ads_client.byod_has", return_value=False),
         patch("mureo.auth.load_google_ads_credentials", _refuse),
         patch(
             "mureo.mcp._handlers_search_console.load_google_ads_credentials", _refuse
         ),
-        patch("mureo.mcp._meta_ads_client.load_meta_ads_credentials", _refuse),
-        patch("mureo.auth.load_google_ads_credentials", _refuse),
+        patch("mureo.auth.load_meta_ads_credentials", _refuse),
     ):
         yield
 
@@ -226,9 +224,9 @@ class TestStrictHandlers:
         from mureo.mcp import _handlers_meta_ads as handlers
 
         with (
-            patch("mureo.mcp._meta_ads_client.byod_has", return_value=True),
-            patch("mureo.mcp._meta_ads_client.get_meta_ads_client", _refuse),
-            patch("mureo.mcp._meta_ads_client.create_meta_ads_client", _refuse),
+            patch("mureo.client_factory.byod_has", return_value=True),
+            patch("mureo.client_factory.get_meta_ads_client", _refuse),
+            patch("mureo.auth.create_meta_ads_client", _refuse),
             use_credential_source(
                 CredentialSource(google=_GoogleSource(), strict=True)
             ),
@@ -430,7 +428,7 @@ class TestCuratedErrorsReachTheClient:
         source = _MetaSource(load_error=KeyError(_SECRET))
         with (
             caplog.at_level(logging.DEBUG),
-            patch("mureo.mcp._meta_ads_client.create_meta_ads_client", _refuse),
+            patch("mureo.auth.create_meta_ads_client", _refuse),
             use_credential_source(CredentialSource(meta_ads=source)),
         ):
             result = await handlers.handle_campaigns_list({})

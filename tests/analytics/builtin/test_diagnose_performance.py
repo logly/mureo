@@ -373,7 +373,7 @@ async def test_meta_adapter_diagnose_renders_sentinel_on_missing_creds() -> None
 
     adapter = MetaAdsAnalyticsModule()
     with (
-        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.client_factory.byod_has", return_value=False),
         patch("mureo.auth.load_meta_ads_credentials", return_value=None),
     ):
         diag = await adapter.diagnose_performance(

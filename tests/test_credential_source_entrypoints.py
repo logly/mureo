@@ -154,12 +154,11 @@ async def test_meta_ads_handle_tool_uses_the_source() -> None:
     rows = [{"id": "c1", "name": "Prospecting"}]
     client = _fake_client("list_campaigns", rows)
     constructor = MagicMock(return_value=client)
-    file_loader, auth_loader = _refusing_loader(), _refusing_loader()
+    auth_loader = _refusing_loader()
     refresh = AsyncMock(side_effect=AssertionError("refresh must not run"))
     with (
-        patch("mureo.mcp._meta_ads_client.load_meta_ads_credentials", file_loader),
         patch("mureo.auth.load_meta_ads_credentials", auth_loader),
-        patch("mureo.mcp._meta_ads_client.refresh_meta_token_if_needed", refresh),
+        patch("mureo.auth.refresh_meta_token_if_needed", refresh),
         patch("mureo.meta_ads.MetaAdsApiClient", constructor),
         use_credential_source(CredentialSource(meta_ads=_MetaSource())),
     ):
@@ -172,7 +171,6 @@ async def test_meta_ads_handle_tool_uses_the_source() -> None:
     kwargs = constructor.call_args.kwargs
     assert kwargs["access_token"] == "source-token"
     assert kwargs["ad_account_id"] == "act_123"
-    file_loader.assert_not_called()
     auth_loader.assert_not_called()
     refresh.assert_not_awaited()
     client.close.assert_awaited_once()

@@ -908,7 +908,7 @@ Step 2: Send a purchase event (CONFIRM WITH USER)
 ## Important Notes
 
 - **Budget in cents**: All budget and monetary values are in **cents** (1/100 of the account currency). For example, `daily_budget: 500000` = 5,000 in the account currency.
-- **account_id format**: Must include the `act_` prefix (e.g., `"act_123456789"`).
+- **account_id format**: Use the `act_` form (a bare numeric id is prefixed), e.g. `"act_123456789"`.
 - **Status values**: Meta uses `ACTIVE` / `PAUSED` (not `ENABLED`).
 - **Creative-first model**: In Meta Ads, you create a creative object first, then reference its `creative_id` when creating an ad.
 - **Targeting object**: The targeting structure follows the Meta Marketing API format. Common fields include `geo_locations`, `age_min`, `age_max`, `genders`, `interests`, `behaviors`, and `custom_audiences`.

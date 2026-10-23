@@ -64,12 +64,10 @@ class TestPagePostsHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_page_posts_list",
@@ -87,12 +85,10 @@ class TestPagePostsHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_page_posts_boost",
@@ -125,12 +121,10 @@ class TestInstagramHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_instagram_accounts",
@@ -148,12 +142,10 @@ class TestInstagramHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_instagram_media",
@@ -171,12 +163,10 @@ class TestInstagramHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_instagram_boost",
@@ -209,12 +199,10 @@ class TestSplitTestHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_split_tests_list",
@@ -232,12 +220,10 @@ class TestSplitTestHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_split_tests_get",
@@ -255,12 +241,10 @@ class TestSplitTestHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_split_tests_create",
@@ -285,12 +269,10 @@ class TestSplitTestHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_split_tests_end",
@@ -318,12 +300,10 @@ class TestAdRulesHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ad_rules_list",
@@ -341,12 +321,10 @@ class TestAdRulesHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ad_rules_get",
@@ -364,12 +342,10 @@ class TestAdRulesHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ad_rules_create",
@@ -392,12 +368,10 @@ class TestAdRulesHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ad_rules_update",
@@ -419,12 +393,10 @@ class TestAdRulesHandlers:
 
         with (
             patch(
-                "mureo.mcp._meta_ads_client.load_meta_ads_credentials",
+                "mureo.auth.load_meta_ads_credentials",
                 return_value=creds,
             ),
-            patch(
-                "mureo.mcp._meta_ads_client.create_meta_ads_client", return_value=client
-            ),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
                 "meta_ads_ad_rules_delete",
