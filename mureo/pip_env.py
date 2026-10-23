@@ -14,11 +14,17 @@ Scope: this is for the pip / ensurepip subprocesses only. The pipx / npm
 installer in ``mureo.providers.installer`` deliberately runs WITHOUT a custom
 ``env`` (its docstring explains the anti-tampering reason, and it emits no rich
 ``--report`` JSON), so it must NOT adopt this helper.
+
+Both pip callers (``mureo upgrade`` and the configure UI's one-click upgrade)
+also take their commands from here (``pip_self_upgrade_cmd`` for the pip
+self-upgrade that runs first, ``pip_install_cmd`` for the package install),
+so each argv is defined once.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 
 
 def pip_subprocess_env() -> dict[str, str]:
@@ -38,4 +44,23 @@ def pip_subprocess_env() -> dict[str, str]:
     return env
 
 
-__all__ = ["pip_subprocess_env"]
+def pip_self_upgrade_cmd() -> list[str]:
+    """Return the ``pip install --upgrade pip`` command for this venv.
+
+    pip < 26.2.2 always loads its vendored certifi, ignoring the OS trust
+    store, so the pip that resolves an upgrade must itself be current first
+    (#910). ``sys.executable`` pins the command to the running venv.
+    """
+    return [sys.executable, "-m", "pip", "install", "--upgrade", "pip"]
+
+
+def pip_install_cmd(targets: list[str]) -> list[str]:
+    """Return the ``pip install --upgrade -- <targets>`` command for this venv.
+
+    The ``--`` sentinel keeps a target from being read as a pip option, so a
+    hostile name can never be parsed as a flag.
+    """
+    return [sys.executable, "-m", "pip", "install", "--upgrade", "--", *targets]
+
+
+__all__ = ["pip_install_cmd", "pip_self_upgrade_cmd", "pip_subprocess_env"]

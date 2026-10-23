@@ -57,6 +57,15 @@ dependencies = [
     # pins a package BELOW what is installed is never mis-reported as an
     # available update. Ubiquitous, tiny, pure-Python; pinned <26 for room.
     "packaging>=23.0,<26",
+    # certifi 2026.10.19 drops the compromised emSign ECC Root CA - G3
+    # (eMudhra incident, 2026-10). httpx verifies every REST platform call
+    # with certifi; the floor makes `mureo upgrade` pull the fixed bundle
+    # onto installs that predate it (pip leaves a satisfied dep alone).
+    "certifi>=2026.10.19",
+    # grpcio ships its own roots.pem (the OS store is never consulted);
+    # 1.84.1 is the first release without the compromised root. google-ads
+    # already requires grpcio>=1.59.0,<2.0.0, so this only raises the floor.
+    "grpcio>=1.84.1,<2",
 ]
 
 [project.optional-dependencies]

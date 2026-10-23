@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: 'pip'
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
       - name: Install dependencies
         run: pip install -e ".[dev]"
       # Whole tree, NOT `mureo/`. Gating only the package let tests/ drift into
@@ -93,6 +95,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
       - name: Install dependencies
         run: pip install -e ".[dev]"
       - name: Run tests
@@ -126,6 +130,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: 'pip'
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
       - name: Install dependencies
         run: pip install -e ".[dev]"
       - name: Run the exhaustive lanes
@@ -157,6 +163,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: 'pip'
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
       - name: Install dependencies
         run: pip install -e ".[dev]"
       - name: Run tests

@@ -1,5 +1,47 @@
 ## [Unreleased]
 
+### Security
+
+- **The compromised emSign root is dropped from every trust store mureo
+  uses** (#910). mureo now requires certifi 2026.10.19 and grpcio 1.84.1,
+  the first releases without `emSign ECC Root CA - G3` (eMudhra
+  incident), and `mureo upgrade` and the configure UI's "update all"
+  button upgrade pip itself before the packages, since pip < 26.2.2 reads
+  its own bundled certifi regardless of the OS store; a failed pip
+  self-upgrade is reported (stderr for the command, the server log for
+  the button) and the package upgrade still runs. The first
+  `mureo upgrade` on an older install still runs the old code, which does
+  not upgrade pip. Installs made before this release: upgrade pip once by
+  hand first — `python -m pip install --upgrade pip` with the venv's
+  python (for a pipx install: `pipx upgrade-shared`), then run `mureo upgrade`; from this release on `mureo upgrade` and the
+  configure UI's update do it before every package install. Every
+  workflow that installs packages, the quickstart smoke script and the
+  Dockerfile upgrade pip before installing; an existing Docker image needs
+  `docker build --no-cache`. The optional `creative` extra's Chromium
+  (playwright) has its own trust store and is outside these floors.
+
+- **More exception text is kept out of results and logs** (#865, #603).
+  `exception_text` moved to `mureo.core.tool_failure` (still importable
+  from `mureo.mcp._helpers`) so the platform packages can use it. The
+  device performance, CPC trend, auction insights and RSA audit errors,
+  the Meta image download error, the landing page validation error, the
+  Creative Studio path and validation errors and the automatic evaluation
+  error now go through it. The auction insights, landing page analysis
+  and automatic evaluation logs name the exception class only; the
+  automatic evaluation log no longer carries a traceback.
+  `google_ads_ads_create_display` builds its ad group check, image upload
+  and creation errors with it and no longer chains the platform exception
+  to them, so a printed traceback cannot show its `repr`. The plugin audit's `error` for a raised
+  call is it instead of the exception's `repr`, so it no longer names
+  the exception class. The MCP API error log (`<tool> failed`) now
+  carries the class name and `exception_text` instead of a traceback.
+  These logs name the exception class only, without a traceback: the
+  Creative Studio generate, edit and compose failures (whose traceback
+  printed the provider's HTTP error, and with it Gemini's `?key=`), the
+  tracking and exclusion pre-flights, the rollback dispatch failure, an
+  advisor search failure, and the setup wizard's Google and Meta token
+  exchange failures.
+
 ### Added
 
 - **Google Ads `period` accepts `YYYY-MM-DD..YYYY-MM-DD`** (#866), the
@@ -218,30 +260,6 @@
   -> `server`). `_journal_hook.py`'s `tool_family` reads the built-in
   name sets that `server` builds at load from the env gates and the tool
   modules.
-
-### Security
-
-- **More exception text is kept out of results and logs** (#865, #603).
-  `exception_text` moved to `mureo.core.tool_failure` (still importable
-  from `mureo.mcp._helpers`) so the platform packages can use it. The
-  device performance, CPC trend, auction insights and RSA audit errors,
-  the Meta image download error, the landing page validation error, the
-  Creative Studio path and validation errors and the automatic evaluation
-  error now go through it. The auction insights, landing page analysis
-  and automatic evaluation logs name the exception class only; the
-  automatic evaluation log no longer carries a traceback.
-  `google_ads_ads_create_display` builds its ad group check, image upload
-  and creation errors with it and no longer chains the platform exception
-  to them, so a printed traceback cannot show its `repr`. The plugin audit's `error` for a raised
-  call is it instead of the exception's `repr`, so it no longer names
-  the exception class. The MCP API error log (`<tool> failed`) now
-  carries the class name and `exception_text` instead of a traceback.
-  These logs name the exception class only, without a traceback: the
-  Creative Studio generate, edit and compose failures (whose traceback
-  printed the provider's HTTP error, and with it Gemini's `?key=`), the
-  tracking and exclusion pre-flights, the rollback dispatch failure, an
-  advisor search failure, and the setup wizard's Google and Meta token
-  exchange failures.
 
 ## [0.32.0] - 2026-10-23
 

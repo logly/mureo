@@ -200,10 +200,14 @@ Only mureo's own log records go to this file. Third-party libraries (the Google 
 
 `mureo upgrade` upgrades mureo and its plugins inside the current (pipx) venv in one pip invocation — `pipx upgrade mureo` only touches the primary package, leaving same-venv plugins behind.
 
+Before the packages, `mureo upgrade` upgrades pip itself (`python -m pip install --upgrade pip`): pip < 26.2.2 reads its own bundled certifi regardless of the OS trust store, so the pip that resolves the upgrade must itself be current (#910). If the pip self-upgrade fails, the command says so on stderr and upgrades the packages with the pip already installed.
+
+Installs made before this release: upgrade pip once by hand first — `python -m pip install --upgrade pip` with the venv's python (for a pipx install: `pipx upgrade-shared`), then run `mureo upgrade`; from this release on `mureo upgrade` and the configure UI's update do it before every package install. The first `mureo upgrade` on such an install still runs the old code, which does not upgrade pip. The optional `creative` extra's Chromium (installed by playwright) has its own trust store and is outside the certifi / grpcio floors.
+
 ```bash
 mureo upgrade              # upgrade mureo itself
 mureo upgrade --all        # upgrade mureo + every installed `mureo-*` plugin
-mureo upgrade --dry-run    # print the pip command without running it
+mureo upgrade --dry-run    # print the pip commands without running them
 mureo upgrade --no-refresh # upgrade the package(s) only; skip the post-upgrade refresh
 ```
 
@@ -211,7 +215,7 @@ After a successful upgrade, mureo runs a **post-upgrade refresh** so the new cod
 
 Upgrading the package **by itself does not update the deployed workflow skills** — they are copies, and only an install rewrites them. `pip install -U mureo` (or `pipx upgrade mureo`) therefore leaves them behind, as does the refresh above for a host it does not deploy the bundle to. Re-install them with `mureo setup claude-code --skip-auth` (`mureo setup codex --skip-auth` for Codex); it is safe to re-run and needs no OAuth. `mureo upgrade` closes each run by naming the state of every host skills directory it finds — `up to date`, `stale (<old> installed, <new> shipped)` or `incomplete` — and the configure UI's **Setup** tab flags a stale set on the workflow-skills row with the same command (#728).
 
-The configure UI's **About mureo** tab surfaces the same capability for GUI users: it shows installed versions, checks the index for newer mureo / plugin releases in the background, and offers a one-click "update all" button.
+The configure UI's **About mureo** tab surfaces the same capability for GUI users: it shows installed versions, checks the index for newer mureo / plugin releases in the background, and offers a one-click "update all" button. That button also upgrades pip itself before the packages (#910); if the pip self-upgrade fails, the failure is logged and the update still runs.
 
 ## Rollback Commands
 

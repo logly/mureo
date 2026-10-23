@@ -16,6 +16,8 @@ docker build -t mureo .
 docker run --rm -v ~/.mureo:/home/mureo/.mureo mureo
 ```
 
+An image built before 2026-10-20 must be rebuilt with `docker build --no-cache -t mureo .` so the cached dependency layer picks up the fixed certifi and grpcio.
+
 Connect your MCP client by pointing its config at this `docker run` command.
 
 ## Authentication
