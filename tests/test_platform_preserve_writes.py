@@ -10,8 +10,9 @@ workspaces and on the ones review found:
   a writer replaces the object entries (same for a campaign's ``ads``);
 - ``mureo repair`` never offers an entry carrying hand-written content as an
   empty stub;
-- a document-level value that is not an object is refused in both modes with
-  a ``ValueError`` naming the section (keeping it verbatim is #882);
+- a ``platforms`` value or a platform value that is not an object is kept
+  verbatim on the document in both modes (#882); only a top-level value
+  that is not an object is still refused with a ``ValueError``;
 - the one stated loss: an upsert matching a campaign in the legacy v1 flat
   list replaces it whole, unknown keys included.
 """
@@ -385,23 +386,33 @@ def _document_with(**overrides: Any) -> str:
     return _text({**_document(), **overrides})
 
 
-class TestDocumentLevelShapesAreRefused:
+class TestDocumentLevelShapes:
     @pytest.mark.parametrize("strict", [True, False])
     @pytest.mark.parametrize("value", ["hello-secret", None, ["a"], 7])
-    def test_a_platform_value(self, strict: bool, value: Any) -> None:
-        text = _document_with(platforms={"google_ads": _STRING_CAMPAIGNS, "p": value})
+    def test_a_platform_value_is_kept(self, strict: bool, value: Any) -> None:
+        """#882: the whole object is kept on the document, so the value is
+        written back as found, in its place."""
+        platforms = {"p": value, "google_ads": _STRING_CAMPAIGNS}
+        text = _document_with(platforms=platforms)
 
-        with pytest.raises(
-            ValueError, match=r"'platforms'\['p'\] must be an object"
-        ) as exc:
-            parse_state(text, strict=strict)
-        assert "hello-secret" not in str(exc.value)
+        doc = parse_state(text, strict=strict)
+
+        assert doc.platforms is not None
+        assert list(doc.platforms) == ["google_ads"]
+        assert doc.raw == {"platforms": platforms}
+        assert render_state(doc) == text
 
     @pytest.mark.parametrize("strict", [True, False])
     @pytest.mark.parametrize("value", ["hello-secret", ["a"], 7])
-    def test_the_platforms_section(self, strict: bool, value: Any) -> None:
-        with pytest.raises(ValueError, match=r"^'platforms' must be an object$"):
-            parse_state(_document_with(platforms=value), strict=strict)
+    def test_the_platforms_section_is_kept(self, strict: bool, value: Any) -> None:
+        """#882: kept whole on the document, written back as found."""
+        text = _document_with(platforms=value)
+
+        doc = parse_state(text, strict=strict)
+
+        assert doc.platforms is None
+        assert doc.raw == {"platforms": value}
+        assert render_state(doc) == text
 
     @pytest.mark.parametrize("strict", [True, False])
     @pytest.mark.parametrize("value", [[], "hello-secret", 1, None])

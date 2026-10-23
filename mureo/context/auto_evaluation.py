@@ -58,6 +58,7 @@ from mureo.analysis.outcome_eval import (
     PERIOD_KEYS,
     evaluate_outcome,
 )
+from mureo.context._preserve import refuse_if_kept
 from mureo.context.actor_stamp import stamp_actor
 from mureo.context.decision_chain import chain_expected
 from mureo.context.models import ActionLogEntry
@@ -463,6 +464,7 @@ def _write_closures(
     def _build(doc: StateDocument) -> StateDocument:
         closed.clear()
         skipped.clear()
+        refuse_if_kept(doc, "action_log", "recording an entry")
         entries = list(doc.action_log)
         for plan in _plan_due(doc, today, thresholds):
             if isinstance(plan, AutoSkip):

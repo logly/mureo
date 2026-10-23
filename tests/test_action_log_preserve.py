@@ -314,7 +314,7 @@ class TestOnlyANonObjectEntryIsRefused:
         data["action_log"] = [_CONFORMING_FIRST, "not an object"]
         text = _text(data)
 
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError, match="must be an object"):
             parse_state(text, strict=True)
         tolerant = parse_state(text, strict=False)
         assert [e.action for e in tolerant.action_log] == [_CONFORMING_FIRST["action"]]

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from mureo.context._preserve import copied_raw
 from mureo.context.approval import parse_approval
 
 # Re-exported: the display contract models live in their own module (size
@@ -32,6 +32,8 @@ from mureo.context.display_models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from mureo.context.approval import ApprovalRef
     from mureo.context.decisions import DecisionRecord
     from mureo.context.settings import WorkspaceSettings
@@ -74,20 +76,6 @@ NOT_COLLECTED_REASON_MAX_CHARS = 500
 #: or is in the past — the writer parses it and checks both, because
 #: ``2026-02-30`` matches this perfectly.
 DAILY_DATE_KEY_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
-
-
-def _copied_raw(raw: object) -> dict[str, Any] | None:
-    """A ``raw`` field's defensive copy (#859 / #881); refuses a non-object.
-
-    Shared by every model that keeps its on-disk dict: the codec reads ``raw``
-    back at render time, so a caller still holding the source dict must not be
-    able to change what is written.
-    """
-    if raw is None:
-        return None
-    if not isinstance(raw, Mapping):
-        raise ValueError("raw must be an object")
-    return copy.deepcopy(dict(raw))
 
 
 @dataclass(frozen=True)
@@ -136,7 +124,7 @@ class AdState:
 
     def __post_init__(self) -> None:
         """Take a defensive copy of ``raw``."""
-        object.__setattr__(self, "raw", _copied_raw(self.raw))
+        object.__setattr__(self, "raw", copied_raw(self.raw))
 
 
 @dataclass(frozen=True)
@@ -202,7 +190,7 @@ class CampaignSnapshot:
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable fields."""
-        object.__setattr__(self, "raw", _copied_raw(self.raw))
+        object.__setattr__(self, "raw", copied_raw(self.raw))
         if self.ads is not None and not isinstance(self.ads, tuple):
             object.__setattr__(self, "ads", tuple(self.ads))
         if self.bidding_details is not None:
@@ -424,7 +412,7 @@ class ActionLogEntry:
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
         object.__setattr__(self, "approval", parse_approval(self.approval))
-        object.__setattr__(self, "raw", _copied_raw(self.raw))
+        object.__setattr__(self, "raw", copied_raw(self.raw))
         self._validate_origin()
         self._validate_actor()
         if self.batch_id is not None:
@@ -621,7 +609,7 @@ class PlatformState:
 
     def __post_init__(self) -> None:
         """Ensure campaigns is a tuple (defensive copy)."""
-        object.__setattr__(self, "raw", _copied_raw(self.raw))
+        object.__setattr__(self, "raw", copied_raw(self.raw))
         if not isinstance(self.campaigns, tuple):
             object.__setattr__(self, "campaigns", tuple(self.campaigns))
         if self.totals is not None:
@@ -721,9 +709,44 @@ class StateDocument:
     decisions: tuple[DecisionRecord, ...] = field(default_factory=tuple)
     # #848, see :mod:`mureo.context.settings`; ``None`` reads as the defaults.
     settings: WorkspaceSettings | None = None
+    # The on-disk value of each top-level section the model cannot hold,
+    # keyed by section name (#882). This is the one place its shape is
+    # defined:
+    #
+    # - ``{"campaigns": <value>}`` — a top-level ``campaigns`` that is not a
+    #   list of objects (``campaigns`` then reads as ``()`` in the writers'
+    #   strict parse; the read-only parse still reads the object entries of
+    #   a list);
+    # - ``{"platforms": <value>}`` — a ``platforms`` that is not an object
+    #   (``platforms`` then reads as ``None``); ``<value>`` is never a dict;
+    # - ``{"platforms": {"<key>": <value>, ...}}`` — the whole ``platforms``
+    #   object as found, when one or more of its values is not an object;
+    #   each such value is omitted from ``platforms``, and the whole object
+    #   is kept so it is written back at its original position. Told apart
+    #   from the line above by being a dict;
+    # - ``{"decisions": <value>}`` — a ``decisions`` that is not a list
+    #   (``decisions`` then reads as ``()``);
+    # - ``{"action_log": <value>}`` — an ``action_log`` that is not a list
+    #   and not ``null`` (``action_log`` then reads as ``()``; ``null`` reads
+    #   as empty and is not kept, like a ``null`` ``decisions``).
+    #
+    # :func:`mureo.context.state_codec.render_state` writes a kept section
+    # back verbatim while the model's section is still what the parser left
+    # (``()`` / ``None``) and drops a kept ``campaigns`` / ``platforms`` once
+    # a writer has filled that section; a kept platform value is merged back
+    # under its key, at its original position, unless ``platforms`` now
+    # holds that key. A kept ``decisions`` / ``action_log`` is history and is
+    # never replaced: no writer records into it, and
+    # ``render_state`` refuses a document holding both a kept value and new
+    # records. A read-only (``strict=False``) parse is never written back.
+    # ``None`` on every document mureo constructs. Appended after every
+    # pre-#882 field, same positional-compatibility rule as
+    # ``ActionLogEntry``.
+    raw: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Defensive copies for mutable fields."""
+        object.__setattr__(self, "raw", copied_raw(self.raw))
         if self.platforms is not None:
             object.__setattr__(self, "platforms", dict(self.platforms))
         if not isinstance(self.action_log, tuple):

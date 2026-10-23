@@ -59,6 +59,7 @@ from mureo.analysis.outcome_note import note_parts
 from mureo.context.approval import approval_to_dict
 from mureo.context.auto_evaluation import AutoSkip, plan_closure
 from mureo.context.decision_chain import chain_roots, group_chains
+from mureo.context.decisions import parsed_decisions
 from mureo.context.expected import expected_to_list
 from mureo.context.observations import parse_due_date
 from mureo.context.ops_fields import ID_SUFFIX
@@ -326,7 +327,7 @@ def _owners(doc: StateDocument, roots: dict[str, str]) -> dict[int, str]:
         if root is not None and _is_change(entry):
             owner[index] = root
     size = len(doc.action_log)
-    for record in doc.decisions:
+    for record in parsed_decisions(doc):
         root = roots.get(record.decision_id, record.decision_id)
         for index in record.related_actions:
             if 0 <= index < size and _is_change(doc.action_log[index]):

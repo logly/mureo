@@ -24,8 +24,9 @@ and both read modes build it the same way:
   they hold a value the model takes as is) are read, and it is written back
   verbatim in full.
 
-Only an entry that is not an object is refused (``TypeError``); the
-list-level loop decides whether that raises or is skipped.
+Only an entry that is not an object is refused (``ValueError``, as a
+``decisions`` record that is not one is); the list-level loop decides
+whether that raises or is skipped.
 
 Dependency-free beyond stdlib and :mod:`mureo.context.models` /
 :mod:`mureo.context.approval` — the discipline ``state_codec`` keeps, since
@@ -38,7 +39,7 @@ import copy
 import logging
 from typing import TYPE_CHECKING, Any
 
-from mureo.context._preserve import preserved_dict
+from mureo.context._preserve import exact_string, preserved_dict
 from mureo.context.approval import approval_to_dict, parse_approval
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
 
@@ -93,7 +94,7 @@ ACTION_LOG_KNOWN_KEYS: frozenset[str] = frozenset(
 
 
 def parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
-    """Create an ActionLogEntry from a dict (``TypeError`` if it is not one).
+    """Create an ActionLogEntry from a dict (``ValueError`` if it is not one).
 
     A missing, null or non-string required key reads as ``""``, and an entry
     the codec cannot re-emit from its fields alone keeps its dict as ``raw``
@@ -106,7 +107,7 @@ def parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
     re-derive opacity at render time.
     """
     if not isinstance(e, dict):
-        raise TypeError(f"action_log entry must be an object, got {type(e).__name__}")
+        raise ValueError(f"action_log entry must be an object, got {type(e).__name__}")
     raw = e if _action_log_unrepresentable(e) else None
     try:
         return _action_log_entry_from_dict(e, raw=raw)
@@ -174,8 +175,8 @@ def _opaque_entry(e: dict[str, Any]) -> ActionLogEntry:
     and the verbatim write-back stays byte-identical.
     """
     required = _action_log_required(e)
-    origin = _exact_string(e.get("origin"))
-    external_id = _exact_string(e.get("external_id"))
+    origin = exact_string(e.get("origin"))
+    external_id = exact_string(e.get("external_id"))
     return ActionLogEntry(
         timestamp=required["timestamp"],
         action=required["action"],
@@ -192,13 +193,6 @@ def _opaque_entry(e: dict[str, Any]) -> ActionLogEntry:
 def _index_or_none(value: Any) -> int | None:
     """``value`` when it is an int (``bool`` excluded, as everywhere), else None."""
     if isinstance(value, int) and not isinstance(value, bool):
-        return value
-    return None
-
-
-def _exact_string(value: Any) -> str | None:
-    """``value`` when it is a non-blank string the model would not strip."""
-    if isinstance(value, str) and value and value == value.strip():
         return value
     return None
 

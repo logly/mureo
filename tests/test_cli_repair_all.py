@@ -492,13 +492,13 @@ class TestPartialFailure:
                 "platforms": {
                     "logly_ads": {"account_id": "1234567890", "campaigns": []}
                 },
-                # Still refused by the strict read: a decision record without
-                # its required fields (a campaign without one no longer is,
-                # #881).
-                "decisions": [{"decision_id": "d-1"}],
+                # Still refused by the strict read: a decision record that is
+                # not an object (one missing its required fields no longer
+                # is, #882; nor is such a campaign, #881).
+                "decisions": ["d-1"],
             },
         )
-        reason = "decision record is missing required field 'recorded_at'"
+        reason = "decision record must be an object; got str"
 
         single = _run("--state-file", str(state))
 

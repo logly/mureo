@@ -186,10 +186,10 @@ class TestAnUnreadableDocument:
                 "platforms": {
                     "logly_ads": {"account_id": "1234567890", "campaigns": []}
                 },
-                # Still refused by the strict read: a decision record without
-                # its required fields (a campaign without one no longer is,
-                # #881).
-                "decisions": [{"decision_id": "d-1"}],
+                # Still refused by the strict read: a decision record that is
+                # not an object (one missing its required fields no longer
+                # is, #882; nor is such a campaign, #881).
+                "decisions": ["d-1"],
             },
         )
 
@@ -200,7 +200,7 @@ class TestAnUnreadableDocument:
         assert "Traceback" not in result.output
         assert "Error:" in result.output
         assert str(state) in result.output
-        assert "decision record is missing required field" in result.output
+        assert "decision record must be an object" in result.output
 
     def test_apply_on_a_schema_invalid_document_is_an_error_too(
         self, tmp_path: Path
@@ -215,10 +215,10 @@ class TestAnUnreadableDocument:
                 "platforms": {
                     "logly_ads": {"account_id": "1234567890", "campaigns": []}
                 },
-                # Still refused by the strict read: a decision record without
-                # its required fields (a campaign without one no longer is,
-                # #881).
-                "decisions": [{"decision_id": "d-1"}],
+                # Still refused by the strict read: a decision record that is
+                # not an object (one missing its required fields no longer
+                # is, #882; nor is such a campaign, #881).
+                "decisions": ["d-1"],
             },
         )
         before = state.read_bytes()
@@ -255,26 +255,24 @@ class TestAnUnreadableDocument:
         assert "Campaign is missing required field" in result.output
 
     def test_control_characters_in_the_parse_error_are_scrubbed(
-        self, tmp_path: Path
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The failing text comes out of STATE.json, so the exception carries
-        agent-writable content straight to a terminal."""
+        agent-writable content straight to a terminal.
+
+        No document the strict read refuses quotes its content any more
+        (#882 keeps a refused decision record instead of naming its bad
+        value), so the refusal is injected at the read boundary.
+        """
+        from mureo.cli import repair_cmd
+
         state = tmp_path / "STATE.json"
-        _write(
-            state,
-            {
-                "version": "2",
-                "decisions": [
-                    {
-                        "decision_id": "d-1",
-                        "recorded_at": "2026-10-21T09:00:00+09:00",
-                        "status": "x\x1b[2J\x07",
-                        "title": "t",
-                        "rationale": "r",
-                    }
-                ],
-            },
-        )
+        _write(state, {"version": "2"})
+
+        def _refuse(*_args: Any, **_kwargs: Any) -> None:
+            raise ValueError("status must be one of [...]; got 'x\x1b[2J\x07'")
+
+        monkeypatch.setattr(repair_cmd, "read_state_file", _refuse)
 
         result = _run("--state-file", str(state))
 

@@ -333,12 +333,20 @@ class TestCodec:
         assert json.loads(render_state(doc))["action_log"][0] == bad
         assert len(doc.decisions) == 1
 
-    def test_the_read_only_view_keeps_the_decision_without_it(self) -> None:
-        text = _document(_entry_dict(), _record_dict(approval="REQ-1"))
+    def test_the_read_only_view_keeps_the_decision_opaque_like_the_writer(
+        self,
+    ) -> None:
+        # #882: both read modes build a decision record the same way, so the
+        # read-only view no longer drops just the approval — it keeps the
+        # same opaque record the writer does, written back as stored.
+        bad = _record_dict(approval="REQ-1")
+        text = _document(_entry_dict(), bad)
         doc = parse_state(text, strict=False)
         assert len(doc.decisions) == 1
-        assert doc.decisions[0].rationale == "Capped by noon for a week."
+        assert doc.decisions[0].raw == bad
         assert doc.decisions[0].approval is None
+        assert doc.decisions == parse_state(text).decisions
+        assert json.loads(render_state(doc))["decisions"][0] == bad
         assert len(doc.action_log) == 1
 
     def test_the_read_only_view_does_not_log_the_value(
@@ -350,10 +358,13 @@ class TestCodec:
             parse_state(text, strict=False)
         assert "secret" not in caplog.text
 
-    def test_the_writer_contract_still_refuses_a_bad_decision_value(self) -> None:
-        text = _document(_entry_dict(), _record_dict(approval="REQ-1"))
-        with pytest.raises(ValueError, match="approval"):
-            parse_state(text)
+    def test_the_writer_contract_keeps_a_bad_decision_value_opaque(self) -> None:
+        # #882: the writer no longer refuses the whole document over one
+        # decision record; the record is kept opaque, approval as stored.
+        bad = _record_dict(approval="REQ-1")
+        doc = parse_state(_document(_entry_dict(), bad))
+        assert doc.decisions[0].raw == bad
+        assert json.loads(render_state(doc))["decisions"][0] == bad
 
 
 class TestAppend:

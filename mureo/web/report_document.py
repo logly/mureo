@@ -211,19 +211,19 @@ def _read_state_safe(store: StateStore) -> StateDocument | None:
 
     When the strict read fails, retry tolerantly against the raw file before
     giving up: ``store.read_state()`` applies the writer contract, so one
-    section it refuses (a malformed ``decisions`` record, a top-level
-    ``campaigns`` that is not a list of objects) would otherwise blank out a
-    document whose platforms/periods/reports the read-only dashboard can
-    still render. A hand-authored platform or campaign entry no longer
-    reaches this retry: both modes read it the same way (#881).
+    entry it refuses (an ``action_log`` entry or a ``decisions`` record that
+    is not an object) would otherwise blank out a document whose
+    platforms/periods/reports the read-only dashboard can still render. A
+    hand-authored platform, campaign or decision entry, and a section the
+    model cannot hold, no longer reach this retry: the strict read keeps
+    them (#881 / #882).
     """
     try:
         return store.read_state()
     except Exception:  # noqa: BLE001 — read-only view degrades, never raises
-        # Expected + handled for a STATE.json with a section the writer
-        # contract refuses (e.g. a malformed decision record, or a legacy
-        # top-level campaigns value that is not a list of objects): the
-        # tolerant retry below renders the view fine. The read-only
+        # Expected + handled for a STATE.json with an entry the writer
+        # contract refuses (an action_log entry or a decision record that is
+        # not an object): the tolerant retry below renders the view fine. The read-only
         # dashboard re-reads on every poll, so log this at DEBUG — a per-render
         # WARNING + traceback would flood the daemon log on every refresh and
         # read as a failure when it is not.

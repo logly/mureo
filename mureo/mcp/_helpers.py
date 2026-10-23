@@ -199,6 +199,23 @@ def jsonable(value: Any) -> Any:
     return value
 
 
+def read_kept_as_empty(rendered: dict[str, Any]) -> dict[str, Any]:
+    """Return a rendered STATE.json with a kept non-list section read as empty.
+
+    A hand-written ``action_log`` / ``decisions`` that is not a list is kept
+    in the file and rendered back exactly as found (#882), so a reader that
+    counts or filters the section would fail on it. Here it reads the way an
+    empty section renders: ``action_log`` as ``[]``, ``decisions`` absent.
+    The file is untouched, and recording into it stays refused until it is
+    fixed by hand.
+    """
+    return {
+        key: [] if key == "action_log" and not isinstance(value, list) else value
+        for key, value in rendered.items()
+        if key != "decisions" or isinstance(value, list)
+    }
+
+
 def _json_result(data: Any) -> list[TextContent]:
     """Convert a result to a list of TextContent containing a JSON string."""
     return [TextContent(type="text", text=json.dumps(data, ensure_ascii=False))]

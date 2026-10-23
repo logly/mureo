@@ -276,6 +276,66 @@
   name sets that `server` builds at load from the env gates and the tool
   modules.
 
+### Fixed
+
+- **Hand-edited `decisions` records and `campaigns` / `platforms` sections
+  mureo cannot read no longer block every STATE.json write** (#882,
+  following #859 and #881). A decision record missing a required field or
+  failing a bound (a malformed `approval` included), a `decisions` value
+  that is not a list, a top-level `campaigns` that is not a list of objects,
+  a `platforms` value that is not an object, or a platform value that is not
+  an object made every write to that workspace fail. They are now kept in
+  place and written back as found; a section is replaced once a mureo writer
+  fills it, except `decisions`: recording a decision over a `decisions`
+  value that is not a list is refused, naming the section, whether through
+  `mureo_decision_record`, a call's own decision or an explicit
+  `decision_id`. An action recorded with a `reason`, or a batch opened with
+  one, over such a value is still recorded, without the decision it would
+  get, and a warning is logged. When a platform value is not an object, the
+  whole `platforms` object is kept, so that value is written back at its
+  original position. The writers read a top-level `campaigns` list that also
+  holds non-objects as empty and write it back unchanged; the read-only view
+  still shows its object entries. Readers ignore a refused decision record:
+  it is not found by id, is not part of a `supersedes` chain or the ops
+  history, and cannot be named in `supersedes`, but a new record under its
+  id is still refused. A decision record mureo accepts keeps keys it does
+  not know and writes them back, as an `action_log` entry does. A decision
+  record that is not a JSON object is still refused by the writers and
+  skipped by the read-only view, as an `action_log` entry is; both are now
+  refused with a `ValueError` (an `action_log` entry raised `TypeError`,
+  which `mureo repair platform-key` did not catch). An `action_log` value
+  that is not a list is kept as written, and only recording a new entry is
+  refused until the file is fixed by hand; an `action_log` of `null` reads
+  as empty, as `decisions` does. `mureo_state_get` reads a kept `action_log`
+  / `decisions` as empty, and `mureo_history_query` a kept `action_log`,
+  instead of failing. Kept items log at DEBUG, by type only. The read-only
+  Reports view no longer shows a decision record whose `approval` is
+  malformed (it used to drop just the approval).
+
+### Security
+
+- **More exception text is kept out of results and logs** (#865, #603).
+  `exception_text` moved to `mureo.core.tool_failure` (still importable
+  from `mureo.mcp._helpers`) so the platform packages can use it. The
+  device performance, CPC trend, auction insights and RSA audit errors,
+  the Meta image download error, the landing page validation error, the
+  Creative Studio path and validation errors and the automatic evaluation
+  error now go through it. The auction insights, landing page analysis
+  and automatic evaluation logs name the exception class only; the
+  automatic evaluation log no longer carries a traceback.
+  `google_ads_ads_create_display` builds its ad group check, image upload
+  and creation errors with it and no longer chains the platform exception
+  to them, so a printed traceback cannot show its `repr`. The plugin audit's `error` for a raised
+  call is it instead of the exception's `repr`, so it no longer names
+  the exception class. The MCP API error log (`<tool> failed`) now
+  carries the class name and `exception_text` instead of a traceback.
+  These logs name the exception class only, without a traceback: the
+  Creative Studio generate, edit and compose failures (whose traceback
+  printed the provider's HTTP error, and with it Gemini's `?key=`), the
+  tracking and exclusion pre-flights, the rollback dispatch failure, an
+  advisor search failure, and the setup wizard's Google and Meta token
+  exchange failures.
+
 ## [0.32.0] - 2026-10-23
 
 ### Changed

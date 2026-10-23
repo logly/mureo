@@ -28,9 +28,13 @@ This file is the STATE.json schema and the status vocabulary contract every skil
 > Cowork the `mureo_state_*` MCP tools serialize this canonical shape for you,
 > so the mapping only matters on the Code `Write` path.
 
-A campaign or platform missing a required field below is silently **dropped**
-by the read-only Reports view (and rejected by a strict read), so the dashboard
-shows fewer campaigns than you wrote — get these exact names right:
+A campaign or platform missing a required field below, or a `decisions` record
+mureo cannot read, is **not rejected**: it is kept as written and re-emitted
+unchanged on every later write (a decision record mureo can read keeps its
+extra keys too). But it reads with the missing values empty (a
+campaign without `campaign_name` shows unnamed), and an unreadable decision
+record is kept opaque — ignored by every reader — so get these exact names
+right:
 
 - **Campaign snapshot** (root `campaigns[]` and `platforms[<p>].campaigns[]`) —
   required: `campaign_id` (str), `campaign_name` (str), `status` (str).

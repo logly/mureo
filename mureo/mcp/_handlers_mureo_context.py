@@ -105,7 +105,12 @@ from mureo.core.clock import server_now_iso
 from mureo.fsutil import backup_file
 from mureo.mcp._auto_evaluation_hook import _auto_evaluate
 from mureo.mcp._handlers_decisions import apply_decisions_scope
-from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
+from mureo.mcp._helpers import (
+    _json_result,
+    _require,
+    read_kept_as_empty,
+    resolve_workspace_path,
+)
 from mureo.mcp._ops_history_param import parse_decision_id
 from mureo.mcp._ops_history_records import require_entry_fields
 
@@ -287,11 +292,8 @@ async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     # than the entries they close. Never raises; its keys are response-only,
     # like ``server_now``.
     auto = _auto_evaluate(path, arguments)
-    # read_state_file already returns an empty default StateDocument when
-    # the file is absent; round-trip through render_state to keep the
-    # missing-file and present-file branches in lockstep.
-    doc = read_state_file(path)
-    payload = _state_to_dict(doc)
+    # An absent file renders as the empty default; a kept section reads empty.
+    payload = read_kept_as_empty(_state_to_dict(read_state_file(path)))
     # Response-envelope only (#460). ``_state_to_dict`` renders the parsed
     # document, so these keys are added AFTER serialization and are never part
     # of what gets written back: ``parse_state`` ignores unknown top-level keys
@@ -309,9 +311,8 @@ async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     payload["path"] = str(path)
     payload.update(_runtime_envelope())
     payload.update(auto)
-    # Optional action_log scoping (context weight-reduction). Applied AFTER
-    # server_now, and only ``pending`` / ``none`` mutate the payload — ``all``
-    # (the default) keeps the response byte-identical to the legacy shape.
+    # Optional action_log scoping, applied AFTER server_now: only ``pending`` /
+    # ``none`` mutate the payload, so ``all`` keeps the legacy shape.
     _apply_action_log_scope(payload, arguments.get("action_log", "all"))
     # The decisions trail scopes independently of the log: dropping the log
     # to save context must not silently drop the reasoning behind it (#758).
