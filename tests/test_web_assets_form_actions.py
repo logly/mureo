@@ -105,3 +105,29 @@ def test_demo_browse_and_create_share_an_actions_row() -> None:
         re.S,
     )
     assert m, "Demo card's Browse + Create are not wrapped in .form-actions"
+
+
+_FIELD_SCOPES = (".dashboard-pane", ".dashboard-section", ".wizard-step")
+_SINGLE_LINE_TYPES = ("text", "password", "number", "url", "email")
+
+
+@pytest.mark.unit
+def test_single_line_inputs_share_the_field_rule() -> None:
+    # An extension's number / url / email field must not fall back to the
+    # browser default next to the styled text fields.
+    css = _read("app.css")
+    head = css.index(".dashboard-pane select,")
+    selectors = css[head : css.index("{", head)]
+    for scope in _FIELD_SCOPES:
+        for kind in _SINGLE_LINE_TYPES:
+            assert f'{scope} input[type="{kind}"]' in selectors
+
+
+@pytest.mark.unit
+def test_guardrails_number_rule_still_follows_the_field_rule() -> None:
+    # Same specificity as ``.dashboard-section input[type="number"]``, so
+    # the narrower guardrails width wins only by coming later.
+    css = _read("app.css")
+    field = css.index('.dashboard-section input[type="number"]')
+    guardrails = css.index('.dashboard-guardrails-value input[type="number"]')
+    assert field < guardrails
