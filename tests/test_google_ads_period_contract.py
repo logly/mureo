@@ -34,6 +34,7 @@ from mureo.google_ads._gaql_validator import (
 from mureo.google_ads._gaql_validator import (
     DERIVED_DATE_RANGE_DAYS,
     PERIOD_BETWEEN_PATTERN,
+    PERIOD_RANGE_PATTERN,
     SUPPORTED_PERIOD_CONSTANTS,
     VALID_DATE_RANGE_CONSTANTS,
     GAQLValidationError,
@@ -411,7 +412,7 @@ class TestSchemaAcceptsCustomRange:
     @pytest.mark.parametrize(
         "bad",
         [
-            "2026-05-01..2026-05-31",  # the Meta-only spelling (#718)
+            "2026-05-01 .. 2026-05-31",  # spaced dotted range (#866)
             "BETWEEN 2026-05-01 AND 2026-05-31",  # unquoted
             "BETWEEN '2026-05-01' AND '2026-05-31' OR 1=1",  # trailing predicate
             "BETWEEN '2026-05-01' AND '2026-05-31'; SELECT",  # statement break
@@ -467,7 +468,7 @@ class TestDispatcherPassesCustomRangeThrough:
         )
         assert seen["arguments"]["period"] == _SAMPLE_RANGE
 
-    async def test_meta_style_range_is_refused_before_the_handler(
+    async def test_malformed_dotted_range_is_refused_before_the_handler(
         self, monkeypatch: Any
     ) -> None:
         from mureo.mcp import server
@@ -486,7 +487,7 @@ class TestDispatcherPassesCustomRangeThrough:
         with pytest.raises(ValueError, match="Invalid arguments"):
             await server.handle_call_tool(
                 "google_ads_performance_report",
-                {"period": "2026-05-01..2026-05-31"},
+                {"period": "2026-5-1..2026-5-31"},
             )
         assert called is False
 
@@ -529,7 +530,6 @@ class TestComparisonWindowResolution:
             "YESTERDAY",
             "LAST_BUSINESS_WEEK",
             "UNKNOWN_PERIOD",
-            "2026-05-01..2026-05-31",
         ],
     )
     def test_unhonourable_period_raises_instead_of_defaulting_to_7_days(
@@ -603,24 +603,15 @@ class TestComparisonToolSchemas:
 
 
 class TestDocumentedFormats:
-    def test_no_google_ads_tool_documents_the_meta_range_syntax(self) -> None:
-        offenders = [
-            tool.name
-            for tool in GOOGLE_ADS_TOOLS
-            if "YYYY-MM-DD..YYYY-MM-DD" in (tool.description or "")
-            or any(
-                "YYYY-MM-DD..YYYY-MM-DD" in str(prop)
-                for prop in tool.inputSchema.get("properties", {}).values()
-            )
-        ]
-        assert offenders == []
-
     @pytest.mark.parametrize(
         "tool_name", _ENUM_TOOLS + _COMPARISON_TOOLS + _KEYWORD_REPORT_TOOLS
     )
-    def test_documents_the_gaql_range_spelling(self, tool_name: str) -> None:
+    def test_documents_both_range_spellings(self, tool_name: str) -> None:
+        """Both spellings the schema admits are named in its description, so
+        neither reads as the only form (#866)."""
         schema = _period_schema(tool_name)
         assert schema is not None
+        assert "YYYY-MM-DD..YYYY-MM-DD" in schema["description"]
         assert "BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'" in schema["description"]
 
     @pytest.mark.parametrize(
@@ -639,6 +630,7 @@ class TestDocumentedFormats:
         the wheel ships the mirror."""
         text = (_REPO_ROOT / rel).read_text(encoding="utf-8")
         assert "BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'" in text
+        assert "YYYY-MM-DD..YYYY-MM-DD" in text
         assert "the 90 days ending yesterday on the server's date" in text
 
     @pytest.mark.parametrize("tool_name", _KEYWORD_REPORT_TOOLS)
@@ -672,7 +664,7 @@ class TestDocumentedFormats:
             pytest.skip("google_ads tools disabled in this environment")
         with pytest.raises(ValueError, match="Invalid arguments"):
             _validate_tool_input(
-                tool_name, _args_with_period(tool_name, "2026-05-01..2026-05-31")
+                tool_name, _args_with_period(tool_name, "2026-5-1..2026-5-31")
             )
 
     @pytest.mark.parametrize(
@@ -685,11 +677,18 @@ class TestDocumentedFormats:
 
 
 class TestPeriodParamBuilder:
-    def test_period_param_offers_both_shapes(self) -> None:
-        schema = period_param("Window.")
-        shapes = schema["anyOf"]
-        assert shapes[0]["enum"] == list(PERIOD_CONSTANTS)
+    @pytest.mark.parametrize("builder", (period_param, comparison_period_param))
+    def test_offers_the_constants_and_both_range_spellings(self, builder: Any) -> None:
+        """The two range patterns are the validator's own strings (#716/#866)."""
+        shapes = builder("Window.")["anyOf"]
+        assert len(shapes) == 3
+        assert "enum" in shapes[0]
         assert shapes[1]["pattern"] == PERIOD_BETWEEN_PATTERN
+        assert shapes[2]["pattern"] == PERIOD_RANGE_PATTERN
+
+    def test_period_param_offers_the_full_enum(self) -> None:
+        schema = period_param("Window.")
+        assert schema["anyOf"][0]["enum"] == list(PERIOD_CONSTANTS)
 
     def test_comparison_period_param_narrows_the_enum(self) -> None:
         schema = comparison_period_param("Window.")

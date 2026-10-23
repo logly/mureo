@@ -108,6 +108,18 @@ PERIOD_BETWEEN_PATTERN = (
     r"\ABETWEEN '([0-9]{4}-[0-9]{2}-[0-9]{2})' AND '([0-9]{4}-[0-9]{2}-[0-9]{2})'\Z"
 )
 
+# The platform-neutral spelling of the same explicit range — the one the Meta
+# Ads ``period`` takes (``mureo.meta_ads._period``) — accepted beside the GAQL
+# one so a single spelling works on both platforms (#866). Published verbatim
+# as the second range ``pattern`` of the MCP ``period`` parameter, with the same
+# two deviations as :data:`PERIOD_BETWEEN_PATTERN` (``[0-9]``, ``\A``/``\Z``).
+# It has no keyword case or inner whitespace to tolerate, so the parser uses
+# this very pattern (on the stripped value) instead of a looser twin.
+PERIOD_RANGE_PATTERN = (
+    r"\A([0-9]{4}-[0-9]{2}-[0-9]{2})\.\.([0-9]{4}-[0-9]{2}-[0-9]{2})\Z"
+)
+_PERIOD_RANGE_RE = re.compile(PERIOD_RANGE_PATTERN)
+
 # The tolerant form accepted at the parsing boundary (any case, any run of
 # whitespace). Callers re-emit the clause from the validated endpoints, so a
 # tolerant read never widens what is spliced into GAQL.
@@ -200,6 +212,59 @@ def parse_between_clause(
             f"Invalid BETWEEN clause: {value!r} "
             "(expected: BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD')"
         )
+    return _range_endpoints(match, value, "Invalid BETWEEN clause", max_days)
+
+
+def is_explicit_period_range(value: str) -> bool:
+    """Whether ``value`` is meant as an explicit range rather than a constant.
+
+    True for either spelling :func:`parse_period_range` takes — a value that
+    starts with ``BETWEEN`` (any case, after stripping) or contains ``..`` —
+    whether or not it is well formed, so a malformed range is routed to the
+    parser and refused there with a range error. ``False`` for a non-string.
+    """
+    if not isinstance(value, str):
+        return False
+    return _is_gaql_between(value) or ".." in value.strip()
+
+
+def _is_gaql_between(text: str) -> bool:
+    """Whether ``text`` is in GAQL ``BETWEEN`` spelling (any case, padded)."""
+    return text.strip().upper().startswith("BETWEEN")
+
+
+def parse_period_range(
+    value: str, *, max_days: int = _DEFAULT_MAX_PERIOD_DAYS
+) -> tuple[date, date]:
+    """Return the inclusive endpoints of an explicit ``period`` range.
+
+    Accepts either spelling (#866): ``YYYY-MM-DD..YYYY-MM-DD`` — the one Meta
+    Ads takes too — or the GAQL ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'``,
+    which is handed to :func:`parse_between_clause` unchanged. Both are held to
+    the same rules: each endpoint re-validated, the end not before the start,
+    the span bounded by ``max_days``.
+    """
+    if not isinstance(value, str):
+        raise GAQLValidationError(f"Invalid period: {value!r}")
+    if _is_gaql_between(value):
+        return parse_between_clause(value, max_days=max_days)
+    match = _PERIOD_RANGE_RE.fullmatch(value.strip())
+    if match is None:
+        raise GAQLValidationError(
+            f"Invalid period range: {value!r} (expected: YYYY-MM-DD..YYYY-MM-DD "
+            "or BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD')"
+        )
+    return _range_endpoints(match, value, "Invalid period range", max_days)
+
+
+def _range_endpoints(
+    match: re.Match[str], value: str, label: str, max_days: int
+) -> tuple[date, date]:
+    """Validate the two captured endpoints of a range ``match`` of ``value``.
+
+    Shared by both range spellings so they refuse the same inputs with the
+    same messages; ``label`` names the spelling in the reversed-range error.
+    """
     endpoints: list[date] = []
     for raw, field in (
         (match.group(1), "period.start"),
@@ -212,9 +277,7 @@ def parse_between_clause(
             raise GAQLValidationError(f"Invalid {field}: {raw!r}") from exc
     start, end = endpoints[0], endpoints[1]
     if end < start:
-        raise GAQLValidationError(
-            f"Invalid BETWEEN clause: {value!r} (end date precedes start date)"
-        )
+        raise GAQLValidationError(f"{label}: {value!r} (end date precedes start date)")
     span = (end - start).days + 1
     if span > max_days:
         raise GAQLValidationError(
