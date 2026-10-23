@@ -461,6 +461,12 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     ) -> None:
         """Validate compatibility between shared budgets and smart bidding strategies."""
         self._validate_id(budget_id, "budget_id")
+        # Google Ads Help 6263057 ("About shared budgets") lists Maximize
+        # clicks in the same group as the Smart Bidding strategies: its status
+        # "might" show as misconfigured on a shared budget. MAXIMIZE_CLICKS is
+        # still not refused here because it is the default strategy of
+        # create_campaign, and refusing it would break the default create
+        # path on any shared budget.
         if bidding_strategy.upper() not in SMART_BIDDING_STRATEGIES:
             return
         query = f"""
@@ -472,9 +478,15 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         for row in response:
             if row.campaign_budget.explicitly_shared:
                 raise ValueError(
-                    f"Bidding strategy {bidding_strategy} is not compatible with shared budgets. "
-                    "Create an individual budget with budget.create, or "
-                    "select MAXIMIZE_CLICKS/MANUAL_CPC strategy."
+                    f"Bidding strategy {bidding_strategy} on shared budget "
+                    f"{budget_id}: Google Ads reports a shared budget as "
+                    "misconfigured unless every campaign in it uses the same "
+                    "portfolio bid strategy, and mureo creates campaigns with "
+                    "standard (campaign-level) strategies only. Create an "
+                    "individual budget with google_ads_budget_create, or "
+                    "create the campaign with MANUAL_CPC and then attach it "
+                    "to the shared budget's portfolio bid strategy in Google "
+                    "Ads."
                 )
 
     async def create_campaign(self, params: dict[str, Any]) -> dict[str, Any]:

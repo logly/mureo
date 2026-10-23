@@ -1,3 +1,11 @@
+## [Unreleased]
+
+### Fixed
+
+- **google_ads: the shared-budget refusal for Smart Bidding strategies now
+  explains the portfolio-strategy rule from Google Ads Help and no longer
+  recommends MAXIMIZE_CLICKS** (#908).
+
 ## [0.33.0] - 2026-10-23
 
 ### Security
