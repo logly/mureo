@@ -22,6 +22,7 @@ from mcp.types import TextContent, Tool
 
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import ProviderEntry
+from mureo.mcp import _server_slots
 from tests._server_reload import DISCOVER_TARGET, reloaded_server
 
 pytestmark = pytest.mark.unit
@@ -124,3 +125,16 @@ def test_the_live_server_module_matches_a_clean_reload() -> None:
     live = _live_tool_names()
 
     assert live == _server_tool_names()
+
+
+def test_a_reload_re_publishes_the_dispatcher_slot() -> None:
+    """``server`` re-publishes its slots for the hooks below it on every
+    load (#879), so the slot follows the reloaded ``handle_call_tool``."""
+    before = _server_slots.dispatcher
+    with reloaded_server() as mod:
+        assert mod.handle_call_tool is not before  # a reload makes a new one
+        assert _server_slots.dispatcher is mod.handle_call_tool
+
+    from mureo.mcp import server as live
+
+    assert _server_slots.dispatcher is live.handle_call_tool

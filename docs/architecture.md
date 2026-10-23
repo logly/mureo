@@ -256,6 +256,9 @@ mureo/
 │   ├── _plugin_tables.py                  # _PLUGIN_DISPATCH / _PLUGIN_SEMANTICS dict objects, below server so
 │   │                                      #   the journal hook imports them at top level; server fills
 │   │                                      #   them in place at load (and on reload) (#879)
+│   ├── _server_slots.py                   # tool_families / dispatcher / policy_evaluator slots, below server so the
+│   │                                      #   journal, auto-evaluation and rollback hooks import them at top level;
+│   │                                      #   server publishes them at the end of its load (and on reload) (#879)
 │   ├── _helpers.py                        # Shared handler utilities
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules
@@ -273,7 +276,7 @@ mureo/
 │   ├── tools_search_console.py            # Search Console tool definitions
 │   ├── _handlers_search_console.py        # Search Console handlers
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
-│   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
+│   ├── _handlers_rollback.py              # Rollback handlers (dispatcher read from _server_slots)
 │   ├── tools_batch.py                     # mureo_batch_begin / _end / _status
 │   ├── _handlers_batch.py                 # Batch lifecycle handlers
 │   ├── tools_change_import.py             # mureo_external_changes_import (#545)
