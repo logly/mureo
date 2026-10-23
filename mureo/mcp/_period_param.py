@@ -13,7 +13,8 @@ Two builders, because the tools honour ``period`` in two different ways:
 
 - :func:`period_param` — the window is handed to
   ``GoogleAdsApiClient._period_to_date_clause`` verbatim, so every constant
-  the GAQL layer knows plus an explicit ``BETWEEN`` range is fair game (#716).
+  the GAQL layer knows plus an explicit range is fair game, in GAQL
+  ``BETWEEN`` spelling (#716) or as ``YYYY-MM-DD..YYYY-MM-DD`` (#866).
 - :func:`comparison_period_param` — the tool also reads the equal-length
   window immediately before the requested one, so it needs a *length*.
   Calendar constants have none and are left out of the enum rather than
@@ -26,6 +27,7 @@ from typing import Any
 
 from mureo.google_ads._gaql_validator import (
     PERIOD_BETWEEN_PATTERN,
+    PERIOD_RANGE_PATTERN,
     SUPPORTED_PERIOD_CONSTANTS,
 )
 
@@ -85,9 +87,10 @@ COMPARISON_PERIOD_CONSTANTS: tuple[str, ...] = (
 # 90-day baseline against a 30-day window deserves to know which clock each was
 # measured on.
 CUSTOM_RANGE_HINT = (
-    "Also accepts an explicit range in GAQL spelling — "
-    "\"BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'\", both endpoints inclusive, in "
-    "the account's time zone — for a window no trailing constant can reach "
+    'Also accepts an explicit range — "YYYY-MM-DD..YYYY-MM-DD" (the '
+    "spelling Meta Ads takes too) or, in GAQL spelling, "
+    "\"BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'\" — both endpoints inclusive, "
+    "in the account's time zone, for a window no trailing constant can reach "
     "(e.g. a single past calendar month). One asymmetry to know about: every "
     "constant except LAST_90_DAYS is resolved by Google Ads in the account's "
     "reporting time zone, whereas LAST_90_DAYS has no API constant and is "
@@ -115,6 +118,7 @@ def _build(description: str, constants: tuple[str, ...]) -> dict[str, Any]:
         "anyOf": [
             {"type": "string", "enum": list(constants)},
             {"type": "string", "pattern": PERIOD_BETWEEN_PATTERN},
+            {"type": "string", "pattern": PERIOD_RANGE_PATTERN},
         ],
         "description": description,
     }

@@ -368,6 +368,11 @@ class TestPeriodToDateClause:
         result = client._period_to_date_clause("BETWEEN '2024-01-01' AND '2024-01-31'")
         assert result == "BETWEEN '2024-01-01' AND '2024-01-31'"
 
+    def test_dotted_range_builds_the_same_clause(self) -> None:
+        client = _make_client()
+        result = client._period_to_date_clause("2024-01-01..2024-01-31")
+        assert result == "BETWEEN '2024-01-01' AND '2024-01-31'"
+
     def test_不正なperiod(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError):

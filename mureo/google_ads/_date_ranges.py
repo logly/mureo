@@ -16,7 +16,8 @@ from mureo.google_ads._gaql_validator import (
     DERIVED_DATE_RANGE_DAYS,
     GAQLValidationError,
     format_between_clause,
-    parse_between_clause,
+    is_explicit_period_range,
+    parse_period_range,
     trailing_window,
 )
 
@@ -40,8 +41,9 @@ _PERIOD_DAYS: dict[str, int] = {
 def _resolve_current_window(period: str) -> tuple[date, date]:
     """Return the inclusive (start, end) this comparison path will report on.
 
-    Accepts a fixed-length trailing constant or an explicit
-    ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`` range (#716/#718). Anything else
+    Accepts a fixed-length trailing constant or an explicit range in either
+    spelling the clause builder takes — ``YYYY-MM-DD..YYYY-MM-DD`` or
+    ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`` (#716/#718/#866). Anything else
     raises: quietly substituting a 7-day window for a period the caller asked
     for is the #134 failure mode — the answer looks fine and describes the
     wrong dates.
@@ -49,14 +51,15 @@ def _resolve_current_window(period: str) -> tuple[date, date]:
     if not isinstance(period, str):
         raise GAQLValidationError(f"Invalid period: {period!r}")
     text = period.strip()
-    if text.upper().startswith("BETWEEN"):
-        return parse_between_clause(text)
+    if is_explicit_period_range(text):
+        return parse_period_range(text)
     days = _PERIOD_DAYS.get(text.upper())
     if days is None:
         raise GAQLValidationError(
             f"Period {period!r} cannot be compared period-over-period. Use one "
             f"of {', '.join(sorted(_PERIOD_DAYS))} or an explicit "
-            "BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' range."
+            "YYYY-MM-DD..YYYY-MM-DD (or BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD') "
+            "range."
         )
     return trailing_window(days, clock.server_now().date())
 
@@ -78,7 +81,7 @@ def _get_comparison_date_ranges(period: str) -> tuple[str, str]:
         prev_start = prev_end - timedelta(days=span - 1)
     except OverflowError as exc:
         # A window anchored within `span` days of date.min has no equal-length
-        # predecessor. The span guard in parse_between_clause rules out the
+        # predecessor. The span guard in parse_period_range rules out the
         # 0001..9999 case; this catches the short-range-at-year-1 remainder so
         # the caller gets a GAQLValidationError like every other bad period,
         # not a bare OverflowError down the generic exception path.
