@@ -153,9 +153,30 @@ async def test_invalid_token_raises_with_meta_message() -> None:
         await validate_meta_access_token("bad-tok")
 
     text = str(exc.value)
-    assert "Invalid OAuth access token." in text
-    assert "463" in text
-    assert "AbCdEf123" in text
+    assert text == (
+        "Meta token validation failed: Invalid OAuth access token. | "
+        "subcode=463 | fbtrace_id=AbCdEf123"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_non_envelope_body_is_never_echoed() -> None:
+    """A body with no usable ``error`` field yields the fixed sentence, not
+    ``response.text`` (#605, #866)."""
+    from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL
+    from mureo.meta_ads.accounts import validate_meta_access_token
+
+    def _dispatch(url: str) -> MagicMock:
+        if "/me/permissions" in url:
+            return _resp(400, {"not": "an error envelope"})
+        raise AssertionError("adaccounts must not be reached on invalid token")
+
+    with _patched_client(_dispatch), pytest.raises(RuntimeError) as exc:
+        await validate_meta_access_token("bad-tok")
+
+    assert "error-body" not in str(exc.value)
+    assert str(exc.value) == (f"Meta token validation failed: {GRAPH_ERROR_NO_DETAIL}")
 
 
 @pytest.mark.unit

@@ -35,8 +35,8 @@ from mureo.core.secret_store import (
     default_credentials_path,
 )
 from mureo.fsutil import file_lock, lock_path_for
-from mureo.logging_setup import one_log_line, truncate_text
 from mureo.meta_ads._api_version import OAUTH_TOKEN_URL
+from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL, format_graph_error
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -540,17 +540,6 @@ _META_SYSTEM_USER_TOKEN_TYPE = "SYSTEM_USER"
 _META_GRAPH_TOKEN_URL = OAUTH_TOKEN_URL
 _refresh_lock = asyncio.Lock()
 
-#: Caps on the Graph-authored fields quoted in a refresh failure (#605).
-#: ``error.message`` is unbounded free text; the numeric codes are numeric only
-#: by convention, so bound those too rather than trusting the envelope.
-_GRAPH_ERROR_MESSAGE_MAX_CHARS = 200
-_GRAPH_ERROR_CODE_MAX_CHARS = 32
-
-#: What a refusal reports when the body is not the ``{"error": {...}}``
-#: envelope — an HTML proxy page, a Graph outage, plain junk. The status code
-#: still travels with it; the body itself never does.
-_NO_GRAPH_ERROR_DETAIL = "no error detail in response body"
-
 
 class MetaTokenRefreshError(ValueError):
     """A Meta token refresh failed with a message mureo itself composed.
@@ -565,42 +554,6 @@ class MetaTokenRefreshError(ValueError):
     Subclasses :class:`ValueError` to keep the documented ``Raises:`` contract
     of :func:`_call_refresh_api` (and its callers' ``except ValueError``) intact.
     """
-
-
-def _graph_error_detail(resp: httpx.Response) -> str:
-    """A curated, bounded rendering of a Meta Graph error body (#605).
-
-    Quotes ``error.message`` / ``error.code`` / ``error_subcode`` and nothing
-    else. ``resp.text`` is content Graph chose, of unbounded length, and the
-    whole of it used to be interpolated into the raised exception and then
-    written to disk with a traceback. Anything that is not the expected error
-    envelope yields :data:`_NO_GRAPH_ERROR_DETAIL` rather than a fallback to
-    the raw body — the fallback is the leak.
-    """
-    try:
-        payload = resp.json()
-    except Exception:  # noqa: BLE001 — tolerate non-JSON error bodies
-        return _NO_GRAPH_ERROR_DETAIL
-
-    err = payload.get("error") if isinstance(payload, dict) else None
-    if not isinstance(err, dict):
-        return _NO_GRAPH_ERROR_DETAIL
-
-    parts: list[str] = []
-    message = err.get("message")
-    if message:
-        parts.append(
-            truncate_text(one_log_line(str(message)), _GRAPH_ERROR_MESSAGE_MAX_CHARS)
-        )
-    for field_name, label in (("code", "code"), ("error_subcode", "subcode")):
-        value = err.get(field_name)
-        if value is not None:
-            rendered = truncate_text(
-                one_log_line(str(value)), _GRAPH_ERROR_CODE_MAX_CHARS
-            )
-            parts.append(f"{label}={rendered}")
-
-    return " | ".join(parts) if parts else _NO_GRAPH_ERROR_DETAIL
 
 
 async def refresh_meta_token_if_needed(
@@ -838,7 +791,11 @@ async def _call_refresh_api(
     if resp.status_code != 200:
         # NOT resp.text: the whole body used to land in this message and, via
         # the caller's exc_info=True, in ~/.mureo/logs/configure.log (#605).
-        detail = _graph_error_detail(resp)
+        try:
+            payload: Any = resp.json()
+        except ValueError:  # tolerate non-JSON error bodies
+            payload = None
+        detail = format_graph_error(payload, fallback=GRAPH_ERROR_NO_DETAIL)
         raise MetaTokenRefreshError(
             f"HTTP {resp.status_code} from Meta Graph ({detail})"
         )

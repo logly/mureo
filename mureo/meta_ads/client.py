@@ -18,6 +18,7 @@ from mureo.meta_ads._campaigns import CampaignsMixin
 from mureo.meta_ads._catalog import CatalogMixin
 from mureo.meta_ads._conversions import ConversionsMixin
 from mureo.meta_ads._creatives import CreativesMixin
+from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL, format_graph_error
 from mureo.meta_ads._insights import InsightsMixin
 from mureo.meta_ads._instagram import InstagramMixin
 from mureo.meta_ads._leads import LeadsMixin
@@ -52,23 +53,6 @@ _META_OAUTH_ERROR_TYPE = "OAuthException"
 _META_AUTH_ERROR_CODES = frozenset({102, 190})
 _META_AUTH_HTTP_STATUS = 401
 
-# Longest slice of a Meta error body kept for logs / fallback detail.
-_MAX_ERROR_BODY_CHARS = 500
-
-
-def _meta_error_detail(error: dict[str, Any]) -> str:
-    """Join the human-readable parts of a Meta ``error`` object."""
-    parts = [
-        str(error[key])
-        for key in ("message", "error_user_title", "error_user_msg")
-        if error.get(key)
-    ]
-    if error.get("error_subcode"):
-        parts.append(f"subcode={error['error_subcode']}")
-    if error.get("fbtrace_id"):
-        parts.append(f"fbtrace_id={error['fbtrace_id']}")
-    return " | ".join(parts)
-
 
 def _is_meta_auth_failure(status_code: int, error: dict[str, Any]) -> bool:
     """True when Meta refused the credential rather than the request.
@@ -93,24 +77,24 @@ def _raise_meta_api_error(resp: httpx.Response, method: str, path: str) -> NoRet
     """Raise the exception class that matches a non-200 Meta response.
 
     :class:`~mureo.core.auth_failure.PlatformAuthError` for a refused
-    credential, a plain ``RuntimeError`` for everything else.
+    credential, a plain ``RuntimeError`` for everything else. The log line
+    carries the same formatted detail as the exception, never the raw body
+    (#605, #866).
     """
-    error_body = resp.text[:_MAX_ERROR_BODY_CHARS]
+    try:
+        payload: Any = resp.json()
+    except ValueError:  # an unparseable body still has to be reported
+        payload = None
+    raw = payload.get("error") if isinstance(payload, dict) else None
+    error: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    detail = format_graph_error(payload, fallback=GRAPH_ERROR_NO_DETAIL)
     logger.error(
-        "Meta API error: method=%s, path=%s, status=%d, body=%s",
+        "Meta API error: method=%s, path=%s, status=%d, detail=%s",
         method,
         path,
         resp.status_code,
-        error_body,
+        detail,
     )
-    error: dict[str, Any] = {}
-    try:
-        payload = resp.json()
-        raw = payload.get("error") if isinstance(payload, dict) else None
-        error = raw if isinstance(raw, dict) else {}
-        detail = _meta_error_detail(error)
-    except Exception:  # noqa: BLE001 — an unparseable body still has to be reported
-        detail = error_body
     message = (
         f"Meta API request failed (status={resp.status_code}, path={path}): {detail}"
     )
@@ -549,13 +533,11 @@ class MetaAdsApiClient(
 
         resp = await self._http.get(url, params=params, headers=headers)
         if resp.status_code != 200:
-            detail = ""
             try:
-                err = resp.json().get("error", {})
-                parts = [v for k in ("message",) if (v := err.get(k))]
-                detail = " | ".join(parts) if parts else resp.text[:500]
-            except (ValueError, AttributeError):
-                detail = resp.text[:500]
+                payload: Any = resp.json()
+            except ValueError:
+                payload = None
+            detail = format_graph_error(payload, fallback=GRAPH_ERROR_NO_DETAIL)
             raise RuntimeError(
                 f"Meta API request failed "
                 f"(status={resp.status_code}, path={path}): {detail}"

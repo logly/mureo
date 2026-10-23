@@ -29,10 +29,18 @@ identical bundle.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
-from mureo.demo.scenarios._base import Scenario, campaign_id
+from mureo.demo.scenarios._base import (
+    Scenario,
+    action_iso,
+    build_google_ad_groups_rows,
+    build_google_keywords_rows,
+    build_google_search_terms_rows,
+    campaign_id,
+    date_for_day,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -52,10 +60,6 @@ _BLURB = (
 _DAYS = 90
 _END_DATE = date(2026, 4, 29)
 _BRAND = "PulseGrid"
-
-
-def _date_for_day(d: int) -> date:
-    return _END_DATE - timedelta(days=_DAYS - 1 - d)
 
 
 # ---------------------------------------------------------------------------
@@ -356,72 +360,11 @@ def _build_google_campaigns_rows() -> list[list[object]]:
     ]
     for c in _GADS_CAMPAIGNS:
         for d in range(_DAYS):
-            day_iso = _date_for_day(d).isoformat()
+            day_iso = date_for_day(d, end_date=_END_DATE, days=_DAYS).isoformat()
             clicks = int(round(c.daily_impr * c.ctr))
             cost = round(clicks * c.cpc, 2)
             conv = round(clicks * c.cvr, 2)
             rows.append([day_iso, c.name, c.daily_impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_ad_groups_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "day",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    by_camp = {c.name: c for c in _GADS_CAMPAIGNS}
-    for camp_name, ag_name, share in _GADS_AD_GROUPS:
-        c = by_camp[camp_name]
-        for d in range(_DAYS):
-            day_iso = _date_for_day(d).isoformat()
-            impr = int(round(c.daily_impr * share))
-            clicks = int(round(impr * c.ctr))
-            cost = round(clicks * c.cpc, 2)
-            conv = round(clicks * c.cvr, 2)
-            rows.append([day_iso, camp_name, ag_name, impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_search_terms_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "search_term",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    for term, camp, ag, impr, clicks, cost, conv in _GADS_SEARCH_TERMS:
-        rows.append([term, camp, ag, impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_keywords_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "keyword",
-            "match_type",
-            "quality_score",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    for kw, mt, qs, camp, ag, impr, clicks, cost, conv in _GADS_KEYWORDS:
-        rows.append([kw, mt, qs, camp, ag, impr, clicks, cost, conv])
     return rows
 
 
@@ -504,7 +447,7 @@ def _build_meta_ads_rows() -> list[list[object]]:
         ]
     ]
     for d in range(_DAYS):
-        date_iso = _date_for_day(d).isoformat()
+        date_iso = date_for_day(d, end_date=_END_DATE, days=_DAYS).isoformat()
         for ad in _META_ADS:
             spend = ad.daily_spend
             clicks = int(round(spend / ad.cpc))
@@ -608,17 +551,9 @@ _META_ADS_STATE_CAMPAIGNS = (
 )
 
 
-def _action_iso(day: int, hour: int = 10, minute: int = 0) -> str:
-    d = _date_for_day(day)
-    dt = datetime(
-        d.year, d.month, d.day, hour, minute, tzinfo=timezone(timedelta(hours=9))
-    )
-    return dt.isoformat(timespec="seconds")
-
-
 _ACTION_LOG = (
     {
-        "timestamp": _action_iso(15, 10, 30),
+        "timestamp": action_iso(15, 10, 30, end_date=_END_DATE, days=_DAYS),
         "action": "Increased Generic - APM Tools daily_budget by +20%",
         "platform": "google_ads",
         "campaign_id": campaign_id("Generic - APM Tools"),
@@ -631,10 +566,10 @@ _ACTION_LOG = (
             "google_apm_cost_per_trial": 27500,
             "google_blended_cost_per_trial": 18800,
         },
-        "observation_due": _date_for_day(29).isoformat(),
+        "observation_due": date_for_day(29, end_date=_END_DATE, days=_DAYS).isoformat(),
     },
     {
-        "timestamp": _action_iso(40, 14, 0),
+        "timestamp": action_iso(40, 14, 0, end_date=_END_DATE, days=_DAYS),
         "action": "Paused 3 underperforming creative variants on Conversion - Free Trial",
         "platform": "meta_ads",
         "campaign_id": campaign_id("Conversion - Free Trial"),
@@ -646,10 +581,10 @@ _ACTION_LOG = (
             "meta_conversion_results_per_day": 88,
             "meta_blended_cost_per_result": 4200,
         },
-        "observation_due": _date_for_day(54).isoformat(),
+        "observation_due": date_for_day(54, end_date=_END_DATE, days=_DAYS).isoformat(),
     },
     {
-        "timestamp": _action_iso(70, 9, 15),
+        "timestamp": action_iso(70, 9, 15, end_date=_END_DATE, days=_DAYS),
         "action": "Added 12 negative keywords to Generic - APM Tools",
         "platform": "google_ads",
         "campaign_id": campaign_id("Generic - APM Tools"),
@@ -662,7 +597,7 @@ _ACTION_LOG = (
             "google_apm_cost_per_trial": 27500,
             "google_blended_cost_per_trial": 18500,
         },
-        "observation_due": _date_for_day(84).isoformat(),
+        "observation_due": date_for_day(84, end_date=_END_DATE, days=_DAYS).isoformat(),
     },
 )
 
@@ -734,9 +669,14 @@ _STRATEGY_MD = """# STRATEGY — PulseGrid (demo: Hidden Champion)
 
 _SHEET_ROWS: Mapping[str, Sequence[Sequence[object]]] = {
     "campaigns": _build_google_campaigns_rows(),
-    "ad_groups": _build_google_ad_groups_rows(),
-    "search_terms": _build_google_search_terms_rows(),
-    "keywords": _build_google_keywords_rows(),
+    "ad_groups": build_google_ad_groups_rows(
+        _GADS_CAMPAIGNS,
+        _GADS_AD_GROUPS,
+        end_date=_END_DATE,
+        days=_DAYS,
+    ),
+    "search_terms": build_google_search_terms_rows(_GADS_SEARCH_TERMS),
+    "keywords": build_google_keywords_rows(_GADS_KEYWORDS),
     "meta_ads": _build_meta_ads_rows(),
 }
 

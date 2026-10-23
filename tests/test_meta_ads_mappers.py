@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import pytest
 
+from mureo.meta_ads._conversion_count import _safe_float
 from mureo.meta_ads.mappers import (
     _extract_conversions,
     _extract_cost_per_conversion,
     _minor_units_to_amount,
-    _safe_float,
     _safe_int,
     map_ad,
     map_ad_set,

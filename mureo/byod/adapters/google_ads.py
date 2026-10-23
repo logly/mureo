@@ -148,7 +148,7 @@ def _cell(row: tuple[Any, ...], idx: dict[str, int], col: str) -> str:
 
 
 @dataclass
-class GoogleAdsAdapter:
+class GoogleAdsWorkbookAdapter:
     """Workbook-aware Google Ads bundle adapter."""
 
     @classmethod

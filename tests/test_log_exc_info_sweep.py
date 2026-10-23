@@ -163,7 +163,7 @@ def test_no_credential_module_log_line_writes_the_exception() -> None:
         "failure prints whatever the platform put in the response body:\n"
         + "\n".join(f"  {module}:{line}: {what}" for module, line, what in offenders)
         + "\nLog type(exc).__name__, or a detail your own code composed "
-        "(_extract_error_detail, _graph_error_detail) where the server-side "
+        "(_extract_error_detail, format_graph_error) where the server-side "
         "failure message is what you need."
     )
 

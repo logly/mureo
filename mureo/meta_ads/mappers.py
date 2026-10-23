@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from mureo.core.providers.models import minor_units_per_unit
-from mureo.meta_ads._conversion_count import count_conversions_from_actions
+from mureo.meta_ads._conversion_count import (
+    _safe_float,
+    count_conversions_from_actions,
+)
 
 
 def _minor_units_to_amount(value: str | int | None, currency: str) -> float:
@@ -24,16 +27,6 @@ def _minor_units_to_amount(value: str | int | None, currency: str) -> float:
     if value is None:
         return 0.0
     return int(value) / minor_units_per_unit(currency)
-
-
-def _safe_float(value: str | int | float | None) -> float:
-    """Safely convert a value to float."""
-    if value is None:
-        return 0.0
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return 0.0
 
 
 def _safe_int(value: str | int | None) -> int:

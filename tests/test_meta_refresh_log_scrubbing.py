@@ -74,13 +74,18 @@ def _refresh_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord
 async def test_the_log_line_omits_the_raw_response_body(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Everything Graph returned outside the curated fields is dropped."""
+    """Everything Graph returned outside the curated fields is dropped.
+
+    ``fbtrace_id`` is one of the curated fields since #866, so the marker
+    sits in an ``error`` field that is not.
+    """
     body = {
         "error": {
             "message": "Error validating application.",
             "code": 190,
             "error_subcode": 460,
-            "fbtrace_id": _BODY_MARKER,
+            "fbtrace_id": "AbCdEf123",
+            "error_data": _BODY_MARKER,
         },
         "unexpected_extra": _BODY_MARKER,
     }
@@ -199,6 +204,8 @@ async def test_the_log_line_keeps_the_status_and_the_curated_fields(
     assert "Error validating application." in message
     assert "code=190" in message
     assert "subcode=460" in message
+    # The shared Graph error format (#866).
+    assert "(Error validating application. | code=190 | subcode=460)" in message
 
 
 @pytest.mark.unit

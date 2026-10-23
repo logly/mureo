@@ -22,6 +22,7 @@ from mureo.web._helpers import (
     SECURITY_HEADERS,
     send_bytes,
     send_error_json,
+    send_failure,
     send_json,
 )
 
@@ -299,6 +300,31 @@ class TestSendErrorJson:
         send_error_json(handler, 400, "invalid_value", extra={})
         body = json.loads(handler.wfile.getvalue().decode("utf-8"))
         assert body == {"error": "invalid_value"}
+
+
+@pytest.mark.unit
+class TestSendFailure:
+    """The 400 / 500 split three configure endpoints share (#866)."""
+
+    def test_caller_fault_is_a_400_with_only_the_code(
+        self, handler: _StubHandler
+    ) -> None:
+        send_failure(handler, "no_workspace", frozenset({"no_workspace"}))
+        body = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert (handler.status, body) == (400, {"error": "no_workspace"})
+
+    def test_other_code_is_a_500(self, handler: _StubHandler) -> None:
+        send_failure(handler, "write_failed", frozenset({"no_workspace"}))
+        body = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert (handler.status, body) == (500, {"error": "write_failed"})
+
+    def test_field_is_sent_when_given(self, handler: _StubHandler) -> None:
+        send_failure(handler, "out_of_range", frozenset({"out_of_range"}), field="days")
+        body = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert (handler.status, body) == (
+            400,
+            {"error": "out_of_range", "field": "days"},
+        )
 
 
 @pytest.mark.unit

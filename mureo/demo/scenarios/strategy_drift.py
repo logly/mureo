@@ -48,10 +48,18 @@ an identical bundle.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
-from mureo.demo.scenarios._base import Scenario, campaign_id
+from mureo.demo.scenarios._base import (
+    Scenario,
+    action_iso,
+    build_google_ad_groups_rows,
+    build_google_keywords_rows,
+    build_google_search_terms_rows,
+    campaign_id,
+    date_for_day,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -76,10 +84,6 @@ _BRAND = "PulseFit"
 _VIOLATION_COMPETITOR_DAY = 30  # rule 1: competitor-name campaign launched
 _VIOLATION_OPTIMIZATION_SWAP_DAY = 45  # rule 2: conversion event changed
 _VIOLATION_LAL_STACK_DAY = 60  # rule 3: LAL 4%/7%/10% added
-
-
-def _date_for_day(d: int) -> date:
-    return _END_DATE - timedelta(days=_DAYS - 1 - d)
 
 
 # ---------------------------------------------------------------------------
@@ -383,74 +387,11 @@ def _build_google_campaigns_rows() -> list[list[object]]:
         for d in range(_DAYS):
             if not _gads_campaign_active(c, d):
                 continue
-            day_iso = _date_for_day(d).isoformat()
+            day_iso = date_for_day(d, end_date=_END_DATE, days=_DAYS).isoformat()
             clicks = int(round(c.daily_impr * c.ctr))
             cost = round(clicks * c.cpc, 2)
             conv = round(clicks * c.cvr, 2)
             rows.append([day_iso, c.name, c.daily_impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_ad_groups_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "day",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    by_camp = {c.name: c for c in _GADS_CAMPAIGNS}
-    for camp_name, ag_name, share in _GADS_AD_GROUPS:
-        c = by_camp[camp_name]
-        for d in range(_DAYS):
-            if not _gads_campaign_active(c, d):
-                continue
-            day_iso = _date_for_day(d).isoformat()
-            impr = int(round(c.daily_impr * share))
-            clicks = int(round(impr * c.ctr))
-            cost = round(clicks * c.cpc, 2)
-            conv = round(clicks * c.cvr, 2)
-            rows.append([day_iso, camp_name, ag_name, impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_search_terms_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "search_term",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    for term, camp, ag, impr, clicks, cost, conv in _GADS_SEARCH_TERMS:
-        rows.append([term, camp, ag, impr, clicks, cost, conv])
-    return rows
-
-
-def _build_google_keywords_rows() -> list[list[object]]:
-    rows: list[list[object]] = [
-        [
-            "keyword",
-            "match_type",
-            "quality_score",
-            "campaign",
-            "ad_group",
-            "impressions",
-            "clicks",
-            "cost",
-            "conversions",
-        ]
-    ]
-    for kw, mt, qs, camp, ag, impr, clicks, cost, conv in _GADS_KEYWORDS:
-        rows.append([kw, mt, qs, camp, ag, impr, clicks, cost, conv])
     return rows
 
 
@@ -592,7 +533,7 @@ def _build_meta_ads_rows() -> list[list[object]]:
         ]
     ]
     for d in range(_DAYS):
-        date_iso = _date_for_day(d).isoformat()
+        date_iso = date_for_day(d, end_date=_END_DATE, days=_DAYS).isoformat()
         for ad in _META_ADS:
             if not _meta_active(ad, d):
                 continue
@@ -706,21 +647,13 @@ _META_ADS_STATE_CAMPAIGNS = (
 )
 
 
-def _action_iso(day: int, hour: int = 10, minute: int = 0) -> str:
-    d = _date_for_day(day)
-    dt = datetime(
-        d.year, d.month, d.day, hour, minute, tzinfo=timezone(timedelta(hours=9))
-    )
-    return dt.isoformat(timespec="seconds")
-
-
 # action_log: only routine entries from BEFORE the new manager joined
 # Day 30. The silence after Day 30 — three concurrent strategy
 # violations with zero log entries — is itself the diagnostic signal,
 # because STRATEGY says all actions must be logged.
 _ACTION_LOG = (
     {
-        "timestamp": _action_iso(8, 9, 0),
+        "timestamp": action_iso(8, 9, 0, end_date=_END_DATE, days=_DAYS),
         "action": "Increased Generic - Fitness Apps daily_budget by +15%",
         "platform": "google_ads",
         "campaign_id": campaign_id("Generic - Fitness Apps"),
@@ -732,10 +665,10 @@ _ACTION_LOG = (
             "google_blended_cost_per_subscription": 4100,
             "meta_blended_cost_per_subscription": 3800,
         },
-        "observation_due": _date_for_day(22).isoformat(),
+        "observation_due": date_for_day(22, end_date=_END_DATE, days=_DAYS).isoformat(),
     },
     {
-        "timestamp": _action_iso(20, 11, 30),
+        "timestamp": action_iso(20, 11, 30, end_date=_END_DATE, days=_DAYS),
         "action": "Paused 2 underperforming creative variants on Awareness - Workout Routines",
         "platform": "meta_ads",
         "campaign_id": campaign_id("Awareness - Workout Routines"),
@@ -746,10 +679,10 @@ _ACTION_LOG = (
             "meta_awareness_results_per_day": 36,
             "meta_blended_cost_per_subscription": 3700,
         },
-        "observation_due": _date_for_day(34).isoformat(),
+        "observation_due": date_for_day(34, end_date=_END_DATE, days=_DAYS).isoformat(),
     },
     {
-        "timestamp": _action_iso(28, 14, 0),
+        "timestamp": action_iso(28, 14, 0, end_date=_END_DATE, days=_DAYS),
         "action": "Approved hire: new growth manager (start date Day 30)",
         "platform": "meta_ads",
         "campaign_id": None,
@@ -764,7 +697,7 @@ _ACTION_LOG = (
         "metrics_at_action": {
             "headcount_growth_team": 3,
         },
-        "observation_due": _date_for_day(89).isoformat(),
+        "observation_due": date_for_day(89, end_date=_END_DATE, days=_DAYS).isoformat(),
     },
 )
 
@@ -858,9 +791,15 @@ data-quality issue.
 
 _SHEET_ROWS: Mapping[str, Sequence[Sequence[object]]] = {
     "campaigns": _build_google_campaigns_rows(),
-    "ad_groups": _build_google_ad_groups_rows(),
-    "search_terms": _build_google_search_terms_rows(),
-    "keywords": _build_google_keywords_rows(),
+    "ad_groups": build_google_ad_groups_rows(
+        _GADS_CAMPAIGNS,
+        _GADS_AD_GROUPS,
+        end_date=_END_DATE,
+        days=_DAYS,
+        is_active=_gads_campaign_active,
+    ),
+    "search_terms": build_google_search_terms_rows(_GADS_SEARCH_TERMS),
+    "keywords": build_google_keywords_rows(_GADS_KEYWORDS),
     "meta_ads": _build_meta_ads_rows(),
 }
 

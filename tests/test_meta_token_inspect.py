@@ -301,12 +301,11 @@ async def test_graph_error_message_is_bounded_and_single_line() -> None:
     reaches a ``logger.info`` record through
     :func:`validate_meta_access_token`. Unbounded it floods the log; with
     newlines in it, a platform-authored string can forge a second log
-    record. Same treatment as ``mureo.auth._graph_error_detail``."""
+    record. Same treatment as every Graph error detail
+    (``mureo.meta_ads._graph_error.format_graph_error``)."""
 
-    from mureo.meta_ads.accounts import (
-        _GRAPH_ERROR_MESSAGE_MAX_CHARS,
-        MetaTokenInspectError,
-    )
+    from mureo.meta_ads._graph_error import GRAPH_ERROR_MESSAGE_MAX_CHARS
+    from mureo.meta_ads.accounts import MetaTokenInspectError
 
     payload = {
         "error": {
@@ -323,7 +322,7 @@ async def test_graph_error_message_is_bounded_and_single_line() -> None:
     detail = str(exc.value)
     assert "\n" not in detail
     assert "\r" not in detail
-    assert "A" * (_GRAPH_ERROR_MESSAGE_MAX_CHARS + 1) not in detail
+    assert "A" * (GRAPH_ERROR_MESSAGE_MAX_CHARS + 1) not in detail
     assert len(detail) < 400
     # Still useful: the operator keeps the part they quote in a ticket.
     assert "line one line two" in detail
@@ -332,10 +331,8 @@ async def test_graph_error_message_is_bounded_and_single_line() -> None:
 
 @pytest.mark.asyncio
 async def test_unbounded_fbtrace_id_is_capped() -> None:
-    from mureo.meta_ads.accounts import (
-        _GRAPH_ERROR_CODE_MAX_CHARS,
-        MetaTokenInspectError,
-    )
+    from mureo.meta_ads._graph_error import GRAPH_ERROR_CODE_MAX_CHARS
+    from mureo.meta_ads.accounts import MetaTokenInspectError
 
     payload = {"error": {"message": "nope", "fbtrace_id": "F" * 900}}
     with (
@@ -344,18 +341,16 @@ async def test_unbounded_fbtrace_id_is_capped() -> None:
     ):
         await _inspect()
 
-    assert "F" * (_GRAPH_ERROR_CODE_MAX_CHARS + 1) not in str(exc.value)
+    assert "F" * (GRAPH_ERROR_CODE_MAX_CHARS + 1) not in str(exc.value)
 
 
 @pytest.mark.asyncio
-async def test_non_envelope_fallback_is_bounded_too() -> None:
-    """A body that is not the error envelope falls back to ``response.text``
-    — which is still content Graph chose."""
+async def test_non_envelope_body_is_never_echoed() -> None:
+    """A body that is not the error envelope yields the fixed sentence, not
+    ``response.text`` — which is content Graph chose (#605, #866)."""
 
-    from mureo.meta_ads.accounts import (
-        _GRAPH_ERROR_MESSAGE_MAX_CHARS,
-        MetaTokenInspectError,
-    )
+    from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL
+    from mureo.meta_ads.accounts import MetaTokenInspectError
 
     def _route(url: str) -> MagicMock:
         resp = _resp(500, {"not": "an error envelope"})
@@ -368,7 +363,8 @@ async def test_non_envelope_fallback_is_bounded_too() -> None:
     ):
         await _inspect()
 
-    assert "B" * (_GRAPH_ERROR_MESSAGE_MAX_CHARS + 1) not in str(exc.value)
+    assert "B" not in str(exc.value)
+    assert str(exc.value) == (f"Meta token inspection failed: {GRAPH_ERROR_NO_DETAIL}")
 
 
 @pytest.mark.asyncio
