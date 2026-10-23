@@ -1643,7 +1643,7 @@ class TestCheckBudgetBiddingCompatibility:
 
         with (
             patch.object(client, "_search", return_value=[row]),
-            pytest.raises(ValueError, match="not compatible with shared budget"),
+            pytest.raises(ValueError, match="misconfigured unless every campaign"),
         ):
             await client._check_budget_bidding_compatibility(
                 "100", "MAXIMIZE_CONVERSIONS"
@@ -1658,11 +1658,32 @@ class TestCheckBudgetBiddingCompatibility:
 
         with (
             patch.object(client, "_search", return_value=[row]),
-            pytest.raises(ValueError, match="not compatible with shared budget"),
+            pytest.raises(ValueError, match="misconfigured unless every campaign"),
         ):
             await client._check_budget_bidding_compatibility(
                 "100", "MAXIMIZE_CONVERSION_VALUE"
             )
+
+    @pytest.mark.asyncio
+    async def test_shared_budget_refusal_remedy_omits_maximize_clicks(
+        self,
+    ) -> None:
+        """MAXIMIZE_CLICKS is in Help's misconfigured group; not a remedy (#908)."""
+        client = _make_client()
+        row = MagicMock()
+        row.campaign_budget.explicitly_shared = True
+
+        with (
+            patch.object(client, "_search", return_value=[row]),
+            pytest.raises(ValueError) as exc_info,
+        ):
+            await client._check_budget_bidding_compatibility(
+                "100", "MAXIMIZE_CONVERSIONS"
+            )
+        msg = str(exc_info.value)
+        assert "MAXIMIZE_CLICKS" not in msg
+        assert "google_ads_budget_create" in msg
+        assert "MANUAL_CPC" in msg
 
     @pytest.mark.asyncio
     async def test_非共有予算_OK(self) -> None:
