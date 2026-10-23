@@ -384,9 +384,9 @@ async def inspect_meta_access_token(
                 headers={"Authorization": f"Bearer {app_id}|{app_secret}"},
             )
             try:
-                payload = response.json()
-            except ValueError:
-                payload = {}
+                payload: Any = response.json()
+            except ValueError:  # not JSON: no error detail and no data
+                payload = None
             if response.status_code != 200:
                 detail = _scrub(
                     format_graph_error(payload, fallback=GRAPH_ERROR_NO_DETAIL)
@@ -460,9 +460,10 @@ async def validate_meta_access_token(
 
     Raises:
         MetaTokenInvalidError: When the token is invalid/expired (the
-            /me/permissions probe fails). The message carries Meta's
-            ``error.message`` plus ``subcode`` / ``fbtrace_id`` when present,
-            with the access token scrubbed out.
+            /me/permissions probe fails or returns a body that is not
+            JSON). The message carries Meta's ``error.message`` plus
+            ``subcode`` / ``fbtrace_id`` when present, with the access
+            token scrubbed out.
         MetaAccountFetchError: When the token is valid but the ad-account
             listing (/me/adaccounts) fails — a distinct condition so the
             caller does not mislabel it as an invalid token.
@@ -481,15 +482,19 @@ async def validate_meta_access_token(
                 params={"access_token": access_token},
             )
             try:
-                payload = response.json()
-            except ValueError:
-                payload = {}
+                payload: Any = response.json()
+            except ValueError:  # a non-JSON body is a failed probe
+                payload = None
             if response.status_code != 200:
                 detail = _redact(
                     format_graph_error(payload, fallback=GRAPH_ERROR_NO_DETAIL),
                     access_token,
                 )
                 raise MetaTokenInvalidError(f"Meta token validation failed: {detail}")
+            if not isinstance(payload, dict):
+                raise MetaTokenInvalidError(
+                    f"Meta token validation failed: {GRAPH_ERROR_NO_DETAIL}"
+                )
             for row in payload.get("data", []) or []:
                 if row.get("status") == "granted" and row.get("permission"):
                     granted.append(row["permission"])

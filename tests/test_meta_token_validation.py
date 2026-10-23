@@ -253,3 +253,88 @@ async def test_account_listing_failure_is_distinct_error() -> None:
         await validate_meta_access_token("good-tok")
 
     assert not isinstance(exc.value, MetaTokenInvalidError)
+
+
+_RAW_HTML_BODY = "<html><body>RAW-UPSTREAM-PAGE</body></html>"
+
+
+def _non_json_resp(status: int) -> MagicMock:
+    """A response whose body is not JSON (an HTML page, a proxy banner)."""
+    resp = _resp(status, {})
+    resp.json.side_effect = ValueError("Expecting value: line 1 column 1")
+    resp.text = _RAW_HTML_BODY
+    return resp
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_non_json_200_permissions_body_is_a_failed_validation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A 200 whose body is not JSON is a failed probe, not "no permissions
+    granted" (#907): the fixed sentence, never the raw body."""
+    from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL
+    from mureo.meta_ads.accounts import (
+        MetaTokenInvalidError,
+        validate_meta_access_token,
+    )
+
+    def _dispatch(url: str) -> MagicMock:
+        if "/me/permissions" in url:
+            return _non_json_resp(200)
+        raise AssertionError("adaccounts must not be reached on a failed probe")
+
+    with (
+        caplog.at_level("DEBUG"),
+        _patched_client(_dispatch),
+        pytest.raises(MetaTokenInvalidError) as exc,
+    ):
+        await validate_meta_access_token("tok")
+
+    assert str(exc.value) == f"Meta token validation failed: {GRAPH_ERROR_NO_DETAIL}"
+    assert "RAW-UPSTREAM-PAGE" not in str(exc.value)
+    assert all("RAW-UPSTREAM-PAGE" not in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_non_object_200_permissions_body_is_a_failed_validation() -> None:
+    """JSON that is not an object cannot carry ``data`` either (#907)."""
+    from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL
+    from mureo.meta_ads.accounts import (
+        MetaTokenInvalidError,
+        validate_meta_access_token,
+    )
+
+    def _dispatch(url: str) -> MagicMock:
+        if "/me/permissions" in url:
+            resp = _resp(200, {})
+            resp.json.return_value = ["not", "an", "object"]
+            return resp
+        raise AssertionError("adaccounts must not be reached on a failed probe")
+
+    with _patched_client(_dispatch), pytest.raises(MetaTokenInvalidError) as exc:
+        await validate_meta_access_token("tok")
+
+    assert str(exc.value) == f"Meta token validation failed: {GRAPH_ERROR_NO_DETAIL}"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_non_json_error_permissions_body_is_never_echoed() -> None:
+    """The non-2xx path with a non-JSON body gives the same sentence (#907)."""
+    from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL
+    from mureo.meta_ads.accounts import (
+        MetaTokenInvalidError,
+        validate_meta_access_token,
+    )
+
+    def _dispatch(url: str) -> MagicMock:
+        if "/me/permissions" in url:
+            return _non_json_resp(502)
+        raise AssertionError("adaccounts must not be reached on a failed probe")
+
+    with _patched_client(_dispatch), pytest.raises(MetaTokenInvalidError) as exc:
+        await validate_meta_access_token("tok")
+
+    assert str(exc.value) == f"Meta token validation failed: {GRAPH_ERROR_NO_DETAIL}"

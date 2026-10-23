@@ -367,6 +367,62 @@ async def test_non_envelope_body_is_never_echoed() -> None:
     assert str(exc.value) == (f"Meta token inspection failed: {GRAPH_ERROR_NO_DETAIL}")
 
 
+_RAW_HTML_BODY = "<html><body>RAW-UPSTREAM-PAGE</body></html>"
+
+
+def _non_json_resp(status: int) -> MagicMock:
+    """A response whose body is not JSON (an HTML page, a proxy banner)."""
+    resp = _resp(status, {})
+    resp.json.side_effect = ValueError("Expecting value: line 1 column 1")
+    resp.text = _RAW_HTML_BODY
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_non_json_200_reads_like_a_body_without_data(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A 200 whose body is not JSON yields exactly what a JSON body without
+    ``data`` yields — every field unknown — and the raw body is neither
+    returned nor logged (#907)."""
+
+    with _patched_client(_debug_route({})):
+        without_data = await _inspect()
+
+    with (
+        caplog.at_level(logging.DEBUG),
+        _patched_client(lambda url: _non_json_resp(200)),
+    ):
+        info = await _inspect()
+
+    assert info == without_data
+    assert info == {
+        "type": None,
+        "expires_at": None,
+        "data_access_expires_at": None,
+        "issued_at": None,
+        "never_expires": False,
+    }
+    assert "RAW-UPSTREAM-PAGE" not in str(info)
+    assert all("RAW-UPSTREAM-PAGE" not in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_non_json_error_body_gives_the_fixed_sentence() -> None:
+    """A non-200 whose body is not JSON: the fixed sentence, not the body."""
+
+    from mureo.meta_ads._graph_error import GRAPH_ERROR_NO_DETAIL
+    from mureo.meta_ads.accounts import MetaTokenInspectError
+
+    with (
+        _patched_client(lambda url: _non_json_resp(502)),
+        pytest.raises(MetaTokenInspectError) as exc,
+    ):
+        await _inspect()
+
+    assert str(exc.value) == f"Meta token inspection failed: {GRAPH_ERROR_NO_DETAIL}"
+
+
 @pytest.mark.asyncio
 async def test_token_type_is_capped_before_it_is_echoed() -> None:
     """``type`` is a short enum in practice, but it is platform-authored text
