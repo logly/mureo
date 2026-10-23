@@ -585,14 +585,14 @@ class TestSlotTiming:
     def test_a_failed_write_leaves_the_slot_empty(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from mureo.context import state
+        from mureo.context import state_io
         from mureo.context.ops_intent import bind_ops_intent
         from mureo.core.actor import bind_call_reason
 
         def _fail(path: Path, doc: StateDocument, **kwargs: Any) -> None:
             raise OSError("disk full")
 
-        monkeypatch.setattr(state, "write_state_file", _fail)
+        monkeypatch.setattr(state_io, "write_state_file", _fail)
         entry = ActionLogEntry(
             timestamp="2026-10-13T10:00:00+00:00", action="x", platform="google_ads"
         )

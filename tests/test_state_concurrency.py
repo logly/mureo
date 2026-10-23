@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-import mureo.context.state as state_mod
+import mureo.context.state_io as state_mod
 from mureo.context.models import ActionLogEntry, CampaignSnapshot
 from mureo.context.state import append_action_log, read_state_file, upsert_campaign
 

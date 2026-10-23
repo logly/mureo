@@ -65,7 +65,9 @@ def _previous_document(path: Path) -> StateDocument | None:
     """
     if not path.exists():
         return None
-    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.action_log_guard -> mureo.context.state (#879)
+    # Lazy: ``state_io.write_state_file`` calls this guard, so
+    # ``state_io`` <-> ``action_log_guard`` is a cycle (#917).
+    from mureo.context.state_io import (  # noqa: PLC0415 — import cycle: mureo.context.action_log_guard -> mureo.context.state_io (#879)
         read_state_file,
     )
 

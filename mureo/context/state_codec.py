@@ -452,6 +452,31 @@ def _parse_batches(raw: Any) -> tuple[BatchRecord, ...]:
     return tuple(records)
 
 
+def _parse_kept_sections(data: dict[str, Any], *, strict: bool) -> tuple[
+    tuple[CampaignSnapshot, ...],
+    dict[str, PlatformState] | None,
+    tuple[ActionLogEntry, ...],
+    tuple[DecisionRecord, ...],
+    dict[str, Any],
+]:
+    """The four sections that can keep what they cannot hold (#882).
+
+    Returns the parsed campaigns, platforms, action_log and decisions, and
+    the merged map of what each kept for :attr:`StateDocument.raw`.
+    """
+    campaigns, kept_campaigns = _parse_top_level_campaigns(
+        data.get("campaigns", []), strict=strict
+    )
+
+    platforms, kept_platforms = _parse_platforms(data.get("platforms"))
+    action_log, kept_log = _parse_action_log(data.get("action_log", []), strict=strict)
+    decisions, kept_decisions = _parse_decisions_section(
+        data.get("decisions"), strict=strict
+    )
+    kept = {**kept_campaigns, **kept_platforms, **kept_log, **kept_decisions}
+    return campaigns, platforms, action_log, decisions, kept
+
+
 def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     """Parse a JSON string and return a StateDocument.
 
@@ -473,16 +498,9 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     data = json.loads(text)
     if not isinstance(data, dict):
         raise ValueError("STATE.json top level must be an object")
-    campaigns, kept_campaigns = _parse_top_level_campaigns(
-        data.get("campaigns", []), strict=strict
+    campaigns, platforms, action_log, decisions, kept = _parse_kept_sections(
+        data, strict=strict
     )
-
-    platforms, kept_platforms = _parse_platforms(data.get("platforms"))
-    action_log, kept_log = _parse_action_log(data.get("action_log", []), strict=strict)
-    decisions, kept_decisions = _parse_decisions_section(
-        data.get("decisions"), strict=strict
-    )
-    kept = {**kept_campaigns, **kept_platforms, **kept_log, **kept_decisions}
 
     return StateDocument(
         version=data.get("version", "1"),

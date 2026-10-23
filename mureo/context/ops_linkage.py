@@ -75,6 +75,7 @@ from mureo.context.ops_fields import (
     project_metrics,
 )
 from mureo.context.ops_intent import current_ops_intent
+from mureo.context.state_io import _locked_state_mutation
 from mureo.core import actor
 
 if TYPE_CHECKING:
@@ -556,12 +557,6 @@ def record_call_decision(
         ValueError: ``request.explicit_id`` is not linkable, or a decision
             would be recorded over a ``decisions`` kept as written (#882).
     """
-    # Lazy: ``mureo.context.state`` ↔ ``mureo.context.ops_linkage`` cycle inside
-    # ``context`` (#863, later stage).
-    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.ops_linkage -> mureo.context.state (#879)
-        _locked_state_mutation,
-    )
-
     linked: list[str] = []
     request = replace(request, tool=tool)
 
