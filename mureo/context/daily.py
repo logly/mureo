@@ -39,8 +39,13 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+# The three helpers every targeted mutator shares live below this module
+# (#917), so they are imported at top level rather than through the
+# ``mureo.context.state`` facade, which imports this module.
+from mureo.context.campaign_store import _platform_base, _stamp_fetched_at
 from mureo.context.models import DAILY_DATE_KEY_PATTERN, StateDocument
 from mureo.context.platform_guards import guard_platform_entry_write
+from mureo.context.state_io import _now_iso
 from mureo.core import clock
 
 if TYPE_CHECKING:
@@ -320,16 +325,6 @@ def with_platform_daily(
             (see :func:`~mureo.context.platform_guards.
             guard_platform_entry_write`).
     """
-    # Lazy: ``mureo.context.state`` ↔ ``mureo.context.daily`` cycle inside
-    # ``context`` (#863, later stage).
-    # These three helpers stay in ``state`` because every other targeted
-    # mutator uses them too.
-    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.daily -> mureo.context.state (#879)
-        _now_iso,
-        _platform_base,
-        _stamp_fetched_at,
-    )
-
     _reject_unusable_daily_keys(days, as_of_date=as_of_date)
 
     platforms: dict[str, PlatformState] = dict(doc.platforms) if doc.platforms else {}

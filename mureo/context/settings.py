@@ -97,9 +97,9 @@ def set_ops_history_enabled(path: Path, enabled: Any) -> StateDocument:
     """
     if not isinstance(enabled, bool):
         raise ValueError(f"enabled must be a boolean; got {enabled!r}")
-    # Lazy: ``mureo.context.state`` ↔ ``mureo.context.settings`` cycle inside
-    # ``context`` (#863, later stage).
-    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.settings -> mureo.context.state (#879)
+    # Lazy: ``state_io`` -> ``state_codec`` -> ``settings`` (the codec reads
+    # ``parse_settings``) is a cycle inside ``context`` (#863, #917).
+    from mureo.context.state_io import (  # noqa: PLC0415 — import cycle: mureo.context.settings -> mureo.context.state_io (#879)
         _locked_state_mutation,
         read_state_file,
     )

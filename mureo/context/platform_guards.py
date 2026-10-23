@@ -104,14 +104,14 @@ because ``""`` is by contract free rather than taken. The MCP surface blocks
 it for every writer but one (schema ``minLength`` plus the handler's own
 check); ``set_platform_not_collected`` accepts ``""`` on purpose (#794) and
 defends the corner itself, resolving a blank to the entry's known id BEFORE
-it calls this guard (see ``_account_id_for_not_collected`` in ``state``). A
-placeholder spelling (``"unknown"``, ``"n/a"``, … — see
-``PLACEHOLDER_ACCOUNT_IDS``) reads as ``""`` since #793 and lands in the same
-corner: it is free, so the Python writers (``set_platform_metrics`` and its
-siblings in ``state``) accept it onto a known-id entry and the entry turns
-unknown, exactly as it did before the fold when the string was read as a
-re-point to a never-taken account. The MCP tools over those writers refuse
-a placeholder outright (``_require_known_account_id``), and only
+it calls this guard (see ``_account_id_for_not_collected`` in
+``platform_store``). A placeholder spelling (``"unknown"``, ``"n/a"``, … —
+see ``PLACEHOLDER_ACCOUNT_IDS``) reads as ``""`` since #793 and lands in the
+same corner: it is free, so the Python writers (``set_platform_metrics`` and
+its siblings in ``platform_store``) accept it onto a known-id entry and the
+entry turns unknown, exactly as it did before the fold when the string was
+read as a re-point to a never-taken account. The MCP tools over those
+writers refuse a placeholder outright (``_require_known_account_id``), and only
 ``not_collected`` resolves it away. A caller reaching these functions from
 **outside** either
 gate — anything assembling ``PlatformState`` from loosely-typed sources —

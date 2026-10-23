@@ -19,6 +19,39 @@
 
 ### Changed
 
+- **`mureo/context/state.py` is split into store modules** (internal,
+  #917). The 1417-line module is now a facade over
+  `mureo/context/state_io.py` (read, atomic write, state lock, clock),
+  `campaign_store.py`, `action_log_store.py`, `batch_store.py`,
+  `platform_store.py` and `report_store.py`; `mureo.context.state` stays
+  the import surface: it re-exports its public surface (`__all__` is
+  unchanged) and the private helpers that callers in this repo reach
+  through it (`_locked_state_mutation`, `_atomic_write`, `_capped_daily`,
+  `_state_lock_path`), plus `_now_iso`, `_platform_base` and
+  `_stamp_fetched_at`, which docstrings still name here.
+  The module-level private helpers that moved without such a caller
+  (`_merge_ads`, `_upsert_into`, `_fsync_dir`,
+  `_account_id_for_not_collected`, `_reject_unusable_daily_keys`) and the
+  names that only arrived via its imports (`StateDocument`,
+  `ContextFileError`, `BatchError`, `BatchRecord`, `PlatformState`, `os`,
+  `json`, …) are no longer attributes of `mureo.context.state`. A test
+  that patches `mureo.context.state.<name>` (`read_state_file`,
+  `write_state_file`, `os.replace`, …) must patch the store module that
+  now calls it. `append_action_log`, `set_display`,
+  `set_platform_metrics` and the other long mutators,
+  `state_codec.parse_state` and `decisions.append_decision` are broken
+  into named steps of at most 50 lines; no behaviour changes. Two of the five `#879` function-local
+  imports of `mureo.context.state` in `mureo/context` are gone:
+  `daily.py` and `ops_linkage.py` now import the lock, the clock and the
+  platform-entry helpers at top level. `decisions.py`, `settings.py` and
+  `action_log_guard.py` keep theirs, now pointing at `state_io`, because
+  `state_io` still reaches them back (through `state_codec` and
+  `write_state_file`). `tests/test_function_length.py` freezes the
+  functions over 50 lines and the files over 800 lines under `mureo/` in
+  shrink-only lists, so neither limit can slip further.
+  `decisions.append_decision` now stamps the writer's identity through
+  `actor_stamp.stamp_identity`, the half of `stamp_actor` it used to copy.
+
 - **The journal, auto-evaluation and rollback hooks no longer import
   `mureo.mcp.server` from inside functions** (internal, #879 stage 2).
   The server publishes what they need through `mureo/mcp/_server_slots.py`

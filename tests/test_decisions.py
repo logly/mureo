@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from mureo.context._decision_codec import decision_to_dict, parse_decisions
+from mureo.context.actor_stamp import stamp_identity
 from mureo.context.batch import BatchError
 from mureo.context.decisions import (
     DECISION_METRIC_VALUE_MAX_CHARS,
@@ -42,6 +43,7 @@ from mureo.context.state import (
     render_state,
     write_state_file,
 )
+from mureo.core import actor
 
 pytestmark = pytest.mark.unit
 
@@ -372,6 +374,31 @@ class TestAppendDecision:
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------
+
+
+class TestStampIdentity:
+    """The identity half of the shared stamp, applied to a decision (#917)."""
+
+    def test_it_fills_session_and_client_when_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(actor, "session_id", lambda: "sess-1")
+        monkeypatch.setattr(actor, "client_info", lambda: "claude-code/1.2")
+        stamped = stamp_identity(_record())
+        assert isinstance(stamped, DecisionRecord)
+        assert stamped.session_id == "sess-1"
+        assert stamped.client == "claude-code/1.2"
+
+    def test_an_explicit_identity_is_kept(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(actor, "session_id", lambda: "sess-1")
+        monkeypatch.setattr(actor, "client_info", lambda: "claude-code/1.2")
+        record = _record(session_id="replayed", client="cli/1")
+        stamped = stamp_identity(record)
+        assert stamped.session_id == "replayed"
+        assert stamped.client == "cli/1"
+        assert stamped == record
 
 
 class TestCrossModuleImports:

@@ -23,9 +23,10 @@ at a time, on figures that were true then. The same reason ``action_log``
 records a reversal as an entry rather than deleting the entry it reverses.
 
 The pure half lives here with the model and the queries; the writer needs
-STATE.json's file lock and reaches into :mod:`mureo.context.state` for it
-lazily: ``mureo.context.state`` ↔ ``mureo.context.decisions`` cycle inside
-``context`` (#863, later stage).
+STATE.json's file lock and reaches into :mod:`mureo.context.state_io` for it
+lazily: ``mureo.context.state_io`` -> ``mureo.context.state_codec`` ->
+``mureo.context.decisions`` (the codec reads :class:`DecisionRecord`) is still
+a cycle after #917 split the lock out of :mod:`mureo.context.state`.
 """
 
 from __future__ import annotations
@@ -38,10 +39,10 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final
 
 from mureo.context._preserve import copied_raw, is_opaque_decision, refuse_if_kept
+from mureo.context.actor_stamp import stamp_identity
 from mureo.context.approval import parse_approval
 from mureo.context.batch import ID_ENTROPY_BYTES, BatchError, find_batch
 from mureo.context.expected import ExpectedEffect, parse_expected
-from mureo.core import actor
 from mureo.core.scrub import scrub_text
 
 if TYPE_CHECKING:
@@ -551,9 +552,9 @@ def append_decision(path: Path, record: DecisionRecord) -> tuple[StateDocument, 
             an index is out of range, or ``supersedes`` names no decision.
         BatchError: ``batch_id`` names no declared batch.
     """
-    # Lazy: ``mureo.context.state`` ↔ ``mureo.context.decisions`` cycle inside
-    # ``context`` (#863, later stage).
-    from mureo.context.state import (  # noqa: PLC0415 — import cycle: mureo.context.decisions -> mureo.context.state (#879)
+    # Lazy: ``state_io`` -> ``state_codec`` -> ``decisions`` (the codec reads
+    # ``DecisionRecord``) is a cycle inside ``context`` (#863, #917).
+    from mureo.context.state_io import (  # noqa: PLC0415 — import cycle: mureo.context.decisions -> mureo.context.state_io (#879)
         _locked_state_mutation,
     )
 
@@ -566,15 +567,7 @@ def append_decision(path: Path, record: DecisionRecord) -> tuple[StateDocument, 
         _check_related_actions(doc, record)
         _check_supersedes(doc, record)
         _check_batch(doc, record)
-        stamped = replace(
-            record,
-            session_id=(
-                record.session_id
-                if record.session_id is not None
-                else actor.session_id()
-            ),
-            client=record.client if record.client is not None else actor.client_info(),
-        )
+        stamped = stamp_identity(record)
         position = len(doc.decisions)
         # ``replace`` carries every other section across by construction —
         # the reason ``append_action_log`` stopped enumerating them.

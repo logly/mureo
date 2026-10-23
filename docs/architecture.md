@@ -197,7 +197,15 @@ mureo/
 │   │                        #   on read, an incomplete set is withheld (never shrunk) and
 │   │                        #   says WHICH gap it is, and the two per-platform splits are
 │   │                        #   separate fields the type refuses to cross
-│   ├── state.py             # STATE.json read / mutate / atomic write + state lock (re-exports the two below)
+│   ├── state.py             # The single import site for STATE.json: re-exports the six modules below,
+│   │                        #   state_codec, conversion_overrides and daily; no logic of its own since #917
+│   ├── state_io.py          # read_state_file / write_state_file, the atomic write, the state lock, the clock
+│   ├── campaign_store.py    # upsert_campaign / get_campaign + _platform_base / _stamp_fetched_at
+│   ├── action_log_store.py  # append_action_log — the single recording choke point
+│   ├── batch_store.py       # begin_batch / end_batch (the path half of batch.py)
+│   ├── platform_store.py    # set_platform_metrics / _daily / _not_collected, set_workspace_not_collected,
+│   │                        #   set_conversion_action_types
+│   ├── report_store.py      # set_report / set_display
 │   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
 │   ├── _platform_codec.py   # The platform / campaign / ad entries' two codec halves (#881) —
 │   │                        #   a hand-authored entry is kept and written back in its own shape

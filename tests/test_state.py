@@ -656,7 +656,9 @@ class TestAtomicWrite:
 
         new_doc = StateDocument(version="1", customer_id="new")
         with (
-            patch("mureo.context.state.os.replace", side_effect=OSError("disk full")),
+            patch(
+                "mureo.context.state_io.os.replace", side_effect=OSError("disk full")
+            ),
             pytest.raises(OSError),
         ):
             write_state_file(fp, new_doc)

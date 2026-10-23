@@ -123,7 +123,7 @@ class TestWhatCountsAsShortening:
         def _explode(*args: Any, **kwargs: Any) -> StateDocument:
             raise AssertionError("the guard re-read a document it was handed")
 
-        monkeypatch.setattr("mureo.context.state.read_state_file", _explode)
+        monkeypatch.setattr("mureo.context.state_io.read_state_file", _explode)
         assert guard_action_log_shrink(path, _doc(1), previous=_doc(3)) is not None
 
 
@@ -164,7 +164,7 @@ class TestTheOrdinaryMutators:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The locked mutator hands the guard the document it already read."""
-        from mureo.context import state as state_mod
+        from mureo.context import state_io as state_mod
 
         path = _state(tmp_path / "STATE.json", 1)
         reads: list[Path] = []

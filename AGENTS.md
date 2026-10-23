@@ -191,7 +191,11 @@ mureo/
 │   └── _tty.py          # TTY-safe helpers for non-interactive setup + terminal_safe() scrubbing
 ├── context/             # File-based strategy context (no DB)
 │   ├── strategy.py      # STRATEGY.md parser/writer
-│   ├── state.py         # STATE.json parser/writer
+│   ├── state.py         # STATE.json parser/writer — the single import site; since #917 a facade that
+│   │                    #   re-exports state_io (read / atomic write / lock / clock), campaign_store
+│   │                    #   (upsert_campaign, _platform_base, _stamp_fetched_at), action_log_store
+│   │                    #   (append_action_log), batch_store (begin/end_batch), platform_store (rollups,
+│   │                    #   daily, not_collected, conversion override) and report_store (set_report, set_display)
 │   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
 │   ├── display_models.py # The display contract models (#706), re-exported by models.py
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
@@ -234,7 +238,8 @@ mureo/
 │   │                    #   plus `days`; refused when stale. Pure
 │   ├── actor_stamp.py   # `stamp_actor` — the WHO/WHY stamp shared by
 │   │                    #   `append_action_log` and the automatic closure, so a
-│   │                    #   mureo-written entry carries the same identity on both
+│   │                    #   mureo-written entry carries the same identity on both;
+│   │                    #   its identity half `stamp_identity` also stamps decisions
 │   ├── monthly_budget.py # The `## Custom: Monthly Budget` reader (#652) — the operator's
 │   │                     #   INTENDED monthly spend, twin of `guardrails_from_strategy_text`.
 │   │                     #   Separate type from `Guardrails` on purpose: a target is not a
@@ -484,7 +489,7 @@ Structure drifts before logic breaks: a second error envelope, a helper that dup
 - **No silent broad excepts.** Narrow the type where the failing call and its exception types are known. Otherwise `except Exception` carries `# noqa: BLE001 — <reason>` (at least two words, not a placeholder such as `reason` or `todo`), and a broad except that continues logs at WARNING. Ruff enforces this (`BLE`, for `mureo/` and `tests/` alike): `tests/test_ble001_reasons.py` runs ruff with `--ignore-noqa` over both trees (tests are not exempt) and checks every site it finds; a file-level `# ruff: noqa` that covers the rule is refused, and no ignore or per-file ignore may list it (#865). A failed partial read inside a composite result sets its key to `None` and logs `Failed to retrieve <what> (<ExceptionClass>)` at WARNING: no stand-in strings, zeros or empty containers. The credential-holding trees and `mureo/web` log the exception class, never `exc_info=` or `logger.exception()` (`tests/test_log_exc_info_sweep.py`; the existing `mureo/web` sites sit in an allow-list that only shrinks, #900).
 - **Docs move with the code.** `docs/architecture.md`, `AGENTS.md`, skill files and `CHANGELOG.md` are updated in the same PR as the change they describe.
 - **Review the structure, not only the logic.** A review rejects, or asks for a justification of, any new helper, new failure shape, new lazy import or new name that the diff introduces. "Tests green" does not settle it.
-- **Limits belong in lint.** The 50-line function and 800-line file limits above are rules for lint to enforce (tracked with #865), not for reviewers to remember; until the lint rule lands, review checks them and an overrun needs an issue.
+- **Limits belong in lint.** The 50-line function and 800-line file limits above are rules for lint to enforce (tracked with #865), not for reviewers to remember. `tests/test_function_length.py` enforces both (#917): a function or file under `mureo/` over its limit fails unless it is on that test's frozen `KNOWN_OVER_LIMIT` / `KNOWN_LONG_FILES` list, a listed one may not grow, and an entry back within the limit has to be removed. The lists only shrink; never add to them.
 
 The same checklist is re-run as a structural audit after each major release, scored A–D per dimension with `path:line` evidence.
 
