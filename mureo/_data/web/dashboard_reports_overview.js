@@ -116,7 +116,7 @@
   }
 
   // The strip above the alerts: what the roster spent and converted, what it
-  // paid per conversion, and how many of its clients need attention.
+  // paid per conversion, and how many of its clients have findings.
   //
   // Rendered only for the index — a roster total sitting above one client's
   // report reads as that client's — and only when there is a roster: an
@@ -161,7 +161,9 @@
     );
     // The one cell that is never withheld: it counts findings mureo raised
     // itself, not figures it collected. It reads the same array as the alert
-    // list's heading and the grid's marks.
+    // list's heading and the grid's marks — every client with a finding,
+    // watch-level ones included — so its label says "with findings" (#853)
+    // and the note under it is where attention and watch are split.
     const marked = triage && Array.isArray(triage.clients) ? triage.clients : [];
     // Defensive about the argument, not a fallback that recomputes it: a
     // second count here is exactly what this change removed, so a missing

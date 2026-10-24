@@ -690,7 +690,7 @@ test.describe("a client's health, for the grid and its filter", function () {
 // grouped by KIND and name the clients they cover.
 //
 // Grouping is a display aggregation and nothing more. The client set it
-// covers is the same set, which is what keeps "N clients need attention"
+// covers is the same set, which is what keeps "N clients have findings"
 // above it honest, and the kind order is still the ranking.
 
 test.describe("findings are grouped by kind", function () {

@@ -13,7 +13,7 @@ What is pinned, and why each one is the thing that would break:
   what makes the summary's own omission (``tests/test_web_reports_triage.py``)
   a complete answer rather than half of one;
 - the heading's count and the marked cards come from ONE list, so a refactor
-  cannot leave "3 clients need attention" above two marked cards;
+  cannot leave "3 clients have findings" above two marked cards;
 - the layer sits ABOVE the grid — a triage layer below the cards it triages
   is not one;
 - it is hidden when it holds nothing (no "0 alerts" banner competing with
@@ -189,7 +189,7 @@ def test_an_empty_layer_renders_nothing_at_all() -> None:
 
 @pytest.mark.unit
 def test_the_heading_count_and_the_card_marks_come_from_one_list() -> None:
-    """ "If the layer says three clients need attention, exactly three cards
+    """ "If the layer says three clients have findings, exactly three cards
     are marked." The two cannot drift while they read the same array — the
     JS suite pins the array itself."""
     js = _read_layer()
@@ -291,6 +291,25 @@ def test_the_strings_are_localized_in_both_locales() -> None:
         for loc in ("en", "ja"):
             assert data[loc].get(key), f"{key} missing in {loc}"
         assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+def test_the_client_count_says_findings_not_attention_in_both_locales() -> None:
+    """#853: the heading and the portfolio cell count every client with a
+    finding, watch-level ones included, so neither may claim those clients
+    "need attention" — the chips beside them would then contradict the
+    count. Attention versus watch is read from the severity chips and the
+    note under the cell, not from these two strings."""
+    data = json.loads(_read("i18n.json"))
+    for key in (
+        "dashboard.reports_triage_title",
+        "dashboard.reports_portfolio_attention",
+    ):
+        assert "attention" not in data["en"][key].lower(), data["en"][key]
+        assert "対応が必要" not in data["ja"][key], data["ja"][key]
+        assert "要対応" not in data["ja"][key], data["ja"][key]
+        assert "findings" in data["en"][key], data["en"][key]
+        assert "指摘" in data["ja"][key], data["ja"][key]
 
 
 @pytest.mark.unit

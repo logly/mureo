@@ -95,6 +95,15 @@
 - **google_ads: the shared-budget refusal for Smart Bidding strategies now
   explains the portfolio-strategy rule from Google Ads Help and no longer
   recommends MAXIMIZE_CLICKS** (#908).
+- **The Reports alert heading and the portfolio cell no longer say "need
+  attention" for clients that only have watch-level findings** (#853). Both
+  count every client with a finding, watch-level ones included, yet read
+  "{n} clients need attention" and "Clients needing attention", so the
+  heading could say one client needed attention while the chips said
+  `attention 0 / watch 1`. Both now say "clients with findings", in English
+  and Japanese; what they count is unchanged. The per-severity chips and the
+  note under the cell are unchanged and are where attention and watch are
+  told apart.
 
 ## [0.33.0] - 2026-10-23
 

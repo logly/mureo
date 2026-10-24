@@ -488,8 +488,8 @@
   //             the same finding stay in the order they chose.
   //   clients — one entry per client with at least one item, in that same
   //             ranked order. This is the ONE list the heading counts and
-  //             the grid marks from, which is what keeps "3 clients need
-  //             attention" from sitting above two marked cards.
+  //             the grid marks from, which is what keeps "3 clients have
+  //             findings" from sitting above two marked cards.
   //
   // Clients are identified by POSITION, not slug: a slug comes from a
   // third-party client registry and may be blank or repeated, and two cards
