@@ -8,20 +8,25 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from mureo.analysis.expected_eval import build_evaluation
+from mureo.context.decisions import DecisionRecord
+from mureo.context.models import ActionLogEntry
 from mureo.context.settings import ops_history_enabled
 from mureo.context.settings_store import set_ops_history_enabled
-from mureo.context.state import read_state_file
+from mureo.context.state import read_state_file, write_state_file
+from mureo.core.actor import session_id
 from mureo.mcp import journal
 from mureo.mcp._ops_history_records import (
     DECISION_EXPECTED_REQUIRED,
     ENTRY_EXPECTED_REQUIRED,
     ENTRY_REASON_REQUIRED,
+    require_entry_fields,
 )
 
 pytestmark = pytest.mark.unit
@@ -155,6 +160,102 @@ class TestActionLogAppend:
         )
         doc = read_state_file(workspace / "STATE.json")
         assert doc.action_log[1].decision_id == doc.action_log[0].decision_id
+
+
+BUDGET_TOOL = "google_ads_budget_update"
+
+
+def _call_decision(decision_id: str, session: str) -> DecisionRecord:
+    """The decision a no-entry budget call recorded (docs rule 4)."""
+    return DecisionRecord(
+        decision_id=decision_id,
+        recorded_at="2026-10-13T10:00:00+00:00",
+        status="adopted",
+        title=f"Decision {decision_id}",
+        rationale="Capped.",
+        expected=(),
+        session_id=session,
+        journal_tool=BUDGET_TOOL,
+        journal_call_id="call-0123456789abcdef",
+        applied_params={"budget_id": "b1", "amount": 12000},
+    )
+
+
+def _budget_entry(session: str | None) -> ActionLogEntry:
+    """An entry for that call, stating neither ``reason`` nor ``expected``."""
+    return ActionLogEntry(
+        timestamp="2026-10-13T10:05:00+00:00",
+        action=BUDGET_TOOL,
+        platform="google_ads",
+        entity_type="budget",
+        entity_id="b1",
+        session_id=session,
+    )
+
+
+def _enabled_with(path: Path, *records: DecisionRecord) -> None:
+    set_ops_history_enabled(path, True)
+    doc = read_state_file(path)
+    write_state_file(path, replace(doc, decisions=(*doc.decisions, *records)))
+
+
+class TestEntryJoiningANoEntryCall:
+    """An entry that joins a no-entry call's decision (docs rule 4) opens
+    none, so it is not asked to restate ``reason`` / ``expected`` (#851)."""
+
+    def test_the_one_matching_call_lets_it_through(self, workspace: Path) -> None:
+        path = workspace / "STATE.json"
+        _enabled_with(path, _call_decision("dec-c", "s-1"))
+        require_entry_fields(path, _budget_entry("s-1"), None)
+
+    def test_two_matching_calls_still_require_the_fields(self, workspace: Path) -> None:
+        path = workspace / "STATE.json"
+        _enabled_with(
+            path, _call_decision("dec-c", "s-1"), _call_decision("dec-d", "s-1")
+        )
+        with pytest.raises(ValueError) as caught:
+            require_entry_fields(path, _budget_entry("s-1"), None)
+        assert str(caught.value) == ENTRY_REASON_REQUIRED
+
+    def test_another_sessions_call_still_requires_the_fields(
+        self, workspace: Path
+    ) -> None:
+        path = workspace / "STATE.json"
+        _enabled_with(path, _call_decision("dec-c", "other"))
+        with pytest.raises(ValueError) as caught:
+            require_entry_fields(path, _budget_entry("s-1"), None)
+        assert str(caught.value) == ENTRY_REASON_REQUIRED
+
+    def test_a_call_already_carried_out_still_requires_the_fields(
+        self, workspace: Path
+    ) -> None:
+        """Condition 4 of docs rule 4: once an entry carries the decision,
+        a second identical entry is a new change and opens its own."""
+        path = workspace / "STATE.json"
+        _enabled_with(path, _call_decision("dec-c", "s-1"))
+        doc = read_state_file(path)
+        carried = replace(_budget_entry("s-1"), decision_id="dec-c")
+        write_state_file(path, replace(doc, action_log=(*doc.action_log, carried)))
+        with pytest.raises(ValueError) as caught:
+            require_entry_fields(path, _budget_entry("s-1"), None)
+        assert str(caught.value) == ENTRY_REASON_REQUIRED
+
+    async def test_the_tool_stamps_this_session_before_checking(
+        self, workspace: Path
+    ) -> None:
+        """The handler's entry has no ``session_id`` yet: the append stamps
+        it later, so the check must match on the session the append will
+        stamp, or the match would never apply on the tool path."""
+        path = workspace / "STATE.json"
+        _enabled_with(path, _call_decision("dec-c", session_id()))
+        entry = {
+            "action": BUDGET_TOOL,
+            "platform": "google_ads",
+            "entity_type": "budget",
+            "entity_id": "b1",
+        }
+        await _call("mureo_state_action_log_append", {"entry": entry})
+        assert read_state_file(path).action_log[0].decision_id == "dec-c"
 
 
 class TestDecisionRecord:
