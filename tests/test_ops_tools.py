@@ -14,7 +14,8 @@ from typing import Any
 import pytest
 
 from mureo.analysis.expected_eval import build_evaluation
-from mureo.context.settings import ops_history_enabled, set_ops_history_enabled
+from mureo.context.settings import ops_history_enabled
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import read_state_file
 from mureo.mcp import journal
 from mureo.mcp._ops_history_records import (

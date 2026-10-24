@@ -16,20 +16,21 @@ hand-edited ``"enabled": "yes"`` must never switch on a requirement the
 operator cannot see they switched on. The WRITE is strict — only a real
 boolean is accepted.
 
-Written only through :func:`set_ops_history_enabled`, which takes STATE.json's
-file lock; the MCP tool and the ``mureo configure`` toggle both reach it
-through the workspace-guarded path resolution every other STATE.json writer
-uses.
+Written only through
+:func:`mureo.context.settings_store.set_ops_history_enabled`, which takes
+STATE.json's file lock; the MCP tool and the ``mureo configure`` toggle both
+reach it through the workspace-guarded path resolution every other STATE.json
+writer uses. It lives in its own module because
+:mod:`mureo.context.state_codec` reads :func:`parse_settings`, so this module
+sits below :mod:`mureo.context.state_io` and does not import it (#879).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from mureo.context.models import StateDocument
 
 #: The two key names on disk, written down once.
@@ -85,36 +86,6 @@ def ops_history_enabled(doc: StateDocument | None) -> bool:
     return doc.settings.ops_history_enabled
 
 
-def set_ops_history_enabled(path: Path, enabled: Any) -> StateDocument:
-    """Switch ops history on or off for the workspace at ``path``.
-
-    A value that is already in force writes nothing — in particular, "off"
-    for a workspace with no STATE.json does not create one.
-
-    Raises:
-        ValueError: ``enabled`` is not a boolean. Refused before the file
-            is opened, so a bad call never creates or touches STATE.json.
-    """
-    if not isinstance(enabled, bool):
-        raise ValueError(f"enabled must be a boolean; got {enabled!r}")
-    # Lazy: ``state_io`` -> ``state_codec`` -> ``settings`` (the codec reads
-    # ``parse_settings``) is a cycle inside ``context`` (#863, #917).
-    from mureo.context.state_io import (  # noqa: PLC0415 — import cycle: mureo.context.settings -> mureo.context.state_io (#879)
-        _locked_state_mutation,
-        read_state_file,
-    )
-
-    current_doc = read_state_file(path)
-    if ops_history_enabled(current_doc) == enabled:
-        return current_doc
-
-    def _build(doc: StateDocument) -> StateDocument:
-        current = doc.settings or WorkspaceSettings()
-        return replace(doc, settings=replace(current, ops_history_enabled=enabled))
-
-    return _locked_state_mutation(path, _build)
-
-
 __all__ = [
     "ENABLED_KEY",
     "OPS_HISTORY_KEY",
@@ -122,6 +93,5 @@ __all__ = [
     "WorkspaceSettings",
     "ops_history_enabled",
     "parse_settings",
-    "set_ops_history_enabled",
     "settings_to_dict",
 ]

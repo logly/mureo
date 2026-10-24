@@ -8,6 +8,8 @@ one layer up (:mod:`mureo.context.campaign_store`,
 :mod:`mureo.context.action_log_store`, :mod:`mureo.context.batch_store`,
 :mod:`mureo.context.platform_store`, :mod:`mureo.context.report_store`), and
 :mod:`mureo.context.state` re-exports all of them as the single import site.
+Two more stores sit at that layer without being re-exported (#879):
+:mod:`mureo.context.decision_store` and :mod:`mureo.context.settings_store`.
 
 Split out of :mod:`mureo.context.state` verbatim so that a module the codec
 does not depend on can take the lock at top level instead of through a
@@ -18,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -33,6 +36,8 @@ from mureo.context.models import StateDocument
 from mureo.context.platform_guards import warn_on_duplicate_accounts
 from mureo.context.state_codec import parse_state, render_state
 from mureo.fsutil import file_lock
+
+logger = logging.getLogger(__name__)
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -92,6 +97,26 @@ def read_state_file(path: Path, *, strict: bool = True) -> StateDocument:
         raise ContextFileError(f"Failed to parse JSON in STATE.json: {path}") from exc
 
 
+def _previous_document(path: Path) -> StateDocument | None:
+    """What is on disk at ``path``, or ``None`` if that cannot be read.
+
+    Feeds the ``action_log`` shrink guard when the writer's caller did not
+    hand one in. A document nobody can read is not evidence that anything
+    was shortened, so an unreadable or absent file leaves the write
+    unguarded. ``strict=False``: a section the writer contract refuses (a
+    malformed ``decisions`` record, a top-level ``campaigns`` that is not a
+    list of objects) must not cost the backup of the ``action_log`` beside
+    it.
+    """
+    if not path.exists():
+        return None
+    try:
+        return read_state_file(path, strict=False)
+    except Exception:  # noqa: BLE001 — a guard may not break the write
+        logger.debug("action_log guard: %s could not be read", path, exc_info=True)
+        return None
+
+
 def write_state_file(
     path: Path, doc: StateDocument, *, previous: StateDocument | None = None
 ) -> None:
@@ -105,10 +130,12 @@ def write_state_file(
     timestamped copy of that document behind first (#758 phase 6) — see
     :func:`mureo.context.action_log_guard.guard_action_log_shrink`. Pass
     ``previous`` when the caller has already read the on-disk document
-    under the same lock, so the guard costs no second read.
+    under the same lock, so the guard costs no second read; without it the
+    document on disk is read here, tolerantly, for the guard.
     """
     warn_on_duplicate_accounts(path, doc)
-    guard_action_log_shrink(path, doc, previous=previous)
+    known = previous if previous is not None else _previous_document(path)
+    guard_action_log_shrink(path, doc, previous=known)
     text = render_state(doc)
     _atomic_write(path, text)
 

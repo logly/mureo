@@ -15,6 +15,7 @@ both lengths and where the copy is.
 
 from __future__ import annotations
 
+import json
 import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -29,6 +30,7 @@ from mureo.context.state import (
     read_state_file,
     write_state_file,
 )
+from mureo.context.state_codec import render_state
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,13 +64,18 @@ def _backups(path: Path) -> list[Path]:
     return sorted(path.parent.glob(f"{path.name}.bak.*"))
 
 
+def _on_disk(path: Path) -> StateDocument:
+    """The previous document the way ``write_state_file`` hands it over."""
+    return read_state_file(path, strict=False)
+
+
 class TestWhatCountsAsShortening:
     def test_a_shorter_log_is_backed_up(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         path = _state(tmp_path / "STATE.json", 3)
         with caplog.at_level(logging.WARNING, logger=action_log_guard.__name__):
-            backup = guard_action_log_shrink(path, _doc(2), previous=None)
+            backup = guard_action_log_shrink(path, _doc(2), previous=_on_disk(path))
         assert backup is not None
         assert backup.exists()
         assert len(read_state_file(backup).action_log) == 3
@@ -83,28 +90,38 @@ class TestWhatCountsAsShortening:
         rewritten = StateDocument(
             version="2", action_log=(_entry(0), _entry(1, action="budget_raised"))
         )
-        assert guard_action_log_shrink(path, rewritten, previous=None) is not None
+        previous = _on_disk(path)
+        assert guard_action_log_shrink(path, rewritten, previous=previous) is not None
 
     def test_an_appended_entry_is_not(self, tmp_path: Path) -> None:
         path = _state(tmp_path / "STATE.json", 2)
-        assert guard_action_log_shrink(path, _doc(3), previous=None) is None
+        assert guard_action_log_shrink(path, _doc(3), previous=_on_disk(path)) is None
         assert _backups(path) == []
 
     def test_an_unchanged_log_is_not(self, tmp_path: Path) -> None:
         path = _state(tmp_path / "STATE.json", 2)
-        assert guard_action_log_shrink(path, _doc(2), previous=None) is None
+        assert guard_action_log_shrink(path, _doc(2), previous=_on_disk(path)) is None
 
     def test_the_rest_of_the_document_is_not_the_guards_business(
         self, tmp_path: Path
     ) -> None:
         path = _state(tmp_path / "STATE.json", 2)
         changed = _doc(2, platforms={"google_ads": PlatformState(account_id="1")})
-        assert guard_action_log_shrink(path, changed, previous=None) is None
+        assert guard_action_log_shrink(path, changed, previous=_on_disk(path)) is None
 
+    def test_no_previous_document_has_nothing_to_guard(self, tmp_path: Path) -> None:
+        """``previous=None`` is "nothing readable on disk", not "go and read"."""
+        path = _state(tmp_path / "STATE.json", 3)
+        assert guard_action_log_shrink(path, _doc(0), previous=None) is None
+        assert _backups(path) == []
+
+
+class TestWhatTheWriterReadsForTheGuard:
     def test_a_missing_file_has_nothing_to_guard(self, tmp_path: Path) -> None:
         missing = tmp_path / "STATE.json"
-        assert guard_action_log_shrink(missing, _doc(0), previous=None) is None
+        write_state_file(missing, _doc(0))
         assert _backups(missing) == []
+        assert read_state_file(missing).action_log == ()
 
     def test_a_document_that_cannot_be_read_is_not_guarded(
         self, tmp_path: Path
@@ -112,8 +129,24 @@ class TestWhatCountsAsShortening:
         """No previous log means no claim that one was shortened."""
         path = tmp_path / "STATE.json"
         path.write_text("{not json at all", encoding="utf-8")
-        assert guard_action_log_shrink(path, _doc(0), previous=None) is None
+        write_state_file(path, _doc(0))
         assert _backups(path) == []
+        assert read_state_file(path).action_log == ()
+
+    def test_a_section_the_strict_reader_refuses_does_not_cost_the_backup(
+        self, tmp_path: Path
+    ) -> None:
+        """The writer reads with ``strict=False``: a malformed ``decisions``
+        record beside the log must not leave the shortening unguarded."""
+        path = tmp_path / "STATE.json"
+        on_disk = json.loads(render_state(_doc(3)))
+        on_disk["decisions"] = [42]
+        path.write_text(json.dumps(on_disk), encoding="utf-8")
+
+        write_state_file(path, _doc(1))
+
+        (backup,) = _backups(path)
+        assert len(read_state_file(backup, strict=False).action_log) == 3
 
     def test_a_supplied_previous_is_used_instead_of_a_read(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -121,10 +154,11 @@ class TestWhatCountsAsShortening:
         path = _state(tmp_path / "STATE.json", 3)
 
         def _explode(*args: Any, **kwargs: Any) -> StateDocument:
-            raise AssertionError("the guard re-read a document it was handed")
+            raise AssertionError("the writer re-read a document it was handed")
 
         monkeypatch.setattr("mureo.context.state_io.read_state_file", _explode)
-        assert guard_action_log_shrink(path, _doc(1), previous=_doc(3)) is not None
+        write_state_file(path, _doc(1), previous=_doc(3))
+        assert len(_backups(path)) == 1
 
 
 class TestWriteStateFile:

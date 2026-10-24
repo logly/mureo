@@ -20,6 +20,7 @@ import pytest
 from mureo.context._decision_codec import decision_to_dict, parse_decisions
 from mureo.context.actor_stamp import stamp_identity
 from mureo.context.batch import BatchError
+from mureo.context.decision_store import append_decision
 from mureo.context.decisions import (
     DECISION_METRIC_VALUE_MAX_CHARS,
     DECISION_METRICS_MAX_KEYS,
@@ -28,7 +29,6 @@ from mureo.context.decisions import (
     DECISION_STATUSES,
     DECISION_TITLE_MAX_CHARS,
     DecisionRecord,
-    append_decision,
     decision_by_id,
     latest_decisions,
     new_decision_id,

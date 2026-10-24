@@ -18,7 +18,7 @@ from mcp.types import TextContent
 from mureo.context.decisions import DecisionRecord
 from mureo.context.expected import EXPECTED_DIRECTIONS, EXPECTED_METRICS
 from mureo.context.models import StateDocument
-from mureo.context.settings import set_ops_history_enabled
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import read_state_file, write_state_file
 from mureo.mcp import journal
 from mureo.mcp._ops_history_param import (

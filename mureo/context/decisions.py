@@ -22,11 +22,11 @@ thing the trail is for — that the decision was first made as a proposal,
 at a time, on figures that were true then. The same reason ``action_log``
 records a reversal as an entry rather than deleting the entry it reverses.
 
-The pure half lives here with the model and the queries; the writer needs
-STATE.json's file lock and reaches into :mod:`mureo.context.state_io` for it
-lazily: ``mureo.context.state_io`` -> ``mureo.context.state_codec`` ->
-``mureo.context.decisions`` (the codec reads :class:`DecisionRecord`) is still
-a cycle after #917 split the lock out of :mod:`mureo.context.state`.
+The pure half lives here with the model, the cross-reference checks and the
+queries. The writer, which needs STATE.json's file lock, is
+:func:`mureo.context.decision_store.append_decision` (#879):
+:mod:`mureo.context.state_codec` reads :class:`DecisionRecord`, so this module
+sits below :mod:`mureo.context.state_io` and does not import it.
 """
 
 from __future__ import annotations
@@ -35,11 +35,10 @@ import copy
 import math
 import re
 import secrets
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
-from mureo.context._preserve import copied_raw, is_opaque_decision, refuse_if_kept
-from mureo.context.actor_stamp import stamp_identity
+from mureo.context._preserve import copied_raw, is_opaque_decision
 from mureo.context.approval import parse_approval
 from mureo.context.batch import ID_ENTROPY_BYTES, BatchError, find_batch
 from mureo.context.expected import ExpectedEffect, parse_expected
@@ -47,7 +46,6 @@ from mureo.core.scrub import scrub_text
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
     from mureo.context.approval import ApprovalRef
     from mureo.context.models import StateDocument
@@ -165,8 +163,8 @@ class DecisionRecord:
         recorded after the pass is finished.
     session_id / client: Who wrote the record — the writing process's
         journal session and the connected MCP client label. Stamped by
-        :func:`append_decision`, exactly as on an ``action_log`` entry, so
-        the two trails join on the same id.
+        :func:`mureo.context.decision_store.append_decision`, exactly as on
+        an ``action_log`` entry, so the two trails join on the same id.
     expected: What the decision should move, as structured effects (#848,
         :mod:`mureo.context.expected`) — the metrics the later evaluation
         treats as primary. Empty means nothing was declared.
@@ -529,53 +527,6 @@ def _check_batch(doc: StateDocument, record: DecisionRecord) -> None:
         )
 
 
-def append_decision(path: Path, record: DecisionRecord) -> tuple[StateDocument, int]:
-    """Append ``record`` to STATE.json's ``decisions``.
-
-    Every cross-reference is validated INSIDE the lock, against the document
-    as it is about to be written: an index, a ``supersedes`` or a
-    ``batch_id`` checked outside it could be made stale by a concurrent
-    append between the check and the write.
-
-    ``session_id`` and ``client`` are stamped here when unset, from
-    :mod:`mureo.core.actor` — the same choke-point rule
-    :func:`mureo.context.state.append_action_log` follows, so a decision and
-    the actions it produced carry the same session id. An explicit value is
-    kept: a replayed or imported record names the session that made the
-    decision, not the one writing it down.
-
-    Returns:
-        The written document and the record's index in ``decisions``.
-
-    Raises:
-        ValueError: ``decisions`` is not a list (#882), the id is on record,
-            an index is out of range, or ``supersedes`` names no decision.
-        BatchError: ``batch_id`` names no declared batch.
-    """
-    # Lazy: ``state_io`` -> ``state_codec`` -> ``decisions`` (the codec reads
-    # ``DecisionRecord``) is a cycle inside ``context`` (#863, #917).
-    from mureo.context.state_io import (  # noqa: PLC0415 — import cycle: mureo.context.decisions -> mureo.context.state_io (#879)
-        _locked_state_mutation,
-    )
-
-    position = -1
-
-    def _build(doc: StateDocument) -> StateDocument:
-        nonlocal position
-        refuse_if_kept(doc, "decisions", "recording a decision")
-        _check_unique_id(doc, record)
-        _check_related_actions(doc, record)
-        _check_supersedes(doc, record)
-        _check_batch(doc, record)
-        stamped = stamp_identity(record)
-        position = len(doc.decisions)
-        # ``replace`` carries every other section across by construction —
-        # the reason ``append_action_log`` stopped enumerating them.
-        return replace(doc, decisions=(*doc.decisions, stamped))
-
-    return _locked_state_mutation(path, _build), position
-
-
 __all__ = [
     "DECISION_METRIC_VALUE_MAX_CHARS",
     "DECISION_METRICS_MAX_KEYS",
@@ -584,7 +535,6 @@ __all__ = [
     "DECISION_STATUSES",
     "DECISION_TITLE_MAX_CHARS",
     "DecisionRecord",
-    "append_decision",
     "decision_by_id",
     "latest_decisions",
     "new_decision_id",

@@ -37,7 +37,7 @@ from mureo.context._platform_codec import parse_platform, platform_state_to_dict
 from mureo.context.models import ActionLogEntry, AdState, CampaignSnapshot
 from mureo.context.platform_accounts import duplicate_account_entries
 from mureo.context.platform_guards import warn_on_duplicate_accounts
-from mureo.context.settings import set_ops_history_enabled
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import (
     append_action_log,
     read_state_file,

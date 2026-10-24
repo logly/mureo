@@ -8,7 +8,8 @@ the two handler functions ``handlers.py`` calls. It lives here rather than
 in ``handlers.py`` because that file is already over the project's
 file-size budget.
 
-Both paths go through :func:`~mureo.context.settings.set_ops_history_enabled`,
+Both paths go through
+:func:`~mureo.context.settings_store.set_ops_history_enabled`,
 which takes STATE.json's file lock, so a toggle cannot lose a concurrent
 action-log append.
 
@@ -26,7 +27,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mureo.context.settings import ops_history_enabled, set_ops_history_enabled
+from mureo.context.settings import ops_history_enabled
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import read_state_file
 from mureo.web._helpers import send_error_json, send_failure, send_json
 from mureo.web.report_clients import state_store_for_client

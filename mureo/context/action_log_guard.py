@@ -25,6 +25,11 @@ One thing it does refuse: a shortening write whose backup FAILED. Fail
 closed, exactly like ``apply_state_file_repairs`` — overwriting the only
 copy of a record because the copy could not be made is the outcome this
 module exists to prevent.
+
+The guard never reads STATE.json itself: the writer hands it the document
+on disk (:func:`mureo.context.state_io.write_state_file` reads it when its
+caller did not), so this module does not import
+:mod:`mureo.context.state_io`, which imports it (#879).
 """
 
 from __future__ import annotations
@@ -53,31 +58,6 @@ def _rendered(entries: tuple[ActionLogEntry, ...]) -> list[dict[str, object]]:
     return [action_log_entry_to_dict(entry) for entry in entries]
 
 
-def _previous_document(path: Path) -> StateDocument | None:
-    """What is on disk at ``path``, or ``None`` if that cannot be read.
-
-    A document nobody can read is not evidence that anything was
-    shortened, so an unreadable or absent file leaves the write
-    unguarded. ``strict=False``: a section the writer contract refuses (a
-    malformed ``decisions`` record, a top-level ``campaigns`` that is not a
-    list of objects) must not cost the backup of the ``action_log`` beside
-    it.
-    """
-    if not path.exists():
-        return None
-    # Lazy: ``state_io.write_state_file`` calls this guard, so
-    # ``state_io`` <-> ``action_log_guard`` is a cycle (#917).
-    from mureo.context.state_io import (  # noqa: PLC0415 — import cycle: mureo.context.action_log_guard -> mureo.context.state_io (#879)
-        read_state_file,
-    )
-
-    try:
-        return read_state_file(path, strict=False)
-    except Exception:  # noqa: BLE001 — a guard may not break the write
-        logger.debug("action_log guard: %s could not be read", path, exc_info=True)
-        return None
-
-
 def _is_shrink(previous: StateDocument, new_doc: StateDocument) -> bool:
     """Whether ``new_doc``'s log drops or rewrites part of ``previous``'s."""
     old = _rendered(previous.action_log)
@@ -95,10 +75,9 @@ def guard_action_log_shrink(
     Args:
         path: STATE.json location, as it is about to be overwritten.
         new_doc: The document the caller is about to write.
-        previous: The on-disk document, when the caller has already read
-            it under the same lock — the ordinary mutators do, and pass
-            it so this guard costs them no second read. ``None`` makes
-            the guard read ``path`` itself.
+        previous: The on-disk document as the writer read it.
+            ``None`` means there is no readable document on disk, so
+            there is nothing to guard and nothing is backed up.
 
     Returns:
         The backup path, or ``None`` when nothing was shortened (or
@@ -108,8 +87,7 @@ def guard_action_log_shrink(
         OSError: The backup could not be written. The caller must not
             proceed with the write — see the module docstring.
     """
-    known = previous if previous is not None else _previous_document(path)
-    if known is None or not _is_shrink(known, new_doc):
+    if previous is None or not _is_shrink(previous, new_doc):
         return None
     backup = backup_file(path, timestamped=True)
     if backup is None:  # the file went away under us: nothing to preserve
@@ -117,7 +95,7 @@ def guard_action_log_shrink(
     logger.warning(
         "STATE.json action_log shortened from %d to %d entries by a "
         "whole-document write; previous copy kept at %s",
-        len(known.action_log),
+        len(previous.action_log),
         len(new_doc.action_log),
         backup,
     )

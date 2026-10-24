@@ -20,9 +20,9 @@ from mureo.context.settings import (
     WorkspaceSettings,
     ops_history_enabled,
     parse_settings,
-    set_ops_history_enabled,
     settings_to_dict,
 )
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import read_state_file, write_state_file
 from mureo.context.state_codec import parse_state, render_state
 
