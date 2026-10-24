@@ -1045,15 +1045,15 @@ Three properties are load-bearing, and each is pinned by a test:
   findings say so in words. A client whose totals are withheld renders `—` on
   its card, and an empty cell in an at-a-glance grid reads as zero, or as
   fine — which is the one thing this view must never let happen.
-- **The count matches the grid.** If the layer says three clients need
-  attention, exactly three cards below it are marked; both read one list.
+- **The count matches the grid.** If the layer says three clients have
+  findings, exactly three cards below it are marked; both read one list.
   And when there is nothing, the layer renders nothing — no "0 alerts"
   banner competing for attention with the cards.
 
 #### How the layer is shown
 
 Everything below is display only. None of it changes which clients the layer
-counts: the heading, the "clients needing attention" cell and the marked
+counts: the heading, the "clients with findings" cell and the marked
 cards all read one list, and that list is over every finding.
 
 - **One row per kind, not per client.** A 27-client install rendered sixteen
@@ -1111,8 +1111,8 @@ re-rendered from the date mureo itself parsed rather than echoed.
 #### Reading the roster at a glance
 
 Above the alerts the index states the roster's own figures — total spend,
-total conversions, the cost per conversion, and how many clients need
-attention — and beside the grid, where that spend went by platform.
+total conversions, the cost per conversion, and how many clients have
+findings — and beside the grid, where that spend went by platform.
 
 Every one of those is a sum over other clients' numbers, which is the
 easiest place in the product to hide one mureo cannot vouch for: a client
