@@ -94,11 +94,11 @@ def _make_search_row(**kwargs: Any) -> MagicMock:
 
 @pytest.mark.unit
 class TestGoogleAdsApiClientInit:
-    def test_コンストラクタ_customer_idからハイフン除去(self) -> None:
+    def test_constructor_strips_hyphens_from_customer_id(self) -> None:
         client = _make_client(customer_id="123-456-7890")
         assert client._customer_id == "1234567890"
 
-    def test_コンストラクタ_login_customer_id指定(self) -> None:
+    def test_constructor_passes_explicit_login_customer_id(self) -> None:
         creds = MagicMock()
         with patch("mureo.google_ads.client.GoogleAdsClient") as mock_gads:
             GoogleAdsApiClient(
@@ -114,7 +114,7 @@ class TestGoogleAdsApiClientInit:
                 version=GOOGLE_ADS_API_VERSION,
             )
 
-    def test_コンストラクタ_login_customer_id未指定時はcustomer_id(self) -> None:
+    def test_constructor_defaults_login_customer_id_to_customer_id(self) -> None:
         creds = MagicMock()
         with patch("mureo.google_ads.client.GoogleAdsClient") as mock_gads:
             GoogleAdsApiClient(
@@ -129,7 +129,7 @@ class TestGoogleAdsApiClientInit:
                 version=GOOGLE_ADS_API_VERSION,
             )
 
-    def test_コンストラクタ_developer_token省略時はNoneで構築(self) -> None:
+    def test_constructor_builds_with_none_when_developer_token_omitted(self) -> None:
         """#751: Google stopped issuing developer tokens on 2026-09-09.
 
         The client must build without one — the SDK accepts ``None`` and
@@ -162,73 +162,73 @@ class TestGoogleAdsApiClientInit:
 
 @pytest.mark.unit
 class TestValidateId:
-    def test_数値のみ_正常(self) -> None:
+    def test_digits_only_accepted(self) -> None:
         assert GoogleAdsApiClient._validate_id("12345", "test") == "12345"
 
-    def test_非数値_エラー(self) -> None:
+    def test_non_numeric_rejected(self) -> None:
         with pytest.raises(ValueError, match="Invalid test"):
             GoogleAdsApiClient._validate_id("abc", "test")
 
-    def test_空文字_エラー(self) -> None:
+    def test_empty_string_rejected(self) -> None:
         with pytest.raises(ValueError):
             GoogleAdsApiClient._validate_id("", "test")
 
-    def test_ハイフン付き_エラー(self) -> None:
+    def test_hyphenated_rejected(self) -> None:
         with pytest.raises(ValueError):
             GoogleAdsApiClient._validate_id("123-456", "test")
 
 
 @pytest.mark.unit
 class TestValidateStatus:
-    def test_有効なステータス(self) -> None:
+    def test_valid_statuses_accepted(self) -> None:
         for s in _VALID_STATUSES:
             assert GoogleAdsApiClient._validate_status(s) == s
 
-    def test_小文字入力_大文字に変換(self) -> None:
+    def test_lowercase_input_converted_to_uppercase(self) -> None:
         assert GoogleAdsApiClient._validate_status("enabled") == "ENABLED"
 
-    def test_無効なステータス(self) -> None:
+    def test_invalid_status_rejected(self) -> None:
         with pytest.raises(ValueError, match="Invalid status"):
             GoogleAdsApiClient._validate_status("INVALID")
 
 
 @pytest.mark.unit
 class TestValidateMatchType:
-    def test_有効なマッチタイプ(self) -> None:
+    def test_valid_match_types_accepted(self) -> None:
         for mt in _VALID_MATCH_TYPES:
             assert GoogleAdsApiClient._validate_match_type(mt) == mt
 
-    def test_小文字入力(self) -> None:
+    def test_lowercase_input_converted_to_uppercase(self) -> None:
         assert GoogleAdsApiClient._validate_match_type("broad") == "BROAD"
 
-    def test_無効なマッチタイプ(self) -> None:
+    def test_invalid_match_type_rejected(self) -> None:
         with pytest.raises(ValueError, match="Invalid match_type"):
             GoogleAdsApiClient._validate_match_type("INVALID")
 
 
 @pytest.mark.unit
 class TestValidateDate:
-    def test_正常なYYYY_MM_DD(self) -> None:
+    def test_valid_yyyy_mm_dd_accepted(self) -> None:
         assert GoogleAdsApiClient._validate_date("2024-01-15", "start") == "2024-01-15"
 
-    def test_不正なフォーマット(self) -> None:
+    def test_invalid_format_rejected(self) -> None:
         with pytest.raises(ValueError, match="YYYY-MM-DD"):
             GoogleAdsApiClient._validate_date("2024/01/15", "start")
 
 
 @pytest.mark.unit
 class TestValidateRecommendationType:
-    def test_有効なタイプ(self) -> None:
+    def test_valid_type_accepted(self) -> None:
         assert GoogleAdsApiClient._validate_recommendation_type("KEYWORD") == "KEYWORD"
 
-    def test_無効なタイプ(self) -> None:
+    def test_invalid_type_rejected(self) -> None:
         with pytest.raises(ValueError, match="Invalid recommendation_type"):
             GoogleAdsApiClient._validate_recommendation_type("INVALID")
 
 
 @pytest.mark.unit
 class TestValidateResourceName:
-    def test_正常(self) -> None:
+    def test_valid_resource_name_accepted(self) -> None:
         import re
 
         pattern = re.compile(r"customers/\d+/campaigns/\d+")
@@ -237,7 +237,7 @@ class TestValidateResourceName:
         )
         assert result == "customers/123/campaigns/456"
 
-    def test_不正(self) -> None:
+    def test_invalid_resource_name_rejected(self) -> None:
         import re
 
         pattern = re.compile(r"customers/\d+/campaigns/\d+")
@@ -252,23 +252,23 @@ class TestValidateResourceName:
 
 @pytest.mark.unit
 class TestEscapeGaqlString:
-    def test_シングルクォートエスケープ(self) -> None:
+    def test_escapes_single_quote(self) -> None:
         assert GoogleAdsApiClient._escape_gaql_string("it's") == "it\\'s"
 
-    def test_バックスラッシュエスケープ(self) -> None:
+    def test_escapes_backslash(self) -> None:
         assert GoogleAdsApiClient._escape_gaql_string("a\\b") == "a\\\\b"
 
-    def test_エスケープ不要(self) -> None:
+    def test_plain_string_unchanged(self) -> None:
         assert GoogleAdsApiClient._escape_gaql_string("hello") == "hello"
 
 
 @pytest.mark.unit
 class TestExtractErrorDetail:
-    def test_メッセージあり(self) -> None:
+    def test_returns_message_when_present(self) -> None:
         exc = _make_google_ads_exception("テストエラー")
         assert GoogleAdsApiClient._extract_error_detail(exc) == "テストエラー"
 
-    def test_メッセージなし(self) -> None:
+    def test_returns_string_without_message(self) -> None:
         exc = _make_google_ads_exception()
         # If a `message` attribute is present, return it.
         result = GoogleAdsApiClient._extract_error_detail(exc)
@@ -288,7 +288,7 @@ class TestExtractErrorDetail:
 
 @pytest.mark.unit
 class TestHasErrorCode:
-    def test_一致するエラーコード(self) -> None:
+    def test_matching_error_code(self) -> None:
         exc = _make_google_ads_exception(
             attr_name="mutate_error", error_name="RESOURCE_NOT_FOUND"
         )
@@ -296,7 +296,7 @@ class TestHasErrorCode:
             exc, "mutate_error", "RESOURCE_NOT_FOUND"
         )
 
-    def test_一致しないエラーコード(self) -> None:
+    def test_non_matching_error_code(self) -> None:
         exc = _make_google_ads_exception(
             attr_name="mutate_error", error_name="OTHER_ERROR"
         )
@@ -307,7 +307,7 @@ class TestHasErrorCode:
 
 @pytest.mark.unit
 class TestExtractEvidences:
-    def test_エビデンスあり(self) -> None:
+    def test_returns_evidence_texts(self) -> None:
         entry = MagicMock()
         ev = MagicMock()
         ev.text_list.texts = ["証拠1", "証拠2"]
@@ -315,12 +315,12 @@ class TestExtractEvidences:
         result = GoogleAdsApiClient._extract_evidences(entry)
         assert result == ["証拠1", "証拠2"]
 
-    def test_エビデンスなし(self) -> None:
+    def test_empty_evidences_return_empty_list(self) -> None:
         entry = MagicMock()
         entry.evidences = []
         assert GoogleAdsApiClient._extract_evidences(entry) == []
 
-    def test_evidences属性なし(self) -> None:
+    def test_none_evidences_return_empty_list(self) -> None:
         entry = MagicMock()
         entry.evidences = None
         assert GoogleAdsApiClient._extract_evidences(entry) == []
@@ -334,7 +334,7 @@ class TestExtractEvidences:
 @pytest.mark.unit
 class TestSearch:
     @pytest.mark.asyncio
-    async def test_search_正常(self) -> None:
+    async def test_search_returns_rows(self) -> None:
         client = _make_client()
         mock_row = MagicMock()
         mock_service = MagicMock()
@@ -353,17 +353,17 @@ class TestSearch:
 
 @pytest.mark.unit
 class TestPeriodToDateClause:
-    def test_定義済み期間(self) -> None:
+    def test_predefined_period(self) -> None:
         client = _make_client()
         assert client._period_to_date_clause("LAST_30_DAYS") == "DURING LAST_30_DAYS"
         assert client._period_to_date_clause("TODAY") == "DURING TODAY"
         assert client._period_to_date_clause("YESTERDAY") == "DURING YESTERDAY"
 
-    def test_大文字小文字無視(self) -> None:
+    def test_case_insensitive(self) -> None:
         client = _make_client()
         assert client._period_to_date_clause("last_7_days") == "DURING LAST_7_DAYS"
 
-    def test_BETWEEN指定(self) -> None:
+    def test_between_clause_passed_through(self) -> None:
         client = _make_client()
         result = client._period_to_date_clause("BETWEEN '2024-01-01' AND '2024-01-31'")
         assert result == "BETWEEN '2024-01-01' AND '2024-01-31'"
@@ -373,7 +373,7 @@ class TestPeriodToDateClause:
         result = client._period_to_date_clause("2024-01-01..2024-01-31")
         assert result == "BETWEEN '2024-01-01' AND '2024-01-31'"
 
-    def test_不正なperiod(self) -> None:
+    def test_invalid_period_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError):
             client._period_to_date_clause("INVALID")
@@ -404,7 +404,7 @@ class TestPeriodToDateClause:
 @pytest.mark.unit
 class TestListAccounts:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_returns_accessible_customers(self) -> None:
         client = _make_client()
         mock_service = MagicMock()
         mock_response = MagicMock()
@@ -428,7 +428,7 @@ class TestListAccounts:
 @pytest.mark.unit
 class TestListCampaigns:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_returns_campaigns(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign.id = 111
@@ -448,7 +448,7 @@ class TestListCampaigns:
         assert result[0]["daily_budget"] == 5000.0
 
     @pytest.mark.asyncio
-    async def test_ステータスフィルタ(self) -> None:
+    async def test_status_filter_added_to_query(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.list_campaigns(status_filter="ENABLED")
@@ -456,7 +456,7 @@ class TestListCampaigns:
             assert "campaign.status = 'ENABLED'" in query
 
     @pytest.mark.asyncio
-    async def test_不正なステータスフィルタ(self) -> None:
+    async def test_invalid_status_filter_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid status"):
             await client.list_campaigns(status_filter="INVALID")
@@ -470,7 +470,7 @@ class TestListCampaigns:
 @pytest.mark.unit
 class TestGetCampaign:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_returns_campaign(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign.id = 111
@@ -494,14 +494,14 @@ class TestGetCampaign:
         assert result["budget_daily"] == 3000.0
 
     @pytest.mark.asyncio
-    async def test_見つからない(self) -> None:
+    async def test_returns_none_when_not_found(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]):
             result = await client.get_campaign("999")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_不正なID(self) -> None:
+    async def test_invalid_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid campaign_id"):
             await client.get_campaign("abc")
@@ -515,7 +515,7 @@ class TestGetCampaign:
 @pytest.mark.unit
 class TestCreateCampaign:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_creates_campaign(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/campaigns/456"
@@ -533,13 +533,13 @@ class TestCreateCampaign:
         assert result["resource_name"] == "customers/123/campaigns/456"
 
     @pytest.mark.asyncio
-    async def test_名前256文字超_エラー(self) -> None:
+    async def test_name_over_256_chars_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="256 characters"):
             await client.create_campaign({"name": "a" * 257})
 
     @pytest.mark.asyncio
-    async def test_重複名_既存返却(self) -> None:
+    async def test_duplicate_name_returns_existing(self) -> None:
         client = _make_client()
         exc = _make_google_ads_exception(
             attr_name="campaign_error",
@@ -564,7 +564,7 @@ class TestCreateCampaign:
             assert result["note"] == "既存"
 
     @pytest.mark.asyncio
-    async def test_channel_type_DISPLAY_でディスプレイキャンペーン作成(self) -> None:
+    async def test_channel_type_display_creates_display_campaign(self) -> None:
         """channel_type=DISPLAY creates a display campaign.
 
         The network settings are configured for display (content_network=True).
@@ -600,7 +600,7 @@ class TestCreateCampaign:
         assert campaign.network_settings.target_content_network is True
 
     @pytest.mark.asyncio
-    async def test_channel_type_未指定でSEARCHキャンペーン作成(self) -> None:
+    async def test_channel_type_omitted_creates_search_campaign(self) -> None:
         """When channel_type is unspecified, a SEARCH campaign is created (legacy behaviour)."""
         client = _make_client()
         mock_result = MagicMock()
@@ -626,7 +626,7 @@ class TestCreateCampaign:
         assert campaign.network_settings.target_content_network is False
 
     @pytest.mark.asyncio
-    async def test_channel_type_SEARCHでSEARCHキャンペーン作成(self) -> None:
+    async def test_channel_type_search_creates_search_campaign(self) -> None:
         """channel_type=SEARCH behaves the same as omitting it."""
         client = _make_client()
         mock_result = MagicMock()
@@ -654,7 +654,7 @@ class TestCreateCampaign:
         assert campaign.network_settings.target_content_network is False
 
     @pytest.mark.asyncio
-    async def test_channel_type_不正値はエラー(self) -> None:
+    async def test_invalid_channel_type_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="channel_type"):
             await client.create_campaign({"name": "新規", "channel_type": "VIDEO"})
@@ -684,7 +684,7 @@ class TestUpdateCampaignStatus:
         assert result["resource_name"] == "customers/123/campaigns/456"
 
     @pytest.mark.asyncio
-    async def test_REMOVED_removeオペレーション使用(self) -> None:
+    async def test_removed_uses_remove_operation(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/campaigns/456"
@@ -723,7 +723,7 @@ class TestUpdateCampaignStatus:
 @pytest.mark.unit
 class TestListAdGroups:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_returns_ad_groups(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.ad_group.id = 10
@@ -740,7 +740,7 @@ class TestListAdGroups:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_campaign_idフィルタ(self) -> None:
+    async def test_campaign_id_filter_added_to_query(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.list_ad_groups(campaign_id="111")
@@ -756,7 +756,7 @@ class TestListAdGroups:
 @pytest.mark.unit
 class TestCreateAdGroup:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_creates_ad_group(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/adGroups/789"
@@ -785,7 +785,7 @@ class TestCreateAdGroup:
 @pytest.mark.unit
 class TestUpdateAdGroup:
     @pytest.mark.asyncio
-    async def test_name更新(self) -> None:
+    async def test_updates_name(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/adGroups/789"
@@ -806,7 +806,7 @@ class TestUpdateAdGroup:
         assert result["resource_name"] == "customers/123/adGroups/789"
 
     @pytest.mark.asyncio
-    async def test_フィールド未指定_エラー(self) -> None:
+    async def test_no_fields_returns_error(self) -> None:
         client = _make_client()
         client._client.get_service.return_value = MagicMock()
         client._client.get_type.return_value = MagicMock()
@@ -815,7 +815,7 @@ class TestUpdateAdGroup:
         assert result["error"] is True
 
     @pytest.mark.asyncio
-    async def test_無効なstatus(self) -> None:
+    async def test_invalid_status_returns_error(self) -> None:
         client = _make_client()
         client._client.get_service.return_value = MagicMock()
         client._client.get_type.return_value = MagicMock()
@@ -831,7 +831,7 @@ class TestUpdateAdGroup:
         assert "Invalid status" in result["message"]
 
     @pytest.mark.asyncio
-    async def test_cpc_bid_micros_自動入札戦略下で拒否(self) -> None:
+    async def test_cpc_bid_micros_refused_under_automated_bidding(self) -> None:
         """When the parent campaign uses an automated bidding strategy
         (e.g. MAXIMIZE_CLICKS), updating cpc_bid_micros is rejected
         upfront with a clear error.
@@ -852,7 +852,7 @@ class TestUpdateAdGroup:
         assert "MAXIMIZE_CLICKS" in result["message"]
 
     @pytest.mark.asyncio
-    async def test_cpc_bid_micros_手動入札ならOK(self) -> None:
+    async def test_cpc_bid_micros_allowed_under_manual_cpc(self) -> None:
         """For MANUAL_CPC campaigns, cpc_bid_micros is updated as usual."""
         client = _make_client()
         row = MagicMock()
@@ -886,7 +886,7 @@ class TestUpdateAdGroup:
 @pytest.mark.unit
 class TestBudget:
     @pytest.mark.asyncio
-    async def test_get_budget_正常(self) -> None:
+    async def test_get_budget_returns_budget(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign_budget.id = 100
@@ -900,14 +900,14 @@ class TestBudget:
         assert result["daily_budget"] == 10000.0
 
     @pytest.mark.asyncio
-    async def test_get_budget_見つからない(self) -> None:
+    async def test_get_budget_returns_none_when_not_found(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]):
             result = await client.get_budget("999")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_update_budget_正常(self) -> None:
+    async def test_update_budget_succeeds(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/budgets/100"
@@ -945,25 +945,25 @@ class TestBudget:
         assert budget_op.update.amount_micros == 1_234_567
 
     @pytest.mark.asyncio
-    async def test_update_budget_金額0以下(self) -> None:
+    async def test_update_budget_zero_amount_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="positive number"):
             await client.update_budget({"budget_id": "100", "amount": 0})
 
     @pytest.mark.asyncio
-    async def test_update_budget_負数(self) -> None:
+    async def test_update_budget_negative_amount_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="positive number"):
             await client.update_budget({"budget_id": "100", "amount": -100})
 
     @pytest.mark.asyncio
-    async def test_update_budget_上限超過(self) -> None:
+    async def test_update_budget_over_ceiling_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="ceiling"):
             await client.update_budget({"budget_id": "100", "amount": 2_000_000_000})
 
     @pytest.mark.asyncio
-    async def test_update_budget_両方指定(self) -> None:
+    async def test_update_budget_both_amounts_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="not both"):
             await client.update_budget(
@@ -971,19 +971,19 @@ class TestBudget:
             )
 
     @pytest.mark.asyncio
-    async def test_update_budget_どちらもなし(self) -> None:
+    async def test_update_budget_no_amount_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="required"):
             await client.update_budget({"budget_id": "100"})
 
     @pytest.mark.asyncio
-    async def test_update_budget_amount_micros_bool拒否(self) -> None:
+    async def test_update_budget_amount_micros_bool_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="integer"):
             await client.update_budget({"budget_id": "100", "amount_micros": True})
 
     @pytest.mark.asyncio
-    async def test_update_budget_inf拒否(self) -> None:
+    async def test_update_budget_inf_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="finite"):
             await client.update_budget({"budget_id": "100", "amount": float("inf")})
@@ -1074,7 +1074,7 @@ class TestBudget:
         assert budget_op.update.total_amount_micros == 900_000_000_000
 
     @pytest.mark.asyncio
-    async def test_update_budget_total_両方指定(self) -> None:
+    async def test_update_budget_total_both_amounts_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="not both"):
             await client.update_budget(
@@ -1086,13 +1086,13 @@ class TestBudget:
             )
 
     @pytest.mark.asyncio
-    async def test_update_budget_total_金額0以下(self) -> None:
+    async def test_update_budget_total_zero_amount_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="positive number"):
             await client.update_budget({"budget_id": "100", "total_amount_micros": 0})
 
     @pytest.mark.asyncio
-    async def test_update_budget_total_上限超過(self) -> None:
+    async def test_update_budget_total_over_ceiling_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="ceiling"):
             await client.update_budget(
@@ -1185,7 +1185,7 @@ class TestBudget:
             await client.create_budget({"name": "empty"})
 
     @pytest.mark.asyncio
-    async def test_create_budget_正常(self) -> None:
+    async def test_create_budget_succeeds(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/budgets/200"
@@ -1206,19 +1206,19 @@ class TestBudget:
         assert result["resource_name"] == "customers/123/budgets/200"
 
     @pytest.mark.asyncio
-    async def test_create_budget_名前256文字超(self) -> None:
+    async def test_create_budget_name_over_256_chars_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="256 characters"):
             await client.create_budget({"name": "a" * 257, "amount": 1000})
 
     @pytest.mark.asyncio
-    async def test_create_budget_金額0以下(self) -> None:
+    async def test_create_budget_zero_amount_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="positive number"):
             await client.create_budget({"name": "test", "amount": 0})
 
     @pytest.mark.asyncio
-    async def test_create_budget_重複名(self) -> None:
+    async def test_create_budget_duplicate_name_returns_existing(self) -> None:
         client = _make_client()
         exc = _make_google_ads_exception(
             attr_name="campaign_budget_error",
@@ -1251,7 +1251,7 @@ class TestBudget:
 @pytest.mark.unit
 class TestUpdateCampaign:
     @pytest.mark.asyncio
-    async def test_name更新(self) -> None:
+    async def test_updates_name(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/campaigns/111"
@@ -1271,7 +1271,7 @@ class TestUpdateCampaign:
         assert result["resource_name"] == "customers/123/campaigns/111"
 
     @pytest.mark.asyncio
-    async def test_フィールド未指定_エラー(self) -> None:
+    async def test_no_fields_rejected(self) -> None:
         client = _make_client()
         client._client.get_service.return_value = MagicMock()
         client._client.get_type.return_value = MagicMock()
@@ -1280,7 +1280,7 @@ class TestUpdateCampaign:
             await client.update_campaign({"campaign_id": "111"})
 
     @pytest.mark.asyncio
-    async def test_MAXIMIZE_CLICKSにtarget_cpa_不正組み合わせ(self) -> None:
+    async def test_maximize_clicks_with_target_cpa_rejected(self) -> None:
         client = _make_client()
         client._client.get_service.return_value = MagicMock()
         client._client.get_type.return_value = MagicMock()
@@ -1302,19 +1302,19 @@ class TestUpdateCampaign:
 
 @pytest.mark.unit
 class TestSetBiddingStrategy:
-    def test_未サポート戦略_エラー(self) -> None:
+    def test_unsupported_strategy_rejected(self) -> None:
         client = _make_client()
         campaign = MagicMock()
         with pytest.raises(ValueError, match="Unsupported bidding strategy"):
             client._set_bidding_strategy(campaign, "INVALID_STRATEGY", {})
 
-    def test_TARGET_CPA_パラメータ不足(self) -> None:
+    def test_target_cpa_missing_parameter_rejected(self) -> None:
         client = _make_client()
         campaign = MagicMock()
         with pytest.raises(ValueError, match="target_cpa_micros"):
             client._set_bidding_strategy(campaign, "TARGET_CPA", {})
 
-    def test_TARGET_CPA_負の値(self) -> None:
+    def test_target_cpa_negative_value_rejected(self) -> None:
         client = _make_client()
         campaign = MagicMock()
         with pytest.raises(ValueError, match="positive integer"):
@@ -1322,13 +1322,13 @@ class TestSetBiddingStrategy:
                 campaign, "TARGET_CPA", {"target_cpa_micros": -1}
             )
 
-    def test_TARGET_ROAS_パラメータ不足(self) -> None:
+    def test_target_roas_missing_parameter_rejected(self) -> None:
         client = _make_client()
         campaign = MagicMock()
         with pytest.raises(ValueError, match="target_roas_value"):
             client._set_bidding_strategy(campaign, "TARGET_ROAS", {})
 
-    def test_TARGET_ROAS_負の値(self) -> None:
+    def test_target_roas_negative_value_rejected(self) -> None:
         client = _make_client()
         campaign = MagicMock()
         with pytest.raises(ValueError, match="positive number"):
@@ -1336,7 +1336,7 @@ class TestSetBiddingStrategy:
                 campaign, "TARGET_ROAS", {"target_roas_value": -1.0}
             )
 
-    def test_MAXIMIZE_CLICKS_上限CPC負の値(self) -> None:
+    def test_maximize_clicks_negative_cpc_ceiling_rejected(self) -> None:
         client = _make_client()
         campaign = MagicMock()
         client._client.get_type.return_value = MagicMock()
@@ -1354,7 +1354,7 @@ class TestSetBiddingStrategy:
 @pytest.mark.unit
 class TestGetPerformanceReport:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_returns_report_rows(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign.id = 111
@@ -1381,7 +1381,7 @@ class TestGetPerformanceReport:
 @pytest.mark.unit
 class TestGetNetworkPerformanceReport:
     @pytest.mark.asyncio
-    async def test_正常_SEARCH(self) -> None:
+    async def test_returns_search_network_row(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign.id = 111
@@ -1449,7 +1449,7 @@ class TestGetNetworkPerformanceReport:
         ]
 
     @pytest.mark.asyncio
-    async def test_DISPLAY等はスキップ(self) -> None:
+    async def test_display_and_other_networks_skipped(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.segments.ad_network_type = "DISPLAY"
@@ -1460,7 +1460,7 @@ class TestGetNetworkPerformanceReport:
         assert len(result) == 0
 
     @pytest.mark.asyncio
-    async def test_conversions_0でCPA_0(self) -> None:
+    async def test_zero_conversions_gives_zero_cpa(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign.id = 111
@@ -1488,7 +1488,7 @@ class TestGetNetworkPerformanceReport:
 @pytest.mark.unit
 class TestWrapMutateError:
     @pytest.mark.asyncio
-    async def test_正常実行(self) -> None:
+    async def test_passes_result_through_on_success(self) -> None:
         """The decorator does not interfere with normal execution."""
 
         class FakeClient:
@@ -1538,7 +1538,7 @@ class TestWrapMutateError:
             await client.do_something()
 
     @pytest.mark.asyncio
-    async def test_一般的なGoogleAdsException(self) -> None:
+    async def test_generic_google_ads_exception_raises_runtime_error(self) -> None:
         exc = _make_google_ads_exception("一般エラー")
 
         class FakeClient:
@@ -1561,7 +1561,7 @@ class TestWrapMutateError:
             await client.do_something()
 
     @pytest.mark.asyncio
-    async def test_APIエラー詳細が返却メッセージに含まれる(self) -> None:
+    async def test_api_error_detail_included_in_message(self) -> None:
         """The detailed message returned by the Google Ads API is included in
         the RuntimeError.
 
@@ -1595,7 +1595,7 @@ class TestWrapMutateError:
         assert "ad group update" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_RESOURCE_NOT_FOUND_詳細も含める(self) -> None:
+    async def test_resource_not_found_also_includes_detail(self) -> None:
         """Includes the API detail in addition to the RESOURCE_NOT_FOUND hint."""
         exc = _make_google_ads_exception(
             attr_name="mutate_error",
@@ -1636,7 +1636,7 @@ class TestWrapMutateError:
 @pytest.mark.unit
 class TestCheckBudgetBiddingCompatibility:
     @pytest.mark.asyncio
-    async def test_共有予算でスマート入札_エラー(self) -> None:
+    async def test_shared_budget_with_smart_bidding_rejected(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign_budget.explicitly_shared = True
@@ -1686,7 +1686,7 @@ class TestCheckBudgetBiddingCompatibility:
         assert "MANUAL_CPC" in msg
 
     @pytest.mark.asyncio
-    async def test_非共有予算_OK(self) -> None:
+    async def test_non_shared_budget_allowed(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign_budget.explicitly_shared = False
@@ -1695,7 +1695,7 @@ class TestCheckBudgetBiddingCompatibility:
             await client._check_budget_bidding_compatibility("100", "TARGET_CPA")
 
     @pytest.mark.asyncio
-    async def test_非スマート入札_チェックスキップ(self) -> None:
+    async def test_non_smart_bidding_skips_check(self) -> None:
         client = _make_client()
         # Verify that _search is not called.
         with patch.object(client, "_search") as mock_search:

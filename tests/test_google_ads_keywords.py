@@ -118,7 +118,7 @@ def _make_quality_keyword_row(
 @pytest.mark.unit
 class TestListKeywords:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_lists_keywords(self) -> None:
         client = _make_client()
         row = _make_keyword_row()
         with patch.object(client, "_search", return_value=[row]):
@@ -126,7 +126,7 @@ class TestListKeywords:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_campaign_idフィルタ(self) -> None:
+    async def test_filters_by_campaign_id(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.list_keywords(campaign_id="100")
@@ -134,7 +134,7 @@ class TestListKeywords:
             assert "campaign.id = 100" in query
 
     @pytest.mark.asyncio
-    async def test_ad_group_idフィルタ(self) -> None:
+    async def test_filters_by_ad_group_id(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.list_keywords(ad_group_id="200")
@@ -142,7 +142,7 @@ class TestListKeywords:
             assert "adGroups/200" in query
 
     @pytest.mark.asyncio
-    async def test_status_filterフィルタ(self) -> None:
+    async def test_filters_by_status(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.list_keywords(status_filter="ENABLED")
@@ -158,7 +158,7 @@ class TestListKeywords:
 @pytest.mark.unit
 class TestAddKeywords:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_adds_keywords(self) -> None:
         client = _make_client()
         mock_result1 = MagicMock()
         mock_result1.resource_name = "customers/123/adGroupCriteria/200~1"
@@ -185,7 +185,7 @@ class TestAddKeywords:
         assert result[0]["resource_name"] == "customers/123/adGroupCriteria/200~1"
 
     @pytest.mark.asyncio
-    async def test_空リスト_エラー(self) -> None:
+    async def test_empty_list_raises_error(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="At least one keyword"):
             await client.add_keywords(
@@ -196,7 +196,7 @@ class TestAddKeywords:
             )
 
     @pytest.mark.asyncio
-    async def test_80文字超_エラー(self) -> None:
+    async def test_keyword_over_80_characters_raises_error(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="80 characters"):
             await client.add_keywords(
@@ -233,7 +233,7 @@ class TestAddKeywords:
 @pytest.mark.unit
 class TestRemoveKeyword:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_removes_keyword(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/adGroupCriteria/200~1"
@@ -253,7 +253,7 @@ class TestRemoveKeyword:
         assert result["resource_name"] == "customers/123/adGroupCriteria/200~1"
 
     @pytest.mark.asyncio
-    async def test_不正なad_group_id(self) -> None:
+    async def test_invalid_ad_group_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_group_id"):
             await client.remove_keyword(
@@ -264,7 +264,7 @@ class TestRemoveKeyword:
             )
 
     @pytest.mark.asyncio
-    async def test_不正なcriterion_id(self) -> None:
+    async def test_invalid_criterion_id(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid criterion_id"):
             await client.remove_keyword(
@@ -283,7 +283,7 @@ class TestRemoveKeyword:
 @pytest.mark.unit
 class TestPauseKeyword:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_pauses_keyword(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/adGroupCriteria/200~1"
@@ -312,7 +312,7 @@ class TestPauseKeyword:
 @pytest.mark.unit
 class TestDiagnoseKeywords:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_diagnoses_keywords(self) -> None:
         client = _make_client()
         rows = [
             _make_quality_keyword_row(criterion_id=1, text="KW1", quality_score=8),
@@ -331,7 +331,7 @@ class TestDiagnoseKeywords:
         assert dist["no_score"] >= 1
 
     @pytest.mark.asyncio
-    async def test_空結果(self) -> None:
+    async def test_empty_result(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]):
             result = await client.diagnose_keywords("100")
@@ -340,7 +340,7 @@ class TestDiagnoseKeywords:
         assert result["campaign_name"] == ""
 
     @pytest.mark.asyncio
-    async def test_問題カテゴリ_low_quality_score(self) -> None:
+    async def test_issue_category_low_quality_score(self) -> None:
         client = _make_client()
         row = _make_quality_keyword_row(quality_score=2)
         with patch.object(client, "_search", return_value=[row]):
@@ -351,7 +351,7 @@ class TestDiagnoseKeywords:
         assert len(result["recommendations"]) >= 1
 
     @pytest.mark.asyncio
-    async def test_問題カテゴリ_rarely_served(self) -> None:
+    async def test_issue_category_rarely_served(self) -> None:
         client = _make_client()
         row = _make_quality_keyword_row(system_serving_status="RARELY_SERVED")
         with patch.object(client, "_search", return_value=[row]):
@@ -360,7 +360,7 @@ class TestDiagnoseKeywords:
         assert len(result["issues"]["rarely_served"]) >= 1
 
     @pytest.mark.asyncio
-    async def test_問題カテゴリ_disapproved(self) -> None:
+    async def test_issue_category_disapproved(self) -> None:
         client = _make_client()
         row = _make_quality_keyword_row(approval_status="DISAPPROVED")
         with patch.object(client, "_search", return_value=[row]):
@@ -369,7 +369,7 @@ class TestDiagnoseKeywords:
         assert len(result["issues"]["disapproved"]) >= 1
 
     @pytest.mark.asyncio
-    async def test_問題カテゴリ_below_average_ctr(self) -> None:
+    async def test_issue_category_below_average_ctr(self) -> None:
         client = _make_client()
         row = _make_quality_keyword_row(search_predicted_ctr="BELOW_AVERAGE")
         with patch.object(client, "_search", return_value=[row]):
@@ -378,7 +378,7 @@ class TestDiagnoseKeywords:
         assert len(result["issues"]["below_average_ctr"]) >= 1
 
     @pytest.mark.asyncio
-    async def test_問題カテゴリ_below_average_ad_relevance(self) -> None:
+    async def test_issue_category_below_average_ad_relevance(self) -> None:
         client = _make_client()
         row = _make_quality_keyword_row(creative_quality_score="BELOW_AVERAGE")
         with patch.object(client, "_search", return_value=[row]):
@@ -387,7 +387,7 @@ class TestDiagnoseKeywords:
         assert len(result["issues"]["below_average_ad_relevance"]) >= 1
 
     @pytest.mark.asyncio
-    async def test_問題カテゴリ_below_average_landing_page(self) -> None:
+    async def test_issue_category_below_average_landing_page(self) -> None:
         client = _make_client()
         row = _make_quality_keyword_row(post_click_quality_score="BELOW_AVERAGE")
         with patch.object(client, "_search", return_value=[row]):
@@ -396,7 +396,7 @@ class TestDiagnoseKeywords:
         assert len(result["issues"]["below_average_landing_page"]) >= 1
 
     @pytest.mark.asyncio
-    async def test_keywords上限50件(self) -> None:
+    async def test_keyword_list_capped_at_50(self) -> None:
         client = _make_client()
         rows = [_make_quality_keyword_row(criterion_id=i) for i in range(60)]
         with patch.object(client, "_search", return_value=rows):
@@ -414,7 +414,7 @@ class TestDiagnoseKeywords:
 @pytest.mark.unit
 class TestSuggestKeywords:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_suggests_keywords(self) -> None:
         client = _make_client()
         idea1 = MagicMock()
         idea1.text = "提案KW1"
@@ -484,7 +484,7 @@ class TestSuggestKeywords:
         assert [r["keyword"] for r in result] == ["KW高", "KW中"]
 
     @pytest.mark.asyncio
-    async def test_20件上限(self) -> None:
+    async def test_capped_at_20_suggestions(self) -> None:
         client = _make_client()
         ideas = []
         for i in range(30):
@@ -519,7 +519,7 @@ class TestSuggestKeywords:
             await client.suggest_keywords(["テスト"])
 
     @pytest.mark.asyncio
-    async def test_一般的なGoogleAdsException(self) -> None:
+    async def test_generic_google_ads_exception_rejected(self) -> None:
         client = _make_client()
         exc = _make_google_ads_exception("一般エラー")
         mock_service = MagicMock()
@@ -539,7 +539,7 @@ class TestSuggestKeywords:
 @pytest.mark.unit
 class TestListNegativeKeywords:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_lists_negative_keywords(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.campaign_criterion.criterion_id = 1
@@ -551,7 +551,7 @@ class TestListNegativeKeywords:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_不正なcampaign_id(self) -> None:
+    async def test_invalid_campaign_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid campaign_id"):
             await client.list_negative_keywords("abc")
@@ -565,7 +565,7 @@ class TestListNegativeKeywords:
 @pytest.mark.unit
 class TestAddNegativeKeywords:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_adds_negative_keywords(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/campaignCriteria/100~1"
@@ -612,7 +612,7 @@ class TestAddNegativeKeywords:
 @pytest.mark.unit
 class TestAddNegativeKeywordsToAdGroup:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_adds_negative_keywords_to_ad_group(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/adGroupCriteria/200~1"
@@ -633,7 +633,7 @@ class TestAddNegativeKeywordsToAdGroup:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_不正なad_group_id(self) -> None:
+    async def test_invalid_ad_group_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_group_id"):
             await client.add_negative_keywords_to_ad_group(
@@ -652,7 +652,7 @@ class TestAddNegativeKeywordsToAdGroup:
 @pytest.mark.unit
 class TestRemoveNegativeKeyword:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_removes_negative_keyword(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/campaignCriteria/100~1"
@@ -672,7 +672,7 @@ class TestRemoveNegativeKeyword:
         assert result["resource_name"] == "customers/123/campaignCriteria/100~1"
 
     @pytest.mark.asyncio
-    async def test_不正なcampaign_id(self) -> None:
+    async def test_invalid_campaign_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid campaign_id"):
             await client.remove_negative_keyword(
@@ -683,7 +683,7 @@ class TestRemoveNegativeKeyword:
             )
 
     @pytest.mark.asyncio
-    async def test_不正なcriterion_id(self) -> None:
+    async def test_invalid_criterion_id(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid criterion_id"):
             await client.remove_negative_keyword(
@@ -702,7 +702,7 @@ class TestRemoveNegativeKeyword:
 @pytest.mark.unit
 class TestGetSearchTermsReport:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_returns_search_terms(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.search_term_view.search_term = "テスト検索語句"
@@ -717,7 +717,7 @@ class TestGetSearchTermsReport:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_campaign_idフィルタ(self) -> None:
+    async def test_filters_by_campaign_id(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.get_search_terms_report(campaign_id="100")
@@ -725,7 +725,7 @@ class TestGetSearchTermsReport:
             assert "campaign.id = 100" in query
 
     @pytest.mark.asyncio
-    async def test_ad_group_idフィルタ(self) -> None:
+    async def test_filters_by_ad_group_id(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.get_search_terms_report(ad_group_id="200")
@@ -733,7 +733,7 @@ class TestGetSearchTermsReport:
             assert "ad_group.id = 200" in query
 
     @pytest.mark.asyncio
-    async def test_period指定(self) -> None:
+    async def test_filters_by_period(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.get_search_terms_report(period="LAST_7_DAYS")

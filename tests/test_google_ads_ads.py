@@ -117,7 +117,7 @@ def _make_ad_row(
 
 @pytest.mark.unit
 class TestValidateAndPrepareRsa:
-    def test_正常(self) -> None:
+    def test_valid_inputs_pass_through(self) -> None:
         headlines = [f"見出し{i}" for i in range(5)]
         descriptions = ["説明1", "説明2"]
         h, d, result = GoogleAdsApiClient._validate_and_prepare_rsa(
@@ -126,7 +126,7 @@ class TestValidateAndPrepareRsa:
         assert len(h) == 5
         assert len(d) == 2
 
-    def test_見出し15超_切り詰め(self) -> None:
+    def test_more_than_15_headlines_truncated(self) -> None:
         headlines = [f"見出し{i}" for i in range(20)]
         descriptions = ["説明1", "説明2"]
         h, d, _ = GoogleAdsApiClient._validate_and_prepare_rsa(
@@ -134,7 +134,7 @@ class TestValidateAndPrepareRsa:
         )
         assert len(h) == 15
 
-    def test_説明文4超_切り詰め(self) -> None:
+    def test_more_than_4_descriptions_truncated(self) -> None:
         headlines = [f"見出し{i}" for i in range(5)]
         descriptions = [f"説明{i}" for i in range(6)]
         h, d, _ = GoogleAdsApiClient._validate_and_prepare_rsa(
@@ -142,13 +142,13 @@ class TestValidateAndPrepareRsa:
         )
         assert len(d) == 4
 
-    def test_見出し3未満_エラー(self) -> None:
+    def test_fewer_than_3_headlines_rejected(self) -> None:
         with pytest.raises(ValueError, match="At least 3 headlines"):
             GoogleAdsApiClient._validate_and_prepare_rsa(
                 ["見出し1", "見出し2"], ["説明1", "説明2"], "https://example.com"
             )
 
-    def test_説明文2未満_エラー(self) -> None:
+    def test_fewer_than_2_descriptions_rejected(self) -> None:
         with pytest.raises(ValueError, match="At least 2 descriptions"):
             GoogleAdsApiClient._validate_and_prepare_rsa(
                 ["見出し1", "見出し2", "見出し3"], ["説明1"], "https://example.com"
@@ -162,7 +162,7 @@ class TestValidateAndPrepareRsa:
 
 @pytest.mark.unit
 class TestBuildAdStrengthResult:
-    def test_正常(self) -> None:
+    def test_adds_ad_strength(self) -> None:
         from mureo.google_ads._rsa_validator import RSAValidationResult
 
         rsa_result = RSAValidationResult(
@@ -182,7 +182,7 @@ class TestBuildAdStrengthResult:
         assert "level" in result["ad_strength"]
         assert "score" in result["ad_strength"]
 
-    def test_警告あり(self) -> None:
+    def test_includes_warnings(self) -> None:
         from mureo.google_ads._rsa_validator import RSAValidationResult
 
         rsa_result = RSAValidationResult(
@@ -210,7 +210,7 @@ class TestBuildAdStrengthResult:
 @pytest.mark.unit
 class TestListAds:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_returns_ads(self) -> None:
         client = _make_client()
         row = _make_ad_row()
 
@@ -223,7 +223,7 @@ class TestListAds:
         assert result[0]["headlines"] == ["見出し1", "見出し2", "見出し3"]
 
     @pytest.mark.asyncio
-    async def test_ad_group_idフィルタ(self) -> None:
+    async def test_ad_group_id_filter_added_to_query(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.list_ads(ad_group_id="100")
@@ -231,7 +231,7 @@ class TestListAds:
             assert "adGroups/100" in query
 
     @pytest.mark.asyncio
-    async def test_status_filterフィルタ(self) -> None:
+    async def test_status_filter_added_to_query(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]) as mock_search:
             await client.list_ads(status_filter="ENABLED")
@@ -239,7 +239,7 @@ class TestListAds:
             assert "ad_group_ad.status = 'ENABLED'" in query
 
     @pytest.mark.asyncio
-    async def test_RSA以外のタイプ_見出し空(self) -> None:
+    async def test_non_rsa_type_has_empty_headlines(self) -> None:
         client = _make_client()
         row = _make_ad_row(ad_type=3)  # e.g. EXPANDED_TEXT_AD
 
@@ -251,7 +251,7 @@ class TestListAds:
         assert isinstance(result[0]["headlines"], list)
 
     @pytest.mark.asyncio
-    async def test_RDAのheadlines_long_headline_descriptions_business_nameを返す(
+    async def test_returns_rda_headlines_long_headline_descriptions_business_name(
         self,
     ) -> None:
         """list_ads returns RESPONSIVE_DISPLAY_AD text fields."""
@@ -326,7 +326,7 @@ class TestListAds:
 @pytest.mark.unit
 class TestGetAdPolicyDetails:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_returns_policy_details(self) -> None:
         client = _make_client()
         row = MagicMock()
         row.ad_group_ad.ad.id = 1
@@ -345,14 +345,14 @@ class TestGetAdPolicyDetails:
         assert result["policy_issues"] == []
 
     @pytest.mark.asyncio
-    async def test_見つからない(self) -> None:
+    async def test_returns_none_when_not_found(self) -> None:
         client = _make_client()
         with patch.object(client, "_search", return_value=[]):
             result = await client.get_ad_policy_details("100", "999")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_ポリシー問題あり(self) -> None:
+    async def test_reports_policy_issues(self) -> None:
         client = _make_client()
         entry = MagicMock()
         entry.topic = "ALCOHOL"
@@ -375,7 +375,7 @@ class TestGetAdPolicyDetails:
         assert result["policy_issues"][0]["topic"] == "ALCOHOL"
 
     @pytest.mark.asyncio
-    async def test_不正なID(self) -> None:
+    async def test_invalid_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_group_id"):
             await client.get_ad_policy_details("abc", "1")
@@ -389,7 +389,7 @@ class TestGetAdPolicyDetails:
 @pytest.mark.unit
 class TestCreateAd:
     @pytest.mark.asyncio
-    async def test_正常(self) -> None:
+    async def test_creates_ad(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/adGroupAds/456~789"
@@ -413,7 +413,7 @@ class TestCreateAd:
         assert "ad_strength" in result
 
     @pytest.mark.asyncio
-    async def test_見出し不足_エラー(self) -> None:
+    async def test_too_few_headlines_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="At least 3 headlines"):
             await client.create_ad(
@@ -480,7 +480,7 @@ class TestCreateDisplayAd:
         return None
 
     @pytest.mark.asyncio
-    async def test_正常_ファイルパスから画像をアップロードして作成(self) -> None:
+    async def test_uploads_images_from_file_paths_and_creates_ad(self) -> None:
         """Create an RDA from marketing-image and square-image file paths."""
         client = _make_client()
         self._setup_mocks(client)
@@ -519,7 +519,7 @@ class TestCreateDisplayAd:
         ]
 
     @pytest.mark.asyncio
-    async def test_logo画像も含めて全画像が順番にアップロードされる(self) -> None:
+    async def test_uploads_all_images_in_order_including_logo(self) -> None:
         client = _make_client()
         self._setup_mocks(client)
 
@@ -566,7 +566,7 @@ class TestCreateDisplayAd:
         assert len(result["uploaded_assets"]["logo"]) == 1
 
     @pytest.mark.asyncio
-    async def test_見出し空でエラー_アップロード前に失敗(self) -> None:
+    async def test_empty_headlines_fail_before_upload(self) -> None:
         """No upload occurs when text validation fails."""
         client = _make_client()
 
@@ -598,7 +598,7 @@ class TestCreateDisplayAd:
         assert upload_calls == []
 
     @pytest.mark.asyncio
-    async def test_marketing画像なしでエラー(self) -> None:
+    async def test_missing_marketing_images_rejected(self) -> None:
         client = _make_client()
         with (
             patch.object(
@@ -620,7 +620,7 @@ class TestCreateDisplayAd:
             )
 
     @pytest.mark.asyncio
-    async def test_GoogleAdsException時はオーファンアセットを報告(self) -> None:
+    async def test_reports_orphan_assets_on_google_ads_exception(self) -> None:
         from mureo.google_ads._ads_display import RDAUploadError
 
         client = _make_client()
@@ -666,7 +666,7 @@ class TestCreateDisplayAd:
         assert len(orphans) == 2  # marketing + square
 
     @pytest.mark.asyncio
-    async def test_部分アップロード失敗時もオーファンアセットを報告(self) -> None:
+    async def test_reports_orphan_assets_on_partial_upload_failure(self) -> None:
         """After uploading image #1, if image #2 fails, image #1 is still reported."""
         from mureo.google_ads._ads_display import RDAUploadError
 
@@ -709,7 +709,7 @@ class TestCreateDisplayAd:
         assert "/tmp/m1.jpg" in exc_info.value.orphaned_assets[0]
 
     @pytest.mark.asyncio
-    async def test_long_headlineが正しくprotoに設定される(self) -> None:
+    async def test_long_headline_set_on_proto_correctly(self) -> None:
         """long_headline is a composite proto field; assign directly to .text."""
         client = _make_client()
         captured_long_headline_text = {}
@@ -787,7 +787,7 @@ class TestVerifyAdGroupIsDisplay:
     """Tests for `_verify_ad_group_is_display` itself."""
 
     @pytest.mark.asyncio
-    async def test_DISPLAYアカウントなら成功(self) -> None:
+    async def test_display_campaign_passes(self) -> None:
         client = _make_client()
         display_enum = "DISPLAY_VAL"
         client._client.enums.AdvertisingChannelTypeEnum.DISPLAY = display_enum
@@ -798,7 +798,7 @@ class TestVerifyAdGroupIsDisplay:
             await client._verify_ad_group_is_display("100")
 
     @pytest.mark.asyncio
-    async def test_SEARCHアカウントならエラー(self) -> None:
+    async def test_search_campaign_rejected(self) -> None:
         client = _make_client()
         display_enum = "DISPLAY_VAL"
         search_enum = "SEARCH_VAL"
@@ -813,7 +813,7 @@ class TestVerifyAdGroupIsDisplay:
             await client._verify_ad_group_is_display("100")
 
     @pytest.mark.asyncio
-    async def test_アカウントが存在しない場合はエラー(self) -> None:
+    async def test_missing_ad_group_rejected(self) -> None:
         client = _make_client()
         with (
             patch.object(client, "_search", return_value=[]),
@@ -834,7 +834,7 @@ class TestUpdateAd:
         return None
 
     @pytest.mark.asyncio
-    async def test_正常_final_url付き(self) -> None:
+    async def test_updates_with_final_url(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/ads/456"
@@ -858,7 +858,7 @@ class TestUpdateAd:
         assert "ad_strength" in result
 
     @pytest.mark.asyncio
-    async def test_正常_final_urlなし(self) -> None:
+    async def test_updates_without_final_url(self) -> None:
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/ads/456"
@@ -880,7 +880,7 @@ class TestUpdateAd:
         assert "resource_name" in result
 
     @pytest.mark.asyncio
-    async def test_不正なad_id(self) -> None:
+    async def test_invalid_ad_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_id"):
             await client.update_ad(
@@ -892,7 +892,7 @@ class TestUpdateAd:
             )
 
     @pytest.mark.asyncio
-    async def test_RDAに対して明確なエラーを返す(self) -> None:
+    async def test_rda_returns_clear_error(self) -> None:
         """update_ad supports RSA only; passing an RDA returns a clear error."""
         client = _make_client()
 
@@ -914,7 +914,7 @@ class TestUpdateAd:
             )
 
     @pytest.mark.asyncio
-    async def test_存在しないad_idでエラー(self) -> None:
+    async def test_nonexistent_ad_id_rejected(self) -> None:
         """When the pre-check cannot find the ad, return a clear error."""
         client = _make_client()
 
@@ -1022,7 +1022,7 @@ class TestUpdateAdStatus:
         assert result["resource_name"] == "customers/123/adGroupAds/100~1"
 
     @pytest.mark.asyncio
-    async def test_ENABLED_RSA上限超過(self) -> None:
+    async def test_enabled_with_rsa_limit_exceeded(self) -> None:
         client = _make_client()
         # list_ads returns 3 enabled RSAs.
         existing_ads = [
@@ -1041,7 +1041,7 @@ class TestUpdateAdStatus:
             assert "resource_name" in result or "error" in result
 
     @pytest.mark.asyncio
-    async def test_ENABLED_RSA上限チェック失敗時は続行(self) -> None:
+    async def test_enabled_proceeds_when_rsa_limit_check_fails(self) -> None:
         """Status change proceeds even when list_ads raises."""
         client = _make_client()
         mock_result = MagicMock()
@@ -1059,13 +1059,13 @@ class TestUpdateAdStatus:
             assert result["resource_name"] == "customers/123/adGroupAds/100~1"
 
     @pytest.mark.asyncio
-    async def test_不正なad_group_id(self) -> None:
+    async def test_invalid_ad_group_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_group_id"):
             await client.update_ad_status("abc", "1", "PAUSED")
 
     @pytest.mark.asyncio
-    async def test_不正なad_id(self) -> None:
+    async def test_invalid_ad_id_rejected(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_id"):
             await client.update_ad_status("100", "abc", "PAUSED")
@@ -1084,7 +1084,7 @@ class TestUpdateAdStatus:
             await client.update_ad_status("100", "1", "PAUSED")
 
     @pytest.mark.asyncio
-    async def test_DISPLAY広告のenableはRSA上限チェックを無視する(self) -> None:
+    async def test_enabling_display_ad_skips_rsa_limit_check(self) -> None:
         """The RSA-limit check applies only to the RESPONSIVE_SEARCH_AD type.
 
         Enabling a DISPLAY ad in an ad group that already has 3 or more
