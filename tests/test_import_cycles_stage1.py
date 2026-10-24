@@ -5,11 +5,13 @@ open (``# noqa: PLC0415 — import cycle: ... (#879)``). The shared names now
 live one layer down (``mureo.cli._skill_paths``,
 ``mureo.core.tool_names.MUTATION_PREFIXES``, ``mureo.mcp._plugin_tables``,
 ``mureo.google_ads._placement_mappers``,
-``mureo.creative_studio.providers._base``, and since #917
-``mureo.context.state_io`` / ``mureo.context.campaign_store``) and both
-sides import at top level, so either side has to import as the FIRST import
-of a fresh interpreter. A reintroduced back-import fails here in the default suite,
-rather than only in the exhaustive ``-m slow`` sweep of every module.
+``mureo.creative_studio.providers._base``, since #917
+``mureo.context.state_io`` / ``mureo.context.campaign_store``, and since
+stage 3 ``mureo.context.decision_store`` / ``mureo.context.settings_store``)
+and both sides import at top level, so either side has to import as the
+FIRST import of a fresh interpreter. A reintroduced back-import fails here in
+the default suite, rather than only in the exhaustive ``-m slow`` sweep of
+every module.
 
 The #917 store modules are also pinned statically, by the source walker of
 :mod:`tests.test_import_graph`: ``state_io`` imports neither the facade nor a
@@ -50,11 +52,15 @@ REMOVED_CYCLES: tuple[tuple[str, str], ...] = (
         "mureo.creative_studio.providers.openai_images",
     ),
     # #917: the lock, the clock and the platform-entry helpers moved below
-    # ``mureo.context.state``. ``decisions``, ``settings`` and
-    # ``action_log_guard`` still cycle with ``state_io`` (through
-    # ``state_codec`` / ``write_state_file``), so they are not listed.
+    # ``mureo.context.state``.
     ("mureo.context.daily", "mureo.context.state"),
     ("mureo.context.ops_linkage", "mureo.context.state"),
+    # Stage 3: the decision and settings writers moved up into stores, and
+    # ``write_state_file`` hands the action-log guard the previous document,
+    # so none of these reaches back into ``state_io`` any more.
+    ("mureo.context.decisions", "mureo.context.state_io"),
+    ("mureo.context.settings", "mureo.context.state_io"),
+    ("mureo.context.action_log_guard", "mureo.context.state_io"),
 )
 
 #: The modules the shared names moved into; each has to import first too.
@@ -68,16 +74,44 @@ NEW_LOWER_MODULES: tuple[str, ...] = (
     "mureo.context.batch_store",
     "mureo.context.platform_store",
     "mureo.context.report_store",
+    "mureo.context.decision_store",
+    "mureo.context.settings_store",
 )
 
-#: The store modules split out of ``mureo.context.state`` (#917).
+#: The store modules split out of ``mureo.context.state`` (#917), and the two
+#: writers split out of ``decisions`` / ``settings`` in stage 3.
 _STATE_STORES: tuple[str, ...] = (
     "mureo.context.campaign_store",
     "mureo.context.action_log_store",
     "mureo.context.batch_store",
     "mureo.context.platform_store",
     "mureo.context.report_store",
+    "mureo.context.decision_store",
+    "mureo.context.settings_store",
 )
+
+#: The ``mureo/context`` files whose cycle-driven function-local imports
+#: stage 3 removed; none may carry a ``PLC0415`` waiver again.
+_STAGE3_FILES: tuple[str, ...] = (
+    "decisions.py",
+    "settings.py",
+    "action_log_guard.py",
+    "decision_store.py",
+    "settings_store.py",
+    "state_io.py",
+)
+
+#: The modules ``state_io`` reaches (directly or through ``state_codec``) that
+#: used to import it back from inside a function.
+_STAGE3_SATELLITES: tuple[str, ...] = (
+    "mureo.context.decisions",
+    "mureo.context.settings",
+    "mureo.context.action_log_guard",
+)
+
+_CONTEXT_DIR = pathlib.Path(mureo.__file__).parent / "context"
+
+_NOQA_RULE = "PLC0415"
 
 #: The one store -> store import: a platform entry is built on the campaign
 #: store's platform-entry helpers.
@@ -140,6 +174,18 @@ def test_state_io_imports_neither_the_facade_nor_a_store() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("module", _STAGE3_SATELLITES)
+def test_a_satellite_imports_neither_state_io_nor_a_store(module: str) -> None:
+    """The satellites sit below ``state_io``; none reaches back up (#879 stage 3)."""
+    found = [
+        name
+        for target in ("mureo.context.state_io", "mureo.context.state", *_STATE_STORES)
+        for name in _imports_from(module, target)
+    ]
+    assert found == []
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("store", _STATE_STORES)
 def test_a_store_imports_no_other_store(store: str) -> None:
     edges = {
@@ -149,3 +195,17 @@ def test_a_store_imports_no_other_store(store: str) -> None:
         for name in _imports_from(store, other)
     }
     assert edges <= _ALLOWED_STORE_EDGES
+
+
+@pytest.mark.unit
+def test_no_stage3_context_module_keeps_a_function_local_import() -> None:
+    """No line of the stage-3 files carries a ``PLC0415`` waiver any more."""
+    leftovers = [
+        f"{name}:{number}"
+        for name in _STAGE3_FILES
+        for number, line in enumerate(
+            (_CONTEXT_DIR / name).read_text(encoding="utf-8").splitlines(), start=1
+        )
+        if _NOQA_RULE in line
+    ]
+    assert leftovers == []

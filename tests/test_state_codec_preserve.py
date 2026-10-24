@@ -48,9 +48,9 @@ import pytest
 from mureo.context._platform_codec import parse_platform
 from mureo.context._preserve import is_opaque_decision
 from mureo.context.decision_chain import chain_roots, latest_in_chain
+from mureo.context.decision_store import append_decision
 from mureo.context.decisions import (
     DecisionRecord,
-    append_decision,
     decision_by_id,
     latest_decisions,
     parsed_decisions,

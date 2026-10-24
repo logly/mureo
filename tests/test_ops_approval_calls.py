@@ -22,7 +22,7 @@ from mureo.context.approval import parse_approval
 from mureo.context.decisions import DecisionRecord
 from mureo.context.models import ActionLogEntry, StateDocument
 from mureo.context.ops_linkage import LinkRequest, link_entry
-from mureo.context.settings import set_ops_history_enabled
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import read_state_file, write_state_file
 from mureo.mcp import journal
 from mureo.mcp._ops_history_param import (

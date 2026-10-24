@@ -26,7 +26,7 @@ from mcp.types import TextContent
 
 from mureo.context.decisions import DecisionRecord
 from mureo.context.models import ActionLogEntry, StateDocument
-from mureo.context.settings import set_ops_history_enabled
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import append_action_log, read_state_file, write_state_file
 from mureo.mcp import journal
 

@@ -7,8 +7,8 @@ in :mod:`mureo.context.auto_evaluation`, which appends its records inside its
 own locked document write rather than one call at a time — and two copies of
 "if it is unset, fill it in from :mod:`mureo.core.actor`" is how a mureo-made
 entry ends up without a session id on one path and with one on the other.
-:func:`mureo.context.decisions.append_decision` is the third writer: a
-decision and the actions it produced must carry the same session id.
+:func:`mureo.context.decision_store.append_decision` is the third writer:
+a decision and the actions it produced must carry the same session id.
 
 So the stamp lives here, and every writer calls it. The identity rule is
 :func:`stamp_identity`: an explicit value is KEPT, because an imported or

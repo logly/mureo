@@ -195,12 +195,15 @@ mureo/
 │   │                    #   re-exports state_io (read / atomic write / lock / clock), campaign_store
 │   │                    #   (upsert_campaign, _platform_base, _stamp_fetched_at), action_log_store
 │   │                    #   (append_action_log), batch_store (begin/end_batch), platform_store (rollups,
-│   │                    #   daily, not_collected, conversion override) and report_store (set_report, set_display)
+│   │                    #   daily, not_collected, conversion override) and report_store (set_report, set_display).
+│   │                    #   Two more stores sit beside them and are NOT re-exported (#879): decision_store
+│   │                    #   (append_decision) and settings_store (set_ops_history_enabled)
 │   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
 │   ├── display_models.py # The display contract models (#706), re-exported by models.py
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
 │   ├── decisions.py     # The `decisions` section (#758 phase 3): DecisionRecord, its
-│   │                    #   bounds, append_decision and the pure queries. Append-only
+│   │                    #   bounds, the cross-reference checks and the pure queries (the
+│   │                    #   writer is decision_store.append_decision, #879). Append-only
 │   │                    #   — an adoption is a NEW record naming the first in
 │   │                    #   `supersedes`, never an edit — because `display.proposals`
 │   │                    #   is replaced whole on every dashboard write and so cannot

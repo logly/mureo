@@ -4,7 +4,7 @@ One call, one appended record. Everything the record needs that the caller
 must NOT supply — the id and the timestamp — is minted here from the server
 clock (#460), and everything the caller CAN get wrong — an index into
 ``action_log``, a ``supersedes``, a ``batch_id`` — is validated inside the
-file lock by :func:`mureo.context.decisions.append_decision` rather than
+file lock by :func:`mureo.context.decision_store.append_decision` rather than
 here, so a concurrent append cannot make a check stale between the two.
 
 Path resolution goes through the shared
@@ -19,7 +19,8 @@ from typing import TYPE_CHECKING, Any, Final
 
 from mureo.context._decision_codec import decision_to_dict
 from mureo.context.batch import BatchError
-from mureo.context.decisions import DecisionRecord, append_decision, new_decision_id
+from mureo.context.decision_store import append_decision
+from mureo.context.decisions import DecisionRecord, new_decision_id
 from mureo.context.expected import parse_expected
 from mureo.core.clock import server_now_iso
 from mureo.mcp._helpers import _json_result, _opt, _require, resolve_workspace_path

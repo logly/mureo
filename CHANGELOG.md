@@ -19,6 +19,20 @@
 
 ### Changed
 
+- **The three `state_io` import cycles in `mureo/context` are gone**
+  (internal, #879). `append_decision` now lives in `mureo.context.decision_store`
+  and `set_ops_history_enabled` in `mureo.context.settings_store`, two
+  store modules that take STATE.json's lock at top level;
+  `mureo.context.decisions` and `mureo.context.settings` keep the models,
+  parsing and checks and no longer import `mureo.context.state_io`. The
+  action-log shrink guard no longer reads STATE.json itself:
+  `write_state_file` reads the previous document (tolerantly, as
+  before) and hands it over, and `guard_action_log_shrink(...,
+  previous=None)` now means there is nothing on disk to guard. A caller
+  that imported either function from its old module must update the
+  import; both were reachable only there, and `mureo.context.state` has
+  never re-exported them. The two cycles kept in `monthly_budget.py` and
+  the one in `platform_guards.py` stay listed under #879.
 - **`mureo/context/state.py` is split into store modules** (internal,
   #917). The 1417-line module is now a facade over
   `mureo/context/state_io.py` (read, atomic write, state lock, clock),

@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import Tool
 
-from mureo.context.settings import set_ops_history_enabled, settings_to_dict
+from mureo.context.settings import settings_to_dict
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
 
 if TYPE_CHECKING:

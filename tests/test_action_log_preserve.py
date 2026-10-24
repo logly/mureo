@@ -44,7 +44,7 @@ from mureo.context.auto_evaluation import due_candidates, plan_closure
 from mureo.context.models import ActionLogEntry
 from mureo.context.observations import closed_observation_indices
 from mureo.context.ops_history_view import build_ops_history_items
-from mureo.context.settings import set_ops_history_enabled
+from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import (
     append_action_log,
     read_state_file,
