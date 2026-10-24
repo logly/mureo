@@ -2,6 +2,13 @@
 
 ### Added
 
+- **The configure UI frames every extension card in the Reports tab**,
+  so cards from different extensions look alike: the host draws the
+  same surface, hairline border, radius and shadow as the built-in
+  report panels around each card, and the card's own
+  `.dashboard-section` separator is dropped inside the frame. Cards in
+  the Advanced tab are unchanged.
+
 - **Providers can declare extra HTTP headers for token requests**
   (#922). A provider whose token endpoint is a broker rather than the
   platform itself may need to identify the installation to that broker on
@@ -95,6 +102,11 @@
 - **google_ads: the shared-budget refusal for Smart Bidding strategies now
   explains the portfolio-strategy rule from Google Ads Help and no longer
   recommends MAXIMIZE_CLICKS** (#908).
+- **The configure UI styles number, url and email inputs like text
+  inputs.** An extension's `<input type="number">` (and url / email)
+  rendered with the browser's default border and font next to the
+  styled text, password and select fields.
+
 - **The Reports alert heading and the portfolio cell no longer say "need
   attention" for clients that only have watch-level findings** (#853). Both
   count every client with a finding, watch-level ones included, yet read
