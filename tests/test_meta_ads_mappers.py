@@ -27,47 +27,47 @@ from mureo.meta_ads.mappers import (
 
 @pytest.mark.unit
 class TestMinorUnitsToAmount:
-    def test_文字列のセントを変換(self) -> None:
+    def test_converts_cents_string(self) -> None:
         assert _minor_units_to_amount("100000", "USD") == 1000.0
 
-    def test_整数のセントを変換(self) -> None:
+    def test_converts_cents_integer(self) -> None:
         assert _minor_units_to_amount(50000, "USD") == 500.0
 
-    def test_JPYはオフセット1でそのまま(self) -> None:
+    def test_jpy_offset_one_is_unchanged(self) -> None:
         assert _minor_units_to_amount("5000", "JPY") == 5000.0
 
-    def test_Noneの場合は0(self) -> None:
+    def test_none_is_zero(self) -> None:
         assert _minor_units_to_amount(None, "USD") == 0.0
 
-    def test_ゼロの場合(self) -> None:
+    def test_zero(self) -> None:
         assert _minor_units_to_amount("0", "USD") == 0.0
         assert _minor_units_to_amount(0, "JPY") == 0.0
 
 
 @pytest.mark.unit
 class TestSafeFloat:
-    def test_文字列を変換(self) -> None:
+    def test_converts_string(self) -> None:
         assert _safe_float("3.14") == 3.14
 
-    def test_整数を変換(self) -> None:
+    def test_converts_integer(self) -> None:
         assert _safe_float(42) == 42.0
 
-    def test_Noneは0(self) -> None:
+    def test_none_is_zero(self) -> None:
         assert _safe_float(None) == 0.0
 
-    def test_不正文字列は0(self) -> None:
+    def test_invalid_string_is_zero(self) -> None:
         assert _safe_float("abc") == 0.0
 
 
 @pytest.mark.unit
 class TestSafeInt:
-    def test_文字列を変換(self) -> None:
+    def test_converts_string(self) -> None:
         assert _safe_int("100") == 100
 
-    def test_Noneは0(self) -> None:
+    def test_none_is_zero(self) -> None:
         assert _safe_int(None) == 0
 
-    def test_不正文字列は0(self) -> None:
+    def test_invalid_string_is_zero(self) -> None:
         assert _safe_int("abc") == 0
 
 
@@ -78,7 +78,7 @@ class TestSafeInt:
 
 @pytest.mark.unit
 class TestExtractConversions:
-    def test_コンバージョンアクションを正しく集計(self) -> None:
+    def test_sums_conversion_actions(self) -> None:
         actions = [
             {"action_type": "purchase", "value": "5"},
             {"action_type": "lead", "value": "3"},
@@ -86,13 +86,13 @@ class TestExtractConversions:
         ]
         assert _extract_conversions(actions) == 8.0
 
-    def test_Noneは0(self) -> None:
+    def test_none_is_zero(self) -> None:
         assert _extract_conversions(None) == 0.0
 
-    def test_空リストは0(self) -> None:
+    def test_empty_list_is_zero(self) -> None:
         assert _extract_conversions([]) == 0.0
 
-    def test_component_aliasは二重カウントしない(self) -> None:
+    def test_component_alias_is_not_double_counted(self) -> None:
         # A purchase reported as BOTH the generic aggregate and its component
         # alias must count ONCE (via the generic type only). The previous
         # implementation summed both, double-counting the same conversion.
@@ -104,7 +104,7 @@ class TestExtractConversions:
         # 3 (purchase) + 1 (complete_registration); the offsite alias is ignored.
         assert _extract_conversions(actions) == 4.0
 
-    def test_CV以外は無視(self) -> None:
+    def test_ignores_non_conversion_actions(self) -> None:
         actions = [
             {"action_type": "post_engagement", "value": "50"},
             {"action_type": "video_view", "value": "200"},
@@ -119,19 +119,19 @@ class TestExtractConversions:
 
 @pytest.mark.unit
 class TestExtractCostPerConversion:
-    def test_CPAを正しく抽出(self) -> None:
+    def test_extracts_cpa(self) -> None:
         cost_per_action = [
             {"action_type": "purchase", "value": "1500.50"},
         ]
         assert _extract_cost_per_conversion(cost_per_action) == 1500.50
 
-    def test_Noneの場合(self) -> None:
+    def test_none(self) -> None:
         assert _extract_cost_per_conversion(None) is None
 
-    def test_空リスト(self) -> None:
+    def test_empty_list(self) -> None:
         assert _extract_cost_per_conversion([]) is None
 
-    def test_該当アクション無し(self) -> None:
+    def test_no_matching_action(self) -> None:
         cost_per_action = [
             {"action_type": "link_click", "value": "100"},
         ]
@@ -145,7 +145,7 @@ class TestExtractCostPerConversion:
 
 @pytest.mark.unit
 class TestMapCampaign:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         raw = {
             "id": "campaign_123",
             "name": "テストキャンペーン",
@@ -171,7 +171,7 @@ class TestMapCampaign:
         assert result["daily_budget"] == 5000.0
         assert result["budget_remaining"] == 3000.0
 
-    def test_空の辞書(self) -> None:
+    def test_empty_dict(self) -> None:
         result = map_campaign({}, currency="USD")
 
         assert result["campaign_id"] == ""
@@ -186,7 +186,7 @@ class TestMapCampaign:
 
 @pytest.mark.unit
 class TestMapAdSet:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         raw = {
             "id": "adset_456",
             "name": "テスト広告セット",
@@ -212,7 +212,7 @@ class TestMapAdSet:
         assert result["bid_amount"] == 50.0
         assert result["targeting"] == {"age_min": 25, "age_max": 55}
 
-    def test_空の辞書(self) -> None:
+    def test_empty_dict(self) -> None:
         result = map_ad_set({}, currency="USD")
 
         assert result["ad_set_id"] == ""
@@ -226,7 +226,7 @@ class TestMapAdSet:
 
 @pytest.mark.unit
 class TestMapAd:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         raw = {
             "id": "ad_789",
             "name": "テスト広告",
@@ -245,7 +245,7 @@ class TestMapAd:
         assert result["status"] == "ACTIVE"
         assert result["creative_id"] == "creative_001"
 
-    def test_creative無し(self) -> None:
+    def test_without_creative(self) -> None:
         raw = {
             "id": "ad_999",
             "name": "テスト",
@@ -257,7 +257,7 @@ class TestMapAd:
         assert result["creative_id"] == ""
         assert result["creative_name"] == ""
 
-    def test_配信ステータスを引き継ぐ(self) -> None:
+    def test_carries_delivery_status(self) -> None:
         """#468 — delivery status must survive mapping.
 
         ``status`` alone reports what the ad is *configured* as; a pause made
@@ -281,7 +281,7 @@ class TestMapAd:
         assert result["issues_info"] == raw["issues_info"]
         assert result["ad_review_feedback"] == raw["ad_review_feedback"]
 
-    def test_配信ステータス欠落時はキーを増やさない(self) -> None:
+    def test_missing_delivery_status_adds_no_keys(self) -> None:
         """A response without the structural status fields keeps the mapped
         shape unchanged — no empty ``issues_info`` that reads as 'checked, no
         issues' when it was in fact never returned."""
@@ -300,7 +300,7 @@ class TestMapAd:
 
 @pytest.mark.unit
 class TestMapInsights:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         raw = {
             "campaign_id": "campaign_123",
             "campaign_name": "テスト",
@@ -333,7 +333,7 @@ class TestMapInsights:
         assert result["conversions"] == 5.0
         assert result["cpa"] == 5000.17
 
-    def test_ブレイクダウンフィールド(self) -> None:
+    def test_breakdown_fields(self) -> None:
         raw = {
             "impressions": "100",
             "clicks": "10",
@@ -353,7 +353,7 @@ class TestMapInsights:
         assert result["gender"] == "male"
         assert "country" not in result
 
-    def test_actionsなし(self) -> None:
+    def test_without_actions(self) -> None:
         raw = {
             "impressions": "100",
             "clicks": "10",

@@ -129,45 +129,45 @@ class TestWhyTheRawShapeIsTheRealOne:
 
 @pytest.mark.unit
 class TestMicrosToCurrency:
-    def test_正常変換(self) -> None:
+    def test_converts_micros(self) -> None:
         assert _micros_to_currency(1_000_000) == 1.0
 
-    def test_ゼロ(self) -> None:
+    def test_zero(self) -> None:
         assert _micros_to_currency(0) == 0.0
 
 
 @pytest.mark.unit
 class TestSafeInt:
-    def test_属性あり(self) -> None:
+    def test_attribute_present(self) -> None:
         obj = MagicMock()
         obj.impressions = 100
         assert _safe_int(obj, "impressions") == 100
 
-    def test_属性なし(self) -> None:
+    def test_attribute_missing(self) -> None:
         obj = MagicMock(spec=[])
         assert _safe_int(obj, "impressions") == 0
 
 
 @pytest.mark.unit
 class TestSafeFloat:
-    def test_属性あり(self) -> None:
+    def test_attribute_present(self) -> None:
         obj = MagicMock()
         obj.ctr = 0.05
         assert _safe_float(obj, "ctr") == 0.05
 
-    def test_属性なし(self) -> None:
+    def test_attribute_missing(self) -> None:
         obj = MagicMock(spec=[])
         assert _safe_float(obj, "ctr") == 0.0
 
 
 @pytest.mark.unit
 class TestSafeStr:
-    def test_属性あり(self) -> None:
+    def test_attribute_present(self) -> None:
         obj = MagicMock()
         obj.name = "test"
         assert _safe_str(obj, "name") == "test"
 
-    def test_属性なし(self) -> None:
+    def test_attribute_missing(self) -> None:
         obj = MagicMock(spec=[])
         assert _safe_str(obj, "name") == ""
 
@@ -279,7 +279,7 @@ class TestMapEnumNameOnEveryShape:
 
 @pytest.mark.unit
 class TestMapCampaign:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         campaign = MagicMock()
         campaign.id = 12345
         campaign.name = "テストキャンペーン"
@@ -300,7 +300,7 @@ class TestMapCampaign:
         # adapter's int() coercion.
         assert "budget_amount_micros" not in result
 
-    def test_オプションフィールド付き(self) -> None:
+    def test_with_optional_fields(self) -> None:
         campaign = MagicMock()
         campaign.id = 1
         campaign.name = "C1"
@@ -414,7 +414,7 @@ class TestMapCampaign:
 
 @pytest.mark.unit
 class TestMapAdGroup:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         ad_group = MagicMock()
         ad_group.id = 67890
         ad_group.name = "テスト広告グループ"
@@ -428,7 +428,7 @@ class TestMapAdGroup:
         assert result["name"] == "テスト広告グループ"
         assert result["status"] == "ENABLED"
 
-    def test_キャンペーン情報付き(self) -> None:
+    def test_with_campaign_info(self) -> None:
         ad_group = MagicMock()
         ad_group.id = 1
         ad_group.name = "AG1"
@@ -448,7 +448,7 @@ class TestMapAdGroup:
 
 @pytest.mark.unit
 class TestMapKeyword:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         keyword = MagicMock()
         keyword.criterion_id = 11111
         keyword.keyword.text = "ランニングシューズ"
@@ -463,7 +463,7 @@ class TestMapKeyword:
         assert result["status"] == "ENABLED"
         assert result["approval_status"] == "APPROVED"
 
-    def test_approval_statusなし(self) -> None:
+    def test_without_approval_status(self) -> None:
         keyword = MagicMock(spec=["criterion_id", "keyword", "status"])
         keyword.criterion_id = 22222
         keyword.keyword.text = "テスト"
@@ -487,7 +487,7 @@ class TestMapKeyword:
 
         assert result["approval_status"] == "UNSPECIFIED"
 
-    def test_キャンペーン_広告グループ情報付き(self) -> None:
+    def test_with_campaign_and_ad_group_info(self) -> None:
         keyword = MagicMock()
         keyword.criterion_id = 44444
         keyword.keyword.text = "テスト"
@@ -534,7 +534,7 @@ class TestMapKeyword:
 
 @pytest.mark.unit
 class TestMapKeywordQualityInfo:
-    def test_品質スコア付きキーワード(self) -> None:
+    def test_keyword_with_quality_score(self) -> None:
         keyword = MagicMock()
         keyword.criterion_id = 55555
         keyword.keyword.text = "テスト"
@@ -569,7 +569,7 @@ class TestMapKeywordQualityInfo:
 
         assert result["system_serving_status"] == "RARELY_SERVED"
 
-    def test_品質情報なし(self) -> None:
+    def test_without_quality_info(self) -> None:
         keyword = MagicMock(spec=["criterion_id", "keyword", "status"])
         keyword.criterion_id = 66666
         keyword.keyword.text = "テスト"
@@ -584,7 +584,7 @@ class TestMapKeywordQualityInfo:
 
 @pytest.mark.unit
 class TestMapPerformanceReport:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         row = MagicMock()
         row.campaign.name = "テストキャンペーン"
         row.campaign.id = 123
@@ -607,7 +607,7 @@ class TestMapPerformanceReport:
 
 @pytest.mark.unit
 class TestMapNegativeKeyword:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         criterion = MagicMock()
         criterion.criterion_id = 77777
         criterion.keyword.text = "無料"
@@ -667,7 +667,7 @@ class TestKeywordMatchTypeSpelling:
 
 @pytest.mark.unit
 class TestMapSearchTerm:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         row = MagicMock()
         row.search_term_view.search_term = "テスト検索語句"
         row.metrics.impressions = 500
@@ -685,7 +685,7 @@ class TestMapSearchTerm:
 
 @pytest.mark.unit
 class TestMapSitelink:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         asset = MagicMock()
         asset.asset.id = 88888
         asset.asset.resource_name = "customers/123/assets/88888"
@@ -703,7 +703,7 @@ class TestMapSitelink:
 
 @pytest.mark.unit
 class TestMapCallout:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         asset = MagicMock()
         asset.asset.id = 99999
         asset.asset.resource_name = "customers/123/assets/99999"
@@ -717,7 +717,7 @@ class TestMapCallout:
 
 @pytest.mark.unit
 class TestMapConversionAction:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         action = MagicMock()
         action.id = 10001
         action.name = "購入完了"
@@ -797,7 +797,7 @@ class TestMapTagSnippet:
 
 @pytest.mark.unit
 class TestMapRecommendation:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         rec = MagicMock()
         rec.resource_name = "customers/123/recommendations/456"
         rec.type_ = "KEYWORD"
@@ -823,7 +823,7 @@ class TestMapRecommendation:
 
 @pytest.mark.unit
 class TestMapChangeEvent:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         event = MagicMock()
         event.change_date_time = "2024-01-01 12:00:00"
         event.change_resource_type = "CAMPAIGN"
@@ -916,7 +916,7 @@ class TestMapChangeEvent:
 
 @pytest.mark.unit
 class TestMapAdPerformanceReport:
-    def test_基本変換(self) -> None:
+    def test_basic_mapping(self) -> None:
         row = MagicMock()
         row.ad_group_ad.ad.id = 111
         row.ad_group_ad.ad.type_ = 3  # RSA
