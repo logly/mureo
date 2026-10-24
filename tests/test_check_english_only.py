@@ -92,6 +92,30 @@ class TestPython:
         source = '"""Doc."""\n\n# comment\nx = "text"  # trailing\n'
         assert scan_python(source) == []
 
+    def test_non_ascii_test_function_name_is_flagged(self) -> None:
+        source = f"x = 1\n\n\ndef test_{JA}():\n    pass\n"
+        assert _lines(scan_python(source)) == [4]
+
+    def test_non_ascii_async_test_function_name_is_flagged(self) -> None:
+        source = f"async def test_{JA}():\n    pass\n"
+        assert _lines(scan_python(source)) == [1]
+
+    def test_non_ascii_test_class_name_is_flagged(self) -> None:
+        source = f"class Test{JA}:\n    def test_ok(self):\n        pass\n"
+        assert _lines(scan_python(source)) == [1]
+
+    def test_non_ascii_name_outside_tests_is_allowed(self) -> None:
+        source = f"def helper_{JA}():\n    pass\n\n\nclass Helper{JA}:\n    pass\n"
+        assert scan_python(source) == []
+
+    def test_non_ascii_method_in_test_class_is_flagged(self) -> None:
+        source = f"class TestOk:\n    def test_{JA}(self):\n        pass\n"
+        assert _lines(scan_python(source)) == [2]
+
+    def test_ascii_test_name_is_clean(self) -> None:
+        source = "def test_ok():\n    pass\n"
+        assert scan_python(source) == []
+
 
 class TestMarkdown:
     def test_prose_line_is_flagged(self) -> None:

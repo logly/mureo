@@ -19,6 +19,12 @@
 
 ### Changed
 
+- **Test names are English** (internal, #818). About 350 test functions
+  across eight test files had Japanese names; they are renamed to English
+  snake_case, with bodies, assertions and fixtures unchanged.
+  `scripts/check_english_only.py` now flags a `test_` function or a
+  `Test` class whose name contains a non-ASCII character, so the rename
+  cannot regress. Other identifiers are still not checked.
 - **The three `state_io` import cycles in `mureo/context` are gone**
   (internal, #879). `append_decision` now lives in `mureo.context.decision_store`
   and `set_ops_history_enabled` in `mureo.context.settings_store`, two

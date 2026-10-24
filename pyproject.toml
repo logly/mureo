@@ -143,12 +143,11 @@ known-first-party = ["mureo"]
 # file. Anything not listed here is enforced in tests exactly as in mureo/.
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
-    # N802 (function name should be lowercase) assumes an ASCII, case-bearing
-    # identifier. Test names here deliberately spell out the behaviour under
-    # test in Japanese (`test_コンストラクタ_customer_idからハイフン除去`) or quote a
-    # platform constant verbatim (`test_GoogleAdsException`, `test_PAUSED`,
-    # `test_RESOURCE_NOT_FOUND`). Neither has a lowercase form; renaming ~400
-    # of them would destroy the one thing a test name is for.
+    # N802 (function name should be lowercase) fires on test names that
+    # quote a platform constant verbatim (`test_GoogleAdsException`,
+    # `test_PAUSED`, `test_RESOURCE_NOT_FOUND`). Lowercasing them would hide
+    # the very constant the test is about. (Test names are English-only;
+    # scripts/check_english_only.py enforces that, #818.)
     "N802",
     # N806 (non-lowercase variable in a function) fires on the name bound by
     # `with patch("...") as MockClient:`. That name IS the class stand-in the

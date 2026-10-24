@@ -12,8 +12,10 @@ The repository is public and English-only. Japanese belongs in two places:
 What is flagged:
 
 * Python (``mureo/``, ``tests/``, ``scripts/``): Japanese in a comment, or in
-  a docstring (the first statement of a module, class or function). Plain
-  string literals are not checked.
+  a docstring (the first statement of a module, class or function), and
+  any non-ASCII character in the name of a ``test_`` function or a
+  ``Test`` class (#818). Plain string literals and other identifiers are
+  not checked.
 * Markdown (top-level ``*.md``, ``docs/``, ``skills/``,
   ``mureo/_data/skills/``): any line with Japanese outside a fenced code
   block, unless the line ends with ``<!-- ja-literal -->``. One exemption:
@@ -84,6 +86,8 @@ _TRIGGER_KEY = "description"
 _FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 
 _DOCSTRING_OWNERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+_TEST_FUNCTION_PREFIX = "test_"
+_TEST_CLASS_PREFIX = "Test"
 
 Hit = tuple[int, str]
 
@@ -127,10 +131,9 @@ def _docstring_nodes(tree: ast.Module) -> list[ast.Expr]:
     return nodes
 
 
-def _docstring_hits(source: str) -> list[Hit]:
-    lines = source.splitlines()
+def _docstring_hits(tree: ast.Module, lines: list[str]) -> list[Hit]:
     hits: list[Hit] = []
-    for node in _docstring_nodes(ast.parse(source)):
+    for node in _docstring_nodes(tree):
         end = node.end_lineno or node.lineno
         for number in range(node.lineno, end + 1):
             text = lines[number - 1]
@@ -139,9 +142,29 @@ def _docstring_hits(source: str) -> list[Hit]:
     return hits
 
 
+def _test_name_hits(tree: ast.Module, lines: list[str]) -> list[Hit]:
+    hits: list[Hit] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            prefix = _TEST_FUNCTION_PREFIX
+        elif isinstance(node, ast.ClassDef):
+            prefix = _TEST_CLASS_PREFIX
+        else:
+            continue
+        if node.name.startswith(prefix) and not node.name.isascii():
+            hits.append((node.lineno, lines[node.lineno - 1]))
+    return hits
+
+
 def scan_python(source: str) -> list[Hit]:
-    """Return ``(line, text)`` for Japanese in comments and docstrings."""
-    return sorted(set(_comment_hits(source)) | set(_docstring_hits(source)))
+    """Return ``(line, text)`` for Japanese prose and non-ASCII test names."""
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    return sorted(
+        set(_comment_hits(source))
+        | set(_docstring_hits(tree, lines))
+        | set(_test_name_hits(tree, lines))
+    )
 
 
 def skill_trigger_lines(text: str) -> frozenset[int]:
