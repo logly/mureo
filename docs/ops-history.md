@@ -399,9 +399,12 @@ While it is on:
   decision declares `expected` or the call passes it.
 - `mureo_state_action_log_append` requires `entry.reason` and
   `entry.expected` the same way, for an entry that would open a new
-  decision. An entry with `entry.decision_id`, one recorded inside a batch
-  that has a decision, an imported external change, an evaluation and a
-  rollback entry open none and are exempt.
+  decision. An entry that joins a decision — by `entry.decision_id`, or as
+  the entry for a call that wrote none (rule 4 of
+  [How a change is linked](#how-a-change-is-linked)) — is not asked for
+  them; neither is one recorded inside a batch that has a decision, an
+  imported external change, an evaluation or a rollback entry. They open
+  no decision and are exempt.
 - `mureo_decision_record` requires `expected` on a `proposed` or `adopted`
   record.
 - `rollback_apply` and the `mureo_*` tools that write STATE.json or

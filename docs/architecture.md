@@ -187,7 +187,8 @@ mureo/
 │   ├── batch.py             # plan_batch_rollback(doc, batch_id) -> every member, gaps included (#549)
 │   └── executor.py          # execute_rollback(...) -> appends ActionLogEntry(rollback_of=index)
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
-│   ├── models.py            # Immutable dataclasses (ActionLogEntry.rollback_of / .batch_id, BatchRecord)
+│   ├── models.py            # Immutable dataclasses (StateDocument, BatchRecord, ...)
+│   ├── action_log_entry.py  # ActionLogEntry (.rollback_of / .batch_id) + EXTERNAL_ORIGIN (#851), re-exported by models.py
 │   ├── display_models.py    # The display contract models (#706), re-exported by models.py
 │   ├── strategy.py          # STRATEGY.md parser / renderer
 │   ├── batch.py             # Batch id minting, the stamping rule, membership queries (#549)
