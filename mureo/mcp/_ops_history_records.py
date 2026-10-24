@@ -8,7 +8,10 @@ on, the same requirement applies there:
 
 - an ``action_log`` entry that would open a NEW decision must state its
   ``reason`` and ``expected`` (an evaluation, a rollback, an observed
-  external change, or an entry joining an existing decision opens none);
+  external change, or an entry joining an existing decision opens none —
+  joining by an explicit ``decision_id``, or by recording the one no-entry
+  call of this session it exactly describes, rule 4 of "How a change is
+  linked" in ``docs/ops-history.md``);
 - a ``proposed`` or ``adopted`` decision record must declare at least one
   ``expected`` effect. ``rejected`` / ``deferred`` need none.
 
@@ -19,8 +22,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final
 
+from mureo.context.actor_stamp import stamp_identity
 from mureo.context.batch import active_batch
-from mureo.context.ops_linkage import batch_decision_root
+from mureo.context.ops_linkage import batch_decision_root, unentried_call_candidate
 from mureo.context.settings import ops_history_enabled
 from mureo.context.state import read_state_file
 
@@ -60,6 +64,12 @@ def _opens_a_decision(doc: StateDocument, entry: ActionLogEntry) -> bool:
     if entry.evaluation_of is not None or entry.rollback_of is not None:
         return False
     if entry.origin is not None or entry.decision_id is not None:
+        return False
+    # Matched on the session the append will stamp: the tool's entry has none
+    # of its own yet, and the no-entry call match is on the session. This
+    # runs before the store's lock; the append re-matches inside it, so a
+    # candidate taken in between leaves this entry without a decision.
+    if unentried_call_candidate(doc, stamp_identity(entry)) is not None:
         return False
     batch_id = entry.batch_id
     if batch_id is None:
