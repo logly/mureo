@@ -198,7 +198,8 @@ mureo/
 │   │                    #   daily, not_collected, conversion override) and report_store (set_report, set_display).
 │   │                    #   Two more stores sit beside them and are NOT re-exported (#879): decision_store
 │   │                    #   (append_decision) and settings_store (set_ops_history_enabled)
-│   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of, batch_id), BatchRecord
+│   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, BatchRecord; re-exports ActionLogEntry
+│   ├── action_log_entry.py # ActionLogEntry (rollback_of, batch_id) + EXTERNAL_ORIGIN (#851), re-exported by models.py
 │   ├── display_models.py # The display contract models (#706), re-exported by models.py
 │   ├── batch.py         # Batch id minting + the action_log stamping rule (#549)
 │   ├── decisions.py     # The `decisions` section (#758 phase 3): DecisionRecord, its

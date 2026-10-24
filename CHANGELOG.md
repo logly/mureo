@@ -19,6 +19,15 @@
 
 ### Changed
 
+- **`ActionLogEntry` moved to `mureo/context/action_log_entry.py`**
+  (internal, #851). `mureo/context/models.py` was at 765 of its 800
+  lines; the class moves verbatim, with `EXTERNAL_ORIGIN` and the private
+  `_OBJECT_FIELDS` it uses. `mureo.context.models` re-exports
+  `ActionLogEntry` and `EXTERNAL_ORIGIN` the way it re-exports the display
+  models, so `from mureo.context.models import ActionLogEntry` keeps
+  working and returns the same class. The new module does not import
+  `mureo.context.models`.
+
 - **Test names are English** (internal, #818). About 350 test functions
   across eight test files had Japanese names; they are renamed to English
   snake_case, with bodies, assertions and fixtures unchanged.
@@ -92,6 +101,17 @@
 
 ### Fixed
 
+- **Ops history no longer asks for `reason` / `expected` on an entry that
+  joins a no-entry call's decision** (#851). While ops history is on,
+  `mureo_state_action_log_append` requires `entry.reason` and
+  `entry.expected` only for an entry that would open a new decision. An
+  entry appended for a change-making call that wrote no entry of its own
+  (same session, same tool, same target — rule 4 of "How a change is
+  linked" in `docs/ops-history.md`) joins that call's decision, which
+  already carries both, yet was still refused for lacking them. It is now
+  exempt, as an entry with `entry.decision_id` already was; the match is
+  made on the session the append stamps. With two matching calls the
+  entry still opens its own decision and still needs both fields.
 - **google_ads: the shared-budget refusal for Smart Bidding strategies now
   explains the portfolio-strategy rule from Google Ads Help and no longer
   recommends MAXIMIZE_CLICKS** (#908).
