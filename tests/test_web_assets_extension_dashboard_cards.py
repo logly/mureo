@@ -60,3 +60,39 @@ def test_extensions_js_card_injection_is_idempotent_and_attributed() -> None:
     assert '"ext-card-"' in js
     # Owner attribute lets support/debugging attribute a card to its plugin.
     assert "data-ext-card-owner" in js
+
+
+_REPORTS_CARD = (
+    '.dashboard-group[data-dashboard-group="reports"] > [data-ext-card-owner]'
+)
+
+
+@pytest.mark.unit
+def test_extensions_js_appends_card_holder_directly_to_the_group() -> None:
+    # The Reports-tab frame selects the holder as a direct child of the
+    # group div; wrapping it would silently drop the frame.
+    assert "group.appendChild(holder);" in _read("extensions.js")
+
+
+@pytest.mark.unit
+def test_reports_tab_host_frames_every_extension_card() -> None:
+    """In the Reports tab the host owns the card frame (same tokens as
+    ``.report-card``), so an extension never draws its own outer box."""
+    css = _read("app.css")
+    start = css.index(_REPORTS_CARD + " {")
+    body = css[start : css.index("}", start)]
+    assert "background: var(--surface)" in body
+    assert "border: 1px solid var(--hairline)" in body
+    assert "border-radius: var(--r-lg)" in body
+    assert "box-shadow: var(--shadow-sm)" in body
+
+
+@pytest.mark.unit
+def test_reports_tab_frame_replaces_the_section_separator() -> None:
+    css = _read("app.css")
+    selector = _REPORTS_CARD + " > .dashboard-section {"
+    start = css.index(selector)
+    body = css[start : css.index("}", start)]
+    assert "margin-top: 0" in body
+    assert "padding-top: 0" in body
+    assert "border-top: 0" in body
