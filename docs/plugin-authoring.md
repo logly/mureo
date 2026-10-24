@@ -2811,6 +2811,11 @@ Contract:
   `GET /static/ext/<name>/<filename>` alongside your view assets.
   Keep asset filenames unique across your extension (view + cards
   share one URL namespace; a duplicate filename shadows the other).
+- In the Reports tab the host draws the card frame (since 0.34.0); a
+  card should be a `<section class="dashboard-section">` with an `<h2>`
+  title and must not draw its own outer box (on older hosts such a
+  card simply renders without a frame). In the Advanced tab cards
+  follow the hairline-separated `.dashboard-section` look.
 - Unlike a view, cards are injected **eagerly** when extension
   discovery renders (a built-in tab has no per-plugin click hook), so
   card scripts must be idempotent and cheap to load.

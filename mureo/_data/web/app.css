@@ -933,11 +933,20 @@ a {
 .dashboard-pane select,
 .dashboard-pane input[type="text"],
 .dashboard-pane input[type="password"],
+.dashboard-pane input[type="number"],
+.dashboard-pane input[type="url"],
+.dashboard-pane input[type="email"],
 .dashboard-section input[type="text"],
 .dashboard-section input[type="password"],
+.dashboard-section input[type="number"],
+.dashboard-section input[type="url"],
+.dashboard-section input[type="email"],
 .dashboard-section select,
 .wizard-step input[type="text"],
 .wizard-step input[type="password"],
+.wizard-step input[type="number"],
+.wizard-step input[type="url"],
+.wizard-step input[type="email"],
 .wizard-step select {
   width: 100%;
   max-width: 100%;
@@ -1080,6 +1089,10 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 
+/* Keep this rule after the shared .dashboard-section field rule above:
+   both select the same input/select elements at equal specificity, so
+   source order is what makes this 11em width win over width: 100%.
+   tests/test_web_assets_form_actions.py pins the order. */
 .dashboard-guardrails-value input[type="number"],
 .dashboard-guardrails-value select {
   width: 11em;
@@ -3210,6 +3223,26 @@ label .muted,
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-sm);
   padding: 18px 18px 14px;
+}
+
+/* Extension cards in the Reports tab: the host owns the frame. Every OSS
+   block in this tab is a framed panel, so each extension card holder gets
+   the same surface, hairline, radius and shadow here, and an extension
+   never draws its own outer box. (The Advanced tab differs: there cards
+   keep the hairline-separated .dashboard-section look.) */
+.dashboard-group[data-dashboard-group="reports"] > [data-ext-card-owner] {
+  margin-top: 18px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 18px 20px 16px;
+}
+/* The frame replaces the separator a .dashboard-section brings with it. */
+.dashboard-group[data-dashboard-group="reports"] > [data-ext-card-owner] > .dashboard-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 /* #409 Creative Studio gallery — run cards with lazy thumbnail grids.
