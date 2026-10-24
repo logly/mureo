@@ -62,8 +62,11 @@
     const heading = document.querySelector("[data-reports-triage-title]");
     if (!box || !list) return;
     const items = built && Array.isArray(built.items) ? built.items : [];
-    // The count is of CLIENTS, and it is the same array the grid marks from
-    // — one client raising four findings is still one card.
+    // The count is of CLIENTS with any finding, watch-level ones included,
+    // and it is the same array the grid marks from — one client raising four
+    // findings is still one card. The heading says "have findings", not
+    // "need attention" (#853): the severity chips are where attention and
+    // watch are told apart.
     const marked = built && Array.isArray(built.clients) ? built.clients : [];
     list.textContent = "";
     box.hidden = !items.length;
@@ -84,7 +87,7 @@
     // One row per KIND, each naming the clients it covers — the grouping
     // and the dismissal filter are both the module's (reports_triage.js).
     // Neither changes `built.clients`, so the heading above and the marks
-    // below still count every client that raised anything.
+    // below still count every client that raised anything, at any severity.
     REPORTS_VIEW_STATE.reportsTriageBuilt = built;
     const split = partitionTriageGroups(groupReportsTriage(built));
     // …and only the top few of those, unless the operator asked for the

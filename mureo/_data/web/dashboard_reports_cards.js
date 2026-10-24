@@ -301,7 +301,7 @@
     // never be filtered away as a healthy one.
     item.setAttribute("data-health", health || "ok");
     // The other half of the triage layer above the grid (#651): if the layer
-    // says three clients need attention, exactly three cards are marked.
+    // says three clients have findings, exactly three cards are marked.
     // Both read the same list, so they cannot drift. A class alone would be
     // colour-only, and the grid is a list of buttons an operator may reach
     // by keyboard, so the mark carries text too.
