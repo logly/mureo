@@ -42,6 +42,7 @@ scan_python = CHECKER.scan_python  # type: ignore[attr-defined]
 scan_markdown = CHECKER.scan_markdown  # type: ignore[attr-defined]
 scan_file = CHECKER.scan_file  # type: ignore[attr-defined]
 is_scanned = CHECKER.is_scanned  # type: ignore[attr-defined]
+check_path = CHECKER.check_path  # type: ignore[attr-defined]
 
 
 def _lines(hits: list[tuple[int, str]]) -> list[int]:
@@ -81,8 +82,33 @@ class TestPython:
         assert scan_python(source) == []
 
     def test_a_string_that_is_not_the_first_statement_is_allowed(self) -> None:
-        source = f'def f() -> None:\n    x = 1\n    "{JA}"\n'
+        source = f'def f() -> None:\n    if x:\n        pass\n    "{JA}"\n'
         assert scan_python(source) == []
+
+    def test_module_attribute_docstring_is_flagged(self) -> None:
+        source = f'X = 1\n"""{JA}"""\n'
+        assert _lines(scan_python(source)) == [2]
+
+    def test_class_attribute_docstring_is_flagged(self) -> None:
+        source = f'class A:\n    x: int = 1\n    """{JA}"""\n'
+        assert _lines(scan_python(source)) == [3]
+
+    def test_a_string_after_a_call_is_allowed(self) -> None:
+        source = f'setup()\n"{JA}"\n'
+        assert scan_python(source) == []
+
+    def test_a_string_first_in_a_non_owner_body_is_allowed(self) -> None:
+        source = f'if x:\n    "{JA}"\n    y = 1\n    "{JA}"\n'
+        assert scan_python(source) == []
+
+    def test_english_attribute_docstring_is_clean(self) -> None:
+        source = 'X = 1\n"""The answer."""\n'
+        assert scan_python(source) == []
+
+    def test_form_feed_does_not_shift_docstring_line_numbers(self) -> None:
+        """``ast`` does not count a form feed as a line break."""
+        source = f'\x0c\nX = 1\n"""{JA}"""\n'
+        assert scan_python(source) == [(3, f'"""{JA}"""')]
 
     def test_halfwidth_katakana_and_kana_are_flagged(self) -> None:
         source = f"# {KANA}\n"
@@ -133,6 +159,39 @@ class TestMarkdown:
     def test_indented_fence_inside_a_list_is_allowed(self) -> None:
         text = f"1. Step\n   ```\n   {JA}\n   ```\n"
         assert scan_markdown(text) == []
+
+    def test_inline_code_run_does_not_open_a_fence(self) -> None:
+        text = f"```x``` is inline code\n\n{JA}\n```\n{JA}\n"
+        assert _lines(scan_markdown(text)) == [3]
+
+    def test_four_space_indented_run_is_not_a_fence(self) -> None:
+        """Known limitation: a fence indented four or more spaces (for
+        example inside a nested list item) is not recognised as a fence, so
+        Japanese inside it is flagged; mark the line ``<!-- ja-literal -->``
+        or outdent the fence.
+        """
+        text = f"    ```\n{JA}\n    ```\n"
+        assert _lines(scan_markdown(text)) == [2]
+
+    def test_shorter_closing_run_does_not_close(self) -> None:
+        text = f"````\n{JA}\n```\n{JA}\n````\n{JA}\n"
+        assert _lines(scan_markdown(text)) == [6]
+
+    def test_longer_closing_run_closes(self) -> None:
+        text = f"```\n{JA}\n`````\n{JA}\n"
+        assert _lines(scan_markdown(text)) == [4]
+
+    def test_closing_run_with_trailing_text_does_not_close(self) -> None:
+        text = f"```\n{JA}\n``` text\n{JA}\n```\n"
+        assert scan_markdown(text) == []
+
+    def test_tilde_fence_may_have_backticks_in_its_info_string(self) -> None:
+        text = f"~~~ `x`\n{JA}\n~~~\n"
+        assert scan_markdown(text) == []
+
+    def test_backtick_run_with_backtick_in_info_string_is_prose(self) -> None:
+        text = f"``` `{JA}`\n{JA}\n"
+        assert _lines(scan_markdown(text)) == [1, 2]
 
     def test_ja_literal_marker_is_allowed(self) -> None:
         text = f'Match the column "{JA}". <!-- ja-literal -->\n{JA}\n'
@@ -302,3 +361,97 @@ class TestCommandLine:
         result = _run(["--root", str(tmp_path)], **env)
         assert result.returncode == 1, result.stderr
         assert result.stdout.splitlines() == [f"docs/a.md:2: {JA}"]
+
+
+class TestCheckPath:
+    """Unreadable files give a one-line diagnostic instead of a traceback."""
+
+    def test_missing_file_is_skipped_without_failing(self, tmp_path: Path) -> None:
+        hits, diagnostic = check_path(tmp_path, "docs/gone.md")
+        assert hits == []
+        assert (
+            diagnostic.message == "docs/gone.md: skipped \u2014 not in the working tree"
+        )
+        assert diagnostic.fatal is False
+
+    def test_non_utf8_file_fails(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_bytes(b"# \xff\xfe caf\xe9\n")
+        hits, diagnostic = check_path(tmp_path, "a.py")
+        assert hits == []
+        assert diagnostic.message == "a.py: cannot decode as UTF-8 \u2014 not checked"
+        assert diagnostic.fatal is True
+
+    def test_python_syntax_error_fails(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text("x = 1\ndef f(:\n", encoding="utf-8")
+        hits, diagnostic = check_path(tmp_path, "a.py")
+        assert hits == []
+        assert diagnostic.message == "a.py:2: syntax error \u2014 not checked"
+        assert diagnostic.fatal is True
+
+    def test_unclosed_bracket_fails_with_a_diagnostic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text("x = (\n", encoding="utf-8")
+        hits, diagnostic = check_path(tmp_path, "a.py")
+        assert hits == []
+        assert diagnostic is not None
+        assert diagnostic.message.startswith("a.py:")
+        assert diagnostic.message.endswith(" syntax error \u2014 not checked")
+        assert diagnostic.fatal is True
+
+    def test_nul_byte_fails_with_a_diagnostic(self, tmp_path: Path) -> None:
+        """Python 3.10/3.11 raise ValueError here, 3.12 SyntaxError."""
+        (tmp_path / "a.py").write_bytes(b"x = 1\x00\n")
+        hits, diagnostic = check_path(tmp_path, "a.py")
+        assert hits == []
+        assert diagnostic is not None
+        assert diagnostic.message.startswith("a.py")
+        assert diagnostic.message.endswith(" syntax error \u2014 not checked")
+        assert diagnostic.fatal is True
+
+    def test_unreadable_path_fails(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").mkdir()
+        hits, diagnostic = check_path(tmp_path, "a.py")
+        assert hits == []
+        assert diagnostic is not None
+        assert diagnostic.message.startswith("a.py: cannot read (")
+        assert diagnostic.message.endswith(") \u2014 not checked")
+        assert diagnostic.fatal is True
+
+    def test_byte_order_mark_is_not_a_syntax_error(self, tmp_path: Path) -> None:
+        (tmp_path / "a.py").write_text(
+            '\ufeff"""English."""\n\nx = 1  # English\n', encoding="utf-8"
+        )
+        assert check_path(tmp_path, "a.py") == ([], None)
+
+    def test_readable_file_returns_hits(self, tmp_path: Path) -> None:
+        (tmp_path / "a.md").write_text(f"ok\n{JA}\n", encoding="utf-8")
+        assert check_path(tmp_path, "a.md") == ([(2, JA)], None)
+
+    def test_main_fails_on_a_fatal_diagnostic(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        (tmp_path / "bad.py").write_text("def f(:\n", encoding="utf-8")
+        monkeypatch.setattr(
+            CHECKER, "tracked_files", lambda root: ["bad.py", "gone.md"]
+        )
+        assert CHECKER.main(["--root", str(tmp_path)]) == 1  # type: ignore[attr-defined]
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.splitlines() == [
+            "bad.py:1: syntax error \u2014 not checked",
+            "gone.md: skipped \u2014 not in the working tree",
+        ]
+
+    def test_main_passes_when_only_files_are_missing(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(CHECKER, "tracked_files", lambda root: ["gone.md"])
+        assert CHECKER.main(["--root", str(tmp_path)]) == 0  # type: ignore[attr-defined]
+        assert capsys.readouterr().err == (
+            "gone.md: skipped \u2014 not in the working tree\n"
+        )

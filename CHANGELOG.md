@@ -92,6 +92,23 @@
 
 ### Fixed
 
+- **`scripts/check_english_only.py` no longer skips prose after inline
+  code, checks attribute docstrings, and reports unreadable files without a
+  traceback** (internal, #817). Markdown fences now follow CommonMark: at
+  most three spaces of indentation, no backtick in a backtick fence's info
+  string, and a closing run of the same character at least as long with
+  nothing after it, so a line that starts with inline code no longer opens
+  a block that hides every line up to the next run. A fence indented four
+  or more spaces (for example inside a nested list item) is no longer
+  recognised as a fence, so Japanese inside it must be marked
+  `<!-- ja-literal -->` or the fence outdented. A bare string statement
+  right after an assignment in a module, class or function body (a PEP 257
+  attribute docstring) is checked like a docstring. A tracked path missing
+  from the working tree is reported on stderr and skipped; a file that is
+  not UTF-8, or a Python file that does not parse, is reported on stderr
+  and fails the run, instead of ending it in a traceback. Any other read
+  error (a directory at a tracked path, a permission error) is reported on
+  stderr with the operating system's reason and fails the run.
 - **google_ads: the shared-budget refusal for Smart Bidding strategies now
   explains the portfolio-strategy rule from Google Ads Help and no longer
   recommends MAXIMIZE_CLICKS** (#908).
