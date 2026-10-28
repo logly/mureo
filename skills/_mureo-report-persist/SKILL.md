@@ -2,7 +2,7 @@
 name: _mureo-report-persist
 description: "mureo: daily-check persistence steps — report summary, per-window rollups, day-grain history, display contract."
 metadata:
-  version: 0.34.0
+  version: 0.35.0
   openclaw:
     category: "advertising"
     requires:
