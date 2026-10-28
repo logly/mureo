@@ -29,6 +29,12 @@ wrote no ``action_log`` entry (a budget update on a native platform) is
 Each change appears under exactly one decision: the one its own
 ``decision_id`` names. A decision's ``related_actions`` claim only changes
 that name no decision of their own, and never an evaluation or a reversal.
+Ownership is :func:`mureo.context.decision_chain.change_owners`.
+
+Each decision carries ``possible_duplicate_of`` (#851): the root id of the
+chain a change opened that probably records the same decision again, by
+:func:`mureo.context.ops_history_duplicates.possible_duplicates` over the
+whole document, or ``None``. A hint only: nothing is joined.
 
 Pure: a document and a date in, JSON-safe dicts out, copied so a caller
 cannot reach back into the document. ``command`` is never included (it can
@@ -58,14 +64,20 @@ from typing import TYPE_CHECKING, Any, Final
 from mureo.analysis.outcome_note import note_parts
 from mureo.context.approval import approval_to_dict
 from mureo.context.auto_evaluation import AutoSkip, plan_closure
-from mureo.context.decision_chain import chain_roots, group_chains
-from mureo.context.decisions import parsed_decisions
+from mureo.context.decision_chain import (
+    chain_roots,
+    change_owners,
+    group_chains,
+    is_change,
+)
 from mureo.context.expected import expected_to_list
+from mureo.context.iso_time import iso_moment
 from mureo.context.observations import parse_due_date
 from mureo.context.ops_fields import ID_SUFFIX
+from mureo.context.ops_history_duplicates import possible_duplicates
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from datetime import date
 
     from mureo.context.approval import ApprovalRef
@@ -116,11 +128,6 @@ def _links(doc: StateDocument) -> _Links:
         if entry.rollback_of is not None and 0 <= entry.rollback_of < size:
             rollbacks.setdefault(entry.rollback_of, index)
     return _Links(evaluations=evaluations, rollbacks=rollbacks)
-
-
-def _is_change(entry: ActionLogEntry) -> bool:
-    """A change in its own right, not a record about another one."""
-    return entry.evaluation_of is None and entry.rollback_of is None
 
 
 def _values(params: Any) -> dict[str, Any] | None:
@@ -239,7 +246,9 @@ def _carried_out_by_call(records: tuple[DecisionRecord, ...]) -> bool:
     return any(r.journal_call_id is not None and r.batch_id is None for r in records)
 
 
-def _decision_dict(records: tuple[DecisionRecord, ...]) -> dict[str, Any]:
+def _decision_dict(
+    records: tuple[DecisionRecord, ...], duplicates: Mapping[str, str]
+) -> dict[str, Any]:
     root, latest = records[0], records[-1]
     expected = next((r.expected for r in reversed(records) if r.expected), ())
     return {
@@ -258,6 +267,7 @@ def _decision_dict(records: tuple[DecisionRecord, ...]) -> dict[str, Any]:
         "applied_params": copy.deepcopy(_newest(records, "applied_params")),
         "journal_call_id": _newest(records, "journal_call_id"),
         "approval": _approval(_newest(records, "approval")),
+        "possible_duplicate_of": duplicates.get(root.decision_id),
         "history": [
             {"decision_id": r.decision_id, "status": r.status, "at": r.recorded_at}
             for r in records
@@ -304,35 +314,7 @@ def _keep_all(_stamp_value: str | None) -> bool:
 
 def _sort_key(item: dict[str, Any]) -> datetime:
     """The item's full timestamp, comparable across offsets."""
-    stamp = item_timestamp(item) or ""
-    text = f"{stamp[:-1]}+00:00" if stamp.endswith("Z") else stamp
-    try:
-        moment = datetime.fromisoformat(text)
-    except ValueError:
-        return _UNDATED
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
-    return moment
-
-
-def _owners(doc: StateDocument, roots: dict[str, str]) -> dict[int, str]:
-    """The one decision each change belongs to.
-
-    Its own ``decision_id`` first; a decision's ``related_actions`` then
-    claim only the changes still unowned.
-    """
-    owner: dict[int, str] = {}
-    for index, entry in enumerate(doc.action_log):
-        root = roots.get(entry.decision_id or "")
-        if root is not None and _is_change(entry):
-            owner[index] = root
-    size = len(doc.action_log)
-    for record in parsed_decisions(doc):
-        root = roots.get(record.decision_id, record.decision_id)
-        for index in record.related_actions:
-            if 0 <= index < size and _is_change(doc.action_log[index]):
-                owner.setdefault(index, root)
-    return owner
+    return iso_moment(item_timestamp(item)) or _UNDATED
 
 
 def build_ops_history_items(
@@ -349,7 +331,8 @@ def build_ops_history_items(
     """
     wanted = keep if keep is not None else _keep_all
     links = _links(doc)
-    owner = _owners(doc, chain_roots(doc))
+    owner = change_owners(doc, chain_roots(doc))
+    duplicates = possible_duplicates(doc)
     by_root: dict[str, list[int]] = {}
     for index in sorted(owner):
         by_root.setdefault(owner[index], []).append(index)
@@ -358,11 +341,11 @@ def build_ops_history_items(
         if not wanted(_stamp(records[0].recorded_at)):
             continue
         actions = [_action_row(doc, i, links, today) for i in by_root.get(root, [])]
-        decision = _decision_dict(records)
+        decision = _decision_dict(records, duplicates)
         derived = _derive(decision["status"], actions, _carried_out_by_call(records))
         items.append({"decision": decision, "actions": actions, **derived})
     for index, entry in enumerate(doc.action_log):
-        if _is_change(entry) and index not in owner:
+        if is_change(entry) and index not in owner:
             if not wanted(_stamp(entry.timestamp)):
                 continue
             actions = [_action_row(doc, index, links, today)]

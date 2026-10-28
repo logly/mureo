@@ -161,9 +161,9 @@ class TestOnlyTheWindowIsDerived:
             calls["actions"].append(index)
             return real_row(doc, index, *args)
 
-        def decision(records: Any) -> Any:
+        def decision(records: Any, *args: Any) -> Any:
             calls["decisions"].append(records[0].decision_id)
-            return real_decision(records)
+            return real_decision(records, *args)
 
         monkeypatch.setattr(view, "_action_row", row)
         monkeypatch.setattr(view, "_decision_dict", decision)

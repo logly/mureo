@@ -264,6 +264,50 @@ class TestDerivedState:
         assert build_ops_history_items(parse_state("{}"), today=TODAY) == []
 
 
+def _duplicated_pair(record_at: str, call_at: str) -> dict[str, Any]:
+    """A ``mureo_decision_record`` chain (R) and a reasoned change's (K)."""
+    target = {"platform": "google_ads", "campaign_id": "c1"}
+    record = _decision("R", "proposed", "2026-10-01", **target)
+    adopted = _decision("R2", "adopted", "2026-10-01", supersedes="R", **target)
+    call = _decision("K", "adopted", "2026-10-01", journal_call_id="call-k", **target)
+    record["recorded_at"] = adopted["recorded_at"] = record_at
+    call["recorded_at"] = call_at
+    return {
+        "version": "2",
+        "decisions": [record, adopted, call],
+        "action_log": [_action(timestamp=call_at, decision_id="K")],
+    }
+
+
+class TestPossibleDuplicate:
+    def test_the_record_item_names_the_call_chain(self) -> None:
+        document = _duplicated_pair(
+            "2026-10-05T10:00:00+09:00", "2026-10-05T10:10:00+09:00"
+        )
+        items = _items_of(document)
+        assert items["R"]["decision"]["possible_duplicate_of"] == "K"
+        assert items["K"]["decision"]["possible_duplicate_of"] is None
+
+    def test_every_decision_carries_the_key(self) -> None:
+        for item in _items().values():
+            if item["decision"] is not None:
+                assert "possible_duplicate_of" in item["decision"]
+        assert "possible_duplicate_of" not in _items()["orphan"]
+
+    def test_a_pair_across_the_window_edge_still_gets_the_hint(self) -> None:
+        from mureo.context.ops_history_query import ops_history_items
+
+        document = _duplicated_pair(
+            "2026-10-05T23:50:00+09:00", "2026-10-06T00:10:00+09:00"
+        )
+        doc = parse_state(json.dumps(document))
+        items = ops_history_items(
+            doc, today=TODAY, since=date(2026, 10, 5), until=date(2026, 10, 5)
+        )
+        assert [i["decision"]["decision_id"] for i in items] == ["R"]
+        assert items[0]["decision"]["possible_duplicate_of"] == "K"
+
+
 def _two_evaluated(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any]:
     """Decision H with two observed changes, each closed by ``first`` / ``second``."""
     document = _document()

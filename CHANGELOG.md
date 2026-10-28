@@ -1,7 +1,29 @@
 ## [Unreleased]
 
+### Added
+
+- **The ops history flags a decision that was probably recorded twice**
+  (#851). Recording a decision with `mureo_decision_record` and then
+  making the change with only a `reason` leaves two decisions for one
+  change, and they are still never joined. Each decision in the
+  `decisions` / `ops_history` items now carries `possible_duplicate_of`:
+  on a recorded decision not yet carried out, the root id of the decision
+  a call opened within 24 hours after it on the same campaign or entity
+  (the nearest; each named once, by the earliest recorded decision, and a
+  later one whose nearest is already named gets none), otherwise `null`.
+  A decision already adopted by a call is never flagged. The dashboard's ops
+  history section shows a "Possible duplicate" chip on that row, and the
+  expanded row says to pass `decision_id` on the change to keep one
+  decision. The expanded row's builders moved to
+  `dashboard_ops_history_detail.js`.
+
 ### Changed
 
+- **The configure UI's static-file allowlist moved to
+  `mureo/web/static_assets.py`** (internal, #851). `_STATIC_ALLOWLIST` and
+  `_STATIC_CONTENT_TYPES` left `mureo/web/handlers.py`, which imports them
+  under the same names; a new `mureo/_data/web/` file is now registered
+  there.
 - **The last five `#879` import cycles are gone** (internal, #879 stage 4).
   No line under `mureo/` carries the `PLC0415` / `#879` marker any more.
   `MonthlyBudget` and the `SOURCE_*` constants now live in

@@ -5255,6 +5255,20 @@ label .muted,
   vertical-align: middle;
 }
 
+/* #851: the server's possible-duplicate hint, beside the title like the
+   weak-rationale chip, and its sentence in the expanded row. */
+.ops-history-duplicate {
+  display: inline-block;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.ops-history-duplicate-note {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  color: var(--ink-soft);
+}
+
 .ops-history-verdict {
   display: inline-block;
   padding: 3px 10px;

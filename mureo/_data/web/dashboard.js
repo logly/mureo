@@ -57,7 +57,7 @@
           " (" +
           file +
           ") is missing. It must be served (see _STATIC_ALLOWLIST in " +
-          "mureo/web/handlers.py) and its <script> tag must come BEFORE " +
+          "mureo/web/static_assets.py) and its <script> tag must come BEFORE " +
           "dashboard.js in app.html."
       );
     }
@@ -258,7 +258,7 @@
           })
           .join(", ") +
         " is missing. Each must be served (see _STATIC_ALLOWLIST in " +
-        "mureo/web/handlers.py) and its <script> tag must come BEFORE " +
+        "mureo/web/static_assets.py) and its <script> tag must come BEFORE " +
         "dashboard.js in app.html."
     );
   }

@@ -5,8 +5,8 @@ proposal, then the adoption that supersedes it, then perhaps a later
 rejection. The first record's ``decision_id`` — the chain's root — is the
 decision's stable identity, and it is the id an ``action_log`` entry
 carries in ``decision_id``. These helpers answer the questions every reader
-of the chain asks: where does it start, what is its latest status, and
-what did it expect.
+of the chain asks: where does it start, what is its latest status,
+what did it expect, and which decision does each change belong to.
 
 A record the model refused (#882) is never part of a chain: every helper
 reads :func:`~mureo.context.decisions.parsed_decisions`.
@@ -23,7 +23,7 @@ from mureo.context.decisions import parsed_decisions
 if TYPE_CHECKING:
     from mureo.context.decisions import DecisionRecord
     from mureo.context.expected import ExpectedEffect
-    from mureo.context.models import StateDocument
+    from mureo.context.models import ActionLogEntry, StateDocument
 
 
 def chain_roots(doc: StateDocument) -> dict[str, str]:
@@ -95,11 +95,39 @@ def chain_expected(doc: StateDocument, decision_id: str) -> tuple[ExpectedEffect
     return ()
 
 
+def is_change(entry: ActionLogEntry) -> bool:
+    """A change in its own right, not a record about another one."""
+    # Keeps ``origin`` entries, unlike ops_linkage._is_change: reads show them.
+    return entry.evaluation_of is None and entry.rollback_of is None
+
+
+def change_owners(doc: StateDocument, roots: dict[str, str]) -> dict[int, str]:
+    """The one decision each change belongs to.
+
+    Its own ``decision_id`` first; a decision's ``related_actions`` then
+    claim only the changes still unowned.
+    """
+    owner: dict[int, str] = {}
+    for index, entry in enumerate(doc.action_log):
+        root = roots.get(entry.decision_id or "")
+        if root is not None and is_change(entry):
+            owner[index] = root
+    size = len(doc.action_log)
+    for record in parsed_decisions(doc):
+        root = roots.get(record.decision_id, record.decision_id)
+        for index in record.related_actions:
+            if 0 <= index < size and is_change(doc.action_log[index]):
+                owner.setdefault(index, root)
+    return owner
+
+
 __all__ = [
     "chain_expected",
     "chain_records",
     "chain_root",
     "chain_roots",
+    "change_owners",
     "group_chains",
+    "is_change",
     "latest_in_chain",
 ]

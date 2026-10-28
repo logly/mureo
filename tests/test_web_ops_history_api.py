@@ -164,6 +164,42 @@ class TestEndpoint:
         _write(workspace, _document(enabled=True))
         assert get_ok(wizard, ENDPOINT + "?client=acme")["client"] == "acme"
 
+    def test_a_decision_carries_its_possible_duplicate(
+        self, wizard: ConfigureWizard, workspace: Path
+    ) -> None:
+        """#851: a recorded decision and a reasoned change on one target."""
+        target = {"platform": "google_ads", "campaign_id": "c1"}
+        document = _document(enabled=True)
+        document["decisions"] = [
+            {
+                "decision_id": "dec-r",
+                "recorded_at": "2026-10-10T09:50:00+09:00",
+                "status": "adopted",
+                "title": "Raise the budget",
+                "rationale": "Capped by noon every day this week.",
+                **target,
+            },
+            {
+                "decision_id": "dec-k",
+                "recorded_at": "2026-10-10T10:00:00+09:00",
+                "status": "adopted",
+                "title": "google_ads_budget_update",
+                "rationale": "Capped by noon.",
+                "journal_call_id": "call-k",
+                **target,
+            },
+        ]
+        document["action_log"][2]["decision_id"] = "dec-k"
+        _write(workspace, document)
+        body = get_ok(wizard, ENDPOINT)
+        by_id = {
+            i["decision"]["decision_id"]: i["decision"]
+            for i in body["items"]
+            if i["decision"]
+        }
+        assert by_id["dec-r"]["possible_duplicate_of"] == "dec-k"
+        assert by_id["dec-k"]["possible_duplicate_of"] is None
+
 
 class _Roster(FilesystemStateStore):
     """A store with a client registry, each client in its own folder."""
@@ -283,6 +319,8 @@ class TestSummaryAggregate:
 
 _WEB = Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web"
 _MODULE = "dashboard_ops_history_section.js"
+# The expanded row's builders (#851), split out of the section module.
+_DETAIL_MODULE = "dashboard_ops_history_detail.js"
 # The outcome wording (#894): pure, no DOM, loaded before every reader.
 _TEXT_MODULE = "outcome_text.js"
 # A whole key: a key prefix the code completes at run time is not one.
@@ -333,6 +371,23 @@ class TestAssets:
         )
         assert harness.index(f'"{_MODULE}"') < harness.index('"dashboard_reports.js"')
 
+    def test_the_detail_module_is_served_and_loaded_before_the_section(
+        self,
+    ) -> None:
+        from mureo.web.handlers import _STATIC_ALLOWLIST
+
+        assert _DETAIL_MODULE in _STATIC_ALLOWLIST
+        html = _read("app.html")
+        script = html.index(f"/static/{_DETAIL_MODULE}")
+        assert html.index(f"/static/{_TEXT_MODULE}") < script
+        assert html.index("/static/dashboard_reports_state.js") < script
+        assert script < html.index(f"/static/{_MODULE}")
+        harness = (Path(__file__).parent / "js" / "dom_harness.js").read_text(
+            encoding="utf-8"
+        )
+        position = harness.index(f'"{_DETAIL_MODULE}"')
+        assert position < harness.index(f'"{_MODULE}"')
+
     def test_the_wording_module_is_served_and_loaded_before_its_readers(
         self,
     ) -> None:
@@ -363,6 +418,7 @@ class TestAssets:
     @pytest.mark.parametrize("sink", ["innerHTML", "outerHTML", "insertAdjacentHTML"])
     def test_free_text_never_goes_through_an_html_sink(self, sink: str) -> None:
         assert sink not in _read(_MODULE)
+        assert sink not in _read(_DETAIL_MODULE)
         assert sink not in _read(_TEXT_MODULE)
 
     def test_the_weak_rationale_threshold_is_one_documented_constant(self) -> None:
@@ -370,12 +426,22 @@ class TestAssets:
         docs = Path(__file__).resolve().parent.parent / "docs" / "ops-history.md"
         assert "WEAK_RATIONALE_MIN_CHARS" in docs.read_text(encoding="utf-8")
 
+    def test_the_duplicate_window_is_one_documented_constant(self) -> None:
+        assert "DUPLICATE_DECISION_WINDOW_HOURS = 24" in _read(_MODULE)
+        docs = Path(__file__).resolve().parent.parent / "docs" / "ops-history.md"
+        assert "DUPLICATE_DECISION_WINDOW_HOURS" in docs.read_text(encoding="utf-8")
+
     def test_every_key_is_translated_in_both_locales(self) -> None:
         used: set[str] = set()
-        scanned = (_MODULE, _TEXT_MODULE, "dashboard_reports_cards.js")
+        scanned = (_MODULE, _DETAIL_MODULE, _TEXT_MODULE, "dashboard_reports_cards.js")
         for name in (*scanned, "reports_triage.js"):
             used |= set(_SECTION_KEY.findall(_read(name)))
-        used |= {f"ops_history_section.{k}" for k in _T_CALL.findall(_read(_MODULE))}
+        for name in (_MODULE, _DETAIL_MODULE):
+            used |= {f"ops_history_section.{k}" for k in _T_CALL.findall(_read(name))}
+        assert {
+            "ops_history_section.possible_duplicate",
+            "ops_history_section.possible_duplicate_detail",
+        } <= used
         for prefix, values in _FAMILIES.items():
             used |= {f"ops_history_section.{prefix}{v}" for v in values}
         assert len(used) >= 20
@@ -398,7 +464,7 @@ class TestAssets:
 
     def test_every_outcome_key_is_translated_in_both_locales(self) -> None:
         used: set[str] = set()
-        for name in (_MODULE, _TEXT_MODULE, "reports_display.js"):
+        for name in (_MODULE, _DETAIL_MODULE, _TEXT_MODULE, "reports_display.js"):
             used |= set(_OUTCOME_KEY.findall(_read(name)))
         for prefix, values in _OUTCOME_FAMILIES.items():
             used |= {f"outcome.{prefix}{v}" for v in values}
