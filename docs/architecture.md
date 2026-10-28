@@ -229,12 +229,15 @@ mureo/
 │   │                        #   are written back (#882), because a decision record IS history
 │   ├── expected.py          # `expected` effects (#848): {metric, direction, target?, horizon_days?, primary?}
 │   ├── settings.py          # The `settings` section: ops_history.enabled (#848)
-│   ├── decision_chain.py    # A decision's `supersedes` chain: root, latest, expected
+│   ├── decision_chain.py    # A decision's `supersedes` chain: root, latest, expected,
+│   │                        #   and which change each decision owns (change_owners)
 │   ├── ops_intent.py        # The call's expected / decision_id, bound by the dispatcher
 │   ├── ops_linkage.py       # Linking an action_log entry / batch to its decision (#848),
 │   │                        #   inside the append's locked write
 │   ├── ops_fields.py        # Title and metrics of an automatically created decision
 │   ├── ops_history_view.py  # Decision → actions → evaluation join with derived states
+│   ├── ops_history_duplicates.py # The possible-duplicate hint between a recorded
+│   │                        #   decision and the one a call opened (#851)
 │   ├── display_codec.py     # The `display` section's two codec halves (#706) — tolerant on
 │   │                        #   read, because every bound on that surface is a WRITE rule
 │   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)
@@ -377,6 +380,8 @@ mureo/
     │                        #   send_steps for the multi-step routes: 200 per-step envelope, or
     │                        #   500 basic_setup_failed / basic_clear_failed + "steps" when every
     │                        #   step failed (#891)
+    ├── static_assets.py     # The files GET /static/<name> may serve (_STATIC_ALLOWLIST) and
+    │                        #   their content types (_STATIC_CONTENT_TYPES)
     └── auth_wizard.py       # OAuth handoff server spawned by web/oauth_bridge.py (Google + Meta)
 
 skills/                          # Native slash skills — deployed to ~/.claude/skills/ and ~/.codex/skills/

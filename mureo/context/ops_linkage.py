@@ -255,6 +255,7 @@ def _stamp(entry: ActionLogEntry, root: str) -> ActionLogEntry:
 
 def _is_change(entry: ActionLogEntry) -> bool:
     """A change mureo made, not an evaluation, an import or a reversal."""
+    # Also skips ``origin`` (unlike decision_chain.is_change): observed, not made.
     return (
         entry.evaluation_of is None
         and entry.origin is None

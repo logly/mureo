@@ -180,6 +180,7 @@ from mureo.web.setup_actions import (
     remove_workflow_skills,
     set_native_preference,
 )
+from mureo.web.static_assets import _STATIC_ALLOWLIST, _STATIC_CONTENT_TYPES
 from mureo.web.status_collector import collect_status
 from mureo.web.strategy_currency import post_strategy_currency, serve_strategy_currency
 from mureo.web.strategy_guardrails import (
@@ -294,64 +295,6 @@ try:
 except Exception:  # noqa: BLE001 — never let a version lookup break import
     mureo_version = "unknown"
 
-
-_STATIC_CONTENT_TYPES: dict[str, str] = {
-    ".html": "text/html; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".js": "application/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-    ".ico": "image/x-icon",
-}
-
-# Filenames inside ``mureo/_data/web/`` that may be served by GET /static/<name>.
-_STATIC_ALLOWLIST: tuple[str, ...] = (
-    "app.html",
-    "app.css",
-    "app.js",
-    "landing.js",
-    "wizard.js",
-    "amazon_oauth.js",
-    "auth_wizards_meta.js",
-    "auth_wizards.js",
-    "reports_logic.js",
-    "reports_format.js",
-    "outcome_text.js",
-    "reports_sparkline.js",
-    "reports_display.js",
-    "reports_chart.js",
-    "reports_order.js",
-    "reports_triage.js",
-    "reports_overview.js",
-    "reports_hero.js",
-    "reports_index.js",
-    "dashboard_setup.js",
-    "dashboard_workspace.js",
-    "dashboard_guardrails.js",
-    "dashboard_ops_history.js",
-    "dashboard_about.js",
-    "dashboard_advisors.js",
-    "dashboard_reports_state.js",
-    "dashboard_reports_report.js",
-    "dashboard_reports_changes.js",
-    "dashboard_reports_chart.js",
-    "dashboard_reports_detail.js",
-    "dashboard_ops_history_section.js",
-    "dashboard_reports_overview.js",
-    "dashboard_reports_hero.js",
-    "dashboard_reports_cards.js",
-    "dashboard_reports_triage.js",
-    "dashboard_reports_table.js",
-    "dashboard_reports.js",
-    "dashboard_creative.js",
-    "dashboard_plugins.js",
-    "dashboard.js",
-    "extensions.js",
-    "i18n.json",
-    "logo.png",
-    "logo-dark.png",
-)
 
 # Regex on path: /api/oauth/<provider>/status or /start
 _OAUTH_PROVIDER_RE = re.compile(

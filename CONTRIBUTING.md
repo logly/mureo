@@ -175,7 +175,7 @@ No install step: no `package.json`, no dependencies, no lockfile. Each
 module publishes exactly one global for the browser and carries an inert
 `module.exports` tail so Node can require the exact bytes the browser is
 served. A new module needs three things: an entry in `_STATIC_ALLOWLIST`
-(`mureo/web/handlers.py`), a `<script>` tag ahead of `dashboard.js` in
+(`mureo/web/static_assets.py`), a `<script>` tag ahead of `dashboard.js` in
 `app.html`, and a row in the table at the top of
 `tests/js/browser_contract.test.js` — which then asserts the same shipping
 contract for it as for every other module.

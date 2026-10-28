@@ -213,10 +213,11 @@ mureo/
 │   │                    #   not tolerant like batches': a decision record IS history
 │   ├── expected.py, approval.py, iso_time.py, settings.py, decision_chain.py, ops_intent.py,
 │   │   ops_linkage.py, ops_fields.py, ops_history_view.py,
-│   │   ops_history_query.py
+│   │   ops_history_duplicates.py, ops_history_query.py
 │   │                    #   Ops history (#848): expected effects, the settings section,
 │   │                    #   linking entries to decisions inside the locked append, the
-│   │                    #   derived decision → actions → evaluation view, and the
+│   │                    #   derived decision → actions → evaluation view, the
+│   │                    #   possible-duplicate hint between two decisions (#851), and the
 │   │                    #   date-bounded read both MCP and the dashboard use. See
 │   │                    #   docs/ops-history.md
 │   ├── daily.py         # The day-grain history write MINUS the file (#690/#710):
@@ -348,6 +349,8 @@ mureo/
 │   │                    #   no web submodule loads server.py unless it needs it (#863)
 │   ├── action_result.py # ActionResult + send_result: the one failure mapping of action routes (#864);
 │   │                    #   send_steps: multi-step envelope, 500 + "steps" only when every step failed (#891)
+│   ├── static_assets.py # The files GET /static/<name> may serve (_STATIC_ALLOWLIST) and their
+│   │                    #   content types; add a new mureo/_data/web/ file here
 │   └── auth_wizard.py   # Browser-based OAuth wizard spawned by web/oauth_bridge.py (per-platform creds)
 ├── demo/                # `mureo demo init` synthetic-bundle bootstrap (round-trips through BYOD)
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
@@ -572,7 +575,9 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     reason sentence and a row's role and note in the evaluation table. It
     judges nothing: it words the server's `note_parts` and codes. Reads
     `MUREO_REPORTS_FORMAT` at call time, so it loads after it and before
-    `reports_display.js` and `dashboard_ops_history_section.js`.
+    `reports_display.js` and `dashboard_ops_history_detail.js` (the ops
+    history section's expanded row, which `dashboard_ops_history_section.js`
+    binds at load, #851).
   - `reports_order.js` → `window.MUREO_REPORTS_ORDER` — the Reports index
     card order (localStorage, and the two ways the grid is reordered).
   - `reports_triage.js` → `window.MUREO_REPORTS_TRIAGE` — the multi-client

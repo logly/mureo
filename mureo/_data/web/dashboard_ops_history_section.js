@@ -11,34 +11,56 @@
 // NOTHING HERE JUDGES. Every verdict, state and figure is the server's; this
 // file only orders, filters and prints them. The one call it makes on its
 // own is the "weak rationale" chip, and its threshold is the named constant
-// below so the documentation can state it.
+// below so the documentation can state it. The "possible duplicate" chip
+// (#851) is the server's `decision.possible_duplicate_of`, only shown.
 //
 // Writer text (titles, rationales, reasons, notes) is untrusted: it goes on
 // the page through `textContent` only, with markdown emphasis stripped by
 // the shared display helper.
 //
+// The expanded row's blocks are built by dashboard_ops_history_detail.js
+// (#851), which also defines the helpers both files use.
+//
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
 // `window.MUREO_DASHBOARD_OPS_HISTORY_SECTION`. Loads AFTER
-// dashboard_reports_detail.js and BEFORE dashboard_reports_cards.js and
-// dashboard_reports.js, which resolve it per call.
+// dashboard_reports_detail.js and dashboard_ops_history_detail.js and BEFORE
+// dashboard_reports_cards.js and dashboard_reports.js, which resolve it per
+// call.
 
 (function () {
   "use strict";
 
   const REPORTS_SHARED = window.MUREO_DASHBOARD_REPORTS_STATE;
-  const DISPLAY = window.MUREO_REPORTS_DISPLAY;
-  // The evaluation table's wording (#894): one place for it, outcome_text.js.
-  const OUTCOME = window.MUREO_OUTCOME_TEXT;
-  if (!REPORTS_SHARED || !DISPLAY || !OUTCOME) {
+  // The expanded row's builders and the helpers both files use (#851),
+  // bound by their original names.
+  const DETAIL = window.MUREO_DASHBOARD_OPS_HISTORY_DETAIL;
+  if (!REPORTS_SHARED || !DETAIL) {
     throw new Error(
-      "dashboard_ops_history_section.js needs MUREO_DASHBOARD_REPORTS_STATE, " +
-        "MUREO_REPORTS_DISPLAY and MUREO_OUTCOME_TEXT — load dashboard_reports_state.js, " +
-        "reports_display.js and outcome_text.js BEFORE dashboard_ops_history_section.js"
+      "dashboard_ops_history_section.js needs MUREO_DASHBOARD_REPORTS_STATE and " +
+        "MUREO_DASHBOARD_OPS_HISTORY_DETAIL — load dashboard_reports_state.js and " +
+        "dashboard_ops_history_detail.js BEFORE dashboard_ops_history_section.js"
     );
   }
   const formatNumber = REPORTS_SHARED.formatNumber;
   const humanizeFlagWords = REPORTS_SHARED.humanizeFlagWords;
   const reportsPlatformLabels = REPORTS_SHARED.reportsPlatformLabels;
+  const VERDICTS = DETAIL.VERDICTS;
+  const NO_VALUE = DETAIL.NO_VALUE;
+  const ARROW = DETAIL.ARROW;
+  const t = DETAIL.t;
+  const el = DETAIL.el;
+  const clean = DETAIL.clean;
+  const isNumber = DETAIL.isNumber;
+  const formatValue = DETAIL.formatValue;
+  const deltaText = DETAIL.deltaText;
+  const verdictLabel = DETAIL.verdictLabel;
+  const evaluationTable = DETAIL.evaluationTable;
+  const headedTable = DETAIL.headedTable;
+  const buildRationale = DETAIL.buildRationale;
+  const buildExpected = DETAIL.buildExpected;
+  const buildOperations = DETAIL.buildOperations;
+  const skippedLine = DETAIL.skippedLine;
+  const buildEvaluation = DETAIL.buildEvaluation;
 
   const FEED_URL = "/api/reports/ops-history";
 
@@ -47,6 +69,12 @@
   //: rationale". Twenty characters is about one short clause: enough for
   //: "CPA above target for two weeks", not for "Too high.".
   const WEAK_RATIONALE_MIN_CHARS = 20;
+
+  //: The server's window for a possible duplicate (#851,
+  //: mureo/context/ops_history_duplicates.py DUPLICATE_DECISION_WINDOW): a
+  //: change on the same target recorded as its own decision within this many
+  //: hours after a decision recorded on its own. Only stated, never applied.
+  const DUPLICATE_DECISION_WINDOW_HOURS = 24;
 
   //: The period choices: that many calendar days ending on the server's
   //: today, today included (the server's own window rule).
@@ -65,7 +93,6 @@
     "rejected",
     "deferred",
   ];
-  const VERDICTS = ["regressed", "inconclusive", "held", "improved"];
   const COLUMNS = [
     "col_date",
     "col_title",
@@ -74,19 +101,6 @@
     "col_metric",
     "col_verdict",
   ];
-  const EVAL_COLUMNS = [
-    "eval_metric",
-    "eval_before",
-    "eval_after",
-    "eval_delta",
-    "eval_verdict",
-    "eval_note",
-  ];
-  const NO_VALUE = "—";
-  //: The longest a single before / after value is printed. A nested value is
-  //: shown as JSON and cut here, so one deep parameter cannot fill the row.
-  const VALUE_TEXT_MAX_CHARS = 80;
-  const ARROW = " → ";
   const DAY_MS = 86400000;
 
   //: What the view holds between a fetch and a filter change. Replaced, not
@@ -100,21 +114,6 @@
     today: null,
     body: null,
   };
-
-  function t(key, params) {
-    return MUREO.t("ops_history_section." + key, params);
-  }
-
-  function el(tag, className, textContent) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (textContent != null) node.textContent = textContent;
-    return node;
-  }
-
-  function clean(value) {
-    return typeof value === "string" ? DISPLAY.stripEmphasis(value) : null;
-  }
 
   // --- pure ----------------------------------------------------------------
 
@@ -170,6 +169,12 @@
     return text.trim().length < WEAK_RATIONALE_MIN_CHARS;
   }
 
+  /** The decision the server says this one may duplicate (#851), or null. */
+  function duplicateOf(item) {
+    const id = item && item.decision && item.decision.possible_duplicate_of;
+    return typeof id === "string" && id ? id : null;
+  }
+
   function filterItems(items, filters) {
     const f = filters || {};
     return (Array.isArray(items) ? items : []).filter(function (item) {
@@ -186,16 +191,6 @@
       if (key) seen[key] = true;
     });
     return Object.keys(seen).sort();
-  }
-
-  /** The first evaluation table with rows among the item's changes, or null. */
-  function evaluationTable(item) {
-    const acts = item && Array.isArray(item.actions) ? item.actions : [];
-    for (let i = 0; i < acts.length; i++) {
-      const table = acts[i] && acts[i].evaluation && acts[i].evaluation.table;
-      if (table && Array.isArray(table.metrics) && table.metrics.length) return table;
-    }
-    return null;
   }
 
   function evaluationRows(item) {
@@ -221,23 +216,6 @@
       }) ||
       rows[0];
     return pick || null;
-  }
-
-  function isNumber(value) {
-    return typeof value === "number" && Number.isFinite(value);
-  }
-
-  function formatValue(value) {
-    if (!isNumber(value)) return NO_VALUE;
-    if (Math.abs(value) >= 100) return formatNumber(Math.round(value));
-    return formatNumber(Math.round(value * 100) / 100);
-  }
-
-  function deltaText(pct) {
-    if (!isNumber(pct)) return "";
-    const rounded = Math.round(Math.abs(pct));
-    if (rounded === 0) return "±0%";
-    return (pct > 0 ? "▲" : "▼") + rounded + "%";
   }
 
   function metricText(row) {
@@ -343,10 +321,6 @@
     return t("state_" + state);
   }
 
-  function verdictLabel(verdict) {
-    return t("verdict_" + verdict);
-  }
-
   function buildHeader(items) {
     const head = el("div", "ops-history-head");
     head.appendChild(el("h3", null, t("title")));
@@ -380,6 +354,11 @@
       chip.setAttribute("data-ops-history-weak-chip", "");
       td.appendChild(chip);
     }
+    if (duplicateOf(item)) {
+      const chip = el("span", "report-chip is-info ops-history-duplicate", t("possible_duplicate"));
+      chip.setAttribute("data-ops-history-duplicate-chip", "");
+      td.appendChild(chip);
+    }
     return td;
   }
 
@@ -400,6 +379,7 @@
     const decision = item.decision;
     tr.setAttribute("data-decision", (decision && decision.decision_id) || "change-" + at);
     if (isWeakRationale(item)) tr.setAttribute("data-ops-history-weak", "");
+    if (duplicateOf(item)) tr.setAttribute("data-ops-history-duplicate", "");
     tr.appendChild(el("td", "ops-history-date", itemStamp(item).slice(0, 10) || NO_VALUE));
     tr.appendChild(titleCell(item));
     const platform = itemPlatform(item);
@@ -416,173 +396,16 @@
     return tr;
   }
 
-  // --- the expanded detail -------------------------------------------------
+  // --- the expanded detail (its blocks: dashboard_ops_history_detail.js) ---
 
-  function block(titleKey, attr) {
-    const wrap = el("div", "ops-history-detail-block");
-    if (attr) wrap.setAttribute(attr, "");
-    wrap.appendChild(el("h4", null, t(titleKey)));
-    return wrap;
-  }
-
-  function buildRationale(decision) {
-    const wrap = block("rationale");
-    const text = decision ? clean(decision.rationale) : null;
-    const p = el("p", text ? null : "is-muted", text || t("rationale_missing"));
-    p.setAttribute("data-ops-history-rationale", "");
-    wrap.appendChild(p);
-    return wrap;
-  }
-
-  function expectedText(entry) {
-    const parts = [humanizeFlagWords(String(entry.metric || ""))];
-    if (entry.direction) parts.push(t("direction_" + entry.direction));
-    if (isNumber(entry.target)) {
-      parts.push(t("expected_target", { value: formatValue(entry.target) }));
-    }
-    if (isNumber(entry.horizon_days)) parts.push(t("expected_horizon", { n: entry.horizon_days }));
-    return parts.join(" · ");
-  }
-
-  function buildExpected(decision) {
-    const wrap = block("expected", "data-ops-history-expected");
-    const entries = decision && Array.isArray(decision.expected) ? decision.expected : [];
-    if (!entries.length) {
-      wrap.appendChild(el("p", "is-muted", t("expected_none")));
-      return wrap;
-    }
-    const list = el("ul", "ops-history-expected");
-    entries.forEach(function (entry) {
-      if (entry && typeof entry === "object") list.appendChild(el("li", null, expectedText(entry)));
-    });
-    wrap.appendChild(list);
-    return wrap;
-  }
-
-  function bounded(text) {
-    if (text.length <= VALUE_TEXT_MAX_CHARS) return text;
-    return text.slice(0, VALUE_TEXT_MAX_CHARS - 1) + "…";
-  }
-
-  function valueText(v) {
-    if (isNumber(v)) return formatNumber(v);
-    if (v && typeof v === "object") return bounded(JSON.stringify(v));
-    return bounded(String(v));
-  }
-
-  function valuesText(values) {
-    if (!values || typeof values !== "object") return NO_VALUE;
-    const pairs = Object.keys(values).map(function (key) {
-      return key + ": " + valueText(values[key]);
-    });
-    return pairs.length ? pairs.join(", ") : NO_VALUE;
-  }
-
-  // #854: the external approval a change carried out, exactly as it was
-  // stated (mureo verified nothing about it). Not run through clean():
-  // emphasis stripping would change a reference such as REQ__1__x, and the
-  // line is set as text, so nothing in a value is interpreted. Drawn only
-  // when it is the three strings; anything else draws no line rather than a
-  // broken one.
-  function stated(value) {
-    return typeof value === "string" && value.trim() ? value : null;
-  }
-
-  function approvalLine(approval) {
-    if (!approval || typeof approval !== "object") return null;
-    const name = stated(approval.approved_by);
-    const reference = stated(approval.reference);
-    const at = stated(approval.approved_at);
-    if (!name || !reference || !at) return null;
-    const text = t("approved_by", { name: name, date: at.slice(0, 10), reference: reference });
-    const line = el("p", "ops-history-op-approval", text);
-    line.setAttribute("data-ops-history-approval", "");
-    return line;
-  }
-
-  function operationLine(act) {
-    const li = el("li", "ops-history-operation");
-    const name = clean(act.display_title) || humanizeFlagWords(String(act.action || ""));
-    const target = [act.entity_type, act.entity_id || act.campaign_id].filter(Boolean).join(" ");
-    li.appendChild(el("span", "ops-history-op-name", name + (target ? " (" + target + ")" : "")));
-    const moved = valuesText(act.before) + ARROW + valuesText(act.after);
-    li.appendChild(el("span", "ops-history-op-values", " " + moved));
-    const reason = clean(act.reason);
-    if (reason) li.appendChild(el("p", "ops-history-op-reason", reason));
-    const approval = approvalLine(act.approval);
-    if (approval) li.appendChild(approval);
-    if (act.observation_due) {
-      const due = t("observation_due", { date: act.observation_due });
-      li.appendChild(el("p", "ops-history-op-due", due));
-    }
-    return li;
-  }
-
-  function buildOperations(item) {
-    const wrap = block("operations", "data-ops-history-operations");
-    const acts = Array.isArray(item.actions) ? item.actions : [];
-    if (!acts.length) {
-      const params = item.decision && item.decision.applied_params;
-      const text = params ? t("params_sent") + " " + valuesText(params) : t("operations_none");
-      wrap.appendChild(el("p", "is-muted", text));
-      const approval = approvalLine(item.decision && item.decision.approval);
-      if (approval) wrap.appendChild(approval);
-      return wrap;
-    }
-    const list = el("ul", "ops-history-operations");
-    acts.forEach(function (act) {
-      if (act && typeof act === "object") list.appendChild(operationLine(act));
-    });
-    wrap.appendChild(list);
-    return wrap;
-  }
-
-  // A role the table does not state (written before #888) adds nothing.
-  function evaluationRow(row, table) {
-    const tr = el("tr");
-    const role = OUTCOME.rowRole(row, table);
-    if (role) tr.setAttribute("data-role", role);
-    const name = el("td", null, humanizeFlagWords(String(row.metric || "")));
-    const said = VERDICTS.indexOf(row.verdict) !== -1 ? verdictLabel(row.verdict) : NO_VALUE;
-    const verdict = el("td", "ops-history-eval-verdict", said);
-    const primary = role === "primary" ? MUREO.t("outcome.role_primary") : null;
-    if (primary) name.appendChild(el("span", "ops-history-eval-role", primary));
-    const reference = role === "reference" ? MUREO.t("outcome.role_reference") : null;
-    if (reference) verdict.appendChild(el("span", "ops-history-eval-reference", reference));
-    const delta = deltaText(row.delta_pct) || NO_VALUE;
-    const note = el("td", null, OUTCOME.noteText(row.note_parts) || clean(row.note) || "");
-    const cell = function (text) { return el("td", null, text); };
-    [name, cell(formatValue(row.before)), cell(formatValue(row.after)), cell(delta), verdict, note]
-      .forEach(function (td) { tr.appendChild(td); });
-    return tr;
-  }
-
-  function buildEvaluation(item) {
-    const table = evaluationTable(item);
-    if (!table) return null;
-    const wrap = block("eval_title");
-    const parts = headedTable("ops-history-eval", EVAL_COLUMNS, false);
-    parts.table.setAttribute("data-ops-history-evaluation", "");
-    table.metrics.forEach(function (row) {
-      if (row && typeof row === "object") parts.body.appendChild(evaluationRow(row, table));
-    });
-    wrap.appendChild(parts.table);
-    if (typeof table.reason === "string" && table.reason) {
-      const reason = el("p", "ops-history-eval-reason", OUTCOME.reasonText(table.reason));
-      reason.setAttribute("data-ops-history-eval-reason", "");
-      wrap.appendChild(reason);
-    }
-    return wrap;
-  }
-
-  function skippedLine(item) {
-    const act = (item.actions || []).find(function (a) {
-      return a && a.skipped_reason;
-    });
-    if (!act) return null;
-    const reason = humanizeFlagWords(String(act.skipped_reason));
-    const p = el("p", "ops-history-skipped", t("skipped", { reason: reason }));
-    p.setAttribute("data-ops-history-skipped", "");
+  // #851: said, never acted on. No link to the other decision: the operator
+  // reads both rows and decides.
+  function duplicateNote(item) {
+    const id = duplicateOf(item);
+    if (!id) return null;
+    const text = t("possible_duplicate_detail", { id: id, hours: DUPLICATE_DECISION_WINDOW_HOURS });
+    const p = el("p", "ops-history-duplicate-note", text);
+    p.setAttribute("data-ops-history-duplicate-note", "");
     return p;
   }
 
@@ -598,6 +421,7 @@
       td.appendChild(chip);
     }
     [
+      duplicateNote(item),
       buildRationale(item.decision),
       buildExpected(item.decision),
       buildOperations(item),
@@ -620,22 +444,6 @@
   }
 
   // --- the table -----------------------------------------------------------
-
-  /** A table with its header row in a thead, and the tbody to fill. */
-  function headedTable(className, keys, expandColumn) {
-    const table = el("table", "reports-breakdown-table " + className);
-    const thead = el("thead");
-    const head = el("tr");
-    keys.forEach(function (key) {
-      head.appendChild(el("th", null, t(key)));
-    });
-    if (expandColumn) head.appendChild(el("th", "ops-history-expand-cell"));
-    thead.appendChild(head);
-    table.appendChild(thead);
-    const body = el("tbody");
-    table.appendChild(body);
-    return { table: table, body: body };
-  }
 
   function buildTable(items) {
     const parts = headedTable("ops-history-table", COLUMNS, true);
@@ -783,6 +591,7 @@
 
   const api = {
     WEAK_RATIONALE_MIN_CHARS: WEAK_RATIONALE_MIN_CHARS,
+    DUPLICATE_DECISION_WINDOW_HOURS: DUPLICATE_DECISION_WINDOW_HOURS,
     PERIOD_DAYS: PERIOD_DAYS,
     DEFAULT_PERIOD_DAYS: DEFAULT_PERIOD_DAYS,
     orderItems: orderItems,

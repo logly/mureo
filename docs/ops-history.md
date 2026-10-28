@@ -175,6 +175,8 @@ not enough. A wrong link is worse than a duplicate the operator can see:
 recording a decision with `mureo_decision_record` and then making the
 change with only a `reason` leaves two decisions. To link a change to a
 decision you recorded, pass its `decision_id` on the change-making call.
+The dashboard flags such a pair as a possible duplicate, without joining
+it (see [The detail section](#the-detail-section)).
 
 ### Calls that write no `action_log` entry
 
@@ -432,6 +434,21 @@ recorded.
 - Each change carries `approval`, its entry's external approval, and each
   decision carries `approval`, the newest one stated on its chain. Both
   are `null` when none was stated.
+- Each decision carries `possible_duplicate_of`: the root `decision_id` of
+  a decision a change opened that probably records the same decision
+  again, or `null`. It is set on a decision recorded with
+  `mureo_decision_record` (latest status `proposed` or `adopted`, carried
+  out by no change) when, within 24 hours after it, a call opened a
+  decision of its own (not inside a batch, latest status still `adopted`)
+  on the same target: every target field both name is equal, and both
+  name the campaign or the entity. A decision already adopted by a call
+  (any record of it carries `journal_call_id`, `journal_tool` or
+  `batch_id`) is never flagged. Recorded decisions are taken earliest
+  first; each is matched only against the nearest such decision, and when
+  an earlier recorded decision already named that one, it gets no hint
+  (the next-nearest is not tried). The pair is found across the whole
+  document, whatever the `since` / `until` window. It is a hint: nothing
+  is joined or stored.
 - Each item has a derived `state`: `proposed`, `adopted`, `executed`,
   `observing`, `evaluated` (with `verdict`: `regressed` if any of its
   changes regressed, else `improved`, else `held`, else `inconclusive`),
@@ -493,6 +510,17 @@ cannot be read, the section is left out too.
   `WEAK_RATIONALE_MIN_CHARS` (20) characters, after markdown emphasis is
   stripped and whitespace trimmed, carries a "weak rationale" chip. The
   constant is in `dashboard_ops_history_section.js`.
+- **Possible duplicate**: a decision whose `possible_duplicate_of` is set
+  carries a "Possible duplicate" chip, and its expanded row says that a
+  change on the same target was recorded as its own decision (naming its
+  id) within `DUPLICATE_DECISION_WINDOW_HOURS` (24) hours, and that
+  passing `decision_id` on the change keeps one decision. The server sets
+  the field when a decision recorded with `mureo_decision_record` and not
+  yet carried out is followed, within 24 hours, by a call that opened its
+  own decision on the same campaign or entity; a decision a call already
+  adopted is never flagged (see
+  [Reading it back](#reading-it-back)). The constant is in
+  `dashboard_ops_history_section.js`; nothing is linked or joined.
 - **Expanding a row** shows the rationale, the expected effects, the
   operations sent (tool, target, before → after, reason; a nested value is
   shown as JSON, cut at 80 characters), the observation
