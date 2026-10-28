@@ -1,3 +1,39 @@
+## [Unreleased]
+
+### Changed
+
+- **The last five `#879` import cycles are gone** (internal, #879 stage 4).
+  No line under `mureo/` carries the `PLC0415` / `#879` marker any more.
+  `MonthlyBudget` and the `SOURCE_*` constants now live in
+  `mureo.context.monthly_budget_models` (still importable from
+  `mureo.context.monthly_budget` and `mureo.context`), so
+  `monthly_budget` imports `platform_monthly_budget` at top level. The
+  `## Guardrails` parser moved to `mureo.policy.guardrails`, which imports
+  nothing from `mureo.context`: import `Guardrails` / `parse_guardrails`
+  from there or, as before, from `mureo.policy.strategy_gate`, whose
+  `__all__` is unchanged; `guardrails_from_entries` is new there, and
+  `guardrails_from_strategy_text` stays in `strategy_gate`.
+  `ANALYTICS_ENTRY_POINT_GROUP` is defined in `mureo.core.platform_keys`
+  and still exported from `mureo.analytics` and
+  `mureo.analytics.registry`. The built-in loaders are now factories the
+  registries import and register from:
+  `mureo.analytics.builtin.register_builtin_analytics_modules` is replaced
+  by `builtin_analytics_modules()` and
+  `mureo.change_import.builtin.register_builtin_change_feeds` by
+  `builtin_change_feeds()`, each returning fresh instances; neither
+  registry keeps its `_BUILTIN_LOADING` re-entry guard. `import
+  mureo.change_import` now also loads `mureo.change_import.builtin.google_ads`
+  and, through it, `mureo.client_factory` and `mureo.byod` (its runtime,
+  `_client_common` and clients modules); the Google Ads SDK and
+  `mureo.auth` are still not loaded (the SDK import stays deferred to the
+  first feed call), and `import mureo.context` now
+  loads `mureo.context.platform_monthly_budget` (and with it
+  `mureo.policy.learning_rules`) and `mureo.policy.guardrails`; it loaded
+  nothing from `mureo.policy` before. `tests/test_import_cycles_stage4.py` imports
+  every side and both new modules first in a fresh interpreter, pins the
+  removed back-edges on the source, and scans all of `mureo/` for the
+  marker.
+
 ## [0.34.0] - 2026-10-25
 
 ### Added

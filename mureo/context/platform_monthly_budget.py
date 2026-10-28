@@ -85,7 +85,7 @@ from datetime import date
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
-from mureo.context.monthly_budget import (
+from mureo.context.monthly_budget_models import (
     SOURCE_PLATFORM_CONFIGURED_SUM,
     MonthlyBudget,
 )

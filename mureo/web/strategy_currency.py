@@ -44,7 +44,7 @@ from mureo.core.providers.models import (
 )
 from mureo.fsutil import backup_file
 from mureo.policy.currency_units import parse_currency_code
-from mureo.policy.strategy_gate import GUARDRAILS_BULLET_RE, GUARDRAILS_HEADING
+from mureo.policy.guardrails import GUARDRAILS_BULLET_RE, GUARDRAILS_HEADING
 from mureo.web._helpers import send_error_json, send_failure, send_json
 from mureo.web.report_clients import state_store_for_client
 

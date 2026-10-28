@@ -458,7 +458,8 @@ Four group names are part of the ABI:
 `PROVIDERS_…` / `SKILLS_…` / `NATIVE_SKILLS_…` are exported from
 `mureo.core.providers.registry` (the first two re-exported from
 `mureo.core.skills`); `ANALYTICS_…` is exported from
-`mureo.analytics`; `CHANGE_FEED_…` from `mureo.change_import`. The `mureo.policy_gates` literal is documented
+`mureo.analytics` (it is defined in `mureo.core.platform_keys` and re-exported by
+`mureo.analytics.registry` and `mureo.analytics`); `CHANGE_FEED_…` from `mureo.change_import`. The `mureo.policy_gates` literal is documented
 here (no exported constant) because policy gates are loaded by the
 MCP server itself rather than by a third-party-facing registry.
 Renaming any of these groups is a breaking change — every plugin's

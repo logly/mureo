@@ -119,6 +119,16 @@ round-trips — not because both halves are forbidden from containing one.
 See this module's docstring.
 """
 
+ANALYTICS_ENTRY_POINT_GROUP: Final[str] = "mureo.analytics"
+"""The entry-point group analytics modules register under.
+
+Defined here rather than in :mod:`mureo.analytics.registry`, which
+re-exports it (#879): the write-time guard
+(:mod:`mureo.context.platform_guards`) enumerates this group to vouch for
+a plugin platform key, and loading ``mureo.analytics`` loads the built-in
+modules, which load :mod:`mureo.context.state` and so the guard itself.
+"""
+
 BUILTIN_PLATFORM_DISPLAY_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "google_ads": "Google Ads",
@@ -282,6 +292,7 @@ def plugin_platform_key_matches(key: str, distribution: str, provider: str) -> b
 
 
 __all__ = [
+    "ANALYTICS_ENTRY_POINT_GROUP",
     "BUILTIN_PLATFORM_DISPLAY_NAMES",
     "PLUGIN_PLATFORM_PREFIX",
     "PLUGIN_PLATFORM_SEPARATOR",

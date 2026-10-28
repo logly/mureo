@@ -113,6 +113,9 @@ _CONTEXT_DIR = pathlib.Path(mureo.__file__).parent / "context"
 
 _NOQA_RULE = "PLC0415"
 
+#: Statements whose bodies are not module level.
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
 #: The one store -> store import: a platform entry is built on the campaign
 #: store's platform-entry helpers.
 _ALLOWED_STORE_EDGES: frozenset[tuple[str, str]] = frozenset(
@@ -154,11 +157,22 @@ def test_core_tool_names_loads_nothing_from_byod() -> None:
     assert json.loads(proc.stdout) == []
 
 
-def _imports_from(module: str, target: str) -> list[str]:
-    """The ``target*`` modules ``module``'s source imports, outside TYPE_CHECKING."""
+def _imports_from(
+    module: str, target: str, *, top_level_only: bool = False
+) -> list[str]:
+    """The ``target*`` modules ``module``'s source imports, outside TYPE_CHECKING.
+
+    A package is read from its ``__init__.py``. With ``top_level_only``,
+    imports inside a function or class body are not counted.
+    """
     path = pathlib.Path(mureo.__file__).parent.joinpath(*module.split(".")[1:])
-    path = path.with_suffix(".py")
+    path = path / "__init__.py" if path.is_dir() else path.with_suffix(".py")
     tree = ast.parse(path.read_text("utf-8"))
+    if top_level_only:
+        tree = ast.Module(
+            body=[node for node in tree.body if not isinstance(node, _SCOPES)],
+            type_ignores=[],
+        )
     return [name for _, name in _imports_of(tree, _package_of(path), target)]
 
 

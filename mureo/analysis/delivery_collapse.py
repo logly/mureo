@@ -42,7 +42,6 @@ campaign died is actionable on its own, hours before anyone knows why.
 
 from __future__ import annotations
 
-import re
 import statistics
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
@@ -52,9 +51,9 @@ from typing import TYPE_CHECKING, Any
 from mureo.context.strategy import parse_strategy
 from mureo.core import clock
 
-# ``strategy_gate`` owns the canonical heading name so the two cannot
-# drift onto different sections.
-from mureo.policy.strategy_gate import GUARDRAILS_HEADING
+# ``mureo.policy.guardrails`` owns the canonical heading name and bullet
+# shape so the two cannot drift onto different sections or spellings.
+from mureo.policy.guardrails import GUARDRAILS_BULLET_RE, GUARDRAILS_HEADING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -711,8 +710,6 @@ def _to_float(value: Any) -> float:
 # Thresholds from STRATEGY.md ## Guardrails
 # ---------------------------------------------------------------------------
 
-_BULLET_RE = re.compile(r"^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$")
-
 #: ``## Guardrails`` bullet key -> :class:`CollapseThresholds` field.
 GUARDRAIL_KEYS: dict[str, str] = {
     "delivery_collapse_drop_pct": "drop_pct",
@@ -736,7 +733,7 @@ def collapse_thresholds_from_guardrails_text(content: str) -> CollapseThresholds
     """
     thresholds = CollapseThresholds()
     for line in content.splitlines():
-        match = _BULLET_RE.match(line)
+        match = GUARDRAILS_BULLET_RE.match(line)
         if match is None:
             continue
         field = GUARDRAIL_KEYS.get(match.group(1).lower())

@@ -193,6 +193,9 @@ mureo/
 │   ├── strategy.py          # STRATEGY.md parser / renderer
 │   ├── batch.py             # Batch id minting, the stamping rule, membership queries (#549)
 │   ├── monthly_budget.py    # `## Custom: Monthly Budget` reader (#652) — target, not a ceiling
+│   ├── monthly_budget_models.py # MonthlyBudget + the SOURCE_* vocabulary (#879), below both
+│   │                        #   monthly_budget.py (which re-exports them) and
+│   │                        #   platform_monthly_budget.py; imports nothing from mureo at runtime
 │   ├── platform_monthly_budget.py # What the platforms are CONFIGURED to spend (#656) —
 │   │                        #   the concept is declared by a plugin, the figures are summed
 │   │                        #   on read, an incomplete set is withheld (never shrunk) and
@@ -309,6 +312,9 @@ mureo/
 │                            #   reference (DEFAULT_STATE_STORE_REF); mureo.core still exports the name.
 │                            #   tool_names.py owns MUTATION_PREFIXES, which the BYOD clients
 │                            #   import; core imports nothing from byod (#879).
+│                            #   platform_keys.py defines ANALYTICS_ENTRY_POINT_GROUP, which
+│                            #   context.platform_guards reads without importing analytics and
+│                            #   analytics.registry re-exports (#879).
 │                            #   tool_failure.py is the MCP failure-envelope reader (failure_of);
 │                            #   the writer stays in mcp/_helpers.py, which re-exports it (#863).
 │                            #   tool_failure.exception_text is the one exception-to-text formatter,
@@ -332,6 +338,10 @@ mureo/
 │                            #   runtime_credentials_path() falls back to it when given no default.
 │                            #   Function-local imports: ruff PLC0415, reasons per AGENTS.md (#863).
 ├── policy/                  # Deterministic policy gate (STRATEGY.md → allow / deny / require-approval)
+│                            #   guardrails.py parses `## Guardrails` (Guardrails, parse_guardrails,
+│                            #   guardrails_from_entries) and imports nothing from context, so
+│                            #   context.monthly_budget reads it at top level; strategy_gate
+│                            #   re-exports its public names (#879).
 ├── providers/              # Official-MCP provider catalog (Google Ads / Meta / GA4 install kits)
 ├── learning/                # /learn knowledge base + advisor federation client
 ├── creative_studio/         # Creative Studio: image providers, art-direction scoring, HTML/CSS composer
@@ -339,10 +349,14 @@ mureo/
 │                            #   built-in providers share; providers/__init__.py (the registry) imports
 │                            #   the built-ins at top level and re-exports the public names (#879).
 ├── analytics/               # Analytics-module protocol + registry (mureo.analytics entry-point group)
+│                            #   builtin/ builds the native modules (builtin_analytics_modules()); the
+│                            #   registry imports it and registers them, so builtin never imports the
+│                            #   registry (#879).
 ├── change_import/           # Import changes made outside mureo into action_log (#545)
 │   ├── models.py            # ExternalChange / ChangeFeedResult / ChangeImportOutcome
 │   ├── protocol.py          # ChangeFeedProvider (mureo.change_feeds entry-point group)
-│   ├── registry.py          # Discovery + fault isolation + lookup
+│   ├── registry.py          # Discovery + fault isolation + lookup; registers builtin_change_feeds()
+│   │                        #   on first use (builtin/ never imports the registry, #879)
 │   ├── dedupe.py            # Already-imported vs mureo's own change
 │   ├── importer.py          # Window, action_log write, per-platform outcome
 │   └── builtin/google_ads.py  # change_event feed (the only native feed today)

@@ -133,6 +133,7 @@ from mureo.context.platform_accounts import (
     platform_keys_for_account,
 )
 from mureo.core.platform_keys import (
+    ANALYTICS_ENTRY_POINT_GROUP,
     BUILTIN_PLATFORM_DISPLAY_NAMES,
     PLUGIN_PLATFORM_PREFIX,
     is_plugin_platform_key,
@@ -246,10 +247,6 @@ def _provider_entry_points() -> tuple[Any, ...] | None:
     of the process (#633). Isolated as its own function so tests can pin the
     environment rather than monkeypatching ``importlib.metadata``.
     """
-    from mureo.analytics.registry import (  # noqa: PLC0415 — import cycle: mureo.context.platform_guards -> mureo.analytics.registry (#879)
-        ANALYTICS_ENTRY_POINT_GROUP,
-    )
-
     found: list[Any] = []
     for group in (PROVIDERS_ENTRY_POINT_GROUP, ANALYTICS_ENTRY_POINT_GROUP):
         try:

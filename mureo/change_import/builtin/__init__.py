@@ -10,19 +10,23 @@ happened.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
-from mureo.change_import.registry import register_change_feed
+
+if TYPE_CHECKING:
+    from mureo.change_import.protocol import ChangeFeedProvider
 
 
-def register_builtin_change_feeds() -> None:
-    """Register every built-in change feed on the default registry.
+def builtin_change_feeds() -> tuple[ChangeFeedProvider, ...]:
+    """One fresh instance of every built-in change feed.
 
-    Called once from :func:`mureo.change_import.registry.default_change_feed_registry`,
-    which imports this package on first use, so the registry import stays
-    cheap and free of auth side effects — the live client is opened per call,
-    not here.
+    Called from :func:`mureo.change_import.registry.default_change_feed_registry`,
+    which registers them; this package does not import the registry, so the
+    dependency runs one way (#879). Building a feed has no auth side effects
+    — the live client is opened per call, not here.
     """
-    register_change_feed(GoogleAdsChangeFeed())
+    return (GoogleAdsChangeFeed(),)
 
 
-__all__ = ["register_builtin_change_feeds"]
+__all__ = ["builtin_change_feeds"]
