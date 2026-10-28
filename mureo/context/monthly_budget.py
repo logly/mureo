@@ -5,14 +5,14 @@ already lives — ``skills/budget-pacing/SKILL.md`` reads it, and offers to
 persist one in that shape when it is missing. Until this module there was no
 code path to it, so monthly pacing could only appear where that skill was
 running. This is the twin of
-:func:`mureo.policy.strategy_gate.guardrails_from_strategy_text` for the
+:func:`mureo.policy.guardrails.guardrails_from_entries` for the
 neighbouring section, and it deliberately stops at reading: the figure stays
 in STRATEGY.md, its single home, and is not copied into STATE.json for a
 reader's convenience — a number in two places is a number that will disagree
 with itself.
 
 **This is not a guardrail, and the distinction is the point.**
-:class:`~mureo.policy.strategy_gate.Guardrails` carries ceilings — values
+:class:`~mureo.policy.guardrails.Guardrails` carries ceilings — values
 whose job is to REFUSE an operation that exceeds them. A monthly budget target
 is the intended spend: underspending it is a problem too, and no operation
 should be blocked for approaching it. Hence a separate type and a separate
@@ -47,43 +47,32 @@ specification this module matches rather than replaces;
 from __future__ import annotations
 
 import math
-import re
-from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
+
+from mureo.context.monthly_budget_models import (
+    SOURCE_IMPLIED_DAILY_CEILING,
+    SOURCE_NOT_SET,
+    SOURCE_PLATFORM_CONFIGURED_SUM,
+    SOURCE_STRATEGY_SECTION,
+    MonthlyBudget,
+)
+from mureo.context.platform_monthly_budget import platform_configured_monthly_budget
+from mureo.context.strategy import parse_strategy
+from mureo.policy.guardrails import GUARDRAILS_BULLET_RE, guardrails_from_entries
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from mureo.context.models import PlatformState
-    from mureo.context.platform_monthly_budget import IncompletePlatform
-
-from mureo.context.strategy import parse_strategy
 
 #: The (case-insensitive) STRATEGY.md section title carrying the target. The
 #: skill writes it as ``## Custom: Monthly Budget``, which ``strategy.py``
 #: parses into a ``custom`` entry titled "Monthly Budget"; a bare
 #: ``## Monthly Budget`` round-trips as a raw-heading entry with the same
 #: title, and is read too. Matching on the title alone mirrors
-#: :func:`mureo.policy.strategy_gate.guardrails_from_strategy_text`.
+#: :func:`mureo.policy.guardrails.guardrails_from_entries`.
 MONTHLY_BUDGET_HEADING: Final = "monthly budget"
-
-#: No target anywhere. ``total`` is ``None`` — the caller must not render a
-#: figure, a percentage, or a pacing verdict from this.
-SOURCE_NOT_SET: Final = "not_set"
-#: The operator's own figure, read from the STRATEGY.md section. The only
-#: source that is an AGREEMENT; the other three are configuration, a ceiling,
-#: or nothing.
-SOURCE_STRATEGY_SECTION: Final = "strategy_section"
-#: Summed per-campaign monthly budgets, on platforms that declared they have
-#: that concept (#656). What the platforms are *configured* to spend — a real
-#: figure, neither derived from a ceiling nor agreed with a client. Label it
-#: as configured wherever it is shown.
-SOURCE_PLATFORM_CONFIGURED_SUM: Final = "platform_configured_sum"
-#: Derived: ``## Guardrails`` → ``max_total_daily_budget`` × days in month. A
-#: ceiling stretched over a month, not a plan. Label it as such wherever it
-#: is shown.
-SOURCE_IMPLIED_DAILY_CEILING: Final = "implied_daily_ceiling"
 
 #: The bullet naming the whole-month figure; every other numeric bullet is a
 #: per-platform sub-target. Not restricted to mureo's built-in platform keys:
@@ -92,111 +81,6 @@ _TOTAL_KEY: Final = "total"
 
 #: Longest a calendar month can be — the bound on ``days_in_month``.
 _MAX_DAYS_IN_MONTH: Final = 31
-
-# Same bullet shape the ``## Guardrails`` readers accept.
-_BULLET_RE: Final[re.Pattern[str]] = re.compile(
-    r"^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$"
-)
-
-#: Shared read-only default so no instance allocates (or leaks) a mutable one.
-_EMPTY_PER_PLATFORM: Final[Mapping[str, float]] = MappingProxyType({})
-
-
-@dataclass(frozen=True)
-class MonthlyBudget:
-    """The operator's intended monthly spend, or the absence of one.
-
-    Attributes:
-        total: Whole-month figure, or ``None`` when no target is set.
-            ``None`` and ``0.0`` are different answers: ``0.0`` is an
-            operator who said "spend nothing", ``None`` is an operator who
-            said nothing.
-        per_platform: Read-only per-platform sub-targets **the operator
-            wrote**, keyed by platform key (``google_ads``, ``meta_ads``, a
-            plugin's own key). Empty when the section names none, and empty
-            for every other source — a ceiling says nothing about the split,
-            and a platform's own configuration is not a sub-target. The
-            invariant is enforced, not merely documented: see
-            :meth:`__post_init__`.
-        configured_per_platform: Read-only per-platform subtotals **the
-            platforms are configured with** (#656). Only ever populated for
-            :data:`SOURCE_PLATFORM_CONFIGURED_SUM`. It is a separate field
-            rather than a second meaning for ``per_platform`` because the
-            two answer different questions, and a renderer built for the
-            operator's split, pointed at a configured one, would otherwise
-            label configuration as agreement. Reading the wrong field yields
-            an empty mapping — nothing, never the other rung's figures.
-        source: Which of the four answers this is — one of
-            :data:`SOURCE_NOT_SET`, :data:`SOURCE_STRATEGY_SECTION`,
-            :data:`SOURCE_PLATFORM_CONFIGURED_SUM`,
-            :data:`SOURCE_IMPLIED_DAILY_CEILING`.
-        incomplete_platforms: The platforms that have a monthly-budget
-            concept but whose campaign set mureo cannot vouch for (#656), as
-            :class:`~mureo.context.platform_monthly_budget.
-            IncompletePlatform` records naming the platform AND why. Non-empty
-            means a platform sum was possible in principle and was
-            deliberately NOT taken: three of a client's five campaigns is a
-            smaller number, not a smaller budget. The records ride along
-            whatever answer was used instead, so every surface can say why
-            the sum is missing — and which fix it needs — rather than showing
-            a confident figure computed from part of the account.
-    """
-
-    total: float | None = None
-    per_platform: Mapping[str, float] = field(
-        default_factory=lambda: _EMPTY_PER_PLATFORM
-    )
-    source: str = SOURCE_NOT_SET
-    incomplete_platforms: tuple[IncompletePlatform, ...] = ()
-    configured_per_platform: Mapping[str, float] = field(
-        default_factory=lambda: _EMPTY_PER_PLATFORM
-    )
-
-    def __post_init__(self) -> None:
-        """Refuse a split that does not belong to this ``source``.
-
-        The two mappings mean different things, and the failure this guards
-        is a caller reusing the operator-split renderer on a configured sum
-        — which states what a client is *charged* as what a client *agreed*.
-        A docstring cannot stop that; an unconstructable object can. Raised
-        at construction, not at read time, so a wrong pairing surfaces where
-        it is made rather than on a screen.
-        """
-        if self.per_platform and self.source != SOURCE_STRATEGY_SECTION:
-            raise ValueError(
-                f"per_platform carries the sub-targets an operator wrote, so "
-                f"it must be empty for source {self.source!r}; a platform's "
-                f"own subtotals belong in configured_per_platform"
-            )
-        if (
-            self.configured_per_platform
-            and self.source != SOURCE_PLATFORM_CONFIGURED_SUM
-        ):
-            raise ValueError(
-                f"configured_per_platform carries what the platforms are set "
-                f"to spend, so it must be empty for source {self.source!r}"
-            )
-
-    @property
-    def is_set(self) -> bool:
-        """False when there is no target — the caller's cue to ask, not guess."""
-        return self.source != SOURCE_NOT_SET
-
-    @property
-    def is_derived(self) -> bool:
-        """True when ``total`` came from a ceiling, not from an operator."""
-        return self.source == SOURCE_IMPLIED_DAILY_CEILING
-
-    @property
-    def is_platform_configured(self) -> bool:
-        """True when ``total`` is what the PLATFORMS are set to spend.
-
-        Never an agreement: a ¥300,000 configured ceiling routinely sits
-        above a ¥200,000 agreement, and the two are worth showing side by
-        side rather than collapsing. Only ``source ==``
-        :data:`SOURCE_STRATEGY_SECTION` is a figure someone promised.
-        """
-        return self.source == SOURCE_PLATFORM_CONFIGURED_SUM
 
 
 def _amount(raw: str | None) -> float | None:
@@ -220,7 +104,7 @@ def _bullets(content: str) -> dict[str, str]:
     """``- key: value`` bullets of a section body, last occurrence winning."""
     found: dict[str, str] = {}
     for line in content.splitlines():
-        match = _BULLET_RE.match(line)
+        match = GUARDRAILS_BULLET_RE.match(line)
         if match is not None:
             found[match.group(1).lower()] = match.group(2).strip()
     return found
@@ -233,7 +117,7 @@ def parse_monthly_budget(content: str) -> MonthlyBudget:
     and degrades to "not set" rather than to a sum of whatever sub-targets
     happen to be there, which would be a figure the operator never wrote. An
     unreadable sub-target drops only itself, mirroring
-    :func:`~mureo.policy.strategy_gate.parse_guardrails`. Never raises: this
+    :func:`~mureo.policy.guardrails.parse_guardrails`. Never raises: this
     is a read path.
     """
     bullets = _bullets(content)
@@ -323,23 +207,15 @@ def resolve_monthly_budget(
     if explicit.is_set:
         return explicit
 
-    from mureo.context.platform_monthly_budget import (  # noqa: PLC0415 — import cycle: mureo.context.monthly_budget -> mureo.context.platform_monthly_budget (#879)
-        platform_configured_monthly_budget,
-    )
-
     configured = platform_configured_monthly_budget(platforms)
     if configured.is_set:
         return configured
     # Whatever answers instead has to carry the reason the sum did not.
     incomplete = configured.incomplete_platforms
 
-    # ``strategy_gate`` owns the guardrail section's parsing so the two readers
-    # cannot drift onto different spellings of the same rule.
-    from mureo.policy.strategy_gate import (  # noqa: PLC0415 — import cycle: mureo.context.monthly_budget -> mureo.policy.strategy_gate (#879)
-        guardrails_from_strategy_text,
-    )
-
-    ceiling = guardrails_from_strategy_text(text).max_total_daily_budget
+    # ``mureo.policy.guardrails`` owns the guardrail section's parsing so the
+    # two readers cannot drift onto different spellings of the same rule.
+    ceiling = guardrails_from_entries(parse_strategy(text)).max_total_daily_budget
     if ceiling is None or not math.isfinite(ceiling) or ceiling < 0:
         return MonthlyBudget(incomplete_platforms=incomplete)
     return MonthlyBudget(

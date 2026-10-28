@@ -17,6 +17,11 @@ if TYPE_CHECKING:
 
 import pytest
 
+import mureo.analytics.registry as registry_mod
+from mureo.analytics.builtin import (
+    GoogleAdsAnalyticsModule,
+    builtin_analytics_modules,
+)
 from mureo.analytics.models import (
     Anomaly,
     BudgetEfficiency,
@@ -533,28 +538,75 @@ def test_plugin_source_returns_breadcrumb_for_frozen_instance() -> None:
 def test_default_registry_warns_when_builtins_fail_to_load(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Force the deferred built-in import to raise; the registry must warn
-    # and keep functioning rather than crashing the process.
-    import mureo.analytics.registry as registry_mod
-
-    def _exploding_loader() -> None:
+    # Force the built-in loader to raise; the registry must warn and keep
+    # functioning rather than crashing the process.
+    def _exploding_loader() -> tuple[AnalyticsModule, ...]:
         raise RuntimeError("simulated builtin failure")
 
-    # Patch the symbol the registry will import via its deferred path.
-    import mureo.analytics.builtin as builtin_mod
-
+    # Patch the name the registry calls the built-in factory through.
     monkeypatch.setattr(
-        builtin_mod,
-        "register_builtin_analytics_modules",
+        registry_mod,
+        "builtin_analytics_modules",
         _exploding_loader,
     )
 
-    # Reset both global flags so the deferred path actually runs again.
+    # Reset both global flags so the bootstrap actually runs again.
     monkeypatch.setattr(registry_mod, "_DEFAULT_REGISTRY", None)
     monkeypatch.setattr(registry_mod, "_BUILTIN_LOADED", False)
 
     with pytest.warns(AnalyticsModuleWarning, match="built-in"):
         reg = registry_mod.default_analytics_registry()
 
-    # Registry exists and is usable even when built-ins fail.
+    # Registry exists and is usable even when built-ins fail, and the
+    # bootstrap stays armed so the next call retries.
     assert reg.platforms() == ()
+    assert registry_mod._BUILTIN_LOADED is False
+
+
+@pytest.mark.integration
+def test_default_registry_retries_builtins_after_a_failed_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[None] = []
+
+    def _fails_once() -> tuple[AnalyticsModule, ...]:
+        calls.append(None)
+        if len(calls) == 1:
+            raise RuntimeError("simulated transient failure")
+        return builtin_analytics_modules()
+
+    monkeypatch.setattr(registry_mod, "builtin_analytics_modules", _fails_once)
+
+    with pytest.warns(AnalyticsModuleWarning, match="built-in"):
+        first = registry_mod.default_analytics_registry()
+    assert first.platforms() == ()
+    assert registry_mod._BUILTIN_LOADED is False
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        second = registry_mod.default_analytics_registry()
+    assert second is first
+    assert second.platforms() == ("google_ads", "meta_ads")
+    assert registry_mod._BUILTIN_LOADED is True
+
+
+@pytest.mark.integration
+def test_bootstrap_after_a_manual_builtin_registration_is_first_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A built-in registered before the bootstrap keeps its slot; the
+    bootstrap adds the rest and leaves one instance per platform."""
+    manual = GoogleAdsAnalyticsModule()
+    registry = AnalyticsRegistry()
+    registry.register(manual)
+    monkeypatch.setattr(registry_mod, "_DEFAULT_REGISTRY", registry)
+    monkeypatch.setattr(registry_mod, "_BUILTIN_LOADED", False)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        reg = registry_mod.default_analytics_registry()
+
+    assert reg is registry
+    assert reg.platforms() == ("google_ads", "meta_ads")
+    assert reg.get("google_ads") is manual
+    assert registry_mod._BUILTIN_LOADED is True

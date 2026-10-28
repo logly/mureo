@@ -14,6 +14,7 @@ worth anything:
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -42,6 +43,10 @@ from mureo.change_import import (
     register_change_feed,
     to_action_log_entry,
 )
+from mureo.change_import import registry as registry_mod
+from mureo.change_import.builtin import builtin_change_feeds
+from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
+from mureo.change_import.registry import ChangeFeedRegistry
 from mureo.context.batch import batch_members
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
 from mureo.context.state import (
@@ -1223,6 +1228,50 @@ class TestChangeFeedAbi:
 
         with pytest.warns(ChangeFeedWarning):
             assert discover_change_feeds(refresh=True, loader=_boom) == ()
+
+    def test_builtins_are_retried_after_a_failed_load(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[None] = []
+
+        def _fails_once() -> tuple[ChangeFeedProvider, ...]:
+            calls.append(None)
+            if len(calls) == 1:
+                raise RuntimeError("simulated transient failure")
+            return builtin_change_feeds()
+
+        monkeypatch.setattr(registry_mod, "builtin_change_feeds", _fails_once)
+        clear_change_feed_registry()
+
+        with pytest.warns(ChangeFeedWarning, match="built-in"):
+            first = default_change_feed_registry()
+        assert first.platforms() == ()
+        assert registry_mod._BUILTIN_LOADED is False
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            second = default_change_feed_registry()
+        assert second is first
+        assert second.platforms() == ("google_ads",)
+        assert registry_mod._BUILTIN_LOADED is True
+
+    def test_bootstrap_after_a_manual_builtin_registration_is_first_wins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        manual = GoogleAdsChangeFeed()
+        registry = ChangeFeedRegistry()
+        registry.register(manual)
+        monkeypatch.setattr(registry_mod, "_DEFAULT_REGISTRY", registry)
+        monkeypatch.setattr(registry_mod, "_BUILTIN_LOADED", False)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            reg = default_change_feed_registry()
+
+        assert reg is registry
+        assert reg.platforms() == ("google_ads",)
+        assert reg.get("google_ads") is manual
+        assert registry_mod._BUILTIN_LOADED is True
 
 
 @pytest.mark.unit

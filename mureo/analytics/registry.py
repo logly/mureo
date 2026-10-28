@@ -2,9 +2,9 @@
 
 Two registration paths:
 
-1. **Built-in adapters** register via :func:`register_analytics_module`
-   the first time :func:`default_analytics_registry` is called (the
-   ``register_builtin_analytics_modules`` helper invokes it). A
+1. **Built-in adapters** are registered the first time
+   :func:`default_analytics_registry` is called, from the instances
+   :func:`mureo.analytics.builtin.builtin_analytics_modules` builds. A
    subsequent :func:`clear_analytics_registry` call rearms the
    bootstrap so test isolation works.
 
@@ -43,13 +43,15 @@ import warnings
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any
 
+from mureo.analytics.builtin import builtin_analytics_modules
 from mureo.analytics.protocol import AnalyticsModule
-from mureo.core.platform_keys import PLUGIN_PLATFORM_PREFIX
+from mureo.core.platform_keys import (
+    ANALYTICS_ENTRY_POINT_GROUP,
+    PLUGIN_PLATFORM_PREFIX,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-ANALYTICS_ENTRY_POINT_GROUP = "mureo.analytics"
 
 
 # NOTE: ``detect_delivery_collapse`` (#546) is deliberately absent from
@@ -330,48 +332,32 @@ class AnalyticsRegistry:
 
 _DEFAULT_REGISTRY: AnalyticsRegistry | None = None
 _BUILTIN_LOADED = False
-# Re-entrance guard. ``register_builtin_analytics_modules`` ultimately
-# calls back into :func:`default_analytics_registry` (via
-# :func:`register_analytics_module` → ``default_registry().register``),
-# so the bootstrap must be marked "in progress" before that call to
-# stop the re-entry from firing the bootstrap again. The flag is
-# separate from ``_BUILTIN_LOADED`` because we only want the latter
-# to flip on success — a transient failure should leave both False so
-# the next outer call retries.
-_BUILTIN_LOADING = False
 
 
 def default_analytics_registry() -> AnalyticsRegistry:
     """Return the lazily-initialised process-wide registry.
 
-    The first call invokes ``register_builtin_analytics_modules`` so
+    The first call registers the adapters
+    :func:`~mureo.analytics.builtin.builtin_analytics_modules` builds, so
     built-in adapters are present without the caller having to do it.
     ``_BUILTIN_LOADED`` flips only on success: a transient failure is
-    retried on the next outer call rather than permanently disabling
-    the built-ins. ``_BUILTIN_LOADING`` guards against the re-entrance
-    that arises because the bootstrap calls back into this function
-    via :func:`register_analytics_module`.
+    retried on the next call rather than permanently disabling the
+    built-ins. The adapters are registered on the registry object
+    directly, so the bootstrap never calls back into this function.
     """
-    global _DEFAULT_REGISTRY, _BUILTIN_LOADED, _BUILTIN_LOADING
+    global _DEFAULT_REGISTRY, _BUILTIN_LOADED
     if _DEFAULT_REGISTRY is None:
         _DEFAULT_REGISTRY = AnalyticsRegistry()
-    if not _BUILTIN_LOADED and not _BUILTIN_LOADING:
-        _BUILTIN_LOADING = True
+    if not _BUILTIN_LOADED:
         try:
-            from mureo.analytics.builtin import (  # noqa: PLC0415 — import cycle: mureo.analytics.registry -> mureo.analytics.builtin (#879)
-                register_builtin_analytics_modules,
-            )
-
-            register_builtin_analytics_modules()
+            for module in builtin_analytics_modules():
+                _DEFAULT_REGISTRY.register(module)
         except (KeyboardInterrupt, SystemExit):
-            _BUILTIN_LOADING = False
             raise
         except BaseException as exc:  # noqa: BLE001 — built-in load must not crash
             _warn(f"built-in analytics modules failed to load: {exc!r}")
         else:
             _BUILTIN_LOADED = True
-        finally:
-            _BUILTIN_LOADING = False
     return _DEFAULT_REGISTRY
 
 
@@ -381,18 +367,17 @@ def clear_analytics_registry() -> None:
     Also rearms the built-in bootstrap so the next
     :func:`default_analytics_registry` call re-registers them.
     """
-    global _DEFAULT_REGISTRY, _BUILTIN_LOADED, _BUILTIN_LOADING
+    global _DEFAULT_REGISTRY, _BUILTIN_LOADED
     if _DEFAULT_REGISTRY is not None:
         _DEFAULT_REGISTRY.clear()
     _BUILTIN_LOADED = False
-    _BUILTIN_LOADING = False
 
 
 def register_analytics_module(module: AnalyticsModule) -> None:
     """Register ``module`` on the default registry.
 
-    Used by built-in adapters at bootstrap time and exposed for tests /
-    advanced in-process registration.
+    For tests and in-process registration; the built-in adapters are
+    registered by :func:`default_analytics_registry` and do not call it.
     """
     default_analytics_registry().register(module)
 

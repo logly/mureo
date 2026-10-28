@@ -262,6 +262,9 @@ mureo/
 │   │                     #   collection) instead of reading a debug log. The two splits are
 │   │                     #   separate fields — `per_platform` is only ever what the operator
 │   │                     #   wrote — and the type refuses a split that does not match `source`
+│   ├── monthly_budget_models.py # `MonthlyBudget` + the `SOURCE_*` vocabulary (#879), below
+│   │                     #   both readers above so each imports it at top level;
+│   │                     #   `monthly_budget.py` re-exports them. No runtime mureo imports
 │   ├── platform_guards.py # Write-time platform-key guards (#534/#609) — the one "is this key
 │   │                      #   real?" answer every other surface asks, including the read-side
 │   │                      #   label path (`installed_platform_names`, shared since #631)
@@ -300,10 +303,14 @@ mureo/
 │   └── executor.py      # execute_rollback(...) -> appends ActionLogEntry(rollback_of=index)
 ├── adapters/            # Provider adapters wrapping each ad-platform client as a registry Protocol
 ├── analytics/           # Analytics-module registry for external MCP / plugin platforms (#120)
+│                        #   (builtin/ builds the native modules, `builtin_analytics_modules()`;
+│                        #   the registry imports it and registers them — builtin never imports
+│                        #   the registry, #879)
 ├── change_import/       # Import changes made OUTSIDE mureo into action_log (#545)
 │   ├── models.py        # ExternalChange / ChangeFeedResult / ChangeImportOutcome
 │   ├── protocol.py      # ChangeFeedProvider Protocol (`mureo.change_feeds` entry-point group)
-│   ├── registry.py      # Discovery + per-plugin fault isolation + lookup
+│   ├── registry.py      # Discovery + per-plugin fault isolation + lookup; registers
+│   │                    #   `builtin_change_feeds()` on first use (builtin/ never imports it, #879)
 │   ├── dedupe.py        # Already-imported vs mureo's own change (why one is approximate)
 │   ├── importer.py      # Watermark, action_log write, per-platform outcome
 │   └── builtin/         # Native feeds — google_ads only today; see docs/change-import.md
@@ -313,12 +320,18 @@ mureo/
 │   │                    #   exception_text: the one exception-to-text formatter (#603, #865)
 │   ├── credential_source.py # Per-call credential-source ABI (#821); mcp/credential_source.py
 │   │                    #   re-exports the same objects (#863)
+│   ├── platform_keys.py # Platform-key vocabulary; also defines ANALYTICS_ENTRY_POINT_GROUP, which
+│   │                    #   context/platform_guards.py reads without importing analytics (#879)
 │   ├── account_scope.py # Workspace account scoping (#411): resolve_customer_id / resolve_account_id,
 │   │                    #   called by every platform client opener before it builds a client
 │   └── rotation.py      # Size-bounded append files (#758 phase 6): the one MUREO_JOURNAL_MAX_BYTES
 │                        #   reader, the rotated name, and sibling_files (the whole record, oldest first)
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
 ├── policy/              # Built-in policy gates (strategy_gate) — ship with OSS, run by default
+│   ├── guardrails.py         # The `## Guardrails` parser (Guardrails, parse_guardrails,
+│   │                         #   guardrails_from_entries); imports nothing from context, so
+│   │                         #   context/monthly_budget.py reads it at top level.
+│   │                         #   strategy_gate re-exports its public names (#879)
 │   ├── learning_rules.py     # Per-platform learning-period facts + their first-party sources (#548)
 │   ├── platform_model.py     # Per-platform delivery-model prose + first-party sources (#648) —
 │   │                         #   the ONLY always-on plugin channel: rendered into the MCP

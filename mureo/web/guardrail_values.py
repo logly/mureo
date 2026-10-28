@@ -28,7 +28,7 @@ from mureo.policy.guardrail_fields import (
     GuardrailField,
     guardrail_field,
 )
-from mureo.policy.strategy_gate import (
+from mureo.policy.guardrails import (
     _TRUE_WORDS,
     GUARDRAILS_BULLET_RE,
     parse_guardrails,

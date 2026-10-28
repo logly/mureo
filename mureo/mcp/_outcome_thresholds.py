@@ -5,10 +5,9 @@ per workspace with four bullets (``outcome_noise_pct``,
 ``outcome_min_conversions``, ``outcome_min_impressions``,
 ``outcome_min_clicks``). They are read and parsed HERE, at the MCP layer,
 and passed down as an :class:`~mureo.analysis.outcome_eval.OutcomeThresholds`:
-this layer already imports both the evaluator and ``mureo.policy``, so
-neither ``mureo.analysis`` nor ``mureo.context`` gains an edge onto
-``mureo.policy`` (the delivery-collapse thresholds reach it through a kept
-cycle, #879).
+this layer already imports both the evaluator and ``mureo.policy``, so the
+evaluator (:mod:`mureo.analysis.outcome_eval`) gains no edge onto
+``mureo.policy``.
 
 Fail-open, as :func:`mureo.analysis.delivery_collapse_config.
 load_collapse_thresholds` is: an absent or unreadable STRATEGY.md yields the
@@ -25,7 +24,7 @@ from mureo.analysis.delivery_collapse_config import resolve_strategy_path
 from mureo.analysis.outcome_eval import DEFAULT_THRESHOLDS, OutcomeThresholds
 from mureo.context.strategy import parse_strategy
 from mureo.policy.guardrail_numbers import to_float, to_int
-from mureo.policy.strategy_gate import GUARDRAILS_HEADING, guardrail_bullets
+from mureo.policy.guardrails import GUARDRAILS_HEADING, guardrail_bullets
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

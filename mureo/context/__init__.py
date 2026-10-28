@@ -78,10 +78,10 @@ __all__ = [
     "parse_monthly_budget",
     "resolve_monthly_budget",
     # The platform-configured sum (#656) lives in
-    # ``mureo.context.platform_monthly_budget`` and is imported from there:
-    # re-exporting it would pull the Evidence record — and so the policy
-    # package — into every ``import mureo.context``, which the monthly-budget
-    # reader deliberately avoids.
+    # ``mureo.context.platform_monthly_budget`` and is imported from there; it
+    # is not re-exported. The monthly-budget reader imports it at top level
+    # (#879), so every ``import mureo.context`` loads it — and with it the
+    # Evidence record from ``mureo.policy.learning_rules``.
     # strategy
     "add_strategy_entry",
     "parse_strategy",

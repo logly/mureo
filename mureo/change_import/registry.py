@@ -3,8 +3,9 @@
 Two registration paths, mirroring :mod:`mureo.analytics.registry` so plugin
 authors meet one set of rules across mureo's opt-in registries:
 
-1. **Built-in adapters** register via :func:`register_change_feed` the first
-   time :func:`default_change_feed_registry` is called.
+1. **Built-in adapters** are registered the first time
+   :func:`default_change_feed_registry` is called, from the instances
+   :func:`mureo.change_import.builtin.builtin_change_feeds` builds.
 2. **Third-party bridges and plugins** ship an entry point in the
    :data:`~mureo.change_import.protocol.CHANGE_FEED_ENTRY_POINT_GROUP` group
    (``"mureo.change_feeds"``). Each entry's class is instantiated with no
@@ -32,6 +33,7 @@ import warnings
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any
 
+from mureo.change_import.builtin import builtin_change_feeds
 from mureo.change_import.protocol import CHANGE_FEED_ENTRY_POINT_GROUP
 from mureo.core.platform_keys import PLUGIN_PLATFORM_PREFIX
 
@@ -215,48 +217,40 @@ class ChangeFeedRegistry:
 
 _DEFAULT_REGISTRY: ChangeFeedRegistry | None = None
 _BUILTIN_LOADED = False
-# Re-entrance guard: the bootstrap calls back in through
-# ``register_change_feed`` -> ``default_change_feed_registry``.
-_BUILTIN_LOADING = False
 
 
 def default_change_feed_registry() -> ChangeFeedRegistry:
     """Return the lazily-initialised process-wide registry.
 
-    The first call runs the built-in bootstrap. ``_BUILTIN_LOADED`` flips only
-    on success, so a transient failure is retried on the next call rather than
-    permanently disabling the built-in feeds.
+    The first call registers the feeds
+    :func:`~mureo.change_import.builtin.builtin_change_feeds` builds, on the
+    registry object directly, so the bootstrap never calls back into this
+    function. ``_BUILTIN_LOADED`` flips only on success, so a transient
+    failure is retried on the next call rather than permanently disabling the
+    built-in feeds.
     """
-    global _DEFAULT_REGISTRY, _BUILTIN_LOADED, _BUILTIN_LOADING
+    global _DEFAULT_REGISTRY, _BUILTIN_LOADED
     if _DEFAULT_REGISTRY is None:
         _DEFAULT_REGISTRY = ChangeFeedRegistry()
-    if not _BUILTIN_LOADED and not _BUILTIN_LOADING:
-        _BUILTIN_LOADING = True
+    if not _BUILTIN_LOADED:
         try:
-            from mureo.change_import.builtin import (  # noqa: PLC0415 — import cycle: mureo.change_import.registry -> mureo.change_import.builtin (#879)
-                register_builtin_change_feeds,
-            )
-
-            register_builtin_change_feeds()
+            for feed in builtin_change_feeds():
+                _DEFAULT_REGISTRY.register(feed)
         except (KeyboardInterrupt, SystemExit):
-            _BUILTIN_LOADING = False
             raise
         except BaseException as exc:  # noqa: BLE001 — must not crash callers
             _warn(f"built-in change feeds failed to load: {exc!r}")
         else:
             _BUILTIN_LOADED = True
-        finally:
-            _BUILTIN_LOADING = False
     return _DEFAULT_REGISTRY
 
 
 def clear_change_feed_registry() -> None:
     """Reset the process-wide registry and rearm the bootstrap. Test helper."""
-    global _DEFAULT_REGISTRY, _BUILTIN_LOADED, _BUILTIN_LOADING
+    global _DEFAULT_REGISTRY, _BUILTIN_LOADED
     if _DEFAULT_REGISTRY is not None:
         _DEFAULT_REGISTRY.clear()
     _BUILTIN_LOADED = False
-    _BUILTIN_LOADING = False
 
 
 def register_change_feed(feed: ChangeFeedProvider) -> None:

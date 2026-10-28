@@ -1,10 +1,11 @@
 """Built-in :class:`AnalyticsModule` adapters for mureo-native platforms.
 
-Importing this package self-registers the adapters on the default
-:class:`AnalyticsRegistry`. Side-effect import is the standard Python
-pattern for plugin-style registration and is invoked by
-:func:`mureo.analytics.registry.default_analytics_registry` on first
-use — application code rarely imports this module directly.
+:func:`builtin_analytics_modules` builds one fresh instance of each
+adapter; :func:`mureo.analytics.registry.default_analytics_registry`
+registers them on the default :class:`AnalyticsRegistry` on first use.
+This package does not import the registry: the registry imports it, so
+the dependency runs one way (#879) — application code rarely imports
+this module directly.
 
 Each adapter is intentionally thin: it advertises which workflow-skill
 capabilities the platform's mureo-native surface supports today and
@@ -16,31 +17,27 @@ uses). Methods the platform does not implement raise
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from mureo.analytics.builtin.google_ads import GoogleAdsAnalyticsModule
 from mureo.analytics.builtin.meta_ads import MetaAdsAnalyticsModule
-from mureo.analytics.registry import register_analytics_module
+
+if TYPE_CHECKING:
+    from mureo.analytics.protocol import AnalyticsModule
 
 
-def register_builtin_analytics_modules() -> None:
-    """Register every built-in adapter on the default registry.
+def builtin_analytics_modules() -> tuple[AnalyticsModule, ...]:
+    """One fresh instance of every built-in adapter.
 
-    Idempotent: the registry's :meth:`register` enforces first-wins so a
-    second call is a no-op. Called by
-    :func:`mureo.analytics.registry.default_analytics_registry` on each
-    fresh registry; tests that clear the registry get the built-ins back
-    on the next default-registry lookup.
-
-    Separated from a module-level side effect because Python caches
-    imports in :data:`sys.modules` — a side-effect statement would fire
-    only on the first interpreter import, leaving cleared test
-    registries empty.
+    Called by :func:`mureo.analytics.registry.default_analytics_registry`
+    on each fresh registry, so tests that clear the registry get the
+    built-ins back on the next default-registry lookup.
     """
-    register_analytics_module(GoogleAdsAnalyticsModule())
-    register_analytics_module(MetaAdsAnalyticsModule())
+    return (GoogleAdsAnalyticsModule(), MetaAdsAnalyticsModule())
 
 
 __all__ = [
     "GoogleAdsAnalyticsModule",
     "MetaAdsAnalyticsModule",
-    "register_builtin_analytics_modules",
+    "builtin_analytics_modules",
 ]
