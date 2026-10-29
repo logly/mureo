@@ -349,6 +349,43 @@ def test_post_save_blank_secret_keeps_existing(
     assert on_disk == {"demo_ads": {"api_key": "previous", "account_id": "new-label"}}
 
 
+@pytest.mark.unit
+def test_post_save_does_not_call_persist_hook(
+    wizard: ConfigureWizard,
+    credentials_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A plain Save obtains no token, so ``on_oauth_persisted`` (#939) is
+    only for the authorization-code callback and must not run here."""
+    calls: list[Any] = []
+    cls = _make_class(
+        "demo_ads",
+        fields=(AccountCredentialField(key="account_id", display_name="Account"),),
+    )
+    cls.on_oauth_persisted = staticmethod(  # type: ignore[attr-defined]
+        lambda credentials, *, credentials_path: calls.append(credentials)
+    )
+    entry = ProviderEntry(
+        name="demo_ads",
+        display_name="demo_ads",
+        capabilities=frozenset(),
+        provider_class=cls,
+        source_distribution=None,
+    )
+    monkeypatch.setattr(default_registry, "_entries", {"demo_ads": entry})
+
+    status, body = post(
+        wizard,
+        "/api/credentials/plugins/save",
+        {"provider_name": "demo_ads", "values": {"account_id": "acct-1"}},
+    )
+    assert status == 200, body
+    assert json.loads(credentials_path.read_text()) == {
+        "demo_ads": {"account_id": "acct-1"}
+    }
+    assert calls == []
+
+
 # ---------------------------------------------------------------------------
 # #336 — GET /api/credentials/plugins/<provider>/accounts (post-auth picker)
 # ---------------------------------------------------------------------------

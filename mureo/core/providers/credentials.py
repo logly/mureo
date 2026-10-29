@@ -202,6 +202,13 @@ class AccountOAuthConfig:
             failure messages). Checked by
             :func:`mureo.oauth_authcode.validate_token_headers`. Default:
             empty tuple (no extra headers).
+
+    A provider may also expose an optional ``on_oauth_persisted`` hook on
+    its class, read by :func:`mureo.core.providers.get_oauth_persist_hook`
+    (#939): the configure wizard calls it once, right after the
+    authorization-code callback has written the obtained token into the
+    provider's section, so the plugin can derive credential material from
+    it. It is not a field of this class, which stays metadata only.
     """
 
     authorize_url: str

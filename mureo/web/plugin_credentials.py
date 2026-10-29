@@ -30,6 +30,7 @@ import inspect
 import json
 import logging
 from collections.abc import Mapping
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from mureo.core.providers import (
@@ -37,12 +38,14 @@ from mureo.core.providers import (
     get_account_credential_fields,
     get_account_oauth_config,
     get_oauth_account_lister,
+    get_oauth_persist_hook,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 from mureo.web._helpers import run_coroutine
 
 if TYPE_CHECKING:
     from collections.abc import Collection
+    from pathlib import Path
 
     from mureo.core.providers.credentials import (
         AccountCredentialField,
@@ -384,6 +387,51 @@ def list_oauth_accounts(
     return accounts
 
 
+def notify_oauth_persisted(
+    provider_name: str,
+    credentials: Mapping[str, str],
+    credentials_path: Path,
+) -> None:
+    """Call the provider's ``on_oauth_persisted`` hook after the token is on disk.
+
+    The configure wizard's authorization-code callback calls this once,
+    right after it has written the obtained token into the provider's
+    section (#939). The hook gets a read-only view of that merged section
+    and the ``credentials.json`` path it was written to, so a sibling
+    section it derives lands in the same store. A plain form Save never
+    calls this. An unregistered provider or one without the hook is a
+    no-op.
+
+    Args:
+        provider_name: Snake_case registry key of the provider.
+        credentials: The merged section just written (includes the token
+            under ``target_field``).
+        credentials_path: The ``credentials.json`` the section was written to.
+    """
+    if provider_name not in default_registry:
+        return
+    hook = get_oauth_persist_hook(default_registry.get(provider_name).provider_class)
+    if hook is None:
+        return
+    view = MappingProxyType(dict(credentials))
+    # The hook call and its await share one guard. The token is already
+    # saved, so a failure is logged and swallowed: the wizard still
+    # redirects to ``/done``. Like ``list_oauth_accounts`` above, the hook
+    # runs on the handler thread with no timeout: a hanging hook stalls
+    # the redirect, so hooks must not block on the network indefinitely.
+    try:
+        result: Any = hook(view, credentials_path=credentials_path)
+        if inspect.isawaitable(result):
+            run_coroutine(result)
+    except Exception as exc:  # noqa: BLE001 — opaque plugin hook; the token is saved.
+        # Log the type only; the exception's str() may carry the token.
+        logger.warning(
+            "Plugin OAuth post-persist hook failed for provider %s: %s",
+            provider_name,
+            type(exc).__name__,
+        )
+
+
 def multi_account_picker_scope() -> dict[str, frozenset[str]]:
     """Field scope that hides post-auth picker fields in multi-account (#337).
 
@@ -632,5 +680,6 @@ __all__ = [
     "list_oauth_accounts",
     "list_plugin_credential_fields",
     "multi_account_picker_scope",
+    "notify_oauth_persisted",
     "save_plugin_credentials",
 ]

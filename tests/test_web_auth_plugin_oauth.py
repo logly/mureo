@@ -16,6 +16,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
@@ -429,3 +430,234 @@ def test_default_spec_token_headers_is_empty() -> None:
         state="x",
     )
     assert spec.token_headers == ()
+
+
+# ---------------------------------------------------------------------------
+# #939 — the callback calls the provider's on_oauth_persisted hook once,
+# after the merged section is on disk; a failing hook keeps the token.
+# ---------------------------------------------------------------------------
+
+_HOOK_PROVIDER = "broker_ads"
+_HOOK_TOKEN = "RT-hook-939-secret"
+
+
+def _hook_entry(hook: Any | None, *, as_classmethod: bool = False) -> Any:
+    from mureo.core.providers.registry import ProviderEntry
+
+    class _Broker:
+        name = _HOOK_PROVIDER
+        display_name = "Broker Ads"
+        capabilities = frozenset()
+
+    if hook is not None:
+        wrapped = classmethod(hook) if as_classmethod else staticmethod(hook)
+        _Broker.on_oauth_persisted = wrapped  # type: ignore[attr-defined]
+    return ProviderEntry(
+        name=_HOOK_PROVIDER,
+        display_name="Broker Ads",
+        capabilities=frozenset(),
+        provider_class=_Broker,
+        source_distribution=None,
+    )
+
+
+def _register_hook(
+    monkeypatch: pytest.MonkeyPatch, hook: Any | None, *, as_classmethod: bool = False
+) -> None:
+    from mureo.core.providers import default_registry
+
+    entry = _hook_entry(hook, as_classmethod=as_classmethod)
+    monkeypatch.setattr(default_registry, "_entries", {_HOOK_PROVIDER: entry})
+
+
+@pytest.fixture
+def hook_wizard(tmp_path: Path) -> Iterator[Any]:
+    creds_path = tmp_path / ".mureo" / "credentials.json"
+    creds_path.parent.mkdir(parents=True)
+    spec = PluginOAuthSpec(
+        provider=_HOOK_PROVIDER,
+        target_field="refresh_token",
+        token_url="https://broker.example.com/oauth/token",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:8765/oauth/callback",
+        state="state-xyz",
+        persist_values={"client_id": "CID", "account_id": "acct-1"},
+    )
+    wiz = WebAuthWizard(credentials_path=creds_path, plugin_oauth=spec)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    wiz.wait_until_ready(timeout=2.0)
+    try:
+        yield wiz
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
+
+
+def _callback_redirect(wiz: Any) -> tuple[int, str]:
+    """Run the callback with a stubbed exchange; return (status, Location)."""
+    from mureo.oauth_authcode import AuthCodeResult
+
+    with patch(
+        "mureo.web.auth_wizard.exchange_authorization_code",
+        return_value=AuthCodeResult(refresh_token=_HOOK_TOKEN, access_token="AT"),
+    ):
+        opener = urllib.request.build_opener(_NoRedirect())
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            opener.open(
+                _url(wiz, "/oauth/callback?code=AC&state=state-xyz"),
+                timeout=2.0,
+            )
+    return exc.value.code, exc.value.headers.get("Location", "")
+
+
+def _saved_section(wiz: Any) -> dict[str, str]:
+    return dict(json.loads(wiz.credentials_path.read_text())[_HOOK_PROVIDER])
+
+
+@pytest.mark.unit
+def test_persist_hook_called_once_after_section_is_on_disk(
+    hook_wizard: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mureo.core.secret_store import FilesystemSecretStore
+
+    calls: list[dict[str, Any]] = []
+
+    def _hook(credentials: Any, *, credentials_path: Path) -> None:
+        on_disk = FilesystemSecretStore(path=credentials_path).load(_HOOK_PROVIDER)
+        calls.append(
+            {
+                "credentials": dict(credentials),
+                "credentials_path": credentials_path,
+                "on_disk": on_disk,
+                "read_only": isinstance(credentials, MappingProxyType),
+            }
+        )
+
+    _register_hook(monkeypatch, _hook)
+    assert _callback_redirect(hook_wizard) == (302, "/done")
+
+    expected = {
+        "client_id": "CID",
+        "account_id": "acct-1",
+        "refresh_token": _HOOK_TOKEN,
+    }
+    assert len(calls) == 1
+    assert calls[0]["credentials"] == expected
+    assert calls[0]["credentials_path"] == hook_wizard.credentials_path
+    assert calls[0]["on_disk"] == expected
+    assert calls[0]["read_only"] is True
+
+
+@pytest.mark.unit
+def test_persist_hook_failure_keeps_token_and_redirects(
+    hook_wizard: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def _boom(credentials: Any, *, credentials_path: Path) -> None:
+        raise RuntimeError(f"derive failed for {credentials['refresh_token']}")
+
+    _register_hook(monkeypatch, _boom)
+    with caplog.at_level("WARNING"):
+        assert _callback_redirect(hook_wizard) == (302, "/done")
+
+    assert _saved_section(hook_wizard)["refresh_token"] == _HOOK_TOKEN
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    message = warnings[0].getMessage()
+    assert _HOOK_PROVIDER in message
+    assert _HOOK_TOKEN not in message
+    assert _HOOK_TOKEN not in caplog.text
+
+
+@pytest.mark.unit
+def test_persist_hook_async_is_awaited(
+    hook_wizard: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ran: list[str] = []
+
+    async def _hook(credentials: Any, *, credentials_path: Path) -> None:
+        ran.append(credentials["refresh_token"])
+
+    _register_hook(monkeypatch, _hook)
+    assert _callback_redirect(hook_wizard) == (302, "/done")
+    assert ran == [_HOOK_TOKEN]
+
+
+@pytest.mark.unit
+def test_persist_hook_absent_still_redirects(
+    hook_wizard: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _register_hook(monkeypatch, None)
+    assert _callback_redirect(hook_wizard) == (302, "/done")
+    assert _saved_section(hook_wizard)["refresh_token"] == _HOOK_TOKEN
+
+
+@pytest.mark.unit
+def test_persist_hook_async_failure_keeps_token_and_redirects(
+    hook_wizard: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The await path sits inside the same guard as the call."""
+
+    async def _boom(credentials: Any, *, credentials_path: Path) -> None:
+        raise RuntimeError(f"derive failed for {credentials['refresh_token']}")
+
+    _register_hook(monkeypatch, _boom)
+    with caplog.at_level("WARNING"):
+        assert _callback_redirect(hook_wizard) == (302, "/done")
+
+    assert _saved_section(hook_wizard)["refresh_token"] == _HOOK_TOKEN
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert _HOOK_PROVIDER in warnings[0].getMessage()
+    assert "RuntimeError" in warnings[0].getMessage()
+    assert _HOOK_TOKEN not in caplog.text
+
+
+@pytest.mark.unit
+def test_persist_hook_classmethod_called_through_wizard(
+    hook_wizard: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[str, str]] = []
+
+    def _hook(cls: Any, credentials: Any, *, credentials_path: Path) -> None:
+        seen.append((cls.name, credentials["refresh_token"]))
+
+    _register_hook(monkeypatch, _hook, as_classmethod=True)
+    assert _callback_redirect(hook_wizard) == (302, "/done")
+    assert seen == [(_HOOK_PROVIDER, _HOOK_TOKEN)]
+
+
+@pytest.mark.unit
+def test_persist_hook_view_rejects_mutation(
+    hook_wizard: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    errors: list[type[BaseException]] = []
+
+    def _hook(credentials: Any, *, credentials_path: Path) -> None:
+        try:
+            credentials["refresh_token"] = "overwritten"
+        except TypeError as exc:
+            errors.append(type(exc))
+
+    _register_hook(monkeypatch, _hook)
+    assert _callback_redirect(hook_wizard) == (302, "/done")
+    assert errors == [TypeError]
+    assert _saved_section(hook_wizard)["refresh_token"] == _HOOK_TOKEN
+
+
+@pytest.mark.unit
+def test_notify_oauth_persisted_unregistered_provider_is_noop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mureo.core.providers import default_registry
+    from mureo.web.plugin_credentials import notify_oauth_persisted
+
+    monkeypatch.setattr(default_registry, "_entries", {})
+    notify_oauth_persisted(
+        "nobody", {"refresh_token": _HOOK_TOKEN}, tmp_path / "credentials.json"
+    )
