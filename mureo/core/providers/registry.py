@@ -719,6 +719,45 @@ def get_oauth_account_lister(provider: object) -> Callable[..., object] | None:
     return hook if callable(hook) else None
 
 
+def get_oauth_persist_hook(provider: object) -> Callable[..., object] | None:
+    """Return a provider's ``on_oauth_persisted`` hook, or ``None`` (#939).
+
+    A provider whose :class:`AccountOAuthConfig` drives the configure
+    wizard's authorization-code flow may need to derive secondary
+    credential material from the token it just obtained (a file another
+    tool reads, a sibling provider's section) at the moment the token
+    lands. The behaviour lives in the plugin ("OSS = mechanism, plugin =
+    values"), surfaced as a callable attribute:
+
+        on_oauth_persisted(credentials: Mapping[str, str], *,
+                           credentials_path: Path) -> None
+
+    The configure wizard calls it once, right after the authorization-code
+    callback has written the obtained token into the provider's section.
+    ``credentials`` is the merged section just written (it includes
+    ``target_field``); ``credentials_path`` is the ``credentials.json``
+    written to, so a plugin that derives a sibling section uses
+    ``FilesystemSecretStore(path=credentials_path)`` and lands in the same
+    store as the token. It may be a plain function, ``staticmethod``, or
+    ``classmethod``, and may be ``async`` — the configure layer
+    (:func:`mureo.web.plugin_credentials.notify_oauth_persisted`) awaits a
+    coroutine result on its own loop. A hook that raises does not undo the
+    save: the wizard logs a warning naming the provider only. Read
+    defensively via ``getattr`` so a provider that omits it yields
+    ``None`` (same convention as :func:`get_oauth_account_lister`).
+
+    Args:
+        provider: The provider class/instance to introspect. Uses
+            :func:`getattr` only; never instantiates anything.
+
+    Returns:
+        The callable hook, or ``None`` when the attribute is absent or not
+        callable.
+    """
+    hook = getattr(provider, "on_oauth_persisted", None)
+    return hook if callable(hook) else None
+
+
 __all__ = [
     "NATIVE_SKILLS_ENTRY_POINT_GROUP",
     "PROVIDERS_ENTRY_POINT_GROUP",
@@ -732,6 +771,7 @@ __all__ = [
     "get_account_credential_fields",
     "get_account_oauth_config",
     "get_oauth_account_lister",
+    "get_oauth_persist_hook",
     "get_provider",
     "list_providers_by_capability",
     "register_provider_class",

@@ -1,3 +1,17 @@
+## [Unreleased]
+
+### Added
+
+- **Providers get a post-persist OAuth hook** (#939). A provider class may
+  expose `on_oauth_persisted(credentials, *, credentials_path)`, read by
+  the new `mureo.core.providers.get_oauth_persist_hook`. The configure
+  wizard calls it once, after the authorization-code callback has written
+  the token, with the merged section (read-only) and the `credentials.json`
+  path; a plain Save does not call it. It may be `async`. A hook that
+  raises keeps the saved token: the wizard logs a warning naming the
+  provider and the exception class (never the values) and still
+  redirects to `/done`.
+
 ## [0.35.0] - 2026-10-28
 
 ### Added

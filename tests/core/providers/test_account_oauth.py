@@ -17,6 +17,8 @@ a dead "Authenticate" button).
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from mureo.core.providers import (
@@ -256,6 +258,79 @@ def test_get_oauth_account_lister_non_callable_returns_none() -> None:
         list_oauth_accounts = "not callable"
 
     assert get_oauth_account_lister(_Bad()) is None
+
+
+# ---------------------------------------------------------------------------
+# #939 — get_oauth_persist_hook hook discovery.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_get_oauth_persist_hook_returns_staticmethod() -> None:
+    from mureo.core.providers import get_oauth_persist_hook
+
+    class _WithHook:
+        name = "broker"
+
+        @staticmethod
+        def on_oauth_persisted(creds: dict[str, str], *, credentials_path: Any) -> str:
+            return "persisted"
+
+    hook = get_oauth_persist_hook(_WithHook)
+    assert callable(hook)
+    assert hook({}, credentials_path=None) == "persisted"
+
+
+@pytest.mark.unit
+def test_get_oauth_persist_hook_returns_classmethod() -> None:
+    from mureo.core.providers import get_oauth_persist_hook
+
+    class _WithHook:
+        name = "broker"
+
+        @classmethod
+        def on_oauth_persisted(
+            cls, creds: dict[str, str], *, credentials_path: Any
+        ) -> str:
+            return cls.name
+
+    hook = get_oauth_persist_hook(_WithHook)
+    assert callable(hook)
+    assert hook({}, credentials_path=None) == "broker"
+
+
+@pytest.mark.unit
+def test_get_oauth_persist_hook_returns_plain_function() -> None:
+    from mureo.core.providers import get_oauth_persist_hook
+
+    def _hook(creds: dict[str, str], *, credentials_path: Any) -> str:
+        return "plain"
+
+    class _WithHook:
+        name = "broker"
+
+    provider = _WithHook()
+    provider.on_oauth_persisted = _hook  # type: ignore[attr-defined]
+    hook = get_oauth_persist_hook(provider)
+    assert hook is _hook
+
+
+@pytest.mark.unit
+def test_get_oauth_persist_hook_absent_returns_none() -> None:
+    from mureo.core.providers import get_oauth_persist_hook
+
+    assert get_oauth_persist_hook(_PlainProvider()) is None
+
+
+@pytest.mark.unit
+def test_get_oauth_persist_hook_non_callable_returns_none() -> None:
+    from mureo.core.providers import get_oauth_persist_hook
+
+    class _Bad:
+        name = "bad"
+        on_oauth_persisted = "not callable"
+
+    assert get_oauth_persist_hook(_Bad()) is None
 
 
 # ---------------------------------------------------------------------------

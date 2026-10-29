@@ -59,6 +59,7 @@ from mureo.core.secret_store import FilesystemSecretStore
 from mureo.logging_setup import safe_http_log_line
 from mureo.oauth_authcode import OAuthExchangeError, exchange_authorization_code
 from mureo.web._helpers import SOCKET_READ_TIMEOUT_SECONDS
+from mureo.web.plugin_credentials import notify_oauth_persisted
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -1218,19 +1219,18 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             )
             return
 
-        # Persist atomically in one write (#217): start from whatever is
-        # already on disk, layer the operator's submitted form values
-        # (client id/secret, callback URL, non-OAuth fields), then the
-        # obtained token last so it can never be clobbered. With
-        # Authenticate-is-save there may be *nothing* on disk yet — the
-        # form values and token land together, so first-time setup needs
-        # no prior Save. ``persist_values`` is empty in the #201 path, so
-        # that flow's merge-only behaviour is unchanged.
+        # Persist atomically in one write (#217): start from what is on disk, layer the
+        # operator's submitted form values (client id/secret, callback URL, non-OAuth
+        # fields), then the obtained token last so it can never be clobbered. With
+        # Authenticate-is-save there may be *nothing* on disk yet — the form values and
+        # token land together, so first-time setup needs no prior Save. The #201 path
+        # has empty ``persist_values``, so its merge-only behaviour is unchanged.
         store = FilesystemSecretStore(path=self.server.wizard.credentials_path)
         merged = dict(store.load(spec.provider))
         merged.update(spec.persist_values)
         merged[spec.target_field] = result.refresh_token
         store.save(spec.provider, merged)
+        notify_oauth_persisted(spec.provider, merged, store.path)
 
         self.send_response(302)
         self.send_header("Location", "/done")

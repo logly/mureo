@@ -584,6 +584,65 @@ def list_oauth_accounts(credentials: dict[str, str]) -> list[dict[str, object]]:
   JSON-encoded is dropped from its row (the row itself is kept) rather
   than failing the whole listing.
 
+#### Post-persist hook (`on_oauth_persisted`)
+
+A provider with an `account_oauth` declaration can also expose an
+`on_oauth_persisted(credentials, *, credentials_path)` hook to derive
+secondary credential material from the token at the moment it lands — a
+file another tool reads, or a sibling provider's section that an
+environment variable points at.
+
+- **When it fires.** Once, after the authorization-code callback has
+  written the obtained token into the provider's section, and before the
+  wizard redirects to `/done`. Only that callback calls it: a plain Save of
+  the form obtains no token and does not.
+- **What it receives.** `credentials` is a read-only mapping of the
+  section just written (your form values plus the token under
+  `target_field`). `credentials_path` is the `credentials.json` the
+  wizard wrote to; write any sibling section through
+  `FilesystemSecretStore(path=credentials_path)` so it lands in the same
+  store as the token.
+- **Shape.** A plain function, `staticmethod` or `classmethod`, sync or
+  `async` (the wizard awaits a coroutine result). mureo reads it with
+  `get_oauth_persist_hook(provider)`, which returns `None` when the
+  attribute is absent or not callable.
+- **Failure.** A hook that raises does not undo the save. The wizard logs
+  a warning that names the provider and the exception class (never the
+  values or the exception text) and still redirects to `/done`. The
+  operator sees no error in the browser, and the only retry is to
+  authenticate again, so keep the hook idempotent: re-authenticating must
+  overwrite whatever an earlier run left behind.
+- **It holds the token.** `credentials` carries the token the wizard just
+  stored. Never log it, never put it in an exception message, and create
+  any file you derive from it with owner-only permissions from the first
+  byte, as the example below does.
+
+```python
+import os
+from collections.abc import Mapping
+from pathlib import Path
+
+from mureo.core.secret_store import FilesystemSecretStore
+
+
+class ExampleProvider:
+    ...
+
+    @staticmethod
+    def on_oauth_persisted(
+        credentials: Mapping[str, str], *, credentials_path: Path
+    ) -> None:
+        derived = derive_credential(credentials["refresh_token"])  # your logic
+        target = credentials_path.parent / "example_derived.json"
+        # Owner-only from creation: no window with default permissions.
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(derived)
+        FilesystemSecretStore(path=credentials_path).save(
+            "example_sibling", {"credentials_file": str(target)}
+        )
+```
+
 ### Reusing the built-in handlers with your own credentials
 
 The built-in `google_ads_*`, `search_console_*` and `meta_ads_*` handlers
