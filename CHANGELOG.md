@@ -1,3 +1,18 @@
+## [Unreleased]
+
+### Changed
+
+- **`ga4-official` documents what it actually accepts** (#937). The catalog
+  note and `docs/integrations.md` said the official Analytics MCP needs a
+  service-account JSON; the upstream authenticates through
+  `google.auth.default()`, so any ADC credential file works — a
+  service-account key, the `authorized_user` file from
+  `gcloud auth application-default login`, or an `external_account`
+  configuration. The provider now also emits `GOOGLE_CLOUD_PROJECT` (the
+  name the upstream README documents) from the same stored project id as
+  `GOOGLE_PROJECT_ID`. `required_env` is unchanged, so existing installs
+  and the credentialed gate are unaffected.
+
 ## [0.36.0] - 2026-10-29
 
 ### Added

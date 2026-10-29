@@ -202,7 +202,8 @@ def test_provider_spec_has_optional_env_default_empty() -> None:
     assert meta.optional_env == ()
 
     ga4 = get_provider("ga4-official")
-    assert ga4.optional_env == ()
+    # #937: the name the upstream README documents
+    assert ga4.optional_env == ("GOOGLE_CLOUD_PROJECT",)
 
 
 @pytest.mark.unit

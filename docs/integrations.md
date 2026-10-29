@@ -51,10 +51,10 @@ mureo installs the official server via `pipx` (`pipx install analytics-mcp`) and
 
 ### Authentication
 
-The official GA4 MCP authenticates with a Google Cloud **service-account JSON** (read-only). `mureo providers add ga4-official` prompts for the two required environment variables:
+The official GA4 MCP authenticates through Google's Application Default Credentials (ADC), read-only. `mureo providers add ga4-official` prompts for the two required environment variables:
 
-- `GOOGLE_APPLICATION_CREDENTIALS` — path to a service-account JSON key. The service account must be granted access to the GA4 property and the key's scope must include `https://www.googleapis.com/auth/analytics.readonly`.
-- `GOOGLE_PROJECT_ID` — the Google Cloud project id.
+- `GOOGLE_APPLICATION_CREDENTIALS` — path to an ADC credential file that can authenticate with the `https://www.googleapis.com/auth/analytics.readonly` scope. It does not have to be a service account: a service-account key, the `authorized_user` file written by `gcloud auth application-default login`, or an `external_account` configuration all work. The identity behind the file must be granted access to the GA4 property.
+- `GOOGLE_PROJECT_ID` — the Google Cloud project id. mureo also emits it as `GOOGLE_CLOUD_PROJECT`, the name the upstream README documents.
 
 The GA4 property id is passed per request, not via an environment variable. These credentials are separate from mureo's Google Ads credentials.
 
