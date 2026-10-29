@@ -1,5 +1,21 @@
 ## [Unreleased]
 
+### Fixed
+
+- **GA4 is back in the Setup wizard under a multi-account backend** (#442
+  follow-up). The platform checkbox, the auth slot and the install slot
+  were hidden whenever the store reported `multi_account_auth`, and the
+  env-var route refused `ga4` writes, so the official Analytics MCP could
+  not be installed from configure even when the store already held a
+  complete `ga4` section (for example one written by a credential
+  provider's `on_oauth_persisted` hook, #939). GA4 is now offered under
+  every backend; the path/project inputs are skipped when the store
+  already holds a complete (usable) `ga4` section, and the write lands in
+  the backend-resolved credentials path like every other env var.
+  `credentials_present.ga4` in `/api/status` is now true only when both
+  `service_account_path` and `project_id` are set (it was true for any
+  non-empty section).
+
 ### Changed
 
 - **`ga4-official` documents what it actually accepts** (#937). The catalog

@@ -348,7 +348,7 @@
           state.providerChoice.google_ads === "official") ||
         (platform === "meta_ads" && state.platforms.meta_ads &&
           state.providerChoice.meta_ads === "official") ||
-        (platform === "ga4" && state.platforms.ga4 && !state.multiAccountAuth) ||
+        (platform === "ga4" && state.platforms.ga4) ||
         (platform === "tiktok_ads" && state.platforms.tiktok_ads);
       if (needsOfficial) {
         host.appendChild(buildProviderInstallSlot(state, platform, render));
@@ -374,6 +374,16 @@
     // operator pressed "Re-authorize Google" on the auth step (which sets
     // reauthorizeGoogle for this wizard run only).
     return !googleHasOauthOnDisk(state) || Boolean(state.reauthorizeGoogle);
+  }
+
+  // The store already holds a complete (usable) ``ga4`` section (an ADC
+  // file path + project id, possibly written by a credential provider's
+  // ``on_oauth_persisted`` hook), so the input slot is skipped. Edits go
+  // through the dashboard env-var rows.
+  function ga4CredentialsOnDisk(state) {
+    return Boolean(
+      state.existing && state.existing.ga4 && state.existing.ga4.configured
+    );
   }
 
   function buildAuthQueue(state) {
@@ -404,13 +414,13 @@
     // by Claude itself on first connect (RFC 9728) — configure cannot and
     // must not do it. The provider-choice "next page" (providers_install
     // step) shows the manual setup instructions instead.
-    if (state.platforms.ga4 && !state.multiAccountAuth) {
-      // #442: under a multi-account backend GA4 is wired per-account, not as
-      // one shared service account, so the Setup-tab GA4 slot is hidden. The
-      // server also refuses the write (_post_env_var); this is the UX half.
-      // Each input carries the credentials.json-backed env var NAME it
-      // persists to (POSTed to /api/credentials/env-var on Done) plus a
-      // localized label key. GA4-official reads these env vars at
+    if (state.platforms.ga4 && !ga4CredentialsOnDisk(state)) {
+      // Offered under every backend; skipped only when the store already
+      // holds the ``ga4`` section (see ga4CredentialsOnDisk). The server
+      // writes it to the backend-resolved credentials path like any other
+      // env var. Each input carries the credentials.json-backed env var
+      // NAME it persists to (POSTed to /api/credentials/env-var on Done)
+      // plus a localized label key. GA4-official reads these env vars at
       // launch, so they MUST be saved here — collecting without
       // persisting silently leaves the official MCP unauthenticated.
       queue.push({
@@ -709,12 +719,27 @@
     return note;
   }
 
+  // The store already holds the ``ga4`` section, so its slot was skipped.
+  // Say so; there is no re-authorize button because GA4 has no OAuth here —
+  // the path and project id are edited from the dashboard env-var rows.
+  function buildGa4ReusedNote() {
+    const note = document.createElement("div");
+    note.className = "wizard-shared-with-sc-note";
+    note.setAttribute("data-ga4-credentials-reused", "");
+    const text = document.createElement("span");
+    const textKey = "auth_wizard.ga4.already_configured";
+    text.textContent = MUREO.t(textKey);
+    text.setAttribute("data-i18n", textKey);
+    note.appendChild(text);
+    return note;
+  }
+
   // Nothing left to authorize. Outer Back/Next are hidden while the auth
   // step is active, so the step renders its own Continue. The success line
   // is only honest when something was actually authorized here — after a
   // reuse the note above already explains why the step is empty.
-  function appendQueueDoneControls(slotHost, googleReused, render) {
-    if (!googleReused) {
+  function appendQueueDoneControls(slotHost, anyReused, render) {
+    if (!anyReused) {
       const note = document.createElement("p");
       note.textContent = MUREO.t("wizard.auth.oauth_success");
       slotHost.appendChild(note);
@@ -743,14 +768,29 @@
     return heading;
   }
 
+  // The GA4 reused note replaces the GA4 slot, so it carries that slot's
+  // heading; otherwise it would read as part of the next slot.
+  function buildGa4ReusedHeading() {
+    const heading = document.createElement("h3");
+    const key = "wizard.auth.ga4_title";
+    heading.textContent = MUREO.t(key);
+    heading.setAttribute("data-i18n", key);
+    return heading;
+  }
+
   function renderSequentialQueue(host, state, render) {
     const googleReused =
       (state.platforms.google_ads || state.platforms.search_console) &&
       googleHasOauthOnDisk(state) &&
       !state.reauthorizeGoogle;
+    const ga4Reused = state.platforms.ga4 && ga4CredentialsOnDisk(state);
     if (googleReused) {
       host.appendChild(buildGoogleReusedHeading(state));
       host.appendChild(buildGoogleReusedNote(state, render));
+    }
+    if (ga4Reused) {
+      host.appendChild(buildGa4ReusedHeading());
+      host.appendChild(buildGa4ReusedNote());
     }
     // Slots live in their own child element: advancing the queue clears
     // ONLY that element, so the note above survives the whole step (it
@@ -760,7 +800,7 @@
 
     const queue = buildAuthQueue(state);
     if (queue.length === 0) {
-      appendQueueDoneControls(slotHost, googleReused, render);
+      appendQueueDoneControls(slotHost, googleReused || ga4Reused, render);
       return;
     }
 

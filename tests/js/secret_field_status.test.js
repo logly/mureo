@@ -196,7 +196,6 @@ test.describe("auth wizard declarative credential slot", function () {
       platforms: { amazon_ads: true },
       providerChoice: {},
       providerInstalled: {},
-      multiAccountAuth: false,
       reauthorizeGoogle: false,
       existing: {
         google: { has_oauth: false },

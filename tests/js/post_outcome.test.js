@@ -291,7 +291,6 @@ test.describe("the wizard's provider install reads the failure code", function (
       platforms: { google_ads: true },
       providerChoice: { google_ads: "official" },
       providerInstalled: {},
-      multiAccountAuth: false,
     };
     const host = p.document.createElement("div");
     const done = [];

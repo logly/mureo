@@ -300,6 +300,35 @@ class TestAmazonCredentialsPresence:
 
 
 @pytest.mark.unit
+class TestGa4CredentialsPresence:
+    """The ``ga4`` row is true only for a usable section: both the
+    credential file path and the project id. The wizard writes them one at a
+    time, so a half-written section must not read as configured."""
+
+    def _present(self, tmp_path: Path, section: dict[str, object] | None) -> bool:
+        paths = _paths(tmp_path)
+        if section is not None:
+            _write_json(paths.credentials_path, {"ga4": section})
+        snapshot = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=paths
+        )
+        return snapshot.credentials_present["ga4"]
+
+    def test_path_and_project_id_report_present(self, tmp_path: Path) -> None:
+        section = {"service_account_path": "/p/adc.json", "project_id": "proj-1"}
+        assert self._present(tmp_path, section) is True
+
+    def test_path_only_reports_absent(self, tmp_path: Path) -> None:
+        assert self._present(tmp_path, {"service_account_path": "/p/a.json"}) is False
+
+    def test_project_id_only_reports_absent(self, tmp_path: Path) -> None:
+        assert self._present(tmp_path, {"project_id": "proj-1"}) is False
+
+    def test_empty_section_reports_absent(self, tmp_path: Path) -> None:
+        assert self._present(tmp_path, {}) is False
+
+
+@pytest.mark.unit
 class TestAmazonManifestRow:
     """Audit #47 — the tool manifest's age is surfaced, not just written.
 
