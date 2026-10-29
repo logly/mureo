@@ -372,7 +372,9 @@ class TestInstallProviderInjectsCredentialEnv:
 
     def test_code_host_injects_ga4_env_from_credentials(self, tmp_path: Path) -> None:
         """ga4-official is registered WITH GOOGLE_APPLICATION_CREDENTIALS
-        / GOOGLE_PROJECT_ID resolved from credentials.json. This is the
+        / GOOGLE_PROJECT_ID resolved from credentials.json, plus the
+        optional third name GOOGLE_CLOUD_PROJECT (the name the upstream
+        README documents) from the same project id (#937). This is the
         end-to-end contract the wizard's GA4 input step now feeds (it
         previously collected the values and discarded them)."""
         from mureo.web import setup_actions
@@ -410,6 +412,7 @@ class TestInstallProviderInjectsCredentialEnv:
         assert kwargs["extra_env"] == {
             "GOOGLE_APPLICATION_CREDENTIALS": str(sa_path),
             "GOOGLE_PROJECT_ID": "proj-1",
+            "GOOGLE_CLOUD_PROJECT": "proj-1",
         }
 
     def test_code_host_hosted_meta_not_registered_manual_required(

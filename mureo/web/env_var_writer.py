@@ -51,6 +51,10 @@ _ENV_VAR_TO_FIELD: dict[str, EnvVarTarget] = {
     "META_ADS_APP_SECRET": EnvVarTarget("meta_ads", "app_secret"),
     "META_ADS_ACCOUNT_ID": EnvVarTarget("meta_ads", "account_id"),
     # GA4
+    # The field name is historical (the value used to be a service-account
+    # key only); it holds the path of ANY ADC credential file — service-account
+    # key, ``authorized_user`` file, or ``external_account`` configuration
+    # (#937). Renaming it would churn existing credentials.json files.
     "GOOGLE_APPLICATION_CREDENTIALS": EnvVarTarget("ga4", "service_account_path"),
     "GOOGLE_PROJECT_ID": EnvVarTarget("ga4", "project_id"),
     # Amazon Ads (official-MCP bridge). One name per field the bridge
@@ -105,8 +109,15 @@ def get_env_var_target(name: str) -> EnvVarTarget | None:
 # service-account path under their own section. This overlay lets the
 # provider-env build path resolve the shared name against the SPECIFIC
 # provider's section instead of always GA4 (the canonical binding).
+# The overlay also carries an upstream-documented ALIAS of a canonical
+# name: ``GOOGLE_CLOUD_PROJECT`` is what ``analytics-mcp``'s README
+# recommends, so ``ga4-official`` emits it from the same stored
+# ``ga4.project_id`` as ``GOOGLE_PROJECT_ID`` (#937). It is deliberately
+# NOT in ``_ENV_VAR_TO_FIELD``: it is read-only output for the provider
+# env block, never a dashboard row nor a write target.
 _SECTION_FIELD_OVERRIDES: dict[tuple[str, str], str] = {
     ("GOOGLE_APPLICATION_CREDENTIALS", "google_ads"): "service_account_path",
+    ("GOOGLE_CLOUD_PROJECT", "ga4"): "project_id",
 }
 
 

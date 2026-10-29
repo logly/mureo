@@ -35,7 +35,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from mureo.web._helpers import read_json_safe
-from mureo.web.env_var_writer import build_provider_env, write_credential_env_var
+from mureo.web.env_var_writer import (
+    allowed_env_var_names,
+    build_provider_env,
+    get_env_var_target,
+    is_allowed_env_var,
+    write_credential_env_var,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -132,6 +138,62 @@ class TestBuildProviderEnv:
             "GOOGLE_APPLICATION_CREDENTIALS": "/p/ga4-sa.json",
             "GOOGLE_PROJECT_ID": "proj-1",
         }
+
+    def test_ga4_cloud_project_alias_resolves_from_project_id(
+        self, tmp_path: Path
+    ) -> None:
+        """``GOOGLE_CLOUD_PROJECT`` (the name the ``analytics-mcp`` README
+        documents) resolves from the same stored ``ga4.project_id`` as
+        ``GOOGLE_PROJECT_ID`` (#937)."""
+        creds = tmp_path / "credentials.json"
+        _write(
+            creds,
+            {
+                "ga4": {
+                    "service_account_path": "/p/ga4-sa.json",
+                    "project_id": "proj-1",
+                }
+            },
+        )
+
+        env = build_provider_env(
+            (*_GA4_NAMES, "GOOGLE_CLOUD_PROJECT"), "ga4", credentials_path=creds
+        )
+
+        assert env == {
+            "GOOGLE_APPLICATION_CREDENTIALS": "/p/ga4-sa.json",
+            "GOOGLE_PROJECT_ID": "proj-1",
+            "GOOGLE_CLOUD_PROJECT": "proj-1",
+        }
+
+    def test_ga4_cloud_project_alias_is_not_on_the_allow_list(
+        self, tmp_path: Path
+    ) -> None:
+        """The alias is read-only provider-env output (#937): it is not a
+        dashboard row, has no canonical target, and cannot be written."""
+        creds = tmp_path / "credentials.json"
+
+        assert is_allowed_env_var("GOOGLE_CLOUD_PROJECT") is False
+        assert get_env_var_target("GOOGLE_CLOUD_PROJECT") is None
+        assert "GOOGLE_CLOUD_PROJECT" not in allowed_env_var_names()
+        with pytest.raises(ValueError):
+            write_credential_env_var(
+                "GOOGLE_CLOUD_PROJECT", "x", credentials_path=creds
+            )
+
+    def test_ga4_cloud_project_alias_does_not_bind_to_google_ads(
+        self, tmp_path: Path
+    ) -> None:
+        """The alias binds to the ga4 section only — a ``project_id`` key
+        under google_ads is never emitted as ``GOOGLE_CLOUD_PROJECT``."""
+        creds = tmp_path / "credentials.json"
+        _write(creds, {"google_ads": {"project_id": "leak?"}})
+
+        env = build_provider_env(
+            ("GOOGLE_CLOUD_PROJECT",), "google_ads", credentials_path=creds
+        )
+
+        assert env == {}
 
     def test_empty_and_missing_values_are_skipped(self, tmp_path: Path) -> None:
         creds = tmp_path / "credentials.json"

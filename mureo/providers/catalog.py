@@ -207,14 +207,24 @@ CATALOG: tuple[ProviderSpec, ...] = (
             "GOOGLE_APPLICATION_CREDENTIALS",
             "GOOGLE_PROJECT_ID",
         ),
+        # Bound to ``ga4.project_id`` by the alias entry in
+        # ``mureo.web.env_var_writer._SECTION_FIELD_OVERRIDES`` (#937);
+        # the two must stay together or the name is silently not emitted.
+        optional_env=("GOOGLE_CLOUD_PROJECT",),
         notes=(
             "Installs Google's official Analytics MCP (`analytics-mcp` on "
             "PyPI, repo github.com/googleanalytics/google-analytics-mcp) "
             "via pipx. Read-only access to GA4 Reporting and Admin APIs. "
-            "Requires a service-account JSON file referenced by "
-            "`GOOGLE_APPLICATION_CREDENTIALS` with the "
-            "`https://www.googleapis.com/auth/analytics.readonly` scope. "
-            "The GA4 property id is passed per-request, not via env var."
+            "The upstream authenticates via Application Default Credentials "
+            "(ADC): set `GOOGLE_APPLICATION_CREDENTIALS` to any ADC "
+            "credential file that can authenticate with the "
+            "`https://www.googleapis.com/auth/analytics.readonly` scope — a "
+            "service-account key, the `authorized_user` file written by "
+            "`gcloud auth application-default login`, or an "
+            "`external_account` configuration. `GOOGLE_CLOUD_PROJECT` (the "
+            "name the upstream documents) is emitted from the same stored "
+            "project id as `GOOGLE_PROJECT_ID`. The GA4 property id is "
+            "passed per-request, not via env var."
         ),
         coexists_with_mureo_platform="ga4",
     ),
