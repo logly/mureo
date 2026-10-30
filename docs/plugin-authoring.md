@@ -434,8 +434,8 @@ use the flag to:
 - Choose tighter storage permissions, typically `0o600`, when the
   value lands in a file rather than an injected `SecretStore`.
 
-In `mureo configure` (the **Plugin credentials** cards and the setup
-wizard), each secret field shows ✓ Configured / ✗ Not set next to its
+In `mureo configure` (the **Connection credentials** tabs and the setup
+wizard's cards), each secret field shows ✓ Configured / ✗ Not set next to its
 name, so you can tell whether a value is stored even though the input
 is always empty.
 
@@ -3507,7 +3507,7 @@ idempotent. Keys are platform names (`"google_ads"`, `"meta_ads"`, …).
 |---|---|---|---|
 | `credentials_write_path` | `Path` | `runtime_credentials_path` | Configure-UI credential writers (#196) |
 | `multi_account_auth` | `bool` | `runtime_multi_account_auth` | `mureo configure` OAuth flow (#198) |
-| `ui_plugin_credential_fields` | `Mapping[str, Collection[str]]` | `runtime_ui_plugin_credential_fields` | Dashboard "Plugin credentials" section (#207) |
+| `ui_plugin_credential_fields` | `Mapping[str, Collection[str]]` | `runtime_ui_plugin_credential_fields` | Dashboard "Connection credentials" section (#207) |
 | `search_console_sites` | `Collection[str]` | `runtime_search_console_sites` | Search Console MCP handlers (#375) |
 | `meta_account_ids` | `Collection[str]` | `runtime_meta_account_ids` | Meta Ads MCP handlers (#411) |
 | `google_ads_customer_ids` | `Collection[str]` | `runtime_google_ads_customer_ids` | Google Ads MCP handlers (#411) |
@@ -3558,7 +3558,7 @@ capabilities are designed as a pair.
 #### `ui_plugin_credential_fields` — scoping the dashboard credential form
 
 A per-provider allow-list of the credential-field keys the configure
-dashboard's "Plugin credentials" section should render, e.g.
+dashboard's "Connection credentials" section should render, e.g.
 `{"yahoo_ads": {"client_id", "client_secret", "refresh_token"}}`. A
 multi-account backend uses it to surface only operator-shared auth
 fields and hide per-account ids that belong on its own per-client

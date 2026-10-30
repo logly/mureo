@@ -1170,8 +1170,8 @@ input[type="checkbox"] {
 
 /* #183 dashboard provider card — give each platform row its own boundary
    so credential boundaries are scannable instead of a flat hairline list.
-   Both the Official MCP providers list and the Plugin credentials list
-   participate; child notes (e.g. dashboard-provider-hosted-note) fall
+   Both the Official MCP providers list and the Connection credentials
+   tab panels participate; child notes (e.g. dashboard-provider-hosted-note) fall
    inside the same boundary as the desired grouping.
    The thin hairline alone is too subtle against ``--paper``, so a soft
    1px inset shadow + bottom-edge shadow lift the card off the section
@@ -1179,7 +1179,7 @@ input[type="checkbox"] {
    the dark-mode palette (both colors derive from ``--ink`` at low
    alpha). */
 [data-dashboard-providers-list] > li,
-[data-dashboard-plugin-credentials-list] > * {
+[data-dashboard-plugin-credentials-list] > .plugin-credentials-panel {
   /* Borders use ink-at-low-alpha instead of ``--hairline`` because the
      warmer hairline (#e4e3df) reads as the same value as the cream
      ``--paper`` page on some displays. ``rgba(20,22,26,0.14)`` is a
@@ -1204,7 +1204,7 @@ input[type="checkbox"] {
 
 @media (prefers-color-scheme: dark) {
   [data-dashboard-providers-list] > li,
-  [data-dashboard-plugin-credentials-list] > * {
+  [data-dashboard-plugin-credentials-list] > .plugin-credentials-panel {
     background: var(--surface);
     border-color: rgba(236, 237, 240, 0.12);
     border-left-color: rgba(236, 237, 240, 0.12);
@@ -1214,8 +1214,8 @@ input[type="checkbox"] {
 
 /* Per-platform accent — left edge color identifies the provider at a
    glance. Brand colors come from each platform's own brand guidelines
-   (Google blue, Meta blue, GA4 orange, TikTok cyan). Plugin-credentials
-   cards inherit the neutral default. */
+   (Google blue, Meta blue, GA4 orange, TikTok cyan). Connection
+   credentials panels inherit the neutral default. */
 [data-dashboard-providers-list] > li[data-platform="google-ads-official"] {
   border-left-color: #4285f4;
 }
@@ -1242,25 +1242,72 @@ input[type="checkbox"] {
   flex-wrap: wrap;
 }
 
-/* Plugin credentials children are <details> blocks (see
-   dashboard.js render path); flex would collapse the disclosure
-   triangle row. Block is the right default here. */
-[data-dashboard-plugin-credentials-list] > * {
+/* Connection credentials children are the tab strip and the tab panels
+   (see dashboard_plugins.js renderPluginTabs); only the panels take the
+   card treatment, and a panel is a block holding the provider's form. */
+[data-dashboard-plugin-credentials-list] > .plugin-credentials-panel {
   display: block;
+}
+
+/* The `display: block` above overrides the UA `[hidden] { display: none }`,
+   so without this every inactive tab's panel would stay on screen. */
+[data-dashboard-plugin-credentials-list] > .plugin-credentials-panel[hidden] {
+  display: none;
+}
+
+/* A row of section-level tabs, one per provider. Not the
+   `.reports-chart-tabs` pill control: that one switches a chart's
+   metric in caption-size text, this one picks which provider's form
+   the section shows. Colours come from variables that already carry a
+   dark-mode pair. */
+.plugin-credentials-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.plugin-credentials-tab {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: var(--type-body-size);
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.plugin-credentials-tab:hover {
+  color: var(--ink);
+}
+
+.plugin-credentials-tab.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--report-blue);
+  font-weight: var(--type-heading-weight);
+}
+
+.plugin-credentials-tab:focus-visible {
+  outline: 2px solid var(--report-blue);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
 }
 
 /* The legacy ``.dashboard-section li:last-child { border-bottom: 0 }``
    would otherwise clear our card's bottom border; restore it
-   explicitly so every card carries all four sides. (The plugin
-   credentials list contains <details>, not <li>, so the legacy
-   override never targeted it — but we keep the margin-reset for both
-   for visual consistency at the bottom of each list.) */
+   explicitly so every card carries all four sides. */
 [data-dashboard-providers-list] > li:last-child {
   border-bottom: 1px solid var(--hairline);
 }
 
+/* Only one tab panel is visible at a time, so none of them needs the
+   between-cards gap: resetting every panel (not just the last) keeps the
+   space under the section the same whichever tab is active. */
 [data-dashboard-providers-list] > li:last-child,
-[data-dashboard-plugin-credentials-list] > *:last-child {
+[data-dashboard-plugin-credentials-list] > .plugin-credentials-panel {
   margin-bottom: 0;
 }
 

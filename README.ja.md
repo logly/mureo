@@ -287,7 +287,7 @@ mureo は **229 の MCP ツール** を stdio で公開します。Google広告�
 
 ### 認証
 
-`mureo configure`（ブラウザ）または `mureo auth setup`（ターミナル）が Google 広告と Meta 広告の認証手順を案内し、いずれも `~/.mureo/credentials.json` に書き込みます。CI 用途には環境変数でも設定できます。Search Console は Google の OAuth 認証情報を共用します。Amazon 広告の認証情報は、`mureo configure` ダッシュボードの *Plugin credentials* にある **Amazon Ads** カード（Login with Amazon のクライアント ID とシークレットを入力し、カードの **Amazon で認可する** を実行します。Amazon にはループバックコールバックがないため、mureo が同意ページを開き、リダイレクト先のアドレスを貼り付けてもらうコード貼り付け方式の誘導フローです）か、`AMAZON_ADS_*` 環境変数で設定します。確認はいつでも次のコマンドでできます。
+`mureo configure`（ブラウザ）または `mureo auth setup`（ターミナル）が Google 広告と Meta 広告の認証手順を案内し、いずれも `~/.mureo/credentials.json` に書き込みます。CI 用途には環境変数でも設定できます。Search Console は Google の OAuth 認証情報を共用します。Amazon 広告の認証情報は、`mureo configure` ダッシュボードの *接続先の認証情報* にある **Amazon Ads** タブ（Login with Amazon のクライアント ID とシークレットを入力し、タブの **Amazon で認可する** を実行します。Amazon にはループバックコールバックがないため、mureo が同意ページを開き、リダイレクト先のアドレスを貼り付けてもらうコード貼り付け方式の誘導フローです）か、`AMAZON_ADS_*` 環境変数で設定します。確認はいつでも次のコマンドでできます。
 
 ```bash
 mureo auth status          # 認証状態の確認
@@ -307,7 +307,7 @@ mureo auth check-meta      # Meta広告の認証情報を表示（マスク済�
 
 ### Amazon 広告、TikTok 広告、GA4、その他の MCP サーバーの接続
 
-**Amazon 広告**は、Amazon の公式 MCP を **mureo が中継（ブリッジ）** する形で対応しています。ホストに直接登録するのではなく、`Claude → ローカルの mureo MCP → Amazon のホスト型 MCP エンドポイント` という経路になります。Login with Amazon の認証情報は `~/.mureo/credentials.json` の `amazon_ads` セクション（`mureo configure` の **Amazon Ads** カード、または `AMAZON_ADS_*` 環境変数で設定）に保存され、ホストの MCP 設定には入りません。短命なアクセストークンの発行と自動更新は mureo が行います。初回に `mureo amazon refresh-manifest` を一度実行してローカルのツールマニフェストを作り、MCP サーバーを再起動すると、Amazon 側のツール名（`campaign_management-*`、`account_management-*`）がそのまま現れ、組み込みプラットフォームと同じように監査・スロットリング・戦略ゲートの対象になります。変更操作は `platform=plugin:mureo-amazon-ads-bridge` として action log に記録されます。mureo ネイティブの詳細分析（異常検知の基準値、RSA 監査）は Amazon にはまだ用意されていないため、Amazon の分析結果は参考情報として扱ってください。**[Amazon 広告ガイド →](docs/amazon-ads.ja.md)**
+**Amazon 広告**は、Amazon の公式 MCP を **mureo が中継（ブリッジ）** する形で対応しています。ホストに直接登録するのではなく、`Claude → ローカルの mureo MCP → Amazon のホスト型 MCP エンドポイント` という経路になります。Login with Amazon の認証情報は `~/.mureo/credentials.json` の `amazon_ads` セクション（`mureo configure` の接続先の認証情報にある **Amazon Ads** タブ、または `AMAZON_ADS_*` 環境変数で設定）に保存され、ホストの MCP 設定には入りません。短命なアクセストークンの発行と自動更新は mureo が行います。初回に `mureo amazon refresh-manifest` を一度実行してローカルのツールマニフェストを作り、MCP サーバーを再起動すると、Amazon 側のツール名（`campaign_management-*`、`account_management-*`）がそのまま現れ、組み込みプラットフォームと同じように監査・スロットリング・戦略ゲートの対象になります。変更操作は `platform=plugin:mureo-amazon-ads-bridge` として action log に記録されます。mureo ネイティブの詳細分析（異常検知の基準値、RSA 監査）は Amazon にはまだ用意されていないため、Amazon の分析結果は参考情報として扱ってください。**[Amazon 広告ガイド →](docs/amazon-ads.ja.md)**
 
 **TikTok 広告**は、TikTok の公式ホスト型 MCP（TikTok for Business MCP Server）経由で対応しています。mureo は公式プロバイダ `tiktok-ads-official` として同梱しており、`mureo configure` のダッシュボードまたは `mureo providers add` で追加し、初回接続時にブラウザで TikTok for Business アカウントにサインインして認可するだけです（Developer Token は不要）。接続後は `tiktok_ads` が他媒体と同格のプラットフォームとして扱われ、`/daily-check` やレポートに含まれ、承認済みの変更は action log に記録されます。mureo ネイティブの分析（異常検知の基準値、RSA 監査）は引き続き Google / Meta 向けです。
 

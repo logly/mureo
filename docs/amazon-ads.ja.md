@@ -46,9 +46,9 @@ mureo configure
 
 ブラウザでローカル設定 UI（`127.0.0.1` バインド）が開きます。手順:
 
-1. **ダッシュボード**を開き、**プラグイン認証情報**セクションまで
+1. **ダッシュボード**を開き、**接続先の認証情報**セクションまで
    スクロールします。
-2. **Amazon Ads** のカードを見つけます。
+2. **Amazon Ads** のタブを選びます。
 3. **クライアント ID** と**クライアントシークレット**を入力します。
 4. 必要に応じて**リージョン**（`na` / `eu` / `fe`、既定 `na`）と
    **アカウントモード**（`dynamic` / `fixed`、既定 `dynamic`）を
@@ -371,7 +371,7 @@ Amazon の ad は状態が 1 つだけ（`state` は「設定された状態」�
 
 `refresh_token` ＋ `client_secret` が無い場合は、失効時に
 `access_token` を手動で更新してください（設定 UI の Amazon Ads
-カード、`AMAZON_ADS_ACCESS_TOKEN`、または
+タブ、`AMAZON_ADS_ACCESS_TOKEN`、または
 `~/.mureo/credentials.json` のいずれか）。
 
 ## refresh トークンも失効します（365 日）
@@ -386,7 +386,7 @@ Amazon の LwA refresh トークンは長寿命ですが**永続ではありま�
 Amazon は発行時刻をクライアントに伝えないので、mureo が自分で記録
 します。認可ウィザードが交換の時点で
 `amazon_ads.refresh_token_obtained_at`（ISO 8601・UTC）を書き込み、
-そのトークンが **335 日**を超えるとダッシュボードの Amazon カードに
+そのトークンが **335 日**を超えるとダッシュボードの Amazon Ads タブに
 **再認可の案内**が表示されます（Amazon が失効させる 30 日前の余裕）。
 
 この記録が無い場合（ウィザード導入前の設定や、手で貼り付けた
@@ -400,7 +400,7 @@ refresh トークン）、mureo は**何も表示しません**。発行時刻�
 
 再認可の手順（失効前でも後でも）:
 
-1. `mureo configure` の Amazon Ads カードを開き、**Amazon で認可する**
+1. `mureo configure` の接続先の認証情報にある Amazon Ads タブを開き、**Amazon で認可する**
    のフロー（上の手順 2）をもう一度実行します。新しいトークンと新しい
    `refresh_token_obtained_at` で置き換わります。
 2. UI を使わない場合は、**新しい** `refresh_token` を取得し

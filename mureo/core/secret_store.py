@@ -99,7 +99,7 @@ class SecretStore(Protocol):
 
     - ``ui_plugin_credential_fields: Mapping[str, Collection[str]]`` —
       a per-provider allow-list of the credential-field keys the
-      configure dashboard's "Plugin credentials" section should render
+      configure dashboard's "Connection credentials" section should render
       (e.g. ``{"yahoo_ads": {"client_id", "client_secret",
       "refresh_token"}}``). A multi-account backend uses it to surface
       only operator-shared auth fields and hide per-account ids that
