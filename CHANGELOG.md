@@ -1,3 +1,16 @@
+## [Unreleased]
+
+### Fixed
+
+- **Meta ad accounts reached through a Business Portfolio are listed**
+  (#950). `list_meta_ad_accounts` walks `/me/businesses` and each
+  portfolio's `owned_ad_accounts` and `client_ad_accounts` besides
+  `/me/adaccounts`, and returns the union keyed by account id with the
+  directly held accounts first. A token without `business_management` keeps
+  today's direct list; a failure on a portfolio edge keeps the direct rows
+  and sets `truncated`. The configure UI account picker and
+  `validate_meta_access_token` pick this up unchanged.
+
 ## [0.37.0] - 2026-10-30
 
 ### Added

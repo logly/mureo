@@ -291,7 +291,7 @@ Meta のアクセスレベルはロールで線が引かれています。ビジ
 | --- | --- |
 | `ads_management` | キャンペーン・広告セット・広告・予算・入札の作成/編集 |
 | `ads_read` | 広告データとインサイトの読み取り |
-| `business_management` | ビジネスポートフォリオ経由で到達する広告アカウントの解決 (サインイン中に権限の警告が出ることがあるが、必須であり受け入れて問題ない) |
+| `business_management` | ビジネスポートフォリオ経由で到達する広告アカウントの解決。mureo は `/me/businesses` を一覧し、各ビジネスの `owned_ad_accounts` と `client_ad_accounts` を `/me/adaccounts` と合わせて返す (サインイン中に権限の警告が出ることがあるが、必須であり受け入れて問題ない) |
 | `pages_show_list` | リンクできる Facebook ページの一覧取得 |
 | `pages_manage_ads` | ページに紐づく広告の管理 |
 | `pages_read_engagement` | ページの投稿と写真の読み取り (Boost Post フロー用に投稿を一覧する `meta_ads_page_posts_list`、Instant Form のカバーを選ぶために既存のページ写真を一覧する `meta_ads_pages_photos_list`) |

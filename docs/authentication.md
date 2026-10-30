@@ -291,7 +291,7 @@ ad creative needs a Live app and the system-user token of Option C.
 | --- | --- |
 | `ads_management` | Create / edit campaigns, ad sets, ads, budgets, bids |
 | `ads_read` | Read ad data and insights |
-| `business_management` | Resolve ad accounts reached through a Business Portfolio (a permission warning may appear during sign-in — it is required and safe to accept) |
+| `business_management` | Resolve ad accounts reached through a Business Portfolio: mureo lists `/me/businesses`, then each business's `owned_ad_accounts` and `client_ad_accounts`, and unions them with `/me/adaccounts` (a permission warning may appear during sign-in — it is required and safe to accept) |
 | `pages_show_list` | List the Facebook Pages you can link |
 | `pages_manage_ads` | Manage ads tied to a Page |
 | `pages_read_engagement` | Read a Page's posts and photos (list posts for the Boost Post flow, `meta_ads_page_posts_list`; list existing Page photos to pick an Instant Form cover from, `meta_ads_pages_photos_list`) |
