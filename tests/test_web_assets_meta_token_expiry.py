@@ -33,7 +33,16 @@ def _read(name: str) -> str:
 
 
 def _js() -> str:
-    return "\n".join(_read(n) for n in ("auth_wizards_meta.js", "auth_wizards.js"))
+    # Every auth-wizard asset, so the negative assertions below scan the
+    # code wherever the split placed it.
+    names = (
+        "auth_wizards_meta.js",
+        "wizard_install_slots.js",
+        "wizard_auth_queue.js",
+        "wizard_plugin_slot.js",
+        "auth_wizards.js",
+    )
+    return "\n".join(_read(n) for n in names)
 
 
 _NEW_KEYS = (
