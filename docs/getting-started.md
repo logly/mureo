@@ -219,7 +219,7 @@ The setup command opens a local web wizard at `http://127.0.0.1:<random-port>/`,
 
 If a Google OAuth refresh token is already saved (Google Ads and Search Console share one), the wizard skips that authorization step and tells you the saved token is being reused, with a **Re-authorize Google** button if you want to mint a new one anyway.
 
-> **Amazon Ads** uses a paste-code wizard rather than a redirect-back one — Amazon's consent has no loopback callback for a local tool to listen on. Open `mureo configure`, scroll the dashboard to **Plugin credentials**, enter the Login with Amazon **Client ID** + **Client Secret** in the **Amazon Ads** card (or set the `AMAZON_ADS_*` env vars), then click **Open Amazon consent page**, approve, and paste the address Amazon redirects you to back into the card. mureo stores both tokens and refreshes the tool list; restart the MCP server afterwards. Full walkthrough: [`docs/amazon-ads.md`](amazon-ads.md).
+> **Amazon Ads** uses a paste-code wizard rather than a redirect-back one — Amazon's consent has no loopback callback for a local tool to listen on. Open `mureo configure`, scroll the dashboard to **Connection credentials**, enter the Login with Amazon **Client ID** + **Client Secret** in the **Amazon Ads** tab (or set the `AMAZON_ADS_*` env vars), then click **Open Amazon consent page**, approve, and paste the address Amazon redirects you to back into the tab. mureo stores both tokens and refreshes the tool list; restart the MCP server afterwards. Full walkthrough: [`docs/amazon-ads.md`](amazon-ads.md).
 
 ### B. Auth in Claude Desktop chat
 

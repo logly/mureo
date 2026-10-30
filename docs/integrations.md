@@ -184,7 +184,7 @@ Every Amazon call rides mureo's normal safety layer — audit, throttling, strat
 ### Configuration
 
 1. Obtain a Login with Amazon app and Amazon Ads API access: `client_id`, plus (recommended) `refresh_token` + `client_secret`.
-2. Enter them in the **Amazon Ads** card of the **Plugin credentials** section of the `mureo configure` dashboard — or set the `AMAZON_ADS_*` environment variables, or edit the `amazon_ads` section of `~/.mureo/credentials.json` by hand.
+2. Enter them in the **Amazon Ads** tab of the **Connection credentials** section of the `mureo configure` dashboard — or set the `AMAZON_ADS_*` environment variables, or edit the `amazon_ads` section of `~/.mureo/credentials.json` by hand.
 3. Build the local tool manifest, then restart the MCP server:
 
 ```bash

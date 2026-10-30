@@ -45,14 +45,11 @@ function plugin(name, extraOauth) {
   };
 }
 
-/** The <label> holding the callback URL input of `name`'s card. */
+/** The <label> holding the callback URL input of `name`'s tab panel. */
 function callbackLabel(container, name) {
-  const card = container.querySelectorAll("details").find(function (el) {
-    const summary = el.querySelector("summary");
-    return summary && summary.textContent === name;
-  });
-  assert.ok(card, "no card rendered for " + name);
-  const input = card.querySelectorAll("input").find(function (el) {
+  const panel = container.querySelector('[data-plugin-panel="' + name + '"]');
+  assert.ok(panel, "no panel rendered for " + name);
+  const input = panel.querySelectorAll("input").find(function (el) {
     return el.name === "oauth_callback_url";
   });
   assert.ok(input, "no callback URL input on " + name);

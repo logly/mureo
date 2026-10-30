@@ -47,9 +47,9 @@ mureo configure
 That opens the local configuration UI in your browser (bound to
 `127.0.0.1`). Then:
 
-1. Open the **dashboard** and scroll to the **Plugin credentials**
+1. Open the **dashboard** and scroll to the **Connection credentials**
    section.
-2. Find the **Amazon Ads** card.
+2. Select the **Amazon Ads** tab.
 3. Fill in **Client ID** and **Client Secret**.
 4. Optionally set **Region** (`na` / `eu` / `fe`, default `na`) and
    **Account Mode** (`dynamic` / `fixed`, default `dynamic`). In
@@ -376,7 +376,7 @@ tokens/secrets never appear in error messages or logs.
   fresh mint.)
 
 Without `refresh_token` + `client_secret`, update `access_token` (in
-the configure UI's Amazon Ads card, via `AMAZON_ADS_ACCESS_TOKEN`, or
+the configure UI's Amazon Ads tab, via `AMAZON_ADS_ACCESS_TOKEN`, or
 in `~/.mureo/credentials.json`) by hand when it expires.
 
 ## Refresh tokens expire too (365 days)
@@ -391,7 +391,7 @@ Amazon's LwA refresh tokens are long-lived but **not permanent**:
 Amazon does not tell a client when a token was issued, so mureo records
 it itself: the authorization wizard writes
 `amazon_ads.refresh_token_obtained_at` (ISO 8601, UTC) at the moment of
-the exchange. The dashboard's Amazon card then shows a **re-authorize
+the exchange. The dashboard's Amazon Ads tab then shows a **re-authorize
 hint** once that token passes **335 days** — 30 days of headroom before
 Amazon revokes it mid-operation.
 
@@ -406,7 +406,7 @@ do automatically at that point.
 
 To re-authorize (before or after it dies):
 
-1. Open the **Amazon Ads** card in `mureo configure` and run the
+1. Open the **Amazon Ads** tab under Connection credentials in `mureo configure` and run the
    **Authorize with Amazon** flow again (step 2 above). The new tokens
    and a fresh `refresh_token_obtained_at` replace the old ones.
 2. Or, without the UI: obtain a **new** `refresh_token` (see the

@@ -357,7 +357,7 @@ def runtime_multi_account_auth() -> bool:
 
 def runtime_ui_plugin_credential_fields() -> dict[str, frozenset[str]] | None:
     """Return a per-provider allow-list of credential-field keys the
-    dashboard "Plugin credentials" section should render, or ``None``.
+    dashboard "Connection credentials" section should render, or ``None``.
 
     A multi-account backend whose per-account ids live in per-client
     config (not the operator-shared credential store) advertises this so

@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Changed
+
+- **The dashboard's "Plugin credentials" section is now "Connection credentials" and shows its providers as tabs** (#954). The heading names what the operator enters — the credentials of a connection an installed package provides — instead of the mechanism behind it. The providers that used to stack as collapsed cards sit in a tab strip with one form visible at a time; the chosen tab survives a re-render. The setup wizard's connection step keeps its card.
+
 ### Fixed
 
 - **Meta ad accounts reached through a Business Portfolio are listed**

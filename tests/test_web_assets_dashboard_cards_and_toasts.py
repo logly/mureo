@@ -50,12 +50,13 @@ def test_dashboard_providers_list_has_card_selector() -> None:
 
 @pytest.mark.unit
 def test_dashboard_plugin_credentials_list_has_card_selector() -> None:
-    """Plugin credentials list uses a generic child selector
-    (``> *``) so any plugin-rendered row participates in the same
-    card treatment.
+    """Connection credentials tab panels take the card treatment: the
+    selector names the panel class rather than every child, so any
+    plugin-rendered panel participates while the tab strip beside the
+    panels stays a plain row.
     """
     css = _read("app.css")
-    assert "[data-dashboard-plugin-credentials-list] > *" in css
+    assert "[data-dashboard-plugin-credentials-list] > .plugin-credentials-panel" in css
 
 
 @pytest.mark.unit
