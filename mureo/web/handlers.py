@@ -128,7 +128,6 @@ from mureo.web.byod_actions import byod_clear, byod_import, byod_remove, byod_st
 from mureo.web.creative_gallery import list_creative_runs, resolve_gallery_image
 from mureo.web.demo_actions import init_demo, list_demo_scenarios
 from mureo.web.env_var_writer import (
-    get_env_var_target,
     is_allowed_env_var,
     remove_credential_section,
     write_credential_env_var,
@@ -1373,19 +1372,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if not value:
             send_error_json(self, 400, "value_required")
-            return
-        # #442: GA4 auth is a single service account. Under a multi-account
-        # backend that one SA would reach every account/property, so refuse to
-        # write it into the shared credentials.json here -- the multi-account
-        # layer wires GA4 per-account instead. Mirrors the Search Console
-        # multi-account fail-closed (#375). Resolve the EFFECTIVE section first:
-        # GOOGLE_APPLICATION_CREDENTIALS is shared with google_ads via an
-        # explicit ``section``, so only genuine ga4 writes are refused (the
-        # Google Ads service-account path stays writable).
-        _target = get_env_var_target(name)
-        _effective_section = section or (_target.section if _target else None)
-        if _effective_section == "ga4" and self._multi_account_active():
-            send_error_json(self, 403, "ga4_multi_account_forbidden")
             return
         try:
             write_credential_env_var(

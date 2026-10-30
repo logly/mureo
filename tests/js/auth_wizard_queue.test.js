@@ -29,7 +29,6 @@ function makeState(patch) {
     },
     providerChoice: { google_ads: "native", meta_ads: "native" },
     providerInstalled: {},
-    multiAccountAuth: false,
     reauthorizeGoogle: false,
     existing: {
       google: { has_oauth: false },

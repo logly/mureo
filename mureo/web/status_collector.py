@@ -202,13 +202,27 @@ def _detect_mureo_disable(mcp_registry_path: Path) -> dict[str, bool]:
 def _detect_credentials_present(credentials_path: Path) -> dict[str, bool]:
     """Inspect credentials.json for presence of platform sections."""
     payload = read_json_safe(credentials_path)
-    sections = ("google_ads", "meta_ads", "ga4")
+    sections = ("google_ads", "meta_ads")
     out: dict[str, bool] = {}
     for section in sections:
         value = payload.get(section)
         out[section] = isinstance(value, dict) and bool(value)
+    out["ga4"] = _ga4_credentials_usable(payload.get("ga4"))
     out["amazon_ads"] = _amazon_credentials_usable(payload.get("amazon_ads"))
     return out
+
+
+def _ga4_credentials_usable(section: Any) -> bool:
+    """GA4 is configured only when both values the official MCP needs are set.
+
+    The configure wizard writes the credential file path and the project id
+    one env var at a time, so a half-written section (one saved, the other
+    failed) is possible. Reporting it as present would make the wizard skip
+    the GA4 inputs and claim both are saved.
+    """
+    if not isinstance(section, dict):
+        return False
+    return bool(section.get("service_account_path") and section.get("project_id"))
 
 
 def _amazon_credentials_usable(section: Any) -> bool:
