@@ -2,8 +2,7 @@
 
 Pins the user-facing warning text emitted when an official provider for a
 platform that mureo also serves natively is added. Phase 1 = warning only;
-the per-platform auto-disable is a documented follow-up. See planner
-HANDOFF ``feat-providers-cli-phase1.md``.
+the per-platform auto-disable is a documented follow-up.
 """
 
 from __future__ import annotations

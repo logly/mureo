@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.providers.capabilities``.
 
-RED phase tests for Issue #89 Phase 1 subtask P1-01.
+Tests for Issue #89 (Phase 1).
 
 These tests pin the stable ABI surface for the Capability enum that all
 provider Protocols, adapters, the entry-points registry, the skill matcher,
@@ -23,9 +23,6 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-# NOTE: This import is expected to FAIL during the RED phase — the module
-# does not exist yet. That is correct. The implementer (GREEN phase) will
-# create ``mureo/core/providers/capabilities.py``.
 from mureo.core.providers.capabilities import (  # noqa: E402
     CAPABILITY_NAMES,
     Capability,
@@ -33,7 +30,7 @@ from mureo.core.providers.capabilities import (  # noqa: E402
     parse_capability,
 )
 
-# Names that must exist on the enum per HANDOFF Acceptance Criteria #2.
+# Names that must exist on the enum.
 _REQUIRED_CAPABILITY_NAMES: tuple[str, ...] = (
     "READ_CAMPAIGNS",
     "READ_PERFORMANCE",
@@ -62,8 +59,8 @@ _SNAKE_CASE_RE: re.Pattern[str] = re.compile(r"[a-z_]+")
 def test_capability_is_str_enum() -> None:
     """``Capability`` is a str-mixed Enum (StrEnum semantics).
 
-    HANDOFF Risk note: ``StrEnum`` requires Python 3.11+. The project supports
-    3.10+, so the implementer may use a shim (``class StrEnum(str, Enum): ...``).
+    ``StrEnum`` requires Python 3.11+. The project supports 3.10+, so the
+    module may use a shim (``class StrEnum(str, Enum): ...``).
     This test verifies the *semantics* required of a StrEnum — every member
     must be both an Enum member and a ``str`` instance whose string value
     equals its ``.value`` — without binding to the concrete ``StrEnum`` type
@@ -204,7 +201,7 @@ def test_capabilities_module_has_no_internal_mureo_imports() -> None:
     Uses ``ast.parse`` on the module's source to scan every ``Import`` and
     ``ImportFrom`` node. The module's own dotted path is allowed (it has no
     legitimate reason to appear, but excluding it explicitly future-proofs
-    against ``from . import X`` style edits the implementer might add).
+    against later ``from . import X`` style edits).
 
     Note: AST scan covers static ``import`` / ``from ... import`` only.
     ``importlib.import_module(...)`` and ``__import__(...)`` bypass

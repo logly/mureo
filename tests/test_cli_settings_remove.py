@@ -1,13 +1,12 @@
-"""Unit tests for ``mureo.cli.settings_remove`` — RED phase (TDD).
+"""Unit tests for ``mureo.cli.settings_remove``.
 
 These tests pin the symmetric ``remove_*`` counterparts of
 ``install_mcp_config`` / ``install_credential_guard`` (which live in
-``mureo.auth_setup``). Per the planner HANDOFF
-``feat-web-config-ui-phase1-uninstall.md`` (CTO decision #1), the new
-functions live in a NEW file ``mureo/cli/settings_remove.py`` rather
-than growing the already-oversize ``auth_setup.py``.
+``mureo.auth_setup``). The new functions live in a NEW file
+``mureo/cli/settings_remove.py`` rather than growing the already-oversize
+``auth_setup.py``.
 
-Coverage targets (acceptance criteria, planner HANDOFF):
+Coverage targets:
 - pop only the ``"mureo"`` key from ``mcpServers``; preserve every other entry.
 - idempotent on absent / already-removed state.
 - atomic write — tempfile + ``os.fsync`` + ``os.replace`` + parent fsync;
@@ -162,8 +161,7 @@ class TestRemoveMcpConfig:
     def test_removes_only_mureo_key(self, tmp_path: Path) -> None:
         """Given a settings.json with mureo + google-ads-official + pet,
         the remove pops only the ``mureo`` key. Other entries survive in
-        original key order (planner HANDOFF acceptance criteria L120,
-        L175)."""
+        original key order."""
         from mureo.cli.settings_remove import remove_mcp_config
 
         settings_path = tmp_path / ".claude" / "settings.json"
@@ -208,7 +206,7 @@ class TestRemoveMcpConfig:
 
     def test_idempotent_when_mureo_absent(self, tmp_path: Path) -> None:
         """Second call (already removed) returns ``changed=False`` without
-        rewriting the file (acceptance criteria L122)."""
+        rewriting the file."""
         from mureo.cli.settings_remove import remove_mcp_config
 
         settings_path = tmp_path / ".claude" / "settings.json"
@@ -255,7 +253,7 @@ class TestRemoveMcpConfig:
 
     def test_malformed_json_raises(self, tmp_path: Path) -> None:
         """Corrupt JSON must NOT be silently overwritten — raise
-        ConfigWriteError (acceptance criteria L171, L262-L266)."""
+        ConfigWriteError."""
         from mureo.cli.settings_remove import (
             ConfigWriteError,
             remove_mcp_config,
@@ -305,8 +303,7 @@ class TestRemoveMcpConfig:
 
     def test_atomic_write_preserves_original_on_failure(self, tmp_path: Path) -> None:
         """If ``os.replace`` raises mid-write, the original file is
-        byte-for-byte intact and no ``.tmp`` debris remains. Acceptance
-        criteria L154-L156."""
+        byte-for-byte intact and no ``.tmp`` debris remains."""
         from mureo.cli.settings_remove import remove_mcp_config
 
         settings_path = tmp_path / ".claude" / "settings.json"
@@ -423,7 +420,7 @@ class TestRemoveCredentialGuard:
     def test_removes_only_tagged_hooks(self, tmp_path: Path) -> None:
         """Given mureo's Read+Bash hooks + 2 unrelated PreToolUse entries,
         only the tagged entries are removed and unrelated entries remain
-        in original order (acceptance criteria L123, L181)."""
+        in original order."""
         from mureo.cli.settings_remove import remove_credential_guard
 
         settings_path = tmp_path / ".claude" / "settings.json"
@@ -453,7 +450,7 @@ class TestRemoveCredentialGuard:
 
     def test_idempotent_when_no_tagged_hooks(self, tmp_path: Path) -> None:
         """Second call (already removed) returns ``changed=False`` without
-        rewriting (acceptance criteria L125-L127)."""
+        rewriting."""
         from mureo.cli.settings_remove import remove_credential_guard
 
         settings_path = tmp_path / ".claude" / "settings.json"
@@ -483,7 +480,7 @@ class TestRemoveCredentialGuard:
 
     def test_no_hooks_key_returns_noop(self, tmp_path: Path) -> None:
         """``settings.json`` without a ``hooks`` key returns
-        ``changed=False`` (acceptance criteria L172)."""
+        ``changed=False``."""
         from mureo.cli.settings_remove import remove_credential_guard
 
         settings_path = tmp_path / ".claude" / "settings.json"
@@ -511,8 +508,7 @@ class TestRemoveCredentialGuard:
     def test_does_not_match_substring_in_matcher_field(self, tmp_path: Path) -> None:
         """An unrelated entry whose ``matcher`` field happens to contain
         ``[mureo-credential-guard]`` must NOT be removed — the tag is
-        only honored inside ``hooks[].command``. Acceptance criteria /
-        risk mitigation (planner HANDOFF L268-L275)."""
+        only honored inside ``hooks[].command``."""
         from mureo.cli.settings_remove import remove_credential_guard
 
         settings_path = tmp_path / ".claude" / "settings.json"
@@ -557,8 +553,7 @@ class TestRemoveCredentialGuard:
         assert result.changed is False
 
     def test_malformed_json_raises(self, tmp_path: Path) -> None:
-        """Corrupt JSON raises ConfigWriteError (acceptance criteria
-        L171)."""
+        """Corrupt JSON raises ConfigWriteError."""
         from mureo.cli.settings_remove import (
             ConfigWriteError,
             remove_credential_guard,

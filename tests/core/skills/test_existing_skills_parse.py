@@ -1,18 +1,14 @@
 """Regression tests — every shipped ``skills/*/SKILL.md`` parses cleanly.
 
-These tests guard the contract that the parser (P1-08) accepts every
+These tests guard the contract that the parser accepts every
 SKILL.md currently shipped at the repository root under ``skills/``.
 None of the in-tree files declare a ``capabilities`` block in
 Phase 1, so every parsed entry must report empty capability frozensets.
 This sentinel catches accidental drift if someone adds ``capabilities``
-without going through the dedicated migration PR (planner tracks this
-as a follow-up P1-09).
+without going through a dedicated migration PR.
 
 Marks: every test is ``@pytest.mark.integration`` — touches the real
 on-disk SKILL.md files shipped with the repo.
-
-NOTE: the parser import is expected to FAIL during the RED phase — the
-module ``mureo.core.skills.parser`` does not exist yet.
 """
 
 from __future__ import annotations
@@ -21,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from mureo.core.skills.parser import (  # noqa: E402 — RED-phase
+from mureo.core.skills.parser import (
     MAX_SKILL_FILE_BYTES,
     parse_skill_md,
 )
@@ -70,7 +66,7 @@ def test_shipped_skill_md_parses(skill_path: Path) -> None:
     ids=[p.parent.name for p in _SHIPPED_SKILL_FILES],
 )
 def test_shipped_skill_md_has_no_capabilities_yet(skill_path: Path) -> None:
-    """Sentinel — until the P1-09 migration PR lands, no shipped
+    """Sentinel — until a capabilities migration PR lands, no shipped
     SKILL.md should declare ``capabilities``. If this assertion ever
     starts failing, route the change through the dedicated migration PR
     instead of bundling it with parser changes.
@@ -80,12 +76,12 @@ def test_shipped_skill_md_has_no_capabilities_yet(skill_path: Path) -> None:
     assert entry.required_capabilities == frozenset(), (
         f"{skill_path.parent.name}: unexpected required_capabilities "
         f"{entry.required_capabilities!r} — content drift, route through "
-        "the P1-09 frontmatter-migration PR"
+        "a dedicated capabilities migration PR"
     )
     assert entry.advisory_mode_capabilities == frozenset(), (
         f"{skill_path.parent.name}: unexpected advisory_mode_capabilities "
         f"{entry.advisory_mode_capabilities!r} — content drift, route through "
-        "the P1-09 frontmatter-migration PR"
+        "a dedicated capabilities migration PR"
     )
 
 

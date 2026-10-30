@@ -64,7 +64,7 @@ def test_public_runtime_context_is_importable() -> None:
 @pytest.mark.unit
 def test_public_all_matches_documented_surface() -> None:
     """``__all__`` is the contract — every name above must be in it, no
-    surprise extras should appear without a code review."""
+    surprise extras."""
     import mureo.core as core
 
     assert sorted(core.__all__) == sorted(

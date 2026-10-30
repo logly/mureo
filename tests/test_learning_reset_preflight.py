@@ -144,8 +144,8 @@ class TestChangeClassification:
         assert pause.risk is ResetRisk.NO_RESET
 
     def test_conversion_rename_is_not_a_reset(self) -> None:
-        """Review finding: a cosmetic rename of a conversion action classified
-        the same as changing its value, so an operator who declared
+        """A cosmetic rename of a conversion action once classified the
+        same as changing its value, so an operator who declared
         block_learning_resets_during_incident could never rename one."""
         a = classify_change(
             "google_ads_conversions_update",

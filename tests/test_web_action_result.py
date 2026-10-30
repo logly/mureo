@@ -97,7 +97,7 @@ class TestPostInitRefusals:
         ],
     )
     def test_error_with_a_detail_that_is_not_a_code(self, detail: str) -> None:
-        """L2: a failure's detail is a code or an exception class name."""
+        """A failure's detail is a code or an exception class name."""
         with pytest.raises(ValueError, match="code or class name"):
             ActionResult.failed("internal_error", detail)
 
@@ -206,7 +206,7 @@ class TestSendResult:
     def test_a_success_body_with_the_error_status_raises(
         self, as_mapping: bool
     ) -> None:
-        """M2: a 200 body never carries ``status: "error"``; nothing is sent."""
+        """A 200 body never carries ``status: "error"``; nothing is sent."""
         body = {"status": "error", "detail": "OSError"}
         result: object = body
         if not as_mapping:

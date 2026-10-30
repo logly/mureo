@@ -44,6 +44,14 @@ jobs:
       # install above.
       - name: English-only check
         run: python scripts/check_english_only.py
+      # Shipped text explains why the code has its shape, never how the change
+      # came about (who asked or decided, what came out of a review, workflow
+      # roles and phases, internal documents and plan labels). Same scan set
+      # as the check above (CHANGELOG.md included), minus AGENTS.md and
+      # CONTRIBUTING.md, which describe the rule, and the script and its
+      # test, which carry the patterns.
+      - name: Comment provenance check
+        run: python scripts/check_comment_provenance.py
       # mypy stays scoped to mureo/. `strict = true` on tests/ would mean
       # annotating every fixture and mock; that is a separate decision, not a
       # side effect of turning on the lint gate.

@@ -4,9 +4,8 @@
 //
 // The report screens share ONE container — `[data-dashboard-reports]` wraps
 // the list and the detail alike — and that container carries the ground both
-// screens sit on. The owner asked for the detail screen to stop being one
-// continuous tinted page and become a column of bounded blocks instead, and
-// the index to keep exactly what it has.
+// screens sit on. The detail screen is a column of bounded blocks rather than
+// one continuous tinted page; the index keeps exactly what it has.
 //
 // So the two screens now want different paint out of one element, which is
 // the whole difficulty and the whole of what this suite guards:

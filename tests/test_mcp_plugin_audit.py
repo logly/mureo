@@ -309,7 +309,7 @@ class TestRecordPluginCall:
     def test_error_string_secret_shapes_scrubbed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """M1: ``error`` is free text (not key/value-masked). Bearer /
+        """``error`` is free text (not key/value-masked). Bearer /
         LwA token shapes in it must be redacted — the Amazon bridge is
         the first credentialed plugin path."""
         log = tmp_path / "audit.jsonl"

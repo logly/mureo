@@ -1,4 +1,4 @@
-"""Regression tests for image header validation (M9).
+"""Regression tests for image header validation.
 
 ``validate_image_file`` decodes only the format header (std-lib only — this
 project intentionally has no image-library dependency) to reject two classes

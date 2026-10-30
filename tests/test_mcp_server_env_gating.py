@@ -11,9 +11,6 @@ Tests reload the module through ``tests._server_reload.reloaded_server``,
 which sets the env vars, reloads, and then — with the environment already
 restored — reloads once more, so cross-test contamination is impossible
 (#760).
-
-See planner HANDOFF ``feat-providers-cli-phase1.md`` → "Disable-mureo
-Extension" → ``tests/test_mcp_server_env_gating.py`` test plan.
 """
 
 from __future__ import annotations

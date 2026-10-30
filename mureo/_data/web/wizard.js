@@ -1,5 +1,5 @@
 // wizard.js — main configure-UI wizard state machine.
-// Implements the design doc 2026-05-14 step flow with dynamic step
+// Implements the step flow in ALL_STEPS with dynamic step
 // counter + auto-skip based on platform / provider selection.
 
 (function () {
@@ -458,7 +458,7 @@
       ? "wizard.provider_choice.google_ads_native"
       : "wizard.provider_choice.meta_ads_native";
     // Optional benefit/desc lines — currently only Google Ads ships
-    // them (per design doc §3 Step 4). MUREO.t falls back to the key
+    // them. MUREO.t falls back to the key
     // itself when missing, so we render only when the lookup actually
     // resolves to a different string.
     const officialDescKey = platform === "google_ads"
@@ -468,7 +468,7 @@
       ? "wizard.provider_choice.google_ads.mureo_benefit"
       : null;
 
-    // Official first, mureo native second (design doc §1.4).
+    // Official first, mureo native second.
     [
       { value: "official", label: MUREO.t(officialKey), descKey: officialDescKey },
       { value: "native", label: MUREO.t(nativeKey), descKey: nativeBenefitKey },
@@ -709,7 +709,7 @@
     // While the sub-wizard is active (`auth` step) it manages its own
     // controls and hands control back to the outer wizard on completion,
     // so the outer Back/Next/Skip must stay hidden to avoid duplicate
-    // affordances. See design doc §1.3.
+    // affordances.
     const subWizardActive = step === "auth";
     if (prevBtn) prevBtn.hidden = STATE.stepIndex === 0 || subWizardActive;
     if (skipBtn) skipBtn.hidden = STEPS_WITHOUT_SKIP.has(step) || subWizardActive;

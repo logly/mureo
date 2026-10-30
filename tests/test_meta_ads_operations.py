@@ -455,7 +455,7 @@ class TestClientListPages:
             if path == "/biz1/owned_pages":
                 return {
                     "data": [
-                        # Same id as p1 — the overlap the reviewer flagged.
+                        # Same id as p1 — the overlap under test.
                         {"id": "p1", "name": "Shared Page", "category": "Business"},
                         {"id": "p3", "name": "Business Only"},
                     ]

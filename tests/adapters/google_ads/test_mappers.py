@@ -1,4 +1,4 @@
-"""RED-phase tests for ``mureo.adapters.google_ads.mappers``.
+"""Tests for ``mureo.adapters.google_ads.mappers``.
 
 The mapper module is a pile of pure functions that turn the legacy
 ``dict`` / ``list[dict]`` output of the existing
@@ -15,8 +15,6 @@ from typing import Any
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module ``mureo.adapters.google_ads.mappers`` does not exist yet.
 from mureo.adapters.google_ads.mappers import (
     to_ad,
     to_campaign,
@@ -91,7 +89,7 @@ def test_to_campaign_status_strings_are_mapped(
 @pytest.mark.unit
 def test_to_campaign_unknown_status_raises_value_error() -> None:
     """Unknown status string raises ``ValueError`` — no silent fallback
-    to a default enum value (the planner's explicit rule)."""
+    to a default enum value."""
     raw = {
         "id": "1",
         "name": "x",

@@ -1,9 +1,8 @@
 """Symmetric ``remove_*`` counterparts of ``install_mcp_config`` /
 ``install_credential_guard``.
 
-Lives in a new module (rather than growing the already-oversize
-``mureo.auth_setup``) per CTO decision #1 in the planner HANDOFF
-``feat-web-config-ui-phase1-uninstall.md``.
+Lives in its own module rather than growing the already-oversize
+``mureo.auth_setup``.
 
 Both removers:
 

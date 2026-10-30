@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.state_store`` — structural Protocol contract.
 
-RED-phase tests for the new ``StateStore`` Protocol that abstracts
+Tests for the ``StateStore`` Protocol that abstracts
 STATE.json / STRATEGY.md / action-log persistence. Default callers
 continue to use the existing helpers in ``mureo.context.state`` and
 ``mureo.context.strategy``; this Protocol exists so alternate backends

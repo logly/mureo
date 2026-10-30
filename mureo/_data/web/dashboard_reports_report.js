@@ -648,8 +648,7 @@
    *
    * The split rule is deliberately dumb: whichever comes FIRST of `。` and
    * `". "` — a full stop followed by a space. Both locales write reports, and
-   * a rule that only knew `。` left every English narrative unemphasised,
-   * which is what the capture review caught.
+   * a rule that only knew `。` left every English narrative unemphasised.
    *
    * `". "` and not `"."`: a bare period is not a sentence end in a text
    * carrying figures like `3.42%` or `v0.13.1`, and requiring the space is

@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.providers.registry`` (in-process path).
 
-RED phase tests for Issue #89 Phase 1 subtask P1-07.
+Tests for Issue #89 (Phase 1).
 
 These tests pin the stable in-process surface for the entry-points-based
 provider discovery registry — ``ProviderEntry``, the module-level
@@ -24,9 +24,6 @@ from typing import Any
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module ``mureo.core.providers.registry`` does not exist yet. That is
-# correct. The implementer (GREEN phase) will create it.
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.credentials import AccountCredentialField
 from mureo.core.providers.registry import (  # noqa: E402
@@ -389,7 +386,7 @@ def test_get_provider_unknown_raises_key_error_with_listing() -> None:
 
     # KeyError stringifies with surrounding quotes; assert against the
     # underlying ``.args[0]`` AND ``str(excinfo.value)`` so the test does
-    # not over-specify which the implementer chooses to populate.
+    # not over-specify which the registry chooses to populate.
     msg = str(excinfo.value)
     assert "nope" in msg, f"KeyError must mention the missing name; got: {msg!r}"
     # The error message references that the name is unknown.

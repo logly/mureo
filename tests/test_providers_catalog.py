@@ -1,12 +1,7 @@
 """Unit tests for ``mureo.providers.catalog``.
 
 Pins the integrity of the Phase 1 catalog (Google Ads / Meta Ads / GA4 official
-MCP servers) and ``ProviderSpec`` immutability. See planner HANDOFF
-``feat-providers-cli-phase1.md`` for the full acceptance criteria.
-
-This module is part of the RED phase: every test must fail with
-``ImportError`` / ``AttributeError`` until ``mureo.providers.catalog`` is
-implemented by the test-implementer.
+MCP servers) and ``ProviderSpec`` immutability.
 """
 
 from __future__ import annotations

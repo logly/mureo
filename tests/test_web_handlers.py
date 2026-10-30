@@ -481,8 +481,7 @@ class TestServeStatusMultiAccount:
 
 
 # ---------------------------------------------------------------------------
-# Session-host propagation into setup_actions (planner HANDOFF
-# feat-web-config-ui-phase1-desktop-host.md, Q5). The 5 setup handler
+# Session-host propagation into setup_actions. The 5 setup handler
 # methods must read ``self.wizard.session.host`` and pass it as the new
 # ``host=`` kwarg into setup_actions. ``host`` defaults to "claude-code"
 # everywhere, so a session with no explicit host keeps today's behaviour.
@@ -715,13 +714,12 @@ class TestPostProviders:
 
 
 # ---------------------------------------------------------------------------
-# Provider install/remove must forward the SESSION HOST (planner HANDOFF
-# feat-web-config-ui-phase1-provider-host.md L25): ``_post_providers_install``
-# / ``_post_providers_remove`` read ``self.wizard.session.host`` and pass it
-# as the new ``host=`` kwarg into ``install_provider`` / ``remove_provider``
-# (with ``home=self.wizard.home``). ``host`` defaults to "claude-code" so a
-# session with no explicit host keeps today's behaviour. RED until the
-# handler forwards these kwargs.
+# Provider install/remove must forward the SESSION HOST:
+# ``_post_providers_install`` / ``_post_providers_remove`` read
+# ``self.wizard.session.host`` and pass it as the new ``host=`` kwarg into
+# ``install_provider`` / ``remove_provider`` (with ``home=self.wizard.home``).
+# ``host`` defaults to "claude-code" so a session with no explicit host keeps
+# today's behaviour.
 # ---------------------------------------------------------------------------
 
 
@@ -1210,8 +1208,7 @@ class TestPostOauthStart:
 
 
 # ---------------------------------------------------------------------------
-# Dashboard uninstall routes (planner HANDOFF
-# feat-web-config-ui-phase1-uninstall.md). Four new CSRF + Host gated
+# Dashboard uninstall routes. Four new CSRF + Host gated
 # POST endpoints. The remove wrappers themselves are tested in
 # test_web_setup_actions_remove.py; here we pin only the route layer.
 # ---------------------------------------------------------------------------
@@ -1242,7 +1239,7 @@ class TestPostSetupMcpRemove:
         assert body == {"status": "noop"}
 
     def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
-        """Acceptance criteria L150-L153."""
+        """A POST without a CSRF token is rejected with 403."""
         status, body = post(wizard, self.ROUTE, {}, csrf=None)
         assert status == 403
 
@@ -1251,7 +1248,7 @@ class TestPostSetupMcpRemove:
         assert status == 403
 
     def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
-        """Acceptance criteria L148-L150 — Host header gate."""
+        """Host header gate: a POST with a spoofed Host is rejected."""
         body = json.dumps({}).encode()
         req = urllib.request.Request(
             route_url(wizard, self.ROUTE), data=body, method="POST"
@@ -1518,8 +1515,7 @@ class TestPostSetupSkillsInstall:
 
 
 # ---------------------------------------------------------------------------
-# Dashboard demo + byod routes (planner HANDOFF
-# feat-web-config-ui-phase1-demo-byod.md). 6 new endpoints:
+# Dashboard demo + byod routes. 6 new endpoints:
 #   GET  /api/demo/scenarios   (Host-gated only, no CSRF for GET)
 #   POST /api/demo/init        (CSRF + Host gated)
 #   GET  /api/byod/status      (Host-gated only)
@@ -1949,8 +1945,7 @@ class TestPostByodClear:
 
 
 # ---------------------------------------------------------------------------
-# Native OS file/dir picker routes (planner HANDOFF
-# feat-web-config-ui-phase1-native-picker.md). 2 new CSRF + Host gated
+# Native OS file/dir picker routes. 2 new CSRF + Host gated
 # POST endpoints:
 #   POST /api/pick/directory   body {title?}        -> pick_directory
 #   POST /api/pick/file        body {title?, kind}  -> pick_file (xlsx)
@@ -2176,8 +2171,7 @@ class TestPostSetupBasicClear:
     def test_partial_failure_surfaces_in_envelope(
         self, wizard: ConfigureWizard
     ) -> None:
-        """Acceptance criteria L132-L134: a step failure is reported in
-        the envelope, not as a 500."""
+        """A step failure is reported in the envelope, not as a 500."""
         envelope: dict[str, Any] = {
             "mureo_mcp": {
                 "status": "error",

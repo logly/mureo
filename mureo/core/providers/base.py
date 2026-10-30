@@ -3,8 +3,8 @@
 This module defines the runtime-checkable :class:`BaseProvider` Protocol
 that every mureo provider plugin (built-in ``google_ads``, ``meta_ads``,
 and third-party plugins discovered via entry points) must satisfy. It is
-the second foundational layer of the provider abstraction (Issue #89,
-P1-02), built on top of :mod:`mureo.core.providers.capabilities`.
+the second foundational layer of the provider abstraction (Issue #89),
+built on top of :mod:`mureo.core.providers.capabilities`.
 
 Foundation rule
 ---------------

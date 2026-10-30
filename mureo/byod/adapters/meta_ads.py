@@ -618,7 +618,7 @@ class MetaAdsWorkbookAdapter:
         # that two campaigns reusing the same ad set name (e.g.
         # "Default", "Lookalike 1%") get distinct ad_set_id rows in
         # ads.csv. Earlier `(ad_set, ad)` keying caused a cross-campaign
-        # collision flagged in code review of this PR.
+        # collision.
         ad_records: list[tuple[str, str, str, str]] = []  # (camp, ad_set, ad, id)
         # O(1) lookup keyed by (camp, ad_set, ad) — the previous list
         # scan was O(N²) in the row count of the workbook.

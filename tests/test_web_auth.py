@@ -834,7 +834,7 @@ class TestMetaAdsCallbackRoute:
 
 
 class TestSecurityHardening:
-    """Regression tests for the P2-2 security review findings."""
+    """Security headers and hardening on the wizard's responses."""
 
     def test_response_has_full_security_headers(self, wizard: Any) -> None:
         resp = _fetch(wizard, "/google-ads")

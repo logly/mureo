@@ -1,13 +1,12 @@
-"""Unit tests for ``mureo.cli.setup_cmd.remove_skills`` — RED phase (TDD).
+"""Unit tests for ``mureo.cli.setup_cmd.remove_skills``.
 
 These tests pin the symmetric ``remove_skills`` counterpart of
-``install_skills``. Per CTO decision #2 in the planner HANDOFF
-``feat-web-config-ui-phase1-uninstall.md``: removal MUST be
+``install_skills``. Removal MUST be
 bundle-driven (allow-list from ``get_data_path("skills")``), NOT
 prefix-based. A prefix-based remove would leave non-prefixed bundle
 skills (``daily-check``, ``onboard``, etc.) behind on uninstall.
 
-Acceptance criteria pinned here:
+What these tests pin:
 - Removes only directories whose names match the install bundle.
 - User-installed skills outside the bundle (e.g. ``my-custom/``) survive.
 - Idempotent — second call returns ``(0, dest)``.
@@ -80,8 +79,7 @@ _BUNDLE_NAMES = (
 class TestRemoveSkillsBasics:
     def test_removes_bundle_children_only(self, tmp_path: Path) -> None:
         """All bundle skill dirs are removed; a user-created custom skill
-        ``my-custom/`` survives (CTO decision #2, acceptance criteria
-        L128-L130)."""
+        ``my-custom/`` survives."""
         from mureo.cli.setup_cmd import install_skills, remove_skills
 
         target = tmp_path / "skills"
@@ -105,7 +103,7 @@ class TestRemoveSkillsBasics:
 
     def test_idempotent_when_destination_empty(self, tmp_path: Path) -> None:
         """Calling on an empty target returns ``(0, target)`` without
-        error (acceptance criteria L131)."""
+        error."""
         from mureo.cli.setup_cmd import remove_skills
 
         target = tmp_path / "skills"
@@ -129,9 +127,7 @@ class TestRemoveSkillsBasics:
         assert second_count == 0
 
     def test_dest_dir_absent_is_graceful_noop(self, tmp_path: Path) -> None:
-        """A missing destination dir returns ``(0, target)`` without raising
-        (acceptance criteria L131 — "tolerates the destination directory
-        being absent")."""
+        """A missing destination dir returns ``(0, target)`` without raising."""
         from mureo.cli.setup_cmd import remove_skills
 
         target = tmp_path / "absent"  # never created
@@ -176,7 +172,7 @@ class TestRemoveSkillsSafety:
 
     def test_preserves_non_skill_dir_with_matching_name(self, tmp_path: Path) -> None:
         """If a bundle-named entry lacks ``SKILL.md`` (a user dir that
-        happens to share a bundle name), the implementer must still
+        happens to share a bundle name), the remover must still
         remove it because the allow-list is bundle-membership, not
         SKILL.md presence in the destination. A bundle-named dir is FROM
         the install bundle by definition."""
@@ -218,8 +214,7 @@ class TestRemoveSkillsSafety:
 
     def test_handles_symlinked_bundle_skill(self, tmp_path: Path) -> None:
         """A symlinked bundle skill dir is ``unlink``-ed (not ``rmtree``-ed);
-        the link's target survives. Mirrors ``_replace_dest`` (planner
-        HANDOFF L276-L279)."""
+        the link's target survives. Mirrors ``_replace_dest``."""
         from mureo.cli.setup_cmd import remove_skills
 
         external = tmp_path / "external" / "_mureo-shared"
@@ -248,8 +243,8 @@ class TestRemoveSkillsSafety:
     def test_no_glob_removal(self, tmp_path: Path) -> None:
         """A user-created skill whose name starts with ``_mureo-`` prefix
         but is NOT a bundle skill (e.g. ``_mureo-custom``) must NOT be
-        removed. The remove allow-list is bundle-driven (CTO decision
-        #2), not prefix-based."""
+        removed. The remove allow-list is bundle-driven, not
+        prefix-based."""
         from mureo.cli.setup_cmd import remove_skills
 
         target = tmp_path / "skills"
@@ -349,9 +344,9 @@ class TestRemoveSkillsAllowListSource:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """If ``get_data_path("skills")`` cannot resolve (rare — broken
-        install), the remove function MUST no-op gracefully (planner
-        HANDOFF L172 — "bundle dir absent at import resolution →
-        graceful skip"). Crucially: the destination dir is left alone."""
+        install), the remove function MUST no-op gracefully ("bundle dir absent
+        at import resolution → graceful skip"). Crucially: the destination
+        dir is left alone."""
         from mureo.cli.setup_cmd import remove_skills
 
         def _missing(_: str) -> Path:

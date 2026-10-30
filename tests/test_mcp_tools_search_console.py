@@ -79,7 +79,7 @@ class TestSearchConsoleToolDefinitions:
         [
             # site_url is intentionally NOT required at the schema level: it is
             # resolved (and tenant-scoped) at runtime by _resolve_site_url, so a
-            # single-property multi-account client can omit it (H1). It stays an
+            # single-property multi-account client can omit it. It stays an
             # optional property on every tool that takes it.
             ("search_console_sites_list", []),
             ("search_console_sites_get", []),

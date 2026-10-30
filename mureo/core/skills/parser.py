@@ -1,4 +1,4 @@
-"""SKILL.md frontmatter parser (Issue #89 P1-08).
+"""SKILL.md frontmatter parser (Issue #89).
 
 Parses a single ``SKILL.md`` file from disk and returns a frozen
 :class:`SkillEntry`. Every decode / YAML / validation failure is wrapped
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from mureo.core.providers.capabilities import Capability
 
 # 64 KiB cap on raw on-disk file size, enforced before any YAML parse.
-# Bumping this is a one-line change; documented in the planner HANDOFF.
+# Bumping this is a one-line change.
 MAX_SKILL_FILE_BYTES: Final[int] = 64 * 1024
 
 # Frontmatter is delimited by lines containing exactly ``---``. The

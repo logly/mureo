@@ -57,6 +57,6 @@ def test_extensions_js_inits_on_app_ready() -> None:
 @pytest.mark.unit
 def test_extensions_js_prefers_landing_replacer_for_default_selection() -> None:
     """When a hidden tab was the default selection, the landing-owning
-    extension must win over an arbitrary first-rendered extension —
-    review finding on #189: ``replacer || _extensions[0]``."""
+    extension must win over an arbitrary first-rendered extension
+    (#189): ``replacer || _extensions[0]``."""
     assert "replacer || _extensions[0]" in _js()

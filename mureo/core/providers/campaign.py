@@ -2,7 +2,7 @@
 
 The runtime-checkable Protocol every adapter that supports campaign /
 ad / daily-report operations must satisfy. Method signatures only;
-implementations live in adapters (P1-09/10) and third-party plugins.
+implementations live in the built-in adapters and third-party plugins.
 
 Capability gate
 ---------------

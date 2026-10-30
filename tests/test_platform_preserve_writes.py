@@ -4,7 +4,7 @@ The companion of ``tests/test_platform_preserve.py``, which pins the codec's
 round trip. Here every case goes through a public path a real workspace
 takes — the targeted writers, ``mureo repair``'s plan and apply, and
 ``parse_state`` on a shape it refuses — on the two shapes observed in real
-workspaces and on the ones review found:
+workspaces and on the neighbouring shapes below:
 
 - a ``campaigns`` list mixing objects and other values keeps the others when
   a writer replaces the object entries (same for a campaign's ``ads``);

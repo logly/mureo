@@ -367,7 +367,7 @@ def install_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Actio
 
     Claude Desktop has no ``hooks.PreToolUse`` surface, so the Desktop
     branch is a graceful no-op that writes nothing and does NOT mark
-    ``PART_HOOK`` installed (planner HANDOFF Q2). Codex DOES have a
+    ``PART_HOOK`` installed. Codex DOES have a
     PreToolUse surface (``~/.codex/hooks.json``), so it installs the same
     credential guard via the home-aware codex installer.
     """
@@ -393,8 +393,8 @@ def install_workflow_skills(
 ) -> ActionResult:
     """Copy workflow skills into ~/.claude/skills.
 
-    Claude Code and Claude Desktop share ``~/.claude/skills`` (planner
-    HANDOFF Q3). Codex reads skills from its OWN ``~/.codex/skills``, so
+    Claude Code and Claude Desktop share ``~/.claude/skills``.
+    Codex reads skills from its OWN ``~/.codex/skills``, so
     the codex host installs there (home-aware) instead.
     """
     try:
@@ -1097,7 +1097,7 @@ def remove_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Action
 
     Mirror of ``install_auth_hook``: the Desktop branch is a no-op
     (Desktop has no hook surface) that touches no file and does NOT
-    clear ``PART_HOOK`` state (planner HANDOFF Q2). Codex has a hook
+    clear ``PART_HOOK`` state. Codex has a hook
     surface, so it drops the tagged entries from ``~/.codex/hooks.json``.
     """
     if host == _HOST_DESKTOP:
@@ -1124,8 +1124,8 @@ def remove_workflow_skills(
 ) -> ActionResult:
     """Delete bundle-listed workflow skills from ``~/.claude/skills``.
 
-    Claude Code and Desktop share ``~/.claude/skills`` (planner HANDOFF
-    Q3); Codex removes from its own ``~/.codex/skills``.
+    Claude Code and Desktop share ``~/.claude/skills``;
+    Codex removes from its own ``~/.codex/skills``.
     """
     try:
         target = _codex_skills_dir(home) if host == _HOST_CODEX else None
@@ -1217,8 +1217,8 @@ def clear_all_setup(home: Path | None = None, host: str = _HOST_CODE) -> dict[st
 
     Envelope keys: ``mureo_mcp``, ``auth_hook``, ``skills``,
     ``providers``. ``host`` is forwarded to the
-    mcp + hook removers so Desktop uninstall is symmetric. Per CTO
-    decision #3, this function MUST NOT touch
+    mcp + hook removers so Desktop uninstall is symmetric. This
+    function MUST NOT touch
     ``~/.mureo/credentials.json`` (credential removal is a separate
     user decision).
     """

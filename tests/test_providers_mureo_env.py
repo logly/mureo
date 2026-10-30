@@ -15,8 +15,7 @@ The module under test is expected to live at
 
 External calls are mocked at the ``mureo.core.atomic_json.os.replace``
 boundary, since the module under test writes through the shared atomic
-writer in ``mureo.core.atomic_json``. See planner HANDOFF
-``feat-providers-cli-phase1.md`` (Disable-mureo Extension section).
+writer in ``mureo.core.atomic_json``.
 """
 
 from __future__ import annotations

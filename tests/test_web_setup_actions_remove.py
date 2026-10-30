@@ -1,7 +1,6 @@
 """Unit tests for the ``remove_*`` wrappers in ``mureo.web.setup_actions``.
 
-Pins the symmetric uninstall wrappers added per planner HANDOFF
-``feat-web-config-ui-phase1-uninstall.md``:
+Pins the symmetric uninstall wrappers:
 
 - ``remove_mureo_mcp(home)``     → wraps ``settings_remove.remove_mcp_config``.
 - ``remove_auth_hook(home)``     → wraps ``settings_remove.remove_credential_guard``.
@@ -12,9 +11,8 @@ every status read (#423), so there is no flag to keep in sync.
 - ``clear_all_setup(home)``      → orchestrates the 4 individual removes
                                    + iterates ``mcpServers`` for installed official
                                    providers. Fail-safe: partial failure
-                                   does NOT abort the chain. Per CTO
-                                   decision #3, does NOT touch
-                                   ``~/.mureo/credentials.json``.
+                                   does NOT abort the chain. Does NOT
+                                   touch ``~/.mureo/credentials.json``.
 
 The wrappers return ``ActionResult`` shaped envelopes (status: ok/noop/error).
 """
@@ -224,8 +222,7 @@ class TestRemoveWorkflowSkills:
 class TestClearAllSetup:
     def test_runs_all_individual_remove_steps(self, tmp_path: Path) -> None:
         """``clear_all_setup`` invokes mureo MCP + hook + skills wrappers
-        (plus provider iteration). Acceptance criteria
-        L132-L134."""
+        (plus provider iteration)."""
         from mureo.web import setup_actions
 
         with (
@@ -251,7 +248,7 @@ class TestClearAllSetup:
 
     def test_returns_envelope_with_per_step_status(self, tmp_path: Path) -> None:
         """The returned dict carries one entry per step (mcp / hook /
-        skills / providers). Acceptance criteria L132-L134."""
+        skills / providers)."""
         from mureo.web import setup_actions
 
         with (
@@ -276,8 +273,7 @@ class TestClearAllSetup:
 
     def test_partial_failure_does_not_abort_chain(self, tmp_path: Path) -> None:
         """A failure in step 1 (mureo_mcp) does NOT prevent steps 2..N
-        from running. Acceptance criteria L132-L134 (planner HANDOFF
-        L281-L284)."""
+        from running."""
         from mureo.web import setup_actions
 
         with (
@@ -309,7 +305,7 @@ class TestClearAllSetup:
     def test_uncaught_exception_in_step_is_isolated(self, tmp_path: Path) -> None:
         """If a wrapper itself raises (not returning an ActionResult),
         ``clear_all_setup`` still runs subsequent steps and reports the
-        exception in the envelope. Acceptance criteria L132-L134."""
+        exception in the envelope."""
         from mureo.web import setup_actions
 
         with (
@@ -339,8 +335,7 @@ class TestClearAllSetup:
     def test_iterates_installed_official_providers(self, tmp_path: Path) -> None:
         """Bulk path enumerates installed official providers from the
         real registry (``~/.claude.json`` for Claude Code, NOT
-        settings.json) and calls ``remove_provider`` for each. CTO
-        decision #3, acceptance criteria L132-L134."""
+        settings.json) and calls ``remove_provider`` for each."""
         from mureo.web import setup_actions
 
         # Registration lives in ~/.claude.json (user scope). Seed it and
@@ -392,8 +387,8 @@ class TestClearAllSetup:
         assert "mureo" not in called_ids
 
     def test_does_not_touch_credentials_json(self, tmp_path: Path) -> None:
-        """CTO decision #3 (planner HANDOFF L207, L250-L254): the bulk
-        path MUST NOT delete or rewrite ``~/.mureo/credentials.json``."""
+        """The bulk path MUST NOT delete or rewrite
+        ``~/.mureo/credentials.json``."""
         from mureo.web import setup_actions
 
         credentials_path = tmp_path / ".mureo" / "credentials.json"
@@ -498,7 +493,7 @@ class TestClearAllSetup:
 
         for mock_fn in (mock_mcp, mock_hook, mock_skills):
             kwargs = mock_fn.call_args.kwargs
-            # Implementer may pass home positionally or by kwarg; accept either.
+            # The wrapper may pass home positionally or by kwarg; accept either.
             home_arg: Any = kwargs.get("home")
             if home_arg is None and mock_fn.call_args.args:
                 home_arg = mock_fn.call_args.args[0]

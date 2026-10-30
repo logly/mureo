@@ -1,19 +1,18 @@
-"""RED-phase tests for ``mureo.adapters.google_ads.GoogleAdsAdapter``.
+"""Tests for ``mureo.adapters.google_ads.GoogleAdsAdapter``.
 
 Pins the Protocol-conformant wrapping behaviour of the Google Ads
-adapter (Issue #89, P1-09). Every external Google Ads API call is
+adapter (Issue #89). Every external Google Ads API call is
 mocked via ``Mock(spec=GoogleAdsApiClient)`` + ``AsyncMock`` — no live
 API call is made; no real ``google.ads.googleads.client.GoogleAdsClient``
 is instantiated.
 
-CTO decisions (planner Open Questions → answers) encoded in these tests:
+Design points encoded in these tests:
 1. Audience is deferred — ``AudienceProvider`` is NOT implemented and
    not advertised via capabilities.
 2. ``UnsupportedOperation`` exception is raised for the documented
    "impossible" transitions (e.g., ``set_keyword_status(ENABLED)``).
 3. Day-grain ``daily_report`` is delegated to a new public
-   ``GoogleAdsApiClient.search_gaql(query)`` method (added by the
-   implementer in a tiny ``client.py`` edit).
+   ``GoogleAdsApiClient.search_gaql(query)`` method.
 4. ``RuntimeError`` raised by the underlying client passes through
    unchanged; only adapter-originated errors are wrapped in
    ``GoogleAdsAdapterError``.
@@ -34,9 +33,6 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module ``mureo.adapters.google_ads`` does not exist yet. That is
-# correct. The implementer (GREEN phase) will create it.
 from mureo.adapters.google_ads import GoogleAdsAdapter
 from mureo.adapters.google_ads.errors import (
     GoogleAdsAdapterError,
@@ -99,7 +95,7 @@ def _make_mock_client() -> Mock:
     auto-attribute creation).
     """
     client = Mock(spec=GoogleAdsApiClient)
-    # Customer id — adapter reads this private attribute (CTO decision).
+    # Customer id — the adapter reads this private attribute.
     client._customer_id = _FAKE_CUSTOMER_ID
     # Pre-bind the async methods we expect the adapter to hit.
     for name in (
@@ -195,8 +191,8 @@ def test_class_attributes_match_baseprovider_contract() -> None:
 
 @pytest.mark.unit
 def test_capabilities_match_exact_expected_set() -> None:
-    """The declared ``capabilities`` frozenset matches the CTO-approved
-    set EXACTLY — no extras, no missing."""
+    """The declared ``capabilities`` frozenset matches the expected set
+    EXACTLY — no extras, no missing."""
     assert GoogleAdsAdapter.capabilities == _EXPECTED_CAPABILITIES
 
 
@@ -237,8 +233,7 @@ def test_account_credential_fields_declared_for_customer_id() -> None:
 @pytest.mark.parametrize("forbidden", sorted(_FORBIDDEN_CAPABILITIES, key=str))
 def test_forbidden_capabilities_not_declared(forbidden: Capability) -> None:
     """Audience and bid capabilities are explicitly NOT declared in
-    Phase 1 (CTO decision: ``mureo/google_ads/`` has no audience
-    mixin)."""
+    Phase 1 (``mureo/google_ads/`` has no audience mixin)."""
     assert forbidden not in GoogleAdsAdapter.capabilities
 
 
@@ -625,8 +620,8 @@ def test_set_ad_status_maps_status_to_upper(
 ) -> None:
     """``set_ad_status`` calls ``client.update_ad_status`` with the
     upper-case string of the enum value (REMOVED also uses the same
-    method per CTO Open Question #2: the existing client already routes
-    REMOVED to a remove op internally)."""
+    method: the existing client already routes REMOVED to a remove op
+    internally)."""
     mock_client.update_ad_status.return_value = {"resource_name": "x"}
     mock_client.list_ads.return_value = [_ad_row(ad_id="9")]
 
@@ -644,9 +639,9 @@ def test_set_ad_status_maps_status_to_upper(
 def test_daily_report_uses_search_gaql(
     adapter: GoogleAdsAdapter, mock_client: Mock
 ) -> None:
-    """``daily_report`` delegates to ``client.search_gaql`` (CTO
-    decision: a tiny new public method on ``GoogleAdsApiClient`` —
-    implementer adds it). Returns a tuple of ``DailyReportRow``."""
+    """``daily_report`` delegates to ``client.search_gaql`` (a small
+    public method on ``GoogleAdsApiClient``). Returns a tuple of
+    ``DailyReportRow``."""
     mock_client.search_gaql.return_value = [
         {
             "date": "2024-01-01",
@@ -819,7 +814,7 @@ def test_set_keyword_status_paused_calls_pause_keyword(
 def test_set_keyword_status_enabled_raises_unsupported(
     adapter: GoogleAdsAdapter, mock_client: Mock
 ) -> None:
-    """CTO Open Question #2 decision: ``ENABLED`` for keywords is not
+    """``ENABLED`` for keywords is not
     supported by the existing client — raise ``UnsupportedOperation``."""
     with pytest.raises(UnsupportedOperation):
         adapter.set_keyword_status("111", "k1", KeywordStatus.ENABLED)
@@ -1013,7 +1008,7 @@ def test_set_extension_status_enabled_or_paused_raises_unsupported(
     mock_client: Mock,
     status: ExtensionStatus,
 ) -> None:
-    """CTO Open Question #2: ``ENABLED`` / ``PAUSED`` for extensions
+    """``ENABLED`` / ``PAUSED`` for extensions
     are not supported by existing client mixins → raise
     ``UnsupportedOperation``."""
     # Make sure the id is locatable so we can hit the dispatch branch
@@ -1062,7 +1057,7 @@ def test_calling_from_running_loop_raises_runtime_error(
 
 
 # ---------------------------------------------------------------------------
-# Case 8 — Error pass-through (CTO decision: pass-through, not wrap)
+# Case 8 — Error pass-through (pass-through, not wrap)
 # ---------------------------------------------------------------------------
 
 
@@ -1071,7 +1066,7 @@ def test_client_runtime_error_passes_through_unwrapped(
     adapter: GoogleAdsAdapter, mock_client: Mock
 ) -> None:
     """``RuntimeError`` raised by ``GoogleAdsApiClient._wrap_mutate_error``
-    propagates unchanged (CTO Open Question #4 decision)."""
+    propagates unchanged."""
     mock_client.update_campaign.side_effect = RuntimeError(
         "An error occurred while processing campaign update"
     )
@@ -1144,13 +1139,12 @@ def test_no_runtime_warnings_on_construction(mock_client: Mock) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Case 10 — Phase 1 silent-drop guards (reviewer follow-up)
+# Case 10 — Phase 1 silent-drop guards
 #
-# The reviewer flagged that the original implementation silently dropped
-# request fields the underlying client did not yet support (budget on
-# update, schedule on create). Phase 1 contract: raise
-# ``UnsupportedOperation`` so callers see the gap instead of a silent
-# no-op. The third test pins the budget-micros precision fix
+# An earlier implementation silently dropped request fields the underlying
+# client did not yet support (budget on update, schedule on create). Phase 1
+# contract: raise ``UnsupportedOperation`` so callers see the gap instead of
+# a silent no-op. The third test pins the budget-micros precision fix
 # (``amount_micros`` int passes through unscaled — no float round-trip).
 # ---------------------------------------------------------------------------
 

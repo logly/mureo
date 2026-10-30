@@ -303,6 +303,7 @@ Shape drifts before logic breaks. Keep the shape the codebase already has (see a
 - **One name per concept.** Reuse the existing parameter and field names (`period`, `customer_id`, `account_id`, `platform`, …).
 - **Broad excepts need a reason.** `except Exception` carries a `noqa: BLE001` with the reason, or narrows the type.
 - **Update the docs in the same PR** — `docs/architecture.md`, skill files, `CHANGELOG.md` — whenever the change touches what they describe.
+- **Say why, not how the change came about.** Comments, docstrings, docs and `CHANGELOG.md` entries explain the reason for the code's shape. They do not record who asked for, decided, approved or rejected a change, review findings or their labels, workflow roles or phases, or internal documents and plan labels. Cite a public issue or PR number instead. `python scripts/check_comment_provenance.py` enforces this in CI.
 
 Reviewers check the diff for a new helper, a new failure shape, a new lazy import or a new name, and ask for a justification before approving.
 

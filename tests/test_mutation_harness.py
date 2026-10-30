@@ -14,28 +14,18 @@ time somebody trusts the harness.
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
 
 import pytest
 
+from tests._script_loader import load_script
+
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-_SCRIPT = REPO_ROOT / "scripts" / "mutation_check.py"
 
 
-def _load_harness() -> object:
-    spec = importlib.util.spec_from_file_location("_mutation_check", _SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["_mutation_check"] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-HARNESS = _load_harness()
+HARNESS = load_script("mutation_check")
 MUTATIONS = HARNESS.MUTATIONS  # type: ignore[attr-defined]
 
 

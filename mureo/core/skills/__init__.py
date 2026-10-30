@@ -1,8 +1,8 @@
-"""Skill discovery, parsing, and capability matching (Issue #89 P1-08).
+"""Skill discovery, parsing, and capability matching (Issue #89).
 
 This package introduces the skill layer that pairs declarative skill
 metadata (shipped as ``SKILL.md`` files with YAML frontmatter) with the
-provider registry from P1-07.
+provider registry (:mod:`mureo.core.providers.registry`).
 
 Public surface
 --------------

@@ -1,9 +1,9 @@
-"""Tests for ``mureo.core.skills.discovery`` (RED phase, Issue #89 P1-08).
+"""Tests for ``mureo.core.skills.discovery`` (Issue #89).
 
 These tests pin the entry-points-based skill discovery contract:
 
 - Iterates ``importlib.metadata.entry_points(group="mureo.skills")``.
-- Each entry point loads to a ``Path``-like (Option B in the plan); the
+- Each entry point loads to a ``Path``-like; the
   discoverer recursively walks the directory looking for ``SKILL.md``.
 - Bounded by max recursion depth 4 and max 64 files per entry point.
 - Always also scans the in-tree built-in skills directory.
@@ -14,9 +14,6 @@ These tests pin the entry-points-based skill discovery contract:
   re-iterates.
 - Path-traversal guard: symlinks escaping the entry-point root are
   rejected with a warning.
-
-NOTE: these imports are expected to FAIL during the RED phase — the
-module ``mureo.core.skills.discovery`` does not exist yet.
 """
 
 from __future__ import annotations
@@ -29,7 +26,7 @@ from unittest.mock import patch
 import pytest
 
 from mureo.core.providers.registry import SKILLS_ENTRY_POINT_GROUP
-from mureo.core.skills.discovery import (  # noqa: E402 — RED-phase import
+from mureo.core.skills.discovery import (
     SkillDiscoveryWarning,
     discover_skills,
 )
@@ -91,7 +88,7 @@ def _reset_discovery_cache() -> Any:
     """Best-effort reset of the discovery singleton between tests.
 
     The discovery module exposes ``refresh=True``; we additionally
-    attempt to clear any module-level cache attribute the implementer
+    attempt to clear any module-level cache attribute the module
     may add (mirrors the registry's ``clear_registry`` pattern). The
     ``getattr`` fallback keeps this fixture tolerant of either naming.
     """

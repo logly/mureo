@@ -1,11 +1,10 @@
 // dashboard.js — the `#dashboard` route's shell: nav, repaint, bootstrap.
 //
 // This file was 4,624 lines and ~40 render functions across eight left-nav
-// sections, and every recent change to it paid for that: implementers
-// merge-conflicted inside it on unrelated features, and reviewers had to
-// re-derive which renderer belonged to which section. #678 moved each
-// section out verbatim into its own `<script>` module. What is left is the
-// shell:
+// sections, and every recent change to it paid for that: unrelated features
+// merge-conflicted inside it, and a reader had to re-derive which renderer
+// belonged to which section. #678 moved each section out verbatim into its
+// own `<script>` module. What is left is the shell:
 //
 //   - the left-nav: which group is visible, and which one the dashboard
 //     opens on;

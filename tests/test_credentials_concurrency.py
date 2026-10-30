@@ -1,4 +1,4 @@
-"""Concurrency safety for credentials.json read-modify-write (M2).
+"""Concurrency safety for credentials.json read-modify-write.
 
 ``auth._save_meta_token`` (the background Meta 53-day auto-refresh),
 ``auth.save_amazon_access_token`` (the Amazon LwA refresh, #113) and

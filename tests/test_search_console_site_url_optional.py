@@ -7,7 +7,7 @@ The tenant-scoped single-property auto-resolution in
 ``_validate_tool_input`` ("'site_url' is a required property") *before* the
 handler runs.
 
-This was review finding H1: every SC tool declared ``site_url`` as required, so
+Every SC tool declared ``site_url`` as required, so
 the documented single-property auto-resolve was dead code on the real dispatch
 path. The existing tenant-scope tests call handlers directly (bypassing the
 schema), so they never caught it. These tests exercise the server dispatch
@@ -53,7 +53,7 @@ def test_sc_tools_keep_site_url_as_a_property() -> None:
 async def test_server_path_autoresolves_single_site_without_site_url() -> None:
     """Through the schema-validated server dispatch, a tenant-scoped
     single-property client resolves an omitted ``site_url`` instead of a schema
-    'required' rejection (the H1 bug)."""
+    'required' rejection."""
     from mureo.mcp import _handlers_search_console as h
     from mureo.mcp import server
 

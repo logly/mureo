@@ -1,6 +1,6 @@
 """Entry-points-based discovery tests for ``mureo.core.providers.registry``.
 
-RED phase tests for Issue #89 Phase 1 subtask P1-07 (discovery path).
+Tests for Issue #89 (Phase 1) (discovery path).
 
 These tests exercise the entry-points iteration loop inside
 ``discover_providers`` / ``Registry.discover``. They mock the registry's
@@ -28,8 +28,6 @@ from unittest.mock import patch
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module ``mureo.core.providers.registry`` does not exist yet.
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import (  # noqa: E402
     PROVIDERS_ENTRY_POINT_GROUP,

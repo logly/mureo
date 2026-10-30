@@ -1,4 +1,4 @@
-"""Regression tests: a raise from a zero baseline cannot skip the pct cap (M4).
+"""Regression tests: a raise from a zero baseline cannot skip the pct cap.
 
 ``max_daily_budget_increase_pct`` is a *percentage* cap. From ``current == 0`` a
 percentage increase is unbounded — no finite raise can satisfy it — so the old

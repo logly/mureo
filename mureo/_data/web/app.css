@@ -3638,7 +3638,7 @@ label .muted,
    `align-items` and `justify-content`.
    `.dashboard-section li` sets `align-items: center`, which on a
    flex-direction:column row centres every child horizontally. That is the
-   "text is centred" the owner reported; no rule ever said `text-align:
+   "text is centred" symptom; no rule ever said `text-align:
    center`, and looking for one found nothing.
    Two classes (0,2,0) beat (0,1,1) outright, so this no longer depends on
    which rule happens to come later in the file. */
@@ -4342,8 +4342,8 @@ label .muted,
 
 /* NOT `display: flex`. This is a <td>, and giving a table cell a flex display
    takes it out of the row's layout: it stops sharing the baseline its
-   siblings sit on, and the name renders a line above its own figures. The
-   capture review for #696 caught exactly that.
+   siblings sit on, and the name renders a line above its own figures. That
+   was the #696 regression.
 
    The dot and the name are laid out inline instead, which is what a table
    cell is already good at. */
@@ -4967,7 +4967,7 @@ label .muted,
    declaration the two rules share was being answered by the generic one. On a
    live v0.17.2 render the card computed to `padding: 11px 0` and
    `display: flex; align-items: center` — the horizontal padding gone, which is
-   the owner's report that the text touches the yellow frame, and the body laid
+   why the text touched the yellow frame, and the body laid
    out BESIDE the head, which squeezed the title into a narrow wrapped column.
    Nothing in this file ever said either of those things about a proposal.
 

@@ -1,4 +1,9 @@
-"""Tests for the credential loading module (TDD: RED -> GREEN -> IMPROVE)."""
+"""Tests for the credential loading module.
+
+Google Ads and Meta Ads credentials from the file and from the environment
+(the file wins), missing and malformed input, immutability, and the
+``create_*`` factories.
+"""
 
 from __future__ import annotations
 

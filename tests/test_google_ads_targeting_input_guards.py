@@ -1,14 +1,14 @@
-"""Regression tests for the 2026-07-18 full-review findings.
+"""Regression tests for the Google Ads targeting input guards.
 
 Covers:
-- C1: GAQL injection guard on ``update_ad_group`` (ad_group_id must be
+- GAQL injection guard on ``update_ad_group`` (ad_group_id must be
   validated before it reaches the manual-bid pre-check query or
   ``ad_group_path``).
-- H4: ID validation on ``update_location_targeting`` /
+- ID validation on ``update_location_targeting`` /
   ``update_schedule_targeting`` (campaign_id, geo target constants, and
   criterion_ids), plus the "add or remove is required" contract exposed
   through the tool schema ``anyOf`` and the MCP handler runtime check.
-- LOW: the ``_resolve_target_cpa`` type-only stub is no longer a runtime
+- The ``_resolve_target_cpa`` type-only stub is no longer a runtime
   attribute of the keyword / search-term analysis mixins (removes the
   implicit MRO-order dependency).
 
@@ -74,7 +74,7 @@ class _MockTargetingClient(_TargetingMixin):
 
 
 # ---------------------------------------------------------------------------
-# C1 - update_ad_group id validation
+# update_ad_group id validation
 # ---------------------------------------------------------------------------
 
 
@@ -108,7 +108,7 @@ class TestUpdateAdGroupIdValidation:
 
 
 # ---------------------------------------------------------------------------
-# H4 - location / schedule targeting id validation
+# location / schedule targeting id validation
 # ---------------------------------------------------------------------------
 
 
@@ -194,7 +194,7 @@ class TestScheduleTargetingIdValidation:
 
 
 # ---------------------------------------------------------------------------
-# H4 - tool schema anyOf + handler runtime check
+# tool schema anyOf + handler runtime check
 # ---------------------------------------------------------------------------
 
 
@@ -235,7 +235,7 @@ class TestTargetingToolContracts:
 
 
 # ---------------------------------------------------------------------------
-# LOW - _resolve_target_cpa stub is type-only (no runtime shadowing)
+# _resolve_target_cpa stub is type-only (no runtime shadowing)
 # ---------------------------------------------------------------------------
 
 
@@ -259,7 +259,7 @@ class TestResolveTargetCpaStubTypeOnly:
 
 
 # ---------------------------------------------------------------------------
-# LOW - B2B advisory failures are logged (not silently swallowed)
+# B2B advisory failures are logged (not silently swallowed)
 # ---------------------------------------------------------------------------
 
 

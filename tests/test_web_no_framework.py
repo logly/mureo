@@ -6,8 +6,8 @@ on stdlib ``http.server`` exclusively. This test walks the entire
 ``mureo/web/`` source tree and parses each file with ``ast`` to assert
 that none of the forbidden frameworks are imported, even transitively.
 
-Failing this test means a dependency creep regression — the
-implementer must restore the stdlib-only constraint, not loosen the
+Failing this test means a dependency creep regression — a change to
+``mureo/web/`` must restore the stdlib-only constraint, not loosen the
 test.
 """
 

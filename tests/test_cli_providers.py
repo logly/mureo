@@ -3,8 +3,7 @@
 Covers ``list``, ``add``, ``remove``, ``add --all``, ``--dry-run``, the
 coexistence warning, idempotency, and the regression guard that the
 existing ``mureo setup claude-code`` flow continues to work alongside the
-new providers commands. See planner HANDOFF
-``feat-providers-cli-phase1.md``.
+new providers commands.
 
 ``subprocess.run`` is patched at the production-code boundary
 (``mureo.providers.installer.subprocess.run``). ``Path.home`` is monkey-

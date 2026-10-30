@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.providers.base``.
 
-RED phase tests for Issue #89 Phase 1 subtask P1-02.
+Tests for Issue #89 (Phase 1).
 
 These tests pin the stable structural contract for ``BaseProvider`` — the
 runtime-checkable Protocol every mureo provider plugin (built-in
@@ -23,9 +23,6 @@ from typing import Protocol
 
 import pytest
 
-# NOTE: This import is expected to FAIL during the RED phase — the module
-# does not exist yet. That is correct. The implementer (GREEN phase) will
-# create ``mureo/core/providers/base.py``.
 from mureo.core.providers.base import (  # noqa: E402
     BaseProvider,
     validate_provider,
@@ -63,8 +60,7 @@ def test_base_provider_is_runtime_checkable_protocol() -> None:
 
     The ``runtime_checkable`` decorator sets the private attribute
     ``_is_runtime_protocol = True`` on the Protocol class. This test
-    pins that attribute so the implementer cannot drop the decorator
-    without failing the suite.
+    pins that attribute so dropping the decorator fails the suite.
     """
     assert issubclass(
         BaseProvider, Protocol
@@ -309,7 +305,7 @@ def test_validate_provider_rejects_bad_shape(
             f"({name_hint!r} or repr); got: {msg!r}"
         )
 
-    # Field-specific hints required by the HANDOFF.
+    # Field-specific hints the error message must carry.
     if (
         field_token == "capabilities"
         and isinstance(capabilities, set)
@@ -375,7 +371,7 @@ def test_base_module_has_no_internal_mureo_imports_other_than_capabilities() -> 
             if node.level > 0:
                 # Relative imports are still internal mureo.* — forbidden
                 # unless they resolve to ``capabilities``. Even then, the
-                # implementer should prefer the absolute form for clarity.
+                # module should prefer the absolute form for clarity.
                 offending.append(f"from {'.' * node.level}{mod} import ... (relative)")
             elif mod.startswith("mureo.") and mod != own_module and mod not in allowed:
                 offending.append(f"from {mod} import ...")

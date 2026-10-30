@@ -833,7 +833,7 @@ test.describe("the detail screen's colours are tokens", function () {
 });
 
 // ---------------------------------------------------------------------
-// What the capture review found missing (#706 step 3-a, NG 1-4)
+// What the detail screen had lost (#706)
 // ---------------------------------------------------------------------
 //
 // Four things the screen either lost or mangled, each pinned as "would an
