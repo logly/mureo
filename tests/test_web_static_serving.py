@@ -55,11 +55,28 @@ class TestStaticAllowList:
             "app.js",
             "landing.js",
             "wizard.js",
+            "wizard_provider_choice.js",
             "auth_wizards.js",
+            "auth_wizards_plugin.js",
             "dashboard.js",
             "i18n.json",
         ):
             assert asset in _STATIC_ALLOWLIST
+
+    def test_app_html_loads_wizard_helpers_before_their_consumers(self) -> None:
+        """Each helper publishes a window global the file after it calls
+        into; app.html loads it first, the order tests/js/dom_harness.js
+        uses too."""
+        html = (
+            (Path(__file__).resolve().parent.parent / "mureo" / "_data" / "web")
+            .joinpath("app.html")
+            .read_text(encoding="utf-8")
+        )
+        choice = html.index("/static/wizard_provider_choice.js")
+        assert choice < html.index("/static/wizard.js")
+        plugin = html.index("/static/auth_wizards_plugin.js")
+        assert html.index("/static/auth_wizards_meta.js") < plugin
+        assert plugin < html.index("/static/auth_wizards.js")
 
 
 @pytest.mark.unit

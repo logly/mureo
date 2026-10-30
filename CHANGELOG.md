@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+### Added
+
+- **A plugin credential provider can stand in for a built-in platform**
+  (#944, #946). A provider registered via `mureo.providers` may declare
+  `serves_platform` (`google_ads` / `meta_ads` / `search_console`). The
+  Setup tab's "mureo integrations" row then reads configured when the
+  provider's own section is complete, and the Setup wizard offers the
+  provider as a third connection choice next to "official MCP" and "mureo
+  standard" (Search Console gets its own choice), running the provider's
+  credentials card on the auth step instead of asking for OAuth credentials
+  the operator does not have. `/api/status` carries `plugin_platforms`;
+  `/api/credentials/plugins` carries `serves_platform` and `configured` per
+  provider. A malformed declaration is logged and leaves only that provider
+  out of the configure UI.
+
 ### Fixed
 
 - **GA4 is back in the Setup wizard under a multi-account backend** (#442

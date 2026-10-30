@@ -783,3 +783,45 @@ class TestReportsStaleBasisKeysParity:
             data["en"]["dashboard.reports_stale_last_collected"]
             == "Last collected {ago}: {figures}"
         )
+
+
+@pytest.mark.unit
+class TestPluginServedPlatformKeysParity:
+    """A plugin credential provider standing in for a built-in platform:
+    the Setup tab row's note, the wizard's Search Console choice and the
+    auth step's "already configured" line. ``{provider}`` carries the
+    provider's localized name, so a locale that drops it loses the name.
+    """
+
+    _PLACEHOLDERS: dict[str, tuple[str, ...]] = {
+        "dashboard.native_via_plugin": ("{provider}",),
+        "auth_wizard.plugin.already_configured": ("{provider}",),
+        "wizard.provider_choice.search_console_native": (),
+        "wizard.provider_choice.search_console.native_desc": (),
+        "wizard.provider_choice.search_console_native_own": (),
+        "wizard.provider_choice.search_console.native_own_desc": (),
+    }
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._PLACEHOLDERS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._PLACEHOLDERS:
+            assert data["en"][key] != data["ja"][key], key
+
+    def test_placeholders_survive_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            for key, placeholders in self._PLACEHOLDERS.items():
+                for placeholder in placeholders:
+                    assert (
+                        placeholder in data[locale][key]
+                    ), f"{locale}/{key} lost {placeholder}"

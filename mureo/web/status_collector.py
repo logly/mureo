@@ -35,6 +35,7 @@ _HOST_DESKTOP = "claude-desktop"
 _HOST_CODEX = "codex"
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
 OFFICIAL_PROVIDER_IDS: tuple[str, ...] = (
@@ -106,6 +107,11 @@ class StatusSnapshot:
     # ``home is None`` gate and relayed through here; defaults False so
     # standalone OSS and direct callers are unchanged.
     multi_account_auth: bool = False
+    # Built-in platforms a plugin credential provider stands in for, keyed
+    # by platform: ``{"provider_name", "display_name", "configured"}``.
+    # Computed by the handler from the plugin descriptors (it needs the
+    # session locale and the field scope); empty for direct callers.
+    plugin_platforms: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Audit #47: the Amazon tool manifest's freshness —
     # ``{"present": bool, "stale": bool, "age_days": float | None}``. The
     # manifest is a snapshot of a tool surface mureo does not own, so an old
@@ -144,6 +150,7 @@ class StatusSnapshot:
             "env_vars": {k: dict(v) for k, v in self.env_vars.items()},
             "mureo_disable": dict(self.mureo_disable),
             "multi_account_auth": self.multi_account_auth,
+            "plugin_platforms": {k: dict(v) for k, v in self.plugin_platforms.items()},
             "amazon_manifest": dict(self.amazon_manifest),
             "amazon_token": dict(self.amazon_token),
             "meta_token": dict(self.meta_token),
@@ -526,12 +533,13 @@ def collect_status(
     home: Path | None = None,
     paths: HostPaths | None = None,
     multi_account_auth: bool = False,
+    plugin_platforms: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> StatusSnapshot:
     """Build a status snapshot for ``host``.
 
-    ``multi_account_auth`` (#222) is relayed verbatim onto the snapshot —
-    the caller (the handler) computes it behind the ``home is None`` gate,
-    so this stays a pure filesystem read with no runtime-context coupling.
+    ``multi_account_auth`` (#222, behind the ``home is None`` gate) and
+    ``plugin_platforms`` are computed by the handler and relayed onto the
+    snapshot, so this stays a pure filesystem read with no runtime context.
     """
     resolved = paths if paths is not None else get_host_paths(host, home)
     providers = _detect_installed_providers(resolved.mcp_registry_path)
@@ -554,8 +562,6 @@ def collect_status(
     creds_oauth = _detect_credentials_oauth(resolved.credentials_path)
     env_vars = _collect_env_vars(resolved.credentials_path)
     mureo_disable = _detect_mureo_disable(resolved.mcp_registry_path)
-    amazon_manifest = _detect_amazon_manifest(resolved.credentials_path)
-    amazon_token = _detect_amazon_token(resolved.credentials_path)
     meta_token = _detect_meta_token(resolved.credentials_path)
     return StatusSnapshot(
         host=resolved.host,
@@ -566,7 +572,8 @@ def collect_status(
         env_vars=env_vars,
         mureo_disable=mureo_disable,
         multi_account_auth=multi_account_auth,
-        amazon_manifest=amazon_manifest,
-        amazon_token=amazon_token,
+        plugin_platforms={k: dict(v) for k, v in (plugin_platforms or {}).items()},
+        amazon_manifest=_detect_amazon_manifest(resolved.credentials_path),
+        amazon_token=_detect_amazon_token(resolved.credentials_path),
         meta_token=meta_token,
     )

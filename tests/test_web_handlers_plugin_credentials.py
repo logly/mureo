@@ -23,7 +23,7 @@ import pytest
 from mureo.core.providers import AccountCredentialField, default_registry
 from mureo.core.providers.registry import ProviderEntry
 from mureo.web.server import ConfigureWizard
-from tests.web_support import get, post
+from tests.web_support import get, get_text, post
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -39,6 +39,7 @@ def _make_class(
     *,
     fields: tuple[AccountCredentialField, ...],
     display_name: str | None = None,
+    serves_platform: str | None = None,
 ) -> type:
     class _Fake:
         pass
@@ -47,6 +48,8 @@ def _make_class(
     _Fake.display_name = display_name or name  # type: ignore[attr-defined]
     _Fake.capabilities = frozenset()  # type: ignore[attr-defined]
     _Fake.account_credential_fields = fields  # type: ignore[attr-defined]
+    if serves_platform is not None:
+        _Fake.serves_platform = serves_platform  # type: ignore[attr-defined]
     return _Fake
 
 
@@ -55,12 +58,18 @@ def _entry(
     *,
     fields: tuple[AccountCredentialField, ...],
     display_name: str | None = None,
+    serves_platform: str | None = None,
 ) -> ProviderEntry:
     return ProviderEntry(
         name=name,
         display_name=display_name or name,
         capabilities=frozenset(),
-        provider_class=_make_class(name, fields=fields, display_name=display_name),
+        provider_class=_make_class(
+            name,
+            fields=fields,
+            display_name=display_name,
+            serves_platform=serves_platform,
+        ),
         source_distribution=None,
     )
 
@@ -525,3 +534,199 @@ def test_accounts_endpoint_502_when_hook_fails(
     status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
     assert status == 502
     assert body["error"] == "account_listing_failed"
+
+
+# ---------------------------------------------------------------------------
+# A provider standing in for a built-in platform (``serves_platform``)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def registry_served_google(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One provider serving Google Ads plus one that declares nothing."""
+    monkeypatch.setattr(
+        default_registry,
+        "_entries",
+        {
+            "google_ads_vendor": _entry(
+                "google_ads_vendor",
+                display_name="Google Ads (Vendor)",
+                serves_platform="google_ads",
+                fields=(
+                    AccountCredentialField(
+                        key="customer_id", display_name="Customer ID", required=True
+                    ),
+                    AccountCredentialField(
+                        key="refresh_token",
+                        display_name="Refresh Token",
+                        required=True,
+                        secret=True,
+                    ),
+                ),
+            ),
+            "demo_ads": _entry(
+                "demo_ads",
+                fields=(
+                    AccountCredentialField(
+                        key="api_key", display_name="API Key", required=True
+                    ),
+                ),
+            ),
+        },
+    )
+
+
+def _save_served_google(wizard: ConfigureWizard) -> None:
+    status, body = post(
+        wizard,
+        "/api/credentials/plugins/save",
+        {
+            "provider_name": "google_ads_vendor",
+            "values": {"customer_id": "123", "refresh_token": "rt-1"},
+        },
+    )
+    assert status == 200, body
+
+
+@pytest.mark.unit
+def test_get_carries_serves_platform_and_configured(
+    wizard: ConfigureWizard, registry_served_google: None
+) -> None:
+    status, body = get(wizard, "/api/credentials/plugins")
+    assert status == 200
+    by_name = {p["provider_name"]: p for p in body["plugins"]}
+    assert by_name["google_ads_vendor"]["serves_platform"] == "google_ads"
+    assert by_name["demo_ads"]["serves_platform"] is None
+    assert by_name["google_ads_vendor"]["configured"] is False
+
+    _save_served_google(wizard)
+
+    status, body = get(wizard, "/api/credentials/plugins")
+    by_name = {p["provider_name"]: p for p in body["plugins"]}
+    assert by_name["google_ads_vendor"]["configured"] is True
+    assert by_name["demo_ads"]["configured"] is False
+
+
+@pytest.mark.unit
+def test_status_carries_plugin_platforms_once_configured(
+    wizard: ConfigureWizard, registry_served_google: None
+) -> None:
+    status, body = get(wizard, "/api/status")
+    assert status == 200
+    assert body["plugin_platforms"] == {
+        "google_ads": {
+            "provider_name": "google_ads_vendor",
+            "display_name": "Google Ads (Vendor)",
+            "configured": False,
+        }
+    }
+
+    _save_served_google(wizard)
+
+    status, body = get(wizard, "/api/status")
+    assert body["plugin_platforms"]["google_ads"]["configured"] is True
+    # The built-in section is untouched: the row is satisfied by the
+    # provider, not by a credentials section mureo would remove.
+    assert not body["credentials_present"].get("google_ads")
+
+
+@pytest.mark.unit
+def test_status_plugin_platforms_empty_when_no_provider_declares(
+    wizard: ConfigureWizard, registry_two_plugins: None
+) -> None:
+    status, body = get(wizard, "/api/status")
+    assert status == 200
+    assert body["plugin_platforms"] == {}
+
+
+def _valid_meta_entry() -> ProviderEntry:
+    return _entry(
+        "meta_vendor",
+        display_name="Meta (Vendor)",
+        serves_platform="meta_ads",
+        fields=(
+            AccountCredentialField(
+                key="access_token",
+                display_name="Access Token",
+                required=True,
+                secret=True,
+            ),
+        ),
+    )
+
+
+def _broken_serves_platform_entry() -> ProviderEntry:
+    return _entry(
+        "broken_vendor",
+        serves_platform="bing_ads",
+        fields=(
+            AccountCredentialField(
+                key="api_key", display_name="API Key", required=True
+            ),
+        ),
+    )
+
+
+def _broken_account_oauth_entry() -> ProviderEntry:
+    entry = _entry(
+        "broken_vendor",
+        serves_platform="google_ads",
+        fields=(
+            AccountCredentialField(
+                key="api_key", display_name="API Key", required=True
+            ),
+        ),
+    )
+    # Not an AccountOAuthConfig: get_account_oauth_config raises TypeError.
+    entry.provider_class.account_oauth = {"target_field": "api_key"}  # type: ignore[attr-defined]
+    return entry
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "broken",
+    [_broken_serves_platform_entry, _broken_account_oauth_entry],
+    ids=["serves_platform", "account_oauth"],
+)
+def test_malformed_declaration_drops_only_that_provider(
+    wizard: ConfigureWizard,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    broken: Any,
+) -> None:
+    """A malformed declaration leaves that provider out of both routes; the
+    valid provider still reaches ``/api/status`` (which feeds every dashboard
+    section) and ``/api/credentials/plugins`` (which builds every card)."""
+    monkeypatch.setattr(
+        default_registry,
+        "_entries",
+        {"broken_vendor": broken(), "meta_vendor": _valid_meta_entry()},
+    )
+    with caplog.at_level("WARNING", logger="mureo.web.plugin_credentials"):
+        status, body = get(wizard, "/api/status")
+        plugins_status, plugins_body = get(wizard, "/api/credentials/plugins")
+
+    assert status == 200
+    assert set(body["plugin_platforms"]) == {"meta_ads"}
+    assert body["plugin_platforms"]["meta_ads"]["provider_name"] == "meta_vendor"
+    assert plugins_status == 200
+    assert [p["provider_name"] for p in plugins_body["plugins"]] == ["meta_vendor"]
+    warnings = [
+        rec.getMessage()
+        for rec in caplog.records
+        if rec.name == "mureo.web.plugin_credentials"
+    ]
+    assert any("broken_vendor" in message for message in warnings)
+
+
+@pytest.mark.unit
+def test_status_never_carries_a_stored_secret(
+    wizard: ConfigureWizard, registry_served_google: None
+) -> None:
+    _save_served_google(wizard)
+
+    status, text = get_text(wizard, "/api/status")
+
+    assert status == 200
+    assert json.loads(text)["plugin_platforms"]["google_ads"]["configured"] is True
+    assert "rt-1" not in text

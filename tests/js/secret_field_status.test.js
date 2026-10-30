@@ -10,7 +10,7 @@
 //
 // Both renderers of provider-declared fields are driven here against the real
 // files: the dashboard's plugin credential cards (dashboard_plugins.js) and
-// the auth wizard's declarative slot (auth_wizards.js). Assertions are on
+// the auth wizard's declarative slot (auth_wizards_plugin.js). Assertions are on
 // i18n keys and class names — the harness's MUREO.t returns the key.
 
 const test = require("node:test");

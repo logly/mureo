@@ -493,6 +493,48 @@ class TestMultiAccountAuthFlag:
         assert snap.as_dict()["multi_account_auth"] is True
 
 
+@pytest.mark.unit
+class TestPluginPlatforms:
+    """The snapshot carries the built-in platforms a plugin credential
+    provider stands in for. The handler builds the map from the plugin
+    descriptors (session locale, field scope); ``collect_status`` relays it.
+    """
+
+    def test_default_is_empty(self, tmp_path: Path) -> None:
+        snap = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=_paths(tmp_path)
+        )
+        assert snap.plugin_platforms == {}
+        assert snap.as_dict()["plugin_platforms"] == {}
+
+    def test_dataclass_default_is_empty(self) -> None:
+        field = next(
+            f
+            for f in dataclasses.fields(StatusSnapshot)
+            if f.name == "plugin_platforms"
+        )
+        assert field.default_factory() == {}  # type: ignore[misc]
+
+    def test_map_propagates_to_snapshot(self, tmp_path: Path) -> None:
+        served = {
+            "google_ads": {
+                "provider_name": "google_ads_vendor",
+                "display_name": "Google Ads (Vendor)",
+                "configured": True,
+            }
+        }
+        snap = collect_status(
+            "claude-code",
+            home=_build_home(tmp_path),
+            paths=_paths(tmp_path),
+            plugin_platforms=served,
+        )
+        assert snap.plugin_platforms == served
+        assert snap.as_dict()["plugin_platforms"] == served
+        # A copy, so the caller's mapping cannot change the snapshot.
+        assert snap.plugin_platforms["google_ads"] is not served["google_ads"]
+
+
 def _skill_md(version: str | None) -> str:
     """A minimal SKILL.md, shaped like the ones mureo ships (#728).
 

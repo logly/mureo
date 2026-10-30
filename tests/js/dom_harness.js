@@ -195,6 +195,10 @@ class Element {
     node.parentNode = null;
     return node;
   }
+  replaceChild(node, old) {
+    this.insertBefore(node, old);
+    return this.removeChild(old);
+  }
   get firstChild() {
     return this.childNodes[0] || null;
   }
@@ -595,9 +599,16 @@ const DASHBOARD_FILES = [
   "dashboard.js",
 ];
 
-// The configure wizard's auth step. auth_wizards_meta.js must run first —
-// auth_wizards.js reaches the Meta cards through window.MUREO_AUTH_META.
-const AUTH_WIZARD_FILES = ["auth_wizards_meta.js", "auth_wizards.js"];
+// The configure wizard's auth step. The three others must run first —
+// auth_wizards.js reaches the plugin-choice rule through
+// window.MUREO_WIZARD_CHOICE, the Meta cards through window.MUREO_AUTH_META
+// and a plugin provider's slot pieces through window.MUREO_AUTH_PLUGIN.
+const AUTH_WIZARD_FILES = [
+  "wizard_provider_choice.js",
+  "auth_wizards_meta.js",
+  "auth_wizards_plugin.js",
+  "auth_wizards.js",
+];
 
 /**
  * Evaluate the real reports modules + dashboard.js against the real
@@ -625,7 +636,7 @@ function loadAuthWizardPage(routes) {
  * so a test can drive `window.MUREO_WIZARD` against the real step bodies.
  */
 function loadWizardPage(routes) {
-  return loadPage(routes, ["wizard.js"]);
+  return loadPage(routes, ["wizard_provider_choice.js", "wizard.js"]);
 }
 
 /**
@@ -636,7 +647,10 @@ function loadWizardPage(routes) {
  * pure helpers from it by name instead of carrying a copy that could drift.
  */
 function appFunction(name, globals) {
-  return appSource("  function " + name + "(", "function " + name, globals);
+  const src = fs.readFileSync(path.join(WEB, "app.js"), "utf-8");
+  const asyncMarker = "  async function " + name + "(";
+  const marker = src.includes(asyncMarker) ? asyncMarker : "  function " + name + "(";
+  return appSource(marker, "function " + name, globals);
 }
 
 /** One top-level `const NAME = {...};` table of app.js, as the page has it. */

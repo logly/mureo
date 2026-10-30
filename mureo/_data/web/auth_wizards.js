@@ -3,9 +3,9 @@
 // in-wizard OAuth handoffs. Hides outer Back/Next while a sub-wizard
 // is active.
 //
-// The Meta-specific pieces (hosted-connector setup card, connection-method
-// chooser, system-user token card) live in auth_wizards_meta.js and are
-// reached through window.MUREO_AUTH_META; that file must load first.
+// The Meta pieces (hosted-connector card, method chooser, token card) live
+// in auth_wizards_meta.js (window.MUREO_AUTH_META), a plugin provider's slot
+// pieces in auth_wizards_plugin.js (window.MUREO_AUTH_PLUGIN); both load first.
 
 (function () {
   "use strict";
@@ -386,27 +386,54 @@
     );
   }
 
-  function buildAuthQueue(state) {
-    const queue = [];
-    if (state.platforms.google_ads && googleOauthSlotNeeded(state)) {
+  // The one plugin-choice rule lives in wizard_provider_choice.js (loaded
+  // first); read at call time, like the other globals this file uses.
+  function isPluginChoice(state, platform) {
+    return window.MUREO_WIZARD_CHOICE.isPluginChoice(state, platform);
+  }
+
+  // The chosen provider's section holds every required field already
+  // (/api/status `plugin_platforms`), so its slot is skipped.
+  function pluginConfigured(state, platform) {
+    const served = state.pluginPlatforms && state.pluginPlatforms[platform];
+    return Boolean(served && served.configured);
+  }
+
+  function pushGoogleSlots(queue, state) {
+    const scPlugin = isPluginChoice(state, "search_console");
+    if (isPluginChoice(state, "google_ads")) {
+      if (state.platforms.google_ads && !pluginConfigured(state, "google_ads"))
+        queue.push({ key: "google_ads", pluginProvider: state.providerChoice.google_ads });
+    } else if (state.platforms.google_ads && googleOauthSlotNeeded(state)) {
       // Native AND official Google Ads both need the same Google OAuth
       // client + refresh token (the legacy Developer Token is optional).
       // The official upstream MCP cannot read credentials.json, so we
       // still collect them here and inject them as env into its MCP
       // block at install time. When /api/status reports
       // credentials_oauth.google the saved token already satisfies both,
-      // so the slot is skipped — see googleOauthSlotNeeded.
+      // so the slot is skipped — see googleOauthSlotNeeded. A plugin
+      // provider's choice replaces this slot with the provider's own.
       queue.push({ key: "google_ads", oauthProvider: "google" });
     }
+    if (state.platforms.search_console && scPlugin && !pluginConfigured(state, "search_console"))
+      queue.push({ key: "search_console", pluginProvider: state.providerChoice.search_console });
+    // SC standalone — own Google OAuth slot, shared only when Google Ads takes it.
     if (
-      state.platforms.search_console &&
-      !state.platforms.google_ads &&
+      state.platforms.search_console && !scPlugin &&
+      (!state.platforms.google_ads || isPluginChoice(state, "google_ads")) &&
       googleOauthSlotNeeded(state)
     ) {
-      // SC standalone — own Google OAuth slot.
       queue.push({ key: "search_console", oauthProvider: "google" });
     }
-    if (state.platforms.meta_ads && state.providerChoice.meta_ads === "native") {
+  }
+
+  function buildAuthQueue(state) {
+    const queue = [];
+    pushGoogleSlots(queue, state);
+    if (state.platforms.meta_ads && isPluginChoice(state, "meta_ads")) {
+      if (!pluginConfigured(state, "meta_ads"))
+        queue.push({ key: "meta_ads", pluginProvider: state.providerChoice.meta_ads });
+    } else if (state.platforms.meta_ads && state.providerChoice.meta_ads === "native") {
       queue.push({ key: "meta_ads", oauthProvider: "meta" });
     }
     // NOTE: official Meta (hosted_http) is intentionally NOT queued for
@@ -454,112 +481,8 @@
   // Plugin-provider credential slot (server-declared fields)
   // ------------------------------------------------------------------
 
-  // Fetch one provider's descriptor from the shared plugin-credentials
-  // list endpoint. Returns null when the request fails or the provider is
-  // not registered, so the caller can show an actionable message instead
-  // of an empty step.
-  async function fetchPluginDescriptor(providerName) {
-    let body;
-    try {
-      const res = await fetch("/api/credentials/plugins", {
-        credentials: "same-origin",
-      });
-      if (!res.ok) return null;
-      body = await res.json();
-    } catch (_e) {
-      return null;
-    }
-    const plugins = body && Array.isArray(body.plugins) ? body.plugins : [];
-    for (let i = 0; i < plugins.length; i += 1) {
-      if (plugins[i].provider_name === providerName) return plugins[i];
-    }
-    return null;
-  }
-
-  // Colored ✓ / ✗ status mark as its own element (kept separate from any
-  // data-i18n text node so a locale re-translation can't wipe it). Same
-  // mark as dashboard_setup.js's statusMark; MUREO exposes no shared DOM
-  // helpers, so this file keeps its own five-line copy.
-  function statusMark(ok) {
-    const m = document.createElement("span");
-    m.className = ok ? "mark-ok" : "mark-no";
-    m.textContent = ok ? "✓" : "✗";
-    return m;
-  }
-
-  // "Configured" / "Not set" after a secret field's name — the empty
-  // input alone cannot say whether a value is stored.
-  function secretStatusText(configured) {
-    const key = configured
-      ? "dashboard.credential_secret_configured"
-      : "dashboard.credential_secret_unset";
-    const text = document.createElement("span");
-    text.className = "muted";
-    text.setAttribute("data-i18n", key);
-    text.textContent = MUREO.t(key);
-    return text;
-  }
-
-  // The label head, as on the dashboard card: the field name (+ " *" when
-  // required), wrapped as "[✓|✗] name  status" for a secret field.
-  // data-i18n sits on the status span only, never on the mark's parent.
-  function buildFieldLabelHead(field) {
-    const labelText = document.createElement("span");
-    labelText.textContent = field.display_name + (field.required ? " *" : "");
-    if (!field.secret) return labelText;
-    const head = document.createElement("span");
-    head.appendChild(statusMark(field.configured));
-    head.appendChild(document.createTextNode(" "));
-    head.appendChild(labelText);
-    head.appendChild(document.createTextNode(" "));
-    head.appendChild(secretStatusText(field.configured));
-    return head;
-  }
-
-  // One input per declared field. Mirrors the dashboard card's rules: a
-  // secret never round-trips, so its label carries the configured mark, a
-  // configured secret shows the leave-blank-to-keep placeholder and an
-  // unset one asks for a value; a non-secret pre-fills its stored value so
-  // a resumed wizard shows the current config.
-  function appendDeclaredField(host, field, inputs) {
-    const label = document.createElement("label");
-    label.style.display = "block";
-    label.appendChild(buildFieldLabelHead(field));
-
-    const input = document.createElement("input");
-    input.name = field.key;
-    input.type = field.secret ? "password" : "text";
-    input.autocomplete = field.secret ? "new-password" : "off";
-    if (field.secret) {
-      input.placeholder = field.configured
-        ? MUREO.t("dashboard.plugin_credentials_secret_placeholder")
-        : field.placeholder ||
-          MUREO.t("dashboard.plugin_credentials_secret_unset_placeholder");
-    } else {
-      if (field.value) input.value = field.value;
-      if (field.placeholder) input.placeholder = field.placeholder;
-    }
-    label.appendChild(input);
-
-    if (field.description) {
-      const hint = document.createElement("small");
-      hint.className = "field-hint";
-      hint.textContent = field.description;
-      label.appendChild(hint);
-    }
-    host.appendChild(label);
-    inputs.push({ key: field.key, input: input, field: field });
-  }
-
-  // Enable Done once every required field has a value — either typed now
-  // or already stored (a configured secret may legitimately stay blank).
-  function requiredFieldsSatisfied(inputs) {
-    return inputs.every(function (item) {
-      if (!item.field.required) return true;
-      return Boolean(item.input.value) || Boolean(item.field.configured);
-    });
-  }
-
+  // The descriptor fetch, the declared-field inputs and the OAuth card live
+  // in auth_wizards_plugin.js (window.MUREO_AUTH_PLUGIN, loaded first).
   function renderPluginCredentialSlot(wrap, slot, state, onAllDone) {
     const descKey = "wizard.auth." + slot.key + "_desc";
     const descText = MUREO.t(descKey);
@@ -599,54 +522,76 @@
     doneBtn.disabled = true;
     wrap.appendChild(doneBtn);
 
+    window.MUREO_AUTH_PLUGIN.fetchPluginDescriptor(slot.pluginProvider).then(function (plugin) {
+      renderResolvedPluginSlot(wrap, slot, plugin, fieldHost, status, doneBtn, onAllDone);
+    });
+  }
+
+  // The slot once its descriptor is in: a notice when the provider is
+  // unreachable, the dashboard's card for an OAuth provider, otherwise one
+  // input per declared field behind a Done gated on the required ones.
+  function renderResolvedPluginSlot(wrap, slot, plugin, fieldHost, status, doneBtn, onAllDone) {
+    if (!plugin) {
+      // The provider is unreachable/unregistered — say so and let the
+      // operator move on rather than stranding the wizard on an empty
+      // step (they can finish from the dashboard card).
+      status.hidden = false;
+      status.textContent = MUREO.t("wizard.auth.save_failed");
+      doneBtn.disabled = false;
+      doneBtn.addEventListener("click", onAllDone);
+      return;
+    }
+    // An OAuth provider gets the dashboard's own card. dashboard_plugins.js
+    // loads after this file but is read at render time; without it (the
+    // auth-wizard test harness) the manual path below runs.
+    const cards = window.MUREO_DASHBOARD_PLUGINS;
+    if (plugin.oauth && cards && typeof cards.buildPluginCredentialsForm === "function") {
+      window.MUREO_AUTH_PLUGIN.renderPluginOAuthSlot(wrap, plugin, doneBtn, status, onAllDone);
+      return;
+    }
+    const pluginSlot = window.MUREO_AUTH_PLUGIN;
     const inputs = [];
-    fetchPluginDescriptor(slot.pluginProvider).then(function (plugin) {
-      if (!plugin) {
-        // The provider is unreachable/unregistered — say so and let the
-        // operator move on rather than stranding the wizard on an empty
-        // step (they can finish from the dashboard card).
-        status.hidden = false;
-        status.textContent = MUREO.t("wizard.auth.save_failed");
-        doneBtn.disabled = false;
-        doneBtn.addEventListener("click", onAllDone);
-        return;
-      }
-      plugin.fields.forEach(function (field) {
-        appendDeclaredField(fieldHost, field, inputs);
-      });
-      inputs.forEach(function (item) {
-        item.input.addEventListener("input", function () {
-          doneBtn.disabled = !requiredFieldsSatisfied(inputs);
-        });
-      });
-      doneBtn.disabled = !requiredFieldsSatisfied(inputs);
-      doneBtn.addEventListener("click", async function () {
-        doneBtn.disabled = true;
-        status.hidden = false;
-        status.textContent = MUREO.t("wizard.auth.saving");
-        const values = {};
-        inputs.forEach(function (item) {
-          values[item.key] = item.input.value;
-        });
-        let res;
-        try {
-          res = await MUREO.postJson("/api/credentials/plugins/save", {
-            provider_name: slot.pluginProvider,
-            values: values,
-          });
-        } catch (_e) {
-          res = null;
-        }
-        if (MUREO.postOutcome(res).ok && res.body.status === "ok") {
-          appendAmazonAuthorization(wrap, slot, doneBtn, status, onAllDone);
-          return;
-        }
-        const msg = MUREO.t("wizard.auth.save_failed");
-        status.textContent = msg;
-        MUREO.toast(msg, "error");
-        doneBtn.disabled = false;
+    plugin.fields.forEach(function (field) {
+      pluginSlot.appendDeclaredField(fieldHost, field, inputs);
+    });
+    inputs.forEach(function (item) {
+      item.input.addEventListener("input", function () {
+        doneBtn.disabled = !pluginSlot.requiredFieldsSatisfied(inputs);
       });
     });
+    doneBtn.disabled = !pluginSlot.requiredFieldsSatisfied(inputs);
+    doneBtn.addEventListener("click", function () {
+      savePluginSlot(wrap, slot, inputs, doneBtn, status, onAllDone);
+    });
+  }
+
+  // Done on the declared-field form: one save of every input, then Amazon's
+  // authorization controls or the next slot.
+  async function savePluginSlot(wrap, slot, inputs, doneBtn, status, onAllDone) {
+    doneBtn.disabled = true;
+    status.hidden = false;
+    status.textContent = MUREO.t("wizard.auth.saving");
+    const values = {};
+    inputs.forEach(function (item) {
+      values[item.key] = item.input.value;
+    });
+    let res;
+    try {
+      res = await MUREO.postJson("/api/credentials/plugins/save", {
+        provider_name: slot.pluginProvider,
+        values: values,
+      });
+    } catch (_e) {
+      res = null;
+    }
+    if (MUREO.postOutcome(res).ok && res.body.status === "ok") {
+      appendAmazonAuthorization(wrap, slot, doneBtn, status, onAllDone);
+      return;
+    }
+    const msg = MUREO.t("wizard.auth.save_failed");
+    status.textContent = msg;
+    MUREO.toast(msg, "error");
+    doneBtn.disabled = false;
   }
 
   // Amazon's credentials are only half the setup: the saved client
@@ -668,13 +613,7 @@
     // listener still saves, and a Continue that also re-submitted the
     // form would be a surprise.
     doneBtn.hidden = true;
-    const continueBtn = document.createElement("button");
-    continueBtn.type = "button";
-    continueBtn.className = "btn btn-primary";
-    continueBtn.textContent = MUREO.t("wizard.next");
-    continueBtn.setAttribute("data-i18n", "wizard.next");
-    continueBtn.addEventListener("click", onAllDone);
-    wrap.appendChild(continueBtn);
+    wrap.appendChild(window.MUREO_AUTH_PLUGIN.buildContinueButton(onAllDone));
   }
 
   // Leave the auth step: the outer wizard owns the step order, so hand
@@ -755,43 +694,45 @@
     slotHost.appendChild(continueBtn);
   }
 
-  // The reused-OAuth note replaces the slot that would have carried the
-  // step's heading, so it brings its own: the Google Ads title when that
-  // platform is selected, otherwise Search Console's.
-  function buildGoogleReusedHeading(state) {
+  // A reused note replaces the slot that carried the heading, so it brings
+  // that slot's own; otherwise it would read as part of the next slot.
+  function buildReusedHeading(key) {
     const heading = document.createElement("h3");
-    const key = state.platforms.google_ads
-      ? "wizard.auth.google_ads_title"
-      : "wizard.auth.search_console_title";
     heading.textContent = MUREO.t(key);
     heading.setAttribute("data-i18n", key);
     return heading;
   }
 
-  // The GA4 reused note replaces the GA4 slot, so it carries that slot's
-  // heading; otherwise it would read as part of the next slot.
-  function buildGa4ReusedHeading() {
-    const heading = document.createElement("h3");
-    const key = "wizard.auth.ga4_title";
-    heading.textContent = MUREO.t(key);
-    heading.setAttribute("data-i18n", key);
-    return heading;
-  }
-
-  function renderSequentialQueue(host, state, render) {
+  // One note per slot skipped because its credentials are stored; true when
+  // any was. The Google note goes under Google Ads when that platform takes
+  // the Google OAuth, otherwise under Search Console.
+  function appendReusedNotes(host, state, render) {
+    const googleAds = state.platforms.google_ads && !isPluginChoice(state, "google_ads");
+    const googleSc = state.platforms.search_console && !isPluginChoice(state, "search_console");
     const googleReused =
-      (state.platforms.google_ads || state.platforms.search_console) &&
-      googleHasOauthOnDisk(state) &&
-      !state.reauthorizeGoogle;
+      (googleAds || googleSc) && googleHasOauthOnDisk(state) && !state.reauthorizeGoogle;
     const ga4Reused = state.platforms.ga4 && ga4CredentialsOnDisk(state);
+    const pluginReused = ["google_ads", "search_console", "meta_ads"].filter(function (p) {
+      return state.platforms[p] && isPluginChoice(state, p) && pluginConfigured(state, p);
+    });
     if (googleReused) {
-      host.appendChild(buildGoogleReusedHeading(state));
+      const key = googleAds ? "google_ads" : "search_console";
+      host.appendChild(buildReusedHeading("wizard.auth." + key + "_title"));
       host.appendChild(buildGoogleReusedNote(state, render));
     }
     if (ga4Reused) {
-      host.appendChild(buildGa4ReusedHeading());
+      host.appendChild(buildReusedHeading("wizard.auth.ga4_title"));
       host.appendChild(buildGa4ReusedNote());
     }
+    pluginReused.forEach(function (p) {
+      host.appendChild(buildReusedHeading("wizard.auth." + p + "_title"));
+      host.appendChild(window.MUREO_AUTH_PLUGIN.buildPluginReusedNote(state.pluginPlatforms[p]));
+    });
+    return Boolean(googleReused || ga4Reused || pluginReused.length > 0);
+  }
+
+  function renderSequentialQueue(host, state, render) {
+    const anyReused = appendReusedNotes(host, state, render);
     // Slots live in their own child element: advancing the queue clears
     // ONLY that element, so the note above survives the whole step (it
     // used to be wiped the moment any other slot followed it).
@@ -800,7 +741,7 @@
 
     const queue = buildAuthQueue(state);
     if (queue.length === 0) {
-      appendQueueDoneControls(slotHost, googleReused || ga4Reused, render);
+      appendQueueDoneControls(slotHost, anyReused, render);
       return;
     }
 
@@ -826,6 +767,14 @@
     const wrap = document.createElement("section");
     const titleKey = "wizard.auth." + slot.key + "_title";
     wrap.innerHTML = "<h3>" + MUREO.t(titleKey) + "</h3>";
+
+    // Declarative slot (Amazon Ads, or a plugin provider chosen for a
+    // built-in platform): fields come from the provider registry, so it
+    // owns the whole card and returns before every branch below.
+    if (slot.pluginProvider) {
+      renderPluginCredentialSlot(wrap, slot, outerState || state, onAllDone);
+      return wrap;
+    }
 
     if (slot.key === "google_ads") {
       // Scope guidance: the OAuth button mints a refresh token with the
@@ -853,7 +802,10 @@
       wrap.appendChild(scopeNote);
     }
 
-    if (slot.key === "google_ads" && outerState && outerState.platforms.search_console) {
+    if (
+      slot.key === "google_ads" && outerState && outerState.platforms.search_console &&
+      !isPluginChoice(outerState, "search_console")
+    ) {
       const note = document.createElement("div");
       note.className = "wizard-shared-with-sc-note";
       note.textContent = MUREO.t("auth_wizard.google_ads.step2_shared_with_sc");
@@ -864,14 +816,6 @@
       const desc = document.createElement("p");
       desc.textContent = MUREO.t("auth_wizard.search_console.step1_desc");
       wrap.appendChild(desc);
-    }
-
-    // Declarative slot (Amazon Ads): fields are fetched from the provider
-    // registry rather than declared here, so it owns the whole card and
-    // returns before the OAuth / static-input branches below.
-    if (slot.pluginProvider) {
-      renderPluginCredentialSlot(wrap, slot, outerState || state, onAllDone);
-      return wrap;
     }
 
     // Input-based slots (e.g. GA4) need an explicit "Done" button

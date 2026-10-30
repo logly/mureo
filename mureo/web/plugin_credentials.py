@@ -11,6 +11,10 @@ module is the small bridge between that declarative metadata and the
   JSON-serialisable description of each provider that declares
   non-empty ``account_credential_fields``. The configure-UI JS
   consumes this to render the form.
+- :func:`annotate_field_state` adds each field's stored state and the
+  provider's ``configured`` flag; :func:`plugin_platform_status` maps the
+  built-in platforms a provider declares ``serves_platform`` for to the
+  provider standing in for them.
 - :func:`save_plugin_credentials` persists one provider's values back
   to the secret store with three pieces of policy: unknown providers
   are rejected (no path for a stale UI to inject arbitrary top-level
@@ -39,18 +43,20 @@ from mureo.core.providers import (
     get_account_oauth_config,
     get_oauth_account_lister,
     get_oauth_persist_hook,
+    get_serves_platform,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 from mureo.web._helpers import run_coroutine
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Collection, Iterable
     from pathlib import Path
 
     from mureo.core.providers.credentials import (
         AccountCredentialField,
         AccountOAuthConfig,
     )
+    from mureo.core.providers.registry import ProviderEntry
 
 logger = logging.getLogger(__name__)
 
@@ -151,12 +157,21 @@ def list_plugin_credential_fields(
                     },
                     ...
                 ],
+                "oauth": None,
+                "serves_platform": "google_ads",
             }
 
         ``display_name`` and ``description`` on each field are the
         locale-resolved strings; the ``key`` is locale-independent.
+        ``oauth`` is the field-key block of an ``account_oauth``
+        declaration and ``serves_platform`` the built-in platform the
+        provider stands in for; both are ``None`` when undeclared.
         Providers without declared fields are skipped — they have
-        nothing for the operator to fill in.
+        nothing for the operator to fill in — and so is one whose
+        ``serves_platform`` / ``account_oauth`` declaration is malformed
+        (logged as a warning). Per-field ``configured`` /
+        ``value`` and the provider-level ``configured`` are added by
+        :func:`annotate_field_state`, which reads the store.
     """
     result: list[dict[str, Any]] = []
     for entry in sorted(default_registry, key=lambda e: e.name):
@@ -170,25 +185,105 @@ def list_plugin_credential_fields(
                 # Every declared field was scoped out — drop the card so
                 # the section shows no empty provider block.
                 continue
-        result.append(
-            {
-                "provider_name": entry.name,
-                # #236 — locale-resolve the section heading from an optional
-                # provider-declared ``display_name_i18n`` (read defensively;
-                # plugins that omit it keep the bare ``display_name`` in
-                # every locale). Same fallback chain as field labels (#186):
-                # ``i18n[locale] → i18n['en'] → display_name``.
-                "display_name": _resolve_localized(
-                    _heading_i18n(entry.provider_class), entry.display_name, locale
-                ),
-                "fields": [_field_to_dict(f, locale) for f in fields],
-                # OAuth descriptor (#201) — field *keys* only, never
-                # secret values; ``None`` for manual-entry providers so
-                # the UI shows no Authenticate button (regression-free).
-                "oauth": _oauth_to_dict(entry.provider_class, locale),
-            }
-        )
+        try:
+            descriptor = _provider_descriptor(entry, fields, locale)
+        except (TypeError, ValueError) as exc:
+            # A malformed ``serves_platform`` / ``account_oauth`` drops that
+            # provider's card, not the whole list (and with it /api/status).
+            logger.warning("plugin declaration rejected: %s", exc)
+            continue
+        result.append(descriptor)
     return result
+
+
+def _provider_descriptor(
+    entry: ProviderEntry, fields: tuple[AccountCredentialField, ...], locale: str
+) -> dict[str, Any]:
+    """One provider's entry of :func:`list_plugin_credential_fields`."""
+    return {
+        "provider_name": entry.name,
+        # #236 — locale-resolve the section heading from an optional
+        # provider-declared ``display_name_i18n`` (read defensively;
+        # plugins that omit it keep the bare ``display_name`` in
+        # every locale). Same fallback chain as field labels (#186):
+        # ``i18n[locale] → i18n['en'] → display_name``.
+        "display_name": _resolve_localized(
+            _heading_i18n(entry.provider_class), entry.display_name, locale
+        ),
+        "fields": [_field_to_dict(f, locale) for f in fields],
+        # OAuth descriptor (#201) — field *keys* only, never
+        # secret values; ``None`` for manual-entry providers so
+        # the UI shows no Authenticate button (regression-free).
+        "oauth": _oauth_to_dict(entry.provider_class, locale),
+        # The built-in platform the provider stands in for, so the
+        # configure UI can count that platform as configured and
+        # offer the provider as a connection choice.
+        "serves_platform": get_serves_platform(entry.provider_class),
+    }
+
+
+def annotate_field_state(plugins: list[dict[str, Any]], credentials_path: Path) -> None:
+    """Annotate each declared field with its stored state for pre-fill
+    after a configure restart (#224).
+
+    Per field: ``configured`` (a truthy value is stored) is always set;
+    a **non-secret** field additionally gets ``value`` (the stored value
+    verbatim, e.g. ``base_account_id`` / ``oauth_callback_url``). A
+    **secret** field NEVER ships its value — only the boolean — so a
+    secret never round-trips into the browser. The save side's
+    blank-keeps-stored contract is unchanged. Each provider then gets
+    ``configured`` from :func:`plugin_is_configured`, the one place that
+    rule is computed.
+    """
+    store = FilesystemSecretStore(path=credentials_path)
+    for plugin in plugins:
+        saved = store.load(plugin["provider_name"])
+        for field in plugin.get("fields", []):
+            stored = saved.get(field["key"])
+            field["configured"] = bool(stored)
+            if field["configured"] and not field.get("secret"):
+                field["value"] = str(stored)
+        plugin["configured"] = plugin_is_configured(plugin)
+
+
+def plugin_is_configured(plugin: Mapping[str, Any]) -> bool:
+    """True when every required field of an annotated descriptor is stored.
+
+    The same rule the card's per-field marks add up to: a provider whose
+    required fields (after field scoping) are all ``configured`` has
+    everything it declared it needs. A descriptor with no required field is
+    never "configured" — there is nothing to have been saved.
+    """
+    required = [f for f in plugin.get("fields", []) if f.get("required")]
+    return bool(required) and all(f.get("configured") for f in required)
+
+
+def plugin_platform_status(
+    plugins: Iterable[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Map each served built-in platform to the provider standing in for it.
+
+    ``{"google_ads": {"provider_name": ..., "display_name": ...,
+    "configured": bool}, ...}`` for every descriptor that declares
+    ``serves_platform``; platforms nobody serves are absent. When two
+    providers declare the same platform, a configured one wins over an
+    unconfigured one, and otherwise the first by provider name (the input
+    order) — the operator sees the provider that is actually working.
+    """
+    status: dict[str, dict[str, Any]] = {}
+    for plugin in plugins:
+        platform = plugin.get("serves_platform")
+        if not platform:
+            continue
+        candidate = {
+            "provider_name": plugin["provider_name"],
+            "display_name": plugin["display_name"],
+            "configured": plugin_is_configured(plugin),
+        }
+        current = status.get(platform)
+        if current is None or (candidate["configured"] and not current["configured"]):
+            status[platform] = candidate
+    return status
 
 
 def _oauth_to_dict(provider_class: type, locale: str = "en") -> dict[str, Any] | None:
@@ -677,9 +772,12 @@ __all__ = [
     "PluginCredentialsError",
     "RequiredFieldMissingError",
     "UnknownProviderError",
+    "annotate_field_state",
     "list_oauth_accounts",
     "list_plugin_credential_fields",
     "multi_account_picker_scope",
     "notify_oauth_persisted",
+    "plugin_is_configured",
+    "plugin_platform_status",
     "save_plugin_credentials",
 ]

@@ -27,7 +27,7 @@ _KEYS = (
 # Every renderer that shows the status text next to a secret field.
 _RENDERERS = (
     "dashboard_plugins.js",
-    "auth_wizards.js",
+    "auth_wizards_plugin.js",
     "auth_wizards_meta.js",
     "dashboard_setup.js",
 )

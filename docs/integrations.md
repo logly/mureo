@@ -64,7 +64,7 @@ The GA4 property id is passed per request, not via an environment variable. Thes
 
 ### Status: Built into mureo
 
-Search Console is built into mureo as a first-party integration. It reuses the same Google OAuth2 credentials as Google Ads -- no additional authentication or configuration is required.
+Search Console is built into mureo as a first-party integration. It reuses the same Google OAuth2 credentials as Google Ads -- when Google Ads is connected through mureo's built-in integration, no additional authentication or configuration is required. When it is not (Google Ads connected through a plugin credential provider, or not selected), the Setup wizard collects the Google OAuth credentials on the Search Console step. They are stored in the Google Ads credentials section, so the built-in Google Ads row on the Setup tab also reads configured.
 
 ### What It Provides
 
