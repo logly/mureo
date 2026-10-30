@@ -27,7 +27,7 @@
 
   // A card's value is "official", "native" or a plugin provider's name;
   // the one rule for the last case, shared by wizard.js (its own STATE)
-  // and auth_wizards.js (the state it is handed).
+  // and wizard_auth_queue.js (the state it is handed).
   function isPluginChoice(state, platform) {
     const c = state.providerChoice[platform];
     return Boolean(c) && c !== "native" && c !== "official";

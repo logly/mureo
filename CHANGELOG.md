@@ -3,6 +3,13 @@
 ### Changed
 
 - **The dashboard's "Plugin credentials" section is now "Connection credentials" and shows its providers as tabs** (#954). The heading names what the operator enters — the credentials of a connection an installed package provides — instead of the mechanism behind it. The providers that used to stack as collapsed cards sit in a tab strip with one form visible at a time; the chosen tab survives a re-render. The setup wizard's connection step keeps its card.
+- **The configure wizard's auth bundle is split into four files**
+  (#947). `auth_wizards.js` had grown past the repository's 800-line
+  file limit; the official-MCP install slots, the auth-queue
+  construction and the plugin-provider credential slot now live in
+  `wizard_install_slots.js`, `wizard_auth_queue.js` and
+  `wizard_plugin_slot.js`, and the file-length ratchet in the test suite
+  now covers the bundled web JS. No behaviour change.
 
 ### Fixed
 

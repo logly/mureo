@@ -89,7 +89,7 @@ class TestWizardAmazonPlatform:
         """Single-sourced from ``account_credential_fields`` via the plugin
         list endpoint — a hand-copied field list in the JS would drift from
         the loader."""
-        js = _read("auth_wizards.js")
+        js = _read("wizard_plugin_slot.js")
         assert "/api/credentials/plugins" in js
         assert "pluginProvider" in js
         assert "/api/credentials/plugins/save" in js
@@ -102,6 +102,9 @@ class TestWizardAmazonPlatform:
                 "wizard_provider_choice.js",
                 "auth_wizards.js",
                 "auth_wizards_plugin.js",
+                "wizard_install_slots.js",
+                "wizard_auth_queue.js",
+                "wizard_plugin_slot.js",
             )
         )
         for hardcoded in ("client_secret", "refresh_token", "manager_account_id"):
@@ -133,7 +136,7 @@ class TestAmazonAuthorizeControls:
     def test_both_surfaces_reuse_the_shared_module(self) -> None:
         """No second copy of the flow: the dashboard card and the wizard
         step must both go through amazon_oauth.js."""
-        for name in ("dashboard_plugins.js", "auth_wizards.js"):
+        for name in ("dashboard_plugins.js", "wizard_plugin_slot.js"):
             js = _read(name)
             assert "MUREO_AMAZON_OAUTH" in js, f"{name} does not reuse the module"
             assert "/api/amazon/oauth/" not in js, f"{name} re-implements the flow"
@@ -149,7 +152,7 @@ class TestAmazonAuthorizeControls:
         assert "amazon_oauth.js" in _STATIC_ALLOWLIST
         html = _read("app.html")
         position = html.index("/static/amazon_oauth.js")
-        for consumer in ("/static/auth_wizards.js", "/static/dashboard.js"):
+        for consumer in ("/static/wizard_plugin_slot.js", "/static/dashboard.js"):
             assert position < html.index(consumer), f"{consumer} loads first"
 
     def test_dynamic_strings_go_through_textcontent(self) -> None:
