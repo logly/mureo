@@ -14,16 +14,6 @@
     "amazon_ads",
   ];
 
-  // Platforms whose official provider is a hosted_http catalog entry AND
-  // that also expose a native<->official provider_choice card (auth is
-  // client-side browser OAuth on first use in Claude). Source of truth:
-  // catalog.py install_kind === "hosted_http". Only meta_ads qualifies:
-  // TikTok is ALSO hosted_http but is official-only (no provider_choice
-  // card), so it is intentionally excluded here and handled entirely by
-  // its providers_install slot. Extend this list only for a hosted
-  // platform that has a native<->official choice.
-  const HOSTED_PLATFORMS = ["meta_ads"];
-
   // The user's explicit host choice is persisted client-side so it
   // survives a page reload AND a `mureo configure` server restart
   // (which resets the in-memory session host to the claude-code
@@ -69,14 +59,21 @@
       amazon_ads: false,
     },
     providerChoice: {
-      google_ads: null, // "official" | "native"
+      google_ads: null, // "official" | "native" | a plugin provider's name
       meta_ads: null,
+      // "native" | a plugin provider's name; only asked when a plugin
+      // provider serves Search Console.
+      search_console: null,
     },
     providerInstalled: {
       "google-ads-official": false,
       "meta-ads-official": false,
       "ga4-official": false,
     },
+    // Hydrated from /api/status `plugin_platforms`. Selection-independent,
+    // so re-hydrating mid-run cannot change effectiveSteps(): the auth step
+    // is queued on the choice, not on `configured`.
+    pluginPlatforms: {},
     // Existing on-disk credentials state, hydrated from /api/status. The
     // auth queue uses these flags to skip OAuth slots whose tokens are
     // already saved (e.g. Search Console reuses Google Ads OAuth).
@@ -138,6 +135,16 @@
     return STATE.platforms.google_ads || STATE.platforms.meta_ads;
   }
 
+  // Search Console has no official MCP, so it only has a choice to make
+  // when a plugin provider serves it.
+  function scChoiceOffered() {
+    return Boolean(STATE.platforms.search_console && STATE.pluginPlatforms.search_console);
+  }
+
+  function isPluginChoice(platform) {
+    return window.MUREO_WIZARD_CHOICE.isPluginChoice(STATE, platform);
+  }
+
   function hasOfficialProviderQueued() {
     return (
       (STATE.platforms.google_ads &&
@@ -171,10 +178,13 @@
     // GA4: its slot is skipped when the store already holds the ``ga4``
     // section (a credential provider hook may have written it), for the
     // same reason the Google slot is skipped on a saved token.
+    // A plugin provider's slot is queued on the choice alone; when its
+    // section is already configured the slot is skipped inside the queue,
+    // which keeps effectiveSteps() stable across a mid-run re-hydrate.
     return (
       STATE.platforms.google_ads ||
       (STATE.platforms.meta_ads &&
-        STATE.providerChoice.meta_ads === "native") ||
+        (STATE.providerChoice.meta_ads === "native" || isPluginChoice("meta_ads"))) ||
       STATE.platforms.search_console ||
       (STATE.platforms.ga4 && !STATE.existing.ga4.configured) ||
       STATE.platforms.amazon_ads
@@ -182,7 +192,7 @@
   }
 
   function isStepRelevant(step) {
-    if (step === "provider_choice") return hasGoogleOrMetaPlatform();
+    if (step === "provider_choice") return hasGoogleOrMetaPlatform() || scChoiceOffered();
     if (step === "providers_install") return hasOfficialProviderQueued();
     if (step === "auth") return hasAuthQueued();
     return true;
@@ -229,6 +239,7 @@
         return false;
       if (STATE.platforms.meta_ads && !STATE.providerChoice.meta_ads)
         return false;
+      if (scChoiceOffered() && !STATE.providerChoice.search_console) return false;
       return true;
     }
     return true;
@@ -256,6 +267,20 @@
     return Boolean(mcpOk && parts.auth_hook && parts.skills);
   }
 
+  // The provider names are resolved by the server in the session locale, so
+  // they are re-read from the latest snapshot on every run and after a
+  // locale switch, not only on the first load. Each entry is copied, so the
+  // wizard never shares an object with the snapshot.
+  function hydratePluginPlatforms(status) {
+    if (!status) return;
+    const served = status.plugin_platforms || {};
+    const copy = {};
+    Object.keys(served).forEach(function (platform) {
+      copy[platform] = Object.assign({}, served[platform]);
+    });
+    STATE.pluginPlatforms = copy;
+  }
+
   function hydrateStateFromStatus(status) {
     if (!status) return;
     // An explicit, persisted user choice wins over the server-echoed
@@ -274,6 +299,7 @@
     Object.keys(STATE.providerInstalled).forEach(function (key) {
       STATE.providerInstalled[key] = Boolean(installed[key]);
     });
+    hydratePluginPlatforms(status);
     const oauth = status.credentials_oauth || {};
     STATE.existing.google.has_oauth = Boolean(oauth.google);
     STATE.existing.meta.has_oauth = Boolean(oauth.meta);
@@ -444,101 +470,21 @@
     return wrap;
   }
 
-  function buildChoiceCard(platform) {
-    const wrap = document.createElement("fieldset");
-    wrap.style.marginTop = "16px";
-    const legend = document.createElement("legend");
-    legend.textContent = MUREO.t("wizard.provider_banner." + platform);
-    wrap.appendChild(legend);
-
-    const officialKey = platform === "google_ads"
-      ? "wizard.provider_choice.google_ads_official"
-      : "wizard.provider_choice.meta_ads_official";
-    const nativeKey = platform === "google_ads"
-      ? "wizard.provider_choice.google_ads_native"
-      : "wizard.provider_choice.meta_ads_native";
-    // Optional benefit/desc lines — currently only Google Ads ships
-    // them. MUREO.t falls back to the key
-    // itself when missing, so we render only when the lookup actually
-    // resolves to a different string.
-    const officialDescKey = platform === "google_ads"
-      ? "wizard.provider_choice.google_ads.official_desc"
-      : null;
-    const nativeBenefitKey = platform === "google_ads"
-      ? "wizard.provider_choice.google_ads.mureo_benefit"
-      : null;
-
-    // Official first, mureo native second.
-    [
-      { value: "official", label: MUREO.t(officialKey), descKey: officialDescKey },
-      { value: "native", label: MUREO.t(nativeKey), descKey: nativeBenefitKey },
-    ].forEach(function (opt) {
-      const label = document.createElement("label");
-      label.style.display = "block";
-      const radio = document.createElement("input");
-      radio.type = "radio";
-      radio.name = "provider-" + platform;
-      radio.value = opt.value;
-      radio.checked = STATE.providerChoice[platform] === opt.value;
-      radio.addEventListener("change", function () {
-        STATE.providerChoice[platform] = radio.value;
-        updateNextEnabled();
-      });
-      label.appendChild(radio);
-      label.appendChild(document.createTextNode(" " + opt.label));
-      // "Already configured" badge.
-      const installedKey = platform + "-official";
-      if (
-        opt.value === "official" &&
-        STATE.providerInstalled[installedKey]
-      ) {
-        const badge = document.createElement("span");
-        badge.className = "wizard-choice-already-done";
-        badge.textContent = "(" + MUREO.t("wizard.step_already_done") + ")";
-        label.appendChild(badge);
-      }
-      wrap.appendChild(label);
-
-      // Benefit/desc line — small muted text under the radio. Rendered
-      // only when an i18n key was declared AND resolves to a string
-      // different from the key (MUREO.t echoes the key on miss).
-      if (opt.descKey) {
-        const translated = MUREO.t(opt.descKey);
-        if (translated && translated !== opt.descKey) {
-          const desc = document.createElement("div");
-          desc.className = "wizard-choice-desc";
-          desc.textContent = translated;
-          wrap.appendChild(desc);
-        }
-      }
-
-      // hosted_http note — attached DIRECTLY under the OFFICIAL option
-      // (never at the bottom of the card, where it read as if it
-      // described the mureo-native option). Makes clear it's the
-      // official/hosted choice that is set up later via Connectors.
-      if (
-        opt.value === "official" &&
-        HOSTED_PLATFORMS.indexOf(platform) !== -1
-      ) {
-        const noteKey = "wizard.provider_choice.hosted_oauth_note";
-        const noteText = MUREO.t(noteKey);
-        if (noteText && noteText !== noteKey) {
-          const note = document.createElement("div");
-          note.className = "wizard-choice-desc";
-          note.textContent = noteText;
-          wrap.appendChild(note);
-        }
-      }
-    });
-
-    return wrap;
-  }
-
   function buildStepBody_provider_choice() {
     const wrap = document.createElement("div");
     wrap.innerHTML = '<h2>' + MUREO.t("wizard.provider_choice.title") + "</h2>";
-    if (STATE.platforms.google_ads) wrap.appendChild(buildChoiceCard("google_ads"));
-    if (STATE.platforms.meta_ads) wrap.appendChild(buildChoiceCard("meta_ads"));
+    // The cards live in wizard_provider_choice.js (loaded first).
+    const choice = window.MUREO_WIZARD_CHOICE;
+    // The Search Console card's "mureo standard" wording depends on the
+    // Google Ads choice, so a Google Ads change redraws the step when both
+    // cards are shown.
+    const onGoogleChoice = scChoiceOffered() ? render : updateNextEnabled;
+    if (STATE.platforms.google_ads)
+      wrap.appendChild(choice.buildChoiceCard("google_ads", STATE, onGoogleChoice));
+    if (STATE.platforms.meta_ads)
+      wrap.appendChild(choice.buildChoiceCard("meta_ads", STATE, updateNextEnabled));
+    if (scChoiceOffered())
+      wrap.appendChild(choice.buildChoiceCard("search_console", STATE, updateNextEnabled));
     return wrap;
   }
 
@@ -560,6 +506,25 @@
       wrap.innerHTML = "<p>Auth flow…</p>";
     }
     return wrap;
+  }
+
+  // One saved-platform row. A platform connected through a plugin provider
+  // names it after the platform; data-i18n sits on an inner span only, so a
+  // re-translation cannot wipe the provider's name.
+  function buildCompletedRow(p) {
+    const li = document.createElement("li");
+    const key = "wizard.platforms." + p;
+    if (!isPluginChoice(p) || !STATE.pluginPlatforms[p]) {
+      li.textContent = MUREO.t(key);
+      li.setAttribute("data-i18n", key);
+      return li;
+    }
+    const text = document.createElement("span");
+    text.textContent = MUREO.t(key);
+    text.setAttribute("data-i18n", key);
+    li.appendChild(text);
+    li.appendChild(document.createTextNode(" — " + STATE.pluginPlatforms[p].display_name));
+    return li;
   }
 
   function buildStepBody_completed() {
@@ -608,10 +573,7 @@
       // reminder below; on Codex it is omitted (not available there).
       if (p === "tiktok_ads") return;
       if (p === "amazon_ads" && amazonPending) return;
-      const li = document.createElement("li");
-      li.textContent = MUREO.t("wizard.platforms." + p);
-      li.setAttribute("data-i18n", "wizard.platforms." + p);
-      summary.appendChild(li);
+      summary.appendChild(buildCompletedRow(p));
     });
     if (summary.children.length > 0) wrap.appendChild(summary);
 
@@ -759,9 +721,11 @@
     // flag then stays clear and that first hydrate takes the snapshot).
     STATE.ga4Probed = false;
     probeGa4Section(MUREO.state && MUREO.state.status);
+    hydratePluginPlatforms(MUREO.state && MUREO.state.status);
     render();
   });
   document.addEventListener("mureo:locale_changed", function () {
+    hydratePluginPlatforms(MUREO.state && MUREO.state.status);
     if (!document.querySelector("[data-wizard]").hidden) {
       render();
     }
@@ -777,6 +741,7 @@
     state: STATE,
     effectiveSteps: effectiveSteps,
     isNextEnabled: isNextEnabled,
+    isPluginChoice: isPluginChoice,
     render: render,
     gotoNext: gotoNext,
     gotoPrev: gotoPrev,

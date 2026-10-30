@@ -49,8 +49,11 @@ def test_dashboard_authenticate_sends_form_values() -> None:
     form values and POSTs them (so the bridge can persist them with the
     token), instead of the old empty-body request."""
     js = _read("dashboard_plugins.js")
+    # ``onStored`` is the optional callback the setup wizard passes when it
+    # renders this card for a plugin provider.
     assert (
-        "function startPluginOAuth(providerName, btn, statusNode, values)" in js
+        "function startPluginOAuth(providerName, btn, statusNode, values, onStored)"
+        in js
     ), "startPluginOAuth must accept the gathered form values"
     # The values must travel in the /oauth/start body.
     assert 'base + "/start", { values' in js or 'base + "/start", {values' in js

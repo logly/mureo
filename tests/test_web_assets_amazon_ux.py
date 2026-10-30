@@ -95,7 +95,15 @@ class TestWizardAmazonPlatform:
         assert "/api/credentials/plugins/save" in js
 
     def test_wizard_does_not_hardcode_amazon_field_keys(self) -> None:
-        js = _read("wizard.js") + _read("auth_wizards.js")
+        js = "".join(
+            _read(name)
+            for name in (
+                "wizard.js",
+                "wizard_provider_choice.js",
+                "auth_wizards.js",
+                "auth_wizards_plugin.js",
+            )
+        )
         for hardcoded in ("client_secret", "refresh_token", "manager_account_id"):
             assert hardcoded not in js, f"{hardcoded} hand-copied into the wizard JS"
 

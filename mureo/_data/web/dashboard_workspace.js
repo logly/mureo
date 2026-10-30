@@ -413,7 +413,10 @@
   // so it is a status-only row (configured ⇔ the shared Google OAuth is
   // present, which the wizard's Search Console step writes) with no
   // standalone Remove (removing it would nuke the shared Google sign-in
-  // / Google Ads — done from the Google Ads row instead).
+  // / Google Ads — done from the Google Ads row instead). A plugin
+  // credential provider declaring ``serves_platform`` also satisfies a row
+  // (``status.plugin_platforms``). Remove stays on the built-in section,
+  // because the provider's section is removed from its own card.
   const NATIVE_SECTIONS = [
     {
       key: "google_ads",
@@ -461,14 +464,97 @@
     },
   ];
 
+  // The text carries the provider's name, so there is no data-i18n on it:
+  // the row is rebuilt on every status load, which re-translates it.
+  function buildViaPluginNote(via) {
+    const note = document.createElement("div");
+    note.className = "dashboard-provider-hosted-note";
+    note.setAttribute("data-native-via-plugin", via.provider_name);
+    note.textContent = MUREO.t("dashboard.native_via_plugin", {
+      provider: via.display_name,
+    });
+    return note;
+  }
+
+  // A muted note under a row, re-translated through its data-i18n.
+  function buildRowNote(key) {
+    const note = document.createElement("div");
+    note.className = "dashboard-provider-hosted-note";
+    note.textContent = MUREO.t(key);
+    note.setAttribute("data-i18n", key);
+    return note;
+  }
+
+  // Remove throws the built-in section away, then re-reads the snapshot.
+  function appendRemoveButton(li, row) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    btn.textContent = MUREO.t("dashboard.action_remove");
+    btn.setAttribute("data-i18n", "dashboard.action_remove");
+    btn.addEventListener("click", async function () {
+      const ok = await MUREO.confirmAction(
+        MUREO.t("dashboard.confirm_remove_credentials")
+      );
+      if (!ok) return;
+      const res = await MUREO.postJson("/api/credentials/remove", {
+        section: row.section,
+      });
+      if (res.ok) {
+        await MUREO.loadStatus();
+        renderAll();
+      } else {
+        MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
+      }
+    });
+    li.appendChild(btn);
+  }
+
+  // Everything under a row's label. `builtin` is the built-in section's own
+  // verdict; `via` is the provider standing in for the row, or null.
+  function decorateNativeRow(li, row, status, builtin, via) {
+    if (via) li.appendChild(buildViaPluginNote(via));
+    if (builtin && row.removable) appendRemoveButton(li, row);
+    // Meta-only (#579): a Meta access token expires, and Remove — which
+    // throws the credentials away — was the only action on this row, so
+    // deleting them first was the natural misread. The hint and the card
+    // live in auth_wizards_meta.js, shared with the wizard's Meta step;
+    // keyed off the row so no other credential row grows the control.
+    if (builtin && row.key === "meta_ads" && window.MUREO_AUTH_META) {
+      const expiring = window.MUREO_AUTH_META.buildMetaExpiringHint(status);
+      if (expiring) li.appendChild(expiring);
+      li.appendChild(
+        window.MUREO_AUTH_META.buildMetaReauthSection(async function () {
+          // A saved token changes the row it was opened from: re-read the
+          // snapshot so the expiry hint clears with the token that caused
+          // it, instead of leaving the warning that sent the operator here.
+          await MUREO.loadStatus();
+          renderAll();
+        })
+      );
+    }
+    // Google Ads + Search Console share the one Google OAuth.
+    if (builtin && row.key === "google_ads") {
+      li.appendChild(buildRowNote("dashboard.native_sc_shared"));
+    }
+    // Search Console row: explain the shared-sign-in coupling, except when
+    // a provider serves it — that row does not hang off the Google Ads
+    // sign-in, and the provider note above already says what does.
+    if (row.noteKey && !via) li.appendChild(buildRowNote(row.noteKey));
+  }
+
   function renderNativeSection(status) {
     const list = document.querySelector("[data-dashboard-native-list]");
     if (!list) return;
     while (list.firstChild) list.removeChild(list.firstChild);
     const present = (status && status.credentials_present) || {};
+    const served = (status && status.plugin_platforms) || {};
     let any = false;
     NATIVE_SECTIONS.forEach(function (row) {
-      const configured = row.configured(status, present);
+      const builtin = row.configured(status, present);
+      const entry = served[row.key];
+      const via = entry && entry.configured && !builtin ? entry : null;
+      const configured = builtin || Boolean(via);
       const li = document.createElement("li");
       const label = document.createElement("span");
       label.appendChild(statusMark(configured));
@@ -481,63 +567,7 @@
       label.appendChild(labelText);
       li.appendChild(label);
       if (configured) any = true;
-      if (configured && row.removable) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "btn btn-secondary";
-        btn.textContent = MUREO.t("dashboard.action_remove");
-        btn.setAttribute("data-i18n", "dashboard.action_remove");
-        btn.addEventListener("click", async function () {
-          const ok = await MUREO.confirmAction(
-            MUREO.t("dashboard.confirm_remove_credentials")
-          );
-          if (!ok) return;
-          const res = await MUREO.postJson("/api/credentials/remove", {
-            section: row.section,
-          });
-          if (res.ok) {
-            await MUREO.loadStatus();
-            renderAll();
-          } else {
-            MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
-          }
-        });
-        li.appendChild(btn);
-      }
-      // Meta-only (#579): a Meta access token expires, and Remove — which
-      // throws the credentials away — was the only action on this row, so
-      // deleting them first was the natural misread. The hint and the card
-      // live in auth_wizards_meta.js, shared with the wizard's Meta step;
-      // keyed off the row so no other credential row grows the control.
-      if (configured && row.key === "meta_ads" && window.MUREO_AUTH_META) {
-        const expiring = window.MUREO_AUTH_META.buildMetaExpiringHint(status);
-        if (expiring) li.appendChild(expiring);
-        li.appendChild(
-          window.MUREO_AUTH_META.buildMetaReauthSection(async function () {
-            // A saved token changes the row it was opened from: re-read the
-            // snapshot so the expiry hint clears with the token that caused
-            // it, instead of leaving the warning that sent the operator here.
-            await MUREO.loadStatus();
-            renderAll();
-          })
-        );
-      }
-      // Google Ads + Search Console share the one Google OAuth.
-      if (configured && row.key === "google_ads") {
-        const note = document.createElement("div");
-        note.className = "dashboard-provider-hosted-note";
-        note.textContent = MUREO.t("dashboard.native_sc_shared");
-        note.setAttribute("data-i18n", "dashboard.native_sc_shared");
-        li.appendChild(note);
-      }
-      // Search Console row: always explain the shared-sign-in coupling.
-      if (row.noteKey) {
-        const note = document.createElement("div");
-        note.className = "dashboard-provider-hosted-note";
-        note.textContent = MUREO.t(row.noteKey);
-        note.setAttribute("data-i18n", row.noteKey);
-        li.appendChild(note);
-      }
+      decorateNativeRow(li, row, status, builtin, via);
       list.appendChild(li);
     });
     if (!any) {

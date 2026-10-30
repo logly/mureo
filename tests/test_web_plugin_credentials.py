@@ -45,6 +45,7 @@ def _make_class(
     display_name_i18n: dict[str, str] | None = None,
     oauth: Any = None,
     lister: Any = None,
+    serves_platform: str | None = None,
 ) -> type:
     """Build a minimal provider class with the requested credential fields.
 
@@ -72,6 +73,8 @@ def _make_class(
         # is callable off the class without instantiation (registry only
         # ever holds the class).
         _Fake.list_oauth_accounts = staticmethod(lister)  # type: ignore[attr-defined]
+    if serves_platform is not None:
+        _Fake.serves_platform = serves_platform  # type: ignore[attr-defined]
     return _Fake
 
 
@@ -96,6 +99,7 @@ def _entry(
     display_name_i18n: dict[str, str] | None = None,
     oauth: Any = None,
     lister: Any = None,
+    serves_platform: str | None = None,
 ) -> ProviderEntry:
     cls = _make_class(
         name,
@@ -104,6 +108,7 @@ def _entry(
         display_name_i18n=display_name_i18n,
         oauth=oauth,
         lister=lister,
+        serves_platform=serves_platform,
     )
     return ProviderEntry(
         name=name,
@@ -1533,3 +1538,189 @@ def test_list_oauth_accounts_async_hook_from_running_loop(
         return list_oauth_accounts("broker", secret_store=store)
 
     assert asyncio.run(_drive()) == [{"id": "act_loop", "name": "Loop"}]
+
+
+# ---------------------------------------------------------------------------
+# serves_platform, plugin_is_configured, plugin_platform_status
+# ---------------------------------------------------------------------------
+
+
+def _served_fields() -> tuple[AccountCredentialField, ...]:
+    return (
+        AccountCredentialField(
+            key="customer_id", display_name="Customer", required=True
+        ),
+        AccountCredentialField(
+            key="refresh_token", display_name="Token", required=True, secret=True
+        ),
+        AccountCredentialField(key="label", display_name="Label"),
+    )
+
+
+def _annotated(
+    tmp_path: Path, stored: dict[str, dict[str, str]], **kwargs: Any
+) -> list[dict[str, Any]]:
+    """Descriptors as the handler serves them: listed, then annotated."""
+    from mureo.web.plugin_credentials import (
+        annotate_field_state,
+        list_plugin_credential_fields,
+    )
+
+    store = _store(tmp_path)
+    for provider, values in stored.items():
+        store.save(provider, values)
+    plugins = list_plugin_credential_fields(**kwargs)
+    annotate_field_state(plugins, tmp_path / "credentials.json")
+    return plugins
+
+
+@pytest.mark.unit
+def test_descriptor_carries_serves_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry("a_vendor", fields=_served_fields(), serves_platform="google_ads"),
+            _entry("b_plain", fields=_served_fields()),
+        ],
+    )
+    by_name = {p["provider_name"]: p for p in list_plugin_credential_fields()}
+    assert by_name["a_vendor"]["serves_platform"] == "google_ads"
+    assert "serves_platform" in by_name["b_plain"]
+    assert by_name["b_plain"]["serves_platform"] is None
+
+
+@pytest.mark.unit
+def test_annotate_field_state_sets_field_and_provider_configured(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _register(monkeypatch, [_entry("a_vendor", fields=_served_fields())])
+    [plugin] = _annotated(
+        tmp_path, {"a_vendor": {"customer_id": "123", "refresh_token": "rt"}}
+    )
+    by_key = {f["key"]: f for f in plugin["fields"]}
+    assert by_key["customer_id"]["configured"] is True
+    assert by_key["customer_id"]["value"] == "123"
+    assert by_key["refresh_token"]["configured"] is True
+    assert "value" not in by_key["refresh_token"]
+    assert by_key["label"]["configured"] is False
+    assert plugin["configured"] is True
+
+
+@pytest.mark.unit
+def test_plugin_is_configured_false_when_one_required_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import plugin_is_configured
+
+    _register(monkeypatch, [_entry("a_vendor", fields=_served_fields())])
+    [plugin] = _annotated(tmp_path, {"a_vendor": {"customer_id": "123"}})
+    assert plugin_is_configured(plugin) is False
+    assert plugin["configured"] is False
+
+
+@pytest.mark.unit
+def test_plugin_is_configured_false_without_required_fields(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import plugin_is_configured
+
+    optional = (AccountCredentialField(key="label", display_name="Label"),)
+    _register(monkeypatch, [_entry("a_vendor", fields=optional)])
+    [plugin] = _annotated(tmp_path, {"a_vendor": {"label": "x"}})
+    assert plugin_is_configured(plugin) is False
+
+
+@pytest.mark.unit
+def test_plugin_is_configured_ignores_scoped_out_required_field(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import plugin_is_configured
+
+    _register(monkeypatch, [_entry("a_vendor", fields=_served_fields())])
+    [plugin] = _annotated(
+        tmp_path,
+        {"a_vendor": {"refresh_token": "rt"}},
+        field_scope={"a_vendor": {"refresh_token", "label"}},
+    )
+    assert [f["key"] for f in plugin["fields"]] == ["refresh_token", "label"]
+    assert plugin_is_configured(plugin) is True
+
+
+@pytest.mark.unit
+def test_platform_status_empty_when_nobody_declares(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import plugin_platform_status
+
+    _register(monkeypatch, [_entry("a_vendor", fields=_served_fields())])
+    assert plugin_platform_status(_annotated(tmp_path, {})) == {}
+
+
+@pytest.mark.unit
+def test_platform_status_configured_wins_over_unconfigured(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import plugin_platform_status
+
+    _register(
+        monkeypatch,
+        [
+            _entry("a_vendor", fields=_served_fields(), serves_platform="google_ads"),
+            _entry("b_vendor", fields=_served_fields(), serves_platform="google_ads"),
+        ],
+    )
+    plugins = _annotated(
+        tmp_path, {"b_vendor": {"customer_id": "1", "refresh_token": "rt"}}
+    )
+    status = plugin_platform_status(plugins)
+    assert status == {
+        "google_ads": {
+            "provider_name": "b_vendor",
+            "display_name": "b_vendor",
+            "configured": True,
+        }
+    }
+
+
+@pytest.mark.unit
+def test_platform_status_first_by_name_when_tied(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import plugin_platform_status
+
+    _register(
+        monkeypatch,
+        [
+            _entry("b_vendor", fields=_served_fields(), serves_platform="meta_ads"),
+            _entry("a_vendor", fields=_served_fields(), serves_platform="meta_ads"),
+        ],
+    )
+    status = plugin_platform_status(_annotated(tmp_path, {}))
+    assert status["meta_ads"]["provider_name"] == "a_vendor"
+    assert status["meta_ads"]["configured"] is False
+
+
+@pytest.mark.unit
+def test_platform_status_uses_locale_resolved_display_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import plugin_platform_status
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "a_vendor",
+                fields=_served_fields(),
+                display_name="Search Console (Vendor)",
+                display_name_i18n={"ja": "サーチコンソール（ベンダー）"},
+                serves_platform="search_console",
+            )
+        ],
+    )
+    status = plugin_platform_status(_annotated(tmp_path, {}, locale="ja"))
+    assert status["search_console"]["display_name"] == "サーチコンソール（ベンダー）"

@@ -110,6 +110,13 @@ class BaseProvider(Protocol):
       bridge can show its Japanese name ("Yahoo! JAPAN Ads (Search)"
       written in Japanese) under a ``ja`` locale while keeping
       ``Yahoo! JAPAN Ads (Search)`` as the ``en`` default.
+
+    * ``serves_platform: str`` — names the built-in platform
+      (``google_ads`` / ``meta_ads`` / ``search_console``) the provider
+      serves through its own credentials section, read via :func:`mureo.core.providers.get_serves_platform`.
+      The configure UI then shows that platform as configured and offers
+      the provider as a connection choice. Providers that omit it are
+      unaffected.
     """
 
     name: str

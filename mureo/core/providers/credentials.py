@@ -226,4 +226,47 @@ class AccountOAuthConfig:
     token_headers: tuple[tuple[str, str], ...] = field(default=(), repr=False)
 
 
-__all__ = ["AccountCredentialField", "AccountOAuthConfig"]
+# The built-in platforms the configure UI can hand to a provider: each has a
+# connection choice in the Setup wizard. Amazon Ads has none (mureo brokers
+# Amazon's official MCP itself), so it is not on the list.
+SERVED_PLATFORMS: frozenset[str] = frozenset(
+    {"google_ads", "meta_ads", "search_console"}
+)
+
+
+def get_serves_platform(provider: object) -> str | None:
+    """Return ``provider.serves_platform`` defensively.
+
+    A plugin credential provider that serves one of mureo's built-in
+    platforms through its own credentials section declares which one, so
+    the configure UI can show that platform as configured and offer the
+    provider as a connection choice. Optional: providers that omit it are
+    unaffected. ``TypeError`` when present but not a ``str``;
+    ``ValueError`` when not one of :data:`SERVED_PLATFORMS`.
+    """
+    # Same identity rule as ``registry.get_account_oauth_config``: a
+    # non-``str`` / empty ``name`` falls back to ``repr`` so the offending
+    # provider is locatable in the error.
+    raw_name = getattr(provider, "name", None)
+    identity = raw_name if isinstance(raw_name, str) and raw_name else repr(provider)
+    served = getattr(provider, "serves_platform", None)
+    if served is None:
+        return None
+    if not isinstance(served, str):
+        raise TypeError(
+            f"{identity}.serves_platform must be a str, got {type(served).__name__}"
+        )
+    if served not in SERVED_PLATFORMS:
+        raise ValueError(
+            f"{identity}.serves_platform={served!r} is not one of "
+            f"{sorted(SERVED_PLATFORMS)}"
+        )
+    return served
+
+
+__all__ = [
+    "SERVED_PLATFORMS",
+    "AccountCredentialField",
+    "AccountOAuthConfig",
+    "get_serves_platform",
+]

@@ -24,8 +24,10 @@ from mureo.core.providers.capabilities import (
     parse_capability,
 )
 from mureo.core.providers.credentials import (
+    SERVED_PLATFORMS,
     AccountCredentialField,
     AccountOAuthConfig,
+    get_serves_platform,
 )
 from mureo.core.providers.extension import ExtensionProvider
 from mureo.core.providers.keyword import KeywordProvider
@@ -75,6 +77,7 @@ from mureo.core.providers.registry import (
 __all__ = [
     "CAPABILITY_NAMES",
     "PROVIDERS_ENTRY_POINT_GROUP",
+    "SERVED_PLATFORMS",
     "SKILLS_ENTRY_POINT_GROUP",
     "AccountCredentialField",
     "AccountOAuthConfig",
@@ -118,6 +121,7 @@ __all__ = [
     "get_oauth_account_lister",
     "get_oauth_persist_hook",
     "get_provider",
+    "get_serves_platform",
     "list_providers_by_capability",
     "parse_capabilities",
     "parse_capability",

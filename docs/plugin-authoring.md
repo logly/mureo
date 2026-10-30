@@ -643,6 +643,57 @@ class ExampleProvider:
         )
 ```
 
+#### Standing in for a built-in platform (`serves_platform`)
+
+A provider whose credentials section is what makes one of mureo's built-in
+platforms work (for example, a provider that holds its own Google OAuth
+credentials and refresh token for Google Ads) can say so with the optional
+`serves_platform` class attribute. Without it, the configure UI only knows
+the built-in `google_ads` / `meta_ads` sections and asks the operator for
+OAuth credentials they may not have.
+
+```python
+class ExampleGoogleProvider:
+    name = "example_google"
+    display_name = "Example Google"
+    capabilities = frozenset({...})
+    serves_platform = "google_ads"
+    account_credential_fields = (...)
+```
+
+- **Values.** One of `google_ads`, `meta_ads` or `search_console`
+  (`SERVED_PLATFORMS` in `mureo.core.providers`) — the built-in platforms
+  the Setup wizard has a connection choice for. mureo reads it with
+  `get_serves_platform(provider)`, which returns `None` when the attribute
+  is absent and raises `TypeError` (not a `str`) or `ValueError` (any other
+  value) naming the provider. The configure UI logs the rejected
+  declaration and leaves that provider out of its cards (the other
+  providers are unaffected), so a typo shows up in the configure log
+  instead of silently serving nothing.
+- **What the configure UI does with it.** The platform's row under
+  "mureo integrations" on the Setup tab reads configured once the
+  provider's section is configured, with a note naming the provider (its
+  Remove button stays on the built-in section; the provider's section is
+  removed from its own card). The Setup wizard offers the provider as a
+  third connection choice next to "official MCP" and "mureo standard",
+  labelled with your `display_name`; Search Console gets a choice card of
+  its own ("mureo standard" or your provider). When Google Ads is not on
+  the built-in path, Search Console's "mureo standard" collects its own
+  Google sign-in, which is stored in the `google_ads` section, so the
+  built-in Google Ads row also reads configured. Choosing the provider runs
+  its own credentials card on the auth step — the OAuth card with
+  Authenticate when you declare `account_oauth`, the field form otherwise
+  — and the official-MCP install step is not queued for that platform.
+- **What "configured" means.** Every field marked `required` is stored,
+  counting only the fields the configure UI shows for the active backend.
+  A provider that declares no required field never reads as configured.
+  `/api/credentials/plugins` carries `serves_platform` and `configured` per
+  provider, and `/api/status` carries `plugin_platforms`, mapping each
+  served platform to `{provider_name, display_name, configured}`.
+- **Two providers, one platform.** A configured provider wins over an
+  unconfigured one; otherwise the first by provider name is shown. Only
+  one provider is offered per platform.
+
 ### Reusing the built-in handlers with your own credentials
 
 The built-in `google_ads_*`, `search_console_*` and `meta_ads_*` handlers

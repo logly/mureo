@@ -41,8 +41,29 @@
 
   var LOCALE_KEY = "mureo.locale";
 
+  // A toggle click: the page switches at once, then the backend session
+  // and the status snapshot follow before listeners re-render.
   function setLocale(locale) {
     if (locale !== "en" && locale !== "ja") return;
+    applyLocale(locale);
+    // The status snapshot carries names the server resolves in the session
+    // locale (a plugin provider's `plugin_platforms` entry), so listeners
+    // re-render only once the backend has the new locale and the snapshot
+    // has been re-read. Both requests are best-effort: the event fires even
+    // when either fails, so the page still re-renders.
+    postLocale(locale)
+      .catch(function () {})
+      .then(loadStatus)
+      .catch(function () {})
+      .then(function () {
+        document.dispatchEvent(
+          new CustomEvent("mureo:locale_changed", { detail: { locale: locale } })
+        );
+      });
+  }
+
+  // The synchronous half of a locale switch: state, storage and the DOM.
+  function applyLocale(locale) {
     STATE.locale = locale;
     // Persist so the choice survives a page reload — notably the
     // OAuth round-trip (Google/Meta consent navigates away and the
@@ -65,18 +86,29 @@
           btn.getAttribute("data-lang-toggle") === locale ? "true" : "false"
         );
       });
-    // Propagate to backend (best-effort).
-    fetch("/api/locale", {
+  }
+
+  // The persisted language (survives the OAuth reload); "en" when unset
+  // or storage is unavailable.
+  function readSavedLocale() {
+    try {
+      var stored = window.localStorage.getItem(LOCALE_KEY);
+      if (stored === "en" || stored === "ja") return stored;
+    } catch (_e) {
+      /* storage unavailable — default en */
+    }
+    return "en";
+  }
+
+  function postLocale(locale) {
+    return fetch("/api/locale", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": STATE.csrfToken,
       },
       body: JSON.stringify({ locale: locale }),
-    }).catch(function () {});
-    document.dispatchEvent(
-      new CustomEvent("mureo:locale_changed", { detail: { locale: locale } })
-    );
+    });
   }
 
   async function loadI18n() {
@@ -275,20 +307,15 @@
 
   async function boot() {
     await Promise.all([loadI18n(), loadCsrf()]);
+    // The backend session gets the saved locale before the first status
+    // load, so the snapshot's server-resolved names already match the page.
+    // No mureo:locale_changed at boot: mureo:ready carries the first render.
+    var savedLocale = readSavedLocale();
+    await postLocale(savedLocale).catch(function () {});
     await loadStatus();
     wireLangToggles();
     wireDashboardLink();
-    // Restore the persisted language (survives the OAuth reload);
-    // default to "en" when unset or storage is unavailable.
-    var savedLocale = "en";
-    try {
-      var stored = window.localStorage.getItem(LOCALE_KEY);
-      if (stored === "en" || stored === "ja") savedLocale = stored;
-    } catch (_e) {
-      /* storage unavailable — default en */
-    }
-    setLocale(savedLocale);
-    applyTranslations(document);
+    applyLocale(savedLocale);
     document.dispatchEvent(
       new CustomEvent("mureo:ready", { detail: { state: STATE } })
     );

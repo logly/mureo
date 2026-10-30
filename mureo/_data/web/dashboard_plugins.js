@@ -18,6 +18,11 @@
 // `field.configured`, and its placeholder follows the same flag; only a
 // non-secret field is pre-filled from `field.value`.
 //
+// The setup wizard renders the same card (`buildPluginCredentialsForm`) for
+// a plugin provider chosen on its connection step, passing `onStored`: a
+// callback that fires whenever the card changes the provider's stored
+// section (the OAuth consent completed, or the account picker saved).
+//
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
 // `window.MUREO_DASHBOARD_PLUGINS`. Must load BEFORE dashboard.js.
 
@@ -199,12 +204,11 @@
     return MUREO.t("dashboard.plugin_oauth_callback_hint");
   }
 
-  // #216/#217 — OAuth card controls: the operator-supplied loopback
-  // callback URL input + a single Authenticate-IS-save submit (no Save).
-  function appendOAuthControls(form, plugin) {
-    // Pre-fill the saved callback URL (surfaced by the list endpoint) or a
-    // shown well-known default; the operator must register this exact URL
-    // provider-side.
+  // #216 — the operator-supplied loopback callback URL input. Pre-fill the
+  // saved callback URL (surfaced by the list endpoint) or a shown
+  // well-known default; the operator must register this exact URL
+  // provider-side.
+  function buildCallbackUrlLabel(plugin) {
     const cbLabel = document.createElement("label");
     const cbText = document.createElement("span");
     cbText.textContent = MUREO.t("dashboard.plugin_oauth_callback_label");
@@ -228,7 +232,13 @@
       cbHint.textContent = cbHintText;
       cbLabel.appendChild(cbHint);
     }
-    form.appendChild(cbLabel);
+    return cbLabel;
+  }
+
+  // #216/#217 — OAuth card controls: the callback URL input + a single
+  // Authenticate-IS-save submit (no Save).
+  function appendOAuthControls(form, plugin, onStored) {
+    form.appendChild(buildCallbackUrlLabel(plugin));
 
     // The button and its status line share one row below the fields
     // (app.css `.form-actions`); appended bare, the inline button would
@@ -251,7 +261,8 @@
         plugin.provider_name,
         authBtn,
         status,
-        gatherFormValues(form)
+        gatherFormValues(form),
+        onStored
       );
     });
   }
@@ -270,22 +281,11 @@
     });
   }
 
-  function buildPluginCredentialsForm(plugin) {
-    const wrap = document.createElement("details");
-    wrap.className = "plugin-credentials-form";
-    const summary = document.createElement("summary");
-    summary.textContent = plugin.display_name;
-    wrap.appendChild(summary);
-
-    // ``oauth`` block ({target_field, client_id_field, client_secret_field})
-    // is present only for a provider whose secret is obtained via the
-    // authorization-code flow (#201). For those providers the card is
-    // Authenticate-IS-save (#217): no Save button, the target_field is a
-    // read-only status row, and the operator supplies the loopback callback
-    // URL they registered (#216). Providers without it keep manual Save +
-    // entry, unchanged.
+  // One row per declared field: an OAuth provider's target field is a
+  // read-only status, its accounts field the post-auth picker, and every
+  // other field a plain input.
+  function appendPluginFields(form, plugin, onStored) {
     const oauth = plugin.oauth;
-    const form = document.createElement("form");
     // #336 — whether the OAuth token is already stored. The post-auth
     // account picker can only enumerate once a token exists, so its Load
     // control stays disabled until then.
@@ -307,13 +307,32 @@
         // #336 — render this field as a post-auth account picker instead
         // of a free-text input (the operator chooses from the accounts the
         // obtained token can reach).
-        appendAccountPicker(form, plugin, field, authConfigured);
+        appendAccountPicker(form, plugin, field, authConfigured, onStored);
       } else {
         appendCredentialInput(form, field);
       }
     });
+  }
+
+  function buildPluginCredentialsForm(plugin, onStored) {
+    const wrap = document.createElement("details");
+    wrap.className = "plugin-credentials-form";
+    const summary = document.createElement("summary");
+    summary.textContent = plugin.display_name;
+    wrap.appendChild(summary);
+
+    // ``oauth`` block ({target_field, client_id_field, client_secret_field})
+    // is present only for a provider whose secret is obtained via the
+    // authorization-code flow (#201). For those providers the card is
+    // Authenticate-IS-save (#217): no Save button, the target_field is a
+    // read-only status row, and the operator supplies the loopback callback
+    // URL they registered (#216). Providers without it keep manual Save +
+    // entry, unchanged.
+    const oauth = plugin.oauth;
+    const form = document.createElement("form");
+    appendPluginFields(form, plugin, onStored);
     if (oauth) {
-      appendOAuthControls(form, plugin);
+      appendOAuthControls(form, plugin, onStored);
     } else {
       appendManualSave(form, plugin);
     }
@@ -404,32 +423,12 @@
   // obtained token can reach and renders them as radios; a dedicated Save
   // (type="button", so it never triggers the card's Authenticate submit)
   // persists just the chosen id. Load is disabled until a token exists.
-  function appendAccountPicker(form, plugin, field, authConfigured) {
-    const label = document.createElement("label");
-    const labelText = document.createElement("span");
-    labelText.textContent = field.display_name;
-    if (field.required) labelText.textContent += " *";
-    label.appendChild(labelText);
-
-    const hidden = document.createElement("input");
-    hidden.type = "hidden";
-    hidden.name = field.key;
-    if (field.value) hidden.value = field.value;
-    label.appendChild(hidden);
-
-    const current = document.createElement("span");
-    current.className = "plugin-account-current muted";
-    current.setAttribute("data-account-current", "");
-    current.textContent = field.value || MUREO.t("dashboard.plugin_account_none");
-    label.appendChild(current);
-
-    if (field.description) {
-      const hint = document.createElement("small");
-      hint.className = "field-hint";
-      hint.textContent = field.description;
-      label.appendChild(hint);
-    }
-    form.appendChild(label);
+  // `onStored` (optional) runs after that Save lands, as after a consent.
+  function appendAccountPicker(form, plugin, field, authConfigured, onStored) {
+    const picked = buildAccountPickerLabel(field);
+    const hidden = picked.hidden;
+    const current = picked.current;
+    form.appendChild(picked.label);
 
     const actions = document.createElement("div");
     actions.className = "form-actions";
@@ -466,8 +465,38 @@
       loadPluginAccounts(plugin.provider_name, ui);
     });
     saveBtn.addEventListener("click", function () {
-      savePluginAccount(plugin.provider_name, field.key, hidden.value, ui);
+      savePluginAccount(plugin.provider_name, field.key, hidden.value, ui, onStored);
     });
+  }
+
+  // The picker's label: the field name, the hidden input carrying the
+  // chosen id, the current choice and the field's hint.
+  function buildAccountPickerLabel(field) {
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.display_name;
+    if (field.required) labelText.textContent += " *";
+    label.appendChild(labelText);
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.key;
+    if (field.value) hidden.value = field.value;
+    label.appendChild(hidden);
+
+    const current = document.createElement("span");
+    current.className = "plugin-account-current muted";
+    current.setAttribute("data-account-current", "");
+    current.textContent = field.value || MUREO.t("dashboard.plugin_account_none");
+    label.appendChild(current);
+
+    if (field.description) {
+      const hint = document.createElement("small");
+      hint.className = "field-hint";
+      hint.textContent = field.description;
+      label.appendChild(hint);
+    }
+    return { label: label, hidden: hidden, current: current };
   }
 
   // Map a failed /accounts response error code to the clearest toast.
@@ -547,7 +576,7 @@
     });
   }
 
-  async function savePluginAccount(providerName, key, value, ui) {
+  async function savePluginAccount(providerName, key, value, ui, onStored) {
     if (!value) {
       MUREO.toast(MUREO.t("dashboard.plugin_accounts_pick_first"), "error");
       return;
@@ -572,6 +601,7 @@
     if (outcome.ok && outcome.body.status === "ok") {
       ui.saveBtn.disabled = true;
       MUREO.toast(MUREO.t("dashboard.plugin_accounts_saved"), "success");
+      if (typeof onStored === "function") onStored();
     } else {
       ui.saveBtn.disabled = false;
       MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"), "error");
@@ -585,7 +615,7 @@
   // port, and returns the external provider consent URL. We open it in a
   // new tab and poll for completion; on success the bridge persists the
   // form values together with the obtained token.
-  async function startPluginOAuth(providerName, btn, statusNode, values) {
+  async function startPluginOAuth(providerName, btn, statusNode, values, onStored) {
     btn.disabled = true;
     statusNode.textContent = MUREO.t("dashboard.plugin_oauth_connecting");
     const base =
@@ -603,7 +633,7 @@
       return;
     }
     window.open(res.body.url, "_blank", "noopener");
-    pollPluginOAuth(base + "/status", btn, statusNode);
+    pollPluginOAuth(base + "/status", btn, statusNode, onStored);
   }
 
   // Map a failed /oauth/start response to the most specific toast string
@@ -620,7 +650,7 @@
     return "dashboard.plugin_oauth_failed";
   }
 
-  function pollPluginOAuth(statusUrl, btn, statusNode) {
+  function pollPluginOAuth(statusUrl, btn, statusNode, onStored) {
     const deadline = Date.now() + 5 * 60 * 1000;
     const timer = setInterval(async function () {
       if (Date.now() > deadline) {
@@ -646,6 +676,7 @@
         // and the account picker's Load control becomes usable now that a
         // token exists.
         renderPluginCredentials();
+        if (typeof onStored === "function") onStored();
       } else if (data.error) {
         clearInterval(timer);
         btn.disabled = false;
@@ -684,6 +715,7 @@
   }
   const api = {
     renderPluginCredentials: renderPluginCredentials,
+    buildPluginCredentialsForm: buildPluginCredentialsForm,
   };
 
   // Browser: the global the `<script>` tag exists to publish.
