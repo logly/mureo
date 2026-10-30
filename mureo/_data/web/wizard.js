@@ -60,13 +60,6 @@
     // MUREO.stepFailures), listed under the install button until a run
     // succeeds.
     basicInstallFailures: [],
-    // #442: a multi-account backend (e.g. the agency layer) advertises
-    // multi_account_auth via /api/status. GA4 auth is a single service
-    // account, so under a multi-account backend the Setup-tab GA4 slot is
-    // hidden (buildAuthQueue) and the write is refused server-side
-    // (_post_env_var) -- GA4 is wired per-account by that layer, not as one
-    // shared SA.
-    multiAccountAuth: false,
     platforms: {
       google_ads: false,
       meta_ads: false,
@@ -95,7 +88,19 @@
       // configured?" probe is the backend's own usability verdict
       // (credentials_present.amazon_ads), not a token flag.
       amazon: { configured: false },
+      // GA4's "configured?" probe is credentials_present.ga4, the same
+      // backend verdict the dashboard uses (a complete (usable) ``ga4``
+      // section: credential file path and project id both set).
+      ga4: { configured: false },
     },
+    // existing.ga4.configured is read ONCE per wizard run (see
+    // probeGa4Section). It is disk-derived and changes mid-run (saving
+    // the GA4 slot writes the section; finishInstall re-hydrates after
+    // every install), while every other hasAuthQueued term is
+    // selection-derived. Re-reading it would drop ``auth`` from
+    // effectiveSteps() under a stale stepIndex. wizard_start re-probes
+    // from the latest status snapshot and sets this again.
+    ga4Probed: false,
     // Set when the operator presses "Re-authorize Google" on the auth step;
     // forces the Google OAuth slot back into the queue for this wizard run
     // only (never persisted).
@@ -163,12 +168,15 @@
     // provider install, no native↔official choice), so selecting it queues
     // exactly one thing — the credential slot that fills the ``amazon_ads``
     // section the bridge reads.
+    // GA4: its slot is skipped when the store already holds the ``ga4``
+    // section (a credential provider hook may have written it), for the
+    // same reason the Google slot is skipped on a saved token.
     return (
       STATE.platforms.google_ads ||
       (STATE.platforms.meta_ads &&
         STATE.providerChoice.meta_ads === "native") ||
       STATE.platforms.search_console ||
-      STATE.platforms.ga4 ||
+      (STATE.platforms.ga4 && !STATE.existing.ga4.configured) ||
       STATE.platforms.amazon_ads
     );
   }
@@ -271,14 +279,16 @@
     STATE.existing.meta.has_oauth = Boolean(oauth.meta);
     const present = status.credentials_present || {};
     STATE.existing.amazon.configured = Boolean(present.amazon_ads);
-    STATE.multiAccountAuth = Boolean(status.multi_account_auth);
-    // #442: a multi-account backend wires GA4 per-account, so the shared-SA
-    // GA4 flow is removed from Setup entirely. Force the platform off here so
-    // the selection checkbox, the provider-install instructions, and the auth
-    // slot all drop out (the server also refuses a ga4 write, _post_env_var).
-    if (STATE.multiAccountAuth) {
-      STATE.platforms.ga4 = false;
-    }
+    probeGa4Section(status);
+  }
+
+  // Snapshot "is the ga4 section on disk?" once per wizard run (see the
+  // STATE.ga4Probed comment). A no-op until wizard_start clears the flag.
+  function probeGa4Section(status) {
+    if (STATE.ga4Probed || !status) return;
+    const present = status.credentials_present || {};
+    STATE.existing.ga4.configured = Boolean(present.ga4);
+    STATE.ga4Probed = true;
   }
 
   // ------------------------------------------------------------------
@@ -416,9 +426,6 @@
       '<h2>' + MUREO.t("wizard.platforms.title") + "</h2>" +
       '<p>' + MUREO.t("wizard.platforms.desc") + "</p>";
     PLATFORMS.forEach(function (p) {
-      // #442: no shared GA4 service account under a multi-account backend, so
-      // GA4 is not selectable here (that layer wires it per-account instead).
-      if (p === "ga4" && STATE.multiAccountAuth) return;
       const label = document.createElement("label");
       label.style.display = "block";
       const checkbox = document.createElement("input");
@@ -744,6 +751,14 @@
   document.addEventListener("mureo:ready", onReady);
   document.addEventListener("mureo:wizard_start", function () {
     STATE.stepIndex = 0;
+    // A new run re-reads whether the store holds the ga4 section, from
+    // the latest status snapshot right here: the landing Start button and
+    // the dashboard re-run button dispatch this event without loading
+    // status, so the next hydrate would otherwise be finishInstall's,
+    // mid-run (MUREO.state.status is null only before the first load; the
+    // flag then stays clear and that first hydrate takes the snapshot).
+    STATE.ga4Probed = false;
+    probeGa4Section(MUREO.state && MUREO.state.status);
     render();
   });
   document.addEventListener("mureo:locale_changed", function () {

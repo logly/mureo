@@ -33,6 +33,8 @@ mureo providers add ga4-official
 
 mureo installs the official server via `pipx` (`pipx install analytics-mcp`) and registers it in your MCP client config alongside mureo — no `.mcp.json` hand-editing required. `mureo configure` walks you through the same step from the dashboard or the setup wizard.
 
+Re-running `mureo configure` lists GA4 on the setup wizard's platform step under every credential backend, including a multi-account one. When the credential store already holds a complete `ga4` section (both the credential file path and the project id; for example one written by a credential provider's `on_oauth_persisted` hook, see #939), the wizard skips the credential-path and project-id inputs and goes straight to the install step.
+
 ### What GA4 Data Adds to mureo Workflows
 
 | mureo Command | GA4 Data Value |
@@ -51,7 +53,7 @@ mureo installs the official server via `pipx` (`pipx install analytics-mcp`) and
 
 ### Authentication
 
-The official GA4 MCP authenticates through Google's Application Default Credentials (ADC), read-only. `mureo providers add ga4-official` prompts for the two required environment variables:
+The official GA4 MCP authenticates through Google's Application Default Credentials (ADC), read-only. It needs two environment variables, stored in the `ga4` section of the credential store. `mureo providers add ga4-official` does not prompt for them: the `mureo configure` wizard (or the dashboard's env-var rows) collects them, and installing the provider from `mureo configure` injects the stored values into its MCP entry:
 
 - `GOOGLE_APPLICATION_CREDENTIALS` — path to an ADC credential file that can authenticate with the `https://www.googleapis.com/auth/analytics.readonly` scope. It does not have to be a service account: a service-account key, the `authorized_user` file written by `gcloud auth application-default login`, or an `external_account` configuration all work. The identity behind the file must be granted access to the GA4 property.
 - `GOOGLE_PROJECT_ID` — the Google Cloud project id. mureo also emits it as `GOOGLE_CLOUD_PROJECT`, the name the upstream README documents.
