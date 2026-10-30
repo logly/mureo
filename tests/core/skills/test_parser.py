@@ -1,4 +1,4 @@
-"""Unit tests for ``mureo.core.skills.parser`` (RED phase, Issue #89 P1-08).
+"""Unit tests for ``mureo.core.skills.parser`` (Issue #89).
 
 These tests pin the contract of :func:`parse_skill_md`:
 
@@ -16,9 +16,6 @@ These tests pin the contract of :func:`parse_skill_md`:
 
 Marks: every test is ``@pytest.mark.unit`` — pure file I/O against
 ``tmp_path``; no network, no entry points, no plugin discovery.
-
-NOTE: these imports are expected to FAIL during the RED phase — the
-module ``mureo.core.skills.parser`` does not exist yet.
 """
 
 from __future__ import annotations
@@ -28,7 +25,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from mureo.core.providers.capabilities import Capability
-from mureo.core.skills.parser import (  # noqa: E402 — RED-phase import
+from mureo.core.skills.parser import (
     SkillParseError,
     parse_skill_md,
 )

@@ -1293,14 +1293,14 @@ this chip has no column to fit. A value stated as a **string** passes through
 untouched, unit and all — `"3.4x"` is the operator's own text, and the
 contract's promise is that what was written is what is shown. The chip row
 is headed *Key figures in this report* (and the matching Japanese label); it was *Values
-this report stated* until the owner read it as a caveat rather than a
-heading. The LEGACY detail screen's equivalent — the label/value table a
+this report stated*, which read as a caveat rather than a heading. The
+LEGACY detail screen's equivalent — the label/value table a
 client with no contract gets — carries the same heading, from its own key
 (`reports_stats_title`, previously *Stated by this report* and its Japanese
 equivalent). Two keys because the two screens are separate surfaces and
 one can be re-worded without the other; one wording because they name the
-same thing, and a heading the owner rejected must not survive on the path
-most installs are actually on.
+same thing, and a heading that reads as a caveat must not survive on the
+path most installs are actually on.
 
 **What is deliberately NOT in the contract.** The KPI funnel (spend →
 impressions → clicks → conversions, with CPM / CPC / CPA) and the daily
@@ -1637,8 +1637,8 @@ component that had never been taken off the losing side. Every one of these
 list items is an `<li>` inside `.dashboard-section`, so the setup screens'
 generic row rule `.dashboard-section li` (0,1,1) outranks a bare
 `.reports-proposal` (0,1,0) and answered for it: the card computed to
-`padding: 11px 0` — horizontal padding gone, which is the owner's report that
-the text touches the yellow frame — and to `display: flex; align-items:
+`padding: 11px 0` — horizontal padding gone, which is why the text touched
+the yellow frame — and to `display: flex; align-items:
 center`, which laid the body out beside the title and squeezed the title into
 a narrow wrapped column. Nothing in the stylesheet ever said either of those
 things about a proposal.

@@ -99,8 +99,8 @@ def remove_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     Idempotent: a second call on an already-cleaned directory returns
     ``(0, target_dir)``. A missing destination directory is a graceful
     no-op. A missing bundle source (rare — broken install) is also a
-    graceful no-op (planner HANDOFF L172 — "bundle dir absent at import
-    resolution → graceful skip").
+    graceful no-op ("bundle dir absent at import resolution → graceful
+    skip").
 
     Symlinks in ``target_dir`` are ``unlink``-ed rather than ``rmtree``-ed
     so the dev copy at the link's target is preserved (mirrors

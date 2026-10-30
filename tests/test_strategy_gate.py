@@ -548,7 +548,7 @@ def _real_tool_names() -> frozenset[str]:
 
 
 class TestBlockedOperationsExamplesAreReal:
-    """C4 regression: the ``blocked_operations`` tool names the skills recommend
+    """Regression: the ``blocked_operations`` tool names the skills recommend
     MUST exist in the real MCP tool registry.
 
     ``evaluate_guardrails`` blocks on an EXACT string match against the

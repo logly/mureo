@@ -112,9 +112,8 @@ _MUTATING_BUILTIN_SUFFIXES: frozenset[str] = frozenset(
         "_activate",
         "_revoke",
         "_append",
-        # v0.9.24 round-2 review: real Meta Ads tools that the
-        # initial suffix list missed (caught by the cross-check
-        # against the registry; both are platform-state mutators).
+        # Real Meta Ads tools that the generic suffixes above miss;
+        # both are platform-state mutators.
         "_duplicate",  # meta_ads_lead_forms_duplicate
         "_end",  # meta_ads_split_tests_end
         # Specific compound suffixes that appear in real tool names
@@ -138,8 +137,7 @@ _MUTATING_BUILTIN_SUFFIXES: frozenset[str] = frozenset(
 # Explicit individual mutating tool names that do NOT match any of the
 # suffixes above. Kept in a separate set so a future maintainer who
 # adds an explicit name does not accidentally turn it into a suffix
-# match against unrelated tools (the v1 design conflated these into
-# the same frozenset, which the round-2 review flagged as confusing).
+# match against unrelated tools.
 _MUTATING_BUILTIN_EXACT_NAMES: frozenset[str] = frozenset(
     {
         "rollback_apply",

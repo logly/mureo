@@ -1,11 +1,11 @@
 """Tests for ``mureo.core.providers.audience``.
 
-RED phase tests for Issue #89 Phase 1 subtask P1-05.
+Tests for Issue #89 (Phase 1).
 
 Pins the structural contract for ``AudienceProvider`` — the
 runtime-checkable Protocol audience-supporting adapters must satisfy.
 
-Per the HANDOFF Open Question resolution, the canonical delete signal
+The canonical delete signal
 is ``set_audience_status(audience_id, AudienceStatus.REMOVED)`` rather
 than a separate ``delete_audience`` method. This keeps the Capability
 enum locked and matches ``CampaignProvider.set_ad_status`` /
@@ -23,9 +23,6 @@ from typing import Protocol
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module does not exist yet. The implementer (GREEN phase) will create
-# ``mureo/core/providers/audience.py``.
 from mureo.core.providers.audience import AudienceProvider
 from mureo.core.providers.base import BaseProvider
 
@@ -89,8 +86,8 @@ def test_required_methods_present(method_name: str) -> None:
     """``AudienceProvider`` declares the four documented method names.
 
     Note: ``set_audience_status`` is preferred over ``delete_audience``
-    per the HANDOFF Open Question resolution (matches the
-    delete-via-status convention used elsewhere in the provider ABI).
+    (matches the delete-via-status convention used elsewhere in the
+    provider ABI).
     """
     assert hasattr(
         AudienceProvider, method_name

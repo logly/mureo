@@ -1,13 +1,10 @@
-"""Unit tests for ``mureo.core.skills.models.SkillEntry`` (RED phase, P1-08).
+"""Unit tests for ``mureo.core.skills.models.SkillEntry`` (Issue #89).
 
 These tests pin the invariants of the :class:`SkillEntry` frozen
 dataclass — types, regex on ``name``, ``advisory_mode`` ⊆ ``required``,
 absolute ``source_path``, immutability, and hashability.
 
 Marks: every test is ``@pytest.mark.unit``.
-
-NOTE: these imports are expected to FAIL during the RED phase — the
-module ``mureo.core.skills.models`` does not exist yet.
 """
 
 from __future__ import annotations
@@ -19,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from mureo.core.providers.capabilities import Capability
-from mureo.core.skills.models import SkillEntry  # noqa: E402 — RED-phase import
+from mureo.core.skills.models import SkillEntry
 
 # OS-absolute path builder: ``/tmp/...`` is absolute on POSIX but NOT on
 # Windows (no drive). ``Path.cwd().anchor`` is ``/`` on POSIX and the

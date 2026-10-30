@@ -1,4 +1,4 @@
-"""Amazon Ads credential loading (TDD: RED → GREEN → IMPROVE).
+"""Amazon Ads credential loading.
 
 #113 introduced the ``amazon_ads`` section in
 ~/.mureo/credentials.json, mirroring the Google/Meta loaders in

@@ -1,11 +1,10 @@
 """Host-aware unit tests for ``mureo.web.setup_actions``.
 
-Pins the ``host: str = "claude-code"`` parameter added per planner
-HANDOFF ``feat-web-config-ui-phase1-desktop-host.md`` to:
+Pins the ``host: str = "claude-code"`` parameter of:
 ``install_mureo_mcp``, ``install_auth_hook``, ``install_workflow_skills``,
 ``remove_mureo_mcp``, ``remove_auth_hook``, ``clear_all_setup``.
 
-Behaviour matrix asserted (RED until the param exists):
+Behaviour matrix asserted:
 
 - ``host="claude-code"`` (default) → byte-for-byte SAME behaviour as
   today (regression guards; ``install_mcp_config(scope="global")`` /
@@ -176,7 +175,7 @@ class TestInstallMureoMcpHost:
     def test_desktop_host_non_darwin_falls_back_no_raise(self, tmp_path: Path) -> None:
         """Non-macOS + Desktop → host_paths fallback to
         ``<home>/.claude/settings.json``; no unsupported-platform error,
-        mureo block present (acceptance criteria L23 / L118)."""
+        mureo block present."""
         from mureo.web import setup_actions
 
         with patch.object(platform, "system", return_value="Linux"):
@@ -239,8 +238,7 @@ class TestInstallAuthHookHost:
         self, tmp_path: Path
     ) -> None:
         """Desktop has no ``PreToolUse`` surface, so the install is a no-op and
-        the dashboard must show "not applicable", not "installed" (planner
-        HANDOFF Q2 / risk L146).
+        the dashboard must show "not applicable", not "installed".
 
         Asserted against the *status*, which since #423 is detected rather than
         recalled from a flag — so this now holds because there is no hook on
@@ -281,7 +279,7 @@ class TestInstallWorkflowSkillsHost:
 
     def test_desktop_host_same_dir_and_count_as_code(self, tmp_path: Path) -> None:
         """Skills behaviour is identical for both hosts (shared
-        ``~/.claude/skills`` — planner HANDOFF Q3)."""
+        ``~/.claude/skills``)."""
         from mureo.web import setup_actions
 
         dest = tmp_path / ".claude" / "skills"
@@ -513,7 +511,7 @@ class TestClearAllSetupHost:
         mock_guard.assert_not_called()
 
     def test_desktop_host_never_touches_credentials_json(self, tmp_path: Path) -> None:
-        """CTO decision #3 holds on the Desktop bulk path too."""
+        """The bulk path never touches credentials.json for Desktop either."""
         from mureo.web import setup_actions
 
         creds = tmp_path / ".mureo" / "credentials.json"

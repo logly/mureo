@@ -1,14 +1,14 @@
-"""RED-phase tests for ``mureo.adapters.meta_ads.MetaAdsAdapter``.
+"""Tests for ``mureo.adapters.meta_ads.MetaAdsAdapter``.
 
 Pins the Protocol-conformant wrapping behaviour of the Meta Ads adapter
-(Issue #89, P1-10). Every external Meta Marketing API call is mocked via
+(Issue #89). Every external Meta Marketing API call is mocked via
 ``Mock(spec=MetaAdsApiClient)`` + ``AsyncMock`` — no live httpx request
 is issued; no real Meta Graph API call is made.
 
-CTO decisions encoded in these tests
+Design points encoded in these tests
 ------------------------------------
 1. ``MetaAdsApiClient.insights_time_range`` is a new public method on
-   the existing client (implementer adds it during GREEN). Tests
+   the existing client. Tests
    pre-attach an ``AsyncMock`` for that name on the spec'd Mock so the
    adapter can call it without raising ``AttributeError``.
 2. ``objective`` for ``create_campaign`` is hard-coded to
@@ -35,9 +35,6 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module ``mureo.adapters.meta_ads`` does not exist yet. That is correct.
-# The implementer (GREEN phase) will create it.
 from mureo.adapters.meta_ads import MetaAdsAdapter
 from mureo.adapters.meta_ads.errors import (
     MetaAdsAdapterError,
@@ -115,7 +112,7 @@ def _make_mock_client() -> Mock:
         "create_custom_audience",
         "delete_custom_audience",
         "create_lookalike_audience",
-        # NEW public method added in P1-10 GREEN (CTO decision #1).
+        # Public method ``daily_report`` reads day-grain rows through.
         "insights_time_range",
     ):
         setattr(client, name, AsyncMock())
@@ -249,7 +246,7 @@ def test_class_attributes_match_baseprovider_contract() -> None:
 
 @pytest.mark.unit
 def test_capabilities_match_exact_expected_set() -> None:
-    """Capabilities are EXACTLY the 7 CTO-approved members — no extras,
+    """Capabilities are EXACTLY the 7 expected members — no extras,
     no missing."""
     assert MetaAdsAdapter.capabilities == _EXPECTED_CAPABILITIES
 
@@ -328,7 +325,8 @@ def test_adapter_instance_is_campaign_provider(adapter: MetaAdsAdapter) -> None:
 @pytest.mark.unit
 def test_adapter_instance_is_audience_provider(adapter: MetaAdsAdapter) -> None:
     """``AudienceProvider`` IS implemented (Meta has Custom + Lookalike
-    audiences). This is the headline difference vs. P1-09."""
+    audiences). This is the headline difference from the Google Ads
+    adapter."""
     assert isinstance(adapter, AudienceProvider)
 
 
@@ -401,7 +399,7 @@ def test_registry_round_trip_includes_meta_ads() -> None:
     got = get_provider("meta_ads")
     assert got is entry
 
-    # The big differentiator from P1-09: ``READ_AUDIENCES`` is declared.
+    # The big differentiator from Google Ads: ``READ_AUDIENCES`` is declared.
     matches = list_providers_by_capability(Capability.READ_AUDIENCES)
     assert any(e.name == "meta_ads" for e in matches)
 
@@ -503,7 +501,7 @@ def test_get_campaign_unknown_status_raises_value_error(
 def test_create_campaign_basic_hardcodes_objective(
     adapter: MetaAdsAdapter, mock_client: Mock
 ) -> None:
-    """CTO decision #2: ``objective`` is hardcoded to ``"OUTCOME_TRAFFIC"``;
+    """``objective`` is hardcoded to ``"OUTCOME_TRAFFIC"``;
     initial status is ``"PAUSED"``; the budget micros → cents conversion
     happens at the boundary (``daily_budget = micros // 10_000``)."""
     mock_client.create_campaign.return_value = {"id": "c777"}
@@ -714,7 +712,7 @@ def test_get_ad_returns_match(adapter: MetaAdsAdapter, mock_client: Mock) -> Non
 def test_create_ad_uses_first_headline_as_creative_id(
     adapter: MetaAdsAdapter, mock_client: Mock
 ) -> None:
-    """CTO decision #3: Phase 1 interprets ``request.headlines[0]`` as
+    """Phase 1 interprets ``request.headlines[0]`` as
     the ``creative_id`` and ``request.ad_group_id`` as the ``ad_set_id``.
     """
     mock_client.create_ad.return_value = {"id": "ad9"}
@@ -926,7 +924,7 @@ def test_daily_report_rejects_non_digit_campaign_id(
 ) -> None:
     """Phase 1 safety: ``campaign_id`` must be digits-only — an
     attacker-controlled value MUST be rejected before the request is
-    issued. Mirror of P1-09's GAQL injection guard."""
+    issued. Mirror of the GAQL validator's injection guard."""
     with pytest.raises((ValueError, MetaAdsAdapterError)):
         adapter.daily_report("' OR 1=1 --", date(2026, 4, 1), date(2026, 4, 2))
     assert mock_client.insights_time_range.await_count == 0
@@ -1045,7 +1043,7 @@ def test_create_audience_custom_when_no_seed(
 def test_create_audience_lookalike_when_seed_set(
     adapter: MetaAdsAdapter, mock_client: Mock
 ) -> None:
-    """CTO decision #4: ``seed_audience_id`` present → lookalike branch
+    """``seed_audience_id`` present → lookalike branch
     with hardcoded defaults ``country="JP"`` and ``ratio=0.01``."""
     mock_client.create_lookalike_audience.return_value = {"id": "aud_la"}
     mock_client.get_custom_audience.return_value = _audience_row(

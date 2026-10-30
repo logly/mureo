@@ -1,7 +1,6 @@
 """Unit tests for the NEW ``mureo.web.desktop_mcp`` thin Desktop-MCP writer.
 
-Pins the module created per planner HANDOFF
-``feat-web-config-ui-phase1-desktop-host.md`` (Q1/Q6 decisions):
+Pins the module's contract:
 
 - ``install_desktop_mcp_block(config_path, command, args, *, backup=True) -> bool``
   writes the MCP launcher shape ``{"command": <exe>, "args": [...]}``
@@ -17,7 +16,7 @@ Pins the module created per planner HANDOFF
 - ``remove_desktop_mcp_block(config_path) -> bool`` pops only the ``mureo``
   key from ``mcpServers``, preserving every other entry; idempotent.
 
-Hard guarantees asserted here (RED until the module exists):
+Hard guarantees asserted here:
 - atomic write (no ``*.tmp.*`` debris left behind)
 - preserves pre-existing ``mcpServers`` entries + unrelated top-level keys
 - refuses corrupt JSON / non-dict ``mcpServers`` (no overwrite)
@@ -88,8 +87,8 @@ class TestDesktopMcpModuleSurface:
         from mureo.web import desktop_mcp
 
         cfg = _desktop_config_path(tmp_path)
-        # ``args`` positional + keyword-only ``backup`` per planner
-        # HANDOFF L31 and the corrected MCP launcher shape.
+        # ``args`` positional + keyword-only ``backup``, matching the
+        # corrected MCP launcher shape.
         result = desktop_mcp.install_desktop_mcp_block(
             cfg, "python", ["-m", "mureo.mcp"], backup=True
         )
@@ -224,7 +223,7 @@ class TestInstallDesktopMcpBlock:
         self, tmp_path: Path
     ) -> None:
         """``mcpServers`` present but not an object → corrupt; refuse and
-        leave the file untouched (planner HANDOFF L104-L106)."""
+        leave the file untouched."""
         from mureo.web import desktop_mcp
 
         cfg = _desktop_config_path(tmp_path)
@@ -279,7 +278,7 @@ class TestInstallDesktopMcpBlock:
         }
 
     def test_never_touches_credentials_json(self, tmp_path: Path) -> None:
-        """CTO decision #3: the Desktop MCP writer NEVER reads/writes/
+        """The Desktop MCP writer NEVER reads/writes/
         deletes ``~/.mureo/credentials.json``."""
         from mureo.web import desktop_mcp
 
@@ -449,7 +448,7 @@ class TestPathResolutionViaHostPaths:
     def test_non_macos_falls_back_to_claude_settings(self, tmp_path: Path) -> None:
         """Off macOS, the path falls back to ``<home>/.claude/settings.json``
         (host_paths fallback) — no unsupported-platform error in the web
-        flow (acceptance criteria L23 / L118)."""
+        flow."""
         from mureo.web import desktop_mcp
 
         with patch.object(platform, "system", return_value="Linux"):
@@ -461,11 +460,10 @@ class TestPathResolutionViaHostPaths:
 # ---------------------------------------------------------------------------
 # GENERIC API — install_desktop_server_block / remove_desktop_server_block
 #
-# Planner HANDOFF feat-web-config-ui-phase1-provider-host.md Q3:
-# generalize the proven surgical writer/remover to an arbitrary
+# Generalize the proven surgical writer/remover to an arbitrary
 # ``(server_id, server_config)``. The existing mureo functions become
 # thin ``server_id="mureo"`` wrappers so the proven path stays
-# byte-for-byte identical. RED until the generic helpers exist.
+# byte-for-byte identical.
 # ---------------------------------------------------------------------------
 
 
@@ -777,8 +775,7 @@ class TestMureoWrappersRouteThroughGeneric:
 # ---------------------------------------------------------------------------
 # Layer guard: mcp-remote translation lives in setup_actions, NOT here
 #
-# planner HANDOFF feat-web-config-ui-phase1-mcp-remote.md (Decision L67-L73)
-# + dispatch B: ``install_desktop_server_block`` MUST stay generic — it
+# ``install_desktop_server_block`` MUST stay generic — it
 # writes whatever block it is handed VERBATIM. The hosted_http →
 # ``{"command":"npx","args":["-y","mcp-remote",<url>]}`` translation is
 # provider-policy and happens BEFORE this writer is called. These tests

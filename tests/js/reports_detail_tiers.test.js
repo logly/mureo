@@ -2,11 +2,11 @@
 //
 // Run with:  node --test tests/js/*.test.js
 //
-// Every assertion here exists because a capture review caught something the
-// rest of the suite could not. The DOM was right in all four cases — the
-// nodes were built, with the right classes, in the right order — and the
-// screen was still wrong. So these drive the real dashboard against the real
-// app.html AND the real app.css, and ask what would be ON SCREEN:
+// Every assertion here pins a screen defect the rest of the suite could not
+// see. The DOM was right in all four cases — the nodes were built, with the
+// right classes, in the right order — and the screen was still wrong. So
+// these drive the real dashboard against the real app.html AND the real
+// app.css, and ask what would be ON SCREEN:
 //
 //   • tier (3) never appeared, because `data-reports-platforms` was already
 //     the INDEX rail's hook. querySelector returned the rail, the tier stayed
@@ -541,7 +541,7 @@ test.describe("the action row wins its own layout", function () {
   // — declared `align-items: center` and `justify-content: space-between`.
   // The generic rule is (0,1,1); the specific one was (0,1,0). The generic
   // rule WON, and `align-items: center` on a column centres every child
-  // horizontally. That is the "text is centred" the owner reported twice.
+  // horizontally. That is the "text is centred" symptom.
   //
   // Every check written before this one missed it, for the same reason:
   //
@@ -645,8 +645,7 @@ test.describe("the action row wins its own layout", function () {
     // Same trap, one element away: .reports-triage-row is also an <li> in a
     // .dashboard-section, was also flex-direction:column, and was also being
     // centred by the generic rule. Found by running the resolver above over
-    // every list row on these screens rather than by waiting for a third
-    // capture review.
+    // every list row on these screens.
     const page = await openIndexWithAlert();
     const row = page.root.querySelector(".reports-triage-row");
     assert.ok(row, "no alert row rendered");

@@ -10,34 +10,23 @@ start failing data.
 
 from __future__ import annotations
 
-import importlib.util
-import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
+from tests._script_loader import clean_env, load_script, run_script
+
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-_SCRIPT = REPO_ROOT / "scripts" / "check_english_only.py"
 
 # "Japanese" written as escapes so this file carries no Japanese of its own.
 JA = "\u65e5\u672c\u8a9e"
 KANA = "\u3072\u3089\u304c\u306a \u30ab\u30bf\u30ab\u30ca \uff76\uff80\uff76\uff85"
 
 
-def _load_checker() -> object:
-    spec = importlib.util.spec_from_file_location("_check_english_only", _SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["_check_english_only"] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-CHECKER = _load_checker()
+CHECKER = load_script("check_english_only")
 scan_python = CHECKER.scan_python  # type: ignore[attr-defined]
 scan_markdown = CHECKER.scan_markdown  # type: ignore[attr-defined]
 scan_file = CHECKER.scan_file  # type: ignore[attr-defined]
@@ -311,28 +300,13 @@ class TestFileSet:
         assert not is_scanned(path)
 
 
-def _run(
-    args: list[str], cwd: Path | None = None, **env: str
-) -> subprocess.CompletedProcess[str]:
-    """Run the checker and decode its output as UTF-8 on any locale."""
-    return subprocess.run(
-        [sys.executable, str(_SCRIPT), *args],
-        cwd=cwd,
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-        env={**os.environ, "PYTHONIOENCODING": "utf-8", **env},
-        check=False,
-    )
-
-
 class TestCommandLine:
     def test_repository_is_clean(self) -> None:
-        result = _run([], cwd=REPO_ROOT)
+        result = run_script("check_english_only", [], cwd=REPO_ROOT)
         assert result.returncode == 0, result.stdout + result.stderr
 
     def test_list_prints_the_scanned_set(self) -> None:
-        result = _run(["--list"], cwd=REPO_ROOT)
+        result = run_script("check_english_only", ["--list"], cwd=REPO_ROOT)
         assert result.returncode == 0, result.stderr
         listed = result.stdout.splitlines()
         assert "CHANGELOG.md" in listed
@@ -353,12 +327,12 @@ class TestCommandLine:
     def test_hits_are_reported_with_path_and_line(
         self, tmp_path: Path, env: dict[str, str]
     ) -> None:
-        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=clean_env())
         (tmp_path / "docs").mkdir()
         (tmp_path / "docs" / "a.md").write_text(f"ok\n{JA}\n", encoding="utf-8")
         (tmp_path / "docs" / "a.ja.md").write_text(f"{JA}\n", encoding="utf-8")
-        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
-        result = _run(["--root", str(tmp_path)], **env)
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, env=clean_env())
+        result = run_script("check_english_only", ["--root", str(tmp_path)], **env)
         assert result.returncode == 1, result.stderr
         assert result.stdout.splitlines() == [f"docs/a.md:2: {JA}"]
 

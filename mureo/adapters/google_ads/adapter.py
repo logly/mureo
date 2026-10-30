@@ -4,8 +4,8 @@ The adapter implements three runtime-checkable Protocols
 (:class:`CampaignProvider`, :class:`KeywordProvider`,
 :class:`ExtensionProvider`) by delegating each Phase 1 method to the
 existing :class:`GoogleAdsApiClient`. The Audience Protocol is
-deliberately NOT implemented in Phase 1 (CTO decision: ``mureo/google_ads``
-has no audience mixin).
+deliberately NOT implemented in Phase 1 (``mureo/google_ads`` has no
+audience mixin).
 
 Sync ↔ async bridge
 -------------------
@@ -207,7 +207,7 @@ class GoogleAdsAdapter:
 
     @property
     def _account_id(self) -> str:
-        # CTO-approved single private-attribute read; tracked for a
+        # The one deliberate private-attribute read; tracked for a
         # follow-up rename of ``GoogleAdsApiClient._customer_id`` → public.
         return self._client._customer_id  # noqa: SLF001
 
@@ -269,8 +269,8 @@ class GoogleAdsAdapter:
         * ``request.start_date`` and ``request.end_date`` are NOT wired
           through to the underlying client yet. Supplying either field
           raises :class:`UnsupportedOperation` instead of being silently
-          dropped (CTO directive: silent failures are worse than an
-          explicit refusal).
+          dropped (a silent failure is worse than an explicit
+          refusal).
         * The budget micros value is forwarded to
           ``GoogleAdsApiClient.create_budget`` via the integer
           ``amount_micros`` key so float precision is preserved

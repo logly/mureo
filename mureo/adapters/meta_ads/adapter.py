@@ -90,12 +90,12 @@ logger = logging.getLogger(__name__)
 
 # Phase 1: Meta campaign creation requires an objective; we hardcode
 # the most general traffic objective. Future iteration may surface this
-# on ``CreateCampaignRequest`` (CTO Open Question #2; deferred).
+# on ``CreateCampaignRequest`` (deferred).
 _DEFAULT_OBJECTIVE: str = "OUTCOME_TRAFFIC"
 
 # Phase 1 lookalike defaults — JP-only, 1% audience similarity ratio.
 # A future iteration may surface country / ratio on
-# ``CreateAudienceRequest`` (CTO Open Question #4; deferred).
+# ``CreateAudienceRequest`` (deferred).
 _LOOKALIKE_COUNTRY: str = "JP"
 _LOOKALIKE_RATIO: float = 0.01
 
@@ -119,7 +119,7 @@ def _validate_campaign_id(value: str) -> str:
     """Return ``value`` if it is 1-20 ASCII digits, else raise ``ValueError``.
 
     Meta node IDs are integers under the hood; the digits-only check
-    blocks query-parameter injection (mirror of P1-09's GAQL safety).
+    blocks query-parameter injection (mirror of the GAQL validator's safety).
     """
     if not isinstance(value, str) or not _CAMPAIGN_ID_RE.fullmatch(value):
         raise ValueError(
@@ -217,7 +217,7 @@ class MetaAdsAdapter:
 
     @property
     def _account_id(self) -> str:
-        # CTO-approved single private-attribute read; tracked for a
+        # The one deliberate private-attribute read; tracked for a
         # follow-up rename of ``MetaAdsApiClient._ad_account_id`` →
         # public.
         return self._client._ad_account_id  # noqa: SLF001
@@ -285,8 +285,8 @@ class MetaAdsAdapter:
         * ``request.bidding_strategy`` would require an AdSet
           ``bid_strategy`` mapping which is out of scope; supplying it
           raises :class:`UnsupportedOperation`.
-        * ``objective`` is hardcoded to ``"OUTCOME_TRAFFIC"`` (CTO
-          decision #2; future iteration may surface it on the request).
+        * ``objective`` is hardcoded to ``"OUTCOME_TRAFFIC"`` (a future
+          iteration may surface it on the request).
         """
         self._reject_unsupported_create_fields(request)
 
@@ -387,7 +387,7 @@ class MetaAdsAdapter:
     def create_ad(self, campaign_id: str, request: CreateAdRequest) -> Ad:
         """Create an ad under ``request.ad_group_id`` (interpreted as ad_set_id).
 
-        Phase 1 overload (CTO decision #3): ``request.headlines[0]`` is
+        Phase 1 overload: ``request.headlines[0]`` is
         interpreted as the pre-built ``creative_id``. Any other tuple
         length raises :class:`UnsupportedOperation`. ``request.ad_group_id``
         is interpreted as the parent ``ad_set_id``.
@@ -475,7 +475,7 @@ class MetaAdsAdapter:
         """Return day-grain rows via ``client.insights_time_range``.
 
         ``campaign_id`` is digit-validated before being interpolated
-        into the Meta insights URL path — mirrors P1-09's GAQL safety
+        into the Meta insights URL path — mirrors the GAQL validator's safety
         check. ``start_date`` / ``end_date`` are ISO-formatted via
         ``date.isoformat()`` (locked by Python to ``YYYY-MM-DD``).
         """
@@ -511,7 +511,7 @@ class MetaAdsAdapter:
         ``request.seed_audience_id`` is the branching signal:
         - ``None`` → Custom audience (``client.create_custom_audience``).
         - present → Lookalike with Phase 1 defaults ``country="JP"``,
-          ``ratio=0.01`` (CTO decision #4).
+          ``ratio=0.01``.
         """
         if request.seed_audience_id is None:
             created = self._run(

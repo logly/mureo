@@ -1,4 +1,4 @@
-"""Frozen data model for a parsed mureo skill (Issue #89 P1-08).
+"""Frozen data model for a parsed mureo skill (Issue #89).
 
 Public surface
 --------------

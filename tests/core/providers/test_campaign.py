@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.providers.campaign``.
 
-RED phase tests for Issue #89 Phase 1 subtask P1-03.
+Tests for Issue #89 (Phase 1).
 
 Pins the structural contract for ``CampaignProvider`` — the
 runtime-checkable Protocol every adapter that supports campaign /
@@ -25,9 +25,6 @@ from typing import Protocol
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module does not exist yet. The implementer (GREEN phase) will create
-# ``mureo/core/providers/campaign.py``.
 from mureo.core.providers.base import BaseProvider
 from mureo.core.providers.campaign import CampaignProvider
 from mureo.core.providers.capabilities import Capability
@@ -43,7 +40,7 @@ from mureo.core.providers.models import (
     UpdateCampaignRequest,
 )
 
-# Names every CampaignProvider must declare (per HANDOFF AC P1-03).
+# Names every CampaignProvider must declare.
 _REQUIRED_METHODS: tuple[str, ...] = (
     "list_campaigns",
     "get_campaign",
@@ -162,8 +159,8 @@ def test_isinstance_passes_for_compliant_fake() -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize("method_name", _REQUIRED_METHODS)
 def test_required_methods_present(method_name: str) -> None:
-    """``CampaignProvider`` declares every method named in the HANDOFF
-    AC for P1-03. The attribute must be present and callable
+    """``CampaignProvider`` declares every required method. The
+    attribute must be present and callable
     (Protocol methods are stored as function objects).
     """
     assert hasattr(

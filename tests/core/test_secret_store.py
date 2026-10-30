@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.secret_store`` — structural Protocol contract.
 
-RED-phase tests for the new ``SecretStore`` Protocol that abstracts
+Tests for the ``SecretStore`` Protocol that abstracts
 credential persistence. Default callers continue to read from
 ``~/.mureo/credentials.json`` via the existing helpers in
 ``mureo.auth``; this Protocol exists so alternate backends (in-memory

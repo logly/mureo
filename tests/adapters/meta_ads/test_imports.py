@@ -1,6 +1,6 @@
-"""RED-phase tests: AST-scan the adapter modules for forbidden imports.
+"""AST-scan the adapter modules for forbidden imports.
 
-Encapsulation rule (P1-10 acceptance criterion, parity with P1-09):
+Encapsulation rule (parity with the Google Ads adapter):
 
 - ``mureo/adapters/meta_ads/adapter.py`` may import from:
     - stdlib (any)

@@ -2,10 +2,9 @@
 
 Pins the ``host: str = "claude-code"`` + ``home: Path | None = None``
 parameters added to ``mureo.web.setup_actions.install_provider`` /
-``remove_provider`` per planner HANDOFF
-``feat-web-config-ui-phase1-provider-host.md`` (Q1-Q5).
+``remove_provider``.
 
-Behaviour matrix asserted (RED until the params + Desktop branch exist):
+Behaviour matrix asserted:
 
 - ``host="claude-code"`` (default, or explicit) → byte-for-byte the
   CURRENT behaviour: ``run_install`` then

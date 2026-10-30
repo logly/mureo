@@ -1,7 +1,7 @@
 """Entry-points-based provider discovery registry.
 
 This module is the discovery + lookup layer for the mureo provider
-abstraction (Issue #89, P1-07). It turns Python's
+abstraction (Issue #89). It turns Python's
 :func:`importlib.metadata.entry_points` plus an in-process registration
 API into a single source of truth for "which providers exist, what they
 can do, and where they came from."
@@ -21,7 +21,8 @@ Public surface
 - :data:`PROVIDERS_ENTRY_POINT_GROUP` — the ``"mureo.providers"`` group
   iterated by :meth:`Registry.discover`.
 - :data:`SKILLS_ENTRY_POINT_GROUP` — the ``"mureo.skills"`` group name,
-  reserved for P1-08; this module does NOT iterate it.
+  reserved for :mod:`mureo.core.skills.discovery`; this module does NOT
+  iterate it.
 
 Security posture
 ----------------

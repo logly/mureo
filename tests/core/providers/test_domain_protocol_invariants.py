@@ -1,6 +1,6 @@
 """Cross-Protocol invariant tests for the four Phase 1 domain Protocols.
 
-RED phase tests for Issue #89 Phase 1 subtasks P1-03..P1-06.
+Tests for Issue #89 (Phase 1).
 
 These tests parametrize over the four domain Protocols
 (``CampaignProvider``, ``KeywordProvider``, ``AudienceProvider``,
@@ -20,9 +20,6 @@ import typing
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# leaf modules do not exist yet. The implementer (GREEN phase) will
-# create them.
 from mureo.core.providers.audience import AudienceProvider
 from mureo.core.providers.base import BaseProvider
 from mureo.core.providers.campaign import CampaignProvider
@@ -44,7 +41,7 @@ _PROTOCOL_NAMES: tuple[str, ...] = (
 )
 
 # Internal mureo.* imports each domain Protocol leaf module is allowed
-# to make (per HANDOFF AC). The own module is always implicitly allowed.
+# to make. The own module is always implicitly allowed.
 _ALLOWED_INTERNAL_IMPORTS: frozenset[str] = frozenset(
     {
         "mureo.core.providers.base",

@@ -1,4 +1,9 @@
-"""Tests for the Google Ads OAuth flow and setup wizard (TDD: RED -> GREEN -> IMPROVE)."""
+"""Tests for the Google Ads OAuth flow and setup wizard.
+
+The callback server and its state check, account listing, the setup flow,
+credential saving, MCP config and credential-guard installation, and
+account selection.
+"""
 
 from __future__ import annotations
 

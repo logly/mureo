@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.knowledge_store`` — structural Protocol contract.
 
-RED-phase tests for the new ``KnowledgeStore`` Protocol that abstracts
+Tests for the ``KnowledgeStore`` Protocol that abstracts
 the two-tier ``/learn`` knowledge base — one tier shared across the
 operator's workspaces (today: ``~/.claude/skills/_mureo-pro-diagnosis/``)
 and one tier scoped to the current workspace (today: absent in the

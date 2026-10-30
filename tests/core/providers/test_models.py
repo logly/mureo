@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.providers.models``.
 
-RED phase tests for Issue #89 Phase 1 subtasks P1-03..P1-06.
+Tests for Issue #89 (Phase 1).
 
 These tests pin the stable ABI surface for the shared domain models
 consumed by the four domain Protocols (``CampaignProvider``,
@@ -22,9 +22,6 @@ from enum import Enum
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module does not exist yet. That is correct. The implementer (GREEN
-# phase) will create ``mureo/core/providers/models.py``.
 from mureo.core.providers.models import (  # noqa: E402
     Ad,
     AdStatus,
@@ -277,7 +274,7 @@ def test_dates_are_date_typed_not_int_epoch(
             f"datetime.date or datetime.datetime; got {inner!r}"
         )
         # Explicitly forbid int / float to make the failure mode obvious
-        # if a future implementer regresses to epoch seconds.
+        # if a change to the model regresses to epoch seconds.
         assert inner is not int, (
             f"{model_cls.__name__}.{field_name} must NOT be int "
             f"(no epoch seconds at the Protocol boundary)"
@@ -293,9 +290,9 @@ def test_dates_are_date_typed_not_int_epoch(
 # ---------------------------------------------------------------------------
 
 
-# Curated required/optional split from the HANDOFF "Models design decisions"
-# table. Additional optional fields are allowed; required fields must have
-# no default; named optional fields must have a default.
+# Curated required/optional split of each model's fields. Additional
+# optional fields are allowed; required fields must have no default; named
+# optional fields must have a default.
 _REQUIRED_OPTIONAL_TABLE: tuple[tuple[type, frozenset[str], frozenset[str]], ...] = (
     (
         CreateCampaignRequest,
@@ -396,7 +393,7 @@ def test_models_module_has_no_internal_mureo_imports_other_than_capabilities() -
     """``models.py`` is a foundation-layer module sitting alongside
     ``capabilities.py`` and ``base.py``. The only allowed internal
     ``mureo.*`` import is ``mureo.core.providers.capabilities`` (and only
-    if needed — the implementer may not need it).
+    if needed).
 
     Uses ``ast.parse`` on the module's source to scan every ``Import``
     and ``ImportFrom`` node. ``TYPE_CHECKING``-guarded imports are

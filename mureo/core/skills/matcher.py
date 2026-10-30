@@ -1,4 +1,4 @@
-"""Skill × provider capability matching (Issue #89 P1-08).
+"""Skill × provider capability matching (Issue #89).
 
 Two pure functions form the public surface:
 

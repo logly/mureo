@@ -1354,7 +1354,7 @@ function everyParam() {
 
 test.describe("reportsCardFreshness — a mixed card speaks for its stale rows", function () {
   test.it("a stale coverage row beside a fresh write-time row states the covered day", function () {
-    // The reviewer's repro.
+    // Minimal reproduction.
     const summary = {
       platforms: [
         platform("google_ads", { spend: 1 }, {

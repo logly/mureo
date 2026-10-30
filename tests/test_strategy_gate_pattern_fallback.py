@@ -348,7 +348,7 @@ class TestScanBounds:
         _scan({"budgets": [{"leaf_a": 1}, {"leaf_b": 2}]}, _matches)
         assert seen.index("leaf_a") < seen.index("leaf_b")
 
-    # -- the reviewer's guardrail-bypass repro ------------------------------
+    # -- guardrail-bypass repro ---------------------------------------------
 
     def test_a_big_collection_under_a_matching_key_cannot_hide_a_proposal(
         self,

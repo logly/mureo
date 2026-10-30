@@ -2,8 +2,7 @@
 
 Pins the atomic JSON merge / remove / idempotency behavior for
 ``~/.claude/settings.json``. The mureo-native ``mcpServers.mureo`` entry
-must be preserved across operations (coexistence safety). See planner
-HANDOFF ``feat-providers-cli-phase1.md``.
+must be preserved across operations (coexistence safety).
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Regression tests for BRAND_KIT logo sandbox containment (H6).
+"""Regression tests for BRAND_KIT logo sandbox containment.
 
 A brand kit may be client-supplied (e.g. in an agency workspace), so the
 ``logo`` field must stay strictly inside the BRAND_KIT directory. An absolute

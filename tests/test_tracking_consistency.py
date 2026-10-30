@@ -425,7 +425,7 @@ class TestSharedValuesAreNotBorrowedSchemes:
         return records
 
     def test_two_campaign_account_with_one_off_ad_is_not_flagged(self) -> None:
-        """The reviewer's repro: co-marketing one-off inside campaign X."""
+        """Repro: co-marketing one-off inside campaign X."""
         records = [
             *self._account(2),
             _ad(

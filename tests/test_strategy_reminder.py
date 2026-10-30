@@ -109,9 +109,9 @@ class TestIsMutatingBuiltinTool:
 
 
 # ---------------------------------------------------------------------------
-# Full-catalogue truth-table — round-2 review insisted on this
-# (a 22-example parametrize leaves ~150 tools un-pinned and a new
-# mutating tool added without classifier update slips through).
+# Full-catalogue truth-table: a 22-example parametrize would leave ~150
+# tools un-pinned, and a new mutating tool added without a classifier
+# update would slip through.
 # ---------------------------------------------------------------------------
 
 
@@ -331,9 +331,8 @@ class TestBuildReminderText:
         assert "title_19" in text
         # Truncated entries must NOT appear, AND the explicit "+N more"
         # indicator must be present so the cap is observable to the
-        # agent. Both halves pinned separately (round-2 review caught
-        # that the v1 ``or`` masked regressions where one half silently
-        # dropped).
+        # agent. Both halves pinned separately: a single ``or`` would
+        # still pass when one half silently dropped.
         assert "title_20" not in text
         assert "title_99" not in text
         assert "+80 more" in text

@@ -1,4 +1,4 @@
-"""Tests for Meta Ads Long-Lived Token auto-refresh (TDD: RED phase)"""
+"""Tests for Meta Ads Long-Lived Token auto-refresh."""
 
 from __future__ import annotations
 

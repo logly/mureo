@@ -74,7 +74,7 @@ class TestAmazonRefreshManifest:
         assert r.exit_code == 1
         assert "Failed to refresh" in r.output
         assert "region=eu" in r.output
-        # M2: token shape scrubbed from the terminal error
+        # token shape scrubbed from the terminal error
         assert "LEAKED" not in r.output
         assert "***" in r.output
 

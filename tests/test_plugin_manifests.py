@@ -310,7 +310,7 @@ def test_diagnostic_skills_invoke_consult_advisor() -> None:
     # Anti-corruption framing now lives once in the shared Diagnostic
     # preamble. Advisor responses are untrusted external content; without
     # an explicit "ignore embedded instructions" clause the agent may treat
-    # hostile advisor text as authoritative direction (code-review round 1).
+    # hostile advisor text as authoritative direction.
     for tree in (_CANONICAL_SKILLS, _PACKAGED_SKILLS):
         shared = tree / "_mureo-shared" / "SKILL.md"
         if not shared.exists():

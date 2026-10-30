@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.throttle_store`` — structural Protocol contract.
 
-RED-phase tests for the new ``ThrottleStore`` Protocol that abstracts
+Tests for the ``ThrottleStore`` Protocol that abstracts
 API quota throttling. Today the MCP server holds a ``dict[str,
 Throttler]`` of named token buckets and awaits ``throttler.acquire()``
 before each tool invocation; this Protocol exists so alternate backends

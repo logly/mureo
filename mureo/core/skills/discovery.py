@@ -1,4 +1,4 @@
-"""Entry-points-based skill discovery (Issue #89 P1-08).
+"""Entry-points-based skill discovery (Issue #89).
 
 Discovers ``SKILL.md`` files from two sources:
 
@@ -12,8 +12,7 @@ Discovers ``SKILL.md`` files from two sources:
 2. **Third-party plugins**: each entry point in the
    ``mureo.skills`` group must ``load()`` to a directory (a
    :class:`Path` or ``str``). The discoverer recursively walks that
-   directory looking for ``SKILL.md`` files. This is the documented
-   "Option B" convention (see planner HANDOFF feat-skill-matcher.md):
+   directory looking for ``SKILL.md`` files. By convention,
    the entry-point value is a directory path, not a module attribute.
 
 Bounds (DoS guards)

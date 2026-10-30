@@ -3,8 +3,8 @@
 These exceptions are raised by the adapter itself when it detects an
 operation it cannot fulfil — for example, a Protocol method that has no
 counterpart on the underlying :class:`MetaAdsApiClient`. ``RuntimeError``
-raised by the underlying client passes through unchanged (Phase 1 CTO
-decision: error wrapping is deferred).
+raised by the underlying client passes through unchanged (error
+wrapping is deferred past Phase 1).
 
 Module foundation rule
 ----------------------

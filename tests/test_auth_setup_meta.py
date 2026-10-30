@@ -1,4 +1,9 @@
-"""Tests for the Meta Ads OAuth flow and setup wizard (TDD: RED -> GREEN -> IMPROVE)."""
+"""Tests for the Meta Ads OAuth flow and setup wizard.
+
+The auth URL and its state parameter, the short- and long-lived token
+exchanges, the paged ad account listing, the setup flow and credential
+saving.
+"""
 
 from __future__ import annotations
 

@@ -2,12 +2,12 @@
 
 Covers two fixes:
 
-* M5 — ``LPAnalyzer._validate_url`` now delegates to the canonical
+* ``LPAnalyzer._validate_url`` now delegates to the canonical
   ``mureo.core.url_guard`` guard, so multicast / unspecified addresses (which
   the previous in-module reimplementation let through) are rejected, for both
   literal IPs and DNS names that resolve to them.
-* M6 — ``LPAnalyzer._fetch_html`` reads the response body as a stream and stops
-  at ``_MAX_BODY_BYTES`` instead of materialising the whole body via
+* ``LPAnalyzer._fetch_html`` reads the response body as a stream and stops at
+  ``_MAX_BODY_BYTES`` instead of materialising the whole body via
   ``response.content``.
 """
 
@@ -30,7 +30,7 @@ _REAL_ASYNC_CLIENT = httpx.AsyncClient
 
 
 # ---------------------------------------------------------------------------
-# M5: multicast / unspecified addresses are now rejected
+# Multicast / unspecified addresses are now rejected
 # ---------------------------------------------------------------------------
 
 
@@ -62,7 +62,7 @@ class TestValidateUrlMulticastRegression:
 
 
 # ---------------------------------------------------------------------------
-# M6: streaming body-size cap
+# Streaming body-size cap
 # ---------------------------------------------------------------------------
 
 

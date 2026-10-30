@@ -1,4 +1,4 @@
-"""Regression tests for the LP screenshotter SSRF hardening (C3).
+"""Regression tests for the LP screenshotter SSRF hardening.
 
 ``LPScreenshotter.capture`` drives Playwright, whose ``page.goto`` auto-follows
 HTTP redirects. Previously only the *initial* URL was validated, so a public URL
@@ -84,7 +84,7 @@ class TestGuardNavigation:
     @pytest.mark.asyncio
     async def test_hostname_redirecting_to_internal_is_aborted(self) -> None:
         # A navigation to a public-looking host that resolves to a private IP —
-        # the redirect-target case C3 is about — must be aborted.
+        # the redirect-target case this hardening covers — must be aborted.
         route = _FakeRoute(_FakeRequest("http://sneaky.example.com/", navigation=True))
         blocked: dict[str, str] = {}
 

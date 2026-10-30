@@ -1,7 +1,7 @@
 """Tests for ``mureo.core.runtime_context`` — frozen dataclass aggregating
 the four core extension Protocols plus a workspace identifier.
 
-RED-phase tests pin the dataclass shape, immutability, and the
+These tests pin the dataclass shape, immutability, and the
 non-empty ``workspace_id`` validator. Default construction (the factory
 that returns a sensible context for single-workspace callers) lands in
 a separate commit.

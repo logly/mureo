@@ -2,7 +2,7 @@
 
 Covers ``run_install`` (list-form argv, no shell=True, dry-run skip,
 returncode propagation, allow-list enforcement) and ``InstallResult``
-immutability. See planner HANDOFF ``feat-providers-cli-phase1.md``.
+immutability.
 
 External calls are mocked at ``mureo.providers.installer.subprocess.run``.
 """
@@ -25,9 +25,9 @@ def _make_spec(
 ) -> Any:
     """Build a real ``ProviderSpec`` instance for installer tests.
 
-    Keeping this helper inside each test (via import-on-call) ensures the
-    test still raises ``ImportError`` cleanly in the RED phase rather than
-    erroring at collection time.
+    Importing on call keeps a broken ``mureo.providers.catalog`` an
+    ``ImportError`` inside each test rather than an error at collection
+    time.
     """
     from mureo.providers.catalog import ProviderSpec
 

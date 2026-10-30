@@ -506,8 +506,8 @@ class TestFailureEscalation:
     These pin the two headline behaviours of the fail-open path: the
     counter escalates to ERROR, and a success resets it. Without them a
     refactor could move the threshold or drop the reset and nothing
-    would go red — the reviewer confirmed both work by executing them,
-    which is exactly the evidence a test is supposed to make permanent.
+    would go red. Executing both once showed they work; a test makes that
+    evidence permanent.
     """
 
     def _broken(self) -> Any:

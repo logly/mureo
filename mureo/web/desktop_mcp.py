@@ -6,8 +6,7 @@ minimal ``mcpServers.mureo`` block — it deliberately does NOT call
 ``desktop_installer.install_desktop()`` (which also creates a
 workspace, a wrapper script, an optional demo seed, and hard-raises
 off macOS). The web ``/api/setup/basic`` flow has no workspace inputs
-and must respect the ``host_paths`` non-macOS fallback (planner
-HANDOFF Q1/Q6).
+and must respect the ``host_paths`` non-macOS fallback.
 
 Every mutation is surgical: the loaded config is deep-copied and only
 ``mcpServers.mureo`` is set (install) or popped (remove). All other

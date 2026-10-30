@@ -1,6 +1,6 @@
 """Tests for ``mureo.core.providers.keyword``.
 
-RED phase tests for Issue #89 Phase 1 subtask P1-04.
+Tests for Issue #89 (Phase 1).
 
 Pins the structural contract for ``KeywordProvider`` — the
 runtime-checkable Protocol search-platform adapters (Google Ads,
@@ -20,9 +20,6 @@ from typing import Protocol
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module does not exist yet. The implementer (GREEN phase) will create
-# ``mureo/core/providers/keyword.py``.
 from mureo.core.providers.base import BaseProvider
 from mureo.core.providers.keyword import KeywordProvider
 from mureo.core.providers.models import KeywordSpec

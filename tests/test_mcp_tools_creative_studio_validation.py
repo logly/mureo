@@ -5,9 +5,9 @@ envelope and either crashed (``int(None)`` / ``generation_size_for_aspect``
 ValueError) or were silently accepted:
 
 * generate_visual — ``n`` and ``aspect`` are now validated symmetrically with
-  ``template`` (M8);
+  ``template``;
 * compose — an explicit empty ``formats: []`` is rejected instead of being
-  replaced by the default (LOW).
+  replaced by the default.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def _payload(result: list) -> dict:
     return json.loads(result[0].text)
 
 
-# --- M8: generate_visual n / aspect validation ---------------------------
+# --- generate_visual n / aspect validation -------------------------------
 
 
 @pytest.mark.unit

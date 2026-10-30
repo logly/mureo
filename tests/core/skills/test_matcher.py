@@ -1,4 +1,4 @@
-"""Unit tests for ``mureo.core.skills.matcher`` (RED phase, Issue #89 P1-08).
+"""Unit tests for ``mureo.core.skills.matcher`` (Issue #89).
 
 These tests pin the pure-function contracts of:
 
@@ -11,9 +11,6 @@ These tests pin the pure-function contracts of:
 
 Marks: every test is ``@pytest.mark.unit`` — pure logic, no I/O, no
 mocks (real :class:`Capability` members + constructed dataclasses).
-
-NOTE: these imports are expected to FAIL during the RED phase — the
-module ``mureo.core.skills.matcher`` does not exist yet.
 """
 
 from __future__ import annotations
@@ -25,13 +22,13 @@ import pytest
 
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import ProviderEntry, Registry
-from mureo.core.skills.matcher import (  # noqa: E402 — RED-phase import
+from mureo.core.skills.matcher import (
     ProviderMatch,
     SkillMatch,
     match_skills,
     providers_for_skill,
 )
-from mureo.core.skills.models import SkillEntry  # noqa: E402 — RED-phase import
+from mureo.core.skills.models import SkillEntry
 
 # ---------------------------------------------------------------------------
 # Helpers

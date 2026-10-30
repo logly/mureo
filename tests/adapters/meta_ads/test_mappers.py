@@ -1,4 +1,4 @@
-"""RED-phase tests for ``mureo.adapters.meta_ads.mappers``.
+"""Tests for ``mureo.adapters.meta_ads.mappers``.
 
 The mapper module is a pile of pure functions that turn the raw
 ``dict`` / ``list[dict]`` returned by ``MetaAdsApiClient`` mixins into
@@ -27,8 +27,6 @@ from typing import Any
 
 import pytest
 
-# NOTE: These imports are expected to FAIL during the RED phase — the
-# module ``mureo.adapters.meta_ads.mappers`` does not exist yet.
 from mureo.adapters.meta_ads.mappers import (
     map_ad_status,
     map_campaign_status,
