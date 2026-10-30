@@ -58,6 +58,9 @@ class TestStaticAllowList:
             "wizard_provider_choice.js",
             "auth_wizards.js",
             "auth_wizards_plugin.js",
+            "wizard_install_slots.js",
+            "wizard_auth_queue.js",
+            "wizard_plugin_slot.js",
             "dashboard.js",
             "i18n.json",
         ):
@@ -74,9 +77,18 @@ class TestStaticAllowList:
         )
         choice = html.index("/static/wizard_provider_choice.js")
         assert choice < html.index("/static/wizard.js")
-        plugin = html.index("/static/auth_wizards_plugin.js")
-        assert html.index("/static/auth_wizards_meta.js") < plugin
-        assert plugin < html.index("/static/auth_wizards.js")
+        auth_bundle = [
+            html.index(f"/static/{name}")
+            for name in (
+                "auth_wizards_meta.js",
+                "auth_wizards_plugin.js",
+                "wizard_install_slots.js",
+                "wizard_auth_queue.js",
+                "wizard_plugin_slot.js",
+                "auth_wizards.js",
+            )
+        ]
+        assert auth_bundle == sorted(auth_bundle)
 
 
 @pytest.mark.unit

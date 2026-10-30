@@ -5,7 +5,7 @@
 //
 // Renders the image runs Creative Studio has produced for the selected
 // client. `creativeRenderSeq` is the same monotonic-generation guard the
-// plugin credentials card uses (#223): the render is async, renderAll() runs
+// connection credentials tab panels use (#223): the render is async, renderAll() runs
 // it twice during init, and without the guard both calls append.
 //
 // Every id that rides in an image URL — client, run, file — is

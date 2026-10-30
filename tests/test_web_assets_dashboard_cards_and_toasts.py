@@ -21,11 +21,18 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
-# The auth wizards ship as two assets: ``auth_wizards_meta.js`` (the Meta
-# connector card, method chooser and token card) is loaded before
-# ``auth_wizards.js`` (queue + step wiring). Grep the pair as one source so
-# the contracts below cover the wizard regardless of which half holds them.
-_AUTH_WIZARD_ASSETS = ("auth_wizards_meta.js", "auth_wizards.js")
+# The auth wizards ship as several assets loaded before ``auth_wizards.js``
+# (queue + step wiring): ``auth_wizards_meta.js`` (the Meta connector card,
+# method chooser and token card), the providers-install step, the auth queue
+# and the declarative credential slot. Grep them as one source so the
+# contracts below cover the wizard regardless of which file holds them.
+_AUTH_WIZARD_ASSETS = (
+    "auth_wizards_meta.js",
+    "wizard_install_slots.js",
+    "wizard_auth_queue.js",
+    "wizard_plugin_slot.js",
+    "auth_wizards.js",
+)
 
 
 def _read_auth_js() -> str:
@@ -50,12 +57,13 @@ def test_dashboard_providers_list_has_card_selector() -> None:
 
 @pytest.mark.unit
 def test_dashboard_plugin_credentials_list_has_card_selector() -> None:
-    """Plugin credentials list uses a generic child selector
-    (``> *``) so any plugin-rendered row participates in the same
-    card treatment.
+    """Connection credentials tab panels take the card treatment: the
+    selector names the panel class rather than every child, so any
+    plugin-rendered panel participates while the tab strip beside the
+    panels stays a plain row.
     """
     css = _read("app.css")
-    assert "[data-dashboard-plugin-credentials-list] > *" in css
+    assert "[data-dashboard-plugin-credentials-list] > .plugin-credentials-panel" in css
 
 
 @pytest.mark.unit

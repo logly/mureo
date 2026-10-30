@@ -1,6 +1,7 @@
 """The function- and file-length limits only ever tighten (#917).
 
-The repository's limits are 50 lines per function and 800 lines per file.
+The repository's limits are 50 lines per function and 800 lines per file;
+the file limit covers the bundled web JS (``mureo/_data/web/*.js``) as well.
 Code written before they were enforced is over them, so the two lists below
 freeze what was over at the time this ratchet landed, each with its length
 then. A function or file not on a list must be within the limit; a listed one
@@ -13,7 +14,9 @@ decorators excluded); nested functions and methods are measured on their own
 under their qualified name (``Outer.inner``). A qualified name defined more
 than once in one file (a property setter, an ``if``/``else`` pair) is keyed
 ``name@<def line>`` instead, so no definition is hidden behind another; none
-exists today. A file's length is its line count.
+exists today. A file's length is its line count. Function length is
+measured for Python only: the web JS has no parser here, so only its file
+length is held to the limit.
 """
 
 from __future__ import annotations
@@ -368,6 +371,12 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
 
 # shrink-only; remove an entry when you fix it, never add one
 KNOWN_LONG_FILES: dict[str, int] = {
+    "mureo/_data/web/auth_wizards_meta.js": 855,
+    "mureo/_data/web/dashboard_plugins.js": 858,
+    "mureo/_data/web/dashboard_reports_detail.js": 910,
+    "mureo/_data/web/dashboard_reports_report.js": 845,
+    "mureo/_data/web/dashboard_setup.js": 833,
+    "mureo/_data/web/reports_triage.js": 1021,
     "mureo/auth.py": 1043,
     "mureo/auth_setup.py": 1555,
     "mureo/byod/adapters/meta_ads.py": 1330,
@@ -389,6 +398,10 @@ KNOWN_LONG_FILES: dict[str, int] = {
 
 def _package_files() -> list[Path]:
     return sorted(_PACKAGE_ROOT.rglob("*.py"))
+
+
+def _web_js_files() -> list[Path]:
+    return sorted((_PACKAGE_ROOT / "_data" / "web").glob("*.js"))
 
 
 def _relative(path: Path) -> str:
@@ -440,10 +453,11 @@ def _over_limit_functions() -> dict[tuple[str, str], int]:
 
 
 def _long_files() -> dict[str, int]:
-    """Every file under ``mureo/`` over the limit, with its line count."""
+    """Every Python file under ``mureo/`` and every bundled web JS file over
+    the limit, with its line count."""
     lengths = {
         _relative(path): len(path.read_text("utf-8").splitlines())
-        for path in _package_files()
+        for path in [*_package_files(), *_web_js_files()]
     }
     return {rel: n for rel, n in lengths.items() if n > FILE_LINE_LIMIT}
 

@@ -1,621 +1,17 @@
-// auth_wizards.js — provider-install and per-provider auth wizards.
-// Renders the sequential queue of provider installs (Step 5+) and the
-// in-wizard OAuth handoffs. Hides outer Back/Next while a sub-wizard
-// is active.
+// auth_wizards.js — the configure wizard's auth step: the sequential queue
+// of per-provider slots and the in-wizard OAuth handoffs. Hides outer
+// Back/Next while a sub-wizard is active.
 //
-// The Meta pieces (hosted-connector card, method chooser, token card) live
-// in auth_wizards_meta.js (window.MUREO_AUTH_META), a plugin provider's slot
-// pieces in auth_wizards_plugin.js (window.MUREO_AUTH_PLUGIN); both load first.
+// The pieces it composes load first and are read at call time: the Meta
+// cards (auth_wizards_meta.js, window.MUREO_AUTH_META), a plugin provider's
+// slot pieces (auth_wizards_plugin.js, window.MUREO_AUTH_PLUGIN), the
+// providers-install step (wizard_install_slots.js,
+// window.MUREO_AUTH_INSTALL), the queue and its "already stored" checks
+// (wizard_auth_queue.js, window.MUREO_AUTH_QUEUE) and the declarative
+// credential slot (wizard_plugin_slot.js, window.MUREO_AUTH_PLUGIN_SLOT).
 
 (function () {
   "use strict";
-
-  const PROVIDER_INSTALL_ORDER = ["google_ads", "meta_ads", "ga4", "tiktok_ads"];
-
-  // ------------------------------------------------------------------
-  // Provider install slots (Step: providers_install)
-  // ------------------------------------------------------------------
-
-  // Re-sync wizard state from the authoritative /api/status after a
-  // successful install (the optimistic local flag alone left the row
-  // showing "✗ not registered" when status disagreed — issue #1), then
-  // advance. Shared by the first install and the needs_credentials retry.
-  async function finishInstall(state, providerId, onComplete) {
-    state.providerInstalled[providerId] = true;
-    await MUREO.loadStatus();
-    if (
-      window.MUREO_WIZARD &&
-      typeof window.MUREO_WIZARD.hydrateStateFromStatus === "function" &&
-      MUREO.state &&
-      MUREO.state.status
-    ) {
-      window.MUREO_WIZARD.hydrateStateFromStatus(MUREO.state.status);
-    }
-    onComplete();
-  }
-
-  // Inline recovery card shown when install returns `needs_credentials`
-  // (#102): the official server registered but cannot authenticate from
-  // env alone. Google Ads (ADC) needs a service-account JSON path — collect
-  // it, persist it into google_ads.service_account_path via the
-  // section-aware env-var writer, then re-run install. mureo-native is NOT
-  // disabled by the backend until the official server is credentialed, so
-  // the user keeps working throughout.
-  function renderNeedsCredentialsCard(platform, providerId, state, onComplete) {
-    const card = document.createElement("div");
-    card.className = "dashboard-provider-hosted-note";
-
-    const guidanceKey =
-      platform === "google_ads"
-        ? "wizard.providers_install.needs_credentials.google_ads"
-        : "wizard.providers_install.needs_credentials.generic";
-    const guidance = document.createElement("p");
-    guidance.textContent = MUREO.t(guidanceKey);
-    guidance.setAttribute("data-i18n", guidanceKey);
-    card.appendChild(guidance);
-
-    // Only Google Ads has an in-wizard credential to collect here (its ADC
-    // service-account path). Other providers collect their creds in the
-    // auth queue before install, so a generic message is enough.
-    if (platform !== "google_ads") {
-      return card;
-    }
-
-    const label = document.createElement("label");
-    label.style.display = "block";
-    label.textContent = MUREO.t("wizard.providers_install.sa_path_label");
-    label.setAttribute("data-i18n", "wizard.providers_install.sa_path_label");
-    const input = document.createElement("input");
-    input.type = "text";
-    label.appendChild(input);
-    card.appendChild(label);
-
-    const status = document.createElement("p");
-    status.className = "dashboard-provider-hosted-note";
-    status.hidden = true;
-    card.appendChild(status);
-
-    function setStatus(key) {
-      status.hidden = false;
-      status.textContent = MUREO.t(key);
-    }
-
-    const retryBtn = document.createElement("button");
-    retryBtn.type = "button";
-    retryBtn.className = "btn btn-primary";
-    retryBtn.textContent = MUREO.t("wizard.providers_install.save_retry");
-    retryBtn.setAttribute("data-i18n", "wizard.providers_install.save_retry");
-    retryBtn.disabled = true;
-    input.addEventListener("input", function () {
-      retryBtn.disabled = !input.value;
-    });
-
-    retryBtn.addEventListener("click", async function () {
-      retryBtn.disabled = true;
-      // 1) Persist the service-account path into
-      //    google_ads.service_account_path (section-aware write — the
-      //    shared GOOGLE_APPLICATION_CREDENTIALS name).
-      setStatus("wizard.auth.saving");
-      let saveRes;
-      try {
-        saveRes = await MUREO.postJson("/api/credentials/env-var", {
-          name: "GOOGLE_APPLICATION_CREDENTIALS",
-          value: input.value,
-          section: "google_ads",
-        });
-      } catch (_e) {
-        setStatus("wizard.auth.save_failed");
-        retryBtn.disabled = false;
-        return;
-      }
-      if (!saveRes.ok) {
-        setStatus("wizard.auth.save_failed");
-        retryBtn.disabled = false;
-        return;
-      }
-      // 2) Re-run install now that ADC creds are present.
-      setStatus("wizard.providers_install.installing");
-      let res;
-      try {
-        res = await MUREO.postJson("/api/providers/install", {
-          provider_id: providerId,
-        });
-      } catch (_e) {
-        const tmpl = MUREO.t("wizard.providers_install.failed");
-        status.hidden = false;
-        status.textContent = tmpl.replace("{detail}", "network_error");
-        retryBtn.disabled = false;
-        return;
-      }
-      const outcome = MUREO.postOutcome(res);
-      const st = outcome.ok ? res.body.status : null;
-      if (st === "ok" || st === "noop") { // noop: already registered
-        await finishInstall(state, providerId, onComplete);
-        return;
-      }
-      if (st === "needs_credentials") {
-        // Still short of full creds (e.g. the service-account path is missing).
-        setStatus("wizard.providers_install.still_needs_credentials");
-      } else {
-        const tmpl = MUREO.t("wizard.providers_install.failed");
-        const detail = outcome.ok ? res.body.detail || st : outcome.code || "request_failed";
-        status.hidden = false;
-        // Replacement via a function so a server-derived detail containing
-        // "$" sequences (e.g. "$&", "$1") is inserted literally rather than
-        // triggering String.replace's special-pattern substitution.
-        status.textContent = tmpl.replace("{detail}", function () {
-          return detail;
-        });
-      }
-      retryBtn.disabled = false;
-    });
-
-    card.appendChild(retryBtn);
-    return card;
-  }
-
-  function buildProviderInstallSlot(state, platform, onComplete) {
-    const wrap = document.createElement("section");
-    wrap.style.marginTop = "16px";
-    const providerId = platform.replace("_", "-") + "-official";
-
-    // TikTok (tiktok-ads-official): hosted_http, but it supports OAuth
-    // Dynamic Client Registration AND has no mureo-native platform — so it
-    // needs neither Meta's connector-confirm flow nor a native-disable
-    // step. Show a simple, host-specific setup card (the same DCR guidance
-    // as the dashboard) plus a copy-able endpoint. Advancing is via the
-    // outer wizard's Next (no Install button — mureo registers nothing;
-    // the user runs `claude mcp add` / a connector, then /mcp). Handled by
-    // its own branch here, so the Meta-only `isHosted` check below is left
-    // untouched.
-    if (providerId === "tiktok-ads-official") {
-      const TIKTOK_HOSTED_URL =
-        "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer";
-      wrap.innerHTML =
-        "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
-      const noteKey =
-        state.host === "claude-desktop"
-          ? "dashboard.provider_tiktok_desktop_note"
-          : state.host === "codex"
-          ? "dashboard.provider_tiktok_codex_note"
-          : "dashboard.provider_tiktok_oauth_note";
-      const note = document.createElement("p");
-      note.className = "dashboard-provider-hosted-note";
-      note.textContent = MUREO.t(noteKey);
-      note.setAttribute("data-i18n", noteKey);
-      wrap.appendChild(note);
-      // Endpoint + copy button — handy for the Desktop custom-connector
-      // dialog or to confirm the URL for `claude mcp add`. Omitted on
-      // Codex, where the provider is not wired.
-      if (state.host !== "codex") {
-        const urlRow = document.createElement("div");
-        urlRow.className = "connector-url-row";
-        const code = document.createElement("code");
-        code.textContent = TIKTOK_HOSTED_URL;
-        const copyBtn = document.createElement("button");
-        copyBtn.type = "button";
-        copyBtn.className = "btn btn-secondary connector-copy-btn";
-        copyBtn.textContent = MUREO.t("connector.copy");
-        copyBtn.setAttribute("data-i18n", "connector.copy");
-        copyBtn.addEventListener("click", function () {
-          const done = function () {
-            copyBtn.textContent = MUREO.t("connector.copied");
-            setTimeout(function () {
-              copyBtn.textContent = MUREO.t("connector.copy");
-            }, 1500);
-          };
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard
-              .writeText(TIKTOK_HOSTED_URL)
-              .then(done, function () {
-                MUREO.toast(TIKTOK_HOSTED_URL);
-              });
-          } else {
-            MUREO.toast(TIKTOK_HOSTED_URL);
-          }
-        });
-        urlRow.appendChild(code);
-        urlRow.appendChild(copyBtn);
-        wrap.appendChild(urlRow);
-      }
-      return wrap;
-    }
-
-    const installed = state.providerInstalled[providerId];
-    // hosted_http providers (catalog install_kind === "hosted_http").
-    // meta-ads-official is the only one that reaches THIS branch: TikTok
-    // (also hosted_http) is handled by its dedicated DCR card above, and
-    // no other hosted provider is a wizard platform. If a Meta-style
-    // (no-DCR, native-coexisting) hosted provider is ever added, extend
-    // this check.
-    const isHosted = providerId === "meta-ads-official";
-
-    // Hosted MCP (Meta): mureo never registers it locally on EITHER
-    // host. Meta's hosted MCP has no OAuth dynamic client registration,
-    // so it cannot be authenticated as a Claude Code user-scope server
-    // (`/mcp` fails) and Desktop's config can't carry the remote http
-    // shape either. The only working path is a Claude.ai account
-    // connector — show those steps directly (no Install button; there
-    // is nothing for mureo to register). showManualSetup() picks the
-    // connector.code.* (Code) vs connector.* (Desktop) copy by host.
-    if (isHosted) {
-      wrap.innerHTML =
-        "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
-      // Codex has no claude.ai account connector, so Meta's hosted MCP
-      // can't be wired at all — there are no connector steps to show.
-      // Surface the "not available, native stays" note and let the user
-      // proceed; mureo-native Meta is never disabled here.
-      if (state.host === "codex") {
-        const note = document.createElement("p");
-        note.className = "dashboard-provider-hosted-note";
-        note.textContent = MUREO.t("dashboard.provider_codex_hosted_na_note");
-        note.setAttribute("data-i18n", "dashboard.provider_codex_hosted_na_note");
-        wrap.appendChild(note);
-        return wrap;
-      }
-      if (!window.MUREO_AUTH_META.showManualSetup(wrap, state, providerId)) {
-        onComplete();
-      }
-      return wrap;
-    }
-
-    wrap.innerHTML =
-      "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>" +
-      "<p>" + (installed ? "✓ " + MUREO.t("dashboard.installed") : "✗ " + MUREO.t("dashboard.not_installed")) + "</p>";
-
-    if (!installed) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn btn-primary";
-      btn.textContent = MUREO.t("dashboard.action_install");
-      // Status line so a slow pipx/git build doesn't look frozen and
-      // a failure shows WHY (not a silent no-op — issue #1).
-      const statusLine = document.createElement("p");
-      statusLine.className = "dashboard-provider-hosted-note";
-      statusLine.hidden = true;
-      function fail(detail) {
-        const tmpl = MUREO.t("wizard.providers_install.failed");
-        // Function replacement so a "$"-containing detail is inserted
-        // literally (see the note at the providers-install failure path).
-        const safeDetail = detail || "unknown";
-        const msg = tmpl.replace("{detail}", function () {
-          return safeDetail;
-        });
-        statusLine.hidden = false;
-        statusLine.textContent = msg;
-        MUREO.toast(msg);
-      }
-      btn.addEventListener("click", async function () {
-        btn.disabled = true;
-        statusLine.hidden = false;
-        statusLine.textContent = MUREO.t("wizard.providers_install.installing");
-        let res;
-        try {
-          res = await MUREO.postJson("/api/providers/install", {
-            provider_id: providerId,
-          });
-        } catch (_e) {
-          btn.disabled = false;
-          fail("network_error");
-          return;
-        }
-        btn.disabled = false;
-        const outcome = MUREO.postOutcome(res);
-        if (!outcome.ok) {
-          return fail(outcome.code || "request_failed"); // error, then detail
-        }
-        const st = outcome.body.status;
-        if (st === "ok" || st === "noop") { // noop: already registered
-          await finishInstall(state, providerId, onComplete);
-        } else if (st === "needs_credentials") {
-          // The official server registered but cannot authenticate yet —
-          // it needs ADC credentials the wizard hasn't collected (Google
-          // Ads: a service-account JSON path). Surface an inline input +
-          // "Save & install" instead of a bare error. mureo-native stays
-          // ON (backend did not disable it), so the user is never stranded.
-          btn.remove();
-          statusLine.hidden = true;
-          wrap.appendChild(
-            renderNeedsCredentialsCard(platform, providerId, state, onComplete)
-          );
-        } else if (st === "auth_required" || st === "manual_required") {
-          // Defensive fallback: hosted (Meta) is short-circuited to the
-          // connector card BEFORE this Install button is ever shown
-          // (mureo registers nothing locally on either host). If a
-          // backend path still reports manual_required/auth_required,
-          // surface the Claude.ai connector steps (connector.code.* on
-          // Code, connector.* on Desktop) rather than a bare error.
-          state.providerInstalled[providerId] = true;
-          btn.remove();
-          statusLine.hidden = true;
-          if (!window.MUREO_AUTH_META.showManualSetup(wrap, state, providerId)) {
-            onComplete();
-          }
-        } else {
-          fail(outcome.body.detail || st);
-        }
-      });
-      wrap.appendChild(btn);
-      wrap.appendChild(statusLine);
-    }
-    return wrap;
-  }
-
-  function renderProvidersInstall(host, state, render) {
-    PROVIDER_INSTALL_ORDER.forEach(function (platform) {
-      const needsOfficial =
-        (platform === "google_ads" && state.platforms.google_ads &&
-          state.providerChoice.google_ads === "official") ||
-        (platform === "meta_ads" && state.platforms.meta_ads &&
-          state.providerChoice.meta_ads === "official") ||
-        (platform === "ga4" && state.platforms.ga4) ||
-        (platform === "tiktok_ads" && state.platforms.tiktok_ads);
-      if (needsOfficial) {
-        host.appendChild(buildProviderInstallSlot(state, platform, render));
-      }
-    });
-  }
-
-  // ------------------------------------------------------------------
-  // Auth queue (Step: auth)
-  // ------------------------------------------------------------------
-  function googleHasOauthOnDisk(state) {
-    // True iff /api/status reported credentials_oauth.google. The
-    // adwords + webmasters scopes share a single refresh token (see
-    // mureo.auth_setup._GOOGLE_SCOPES), so any prior Google OAuth
-    // satisfies both Google Ads and Search Console requirements.
-    return Boolean(
-      state.existing && state.existing.google && state.existing.google.has_oauth
-    );
-  }
-
-  function googleOauthSlotNeeded(state) {
-    // A saved Google OAuth is reused rather than re-collected, unless the
-    // operator pressed "Re-authorize Google" on the auth step (which sets
-    // reauthorizeGoogle for this wizard run only).
-    return !googleHasOauthOnDisk(state) || Boolean(state.reauthorizeGoogle);
-  }
-
-  // The store already holds a complete (usable) ``ga4`` section (an ADC
-  // file path + project id, possibly written by a credential provider's
-  // ``on_oauth_persisted`` hook), so the input slot is skipped. Edits go
-  // through the dashboard env-var rows.
-  function ga4CredentialsOnDisk(state) {
-    return Boolean(
-      state.existing && state.existing.ga4 && state.existing.ga4.configured
-    );
-  }
-
-  // The one plugin-choice rule lives in wizard_provider_choice.js (loaded
-  // first); read at call time, like the other globals this file uses.
-  function isPluginChoice(state, platform) {
-    return window.MUREO_WIZARD_CHOICE.isPluginChoice(state, platform);
-  }
-
-  // The chosen provider's section holds every required field already
-  // (/api/status `plugin_platforms`), so its slot is skipped.
-  function pluginConfigured(state, platform) {
-    const served = state.pluginPlatforms && state.pluginPlatforms[platform];
-    return Boolean(served && served.configured);
-  }
-
-  function pushGoogleSlots(queue, state) {
-    const scPlugin = isPluginChoice(state, "search_console");
-    if (isPluginChoice(state, "google_ads")) {
-      if (state.platforms.google_ads && !pluginConfigured(state, "google_ads"))
-        queue.push({ key: "google_ads", pluginProvider: state.providerChoice.google_ads });
-    } else if (state.platforms.google_ads && googleOauthSlotNeeded(state)) {
-      // Native AND official Google Ads both need the same Google OAuth
-      // client + refresh token (the legacy Developer Token is optional).
-      // The official upstream MCP cannot read credentials.json, so we
-      // still collect them here and inject them as env into its MCP
-      // block at install time. When /api/status reports
-      // credentials_oauth.google the saved token already satisfies both,
-      // so the slot is skipped — see googleOauthSlotNeeded. A plugin
-      // provider's choice replaces this slot with the provider's own.
-      queue.push({ key: "google_ads", oauthProvider: "google" });
-    }
-    if (state.platforms.search_console && scPlugin && !pluginConfigured(state, "search_console"))
-      queue.push({ key: "search_console", pluginProvider: state.providerChoice.search_console });
-    // SC standalone — own Google OAuth slot, shared only when Google Ads takes it.
-    if (
-      state.platforms.search_console && !scPlugin &&
-      (!state.platforms.google_ads || isPluginChoice(state, "google_ads")) &&
-      googleOauthSlotNeeded(state)
-    ) {
-      queue.push({ key: "search_console", oauthProvider: "google" });
-    }
-  }
-
-  function buildAuthQueue(state) {
-    const queue = [];
-    pushGoogleSlots(queue, state);
-    if (state.platforms.meta_ads && isPluginChoice(state, "meta_ads")) {
-      if (!pluginConfigured(state, "meta_ads"))
-        queue.push({ key: "meta_ads", pluginProvider: state.providerChoice.meta_ads });
-    } else if (state.platforms.meta_ads && state.providerChoice.meta_ads === "native") {
-      queue.push({ key: "meta_ads", oauthProvider: "meta" });
-    }
-    // NOTE: official Meta (hosted_http) is intentionally NOT queued for
-    // OAuth here. Its OAuth is the MCP HTTP-transport handshake performed
-    // by Claude itself on first connect (RFC 9728) — configure cannot and
-    // must not do it. The provider-choice "next page" (providers_install
-    // step) shows the manual setup instructions instead.
-    if (state.platforms.ga4 && !ga4CredentialsOnDisk(state)) {
-      // Offered under every backend; skipped only when the store already
-      // holds the ``ga4`` section (see ga4CredentialsOnDisk). The server
-      // writes it to the backend-resolved credentials path like any other
-      // env var. Each input carries the credentials.json-backed env var
-      // NAME it persists to (POSTed to /api/credentials/env-var on Done)
-      // plus a localized label key. GA4-official reads these env vars at
-      // launch, so they MUST be saved here — collecting without
-      // persisting silently leaves the official MCP unauthenticated.
-      queue.push({
-        key: "ga4",
-        inputs: [
-          {
-            name: "GOOGLE_APPLICATION_CREDENTIALS",
-            labelKey: "wizard.auth.ga4_sa_path",
-          },
-          {
-            name: "GOOGLE_PROJECT_ID",
-            labelKey: "wizard.auth.ga4_project_id",
-          },
-        ],
-      });
-    }
-    if (state.platforms.amazon_ads) {
-      // Amazon has no OAuth dance and no separate provider install: mureo
-      // brokers Amazon's official MCP itself, reading the ``amazon_ads``
-      // credentials section. The slot therefore renders the SAME declarative
-      // field list the dashboard's Amazon card uses — fetched from
-      // /api/credentials/plugins, which derives it from the bridge's
-      // ``account_credential_fields``. Nothing about the fields is copied
-      // into this file, so the wizard cannot drift from the loader.
-      queue.push({ key: "amazon_ads", pluginProvider: "amazon_ads" });
-    }
-    return queue;
-  }
-
-  // ------------------------------------------------------------------
-  // Plugin-provider credential slot (server-declared fields)
-  // ------------------------------------------------------------------
-
-  // The descriptor fetch, the declared-field inputs and the OAuth card live
-  // in auth_wizards_plugin.js (window.MUREO_AUTH_PLUGIN, loaded first).
-  function renderPluginCredentialSlot(wrap, slot, state, onAllDone) {
-    const descKey = "wizard.auth." + slot.key + "_desc";
-    const descText = MUREO.t(descKey);
-    if (descText && descText !== descKey) {
-      const desc = document.createElement("p");
-      desc.textContent = descText;
-      desc.setAttribute("data-i18n", descKey);
-      wrap.appendChild(desc);
-    }
-    // Configured state comes from the wizard's hydrated /api/status view —
-    // the same backend verdict the dashboard row uses.
-    if (
-      slot.key === "amazon_ads" &&
-      state.existing &&
-      state.existing.amazon &&
-      state.existing.amazon.configured
-    ) {
-      const done = document.createElement("p");
-      done.className = "wizard-shared-with-sc-note";
-      done.textContent = MUREO.t("wizard.step_already_done");
-      done.setAttribute("data-i18n", "wizard.step_already_done");
-      wrap.appendChild(done);
-    }
-
-    const fieldHost = document.createElement("div");
-    wrap.appendChild(fieldHost);
-    const status = document.createElement("p");
-    status.className = "wizard-shared-with-sc-note";
-    status.hidden = true;
-    wrap.appendChild(status);
-
-    const doneBtn = document.createElement("button");
-    doneBtn.type = "button";
-    doneBtn.className = "btn btn-primary";
-    doneBtn.textContent = MUREO.t("wizard.auth.done_button");
-    doneBtn.setAttribute("data-i18n", "wizard.auth.done_button");
-    doneBtn.disabled = true;
-    wrap.appendChild(doneBtn);
-
-    window.MUREO_AUTH_PLUGIN.fetchPluginDescriptor(slot.pluginProvider).then(function (plugin) {
-      renderResolvedPluginSlot(wrap, slot, plugin, fieldHost, status, doneBtn, onAllDone);
-    });
-  }
-
-  // The slot once its descriptor is in: a notice when the provider is
-  // unreachable, the dashboard's card for an OAuth provider, otherwise one
-  // input per declared field behind a Done gated on the required ones.
-  function renderResolvedPluginSlot(wrap, slot, plugin, fieldHost, status, doneBtn, onAllDone) {
-    if (!plugin) {
-      // The provider is unreachable/unregistered — say so and let the
-      // operator move on rather than stranding the wizard on an empty
-      // step (they can finish from the dashboard card).
-      status.hidden = false;
-      status.textContent = MUREO.t("wizard.auth.save_failed");
-      doneBtn.disabled = false;
-      doneBtn.addEventListener("click", onAllDone);
-      return;
-    }
-    // An OAuth provider gets the dashboard's own card. dashboard_plugins.js
-    // loads after this file but is read at render time; without it (the
-    // auth-wizard test harness) the manual path below runs.
-    const cards = window.MUREO_DASHBOARD_PLUGINS;
-    if (plugin.oauth && cards && typeof cards.buildPluginCredentialsForm === "function") {
-      window.MUREO_AUTH_PLUGIN.renderPluginOAuthSlot(wrap, plugin, doneBtn, status, onAllDone);
-      return;
-    }
-    const pluginSlot = window.MUREO_AUTH_PLUGIN;
-    const inputs = [];
-    plugin.fields.forEach(function (field) {
-      pluginSlot.appendDeclaredField(fieldHost, field, inputs);
-    });
-    inputs.forEach(function (item) {
-      item.input.addEventListener("input", function () {
-        doneBtn.disabled = !pluginSlot.requiredFieldsSatisfied(inputs);
-      });
-    });
-    doneBtn.disabled = !pluginSlot.requiredFieldsSatisfied(inputs);
-    doneBtn.addEventListener("click", function () {
-      savePluginSlot(wrap, slot, inputs, doneBtn, status, onAllDone);
-    });
-  }
-
-  // Done on the declared-field form: one save of every input, then Amazon's
-  // authorization controls or the next slot.
-  async function savePluginSlot(wrap, slot, inputs, doneBtn, status, onAllDone) {
-    doneBtn.disabled = true;
-    status.hidden = false;
-    status.textContent = MUREO.t("wizard.auth.saving");
-    const values = {};
-    inputs.forEach(function (item) {
-      values[item.key] = item.input.value;
-    });
-    let res;
-    try {
-      res = await MUREO.postJson("/api/credentials/plugins/save", {
-        provider_name: slot.pluginProvider,
-        values: values,
-      });
-    } catch (_e) {
-      res = null;
-    }
-    if (MUREO.postOutcome(res).ok && res.body.status === "ok") {
-      appendAmazonAuthorization(wrap, slot, doneBtn, status, onAllDone);
-      return;
-    }
-    const msg = MUREO.t("wizard.auth.save_failed");
-    status.textContent = msg;
-    MUREO.toast(msg, "error");
-    doneBtn.disabled = false;
-  }
-
-  // Amazon's credentials are only half the setup: the saved client
-  // id/secret still have to be turned into tokens by the paste-code
-  // authorization flow (#121). Rather than sending the operator to the
-  // dashboard for it, the wizard shows the SAME controls (built by
-  // amazon_oauth.js) inline once the save lands, and turns Done into a
-  // Continue that leaves the queue when they are finished. Authorization
-  // stays optional here — an operator who pasted a refresh token by hand
-  // is already done and can simply continue.
-  function appendAmazonAuthorization(wrap, slot, doneBtn, status, onAllDone) {
-    if (slot.pluginProvider !== "amazon_ads" || !window.MUREO_AMAZON_OAUTH) {
-      onAllDone();
-      return;
-    }
-    status.textContent = MUREO.t("wizard.auth.amazon_saved_now_authorize");
-    wrap.appendChild(window.MUREO_AMAZON_OAUTH.buildAuthorizeSection());
-    // Retire the Save button rather than re-labelling it: its click
-    // listener still saves, and a Continue that also re-submitted the
-    // form would be a surprise.
-    doneBtn.hidden = true;
-    wrap.appendChild(window.MUREO_AUTH_PLUGIN.buildContinueButton(onAllDone));
-  }
-
   // Leave the auth step: the outer wizard owns the step order, so hand
   // control to its gotoNext when it is there and fall back to a re-render.
   function leaveAuthStep(render) {
@@ -707,13 +103,14 @@
   // any was. The Google note goes under Google Ads when that platform takes
   // the Google OAuth, otherwise under Search Console.
   function appendReusedNotes(host, state, render) {
-    const googleAds = state.platforms.google_ads && !isPluginChoice(state, "google_ads");
-    const googleSc = state.platforms.search_console && !isPluginChoice(state, "search_console");
+    const q = window.MUREO_AUTH_QUEUE;
+    const googleAds = state.platforms.google_ads && !q.isPluginChoice(state, "google_ads");
+    const googleSc = state.platforms.search_console && !q.isPluginChoice(state, "search_console");
     const googleReused =
-      (googleAds || googleSc) && googleHasOauthOnDisk(state) && !state.reauthorizeGoogle;
-    const ga4Reused = state.platforms.ga4 && ga4CredentialsOnDisk(state);
+      (googleAds || googleSc) && q.googleHasOauthOnDisk(state) && !state.reauthorizeGoogle;
+    const ga4Reused = state.platforms.ga4 && q.ga4CredentialsOnDisk(state);
     const pluginReused = ["google_ads", "search_console", "meta_ads"].filter(function (p) {
-      return state.platforms[p] && isPluginChoice(state, p) && pluginConfigured(state, p);
+      return state.platforms[p] && q.isPluginChoice(state, p) && q.pluginConfigured(state, p);
     });
     if (googleReused) {
       const key = googleAds ? "google_ads" : "search_console";
@@ -739,7 +136,7 @@
     const slotHost = document.createElement("div");
     host.appendChild(slotHost);
 
-    const queue = buildAuthQueue(state);
+    const queue = window.MUREO_AUTH_QUEUE.buildAuthQueue(state);
     if (queue.length === 0) {
       appendQueueDoneControls(slotHost, anyReused, render);
       return;
@@ -772,7 +169,9 @@
     // built-in platform): fields come from the provider registry, so it
     // owns the whole card and returns before every branch below.
     if (slot.pluginProvider) {
-      renderPluginCredentialSlot(wrap, slot, outerState || state, onAllDone);
+      window.MUREO_AUTH_PLUGIN_SLOT.renderPluginCredentialSlot(
+        wrap, slot, outerState || state, onAllDone
+      );
       return wrap;
     }
 
@@ -804,7 +203,7 @@
 
     if (
       slot.key === "google_ads" && outerState && outerState.platforms.search_console &&
-      !isPluginChoice(outerState, "search_console")
+      !window.MUREO_AUTH_QUEUE.isPluginChoice(outerState, "search_console")
     ) {
       const note = document.createElement("div");
       note.className = "wizard-shared-with-sc-note";
@@ -1010,9 +409,16 @@
     tick();
   }
 
+  // renderProvidersInstall and buildAuthQueue live in their own files;
+  // they are re-exported here so callers keep window.MUREO_AUTH as the
+  // one entry point.
   window.MUREO_AUTH = {
-    renderProvidersInstall: renderProvidersInstall,
+    renderProvidersInstall: function (host, state, render) {
+      return window.MUREO_AUTH_INSTALL.renderProvidersInstall(host, state, render);
+    },
     renderSequentialQueue: renderSequentialQueue,
-    buildAuthQueue: buildAuthQueue,
+    buildAuthQueue: function (state) {
+      return window.MUREO_AUTH_QUEUE.buildAuthQueue(state);
+    },
   };
 })();

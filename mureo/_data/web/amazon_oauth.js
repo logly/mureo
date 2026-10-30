@@ -12,7 +12,7 @@
 // Both surfaces render the same controls (the dashboard's Amazon card
 // and the setup wizard's Amazon step), so the DOM + fetch logic lives
 // here once and is reached through window.MUREO_AMAZON_OAUTH. This file
-// must load before dashboard.js and auth_wizards.js.
+// must load before dashboard.js and wizard_plugin_slot.js.
 //
 // No credential material is ever placed in the DOM: the requests carry
 // only the pasted code, and the responses carry only a region, a machine

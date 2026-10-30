@@ -28,11 +28,18 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
-# The auth wizards ship as two assets: ``auth_wizards_meta.js`` (the Meta
-# connector card, method chooser and token card) is loaded before
-# ``auth_wizards.js`` (queue + step wiring). Grep the pair as one source so
-# the contracts below stay indifferent to which half holds them.
-_AUTH_WIZARD_ASSETS = ("auth_wizards_meta.js", "auth_wizards.js")
+# The auth wizard ships as several assets: ``auth_wizards_meta.js`` (the
+# Meta connector card, method chooser and token card), the install slots,
+# the queue and the plugin slot, then ``auth_wizards.js`` (step wiring).
+# Grep them as one source so the contracts below stay indifferent to
+# which file holds them.
+_AUTH_WIZARD_ASSETS = (
+    "auth_wizards_meta.js",
+    "wizard_install_slots.js",
+    "wizard_auth_queue.js",
+    "wizard_plugin_slot.js",
+    "auth_wizards.js",
+)
 
 
 def _read_auth_js() -> str:

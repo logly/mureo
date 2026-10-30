@@ -1,9 +1,8 @@
-// dashboard_plugins.js — the per-plugin credentials and OAuth cards.
+// dashboard_plugins.js — the per-plugin credentials and OAuth forms.
 //
-// Lifted verbatim out of dashboard.js (#678). Nothing here changed in the
-// move.
+// Lifted out of dashboard.js (#678).
 //
-// One card per registered provider, built from what the provider DECLARES
+// One form per registered provider, built from what the provider DECLARES
 // rather than from anything hard-coded here: which fields it needs, whether
 // they are secret, whether it authenticates by OAuth, and whether it can list
 // the accounts its token reaches. That last one is why the picker exists — a
@@ -18,10 +17,14 @@
 // `field.configured`, and its placeholder follows the same flag; only a
 // non-secret field is pre-filled from `field.value`.
 //
-// The setup wizard renders the same card (`buildPluginCredentialsForm`) for
+// The dashboard's "Connection credentials" section shows the providers as
+// tabs, one form visible at a time (#954): stacked collapsed cards made an
+// operator open each one to find the provider they came for. The setup
+// wizard renders the same form as a card (`buildPluginCredentialsForm`) for
 // a plugin provider chosen on its connection step, passing `onStored`: a
 // callback that fires whenever the card changes the provider's stored
-// section (the OAuth consent completed, or the account picker saved).
+// section (the OAuth consent completed, or the account picker saved). Both
+// wrap the one `buildPluginCredentialsBody`.
 //
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
 // `window.MUREO_DASHBOARD_PLUGINS`. Must load BEFORE dashboard.js.
@@ -40,10 +43,16 @@
   // while it awaited — so only the latest result ever clears + appends.
   let pluginRenderSeq = 0;
 
-  // Plugin credentials section — one collapsible form per provider
-  // declaring AccountCredentialField entries. Fetches once per render
-  // call. secret=True fields render as type="password" and submit
-  // blank → "keep existing value" per the helper's contract.
+  // The provider_name of the tab the operator last chose. Module state
+  // rather than a re-read of the DOM, so a re-render for another reason
+  // (an OAuth consent completing, an account saved) does not silently reset
+  // the operator's choice to the first tab.
+  let activePluginTab = null;
+
+  // Connection credentials section — one tab per provider declaring
+  // AccountCredentialField entries. Fetches once per render call.
+  // secret=True fields render as type="password" and submit blank →
+  // "keep existing value" per the helper's contract.
   async function renderPluginCredentials() {
     const container = document.querySelector(
       "[data-dashboard-plugin-credentials-list]"
@@ -75,9 +84,119 @@
       container.appendChild(empty);
       return;
     }
-    plugins.forEach(function (plugin) {
-      container.appendChild(buildPluginCredentialsForm(plugin));
+    renderPluginTabs(container, plugins);
+  }
+
+  // The tab strip and one panel per provider. Every panel is built up
+  // front and only hidden, so switching tabs never re-fetches and a value
+  // typed into one provider's form survives a look at another's.
+  function renderPluginTabs(container, plugins) {
+    const strip = document.createElement("div");
+    strip.className = "plugin-credentials-tabs";
+    strip.setAttribute("role", "tablist");
+    strip.setAttribute("aria-label", MUREO.t("dashboard.plugin_credentials_title"));
+    const tabs = plugins.map(function (plugin) {
+      return buildPluginTab(plugin);
     });
+    const panels = plugins.map(function (plugin) {
+      return buildPluginPanel(plugin);
+    });
+    function choose(name) {
+      activePluginTab = name;
+      selectPluginTab(tabs, panels, name);
+    }
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        choose(tab.getAttribute("data-plugin-tab"));
+      });
+      strip.appendChild(tab);
+    });
+    strip.addEventListener("keydown", function (event) {
+      onPluginTabKeydown(event, tabs, choose);
+    });
+    container.appendChild(strip);
+    panels.forEach(function (panel) {
+      container.appendChild(panel);
+    });
+    selectPluginTab(tabs, panels, initialPluginTab(plugins));
+  }
+
+  // The operator's earlier choice while that provider is still listed;
+  // otherwise the first provider.
+  function initialPluginTab(plugins) {
+    const kept = plugins.some(function (plugin) {
+      return plugin.provider_name === activePluginTab;
+    });
+    return kept ? activePluginTab : plugins[0].provider_name;
+  }
+
+  // provider_name as it may appear inside an element id.
+  function pluginDomId(plugin) {
+    return String(plugin.provider_name).replace(/[^A-Za-z0-9_-]/g, "-");
+  }
+
+  function buildPluginTab(plugin) {
+    const id = pluginDomId(plugin);
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = "plugin-credentials-tab";
+    tab.id = "plugin-tab-" + id;
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-controls", "plugin-panel-" + id);
+    tab.setAttribute("data-plugin-tab", plugin.provider_name);
+    tab.textContent = plugin.display_name;
+    return tab;
+  }
+
+  function buildPluginPanel(plugin) {
+    const id = pluginDomId(plugin);
+    const panel = document.createElement("div");
+    panel.className = "plugin-credentials-panel";
+    panel.id = "plugin-panel-" + id;
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", "plugin-tab-" + id);
+    panel.setAttribute("data-plugin-panel", plugin.provider_name);
+    panel.appendChild(buildPluginCredentialsBody(plugin));
+    return panel;
+  }
+
+  // Marks `name`'s tab active and shows only its panel. The inactive tabs
+  // leave the Tab order (roving tabindex): the arrow keys move between
+  // them, so Tab goes from the strip straight into the visible form.
+  function selectPluginTab(tabs, panels, name) {
+    tabs.forEach(function (tab) {
+      const on = tab.getAttribute("data-plugin-tab") === name;
+      tab.classList.toggle("is-active", on);
+      tab.setAttribute("aria-selected", on ? "true" : "false");
+      tab.setAttribute("tabindex", on ? "0" : "-1");
+    });
+    panels.forEach(function (panel) {
+      panel.hidden = panel.getAttribute("data-plugin-panel") !== name;
+    });
+  }
+
+  // Step taken by each arrow key along the strip; the move wraps around.
+  const PLUGIN_TAB_STEPS = { ArrowLeft: -1, ArrowRight: 1 };
+
+  // The index `key` moves to from `current`, or -1 for any other key.
+  function nextPluginTabIndex(key, current, count) {
+    if (key === "Home") return 0;
+    if (key === "End") return count - 1;
+    if (!Object.prototype.hasOwnProperty.call(PLUGIN_TAB_STEPS, key)) return -1;
+    return (current + PLUGIN_TAB_STEPS[key] + count) % count;
+  }
+
+  // Counted from the active tab, which under a roving tabindex is the one
+  // holding focus while the strip has it.
+  function onPluginTabKeydown(event, tabs, choose) {
+    const current = tabs.findIndex(function (tab) {
+      return tab.classList.contains("is-active");
+    });
+    const at = nextPluginTabIndex(event.key, current, tabs.length);
+    if (at === -1) return;
+    event.preventDefault();
+    choose(tabs[at].getAttribute("data-plugin-tab"));
+    tabs[at].focus();
   }
 
   // Collect ``{name: value}`` from every input in a plugin form. Shared by
@@ -314,12 +433,23 @@
     });
   }
 
+  // The wizard's collapsible card: the provider's name as the summary over
+  // the same body a dashboard tab panel holds.
   function buildPluginCredentialsForm(plugin, onStored) {
     const wrap = document.createElement("details");
     wrap.className = "plugin-credentials-form";
     const summary = document.createElement("summary");
     summary.textContent = plugin.display_name;
     wrap.appendChild(summary);
+    wrap.appendChild(buildPluginCredentialsBody(plugin, onStored));
+    return wrap;
+  }
+
+  // One provider's form plus its provider-specific extras, with no title:
+  // the wizard card titles it with a <summary>, the dashboard with a tab.
+  function buildPluginCredentialsBody(plugin, onStored) {
+    const wrap = document.createElement("div");
+    wrap.className = "plugin-credentials-body";
 
     // ``oauth`` block ({target_field, client_id_field, client_secret_field})
     // is present only for a provider whose secret is obtained via the
