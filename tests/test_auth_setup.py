@@ -24,6 +24,7 @@ from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
 )
+from tests.test_auth_setup_meta import _route_get
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -1864,7 +1865,7 @@ async def test_list_meta_ad_accounts() -> None:
 
     with patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
-        instance.get = AsyncMock(return_value=mock_response)
+        instance.get = _route_get({"/me/adaccounts": [mock_response]})
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         MockClient.return_value = instance

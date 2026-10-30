@@ -316,7 +316,7 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
     ("mureo/meta_ads/_period.py", "previous_period"): 79,
     ("mureo/meta_ads/_videos.py", "VideosMixin.upload_ad_video_file"): 68,
     ("mureo/meta_ads/accounts.py", "inspect_meta_access_token"): 120,
-    ("mureo/meta_ads/accounts.py", "list_meta_ad_accounts"): 88,
+    ("mureo/meta_ads/accounts.py", "list_meta_ad_accounts"): 71,
     ("mureo/meta_ads/accounts.py", "validate_meta_access_token"): 135,
     ("mureo/meta_ads/client.py", "MetaAdsApiClient._request"): 120,
     ("mureo/oauth_authcode.py", "exchange_authorization_code"): 80,

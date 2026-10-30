@@ -8,11 +8,15 @@ saving.
 from __future__ import annotations
 
 import json
+import logging
 import stat
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import quote
 
+import httpx
 import pytest
 
 from mureo.auth_setup import (
@@ -25,12 +29,38 @@ from mureo.auth_setup import (
     setup_meta_ads,
 )
 from mureo.meta_ads._api_version import GRAPH_API_BASE, OAUTH_DIALOG_URL
+from mureo.meta_ads.accounts import _ADACCOUNT_FIELDS, _PAGE_SIZE
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 _GRAPH_API_BASE = GRAPH_API_BASE
+
+
+def _route_get(routes: dict[str, list[MagicMock]]) -> AsyncMock:
+    """A fake ``client.get`` that answers each Graph edge from its own queue.
+
+    The ad-account listing walks ``/me/adaccounts``, ``/me/businesses`` and
+    each portfolio's edges on one client, so a single ``side_effect`` list
+    cannot say which response belongs to which edge. ``routes`` maps a URL
+    substring to that edge's responses in order; the first key contained in
+    the requested URL answers. A URL no key matches gets an empty, complete
+    page, so an unlisted ``/me/businesses`` yields no portfolios.
+    """
+    queues = {key: list(responses) for key, responses in routes.items()}
+
+    async def get(url: str, params: dict[str, Any] | None = None) -> MagicMock:
+        for key, queue in queues.items():
+            if key in url:
+                return queue.pop(0)
+        empty = MagicMock()
+        empty.status_code = 200
+        empty.json.return_value = {"data": [], "paging": {}}
+        empty.raise_for_status = MagicMock()
+        return empty
+
+    return AsyncMock(side_effect=get)
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +241,7 @@ async def test_list_meta_ad_accounts() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.get = _route_get({"/me/adaccounts": [mock_response]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -223,11 +253,11 @@ async def test_list_meta_ad_accounts() -> None:
     assert accounts[0]["name"] == "Test Account 1"
     assert accounts[1]["id"] == "act_222"
 
-    # Verify the API request.
-    mock_client.get.assert_called_once()
-    call_args = mock_client.get.call_args
-    url = call_args[0][0] if call_args[0] else call_args[1].get("url", "")
-    assert "me/adaccounts" in url
+    # Verify the API request: one page of the direct edge.
+    direct_calls = [
+        c for c in mock_client.get.call_args_list if "/me/adaccounts" in c.args[0]
+    ]
+    assert len(direct_calls) == 1
 
 
 @pytest.mark.unit
@@ -240,7 +270,7 @@ async def test_list_meta_ad_accounts_empty() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.get = _route_get({"/me/adaccounts": [mock_response]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -291,7 +321,7 @@ async def test_list_meta_ad_accounts_follows_paging_next_until_exhausted() -> No
 
     with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(side_effect=[page1, page2, page3])
+        mock_client.get = _route_get({"/me/adaccounts": [page1, page2, page3]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -300,7 +330,8 @@ async def test_list_meta_ad_accounts_follows_paging_next_until_exhausted() -> No
 
     assert len(accounts) == 230, "every page must be appended"
     # Three calls: one per page.
-    assert mock_client.get.call_count == 3
+    calls = [c for c in mock_client.get.call_args_list if "/me/adaccounts" in c.args[0]]
+    assert len(calls) == 3
     # Order preserved (page1 → page2 → page3).
     assert accounts[0]["id"] == "act_0"
     assert accounts[100]["id"] == "act_100"
@@ -310,7 +341,6 @@ async def test_list_meta_ad_accounts_follows_paging_next_until_exhausted() -> No
     # (with access_token + limit); subsequent calls MUST follow the
     # Graph-supplied ``paging.next`` URL verbatim and pass ``params=None``
     # so the cursor is not corrupted by re-encoding.
-    calls = mock_client.get.call_args_list
     assert calls[0].args[0].endswith("/me/adaccounts")
     assert calls[0].kwargs["params"]["access_token"] == "bm-token"
     assert calls[0].kwargs["params"]["limit"] >= 100
@@ -342,7 +372,7 @@ async def test_list_meta_ad_accounts_refuses_non_graph_paging_next() -> None:
         patch.object(logging.getLogger("mureo.meta_ads.accounts"), "warning") as warn,
     ):
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=page1)
+        mock_client.get = _route_get({"/me/adaccounts": [page1]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -352,7 +382,11 @@ async def test_list_meta_ad_accounts_refuses_non_graph_paging_next() -> None:
     # Only the trusted first page is returned — the attacker URL is not
     # followed, so the dropdown silently truncates rather than leaking.
     assert accounts == [{"id": "act_1", "name": "A1", "account_status": 1}]
-    assert mock_client.get.call_count == 1
+    requested = [c.args[0] for c in mock_client.get.call_args_list]
+    assert [url for url in requested if "/me/adaccounts" in url] == [
+        f"{_GRAPH_API_BASE}/me/adaccounts"
+    ]
+    assert not any("attacker.example" in url for url in requested)
     # A refused cursor leaves the list partial too — the caller is told so
     # rather than having to read the log (#746).
     assert accounts.truncated is True
@@ -430,14 +464,16 @@ async def test_list_meta_ad_accounts_requests_large_page_size() -> None:
 
     with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.get = _route_get({"/me/adaccounts": [mock_response]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
 
         await list_meta_ad_accounts(access_token="tok")
 
-    call_kwargs = mock_client.get.call_args.kwargs
+    call_kwargs = next(
+        c for c in mock_client.get.call_args_list if "/me/adaccounts" in c.args[0]
+    ).kwargs
     params = call_kwargs.get("params") or {}
     assert (
         int(params.get("limit", 0)) >= 100
@@ -469,7 +505,7 @@ async def test_list_meta_ad_accounts_caps_page_walk() -> None:
         mock_client = AsyncMock()
         # Always return the same looping page — if the walker had no
         # cap it would hang the configure UI thread.
-        mock_client.get = AsyncMock(return_value=looping_page)
+        mock_client.get = _route_get({"/me/adaccounts": [looping_page] * _MAX_PAGES})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -478,7 +514,10 @@ async def test_list_meta_ad_accounts_caps_page_walk() -> None:
 
     # Exact equality locks in the documented contract — a future change
     # that silently drops the cap to 1 would be caught here.
-    assert mock_client.get.call_count == _MAX_PAGES
+    direct_calls = [
+        c for c in mock_client.get.call_args_list if "/me/adaccounts" in c.args[0]
+    ]
+    assert len(direct_calls) == _MAX_PAGES
     assert len(accounts) == _MAX_PAGES
     # Operators must see a warning when the cap truncated the list.
     assert warn.called
@@ -502,14 +541,17 @@ async def test_list_meta_ad_accounts_requests_metadata_fields() -> None:
 
     with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.get = _route_get({"/me/adaccounts": [mock_response]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
 
         await list_meta_ad_accounts(access_token="tok")
 
-    fields = mock_client.get.call_args.kwargs["params"]["fields"]
+    first_direct = next(
+        c for c in mock_client.get.call_args_list if "/me/adaccounts" in c.args[0]
+    )
+    fields = first_direct.kwargs["params"]["fields"]
     assert fields == _ADACCOUNT_FIELDS
     for field in (
         "id",
@@ -551,7 +593,7 @@ async def test_list_meta_ad_accounts_unnamed_account_reports_name_none() -> None
 
     with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.get = _route_get({"/me/adaccounts": [mock_response]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -586,7 +628,7 @@ async def test_list_meta_ad_accounts_flags_truncation_at_page_cap(
 
     with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=looping_page)
+        mock_client.get = _route_get({"/me/adaccounts": [looping_page] * 2})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -615,7 +657,7 @@ async def test_list_meta_ad_accounts_complete_walk_is_not_truncated() -> None:
 
     with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(side_effect=[page1, page2])
+        mock_client.get = _route_get({"/me/adaccounts": [page1, page2]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -661,6 +703,344 @@ async def test_list_meta_ad_accounts_error() -> None:
 
         with pytest.raises(RuntimeError, match="Failed to retrieve ad account list"):
             await list_meta_ad_accounts(access_token="invalid-token")
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_unions_business_portfolio_accounts() -> None:
+    """Accounts reached through a Business Portfolio are listed (#950).
+
+    ``/me/adaccounts`` returns the accounts held directly; each portfolio's
+    ``owned_ad_accounts`` and ``client_ad_accounts`` add the rest. The direct
+    rows come first, and a portfolio duplicate does not replace them.
+    """
+
+    def page(data: list[dict[str, Any]]) -> MagicMock:
+        return MagicMock(
+            status_code=200,
+            raise_for_status=MagicMock(),
+            **{"json.return_value": {"data": data, "paging": {}}},
+        )
+
+    routes = {
+        "/me/adaccounts": [
+            page([{"id": "act_1", "name": "A1"}, {"id": "act_2", "name": "A2"}])
+        ],
+        "/me/businesses": [page([{"id": "B1", "name": "One"}, {"id": "B2"}])],
+        "/B1/owned_ad_accounts": [
+            page([{"id": "act_2", "name": "Other"}, {"id": "act_3", "name": "A3"}])
+        ],
+        "/B1/client_ad_accounts": [page([{"id": "act_4", "name": "A4"}])],
+        "/B2/owned_ad_accounts": [page([{"id": "act_5", "name": "A5"}])],
+        "/B2/client_ad_accounts": [page([])],
+    }
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = _route_get(routes)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert [row["id"] for row in accounts] == [
+        "act_1",
+        "act_2",
+        "act_3",
+        "act_4",
+        "act_5",
+    ]
+    assert accounts[1]["name"] == "A2", "the direct row is kept on a duplicate"
+    assert accounts.truncated is False
+    edge_calls = [
+        c for c in mock_client.get.call_args_list if "_ad_accounts" in c.args[0]
+    ]
+    assert len(edge_calls) == 4
+    for call in edge_calls:
+        assert call.kwargs["params"]["fields"] == _ADACCOUNT_FIELDS
+        assert call.kwargs["params"]["limit"] == _PAGE_SIZE
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("code", [10, 200, 299])
+async def test_list_meta_ad_accounts_without_business_management_returns_direct_rows(
+    code: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A token without ``business_management`` keeps the direct list whole.
+
+    Graph refuses ``/me/businesses`` with ``#10`` or a ``#2xx`` code; a token stored
+    before the scope was requested must see the list it saw before, not a
+    list flagged as partial.
+    """
+    caplog.set_level(logging.DEBUG, logger="mureo.meta_ads.accounts")
+    request = httpx.Request("GET", f"{_GRAPH_API_BASE}/me/businesses")
+    response = httpx.Response(
+        400,
+        json={"error": {"message": f"(#{code}) Permission missing", "code": code}},
+        request=request,
+    )
+    denied = MagicMock(
+        status_code=400,
+        raise_for_status=MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "400 Bad Request", request=request, response=response
+            )
+        ),
+    )
+    direct = MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        **{"json.return_value": {"data": [{"id": "act_1"}], "paging": {}}},
+    )
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = _route_get(
+            {"/me/adaccounts": [direct], "/me/businesses": [denied]}
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert accounts == [{"id": "act_1", "name": None}]
+    assert accounts.truncated is False
+    assert not any(
+        "/owned_ad_accounts" in c.args[0] for c in mock_client.get.call_args_list
+    )
+    assert "Meta business listing skipped" in caplog.text
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_business_edge_failure_keeps_direct_rows_and_flags_truncation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failing portfolio edge never costs the direct rows or the portfolios
+    after it.
+
+    The list is flagged as partial instead, the other edges are still
+    walked, and the warning carries the error with the access token
+    scrubbed out of the URL httpx quotes.
+    """
+    token = "SECRET|TOKEN|XYZ"
+    encoded = quote(token, safe="")
+    failing_url = f"{_GRAPH_API_BASE}/B1/owned_ad_accounts?access_token={encoded}"
+    request = httpx.Request("GET", failing_url)
+    response = httpx.Response(500, json={"error": {"code": 1}}, request=request)
+    failing = MagicMock(
+        status_code=500,
+        raise_for_status=MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                f"Server error '500 Internal Server Error' for url '{failing_url}'",
+                request=request,
+                response=response,
+            )
+        ),
+    )
+    direct = MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        **{"json.return_value": {"data": [{"id": "act_1"}], "paging": {}}},
+    )
+    businesses = MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        **{"json.return_value": {"data": [{"id": "B1"}, {"id": "B2"}], "paging": {}}},
+    )
+    later = MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        **{"json.return_value": {"data": [{"id": "act_9"}], "paging": {}}},
+    )
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = _route_get(
+            {
+                "/me/adaccounts": [direct],
+                "/me/businesses": [businesses],
+                "/B1/owned_ad_accounts": [failing],
+                "/B2/client_ad_accounts": [later],
+            }
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token=token)
+
+    assert [row["id"] for row in accounts] == ["act_1", "act_9"]
+    assert accounts.truncated is True
+    assert "Meta business B1 edge owned_ad_accounts failed" in caplog.text
+    assert token not in caplog.text
+    assert encoded not in caplog.text
+    walked = [c.args[0] for c in mock_client.get.call_args_list]
+    assert any("/B1/client_ad_accounts" in url for url in walked)
+    assert any("/B2/owned_ad_accounts" in url for url in walked)
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_skips_a_portfolio_edge_the_role_cannot_read(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A permission error on one portfolio edge is not a partial list.
+
+    The person's role in that portfolio does not reach the edge, so no
+    reachable account is missing: the edge is skipped at debug level and
+    the rest of the walk continues with ``truncated`` left False.
+    """
+    caplog.set_level(logging.DEBUG, logger="mureo.meta_ads.accounts")
+    request = httpx.Request("GET", f"{_GRAPH_API_BASE}/B1/client_ad_accounts")
+    response = httpx.Response(
+        400,
+        json={"error": {"message": "(#200) Permissions error", "code": 200}},
+        request=request,
+    )
+    denied = MagicMock(
+        status_code=400,
+        raise_for_status=MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "400 Bad Request", request=request, response=response
+            )
+        ),
+    )
+
+    def page(data: list[dict[str, Any]]) -> MagicMock:
+        return MagicMock(
+            status_code=200,
+            raise_for_status=MagicMock(),
+            **{"json.return_value": {"data": data, "paging": {}}},
+        )
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = _route_get(
+            {
+                "/me/adaccounts": [page([{"id": "act_1"}])],
+                "/me/businesses": [page([{"id": "B1"}, {"id": "B2"}])],
+                "/B1/owned_ad_accounts": [page([{"id": "act_2"}])],
+                "/B1/client_ad_accounts": [denied],
+                "/B2/owned_ad_accounts": [page([{"id": "act_3"}])],
+            }
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert [row["id"] for row in accounts] == ["act_1", "act_2", "act_3"]
+    assert accounts.truncated is False
+    assert "Meta business B1 edge client_ad_accounts skipped" in caplog.text
+    assert "WARNING" not in caplog.text
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_business_truncation_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A portfolio edge that hits the page cap flags the whole list."""
+    monkeypatch.setattr("mureo.meta_ads.accounts._MAX_PAGES", 2)
+
+    looping_page = MagicMock()
+    looping_page.status_code = 200
+    looping_page.json.return_value = {
+        "data": [{"id": "act_x", "name": "X"}],
+        "paging": {"next": f"{_GRAPH_API_BASE}/B1/owned_ad_accounts?after=loop"},
+    }
+    looping_page.raise_for_status = MagicMock()
+    direct = MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        **{"json.return_value": {"data": [{"id": "act_1"}], "paging": {}}},
+    )
+    businesses = MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        **{"json.return_value": {"data": [{"id": "B1"}], "paging": {}}},
+    )
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = _route_get(
+            {
+                "/me/adaccounts": [direct],
+                "/me/businesses": [businesses],
+                "/B1/owned_ad_accounts": [looping_page] * 2,
+            }
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert [row["id"] for row in accounts] == ["act_1", "act_x"]
+    assert accounts.truncated is True
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_direct_failure_still_raises() -> None:
+    """A failing ``/me/adaccounts`` raises as before; portfolios are not asked."""
+    token = "SECRET-TOKEN-XYZ"
+    failing = MagicMock(
+        status_code=401,
+        raise_for_status=MagicMock(
+            side_effect=Exception(
+                "Client error '401 Unauthorized' for url "
+                f"'{_GRAPH_API_BASE}/me/adaccounts?access_token={token}'"
+            )
+        ),
+    )
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = _route_get({"/me/adaccounts": [failing]})
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await list_meta_ad_accounts(access_token=token)
+
+    message = str(excinfo.value)
+    assert message.startswith("Failed to retrieve ad account list:")
+    assert token not in message
+    assert not any(
+        "/me/businesses" in c.args[0] for c in mock_client.get.call_args_list
+    )
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_skips_business_rows_without_id() -> None:
+    """A business row without an ``id`` has no edge to walk."""
+    direct = MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        **{"json.return_value": {"data": [{"id": "act_1"}], "paging": {}}},
+    )
+    businesses = MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        **{"json.return_value": {"data": [{"name": "x"}], "paging": {}}},
+    )
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = _route_get(
+            {"/me/adaccounts": [direct], "/me/businesses": [businesses]}
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    assert accounts == [{"id": "act_1", "name": None}]
+    assert accounts.truncated is False
+    requested = [c.args[0] for c in mock_client.get.call_args_list]
+    assert not any("_ad_accounts" in url for url in requested)
 
 
 # ---------------------------------------------------------------------------
@@ -1259,7 +1639,7 @@ async def test_meta_ad_accounts_uses_timeout() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.get = _route_get({"/me/adaccounts": [mock_response]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -1333,7 +1713,7 @@ async def test_list_meta_ad_accounts_exact_cap_walk_is_complete(
 
     with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(side_effect=[page1, page2])
+        mock_client.get = _route_get({"/me/adaccounts": [page1, page2]})
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client

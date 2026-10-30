@@ -1,25 +1,13 @@
 """Accessible-account discovery for the Meta Marketing API.
 
-Public surface for tooling that needs to enumerate the Meta ad
-accounts a given access token can reach.
+Public surface for tooling that needs to enumerate the Meta ad accounts a
+given access token can reach, so configure-UI consumers (in-tree and
+third-party) can build account pickers without reaching into the wizard's
+internal module. ``mureo.auth_setup.list_meta_ad_accounts`` stays valid as
+a thin re-export.
 
-The function was previously defined inside :mod:`mureo.auth_setup`
-for the interactive OAuth wizard's account-picker step. Promoting it
-to ``mureo.meta_ads.accounts`` exposes the same logic as a stable
-public API so configure-UI consumers (in-tree and third-party) can
-build account pickers without reaching into the wizard's internal
-module.
-
-The original import path ``mureo.auth_setup.list_meta_ad_accounts``
-remains valid via a thin re-export there — existing callers do not
-need to change.
-
-The returned shape stays a list of dicts (the same dict shape the
-auth-setup wizard has always produced), now as the
-:class:`MetaAdAccountList` subclass that adds a ``truncated`` flag
-and compares equal to a plain list. A future minor release MAY
-introduce a frozen-dataclass parallel return type; the dict shape
-will remain supported for at least one minor.
+The return value is a list of dicts, as the :class:`MetaAdAccountList`
+subclass that adds a ``truncated`` flag and compares equal to a plain list.
 """
 
 from __future__ import annotations
@@ -27,7 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import Any, Final
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -67,6 +55,13 @@ _ADACCOUNT_FIELDS = (
     "disable_reason,end_advertiser_name"
 )
 
+# ``GET /me/adaccounts`` returns the ad accounts the person holds a role on
+# directly. Accounts assigned through a Business Portfolio are often absent
+# from it, so each portfolio from ``GET /me/businesses`` is walked on these
+# edges as well: the accounts it owns and the ones it was given access to.
+_BUSINESS_FIELDS = "id,name"
+_BUSINESS_AD_ACCOUNT_EDGES = ("owned_ad_accounts", "client_ad_accounts")
+
 # Defensive upper bound on the cursor walk. 50 pages × 100 = 5000 ad
 # accounts — well past anything seen in practice. Caps a buggy Graph
 # response that keeps returning a ``paging.next`` cursor so the
@@ -89,16 +84,14 @@ def _is_safe_graph_url(url: str) -> bool:
 
 
 def _redact(message: str, secret: str) -> str:
-    """Replace ``secret`` in ``message`` with a fixed token marker.
-
-    Used to scrub access tokens out of error messages before they reach
-    operator logs or UI surfaces. The original exception chain is broken
-    with ``raise ... from None`` separately — see the raise site.
-    """
+    """Replace ``secret`` in ``message`` with a fixed marker, in the form it
+    was given and in the percent-encoded form httpx writes into URLs."""
 
     if not secret:
         return message
-    return message.replace(secret, "***REDACTED***")
+    for form in {secret, quote(secret, safe="")}:
+        message = message.replace(form, "***REDACTED***")
+    return message
 
 
 class MetaAdAccountList(list[dict[str, Any]]):
@@ -153,7 +146,7 @@ class MetaTokenInvalidError(MetaTokenValidationError):
 
 
 class MetaAccountFetchError(MetaTokenValidationError):
-    """The token is valid but /me/adaccounts could not be listed."""
+    """The token is valid but the ad accounts could not be listed."""
 
 
 class MetaTokenInspectError(MetaTokenValidationError):
@@ -433,8 +426,8 @@ async def validate_meta_access_token(
       compared against :func:`_required_oauth_scopes` to compute what is
       missing (e.g. a token minted without ``ads_management`` cannot create
       creatives).
-    * ``GET /me/adaccounts`` — the ad accounts the token can reach, reduced
-      to ``{id, name}`` so the UI can render an account picker.
+    * :func:`list_meta_ad_accounts` (direct and Business Portfolio edges) —
+      the ad accounts the token can reach, reduced to ``{id, name}``.
     * ``GET /debug_token`` — when the token dies, or that it does not
       (#726/#740). Best-effort and only possible with the app pair (see
       :func:`inspect_meta_access_token`), so both "could not ask" and "Meta
@@ -465,8 +458,8 @@ async def validate_meta_access_token(
             ``subcode`` / ``fbtrace_id`` when present, with the access
             token scrubbed out.
         MetaAccountFetchError: When the token is valid but the ad-account
-            listing (/me/adaccounts) fails — a distinct condition so the
-            caller does not mislabel it as an invalid token.
+            listing (:func:`list_meta_ad_accounts`) fails — a distinct
+            condition so the caller does not mislabel it as an invalid token.
     """
 
     if not access_token:
@@ -555,14 +548,186 @@ async def validate_meta_access_token(
     }
 
 
+def _graph_error_code(exc: BaseException) -> int | None:
+    """The Graph ``error.code`` of an HTTP error response; ``None`` when the
+    exception is another kind, the body is not JSON or the code is not an int."""
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return None
+    try:
+        payload: Any = exc.response.json()
+    except ValueError:  # a non-JSON body carries no code
+        return None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    if isinstance(code, int) and not isinstance(code, bool):
+        return code
+    return None
+
+
+def _is_permission_error(code: int | None) -> bool:
+    """Graph refused for lack of permission: ``(#10) ... requires
+    business_management`` or a ``#2xx`` permissions error. The portfolio
+    walk is skipped quietly for these, so a token stored before
+    ``business_management`` was requested keeps its direct list unchanged."""
+    return code == 10 or (code is not None and 200 <= code <= 299)
+
+
+async def _fetch_page(
+    client: httpx.AsyncClient, url: str, params: dict[str, Any] | None
+) -> tuple[list[Any], str | None]:
+    """One page of a Graph edge: its normalised rows and the next cursor."""
+    response = await client.get(url, params=params)
+    response.raise_for_status()
+    payload = response.json()
+    rows = [_normalise_account_row(row) for row in payload.get("data", []) or []]
+    return rows, (payload.get("paging") or {}).get("next")
+
+
+async def _walk_edge(
+    client: httpx.AsyncClient,
+    path: str,
+    *,
+    fields: str,
+    access_token: str,
+) -> MetaAdAccountList:
+    """Walk one Graph edge (``path`` below the base URL); errors propagate.
+
+    ``truncated`` is set when the walk stopped with rows left behind.
+    """
+    rows = MetaAdAccountList()
+    next_url: str | None = f"{GRAPH_API_BASE}{path}"
+    # Sent on the first request only: a ``paging.next`` URL already carries
+    # every query parameter (token and cursor), so resending would corrupt it.
+    first_request_params: dict[str, Any] | None = {
+        "fields": fields,
+        "limit": _PAGE_SIZE,
+        "access_token": access_token,
+    }
+    for _ in range(_MAX_PAGES):
+        if not next_url:
+            break
+        if not _is_safe_graph_url(next_url):
+            logger.warning(
+                "Refusing to follow non-Graph paging.next URL; "
+                "truncating Meta ad-account list."
+            )
+            # The refusal is the right call, but it leaves the list
+            # partial — say so to the caller as well as the log.
+            rows.truncated = True
+            break
+        page, next_url = await _fetch_page(client, next_url, first_request_params)
+        rows.extend(page)
+        first_request_params = None
+    else:
+        # Loop exhausted the cap. A walk whose final page carried no cursor
+        # is complete, cap or not; only a pending cursor means accounts were
+        # left behind — logged, and flagged so the UI can say so too.
+        if next_url:
+            logger.warning(
+                "Meta ad-account pagination hit the %d-page cap; some "
+                "accounts may be missing from the configure UI.",
+                _MAX_PAGES,
+            )
+            rows.truncated = True
+    return rows
+
+
+async def _walk_business_edges(
+    client: httpx.AsyncClient, business_id: str, access_token: str
+) -> MetaAdAccountList:
+    """The ad accounts one Business Portfolio owns or was given access to.
+
+    One edge failing does not hide the other, nor the portfolios after
+    this one. A permission error means the person's role in the portfolio
+    does not reach that edge, so nothing reachable is missing and the edge
+    is skipped quietly; any other failure flags the result ``truncated``.
+    """
+    result = MetaAdAccountList()
+    for edge in _BUSINESS_AD_ACCOUNT_EDGES:
+        try:
+            rows = await _walk_edge(
+                client,
+                f"/{business_id}/{edge}",
+                fields=_ADACCOUNT_FIELDS,
+                access_token=access_token,
+            )
+        except Exception as exc:  # noqa: BLE001 — the other edges stand without it
+            scrubbed = _redact(str(exc), access_token)
+            if _is_permission_error(_graph_error_code(exc)):
+                logger.debug(
+                    "Meta business %s edge %s skipped: %s", business_id, edge, scrubbed
+                )
+                continue
+            logger.warning(
+                "Meta business %s edge %s failed; the list is returned without it: %s",
+                business_id,
+                edge,
+                scrubbed,
+            )
+            result.truncated = True
+            continue
+        result.extend(rows)
+        result.truncated = result.truncated or rows.truncated
+    return result
+
+
+async def _list_business_ad_accounts(
+    client: httpx.AsyncClient, access_token: str
+) -> MetaAdAccountList:
+    """The ad accounts reached through the token's Business Portfolios.
+
+    Never raises: the direct list must survive any portfolio failure. A
+    token without ``business_management`` yields an empty, complete list;
+    a portfolio listing that fails otherwise yields an empty list flagged
+    ``truncated``. Per-edge failures are handled in
+    :func:`_walk_business_edges`.
+    """
+    result = MetaAdAccountList()
+    try:
+        businesses = await _walk_edge(
+            client, "/me/businesses", fields=_BUSINESS_FIELDS, access_token=access_token
+        )
+    except Exception as exc:  # noqa: BLE001 — the direct list stands without it
+        scrubbed = _redact(str(exc), access_token)
+        if _is_permission_error(_graph_error_code(exc)):
+            logger.debug("Meta business listing skipped: %s", scrubbed)
+            return result
+        logger.warning(
+            "Meta business listing failed; the direct list is returned "
+            "without it: %s",
+            scrubbed,
+        )
+        result.truncated = True
+        return result
+    result.truncated = businesses.truncated
+    for business in businesses:
+        business_id = business.get("id") if isinstance(business, dict) else None
+        if not isinstance(business_id, str):
+            continue
+        rows = await _walk_business_edges(client, business_id, access_token)
+        result.extend(rows)
+        result.truncated = result.truncated or rows.truncated
+    return result
+
+
 async def list_meta_ad_accounts(access_token: str) -> MetaAdAccountList:
     """Retrieve the list of Meta ad accounts the access token can reach.
 
-    Calls ``GET /me/adaccounts`` on the Graph API and walks the
-    ``paging.next`` cursor until exhausted so every account under a
-    Business Manager is returned, not just the first 25. Pages are
-    concatenated in cursor order (== Graph's natural order) so the
-    configure-UI dropdown ranks accounts consistently across runs.
+    Walks three Graph edges, each through its ``paging.next`` cursor so
+    every account is returned, not just the first 25: ``GET
+    /me/adaccounts`` (the accounts the person holds a role on directly),
+    then ``GET /me/businesses`` and, for each Business Portfolio in Graph's
+    order, its ``owned_ad_accounts`` and ``client_ad_accounts``. The result
+    is the union keyed by account ``id``: the direct accounts first, in
+    cursor order, then each portfolio account not already listed. A row
+    already present is kept as it is; a portfolio row without an ``id`` is
+    dropped. The order is therefore stable across runs, so the
+    configure-UI dropdown ranks accounts consistently.
+
+    Listing portfolios needs ``business_management``, which is part of
+    :data:`META_OAUTH_SCOPES`. A token without it (Graph error ``#10`` or a
+    ``#2xx`` permissions error on ``/me/businesses``) gets the direct
+    accounts alone, not flagged as truncated.
 
     Args:
         access_token: Meta Ads access token (System User or User token).
@@ -577,62 +742,25 @@ async def list_meta_ad_accounts(access_token: str) -> MetaAdAccountList:
         and ``end_advertiser_name``. Graph omits a field it has no value
         for, so only ``id`` and ``name`` are guaranteed present.
 
-        ``truncated`` is True when the walk stopped early — the page cap
-        was reached, or a ``paging.next`` URL was refused — meaning
-        reachable accounts are missing from the list.
+        ``truncated`` is True when a walk stopped early — the page cap
+        was reached, a ``paging.next`` URL was refused, or a Business
+        Portfolio edge failed — meaning reachable accounts are missing
+        from the list.
 
     Raises:
-        RuntimeError: When the Graph API call fails (network error or
-            non-2xx response).
+        RuntimeError: When the ``/me/adaccounts`` call fails (network
+            error or non-2xx response). A Business Portfolio failure never
+            raises; it sets ``truncated`` instead.
     """
-    accounts = MetaAdAccountList()
-    next_url: str | None = f"{GRAPH_API_BASE}/me/adaccounts"
-    # ``params`` is only sent on the first request — subsequent
-    # ``paging.next`` URLs already carry every query parameter Graph
-    # needs (including ``access_token`` and ``after`` cursor), so
-    # resending them would corrupt the cursor.
-    first_request_params: dict[str, Any] | None = {
-        "fields": _ADACCOUNT_FIELDS,
-        "limit": _PAGE_SIZE,
-        "access_token": access_token,
-    }
-
     try:
         async with httpx.AsyncClient(timeout=META_HTTP_TIMEOUT_SECONDS) as client:
-            for _ in range(_MAX_PAGES):
-                if not next_url:
-                    break
-                if not _is_safe_graph_url(next_url):
-                    logger.warning(
-                        "Refusing to follow non-Graph paging.next URL; "
-                        "truncating Meta ad-account list."
-                    )
-                    # The refusal is the right call, but it leaves the list
-                    # partial — say so to the caller as well as the log.
-                    accounts.truncated = True
-                    break
-                response = await client.get(next_url, params=first_request_params)
-                response.raise_for_status()
-                payload = response.json()
-                accounts.extend(
-                    _normalise_account_row(row) for row in payload.get("data", []) or []
-                )
-                next_url = (payload.get("paging") or {}).get("next")
-                first_request_params = None
-            else:
-                # Loop exhausted the cap. A walk whose final page carried no
-                # cursor is complete, cap or not; only a pending cursor means
-                # accounts were left behind. Log so the gap is visible in
-                # operator logs, and flag the list so the UI can say the
-                # same thing to the operator looking at the dropdown.
-                if next_url:
-                    logger.warning(
-                        "Meta ad-account pagination hit the %d-page cap; some "
-                        "accounts may be missing from the configure UI.",
-                        _MAX_PAGES,
-                    )
-                    accounts.truncated = True
-        return accounts
+            direct = await _walk_edge(
+                client,
+                "/me/adaccounts",
+                fields=_ADACCOUNT_FIELDS,
+                access_token=access_token,
+            )
+            business = await _list_business_ad_accounts(client, access_token)
     except Exception as exc:  # noqa: BLE001 — re-raised with the token redacted
         # Scrub the access token before it lands in operator logs or UI.
         # From page 2 onward the token lives in ``next_url`` itself, so
@@ -643,6 +771,16 @@ async def list_meta_ad_accounts(access_token: str) -> MetaAdAccountList:
         # exception's ``__cause__`` (which still carries the unscrubbed
         # URL) is not printed by default traceback formatting.
         raise RuntimeError(f"Failed to retrieve ad account list: {scrubbed}") from None
+
+    accounts = MetaAdAccountList(direct)
+    seen = {row.get("id") for row in direct if isinstance(row, dict)}
+    for row in business:
+        row_id = row.get("id") if isinstance(row, dict) else None
+        if row_id and row_id not in seen:
+            accounts.append(row)
+            seen.add(row_id)
+    accounts.truncated = direct.truncated or business.truncated
+    return accounts
 
 
 __all__ = [
