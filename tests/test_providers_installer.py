@@ -14,7 +14,6 @@ from __future__ import annotations
 import dataclasses
 import os
 import subprocess
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -321,7 +320,7 @@ def test_resolve_executable_falls_back_to_tool_dirs() -> None:
     fallback = mock_which.call_args_list[1].kwargs["path"].split(os.pathsep)
     assert "/opt/homebrew/bin" in fallback
     assert "/usr/local/bin" in fallback
-    assert str(Path("~/.local/bin").expanduser()) in fallback
+    assert os.path.expanduser("~/.local/bin") in fallback
 
 
 @pytest.mark.unit

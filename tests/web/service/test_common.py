@@ -8,6 +8,7 @@ quoted so a spaced install path (the Windows default) is not split.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -73,13 +74,16 @@ class TestServiceEnvironment:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An empty or relative entry would resolve against the daemon's cwd."""
-        monkeypatch.setenv("PATH", "/opt/x/bin::bin:./node_modules/.bin:/usr/bin")
-        assert service_environment()["PATH"] == "/opt/x/bin:/usr/bin"
+        entries = ["/opt/x/bin", "", "bin", "./node_modules/.bin", "/usr/bin"]
+        monkeypatch.setenv("PATH", os.pathsep.join(entries))
+        assert service_environment()["PATH"] == os.pathsep.join(
+            ["/opt/x/bin", "/usr/bin"]
+        )
 
     def test_omits_path_when_no_absolute_entry_remains(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("PATH", ":bin:.")
+        monkeypatch.setenv("PATH", os.pathsep.join(["", "bin", "."]))
         assert service_environment() == {"MUREO_MANAGED_SERVICE": "1"}
 
     def test_does_not_mutate_the_shared_marker_dict(

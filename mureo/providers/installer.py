@@ -28,7 +28,6 @@ import os
 import shutil
 import subprocess  # module-level so tests can patch installer.subprocess.run
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -75,7 +74,7 @@ def resolve_executable(name: str) -> str | None:
     found = shutil.which(name)
     if found:
         return found
-    fallback = os.pathsep.join(str(Path(d).expanduser()) for d in _FALLBACK_BIN_DIRS)
+    fallback = os.pathsep.join(os.path.expanduser(d) for d in _FALLBACK_BIN_DIRS)
     return shutil.which(name, path=fallback)
 
 
