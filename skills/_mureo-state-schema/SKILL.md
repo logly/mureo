@@ -2,7 +2,7 @@
 name: _mureo-state-schema
 description: "mureo: STATE.json schema and status vocabulary for writing state on Code."
 metadata:
-  version: 0.38.0
+  version: 0.38.1
   openclaw:
     category: "advertising"
     requires:
