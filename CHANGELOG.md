@@ -13,6 +13,11 @@
 
 ### Fixed
 
+- **The GA4 step of the configure wizard labels its path field as an ADC
+  credential file** (#943). `GOOGLE_APPLICATION_CREDENTIALS` accepts a
+  service-account key or the file written by
+  `gcloud auth application-default login`; the label named only the
+  service-account key, which contradicted the integrations guide.
 - **Meta ad accounts reached through a Business Portfolio are listed**
   (#950). `list_meta_ad_accounts` walks `/me/businesses` and each
   portfolio's `owned_ad_accounts` and `client_ad_accounts` besides
