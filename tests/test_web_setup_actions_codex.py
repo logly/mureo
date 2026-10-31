@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 class _OkInstall:
     returncode = 0
+    missing_executable = None
 
 
 @pytest.fixture

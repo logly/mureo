@@ -339,7 +339,6 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
     ("mureo/providers/coexistence.py", "coexistence_warning"): 51,
     ("mureo/providers/config_writer.py", "add_provider_to_claude_settings"): 97,
     ("mureo/providers/config_writer.py", "hosted_provider_connectivity"): 61,
-    ("mureo/providers/installer.py", "run_install"): 53,
     ("mureo/providers/mureo_env.py", "add_provider_and_disable_in_mureo"): 64,
     ("mureo/providers/mureo_env.py", "set_mureo_disable_env"): 53,
     ("mureo/rollback/executor.py", "execute_rollback"): 131,

@@ -199,6 +199,9 @@ class Element {
     this.insertBefore(node, old);
     return this.removeChild(old);
   }
+  remove() {
+    if (this.parentNode) this.parentNode.removeChild(this);
+  }
   get firstChild() {
     return this.childNodes[0] || null;
   }

@@ -92,6 +92,17 @@ def _ok_install() -> InstallResult:
     return InstallResult(returncode=0, stdout="", stderr="", argv=[])
 
 
+def _missing_install() -> InstallResult:
+    """The result ``run_install`` reports when ``pipx`` is found nowhere."""
+    return InstallResult(
+        returncode=127,
+        stdout="",
+        stderr="pipx not found on PATH (/usr/bin:/bin)",
+        argv=["pipx", "install", "google-ads-mcp"],
+        missing_executable="pipx",
+    )
+
+
 def _google_creds(tmp_path: Path) -> Path:
     """Write a synthetic credentials.json with FULLY-credentialed Google Ads
     ADC config (#102) and return its path, so ``credential_env_for``
@@ -253,6 +264,56 @@ class TestInstallProviderCodeHostUnchanged:
 
         assert result == ActionResult.failed("install_failed", "install_returncode_2")
         mock_disable.assert_not_called()
+
+    def test_install_provider_reports_installer_missing(self) -> None:
+        """A package manager found nowhere is named, not ``internal_error``."""
+        with (
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_missing_install(),
+            ),
+            patch(
+                "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
+            ) as mock_disable,
+        ):
+            result = install_provider(_GOOGLE)
+
+        assert result == ActionResult.failed("installer_missing", "pipx")
+        mock_disable.assert_not_called()
+
+    def test_spawned_exit_127_is_an_install_failure(self) -> None:
+        """Only a lookup that found nothing is ``installer_missing``; a
+        package manager that ran and exited 127 is an ordinary failure."""
+        exited = InstallResult(
+            returncode=127, stdout="", stderr="x", argv=["pipx", "install", "x"]
+        )
+        with patch("mureo.providers.installer.run_install", return_value=exited):
+            result = install_provider(_GOOGLE)
+
+        assert result == ActionResult.failed("install_failed", "install_returncode_127")
+
+    def test_desktop_host_reports_installer_missing(self, tmp_path: Path) -> None:
+        with (
+            patch.object(platform, "system", return_value="Darwin"),
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_missing_install(),
+            ),
+        ):
+            result = install_provider(_GOOGLE, host="claude-desktop", home=tmp_path)
+
+        assert result == ActionResult.failed("installer_missing", "pipx")
+        assert not _desktop_cfg(tmp_path).exists()
+
+    def test_codex_host_reports_installer_missing(self, tmp_path: Path) -> None:
+        with patch(
+            "mureo.providers.installer.run_install",
+            return_value=_missing_install(),
+        ):
+            result = install_provider(_GOOGLE, host="codex", home=tmp_path)
+
+        assert result == ActionResult.failed("installer_missing", "pipx")
+        assert not (tmp_path / ".codex" / "config.toml").exists()
 
     def test_unknown_provider_code_host_no_fs_write(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions

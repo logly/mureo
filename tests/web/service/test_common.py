@@ -8,11 +8,17 @@ quoted so a spaced install path (the Windows default) is not split.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 import pytest
 
-from mureo.web.service._common import service_argv, service_command
+from mureo.web.service import SERVICE_ENVIRONMENT
+from mureo.web.service._common import (
+    service_argv,
+    service_command,
+    service_environment,
+)
 
 
 @pytest.mark.unit
@@ -43,3 +49,46 @@ class TestServiceCommand:
     def test_command_carries_the_serve_invocation(self) -> None:
         cmd = service_command(port=7613)
         assert "-m mureo configure --serve --port 7613" in cmd
+
+
+@pytest.mark.unit
+class TestServiceEnvironment:
+    def test_carries_marker_and_installing_shell_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("PATH", "/opt/x/bin:/usr/bin")
+        assert service_environment() == {
+            "MUREO_MANAGED_SERVICE": "1",
+            "PATH": "/opt/x/bin:/usr/bin",
+        }
+
+    def test_omits_path_when_unset_or_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("PATH", raising=False)
+        assert service_environment() == {"MUREO_MANAGED_SERVICE": "1"}
+        monkeypatch.setenv("PATH", "")
+        assert service_environment() == {"MUREO_MANAGED_SERVICE": "1"}
+
+    def test_drops_empty_and_relative_path_entries(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty or relative entry would resolve against the daemon's cwd."""
+        entries = ["/opt/x/bin", "", "bin", "./node_modules/.bin", "/usr/bin"]
+        monkeypatch.setenv("PATH", os.pathsep.join(entries))
+        assert service_environment()["PATH"] == os.pathsep.join(
+            ["/opt/x/bin", "/usr/bin"]
+        )
+
+    def test_omits_path_when_no_absolute_entry_remains(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("PATH", os.pathsep.join(["", "bin", "."]))
+        assert service_environment() == {"MUREO_MANAGED_SERVICE": "1"}
+
+    def test_does_not_mutate_the_shared_marker_dict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("PATH", "/usr/bin")
+        service_environment()
+        assert SERVICE_ENVIRONMENT == {"MUREO_MANAGED_SERVICE": "1"}
