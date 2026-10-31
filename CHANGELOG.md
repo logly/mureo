@@ -34,6 +34,13 @@
   today's direct list; a failure on a portfolio edge keeps the direct rows
   and sets `truncated`. The configure UI account picker and
   `validate_meta_access_token` pick this up unchanged.
+- **The configure wizard's basic step describes the chosen host** (#960).
+  The pills for the mureo MCP, the credential-guard hook and the workflow
+  skills were drawn from the status snapshot the page had loaded, which the
+  server computes for its session host; when that host differed from the
+  one chosen on the first step, installed and current workflow skills read
+  as ✗. The wizard now reloads the status after the chosen host reaches the
+  server and redraws the basic step from it.
 
 ## [0.37.0] - 2026-10-30
 

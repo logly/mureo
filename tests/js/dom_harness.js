@@ -272,9 +272,12 @@ function dashed(key) {
   return key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
 }
 
-/** `[attr]`, `[attr="v"]`, `.class`, `tag` — the shapes dashboard.js uses. */
+/** `[attr]`, `[attr="v"]`, `.class`, `tag`, `tag[attr="v"]` — the shapes the web JS uses. */
 function matchesSelector(el, selector) {
   const s = String(selector).trim();
+  // `input[name="host"]`: a tag narrowed by one attribute test.
+  const scoped = /^([A-Za-z][A-Za-z0-9]*)(\[.+\])$/.exec(s);
+  if (scoped) return matchesSelector(el, scoped[1]) && matchesSelector(el, scoped[2]);
   let m = /^\[([A-Za-z0-9_-]+)(?:=["']?([^"'\]]*)["']?)?\]$/.exec(s);
   if (m) {
     if (!el.hasAttribute(m[1])) return false;
