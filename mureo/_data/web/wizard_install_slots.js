@@ -10,6 +10,8 @@
   "use strict";
 
   const PROVIDER_INSTALL_ORDER = ["google_ads", "meta_ads", "ga4", "tiktok_ads"];
+  const TIKTOK_HOSTED_URL =
+    "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer";
 
   // Re-sync wizard state from the authoritative /api/status after a
   // successful install (the optimistic local flag alone left the row
@@ -27,6 +29,100 @@
       window.MUREO_WIZARD.hydrateStateFromStatus(MUREO.state.status);
     }
     onComplete();
+  }
+
+  // The service-account path field of the needs-credentials card: its label
+  // with the input, then the status line the save-and-retry flow writes to.
+  function buildServiceAccountField(card) {
+    const label = document.createElement("label");
+    label.style.display = "block";
+    label.textContent = MUREO.t("wizard.providers_install.sa_path_label");
+    label.setAttribute("data-i18n", "wizard.providers_install.sa_path_label");
+    const input = document.createElement("input");
+    input.type = "text";
+    label.appendChild(input);
+    card.appendChild(label);
+
+    const status = document.createElement("p");
+    status.className = "dashboard-provider-hosted-note";
+    status.hidden = true;
+    card.appendChild(status);
+
+    function setStatus(key) {
+      status.hidden = false;
+      status.textContent = MUREO.t(key);
+    }
+    return { input: input, status: status, setStatus: setStatus };
+  }
+
+  // Persist the service-account path into google_ads.service_account_path
+  // (section-aware write — the shared GOOGLE_APPLICATION_CREDENTIALS name).
+  // Resolves to whether the write was accepted; a network error is a no.
+  async function saveServiceAccountPath(input) {
+    let saveRes;
+    try {
+      saveRes = await MUREO.postJson("/api/credentials/env-var", {
+        name: "GOOGLE_APPLICATION_CREDENTIALS",
+        value: input.value,
+        section: "google_ads",
+      });
+    } catch (_e) {
+      return false;
+    }
+    return Boolean(saveRes.ok);
+  }
+
+  // The retried install answered something other than success.
+  function showRetryOutcome(st, outcome, res, status, setStatus) {
+    if (st === "needs_credentials") {
+      // Still short of full creds (e.g. the service-account path is missing).
+      setStatus("wizard.providers_install.still_needs_credentials");
+    } else {
+      const tmpl = MUREO.t("wizard.providers_install.failed");
+      const detail = outcome.ok ? res.body.detail || st : outcome.code || "request_failed";
+      status.hidden = false;
+      // Replacement via a function so a server-derived detail containing
+      // "$" sequences (e.g. "$&", "$1") is inserted literally rather than
+      // triggering String.replace's special-pattern substitution.
+      status.textContent = tmpl.replace("{detail}", function () {
+        return detail;
+      });
+    }
+  }
+
+  function wireSaveAndRetry(retryBtn, input, status, setStatus, state, providerId, onComplete) {
+    retryBtn.addEventListener("click", async function () {
+      retryBtn.disabled = true;
+      // 1) Persist the service-account path.
+      setStatus("wizard.auth.saving");
+      if (!(await saveServiceAccountPath(input))) {
+        setStatus("wizard.auth.save_failed");
+        retryBtn.disabled = false;
+        return;
+      }
+      // 2) Re-run install now that ADC creds are present.
+      setStatus("wizard.providers_install.installing");
+      let res;
+      try {
+        res = await MUREO.postJson("/api/providers/install", {
+          provider_id: providerId,
+        });
+      } catch (_e) {
+        const tmpl = MUREO.t("wizard.providers_install.failed");
+        status.hidden = false;
+        status.textContent = tmpl.replace("{detail}", "network_error");
+        retryBtn.disabled = false;
+        return;
+      }
+      const outcome = MUREO.postOutcome(res);
+      const st = outcome.ok ? res.body.status : null;
+      if (st === "ok" || st === "noop") { // noop: already registered
+        await finishInstall(state, providerId, onComplete);
+        return;
+      }
+      showRetryOutcome(st, outcome, res, status, setStatus);
+      retryBtn.disabled = false;
+    });
   }
 
   // Inline recovery card shown when install returns `needs_credentials`
@@ -56,24 +152,8 @@
       return card;
     }
 
-    const label = document.createElement("label");
-    label.style.display = "block";
-    label.textContent = MUREO.t("wizard.providers_install.sa_path_label");
-    label.setAttribute("data-i18n", "wizard.providers_install.sa_path_label");
-    const input = document.createElement("input");
-    input.type = "text";
-    label.appendChild(input);
-    card.appendChild(label);
-
-    const status = document.createElement("p");
-    status.className = "dashboard-provider-hosted-note";
-    status.hidden = true;
-    card.appendChild(status);
-
-    function setStatus(key) {
-      status.hidden = false;
-      status.textContent = MUREO.t(key);
-    }
+    const field = buildServiceAccountField(card);
+    const input = field.input;
 
     const retryBtn = document.createElement("button");
     retryBtn.type = "button";
@@ -85,68 +165,190 @@
       retryBtn.disabled = !input.value;
     });
 
-    retryBtn.addEventListener("click", async function () {
-      retryBtn.disabled = true;
-      // 1) Persist the service-account path into
-      //    google_ads.service_account_path (section-aware write — the
-      //    shared GOOGLE_APPLICATION_CREDENTIALS name).
-      setStatus("wizard.auth.saving");
-      let saveRes;
-      try {
-        saveRes = await MUREO.postJson("/api/credentials/env-var", {
-          name: "GOOGLE_APPLICATION_CREDENTIALS",
-          value: input.value,
-          section: "google_ads",
-        });
-      } catch (_e) {
-        setStatus("wizard.auth.save_failed");
-        retryBtn.disabled = false;
-        return;
+    wireSaveAndRetry(
+      retryBtn, input, field.status, field.setStatus, state, providerId, onComplete
+    );
+
+    card.appendChild(retryBtn);
+    return card;
+  }
+
+  // Endpoint + copy button — handy for the Desktop custom-connector
+  // dialog or to confirm the URL for `claude mcp add`.
+  function buildEndpointCopyRow(url) {
+    const urlRow = document.createElement("div");
+    urlRow.className = "connector-url-row";
+    const code = document.createElement("code");
+    code.textContent = url;
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "btn btn-secondary connector-copy-btn";
+    copyBtn.textContent = MUREO.t("connector.copy");
+    copyBtn.setAttribute("data-i18n", "connector.copy");
+    copyBtn.addEventListener("click", function () {
+      const done = function () {
+        copyBtn.textContent = MUREO.t("connector.copied");
+        setTimeout(function () {
+          copyBtn.textContent = MUREO.t("connector.copy");
+        }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard
+          .writeText(url)
+          .then(done, function () {
+            MUREO.toast(url);
+          });
+      } else {
+        MUREO.toast(url);
       }
-      if (!saveRes.ok) {
-        setStatus("wizard.auth.save_failed");
-        retryBtn.disabled = false;
-        return;
+    });
+    urlRow.appendChild(code);
+    urlRow.appendChild(copyBtn);
+    return urlRow;
+  }
+
+  // TikTok (tiktok-ads-official): hosted_http, but it supports OAuth
+  // Dynamic Client Registration AND has no mureo-native platform — so it
+  // needs neither Meta's connector-confirm flow nor a native-disable
+  // step. Show a simple, host-specific setup card (the same DCR guidance
+  // as the dashboard) plus a copy-able endpoint. Advancing is via the
+  // outer wizard's Next (no Install button — mureo registers nothing;
+  // the user runs `claude mcp add` / a connector, then /mcp). Handled by
+  // its own branch, so the Meta-only `isHosted` check is left untouched.
+  function buildTiktokHostedCard(wrap, state, platform) {
+    wrap.innerHTML =
+      "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
+    const noteKey =
+      state.host === "claude-desktop"
+        ? "dashboard.provider_tiktok_desktop_note"
+        : state.host === "codex"
+        ? "dashboard.provider_tiktok_codex_note"
+        : "dashboard.provider_tiktok_oauth_note";
+    const note = document.createElement("p");
+    note.className = "dashboard-provider-hosted-note";
+    note.textContent = MUREO.t(noteKey);
+    note.setAttribute("data-i18n", noteKey);
+    wrap.appendChild(note);
+    // The endpoint row is omitted on Codex, where the provider is not wired.
+    if (state.host !== "codex") {
+      wrap.appendChild(buildEndpointCopyRow(TIKTOK_HOSTED_URL));
+    }
+    return wrap;
+  }
+
+  // Hosted MCP (Meta): mureo never registers it locally on EITHER
+  // host. Meta's hosted MCP has no OAuth dynamic client registration,
+  // so it cannot be authenticated as a Claude Code user-scope server
+  // (`/mcp` fails) and Desktop's config can't carry the remote http
+  // shape either. The only working path is a Claude.ai account
+  // connector — show those steps directly (no Install button; there
+  // is nothing for mureo to register). showManualSetup() picks the
+  // connector.code.* (Code) vs connector.* (Desktop) copy by host.
+  function buildHostedMetaCard(wrap, state, platform, providerId, onComplete) {
+    wrap.innerHTML =
+      "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
+    // Codex has no claude.ai account connector, so Meta's hosted MCP
+    // can't be wired at all — there are no connector steps to show.
+    // Surface the "not available, native stays" note and let the user
+    // proceed; mureo-native Meta is never disabled here.
+    if (state.host === "codex") {
+      const note = document.createElement("p");
+      note.className = "dashboard-provider-hosted-note";
+      note.textContent = MUREO.t("dashboard.provider_codex_hosted_na_note");
+      note.setAttribute("data-i18n", "dashboard.provider_codex_hosted_na_note");
+      wrap.appendChild(note);
+      return wrap;
+    }
+    if (!window.MUREO_AUTH_META.showManualSetup(wrap, state, providerId)) {
+      onComplete();
+    }
+    return wrap;
+  }
+
+  // What the Install click does with an answered request. `ctx` carries the
+  // slot's btn, statusLine, wrap, state, platform, providerId, onComplete
+  // and fail.
+  async function handleInstallOutcome(outcome, ctx) {
+    if (!outcome.ok) {
+      return ctx.fail(outcome.code || "request_failed"); // error, then detail
+    }
+    const st = outcome.body.status;
+    if (st === "ok" || st === "noop") { // noop: already registered
+      await finishInstall(ctx.state, ctx.providerId, ctx.onComplete);
+    } else if (st === "needs_credentials") {
+      // The official server registered but cannot authenticate yet —
+      // it needs ADC credentials the wizard hasn't collected (Google
+      // Ads: a service-account JSON path). Surface an inline input +
+      // "Save & install" instead of a bare error. mureo-native stays
+      // ON (backend did not disable it), so the user is never stranded.
+      ctx.btn.remove();
+      ctx.statusLine.hidden = true;
+      ctx.wrap.appendChild(
+        renderNeedsCredentialsCard(ctx.platform, ctx.providerId, ctx.state, ctx.onComplete)
+      );
+    } else if (st === "auth_required" || st === "manual_required") {
+      // Defensive fallback: hosted (Meta) is short-circuited to the
+      // connector card BEFORE this Install button is ever shown
+      // (mureo registers nothing locally on either host). If a
+      // backend path still reports manual_required/auth_required,
+      // surface the Claude.ai connector steps (connector.code.* on
+      // Code, connector.* on Desktop) rather than a bare error.
+      ctx.state.providerInstalled[ctx.providerId] = true;
+      ctx.btn.remove();
+      ctx.statusLine.hidden = true;
+      if (!window.MUREO_AUTH_META.showManualSetup(ctx.wrap, ctx.state, ctx.providerId)) {
+        ctx.onComplete();
       }
-      // 2) Re-run install now that ADC creds are present.
-      setStatus("wizard.providers_install.installing");
+    } else {
+      ctx.fail(outcome.body.detail || st);
+    }
+  }
+
+  function wireInstallButton(wrap, state, platform, providerId, onComplete) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-primary";
+    btn.textContent = MUREO.t("dashboard.action_install");
+    // Status line so a slow pipx/git build doesn't look frozen and
+    // a failure shows WHY (not a silent no-op — issue #1).
+    const statusLine = document.createElement("p");
+    statusLine.className = "dashboard-provider-hosted-note";
+    statusLine.hidden = true;
+    function fail(detail) {
+      const tmpl = MUREO.t("wizard.providers_install.failed");
+      // Function replacement so a "$"-containing detail is inserted
+      // literally (see the note at the providers-install failure path).
+      const safeDetail = detail || "unknown";
+      const msg = tmpl.replace("{detail}", function () {
+        return safeDetail;
+      });
+      statusLine.hidden = false;
+      statusLine.textContent = msg;
+      MUREO.toast(msg);
+    }
+    const ctx = {
+      btn: btn, statusLine: statusLine, wrap: wrap, state: state, platform: platform,
+      providerId: providerId, onComplete: onComplete, fail: fail,
+    };
+    btn.addEventListener("click", async function () {
+      btn.disabled = true;
+      statusLine.hidden = false;
+      statusLine.textContent = MUREO.t("wizard.providers_install.installing");
       let res;
       try {
         res = await MUREO.postJson("/api/providers/install", {
           provider_id: providerId,
         });
       } catch (_e) {
-        const tmpl = MUREO.t("wizard.providers_install.failed");
-        status.hidden = false;
-        status.textContent = tmpl.replace("{detail}", "network_error");
-        retryBtn.disabled = false;
+        btn.disabled = false;
+        fail("network_error");
         return;
       }
-      const outcome = MUREO.postOutcome(res);
-      const st = outcome.ok ? res.body.status : null;
-      if (st === "ok" || st === "noop") { // noop: already registered
-        await finishInstall(state, providerId, onComplete);
-        return;
-      }
-      if (st === "needs_credentials") {
-        // Still short of full creds (e.g. the service-account path is missing).
-        setStatus("wizard.providers_install.still_needs_credentials");
-      } else {
-        const tmpl = MUREO.t("wizard.providers_install.failed");
-        const detail = outcome.ok ? res.body.detail || st : outcome.code || "request_failed";
-        status.hidden = false;
-        // Replacement via a function so a server-derived detail containing
-        // "$" sequences (e.g. "$&", "$1") is inserted literally rather than
-        // triggering String.replace's special-pattern substitution.
-        status.textContent = tmpl.replace("{detail}", function () {
-          return detail;
-        });
-      }
-      retryBtn.disabled = false;
+      btn.disabled = false;
+      return handleInstallOutcome(MUREO.postOutcome(res), ctx);
     });
-
-    card.appendChild(retryBtn);
-    return card;
+    wrap.appendChild(btn);
+    wrap.appendChild(statusLine);
   }
 
   function buildProviderInstallSlot(state, platform, onComplete) {
@@ -154,66 +356,8 @@
     wrap.style.marginTop = "16px";
     const providerId = platform.replace("_", "-") + "-official";
 
-    // TikTok (tiktok-ads-official): hosted_http, but it supports OAuth
-    // Dynamic Client Registration AND has no mureo-native platform — so it
-    // needs neither Meta's connector-confirm flow nor a native-disable
-    // step. Show a simple, host-specific setup card (the same DCR guidance
-    // as the dashboard) plus a copy-able endpoint. Advancing is via the
-    // outer wizard's Next (no Install button — mureo registers nothing;
-    // the user runs `claude mcp add` / a connector, then /mcp). Handled by
-    // its own branch here, so the Meta-only `isHosted` check below is left
-    // untouched.
     if (providerId === "tiktok-ads-official") {
-      const TIKTOK_HOSTED_URL =
-        "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer";
-      wrap.innerHTML =
-        "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
-      const noteKey =
-        state.host === "claude-desktop"
-          ? "dashboard.provider_tiktok_desktop_note"
-          : state.host === "codex"
-          ? "dashboard.provider_tiktok_codex_note"
-          : "dashboard.provider_tiktok_oauth_note";
-      const note = document.createElement("p");
-      note.className = "dashboard-provider-hosted-note";
-      note.textContent = MUREO.t(noteKey);
-      note.setAttribute("data-i18n", noteKey);
-      wrap.appendChild(note);
-      // Endpoint + copy button — handy for the Desktop custom-connector
-      // dialog or to confirm the URL for `claude mcp add`. Omitted on
-      // Codex, where the provider is not wired.
-      if (state.host !== "codex") {
-        const urlRow = document.createElement("div");
-        urlRow.className = "connector-url-row";
-        const code = document.createElement("code");
-        code.textContent = TIKTOK_HOSTED_URL;
-        const copyBtn = document.createElement("button");
-        copyBtn.type = "button";
-        copyBtn.className = "btn btn-secondary connector-copy-btn";
-        copyBtn.textContent = MUREO.t("connector.copy");
-        copyBtn.setAttribute("data-i18n", "connector.copy");
-        copyBtn.addEventListener("click", function () {
-          const done = function () {
-            copyBtn.textContent = MUREO.t("connector.copied");
-            setTimeout(function () {
-              copyBtn.textContent = MUREO.t("connector.copy");
-            }, 1500);
-          };
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard
-              .writeText(TIKTOK_HOSTED_URL)
-              .then(done, function () {
-                MUREO.toast(TIKTOK_HOSTED_URL);
-              });
-          } else {
-            MUREO.toast(TIKTOK_HOSTED_URL);
-          }
-        });
-        urlRow.appendChild(code);
-        urlRow.appendChild(copyBtn);
-        wrap.appendChild(urlRow);
-      }
-      return wrap;
+      return buildTiktokHostedCard(wrap, state, platform);
     }
 
     const installed = state.providerInstalled[providerId];
@@ -224,34 +368,8 @@
     // (no-DCR, native-coexisting) hosted provider is ever added, extend
     // this check.
     const isHosted = providerId === "meta-ads-official";
-
-    // Hosted MCP (Meta): mureo never registers it locally on EITHER
-    // host. Meta's hosted MCP has no OAuth dynamic client registration,
-    // so it cannot be authenticated as a Claude Code user-scope server
-    // (`/mcp` fails) and Desktop's config can't carry the remote http
-    // shape either. The only working path is a Claude.ai account
-    // connector — show those steps directly (no Install button; there
-    // is nothing for mureo to register). showManualSetup() picks the
-    // connector.code.* (Code) vs connector.* (Desktop) copy by host.
     if (isHosted) {
-      wrap.innerHTML =
-        "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
-      // Codex has no claude.ai account connector, so Meta's hosted MCP
-      // can't be wired at all — there are no connector steps to show.
-      // Surface the "not available, native stays" note and let the user
-      // proceed; mureo-native Meta is never disabled here.
-      if (state.host === "codex") {
-        const note = document.createElement("p");
-        note.className = "dashboard-provider-hosted-note";
-        note.textContent = MUREO.t("dashboard.provider_codex_hosted_na_note");
-        note.setAttribute("data-i18n", "dashboard.provider_codex_hosted_na_note");
-        wrap.appendChild(note);
-        return wrap;
-      }
-      if (!window.MUREO_AUTH_META.showManualSetup(wrap, state, providerId)) {
-        onComplete();
-      }
-      return wrap;
+      return buildHostedMetaCard(wrap, state, platform, providerId, onComplete);
     }
 
     wrap.innerHTML =
@@ -259,79 +377,7 @@
       "<p>" + (installed ? "✓ " + MUREO.t("dashboard.installed") : "✗ " + MUREO.t("dashboard.not_installed")) + "</p>";
 
     if (!installed) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn btn-primary";
-      btn.textContent = MUREO.t("dashboard.action_install");
-      // Status line so a slow pipx/git build doesn't look frozen and
-      // a failure shows WHY (not a silent no-op — issue #1).
-      const statusLine = document.createElement("p");
-      statusLine.className = "dashboard-provider-hosted-note";
-      statusLine.hidden = true;
-      function fail(detail) {
-        const tmpl = MUREO.t("wizard.providers_install.failed");
-        // Function replacement so a "$"-containing detail is inserted
-        // literally (see the note at the providers-install failure path).
-        const safeDetail = detail || "unknown";
-        const msg = tmpl.replace("{detail}", function () {
-          return safeDetail;
-        });
-        statusLine.hidden = false;
-        statusLine.textContent = msg;
-        MUREO.toast(msg);
-      }
-      btn.addEventListener("click", async function () {
-        btn.disabled = true;
-        statusLine.hidden = false;
-        statusLine.textContent = MUREO.t("wizard.providers_install.installing");
-        let res;
-        try {
-          res = await MUREO.postJson("/api/providers/install", {
-            provider_id: providerId,
-          });
-        } catch (_e) {
-          btn.disabled = false;
-          fail("network_error");
-          return;
-        }
-        btn.disabled = false;
-        const outcome = MUREO.postOutcome(res);
-        if (!outcome.ok) {
-          return fail(outcome.code || "request_failed"); // error, then detail
-        }
-        const st = outcome.body.status;
-        if (st === "ok" || st === "noop") { // noop: already registered
-          await finishInstall(state, providerId, onComplete);
-        } else if (st === "needs_credentials") {
-          // The official server registered but cannot authenticate yet —
-          // it needs ADC credentials the wizard hasn't collected (Google
-          // Ads: a service-account JSON path). Surface an inline input +
-          // "Save & install" instead of a bare error. mureo-native stays
-          // ON (backend did not disable it), so the user is never stranded.
-          btn.remove();
-          statusLine.hidden = true;
-          wrap.appendChild(
-            renderNeedsCredentialsCard(platform, providerId, state, onComplete)
-          );
-        } else if (st === "auth_required" || st === "manual_required") {
-          // Defensive fallback: hosted (Meta) is short-circuited to the
-          // connector card BEFORE this Install button is ever shown
-          // (mureo registers nothing locally on either host). If a
-          // backend path still reports manual_required/auth_required,
-          // surface the Claude.ai connector steps (connector.code.* on
-          // Code, connector.* on Desktop) rather than a bare error.
-          state.providerInstalled[providerId] = true;
-          btn.remove();
-          statusLine.hidden = true;
-          if (!window.MUREO_AUTH_META.showManualSetup(wrap, state, providerId)) {
-            onComplete();
-          }
-        } else {
-          fail(outcome.body.detail || st);
-        }
-      });
-      wrap.appendChild(btn);
-      wrap.appendChild(statusLine);
+      wireInstallButton(wrap, state, platform, providerId, onComplete);
     }
     return wrap;
   }

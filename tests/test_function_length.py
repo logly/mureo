@@ -2,7 +2,7 @@
 
 The repository's limits are 50 lines per function and 800 lines per file;
 the file limit covers the bundled web JS (``mureo/_data/web/*.js``) as well.
-Code written before they were enforced is over them, so the two lists below
+Code written before they were enforced is over them, so the lists below
 freeze what was over at the time this ratchet landed, each with its length
 then. A function or file not on a list must be within the limit; a listed one
 may not grow, and once it is back within the limit its entry has to be
@@ -14,15 +14,23 @@ decorators excluded); nested functions and methods are measured on their own
 under their qualified name (``Outer.inner``). A qualified name defined more
 than once in one file (a property setter, an ``if``/``else`` pair) is keyed
 ``name@<def line>`` instead, so no definition is hidden behind another; none
-exists today. A file's length is its line count. Function length is
-measured for Python only: the web JS has no parser here, so only its file
-length is held to the limit.
+exists today. A file's length is its line count. In the bundled web JS,
+which has no parser here, a function is a line matching ``function name(``
+(optionally ``async``) or ``name = function`` (optionally after
+``const``/``let``/``var``, optionally ``async``), at any indentation; its
+length runs from that line to the one where the brace depth (``{`` minus
+``}``, counted per line) returns to zero after its first ``{``, or to the
+end of the file when it never does. Methods in object literals, arrow
+functions and functions assigned to a property (``node.onclick = function``)
+are not measured. The JS list follows the same shrink-only rule.
 """
 
 from __future__ import annotations
 
 import ast
+import re
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -368,6 +376,43 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
 }
 
 # shrink-only; remove an entry when you fix it, never add one
+KNOWN_OVER_LIMIT_JS: dict[tuple[str, str], int] = {
+    ("mureo/_data/web/amazon_oauth.js", "buildAuthorizeSection"): 54,
+    ("mureo/_data/web/auth_wizards_meta.js", "buildMetaMethodChooser"): 55,
+    ("mureo/_data/web/auth_wizards_meta.js", "buildMetaTokenCard"): 309,
+    ("mureo/_data/web/auth_wizards_meta.js", "showManualSetup"): 165,
+    ("mureo/_data/web/dashboard_about.js", "runUpgrade"): 52,
+    ("mureo/_data/web/dashboard_advisors.js", "wireAdvisorForm"): 58,
+    ("mureo/_data/web/dashboard_creative.js", "renderCreativeGallery"): 61,
+    ("mureo/_data/web/dashboard_reports.js", "renderReportsPeriodToggle"): 64,
+    ("mureo/_data/web/dashboard_reports.js", "renderReportsSummary"): 114,
+    ("mureo/_data/web/dashboard_reports.js", "setReportsView"): 54,
+    ("mureo/_data/web/dashboard_reports_cards.js", "buildClientCard"): 176,
+    ("mureo/_data/web/dashboard_reports_cards.js", "buildClientCardItem"): 51,
+    ("mureo/_data/web/dashboard_reports_changes.js", "buildChangeCard"): 53,
+    ("mureo/_data/web/dashboard_reports_chart.js", "renderChart"): 104,
+    ("mureo/_data/web/dashboard_reports_detail.js", "renderFunnel"): 61,
+    ("mureo/_data/web/dashboard_reports_detail.js", "renderProposals"): 68,
+    ("mureo/_data/web/dashboard_reports_overview.js", "applyReportsHealthFilter"): 52,
+    ("mureo/_data/web/dashboard_reports_overview.js", "buildReportsFeedRow"): 51,
+    ("mureo/_data/web/dashboard_reports_overview.js", "renderReportsPortfolio"): 53,
+    ("mureo/_data/web/dashboard_reports_report.js", "buildReportCard"): 201,
+    ("mureo/_data/web/dashboard_reports_report.js", "renderReportsLatest"): 76,
+    ("mureo/_data/web/dashboard_reports_table.js", "buildRow"): 70,
+    ("mureo/_data/web/dashboard_reports_table.js", "buildTotals"): 69,
+    ("mureo/_data/web/dashboard_reports_triage.js", "buildTriageRow"): 150,
+    ("mureo/_data/web/dashboard_setup.js", "buildBasicInstallButton"): 59,
+    ("mureo/_data/web/dashboard_setup.js", "renderCreativeStudioSection"): 91,
+    ("mureo/_data/web/dashboard_setup.js", "renderProvidersSection"): 165,
+    ("mureo/_data/web/extensions.js", "_applyOverrides"): 65,
+    ("mureo/_data/web/reports_chart.js", "buildChart"): 95,
+    ("mureo/_data/web/reports_logic.js", "aggregateClientKpis"): 76,
+    ("mureo/_data/web/reports_sparkline.js", "buildSparkline"): 74,
+    ("mureo/_data/web/reports_triage.js", "triageItemsForClient"): 118,
+    ("mureo/_data/web/wizard.js", "buildStepBody_completed"): 100,
+}
+
+# shrink-only; remove an entry when you fix it, never add one
 KNOWN_LONG_FILES: dict[str, int] = {
     "mureo/_data/web/auth_wizards_meta.js": 855,
     "mureo/_data/web/dashboard_plugins.js": 858,
@@ -437,17 +482,68 @@ def _keyed_lengths(functions: list[tuple[str, int, int]]) -> dict[str, int]:
     return keyed
 
 
-def _over_limit_functions() -> dict[tuple[str, str], int]:
-    """Every function under ``mureo/`` over the limit, with its length."""
+def _over_limit(
+    paths: list[Path], measure: Callable[[str], list[tuple[str, int, int]]]
+) -> dict[tuple[str, str], int]:
+    """Every function in ``paths`` over the limit, with its length."""
     over: dict[tuple[str, str], int] = {}
-    for path in _package_files():
-        lengths = _keyed_lengths(_function_lengths(ast.parse(path.read_text("utf-8"))))
+    for path in paths:
+        lengths = _keyed_lengths(measure(path.read_text("utf-8")))
         over.update(
             ((_relative(path), key), length)
             for key, length in lengths.items()
             if length > FUNCTION_LINE_LIMIT
         )
     return over
+
+
+def _over_limit_functions() -> dict[tuple[str, str], int]:
+    """Every Python function under ``mureo/`` over the limit, with its length."""
+    return _over_limit(
+        _package_files(), lambda source: _function_lengths(ast.parse(source))
+    )
+
+
+_JS_FUNCTION_DEF = re.compile(
+    r"^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\("
+    r"|^\s*(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b"
+)
+
+
+def _js_block_length(lines: list[str], start: int) -> int:
+    """Lines from ``lines[start]`` to where the brace depth returns to zero
+    after the first ``{``, or to the end of the file when it never does."""
+    depth = 0
+    opened = False
+    for index in range(start, len(lines)):
+        depth += lines[index].count("{") - lines[index].count("}")
+        opened = opened or "{" in lines[index]
+        if opened and depth <= 0:
+            return index - start + 1
+    return len(lines) - start
+
+
+def _js_function_lengths(source: str) -> list[tuple[str, int, int]]:
+    """Every JS function in ``source`` as ``(name, def line, length)``.
+
+    Only ``function name(`` (optionally ``async``) and ``name = function``
+    (optionally after ``const``/``let``/``var``, optionally ``async``) are
+    definitions; methods in object literals and arrow functions are not
+    measured. A nested definition is measured on its own as well.
+    """
+    lines = source.splitlines()
+    found: list[tuple[str, int, int]] = []
+    for index, line in enumerate(lines):
+        match = _JS_FUNCTION_DEF.match(line)
+        if match:
+            name = match.group(1) or match.group(2)
+            found.append((name, index + 1, _js_block_length(lines, index)))
+    return found
+
+
+def _over_limit_js_functions() -> dict[tuple[str, str], int]:
+    """Every bundled web JS function over the limit, with its length."""
+    return _over_limit(_web_js_files(), _js_function_lengths)
 
 
 def _long_files() -> dict[str, int]:
@@ -490,6 +586,13 @@ def test_no_function_grows_past_the_line_limit() -> None:
 
 
 @pytest.mark.unit
+def test_no_js_function_grows_past_the_line_limit() -> None:
+    measured = {f"{p}::{n}": v for (p, n), v in _over_limit_js_functions().items()}
+    allowed = {f"{p}::{n}": v for (p, n), v in KNOWN_OVER_LIMIT_JS.items()}
+    assert _ratchet_failures(measured, allowed, FUNCTION_LINE_LIMIT) == []
+
+
+@pytest.mark.unit
 def test_no_file_grows_past_the_line_limit() -> None:
     assert _ratchet_failures(_long_files(), KNOWN_LONG_FILES, FILE_LINE_LIMIT) == []
 
@@ -502,7 +605,40 @@ def test_a_name_defined_twice_is_measured_twice() -> None:
 
 
 @pytest.mark.unit
+def test_js_functions_are_measured_by_brace_depth() -> None:
+    source = (
+        "function a() {\n"
+        "  return 1;\n"
+        "}\n"
+        "const b = function (x) {\n"
+        "  function inner() {\n"
+        "    return x;\n"
+        "  }\n"
+        "  return inner;\n"
+        "};\n"
+        "function c() { return 1; }\n"
+        "const d = (y) => {\n"
+        "  return y;\n"
+        "};\n"
+        "async function e() {\n"
+        "  await d(1);\n"
+        "}\n"
+        "let f = function () {\n"
+        "};\n"
+        "var g = async function () {\n"
+        "};\n"
+        "node.onclick = function () {\n"
+        "};\n"
+        "function h() {\n"
+        "  return 1;\n"
+    )
+    keyed = _keyed_lengths(_js_function_lengths(source))
+    assert keyed == {"a": 3, "b": 6, "inner": 3, "c": 1, "e": 3, "f": 2, "g": 2, "h": 2}
+
+
+@pytest.mark.unit
 def test_the_lists_hold_only_offenders() -> None:
     """An entry at or under the limit could never fail the ratchet."""
     assert [k for k, v in KNOWN_OVER_LIMIT.items() if v <= FUNCTION_LINE_LIMIT] == []
+    assert [k for k, v in KNOWN_OVER_LIMIT_JS.items() if v <= FUNCTION_LINE_LIMIT] == []
     assert [k for k, v in KNOWN_LONG_FILES.items() if v <= FILE_LINE_LIMIT] == []

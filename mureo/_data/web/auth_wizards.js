@@ -296,21 +296,9 @@
     renderCurrent();
   }
 
-  function renderStepWizard(slot, state, onAllDone, outerState, onReauthorize) {
-    const wrap = document.createElement("section");
-    const titleKey = "wizard.auth." + slot.key + "_title";
-    wrap.innerHTML = "<h3>" + MUREO.t(titleKey) + "</h3>";
-
-    // Declarative slot (Amazon Ads, or a plugin provider chosen for a
-    // built-in platform): fields come from the provider registry, so it
-    // owns the whole card and returns before every branch below.
-    if (slot.pluginProvider) {
-      window.MUREO_AUTH_PLUGIN_SLOT.renderPluginCredentialSlot(
-        wrap, slot, outerState || state, onAllDone
-      );
-      return wrap;
-    }
-
+  // The per-slot guidance above the controls: the Google Ads scope note, the
+  // "shared with Search Console" note, and the Search Console description.
+  function appendSlotNotes(wrap, slot, outerState) {
     if (slot.key === "google_ads") {
       // Scope guidance: the OAuth button mints a refresh token with the
       // adwords + webmasters + analytics.readonly scopes
@@ -353,151 +341,181 @@
       desc.textContent = MUREO.t("auth_wizard.search_console.step1_desc");
       wrap.appendChild(desc);
     }
+  }
 
-    // Input-based slots (e.g. GA4) need an explicit "Done" button
-    // gated by the inputs being filled. OAuth-only slots auto-advance
-    // on pollOAuth success — no inner Next button.
-    let doneBtn = null;
-    if (slot.inputs) {
-      if (slot.key === "ga4") {
-        appendGa4ReauthorizeHint(wrap, outerState || state, onReauthorize);
-      }
-      doneBtn = document.createElement("button");
-      doneBtn.type = "button";
-      doneBtn.className = "btn btn-primary";
-      doneBtn.textContent = MUREO.t("wizard.auth.done_button");
-      doneBtn.setAttribute("data-i18n", "wizard.auth.done_button");
+  function wireInputsDone(doneBtn, status, slot, values, onAllDone) {
+    doneBtn.addEventListener("click", async function () {
+      // Persist each value to credentials.json via the allow-listed
+      // env-var writer BEFORE advancing. Without this the entered
+      // GA4 service-account path / project id were discarded and the
+      // official GA4 MCP launched unauthenticated.
       doneBtn.disabled = true;
-
-      const status = document.createElement("p");
-      status.className = "wizard-shared-with-sc-note";
-      status.hidden = true;
-
-      const values = {};
-      const completionFlags = {};
-      slot.inputs.forEach(function (spec) {
-        const label = document.createElement("label");
-        label.style.display = "block";
-        label.textContent = MUREO.t(spec.labelKey);
-        label.setAttribute("data-i18n", spec.labelKey);
-        const input = document.createElement("input");
-        input.type = "text";
-        input.addEventListener("input", function () {
-          values[spec.name] = input.value;
-          completionFlags[spec.name] = Boolean(input.value);
-          const allFilled = slot.inputs.every(function (s) {
-            return completionFlags[s.name];
+      status.hidden = false;
+      status.textContent = MUREO.t("wizard.auth.saving");
+      try {
+        for (let i = 0; i < slot.inputs.length; i += 1) {
+          const spec = slot.inputs[i];
+          const res = await MUREO.postJson("/api/credentials/env-var", {
+            name: spec.name,
+            value: values[spec.name],
           });
-          doneBtn.disabled = !allFilled;
-        });
-        label.appendChild(input);
-        wrap.appendChild(label);
-      });
-
-      doneBtn.addEventListener("click", async function () {
-        // Persist each value to credentials.json via the allow-listed
-        // env-var writer BEFORE advancing. Without this the entered
-        // GA4 service-account path / project id were discarded and the
-        // official GA4 MCP launched unauthenticated.
-        doneBtn.disabled = true;
-        status.hidden = false;
-        status.textContent = MUREO.t("wizard.auth.saving");
-        try {
-          for (let i = 0; i < slot.inputs.length; i += 1) {
-            const spec = slot.inputs[i];
-            const res = await MUREO.postJson("/api/credentials/env-var", {
-              name: spec.name,
-              value: values[spec.name],
-            });
-            if (!res.ok) {
-              const msg = MUREO.t("wizard.auth.save_failed");
-              status.textContent = msg;
-              MUREO.toast(msg, "error");
-              doneBtn.disabled = false;
-              return;
-            }
+          if (!res.ok) {
+            const msg = MUREO.t("wizard.auth.save_failed");
+            status.textContent = msg;
+            MUREO.toast(msg, "error");
+            doneBtn.disabled = false;
+            return;
           }
-        } catch (_e) {
-          const msg = MUREO.t("wizard.auth.save_failed");
-          status.textContent = msg;
-          MUREO.toast(msg, "error");
-          doneBtn.disabled = false;
-          return;
         }
-        onAllDone();
+      } catch (_e) {
+        const msg = MUREO.t("wizard.auth.save_failed");
+        status.textContent = msg;
+        MUREO.toast(msg, "error");
+        doneBtn.disabled = false;
+        return;
+      }
+      onAllDone();
+    });
+  }
+
+  // Input-based slots (e.g. GA4) need an explicit "Done" button
+  // gated by the inputs being filled. OAuth-only slots auto-advance
+  // on pollOAuth success — no inner Next button. Returns the Done
+  // button; the caller appends it last.
+  function buildInputsSection(wrap, slot, state, outerState, onAllDone, onReauthorize) {
+    if (slot.key === "ga4") {
+      appendGa4ReauthorizeHint(wrap, outerState || state, onReauthorize);
+    }
+    const doneBtn = document.createElement("button");
+    doneBtn.type = "button";
+    doneBtn.className = "btn btn-primary";
+    doneBtn.textContent = MUREO.t("wizard.auth.done_button");
+    doneBtn.setAttribute("data-i18n", "wizard.auth.done_button");
+    doneBtn.disabled = true;
+
+    const status = document.createElement("p");
+    status.className = "wizard-shared-with-sc-note";
+    status.hidden = true;
+
+    const values = {};
+    const completionFlags = {};
+    slot.inputs.forEach(function (spec) {
+      const label = document.createElement("label");
+      label.style.display = "block";
+      label.textContent = MUREO.t(spec.labelKey);
+      label.setAttribute("data-i18n", spec.labelKey);
+      const input = document.createElement("input");
+      input.type = "text";
+      input.addEventListener("input", function () {
+        values[spec.name] = input.value;
+        completionFlags[spec.name] = Boolean(input.value);
+        const allFilled = slot.inputs.every(function (s) {
+          return completionFlags[s.name];
+        });
+        doneBtn.disabled = !allFilled;
       });
+      label.appendChild(input);
+      wrap.appendChild(label);
+    });
+
+    wireInputsDone(doneBtn, status, slot, values, onAllDone);
+    wrap.appendChild(status);
+    return doneBtn;
+  }
+
+  function appendMetaMethodPanels(wrap, btn, status, onAllDone) {
+    // #458: the two Meta auth paths are mutually
+    // exclusive ALTERNATIVES, not a primary plus a fallback. A Live-mode
+    // app can never complete localhost OAuth (Facebook rejects the
+    // redirect) and a Development-mode app cannot create creatives
+    // (subcode 1885183). Rendering the Facebook button up front with the
+    // token card collapsed underneath made token-bound operators click
+    // the loud button and dead-end, so the step now opens with an
+    // explicit either/or chooser and reveals ONLY the chosen flow.
+    //
+    // Both panels are built once and toggled, so switching options does
+    // not discard a token the operator already typed.
+    const oauthPanel = document.createElement("div");
+    oauthPanel.className = "auth-method-panel";
+    oauthPanel.setAttribute("data-auth-method-panel", "oauth");
+    oauthPanel.hidden = true;
+    oauthPanel.appendChild(btn);
+    oauthPanel.appendChild(status);
+
+    const tokenCard = window.MUREO_AUTH_META.buildMetaTokenCard(onAllDone);
+    const tokenPanel = document.createElement("div");
+    tokenPanel.className = "auth-method-panel";
+    tokenPanel.setAttribute("data-auth-method-panel", "token");
+    tokenPanel.hidden = true;
+    tokenPanel.appendChild(tokenCard);
+
+    // Chooser FIRST, then the panels — the pollOAuth timeout hint tells
+    // the operator to switch to the token option *above*.
+    wrap.appendChild(
+      window.MUREO_AUTH_META.buildMetaMethodChooser(
+        tokenPanel, oauthPanel, tokenCard
+      )
+    );
+    wrap.appendChild(tokenPanel);
+    wrap.appendChild(oauthPanel);
+  }
+
+  function buildOauthSection(wrap, slot, onAllDone) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-primary";
+    btn.textContent = slot.oauthProvider === "meta"
+      ? MUREO.t("wizard.auth.meta_oauth_button")
+      : MUREO.t("wizard.auth.oauth_button");
+    const status = document.createElement("p");
+    btn.addEventListener("click", async function () {
+      btn.disabled = true;
+      status.textContent = MUREO.t("wizard.auth.oauth_waiting");
+      const res = await MUREO.postJson(
+        "/api/oauth/" + slot.oauthProvider + "/start", {}
+      );
+      if (res.ok && res.body && res.body.url) {
+        window.open(res.body.url, "_blank", "noopener");
+        pollOAuth(slot.oauthProvider, status, btn, function () {
+          // Auto-advance: intermediate slots roll to the next slot;
+          // the final slot hands control back to the outer wizard.
+          onAllDone();
+        });
+      } else {
+        const msg = MUREO.t("wizard.auth.oauth_failed");
+        status.textContent = msg;
+        MUREO.toast(msg, "error");
+        btn.disabled = false;
+      }
+    });
+    if (slot.oauthProvider === "meta") {
+      appendMetaMethodPanels(wrap, btn, status, onAllDone);
+    } else {
+      wrap.appendChild(btn);
       wrap.appendChild(status);
     }
+  }
 
-    if (slot.oauthProvider) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn btn-primary";
-      btn.textContent = slot.oauthProvider === "meta"
-        ? MUREO.t("wizard.auth.meta_oauth_button")
-        : MUREO.t("wizard.auth.oauth_button");
-      const status = document.createElement("p");
-      btn.addEventListener("click", async function () {
-        btn.disabled = true;
-        status.textContent = MUREO.t("wizard.auth.oauth_waiting");
-        const res = await MUREO.postJson(
-          "/api/oauth/" + slot.oauthProvider + "/start", {}
-        );
-        if (res.ok && res.body && res.body.url) {
-          window.open(res.body.url, "_blank", "noopener");
-          pollOAuth(slot.oauthProvider, status, btn, function () {
-            // Auto-advance: intermediate slots roll to the next slot;
-            // the final slot hands control back to the outer wizard.
-            onAllDone();
-          });
-        } else {
-          const msg = MUREO.t("wizard.auth.oauth_failed");
-          status.textContent = msg;
-          MUREO.toast(msg, "error");
-          btn.disabled = false;
-        }
-      });
-      if (slot.oauthProvider === "meta") {
-        // #458 / field feedback: the two Meta auth paths are mutually
-        // exclusive ALTERNATIVES, not a primary plus a fallback. A Live-mode
-        // app can never complete localhost OAuth (Facebook rejects the
-        // redirect) and a Development-mode app cannot create creatives
-        // (subcode 1885183). Rendering the Facebook button up front with the
-        // token card collapsed underneath made token-bound operators click
-        // the loud button and dead-end, so the step now opens with an
-        // explicit either/or chooser and reveals ONLY the chosen flow.
-        //
-        // Both panels are built once and toggled, so switching options does
-        // not discard a token the operator already typed.
-        const oauthPanel = document.createElement("div");
-        oauthPanel.className = "auth-method-panel";
-        oauthPanel.setAttribute("data-auth-method-panel", "oauth");
-        oauthPanel.hidden = true;
-        oauthPanel.appendChild(btn);
-        oauthPanel.appendChild(status);
+  function renderStepWizard(slot, state, onAllDone, outerState, onReauthorize) {
+    const wrap = document.createElement("section");
+    const titleKey = "wizard.auth." + slot.key + "_title";
+    wrap.innerHTML = "<h3>" + MUREO.t(titleKey) + "</h3>";
 
-        const tokenCard = window.MUREO_AUTH_META.buildMetaTokenCard(onAllDone);
-        const tokenPanel = document.createElement("div");
-        tokenPanel.className = "auth-method-panel";
-        tokenPanel.setAttribute("data-auth-method-panel", "token");
-        tokenPanel.hidden = true;
-        tokenPanel.appendChild(tokenCard);
-
-        // Chooser FIRST, then the panels — the pollOAuth timeout hint tells
-        // the operator to switch to the token option *above*.
-        wrap.appendChild(
-          window.MUREO_AUTH_META.buildMetaMethodChooser(
-            tokenPanel, oauthPanel, tokenCard
-          )
-        );
-        wrap.appendChild(tokenPanel);
-        wrap.appendChild(oauthPanel);
-      } else {
-        wrap.appendChild(btn);
-        wrap.appendChild(status);
-      }
+    // Declarative slot (Amazon Ads, or a plugin provider chosen for a
+    // built-in platform): fields come from the provider registry, so it
+    // owns the whole card and returns before every branch below.
+    if (slot.pluginProvider) {
+      window.MUREO_AUTH_PLUGIN_SLOT.renderPluginCredentialSlot(
+        wrap, slot, outerState || state, onAllDone
+      );
+      return wrap;
     }
 
+    appendSlotNotes(wrap, slot, outerState);
+    const doneBtn = slot.inputs
+      ? buildInputsSection(wrap, slot, state, outerState, onAllDone, onReauthorize)
+      : null;
+    if (slot.oauthProvider) buildOauthSection(wrap, slot, onAllDone);
     if (doneBtn) wrap.appendChild(doneBtn);
 
     return wrap;
