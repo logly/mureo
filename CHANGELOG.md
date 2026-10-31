@@ -18,6 +18,14 @@
   service-account key or the file written by
   `gcloud auth application-default login`; the label named only the
   service-account key, which contradicted the integrations guide.
+- **`mureo providers add` now injects the stored credential env, like the
+  configure UI** (#945). The CLI registered official providers without the
+  env the upstream MCP reads (`GOOGLE_APPLICATION_CREDENTIALS`,
+  `GOOGLE_PROJECT_ID`, …) and switched the native platform off regardless,
+  which left the operator with no working tools for that platform. Both
+  install paths now share one resolver and one gate: the env is injected
+  from the credential store, native is disabled only when every required
+  value resolved, and the CLI prints which names are still missing.
 - **Meta ad accounts reached through a Business Portfolio are listed**
   (#950). `list_meta_ad_accounts` walks `/me/businesses` and each
   portfolio's `owned_ad_accounts` and `client_ad_accounts` besides

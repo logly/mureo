@@ -346,6 +346,11 @@ mureo/
 │                            #   context.monthly_budget reads it at top level; strategy_gate
 │                            #   re-exports its public names (#879).
 ├── providers/              # Official-MCP provider catalog (Google Ads / Meta / GA4 install kits)
+│                            #   credential_env.py resolves the env a provider reads from the
+│                            #   credential store and gates the native disable on it; both
+│                            #   `mureo providers add` and the configure UI install use it (#945).
+│                            #   It also holds the env-var allow-list; providers imports only core,
+│                            #   and web/env_var_writer.py imports the table back (web -> providers).
 ├── learning/                # /learn knowledge base + advisor federation client
 ├── creative_studio/         # Creative Studio: image providers, art-direction scoring, HTML/CSS composer
 │                            #   providers/_base.py holds the ImageProvider protocol and the helpers the

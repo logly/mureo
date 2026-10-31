@@ -24,7 +24,7 @@ mureo <subcommand-group> <command> [options]
 | `upgrade` | Upgrade mureo and its plugins (also re-deploys skills) |
 | `byod` | Bring Your Own Data — analyse ad-account data locally, no OAuth |
 | `demo` | Scaffold a self-contained demo workspace |
-| `providers` | Install / list / remove official MCP providers (Google Ads, Meta, GA4) |
+| `providers` | Install / list / remove official MCP providers (Google Ads, Meta, GA4). `add` injects the stored credential env into the provider's MCP entry, prints which names are still missing when it cannot authenticate yet, and leaves the native tools active until then |
 | `amazon` | Amazon Ads official-MCP bridge setup |
 | `install-desktop` | Wire mureo into Claude Desktop chat (macOS) |
 | `learn` | Append insights to the diagnostic knowledge base |

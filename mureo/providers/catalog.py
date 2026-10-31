@@ -208,7 +208,7 @@ CATALOG: tuple[ProviderSpec, ...] = (
             "GOOGLE_PROJECT_ID",
         ),
         # Bound to ``ga4.project_id`` by the alias entry in
-        # ``mureo.web.env_var_writer._SECTION_FIELD_OVERRIDES`` (#937);
+        # ``mureo.providers.credential_env._SECTION_FIELD_OVERRIDES`` (#937);
         # the two must stay together or the name is silently not emitted.
         optional_env=("GOOGLE_CLOUD_PROJECT",),
         notes=(

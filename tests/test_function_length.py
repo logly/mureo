@@ -95,7 +95,6 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
     ("mureo/cli/install_desktop_cmd.py", "install_desktop_cmd"): 60,
     ("mureo/cli/journal_cmd.py", "show_journal"): 71,
     ("mureo/cli/native_skills.py", "install_native_skills"): 57,
-    ("mureo/cli/providers_cmd.py", "_add_one"): 53,
     ("mureo/cli/providers_cmd.py", "confirm_cmd"): 81,
     ("mureo/cli/repair_cmd.py", "_repair_every_client"): 67,
     ("mureo/cli/repair_cmd.py", "_repair_one_workspace"): 61,
@@ -360,7 +359,7 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
     ("mureo/web/report_labels.py", "platform_display_name"): 58,
     ("mureo/web/reports.py", "build_report_summary"): 144,
     ("mureo/web/server.py", "run_configure_wizard"): 152,
-    ("mureo/web/setup_actions.py", "_install_provider_code"): 78,
+    ("mureo/web/setup_actions.py", "_install_provider_code"): 59,
     ("mureo/web/setup_actions.py", "_install_provider_codex"): 52,
     ("mureo/web/setup_actions.py", "_install_provider_desktop"): 75,
     ("mureo/web/setup_actions.py", "confirm_hosted_provider"): 97,
@@ -392,7 +391,7 @@ KNOWN_LONG_FILES: dict[str, int] = {
     "mureo/web/auth_wizard.py": 1482,
     "mureo/web/extensions.py": 801,
     "mureo/web/handlers.py": 2318,
-    "mureo/web/setup_actions.py": 1239,
+    "mureo/web/setup_actions.py": 1131,
 }
 
 

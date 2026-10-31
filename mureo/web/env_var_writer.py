@@ -13,71 +13,29 @@ the value never appears in a log line or a response body.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from mureo.core.atomic_json import atomic_write_json, load_existing_json
-from mureo.core.secret_store import default_credentials_path
 from mureo.fsutil import backup_file
+
+# The allow-list table and the provider-env resolver live with the
+# provider install code (``mureo.providers`` sits below ``mureo.web``);
+# the names this module has always exported are re-exported from here.
+from mureo.providers.credential_env import (
+    _ENV_VAR_TO_FIELD,
+    _resolve_credentials_path,
+    _resolve_field,
+)
+from mureo.providers.credential_env import EnvVarTarget as EnvVarTarget
+from mureo.providers.credential_env import (
+    build_provider_env as build_provider_env,
+)
 from mureo.web._helpers import read_json_safe
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class EnvVarTarget:
-    """Where to write the env var inside ``credentials.json``."""
-
-    section: str
-    field: str
-
-
-# Closed allow-list: env var name → (section, field) in credentials.json.
-_ENV_VAR_TO_FIELD: dict[str, EnvVarTarget] = {
-    # Google Ads
-    "GOOGLE_ADS_DEVELOPER_TOKEN": EnvVarTarget("google_ads", "developer_token"),
-    "GOOGLE_ADS_CLIENT_ID": EnvVarTarget("google_ads", "client_id"),
-    "GOOGLE_ADS_CLIENT_SECRET": EnvVarTarget("google_ads", "client_secret"),
-    "GOOGLE_ADS_REFRESH_TOKEN": EnvVarTarget("google_ads", "refresh_token"),
-    "GOOGLE_ADS_LOGIN_CUSTOMER_ID": EnvVarTarget("google_ads", "login_customer_id"),
-    "GOOGLE_ADS_CUSTOMER_ID": EnvVarTarget("google_ads", "customer_id"),
-    # Meta Ads
-    "META_ADS_ACCESS_TOKEN": EnvVarTarget("meta_ads", "access_token"),
-    "META_ADS_APP_ID": EnvVarTarget("meta_ads", "app_id"),
-    "META_ADS_APP_SECRET": EnvVarTarget("meta_ads", "app_secret"),
-    "META_ADS_ACCOUNT_ID": EnvVarTarget("meta_ads", "account_id"),
-    # GA4
-    # The field name is historical (the value used to be a service-account
-    # key only); it holds the path of ANY ADC credential file — service-account
-    # key, ``authorized_user`` file, or ``external_account`` configuration
-    # (#937). Renaming it would churn existing credentials.json files.
-    "GOOGLE_APPLICATION_CREDENTIALS": EnvVarTarget("ga4", "service_account_path"),
-    "GOOGLE_PROJECT_ID": EnvVarTarget("ga4", "project_id"),
-    # Amazon Ads (official-MCP bridge). One name per field the bridge
-    # declares in ``account_credential_fields`` / the loader reads in
-    # ``mureo.auth._load_amazon_ads_from_env`` — the two must not drift.
-    # Amazon renders a first-class credential card, so these names are
-    # filtered out of the dashboard's generic env list (same treatment as
-    # Creative Studio); they are listed here for the WRITE path and for the
-    # status snapshot's ``env_vars`` row.
-    "AMAZON_ADS_CLIENT_ID": EnvVarTarget("amazon_ads", "client_id"),
-    "AMAZON_ADS_ACCESS_TOKEN": EnvVarTarget("amazon_ads", "access_token"),
-    "AMAZON_ADS_REFRESH_TOKEN": EnvVarTarget("amazon_ads", "refresh_token"),
-    "AMAZON_ADS_CLIENT_SECRET": EnvVarTarget("amazon_ads", "client_secret"),
-    "AMAZON_ADS_REGION": EnvVarTarget("amazon_ads", "region"),
-    "AMAZON_ADS_ACCOUNT_MODE": EnvVarTarget("amazon_ads", "account_mode"),
-    "AMAZON_ADS_PROFILE_ID": EnvVarTarget("amazon_ads", "profile_id"),
-    "AMAZON_ADS_ACCOUNT_ID": EnvVarTarget("amazon_ads", "account_id"),
-    "AMAZON_ADS_MANAGER_ACCOUNT_ID": EnvVarTarget("amazon_ads", "manager_account_id"),
-    # Creative Studio (image-generation providers)
-    "OPENAI_API_KEY": EnvVarTarget("creative_studio", "openai_api_key"),
-    "GEMINI_API_KEY": EnvVarTarget("creative_studio", "gemini_api_key"),
-    "FAL_KEY": EnvVarTarget("creative_studio", "fal_key"),
-}
 
 
 def allowed_env_var_names() -> tuple[str, ...]:
@@ -99,95 +57,6 @@ def get_env_var_target(name: str) -> EnvVarTarget | None:
     mapping table.
     """
     return _ENV_VAR_TO_FIELD.get(name)
-
-
-# Section-aware field overrides for env var names SHARED across more than
-# one credentials.json section. The base ``_ENV_VAR_TO_FIELD`` table is 1:1
-# (one canonical target per name — the source of truth for the single-write
-# and status surfaces), but ADC's ``GOOGLE_APPLICATION_CREDENTIALS`` is read
-# by BOTH the ga4 and google_ads official MCPs, which each store a
-# service-account path under their own section. This overlay lets the
-# provider-env build path resolve the shared name against the SPECIFIC
-# provider's section instead of always GA4 (the canonical binding).
-# The overlay also carries an upstream-documented ALIAS of a canonical
-# name: ``GOOGLE_CLOUD_PROJECT`` is what ``analytics-mcp``'s README
-# recommends, so ``ga4-official`` emits it from the same stored
-# ``ga4.project_id`` as ``GOOGLE_PROJECT_ID`` (#937). It is deliberately
-# NOT in ``_ENV_VAR_TO_FIELD``: it is read-only output for the provider
-# env block, never a dashboard row nor a write target.
-_SECTION_FIELD_OVERRIDES: dict[tuple[str, str], str] = {
-    ("GOOGLE_APPLICATION_CREDENTIALS", "google_ads"): "service_account_path",
-    ("GOOGLE_CLOUD_PROJECT", "ga4"): "project_id",
-}
-
-
-def _resolve_field(env_name: str, section: str) -> str | None:
-    """Resolve the credentials.json field for ``env_name`` within ``section``.
-
-    Section-aware: a shared env name (see ``_SECTION_FIELD_OVERRIDES``) maps
-    to the requested section's field; otherwise the canonical 1:1 binding is
-    used, but only when its section matches. Returns ``None`` when
-    ``env_name`` does not bind to ``section`` — defensive, so a name is never
-    resolved against the wrong platform's section.
-    """
-    override = _SECTION_FIELD_OVERRIDES.get((env_name, section))
-    if override is not None:
-        return override
-    target = _ENV_VAR_TO_FIELD.get(env_name)
-    if target is not None and target.section == section:
-        return target.field
-    return None
-
-
-def build_provider_env(
-    env_names: Iterable[str],
-    section: str,
-    *,
-    credentials_path: Path | None = None,
-) -> dict[str, str]:
-    """Build the ``env`` block an official MCP needs from credentials.json.
-
-    Driven by the EXACT env var names a provider declares (its catalog
-    ``required_env`` + ``optional_env``) rather than a blanket section dump,
-    so it emits ONLY what the upstream reads — e.g. ``google-ads-mcp``
-    authenticates via ADC (+ optional legacy
-    ``GOOGLE_ADS_DEVELOPER_TOKEN``, + optional
-    ``GOOGLE_ADS_LOGIN_CUSTOMER_ID``), never the Client-Library trio.
-
-    For each name in ``env_names`` that binds to ``section`` (section-aware
-    resolution — see :func:`_resolve_field`), read the field from
-    ``credentials.json`` and emit ``{ENV_NAME: str(value)}`` for every
-    PRESENT, NON-EMPTY value (ints coerced to ``str``). Names that do not
-    bind to the section, empty/missing values, a missing section and a
-    missing file all yield nothing.
-
-    The official upstream MCPs read their config ONLY from environment
-    variables — they cannot see mureo's ``credentials.json`` — so injecting
-    this into the registered ``mcpServers[<id>].env`` block is what makes a
-    freshly added official provider actually usable.
-    """
-    path = _resolve_credentials_path(credentials_path)
-    existing = read_json_safe(path)
-    section_data = existing.get(section)
-    if not isinstance(section_data, dict):
-        return {}
-
-    env: dict[str, str] = {}
-    for env_name in env_names:
-        field = _resolve_field(env_name, section)
-        if field is None:
-            continue
-        value = section_data.get(field)
-        if value is None or value == "":
-            continue
-        env[env_name] = str(value)
-    return env
-
-
-def _resolve_credentials_path(credentials_path: Path | None) -> Path:
-    if credentials_path is not None:
-        return credentials_path
-    return default_credentials_path()
 
 
 def _clear_stale_refresh_clock(name: str, section_payload: dict[str, Any]) -> None:

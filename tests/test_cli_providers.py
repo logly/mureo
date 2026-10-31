@@ -38,6 +38,13 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     # Also patch auth_setup.Path.home so the regression test that calls
     # install_mcp_config() writes into tmp_path rather than the user's home.
     monkeypatch.setattr("mureo.auth_setup.Path.home", lambda: tmp_path)
+    # ``add`` locates the credential store through
+    # ``runtime_credentials_path()``; pin it to the file ``_seed_credentials``
+    # writes so no test reads the operator's real credentials.
+    monkeypatch.setattr(
+        "mureo.cli.providers_cmd.runtime_credentials_path",
+        lambda: tmp_path / ".mureo" / "credentials.json",
+    )
     # Force the no-CLI fallback everywhere so integration tests are
     # deterministic and never shell out to a real ``claude`` binary
     # (which would mutate the developer's actual ~/.claude.json).
@@ -424,11 +431,37 @@ def _seed_mureo_block(settings_path: Path) -> None:
     )
 
 
+def _seed_credentials(home: Path, section: str, values: dict[str, Any]) -> None:
+    """Write ``{section: values}`` to the credential store under ``home``.
+
+    Same location and mode the setup wizard writes (``credentials.json``
+    under ``.mureo``, 0o600), so ``providers add`` resolves it the way it
+    resolves a real store.
+    """
+    path = home / ".mureo" / "credentials.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({section: values}), encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _adc_file(home: Path) -> str:
+    """Write a readable ADC credential file and return its absolute path.
+
+    The native-disable gate only counts ``GOOGLE_APPLICATION_CREDENTIALS``
+    when it points at a readable file (#761), so a real one is needed.
+    """
+    path = home / "adc.json"
+    path.write_text(json.dumps({"type": "service_account"}), encoding="utf-8")
+    return str(path)
+
+
 @pytest.mark.integration
 def test_add_google_ads_sets_mureo_disable_env(home: Path) -> None:
-    """``add google-ads-official`` writes ``MUREO_DISABLE_GOOGLE_ADS=1``."""
+    """``add google-ads-official`` writes ``MUREO_DISABLE_GOOGLE_ADS=1``
+    once the stored credentials let the official server authenticate."""
     settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
+    _seed_credentials(home, "google_ads", {"service_account_path": _adc_file(home)})
 
     result = _invoke("providers", "add", "google-ads-official")
     assert result.exit_code == 0, result.output
@@ -464,9 +497,15 @@ def test_add_meta_ads_does_not_disable_native(home: Path) -> None:
 
 @pytest.mark.integration
 def test_add_ga4_sets_mureo_disable_env(home: Path) -> None:
-    """``add ga4-official`` writes ``MUREO_DISABLE_GA4=1``."""
+    """``add ga4-official`` writes ``MUREO_DISABLE_GA4=1`` once the stored
+    credentials let the official server authenticate."""
     settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
+    _seed_credentials(
+        home,
+        "ga4",
+        {"service_account_path": _adc_file(home), "project_id": "proj-123"},
+    )
 
     result = _invoke("providers", "add", "ga4-official")
     assert result.exit_code == 0, result.output
@@ -501,6 +540,7 @@ def test_remove_provider_unsets_mureo_disable_env(home: Path) -> None:
         encoding="utf-8",
     )
 
+    _seed_credentials(home, "google_ads", {"service_account_path": _adc_file(home)})
     add = _invoke("providers", "add", "google-ads-official")
     assert add.exit_code == 0, add.output
 
@@ -531,10 +571,13 @@ def test_add_without_existing_mureo_block_skips_disable_env_gracefully(
 
     The CLI must emit an informational note when it cannot apply the
     auto-disable because no mureo block exists. The official provider
-    registration still happens (existing Phase 1 behavior).
+    registration still happens (existing Phase 1 behavior). Credentials are
+    stored so the provider is credentialed and the coexistence note (not the
+    missing-credentials note) is what runs.
     """
     settings_path = home / ".claude.json"
     assert not settings_path.exists()
+    _seed_credentials(home, "google_ads", {"service_account_path": _adc_file(home)})
 
     result = _invoke("providers", "add", "google-ads-official")
     assert result.exit_code == 0, result.output
@@ -555,6 +598,169 @@ def test_add_without_existing_mureo_block_skips_disable_env_gracefully(
         or "skipped" in lowered
         or "not found" in lowered
     )
+
+
+# ---------------------------------------------------------------------------
+# Credential env injection and the native-disable gate (#945). ``add`` reads
+# the provider's env from the credential store, injects it into the
+# ``mcpServers[<id>]`` block, and disables native only when every required
+# value resolved — the same resolver and gate as the configure UI.
+# ---------------------------------------------------------------------------
+
+
+def _read_settings(home: Path) -> dict[str, Any]:
+    return json.loads((home / ".claude.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.integration
+def test_add_ga4_injects_stored_credential_env(home: Path) -> None:
+    """A stored ``ga4`` section is injected and native GA4 steps aside."""
+    _seed_mureo_block(home / ".claude.json")
+    adc = _adc_file(home)
+    _seed_credentials(
+        home, "ga4", {"service_account_path": adc, "project_id": "proj-123"}
+    )
+
+    result = _invoke("providers", "add", "ga4-official")
+    assert result.exit_code == 0, result.output
+
+    servers = _read_settings(home)["mcpServers"]
+    env = servers["ga4-official"]["env"]
+    assert env["GOOGLE_APPLICATION_CREDENTIALS"] == adc
+    assert env["GOOGLE_PROJECT_ID"] == "proj-123"
+    assert env["GOOGLE_CLOUD_PROJECT"] == "proj-123"
+    assert servers["mureo"]["env"]["MUREO_DISABLE_GA4"] == "1"
+    assert result.stderr == ""
+
+
+@pytest.mark.integration
+def test_add_ga4_without_credentials_keeps_native_and_names_missing(
+    home: Path,
+) -> None:
+    """No stored ``ga4`` section: registered, native stays on, missing named."""
+    _seed_mureo_block(home / ".claude.json")
+
+    result = _invoke("providers", "add", "ga4-official")
+    assert result.exit_code == 0, result.output
+
+    servers = _read_settings(home)["mcpServers"]
+    env = servers["ga4-official"].get("env", {})
+    assert "GOOGLE_APPLICATION_CREDENTIALS" not in env
+    assert "GOOGLE_PROJECT_ID" not in env
+    assert "MUREO_DISABLE_GA4" not in servers["mureo"].get("env", {})
+    assert "cannot authenticate yet" in result.stderr
+    assert "GOOGLE_APPLICATION_CREDENTIALS" in result.stderr
+    assert "GOOGLE_PROJECT_ID" in result.stderr
+
+
+@pytest.mark.integration
+def test_add_google_ads_injects_adc_env(home: Path) -> None:
+    """A stored ``google_ads.service_account_path`` becomes the ADC env."""
+    _seed_mureo_block(home / ".claude.json")
+    adc = _adc_file(home)
+    _seed_credentials(home, "google_ads", {"service_account_path": adc})
+
+    result = _invoke("providers", "add", "google-ads-official")
+    assert result.exit_code == 0, result.output
+
+    servers = _read_settings(home)["mcpServers"]
+    assert (
+        servers["google-ads-official"]["env"]["GOOGLE_APPLICATION_CREDENTIALS"] == adc
+    )
+    assert servers["mureo"]["env"]["MUREO_DISABLE_GOOGLE_ADS"] == "1"
+
+
+@pytest.mark.integration
+def test_add_without_credentials_clears_prior_disable_env(home: Path) -> None:
+    """Re-adding without credentials re-enables native a prior install disabled."""
+    settings_path = home / ".claude.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "mureo": {
+                        "command": "python",
+                        "args": ["-m", "mureo.mcp"],
+                        "env": {"MUREO_DISABLE_GA4": "1"},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke("providers", "add", "ga4-official")
+    assert result.exit_code == 0, result.output
+
+    mureo_env = _read_settings(home)["mcpServers"]["mureo"].get("env", {})
+    assert "MUREO_DISABLE_GA4" not in mureo_env
+
+
+@pytest.mark.integration
+def test_add_unreadable_credential_file_keeps_native_and_names_it(
+    home: Path,
+) -> None:
+    """A stored ADC path that does not exist cannot authenticate: native stays
+    on and the note names ``GOOGLE_APPLICATION_CREDENTIALS``."""
+    _seed_mureo_block(home / ".claude.json")
+    _seed_credentials(
+        home,
+        "ga4",
+        {"service_account_path": str(home / "absent.json"), "project_id": "p-1"},
+    )
+
+    result = _invoke("providers", "add", "ga4-official")
+    assert result.exit_code == 0, result.output
+
+    servers = _read_settings(home)["mcpServers"]
+    assert "MUREO_DISABLE_GA4" not in servers["mureo"].get("env", {})
+    assert "cannot authenticate yet" in result.stderr
+    assert "GOOGLE_APPLICATION_CREDENTIALS could not be resolved" in result.stderr
+    assert "GOOGLE_PROJECT_ID" not in result.stderr
+
+
+@pytest.mark.integration
+def test_add_dry_run_lists_injected_and_unresolved_env(home: Path) -> None:
+    """``--dry-run`` names the env it would inject, the required env it cannot
+    resolve, and prints the needs-credentials note instead of the
+    auto-disable one, as the real install would."""
+    _seed_credentials(home, "ga4", {"project_id": "proj-123"})
+
+    result = _invoke("providers", "add", "ga4-official", "--dry-run")
+    assert result.exit_code == 0, result.output
+
+    assert (
+        "would inject env GOOGLE_CLOUD_PROJECT, GOOGLE_PROJECT_ID; "
+        "unresolved required env GOOGLE_APPLICATION_CREDENTIALS"
+    ) in result.output
+    assert (
+        "note: ga4-official would be registered but could not authenticate yet: "
+        "GOOGLE_APPLICATION_CREDENTIALS could not be resolved"
+    ) in result.stderr
+    assert "is registered" not in result.stderr
+    assert "MUREO_DISABLE_GA4" not in result.output
+    assert "auto-disabled" not in result.output
+    _get_subprocess_mock().assert_not_called()
+    assert not (home / ".claude.json").exists()
+
+
+@pytest.mark.integration
+def test_add_dry_run_credentialed_prints_auto_disable(home: Path) -> None:
+    """With every required env resolved, ``--dry-run`` previews the disable."""
+    _seed_credentials(
+        home,
+        "ga4",
+        {"service_account_path": _adc_file(home), "project_id": "proj-123"},
+    )
+
+    result = _invoke("providers", "add", "ga4-official", "--dry-run")
+    assert result.exit_code == 0, result.output
+
+    assert "unresolved required env (none)" in result.output
+    assert 'would set mcpServers.mureo.env.MUREO_DISABLE_GA4="1"' in result.output
+    assert "auto-disabled" in result.output
+    assert result.stderr == ""
+    assert not (home / ".claude.json").exists()
 
 
 # ---------------------------------------------------------------------------
