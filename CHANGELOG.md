@@ -14,6 +14,15 @@
   `wizard_install_slots.js`, `wizard_auth_queue.js` and
   `wizard_plugin_slot.js`, and the file-length ratchet in the test suite
   now covers the bundled web JS. No behaviour change.
+- **Three long configure-wizard functions are split into helpers**
+  (#957). `renderStepWizard` (`auth_wizards.js`) and
+  `buildProviderInstallSlot` and `renderNeedsCredentialsCard`
+  (`wizard_install_slots.js`) are broken into named helpers along their
+  existing branches. No behaviour change. The function-length ratchet in
+  the test suite now measures the bundled web JS as well: a
+  `function name(` or `name = function` definition runs to where its brace
+  depth closes, and the remaining long functions are frozen on the same
+  shrink-only list.
 
 ### Fixed
 
