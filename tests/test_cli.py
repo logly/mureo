@@ -408,3 +408,53 @@ class TestAuthSetupCommand:
 
         assert "Amazon Ads" in result.output
         assert "mureo configure" in result.output
+
+
+@pytest.mark.unit
+class TestAuthUpgradeGoogle:
+    """The re-authorization saves with the scopes Google granted, so a
+    granted GA4 read-only scope fills the ``ga4`` section."""
+
+    _ADS = "https://www.googleapis.com/auth/adwords"
+    _GA4 = "https://www.googleapis.com/auth/analytics.readonly"
+
+    def _upgrade(self, tmp_path, granted):
+        from mureo.auth import GoogleAdsCredentials
+        from mureo.auth_setup import OAuthResult
+        from mureo.cli.main import app
+
+        creds = GoogleAdsCredentials(
+            developer_token=None,
+            client_id="123456789012-abc.apps.googleusercontent.com",
+            client_secret="client-secret",
+            refresh_token="old-refresh",
+        )
+        store = tmp_path / "store" / "credentials.json"
+        with (
+            patch("mureo.cli.auth_cmd.load_google_ads_credentials", return_value=creds),
+            patch("mureo.cli.auth_cmd.runtime_credentials_path", return_value=store),
+            patch(
+                "mureo.auth_setup.run_google_oauth",
+                new_callable=AsyncMock,
+                return_value=OAuthResult(
+                    refresh_token="new-refresh",
+                    access_token="access",
+                    granted_scopes=granted,
+                ),
+            ),
+        ):
+            result = runner.invoke(app, ["auth", "upgrade-google"])
+        assert result.exit_code == 0, result.output
+        return result.output, json.loads(store.read_text(encoding="utf-8"))
+
+    def test_granted_ga4_scope_fills_the_section(self, tmp_path):
+        output, saved = self._upgrade(tmp_path, (self._ADS, self._GA4))
+
+        assert saved["ga4"]["project_id"] == "123456789012"
+        assert "GA4 (ga4-official) can use this authorization." in output
+
+    def test_without_the_scope_nothing_is_said_about_ga4(self, tmp_path):
+        output, saved = self._upgrade(tmp_path, (self._ADS,))
+
+        assert "ga4" not in saved
+        assert "ga4-official" not in output

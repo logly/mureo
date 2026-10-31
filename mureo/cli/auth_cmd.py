@@ -22,6 +22,8 @@ from mureo.auth import (
     load_google_ads_credentials,
     load_meta_ads_credentials,
 )
+from mureo.core.ga4_adc import store_has_managed_ga4
+from mureo.core.runtime_context import runtime_credentials_path
 
 auth_app = typer.Typer(name="auth", help="Authentication management")
 
@@ -230,11 +232,11 @@ def auth_setup_command() -> None:
 
 @auth_app.command("upgrade-google")  # type: ignore[untyped-decorator, unused-ignore]
 def auth_upgrade_google() -> None:
-    """Re-authenticate Google to add Search Console access.
+    """Re-authenticate Google to add Search Console and GA4 read-only access.
 
-    Uses existing client_id/client_secret from credentials.json
-    to run a new OAuth flow with expanded scopes (Google Ads +
-    Search Console). The new refresh_token replaces the old one.
+    Runs a new OAuth flow with the stored client_id/client_secret and the
+    expanded scopes; the new refresh_token replaces the old one, and a
+    granted GA4 scope also fills the ``ga4`` section.
     """
     creds = load_google_ads_credentials()
     if creds is None:
@@ -250,7 +252,7 @@ def auth_upgrade_google() -> None:
         "Your existing credentials (Client ID, Client Secret, etc.) are preserved."
     )
     typer.echo("Only the refresh_token will be updated with expanded scopes")
-    typer.echo("(Google Ads + Search Console).")
+    typer.echo("(Google Ads + Search Console + GA4 read-only).")
     typer.echo("")
 
     oauth_result = asyncio.run(
@@ -269,10 +271,16 @@ def auth_upgrade_google() -> None:
         customer_id=creds.customer_id,
     )
 
-    auth_setup.save_credentials(google=updated_creds)
-
+    path = runtime_credentials_path()
+    auth_setup.save_credentials(
+        path=path,
+        google=updated_creds,
+        google_granted_scopes=oauth_result.granted_scopes,
+    )
     typer.echo("\nGoogle OAuth scopes upgraded successfully.")
     typer.echo("Search Console access is now available.")
+    if store_has_managed_ga4(path):
+        typer.echo("GA4 (ga4-official) can use this authorization.")
 
 
 # ---------------------------------------------------------------------------

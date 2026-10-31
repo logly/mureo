@@ -16,6 +16,16 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from mureo.core.atomic_json import atomic_write_json, load_existing_json
+from mureo.core.ga4_adc import (
+    GA4_ADC_GOOGLE_FIELDS,
+    GA4_PATH_FIELD,
+    GA4_PROJECT_FIELD,
+    GA4_SECTION,
+    drop_managed_ga4_section,
+    is_managed_ga4_section,
+    refresh_managed_ga4_adc,
+    unlink_managed_ga4_adc,
+)
 from mureo.fsutil import backup_file
 
 # The allow-list table and the provider-env resolver live with the
@@ -125,23 +135,17 @@ def write_credential_env_var(
 ) -> None:
     """Persist one env var to ``credentials.json``.
 
-    ``section`` disambiguates env names SHARED across more than one section
-    (today only ADC's ``GOOGLE_APPLICATION_CREDENTIALS``): when given, the
-    value is written to that section's field via the section-aware resolver
-    (:func:`_resolve_field`), so the Google Ads wizard can persist a
-    service-account path into ``google_ads.service_account_path`` rather than
-    the canonical GA4 binding. When ``section`` is omitted the canonical 1:1
-    target is used (unchanged behaviour).
+    ``section`` disambiguates env names SHARED across sections (ADC's
+    ``GOOGLE_APPLICATION_CREDENTIALS``): the value goes to that section's
+    field via :func:`_resolve_field`, so the Google Ads wizard can write
+    ``google_ads.service_account_path`` rather than the canonical GA4
+    binding. Omitted, the canonical 1:1 target is used.
 
     Raises ``ValueError`` if ``name`` is not on the allow-list, ``value`` is
-    empty, or ``name`` does not bind to ``section``. The value is never
-    logged.
-
-    Raises ``ConfigWriteError`` if ``credentials.json`` already exists but is
-    malformed JSON: this is a read-modify-write, and silently treating a
-    corrupt file as ``{}`` (the old ``read_json_safe`` behaviour) would drop
-    every other provider's saved credentials on the next single-field write.
-    We fail closed and keep a ``.bak`` of the prior file before overwriting.
+    empty, or ``name`` does not bind to ``section``; the value is never
+    logged. Raises ``ConfigWriteError`` on a malformed existing file: treated
+    as ``{}``, this read-modify-write would drop every other provider's
+    credentials, so it fails closed (and keeps a ``.bak`` before writing).
     """
     if not is_allowed_env_var(name):
         raise ValueError(f"env var not allowed: {name!r}")
@@ -156,9 +160,7 @@ def write_credential_env_var(
             raise ValueError(f"env var {name!r} not valid for section {section!r}")
         target = EnvVarTarget(section, field)
     path = _resolve_credentials_path(credentials_path)
-    # Strict read: {} only when the file is absent; raises ConfigWriteError on
-    # malformed JSON so a corrupt file is never clobbered into a one-section
-    # dict that erases other providers.
+    # Strict read: {} only when absent, raises on malformed JSON (see above).
     existing = load_existing_json(path)
 
     section_payload_raw = existing.get(target.section)
@@ -172,8 +174,33 @@ def write_credential_env_var(
 
     backup_file(path)  # keep the prior good file before the overwrite
     atomic_write_json(merged, path)
-    # Log the field, not the value.
     logger.info("Wrote credential env var %s into %s", name, target.section)
+    _reconcile_ga4_adc(target, merged, path)
+
+
+def _reconcile_ga4_adc(
+    target: EnvVarTarget, merged: dict[str, Any], path: Path
+) -> None:
+    """Keep the GA4 file derived from the Google authorization in step with
+    a single-field edit that already reached the store.
+
+    A Google value edit re-writes the copy the official MCP reads, and so
+    does a project id edit of a managed ``ga4`` section, whose value the
+    file carries as ``quota_project_id``. Pointing GA4 at a file of the
+    operator's own deletes the managed file, so no copy of the Google token
+    lingers once nothing refers to it.
+    """
+    copied_value = (
+        target.section == "google_ads" and target.field in GA4_ADC_GOOGLE_FIELDS
+    ) or (target.section == GA4_SECTION and target.field == GA4_PROJECT_FIELD)
+    if copied_value:
+        refresh_managed_ga4_adc(merged, path)
+    elif (
+        target.section == GA4_SECTION
+        and target.field == GA4_PATH_FIELD
+        and not is_managed_ga4_section(merged[GA4_SECTION], path)
+    ):
+        unlink_managed_ga4_adc(path)
 
 
 # Closed allow-list of removable mureo-native credential sections. Keyed
@@ -199,6 +226,13 @@ def remove_credential_section(
     Idempotent: returns ``False`` (no rewrite) when the section is
     absent or the file does not exist; ``True`` when it was removed.
     Raises ``ValueError`` for a section outside the closed allow-list.
+
+    The GA4 credential file mureo derives from the Google authorization
+    (:mod:`mureo.core.ga4_adc`) goes with either section. It is a copy of
+    the ``google_ads`` refresh token, so removing ``google_ads`` also drops
+    it and a ``ga4`` section pointing at it; an operator's own ``ga4`` file
+    is left alone. The store is written first and the file deleted after,
+    so a failed write never leaves the store pointing at a missing file.
     """
     if section not in _REMOVABLE_SECTIONS:
         raise ValueError(f"credential section not allowed: {section!r}")
@@ -216,7 +250,12 @@ def remove_credential_section(
 
     merged: dict[str, Any] = dict(existing)
     merged.pop(section, None)
+    derived_ga4 = section in (GA4_SECTION, "google_ads")
+    if derived_ga4:
+        drop_managed_ga4_section(merged, path)
     backup_file(path)  # keep the prior good file before the overwrite
     atomic_write_json(merged, path)
+    if derived_ga4:
+        unlink_managed_ga4_adc(path)
     logger.info("Removed mureo credential section %s", section)
     return True

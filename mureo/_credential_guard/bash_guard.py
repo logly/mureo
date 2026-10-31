@@ -182,11 +182,20 @@ _PATTERN_COMPONENT = "'[.][]a-z0-9_.*?[^{},' + chr(33) + '-]*'"
 # The files rule 4 matches by name, so a tree search cannot walk to them
 # without naming the directory. ``config.json`` is deliberately absent —
 # see rule 4 in this module's docstring for why, and for what that costs.
+# ``credentials-ga4-adc.json`` holds a copy of the Google refresh token.
 GUARDED_FILENAMES = (
     "credentials.json",
     "credentials.json.bak",
+    "credentials-ga4-adc.json",
     "agency.json",
     "setup_state.json",
+)
+
+# The store family shares a stem, so one alternative covers the store, its
+# ``.bak`` and the GA4 file derived from it; this keeps the payload within
+# the command-length budget (tests/test_credential_guard.py).
+_FILENAME_ALTERNATION = (
+    "credentials(-ga4-adc)?[.]json([.]bak)?|agency[.]json|setup_state[.]json"
 )
 
 # One alternation over those names, matched only where the name stands on
@@ -204,11 +213,7 @@ GUARDED_FILENAMES = (
 # rather than ``$`` because it may not contain one of those either — the
 # candidate has a space appended before the search so the end of the
 # string counts as a boundary.
-_FILENAME_PATTERN = (
-    "'(^|[^a-z0-9_./-])("
-    + "|".join(n.replace(".", "[.]") for n in GUARDED_FILENAMES)
-    + ")[^a-z0-9_-]'"
-)
+_FILENAME_PATTERN = "'(^|[^a-z0-9_./-])(" + _FILENAME_ALTERNATION + ")[^a-z0-9_-]'"
 
 _BASH_GUARD_CODE = (
     "import sys,json,re,os,fnmatch,functools,itertools; " + _DENY_DEF

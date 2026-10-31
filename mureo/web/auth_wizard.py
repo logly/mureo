@@ -162,6 +162,7 @@ class WizardSession:
     # Held between /google-ads/callback and the user's picker submit.
     google_refresh_token: str | None = None
     google_accessible_accounts: list[dict[str, Any]] | None = None
+    google_granted_scopes: tuple[str, ...] = ()
 
     meta_app_id: str | None = None
     meta_app_secret: str | None = None
@@ -192,6 +193,8 @@ class WizardSession:
         self.google_oauth_state = None
         self.google_refresh_token = None
         self.google_accessible_accounts = None
+        # Not a secret, but it describes the same authorization.
+        self.google_granted_scopes = ()
         self.meta_app_id = None
         self.meta_app_secret = None
         self.meta_oauth_state = None
@@ -800,9 +803,8 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             return
 
         refresh_token = result.refresh_token
-        # Build a probe credential to query the Google Ads API for
-        # accessible accounts. This is the gap the terminal flow was
-        # already filling and the web flow was silently skipping.
+        sess.google_granted_scopes = result.granted_scopes
+        # Probe credential for listing the accessible accounts.
         probe_creds = GoogleAdsCredentials(
             developer_token=sess.google_developer_token,
             client_id=sess.google_client_id or "",
@@ -811,13 +813,12 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         )
         if self.server.wizard.multi_account_auth:
             # Multi-account backend (#198): the OAuth client is
-            # operator-shared; the per-client ``customer_id``
-            # is supplied out of band. Persist the shared credentials and
-            # skip the account probe + picker entirely — going straight
-            # to /done without ever calling the Google Ads API.
+            # operator-shared and ``customer_id`` is supplied out of band,
+            # so persist and go straight to /done with no account probe.
             save_credentials(
                 path=self.server.wizard.credentials_path,
                 google=probe_creds,
+                google_granted_scopes=result.granted_scopes,
             )
             sess.clear_secrets()
             self.send_response(302)
@@ -827,12 +828,9 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         try:
             accounts = _run_async(_reexport("list_accessible_accounts")(probe_creds))
         except Exception as exc:  # noqa: BLE001 — the account list is optional here
-            # Log only the exception class — the google-ads SDK
-            # sometimes embeds request arguments (which could include
-            # the developer_token / client_secret) in exception
-            # repr/__str__. Writing a full traceback to stderr via
-            # exc_info=True would leak those. Type alone is enough
-            # to triage.
+            # Exception class only: the google-ads SDK can embed request
+            # arguments (developer_token / client_secret) in the exception
+            # text, which a traceback (exc_info=True) would leak.
             logger.warning(
                 "Could not list Google Ads accounts (%s) — proceeding "
                 "without customer_id",
@@ -841,11 +839,11 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             accounts = []
 
         if not accounts:
-            # Save what we have and let the user continue; they don't
-            # lose the refresh token.
+            # Save what we have so the refresh token is not lost.
             save_credentials(
                 path=self.server.wizard.credentials_path,
                 google=probe_creds,
+                google_granted_scopes=result.granted_scopes,
             )
             sess.clear_secrets()
             self.send_response(302)
@@ -912,6 +910,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             path=self.server.wizard.credentials_path,
             google=creds,
             customer_id=chosen_id,
+            google_granted_scopes=sess.google_granted_scopes,
         )
         sess.clear_secrets()
         sess.rotate_csrf()

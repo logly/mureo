@@ -30,10 +30,14 @@
   // The store already holds a complete (usable) ``ga4`` section (an ADC
   // file path + project id, possibly written by a credential provider's
   // ``on_oauth_persisted`` hook), so the input slot is skipped. Edits go
-  // through the dashboard env-var rows.
+  // through the dashboard env-var rows. ga4SavedByGoogleOauth is the
+  // run-local flag the auth step sets when the Google authorization just
+  // saved the section; wizard.js keeps reading existing.ga4.configured for
+  // the step list, so the flag cannot drop the auth step mid-run.
   function ga4CredentialsOnDisk(state) {
-    return Boolean(
-      state.existing && state.existing.ga4 && state.existing.ga4.configured
+    return (
+      Boolean(state.existing && state.existing.ga4 && state.existing.ga4.configured) ||
+      Boolean(state.ga4SavedByGoogleOauth)
     );
   }
 
