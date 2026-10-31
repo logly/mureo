@@ -30,16 +30,23 @@ All FS via ``tmp_path``. ``@pytest.mark.unit``.
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
 
+from mureo.core.ga4_adc import (
+    ANALYTICS_READONLY_SCOPE,
+    managed_adc_path,
+    sync_ga4_adc_from_google,
+)
 from mureo.web._helpers import read_json_safe
 from mureo.web.env_var_writer import (
     allowed_env_var_names,
     build_provider_env,
     get_env_var_target,
     is_allowed_env_var,
+    remove_credential_section,
     write_credential_env_var,
 )
 
@@ -438,3 +445,157 @@ class TestWriteCredentialEnvVarMalformedGuard:
         backup = tmp_path / "credentials.json.bak"
         assert backup.exists()
         assert read_json_safe(backup) == {"google_ads": {"developer_token": "DT"}}
+
+
+_GA4_CLIENT_ID = "123456789012-abc.apps.googleusercontent.com"
+_GOOGLE = {"client_id": _GA4_CLIENT_ID, "client_secret": "S", "refresh_token": "R"}
+
+
+def _store_with_managed_ga4(creds: Path) -> Path:
+    """A store holding google_ads plus the GA4 file derived from it."""
+    payload: dict[str, object] = {"google_ads": dict(_GOOGLE)}
+    sync_ga4_adc_from_google(
+        payload,
+        client_id=_GA4_CLIENT_ID,
+        client_secret="S",
+        refresh_token="R",
+        granted_scopes=[ANALYTICS_READONLY_SCOPE],
+        credentials_path=creds,
+    )
+    _write(creds, payload)
+    return managed_adc_path(creds)
+
+
+@pytest.mark.unit
+class TestRemoveCredentialSectionGa4:
+    """The GA4 file mureo derives from the Google authorization goes with
+    the section it was derived from, and with its own section."""
+
+    def test_google_ads_removal_drops_the_derived_ga4(self, tmp_path: Path) -> None:
+        creds = tmp_path / "credentials.json"
+        adc = _store_with_managed_ga4(creds)
+
+        assert remove_credential_section("google_ads", credentials_path=creds)
+
+        assert not adc.exists()
+        assert read_json_safe(creds) == {}
+
+    def test_ga4_removal_deletes_the_file(self, tmp_path: Path) -> None:
+        creds = tmp_path / "credentials.json"
+        adc = _store_with_managed_ga4(creds)
+
+        assert remove_credential_section("ga4", credentials_path=creds)
+
+        assert not adc.exists()
+        assert read_json_safe(creds) == {"google_ads": _GOOGLE}
+
+    def test_operator_owned_ga4_survives_google_ads_removal(
+        self, tmp_path: Path
+    ) -> None:
+        creds = tmp_path / "credentials.json"
+        own_file = tmp_path / "sa.json"
+        own_file.write_text("{}", encoding="utf-8")
+        own = {"service_account_path": str(own_file), "project_id": "p"}
+        _write(creds, {"google_ads": dict(_GOOGLE), "ga4": own})
+
+        assert remove_credential_section("google_ads", credentials_path=creds)
+
+        assert own_file.exists()
+        assert read_json_safe(creds) == {"ga4": own}
+
+    def test_a_failed_store_write_keeps_the_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The store is written before the file goes, so a failed write
+        never leaves the store naming a deleted file."""
+        creds = tmp_path / "credentials.json"
+        adc = _store_with_managed_ga4(creds)
+        before = read_json_safe(creds)
+
+        def _boom(payload: dict[str, object], path: Path) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr("mureo.web.env_var_writer.atomic_write_json", _boom)
+
+        with pytest.raises(OSError, match="disk full"):
+            remove_credential_section("google_ads", credentials_path=creds)
+
+        assert adc.exists()
+        assert read_json_safe(creds) == before
+
+    def test_a_failed_delete_still_removes_the_section(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        creds = tmp_path / "credentials.json"
+        adc = _store_with_managed_ga4(creds)
+
+        def _deny(self: object, missing_ok: bool = False) -> None:
+            raise PermissionError("denied")
+
+        monkeypatch.setattr("pathlib.Path.unlink", _deny)
+
+        with caplog.at_level(logging.WARNING, logger="mureo.core.ga4_adc"):
+            assert remove_credential_section("ga4", credentials_path=creds)
+
+        assert adc.exists()
+        assert read_json_safe(creds) == {"google_ads": _GOOGLE}
+        assert "GA4 credential file not removed (PermissionError)" in caplog.text
+
+
+@pytest.mark.unit
+class TestWriteCredentialEnvVarGa4:
+    """A single-field edit keeps the derived GA4 file in step with the
+    store."""
+
+    def test_a_refresh_token_edit_rewrites_the_file(self, tmp_path: Path) -> None:
+        creds = tmp_path / "credentials.json"
+        adc = _store_with_managed_ga4(creds)
+
+        write_credential_env_var(
+            "GOOGLE_ADS_REFRESH_TOKEN", "R2", credentials_path=creds
+        )
+
+        assert json.loads(adc.read_text(encoding="utf-8")) == {
+            "type": "authorized_user",
+            "client_id": _GA4_CLIENT_ID,
+            "client_secret": "S",
+            "refresh_token": "R2",
+            "quota_project_id": "123456789012",
+        }
+
+    def test_a_developer_token_edit_leaves_the_file(self, tmp_path: Path) -> None:
+        creds = tmp_path / "credentials.json"
+        adc = _store_with_managed_ga4(creds)
+        before = adc.read_text(encoding="utf-8")
+
+        write_credential_env_var(
+            "GOOGLE_ADS_DEVELOPER_TOKEN", "DT", credentials_path=creds
+        )
+
+        assert adc.read_text(encoding="utf-8") == before
+
+    def test_pointing_ga4_at_another_file_deletes_the_managed_one(
+        self, tmp_path: Path
+    ) -> None:
+        creds = tmp_path / "credentials.json"
+        adc = _store_with_managed_ga4(creds)
+        own = str(tmp_path / "sa.json")
+
+        write_credential_env_var(
+            "GOOGLE_APPLICATION_CREDENTIALS", own, credentials_path=creds
+        )
+
+        assert not adc.exists()
+        assert read_json_safe(creds)["ga4"]["service_account_path"] == own
+
+    def test_a_ga4_project_edit_rewrites_the_file(self, tmp_path: Path) -> None:
+        creds = tmp_path / "credentials.json"
+        adc = _store_with_managed_ga4(creds)
+
+        write_credential_env_var("GOOGLE_PROJECT_ID", "other", credentials_path=creds)
+
+        assert read_json_safe(adc)["quota_project_id"] == "other"
+        assert read_json_safe(creds)["ga4"]["project_id"] == "other"

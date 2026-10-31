@@ -24,6 +24,7 @@ from mureo.amazon_ads.manifest import is_stale, manifest_age_days, manifest_path
 from mureo.auth import _coerce_never_expires
 from mureo.cli.skill_status import detect_workflow_skills
 from mureo.core import clock
+from mureo.core.ga4_adc import ga4_section_usable
 from mureo.credential_guard import is_guard_entry
 from mureo.web._helpers import read_json_safe
 from mureo.web.codex_mcp import installed_codex_server_ids, read_codex_server_env
@@ -214,22 +215,11 @@ def _detect_credentials_present(credentials_path: Path) -> dict[str, bool]:
     for section in sections:
         value = payload.get(section)
         out[section] = isinstance(value, dict) and bool(value)
-    out["ga4"] = _ga4_credentials_usable(payload.get("ga4"))
+    # A half-written ga4 section reported as present would make the wizard
+    # skip the GA4 inputs and claim both values are saved.
+    out["ga4"] = ga4_section_usable(payload.get("ga4"))
     out["amazon_ads"] = _amazon_credentials_usable(payload.get("amazon_ads"))
     return out
-
-
-def _ga4_credentials_usable(section: Any) -> bool:
-    """GA4 is configured only when both values the official MCP needs are set.
-
-    The configure wizard writes the credential file path and the project id
-    one env var at a time, so a half-written section (one saved, the other
-    failed) is possible. Reporting it as present would make the wizard skip
-    the GA4 inputs and claim both are saved.
-    """
-    if not isinstance(section, dict):
-        return False
-    return bool(section.get("service_account_path") and section.get("project_id"))
 
 
 def _amazon_credentials_usable(section: Any) -> bool:

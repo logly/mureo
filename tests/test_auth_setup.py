@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mureo.auth import GoogleAdsCredentials
+from mureo.core.ga4_adc import ADC_SUFFIX
 from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
@@ -817,6 +818,7 @@ async def test_run_google_oauth() -> None:
     assert call_args[1]["scopes"] == [
         "https://www.googleapis.com/auth/adwords",
         "https://www.googleapis.com/auth/webmasters",
+        "https://www.googleapis.com/auth/analytics.readonly",
     ]
 
     # run_local_server should be called with port=0 (auto-select) and prompt="consent".
@@ -2433,3 +2435,94 @@ async def test_setup_google_ads_flow_keeps_prior_developer_token(
     data = json.loads(cred_path.read_text(encoding="utf-8"))
     assert data["google_ads"]["developer_token"] == "legacy-token"
     assert data["google_ads"]["client_id"] == "new-client-id"
+
+
+# ---------------------------------------------------------------------------
+# GA4 credential file derived from the Google authorization (#938)
+# ---------------------------------------------------------------------------
+
+_GA4_CLIENT_ID = "123456789012-abc123.apps.googleusercontent.com"
+_GA4_SCOPES = (
+    "https://www.googleapis.com/auth/adwords",
+    "https://www.googleapis.com/auth/analytics.readonly",
+)
+
+
+def _ga4_google_creds() -> GoogleAdsCredentials:
+    return GoogleAdsCredentials(
+        developer_token=None,
+        client_id=_GA4_CLIENT_ID,
+        client_secret="csec",
+        refresh_token="rtok",
+    )
+
+
+@pytest.mark.unit
+def test_save_credentials_with_the_analytics_scope_writes_the_ga4_section(
+    tmp_path: Path,
+) -> None:
+    from mureo.auth_setup import save_credentials
+
+    cred_path = tmp_path / "store" / "credentials.json"
+    save_credentials(
+        path=cred_path,
+        google=_ga4_google_creds(),
+        google_granted_scopes=_GA4_SCOPES,
+    )
+
+    adc = tmp_path / "store" / ("credentials" + ADC_SUFFIX)
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert data["ga4"] == {
+        "service_account_path": str(adc),
+        "project_id": "123456789012",
+    }
+    adc_data = json.loads(adc.read_text(encoding="utf-8"))
+    assert adc_data["type"] == "authorized_user"
+    assert adc_data["refresh_token"] == "rtok"
+
+
+@pytest.mark.unit
+def test_save_credentials_without_granted_scopes_writes_nothing_for_ga4(
+    tmp_path: Path,
+) -> None:
+    from mureo.auth_setup import save_credentials
+
+    cred_path = tmp_path / "store" / "credentials.json"
+    save_credentials(path=cred_path, google=_ga4_google_creds())
+
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert "ga4" not in data
+    assert not (tmp_path / "store" / ("credentials" + ADC_SUFFIX)).exists()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_setup_google_ads_passes_the_granted_scopes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from mureo.auth_setup import OAuthResult, setup_google_ads
+
+    cred_path = tmp_path / "store" / "credentials.json"
+    user_inputs = iter(["", _GA4_CLIENT_ID, "csec"])
+    oauth_result = OAuthResult(
+        refresh_token="1//rtok", access_token="ya29.a", granted_scopes=_GA4_SCOPES
+    )
+
+    with (
+        patch("mureo.auth_setup.input_func", side_effect=user_inputs),
+        patch(
+            "mureo.auth_setup.run_google_oauth",
+            new_callable=AsyncMock,
+            return_value=oauth_result,
+        ),
+        patch(
+            "mureo.google_ads.accounts.list_accessible_accounts",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        await setup_google_ads(credentials_path=cred_path)
+
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert data["ga4"]["project_id"] == "123456789012"
+    assert "mureo providers add ga4-official" in capsys.readouterr().out

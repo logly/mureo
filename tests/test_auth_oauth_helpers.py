@@ -8,6 +8,7 @@ prevents drift.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,7 @@ from mureo.auth_setup import (  # noqa: I001
     build_google_flow,
     exchange_google_code,
     google_auth_url,
+    run_google_oauth,
 )
 
 
@@ -229,3 +231,158 @@ class TestRunGoogleOauthUsesNewHelpers:
         mock_build_flow.assert_called_once_with(
             client_id="cid", client_secret="SECRET", redirect_uri=None
         )
+
+
+_ADS = "https://www.googleapis.com/auth/adwords"
+_GA4 = "https://www.googleapis.com/auth/analytics.readonly"
+
+
+class TestGrantedScopes:
+    """Both OAuth paths report the scopes Google granted, as a tuple of
+    str, so a save can tell whether GA4 read-only came with the token."""
+
+    @staticmethod
+    def _credentials(granted: object) -> MagicMock:
+        creds = MagicMock()
+        creds.refresh_token = "REFRESH"
+        creds.token = "ACCESS"
+        creds.granted_scopes = granted
+        return creds
+
+    @pytest.mark.parametrize(
+        ("granted", "expected"),
+        [
+            ([_ADS, _GA4], (_ADS, _GA4)),
+            (f"{_ADS} {_GA4}", (_ADS, _GA4)),
+            ((_ADS, 7), (_ADS,)),
+            (None, ()),
+        ],
+    )
+    def test_exchange_google_code(self, granted: object, expected: tuple) -> None:
+        flow = MagicMock()
+        flow.credentials = self._credentials(granted)
+
+        result = exchange_google_code(flow, code="AUTH_CODE")
+
+        assert result.granted_scopes == expected
+
+    def test_exchange_google_code_with_a_bare_mock(self) -> None:
+        flow = MagicMock()
+        flow.credentials.refresh_token = "REFRESH"
+        flow.credentials.token = "ACCESS"
+
+        assert exchange_google_code(flow, code="AUTH_CODE").granted_scopes == ()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("granted", "expected"),
+        [
+            ([_ADS, _GA4], (_ADS, _GA4)),
+            (f"{_ADS} {_GA4}", (_ADS, _GA4)),
+            (None, ()),
+        ],
+    )
+    async def test_run_google_oauth(self, granted: object, expected: tuple) -> None:
+        from mureo.auth_setup import run_google_oauth
+
+        with patch("mureo.auth_setup.build_google_flow") as mock_build_flow:
+            mock_build_flow.return_value.run_local_server.return_value = (
+                self._credentials(granted)
+            )
+            result = await run_google_oauth(client_id="cid", client_secret="SECRET")
+
+        assert result.granted_scopes == expected
+
+    @pytest.mark.asyncio
+    async def test_run_google_oauth_with_a_bare_mock(self) -> None:
+        from mureo.auth_setup import run_google_oauth
+
+        creds = MagicMock()
+        creds.refresh_token = "REFRESH"
+        creds.token = "ACCESS"
+        with patch("mureo.auth_setup.build_google_flow") as mock_build_flow:
+            mock_build_flow.return_value.run_local_server.return_value = creds
+            result = await run_google_oauth(client_id="cid", client_secret="SECRET")
+
+        assert result.granted_scopes == ()
+
+    def test_flow_requests_analytics_readonly(self) -> None:
+        flow = build_google_flow(
+            client_id="cid",
+            client_secret="SECRET",
+            redirect_uri="http://127.0.0.1:1/cb",
+        )
+        url, _state = flow.authorization_url(access_type="offline")
+        assert "analytics.readonly" in url
+
+
+_SC = "https://www.googleapis.com/auth/webmasters"
+
+
+class TestPartialGrant:
+    """The consent screen lets the user untick a scope; the exchange must
+    still succeed and say which scope is missing."""
+
+    def test_flow_relaxes_the_token_scope_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OAUTHLIB_RELAX_TOKEN_SCOPE", raising=False)
+
+        build_google_flow(client_id="cid", client_secret="SECRET")
+
+        assert os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] == "1"
+
+    def test_flow_keeps_a_preset_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OAUTHLIB_RELAX_TOKEN_SCOPE", "0")
+
+        build_google_flow(client_id="cid", client_secret="SECRET")
+
+        assert os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] == "0"
+
+    def test_missing_analytics_scope_is_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        flow = MagicMock()
+        flow.credentials.refresh_token = "REFRESH"
+        flow.credentials.token = "ACCESS"
+        flow.credentials.granted_scopes = [_ADS, _SC]
+
+        with caplog.at_level("WARNING", logger="mureo.core.google_scopes"):
+            result = exchange_google_code(flow, code="AUTH_CODE")
+
+        assert result.granted_scopes == (_ADS, _SC)
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert warnings == [f"Google did not grant: {_GA4}"]
+
+    def test_full_or_unreported_grant_logs_nothing(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        for granted in ([_ADS, _SC, _GA4], None):
+            flow = MagicMock()
+            flow.credentials.refresh_token = "REFRESH"
+            flow.credentials.token = "ACCESS"
+            flow.credentials.granted_scopes = granted
+            with caplog.at_level("WARNING", logger="mureo.core.google_scopes"):
+                exchange_google_code(flow, code="AUTH_CODE")
+
+        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+
+    def test_missing_google_ads_scope_fails_the_exchange(self) -> None:
+        flow = MagicMock()
+        flow.credentials.refresh_token = "REFRESH"
+        flow.credentials.token = "ACCESS"
+        flow.credentials.granted_scopes = [_SC, _GA4]
+
+        with pytest.raises(RuntimeError, match="Google Ads scope"):
+            exchange_google_code(flow, code="AUTH_CODE")
+
+    @pytest.mark.asyncio
+    async def test_missing_google_ads_scope_fails_the_cli_flow(self) -> None:
+        creds = MagicMock()
+        creds.refresh_token = "REFRESH"
+        creds.token = "ACCESS"
+        creds.granted_scopes = [_SC, _GA4]
+        with patch("mureo.auth_setup.build_google_flow") as mock_build_flow:
+            mock_build_flow.return_value.run_local_server.return_value = creds
+            with pytest.raises(RuntimeError, match="Google Ads scope"):
+                await run_google_oauth(client_id="cid", client_secret="SECRET")

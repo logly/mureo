@@ -41,7 +41,7 @@ mureo configure
 
 ターミナル入力を安全に受け取れない AI エージェントから mureo を案内された場合、あるいは単に GUI を使いたい場合は `mureo configure` を選んでください。localhost のランダムなポートに短命の HTTP サーバーを立ててブラウザで開き、HTML フォームと標準的な OAuth リダイレクトによる Google Ads / Meta Ads / GA4 の認証情報入力 (各項目は対応するコンソールへディープリンク) に加え、ダッシュボードの *接続先の認証情報* セクションにある **Amazon Ads** タブの **Authorize with Amazon** フローで LwA トークンを取得 (Amazon の同意にはループバックコールバックがないため、コードを貼り付ける案内付きのフローです。mureo が同意ページを開き、リダイレクト先のアドレスを貼り戻します。[amazon-ads.ja.md](amazon-ads.ja.md) 参照) もできます。さらに Claude のホスト選択、基本セットアップ (MCP サーバー + 認証ガードフック + skills)、公式 MCP プロバイダの追加、プラットフォームごとの mureo-native / 公式 MCP の切り替え、Demo/BYOD の雛形作成も行えます。フラグ: `--no-browser`、`--timeout-seconds N` (アイドル時の停止、既定 600)。セキュリティ強化 (CSRF ローテーション、OAuth `state` の再検証、DNS リバインディング対策、localhost に固定したリダイレクト検証、汎用化したエラー表示、POST サイズ上限、CSP) も同じものが適用されます。`SECURITY.md` 参照。
 
-認証ステップは、すでにディスクにあるものを再利用します。Google の refresh token が保存済みなら (Google Ads と Search Console は 1 本を共有) Google の認可ステップはスキップされ、UI がそう表示します。新しいトークンを発行したいときのために **Re-authorize Google** ボタンが出ます。
+認証ステップは、すでにディスクにあるものを再利用します。Google の refresh token が保存済みなら (Google Ads と Search Console は 1 本を共有) Google の認可ステップはスキップされ、UI がそう表示します。新しいトークンを発行したいときのために **Re-authorize Google** ボタンが出ます。GA4 を選んでいて、保存済みの認可に GA4 の読み取りスコープがない場合は、GA4 のステップにも同じボタンが出ます。押すとその位置に Google のステップが入り、新しい認可がスコープを持っていれば GA4 のステップはそこから埋まります ([integrations.md](integrations.md) 参照)。Google の同意画面で Search Console と GA4 の読み取りはチェックを外してかまいません (Google が付与しなかったスコープは mureo がログに残します) が、Google Ads のスコープのチェックを外すと認可は失敗します。保存する refresh token はこのスコープのためのものだからです。
 
 **UI で何かが失敗したとき**、画面上のメッセージは意図的に汎用的にしています (エラー表示にトークンの中身が漏れないようにするためです)。原因は configure のログ — `~/.mureo/logs/configure.log` — にあります。起動時にパスが表示され、全プラットフォームで書き出されます。他では見えないもの、つまり失敗した Meta トークンの更新や永続化できなかった更新、拒否されたアカウント一覧の取得、パースできない `credentials.json` も含まれます。`MUREO_LOG_LEVEL=DEBUG mureo configure` で詳細度を上げられます。どのレベルでも、ログ行がトークン・シークレット・認証情報の値を持つことはありません。[cli.md — Configure log](cli.md#configure-log) 参照。
 
@@ -227,7 +227,7 @@ print("Refresh token:", flow.credentials.refresh_token)
 
 あるいは [Google OAuth Playground](https://developers.google.com/oauthplayground/) を `https://www.googleapis.com/auth/adwords` スコープで使います。
 
-> **スコープが重要。** refresh token は Google Ads のスコープ `https://www.googleapis.com/auth/adwords` を*必ず*持っている必要があります。別のスコープで発行した refresh token を流用すると、Google Ads API の呼び出しが実行時に `ACCESS_TOKEN_SCOPE_INSUFFICIENT` で失敗します。`mureo configure` / `mureo auth setup` はこのスコープ (と Search Console) を自動で要求するので、手で発行したトークンより優先してください。出典: [Google Ads API — OAuth 2.0 scopes](https://developers.google.com/google-ads/api/docs/oauth/overview)。
+> **スコープが重要。** refresh token は Google Ads のスコープ `https://www.googleapis.com/auth/adwords` を*必ず*持っている必要があります。別のスコープで発行した refresh token を流用すると、Google Ads API の呼び出しが実行時に `ACCESS_TOKEN_SCOPE_INSUFFICIENT` で失敗します。`mureo configure` / `mureo auth setup` はこのスコープ (と Search Console、GA4 の読み取り `analytics.readonly`) を自動で要求するので、手で発行したトークンより優先してください。出典: [Google Ads API — OAuth 2.0 scopes](https://developers.google.com/google-ads/api/docs/oauth/overview)。
 
 ### 既存ユーザー (developer token からの移行)
 

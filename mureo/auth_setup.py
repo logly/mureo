@@ -13,6 +13,7 @@ import http.server
 import importlib
 import json
 import logging
+import os
 import secrets
 import shutil
 import subprocess  # noqa: S404 - fixed argv, shell=False (claude mcp add-json)
@@ -35,6 +36,14 @@ import httpx
 from mureo import credential_guard
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 from mureo.core.atomic_json import atomic_write_json, load_existing_json
+from mureo.core.ga4_adc import store_has_managed_ga4, sync_ga4_adc_from_google
+from mureo.core.google_scopes import (
+    GOOGLE_ADS_SCOPE,
+    GOOGLE_SCOPES,
+    SEARCH_CONSOLE_SCOPE,
+    check_granted_scopes,
+    granted_scopes,
+)
 from mureo.core.runtime_context import runtime_credentials_path
 
 # Private alias so existing call sites and test monkeypatches of
@@ -48,6 +57,8 @@ from mureo.meta_ads._api_version import OAUTH_DIALOG_URL, OAUTH_TOKEN_URL
 from mureo.meta_ads.accounts import META_HTTP_TIMEOUT_SECONDS, META_OAUTH_SCOPES
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from google_auth_oauthlib.flow import Flow
 
     # Typed views of the lazily-resolved re-exports below. ``as <same-name>``
@@ -62,23 +73,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Backward-compat re-exports of the platform-level account-discovery helpers
-# that used to live in this module. The canonical homes are
-# :mod:`mureo.google_ads.accounts` and :mod:`mureo.meta_ads.accounts`; the
-# legacy paths ``mureo.auth_setup.list_accessible_accounts`` /
-# ``mureo.auth_setup.list_meta_ad_accounts`` stay stable via the module-level
-# ``__getattr__`` below (PEP 562), including for ``monkeypatch.setattr`` and
-# ``unittest.mock.patch``, which both getattr-then-setattr the module. The two
-# in-module call sites go through :func:`_reexport` rather than importing from
-# the source module, so those legacy patch targets keep intercepting the
-# wizards — see that helper's docstring.
-#
-# They are resolved on first access rather than at import time (#486): they
-# live in packages whose ``__init__`` loads the Google Ads SDK, and this
-# module is on the startup path of ``mureo setup <agent> --skip-auth`` (for
-# ``install_mcp_config`` / ``install_credential_guard``, neither of which
-# touches Google). Under Python 3.10 that eager chain printed two
-# ``google.api_core`` FutureWarnings in the middle of the setup output.
+# Backward-compat re-exports of the account-discovery helpers that live in
+# :mod:`mureo.google_ads.accounts` / :mod:`mureo.meta_ads.accounts`. The
+# legacy ``mureo.auth_setup.<name>`` paths (and patch targets) stay stable via
+# the PEP 562 ``__getattr__`` below; in-module call sites go through
+# :func:`_reexport`. Resolved on first access (#486): those packages load the
+# Google Ads SDK, whose eager import printed FutureWarnings in the middle of
+# ``mureo setup <agent> --skip-auth``, which never touches Google.
 _LAZY_REEXPORTS = {
     "list_accessible_accounts": "mureo.google_ads.accounts",
     "list_meta_ad_accounts": "mureo.meta_ads.accounts",
@@ -96,47 +97,32 @@ def __getattr__(name: str) -> Any:
 def _reexport(name: str) -> Any:
     """Return the *current* binding of a deferred re-export.
 
-    Resolved through this module's attribute lookup — deliberately NOT via a
-    function-local ``from mureo.<platform>.accounts import ...``. Both stay
-    lazy, but only attribute lookup preserves the backward-compat promise:
-
-    - unpatched, the name is not in the module ``__dict__``, so lookup falls
-      through to :func:`__getattr__` and imports the canonical function on
-      demand (the #486 laziness);
-    - patched, ``mock.patch`` / ``monkeypatch.setattr`` have setattr'd a real
-      module attribute, which shadows ``__getattr__`` — so the long-documented
-      ``patch("mureo.auth_setup.list_accessible_accounts")`` target intercepts
-      the wizard again.
-
-    A function-local source import silently defeats the second case: the patch
-    rebinds an attribute nobody reads and the real networked function runs
-    while the mock reports zero calls. Guarded by the behavioural tests in
-    ``tests/test_public_account_listing.py``.
+    Resolved through this module's attribute lookup, deliberately NOT a
+    function-local source import: unpatched, lookup falls through to
+    :func:`__getattr__` (lazy, #486); patched, the setattr'd attribute
+    shadows it, so ``patch("mureo.auth_setup.list_accessible_accounts")``
+    intercepts the wizard. A source import would let the real networked
+    function run while the mock reports zero calls
+    (``tests/test_public_account_listing.py``).
     """
     return getattr(sys.modules[__name__], name)
 
 
-_GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
-_SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters"
-_GOOGLE_SCOPES = [_GOOGLE_ADS_SCOPE, _SEARCH_CONSOLE_SCOPE]
+# Private aliases of mureo.core.google_scopes for existing importers.
+_GOOGLE_ADS_SCOPE = GOOGLE_ADS_SCOPE
+_SEARCH_CONSOLE_SCOPE = SEARCH_CONSOLE_SCOPE
+_GOOGLE_SCOPES = list(GOOGLE_SCOPES)
 
 
 def _capture_terminal_state(fd: int | None) -> Any | None:
     """Snapshot the current terminal attributes for later restore.
 
-    Returns the result of ``termios.tcgetattr(fd)`` on success, or
-    ``None`` when stdin is not a TTY (pipe / redirect / CI / Windows /
-    pytest's stdin replacement). The ``None`` return signals the
-    matching ``_restore_terminal_state`` call to skip the restore —
-    the snapshot would not have been meaningful, and ``tcsetattr`` on
-    a non-TTY would itself raise.
+    ``termios.tcgetattr(fd)``, or ``None`` when stdin is not a TTY (pipe,
+    CI, Windows, pytest), which tells ``_restore_terminal_state`` to skip.
 
-    See #190 — ``simple_term_menu.TerminalMenu.show()`` flips the
-    terminal into cbreak (no ``ICANON`` / ``ECHO`` / ``ISIG``) and on
-    any non-normal exit can leave it that way. mureo wraps every
-    ``show()`` call in a ``try/finally`` that pairs this helper with
-    ``_restore_terminal_state`` so the shell session always recovers,
-    even when the operator cancels the menu or ``show()`` raises.
+    #190: ``TerminalMenu.show()`` flips the terminal into cbreak and can
+    leave it there on a non-normal exit, so every ``show()`` is wrapped in
+    a ``try/finally`` pairing this with ``_restore_terminal_state``.
     """
     if termios is None or fd is None:
         return None
@@ -149,21 +135,13 @@ def _capture_terminal_state(fd: int | None) -> Any | None:
 def _restore_terminal_state(fd: int | None, state: Any | None) -> None:
     """Re-apply a snapshot captured by ``_capture_terminal_state``.
 
-    No-op when ``state`` is ``None`` (matches the
-    ``_capture_terminal_state`` contract for non-TTY input). Errors
-    from ``tcsetattr`` are swallowed — the restore is best-effort,
-    not a hard requirement, and a failure here should not crash the
-    surrounding CLI flow.
-
-    Uses ``TCSADRAIN`` so any pending output drains before the mode
-    flip; this avoids the cosmetic glitch where a trailing menu
-    redraw can race the restore and leave stray escape codes visible
-    in the next prompt.
+    No-op when ``state`` is ``None``. Best-effort (#190): a ``tcsetattr``
+    failure must not crash the surrounding CLI flow. ``TCSADRAIN`` lets
+    pending output drain first, so a trailing menu redraw cannot leave
+    stray escape codes in the next prompt.
     """
     if state is None or termios is None or fd is None:
         return
-    # Best-effort restore — a ``tcsetattr`` failure here should not
-    # crash the surrounding CLI flow. See #190.
     with contextlib.suppress(termios.error, OSError, ValueError, AttributeError):
         termios.tcsetattr(fd, termios.TCSADRAIN, state)
 
@@ -204,13 +182,9 @@ def _select_account(
         # Startup cost (~5 ms CPU): simple_term_menu is deferred to the interactive menu (#863).
         from simple_term_menu import TerminalMenu  # noqa: PLC0415 — startup cost (#863)
 
-        # #190 — wrap ``TerminalMenu.show()`` in try/finally with an
-        # explicit terminal-state save/restore. ``show()`` puts the
-        # terminal into cbreak (no ICANON / ECHO / ISIG) and on any
-        # non-normal exit (operator Esc, internal exception,
-        # KeyboardInterrupt) the restore may silently fail — every
-        # subsequent program in the same shell session would then drop
-        # echo and SIGINT.
+        # #190: ``show()`` leaves the terminal in cbreak on a non-normal
+        # exit (Esc, exception, KeyboardInterrupt), dropping echo and SIGINT
+        # for the rest of the shell session; save and restore explicitly.
         fd = _terminal_fd()
         old_attrs = _capture_terminal_state(fd)
         try:
@@ -227,12 +201,9 @@ def _select_account(
         print(f"Selected: {_account_label(selected)}")
         return selected["id"]  # type: ignore[no-any-return]
     except (ImportError, NotImplementedError):
-        # Fall back to plain number input when the arrow-key menu is
-        # unusable: simple-term-menu not installed (ImportError); on
-        # Windows it imports Unix-only ``termios`` and raises
-        # NotImplementedError; and it also raises NotImplementedError
-        # in a non-terminal env (CI, pipes, PyCharm console) — all of
-        # which should degrade gracefully, not crash.
+        # Plain number input when the arrow-key menu is unusable: not
+        # installed (ImportError), or Windows / a non-terminal env such as
+        # CI, pipes or an IDE console (NotImplementedError).
         for i, label in enumerate(labels, 1):
             print(f"  {i}. {label}")
         print()
@@ -265,6 +236,7 @@ class OAuthResult:
 
     refresh_token: str
     access_token: str
+    granted_scopes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -373,10 +345,9 @@ class OAuthCallbackServer:
 def build_google_client_config(client_id: str, client_secret: str) -> dict[str, Any]:
     """Return the ``client_config`` dict consumed by google-auth-oauthlib.
 
-    Shared between the interactive CLI path (which uses
-    :class:`InstalledAppFlow`) and the web wizard path (which uses
-    plain :class:`Flow`) so the two agree on OAuth endpoints and
-    redirect-URI shape.
+    Shared by the interactive CLI path (:class:`InstalledAppFlow`) and the
+    web wizard path (plain :class:`Flow`) so the two agree on OAuth
+    endpoints and redirect-URI shape.
     """
     return {
         "installed": {
@@ -419,22 +390,24 @@ def build_google_flow(
 
     - ``redirect_uri=None`` -> :class:`InstalledAppFlow` (the existing
       CLI path; spins up its own local HTTP server on ``run_local_server``).
-    - otherwise -> plain :class:`Flow` whose callback the caller handles
-      on their own HTTP server (the web wizard path). The URI is
-      validated against a localhost-only allow-list so a malicious or
-      buggy caller cannot redirect the OAuth grant to a remote host.
+    - otherwise -> plain :class:`Flow` whose callback the caller handles on
+      their own HTTP server (the web wizard path). The URI must be localhost
+      so a malicious or buggy caller cannot redirect the grant elsewhere.
 
     Both variants receive the same scopes so a single refresh_token
-    drives both Google Ads and Search Console.
+    drives Google Ads, Search Console and GA4.
     """
-    # Lazy import (#486): google-auth-oauthlib pulls google.auth /
-    # google.oauth2 in, and this module is imported by
-    # ``mureo setup <agent> --skip-auth``, which never runs an OAuth flow.
+    # Lazy import (#486): google-auth-oauthlib pulls google.auth in, and
+    # ``mureo setup <agent> --skip-auth`` imports this module without OAuth.
     from google_auth_oauthlib.flow import (  # noqa: PLC0415 — startup cost (#486)
         Flow,
         InstalledAppFlow,
     )
 
+    # Google grants the scopes the user left ticked on the consent screen;
+    # without this oauthlib fails the whole exchange when the set differs
+    # from the request. The granted set is read back from the credentials.
+    os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
     config = build_google_client_config(client_id, client_secret)
     if redirect_uri is None:
         return InstalledAppFlow.from_client_config(config, scopes=_GOOGLE_SCOPES)
@@ -447,14 +420,11 @@ def build_google_flow(
 def google_auth_url(flow: Flow) -> tuple[str, str]:
     """Return ``(authorization_url, state)`` for a web-wizard Flow.
 
-    ``access_type=offline`` + ``prompt=consent`` guarantee a
-    refresh_token on every authorization, even for users who have
-    already granted the app before — otherwise Google silently drops
-    the refresh_token and the exchange fails.
-
-    The CLI path (``run_google_oauth``) achieves the same effect by
-    passing ``prompt="consent"`` to ``flow.run_local_server``; keep
-    the two paths in sync whenever either is touched.
+    ``access_type=offline`` + ``prompt=consent`` guarantee a refresh_token on
+    every authorization, even for users who granted the app before; otherwise
+    Google silently drops it and the exchange fails. The CLI path
+    (``run_google_oauth``) passes ``prompt="consent"`` to
+    ``flow.run_local_server``; keep the two paths in sync.
     """
     url, state = flow.authorization_url(access_type="offline", prompt="consent")
     return url, state
@@ -467,14 +437,12 @@ def exchange_google_code(flow: Flow, code: str) -> OAuthResult:
     authorization URL, since it carries PKCE / state.
 
     Raises:
-        RuntimeError: If Google returns no ``refresh_token``. This
-            happens when the authorization URL was built without
-            ``access_type=offline`` + ``prompt=consent`` or when the
-            user has already granted the app and a cached grant is
-            being replayed. Re-run the flow via
-            :func:`google_auth_url` (which forces both settings), or
-            revoke prior consent at
-            https://myaccount.google.com/permissions and retry.
+        RuntimeError: If Google returns no ``refresh_token``: the URL was
+            built without ``access_type=offline`` + ``prompt=consent``, or a
+            cached grant of an earlier consent is being replayed. Re-run via
+            :func:`google_auth_url` (which forces both), or revoke prior
+            consent at https://myaccount.google.com/permissions and retry.
+            Also when Google reports a grant without the Google Ads scope.
     """
     flow.fetch_token(code=code)
     credentials = flow.credentials
@@ -485,9 +453,12 @@ def exchange_google_code(flow: Flow, code: str) -> OAuthResult:
             "prior consent at https://myaccount.google.com/permissions "
             "and retry."
         )
+    granted = granted_scopes(credentials)
+    check_granted_scopes(granted)
     return OAuthResult(
         refresh_token=credentials.refresh_token,
         access_token=credentials.token,
+        granted_scopes=granted,
     )
 
 
@@ -497,15 +468,8 @@ async def run_google_oauth(
 ) -> OAuthResult:
     """Run browser OAuth via InstalledAppFlow to obtain a refresh_token.
 
-    Uses InstalledAppFlow from google-auth-oauthlib to handle local server startup,
-    browser authentication, callback reception, and token exchange.
-
-    Args:
-        client_id: OAuth Client ID
-        client_secret: OAuth Client Secret
-
-    Returns:
-        OAuthResult (refresh_token, access_token)
+    InstalledAppFlow (google-auth-oauthlib) handles the local server, the
+    browser authentication, the callback and the token exchange.
 
     Raises:
         RuntimeError: If OAuth authentication fails.
@@ -514,18 +478,19 @@ async def run_google_oauth(
         client_id=client_id, client_secret=client_secret, redirect_uri=None
     )
 
-    # Browser OAuth (local server auto-starts and auto-stops)
-    # port=0 lets the OS pick an available port automatically, avoiding
-    # conflicts with other processes. Google OAuth "installed app" clients
-    # accept http://localhost on any port.
+    # port=0: the OS picks a free port (no clash with other processes);
+    # Google "installed app" clients accept http://localhost on any port.
     credentials = flow.run_local_server(port=0, prompt="consent")
 
     if credentials.refresh_token is None:
         raise RuntimeError("Failed to obtain refresh_token")
 
+    granted = granted_scopes(credentials)
+    check_granted_scopes(granted)
     return OAuthResult(
         refresh_token=credentials.refresh_token,
         access_token=credentials.token,
+        granted_scopes=granted,
     )
 
 
@@ -533,17 +498,11 @@ async def run_google_oauth(
 # MCP configuration deployment
 # ---------------------------------------------------------------------------
 
-# ``command`` is the ABSOLUTE interpreter (``sys.executable``), not bare
-# "python". Claude Code spawns MCP servers with its own minimal PATH —
-# NOT the user's interactive shell — so a bare "python" resolves to a
-# system Python that does not have mureo installed (pyenv/venv shims are
-# absent from that PATH). The result is the mureo MCP silently failing
-# to start ("MCP tools not found", Claude falls back to the CLI).
-# sys.executable is the interpreter running `mureo configure` / `mureo
-# setup`, i.e. the env where mureo IS installed — mirrors the Claude
-# Desktop fix.
-# ``type: "stdio"`` is REQUIRED by Claude Code's ``mcp add-json`` schema
-# and by the ``~/.claude.json`` user-scope entry shape.
+# ``command`` is the ABSOLUTE interpreter (``sys.executable``, the env where
+# mureo IS installed), not bare "python": Claude Code spawns MCP servers with
+# its own minimal PATH, where "python" is a system Python without mureo and
+# the MCP silently fails to start. ``type: "stdio"`` is REQUIRED by Claude
+# Code's ``mcp add-json`` schema and the ``~/.claude.json`` user-scope entry.
 _MCP_SERVER_CONFIG = {
     "type": "stdio",
     "command": sys.executable,
@@ -554,11 +513,9 @@ _MCP_SERVER_CONFIG = {
 def _claude_user_config_path() -> Path:
     """Path of the file ``claude mcp add-json --scope user`` writes to.
 
-    Claude Code persists *user-scope* MCP servers at the root-level
-    ``mcpServers`` object of ``~/.claude.json`` — NOT
-    ``~/.claude/settings.json`` (that file is hooks/permissions/env only
-    and is never consulted for MCP discovery). Returned for caller
-    messaging and as the target of the no-CLI fallback merge.
+    User-scope MCP servers live at the root ``mcpServers`` of
+    ``~/.claude.json``, NOT ``~/.claude/settings.json`` (never consulted
+    for MCP discovery). Also the target of the no-CLI fallback merge.
     """
     return Path.home() / ".claude.json"
 
@@ -566,15 +523,11 @@ def _claude_user_config_path() -> Path:
 def _register_user_scope_mcp() -> Path:
     """Register the mureo MCP server at Claude Code *user* scope.
 
-    Primary path delegates to the official ``claude mcp add-json``
-    CLI so Claude Code mutates its own (large, live) ``~/.claude.json``
-    safely — avoiding the lost-write race of hand-editing a file the
-    running app rewrites. ``remove`` precedes ``add`` so a stale/wrong
-    entry (e.g. an old bare-``python`` command) self-heals.
-
-    Fallback (only when the ``claude`` binary is absent from PATH —
-    i.e. Claude Code is almost certainly not running) atomically merges
-    into ``~/.claude.json`` root ``mcpServers``.
+    Primary path delegates to ``claude mcp add-json`` so Claude Code
+    mutates its own live ``~/.claude.json``, avoiding the lost-write race
+    of hand-editing a file the running app rewrites; ``remove`` first lets
+    a stale entry self-heal. Only when the ``claude`` binary is absent
+    (Claude Code is almost certainly not running) does it merge by hand.
 
     Raises:
         RuntimeError: the ``claude`` CLI is present but registration
@@ -614,11 +567,8 @@ def _register_user_scope_mcp() -> Path:
         logger.info("mureo MCP registered (user scope) via claude CLI: %s", path)
         return path
 
-    # No claude binary: hand-merge into ~/.claude.json root mcpServers.
-    # ~/.claude.json holds the user's entire Claude Code state — reuse the
-    # hardened atomic, refuse-malformed writer (mkstemp+0o600+fsync+
-    # os.replace; raises ConfigWriteError rather than clobbering a
-    # corrupt-but-recoverable file) instead of a plain truncating write.
+    # No claude binary: the file holds the user's entire Claude Code state,
+    # so merge through the atomic, refuse-malformed writer.
     path = _claude_user_config_path()
     existing = load_existing_json(path)  # {} if absent; raises on malformed
     mcp_servers = existing.setdefault("mcpServers", {})
@@ -632,17 +582,12 @@ def _register_user_scope_mcp() -> Path:
 def install_mcp_config(scope: str = "global") -> Path | None:
     """Register the mureo MCP server with Claude Code.
 
-    Global: user scope via ``claude mcp add-json --scope user``
-    (persists to ``~/.claude.json`` root ``mcpServers``).
-    Project: merge into ``.mcp.json`` in the current directory.
+    ``scope="global"``: Claude Code user scope via ``claude mcp add-json
+    --scope user`` (persists to ``~/.claude.json`` root ``mcpServers``).
+    ``scope="project"``: merge into ``.mcp.json`` in the current directory.
 
-    Args:
-        scope: "global" (Claude Code user scope) or "project"
-            (``.mcp.json``).
-
-    Returns:
-        Path the registration was written to. ``None`` only for the
-        project scope when mureo is already present (skip).
+    Returns the path written to; ``None`` only for the project scope when
+    mureo is already present (skip).
 
     Raises:
         RuntimeError: global scope, ``claude`` CLI present but
@@ -651,8 +596,7 @@ def install_mcp_config(scope: str = "global") -> Path | None:
     if scope == "global":
         return _register_user_scope_mcp()
 
-    # Project-level MCP config goes in .mcp.json (Claude Code DOES read
-    # this file; user scope, by contrast, is NOT in settings.json).
+    # Claude Code DOES read .mcp.json (user scope is NOT in settings.json).
     settings_path = Path.cwd() / ".mcp.json"
 
     existing: dict[str, Any] = {}
@@ -982,12 +926,39 @@ def _resolve_token_bound_flag(
     return False
 
 
+def _merge_sections(
+    existing: dict[str, Any],
+    google: GoogleAdsCredentials | None,
+    meta: MetaAdsCredentials | None,
+    customer_id: str | None,
+    account_id: str | None,
+    google_granted_scopes: Sequence[str] | None,
+    resolved: Path,
+) -> None:
+    """Merge every section this save carries into ``existing`` in place."""
+    if google is not None:
+        _merge_google_section(existing, google, customer_id)
+        if google_granted_scopes:
+            sync_ga4_adc_from_google(
+                existing,
+                client_id=google.client_id,
+                client_secret=google.client_secret,
+                refresh_token=google.refresh_token,
+                granted_scopes=google_granted_scopes,
+                credentials_path=resolved,
+            )
+    if meta is not None:
+        _merge_meta_section(existing, meta, account_id)
+
+
 def save_credentials(
     path: Path | None = None,
     google: GoogleAdsCredentials | None = None,
     meta: MetaAdsCredentials | None = None,
     customer_id: str | None = None,
     account_id: str | None = None,
+    *,
+    google_granted_scopes: Sequence[str] | None = None,
 ) -> None:
     """Save credentials to credentials.json (merged with existing data).
 
@@ -1004,34 +975,30 @@ def save_credentials(
         meta: Meta Ads credentials
         customer_id: Google Ads account (login_customer_id)
         account_id: Meta Ads ad account ID
+        google_granted_scopes: Scopes Google granted to ``google``; with
+            GA4 read-only among them the ``ga4`` section is derived too.
     """
     resolved = path if path is not None else runtime_credentials_path()
-
-    # Create directory
     resolved.parent.mkdir(parents=True, exist_ok=True)
 
-    # Load existing data. Reuse the hardened reader/writer from
-    # mureo.core.atomic_json: ``load_existing_json`` returns {} only when the
-    # file is absent and RAISES ConfigWriteError on malformed JSON, instead of
-    # the old ``existing = {}`` reset that silently erased every other
-    # provider's auth on a slightly-corrupt file. ``atomic_write_json`` (tmp +
-    # fsync + os.replace + 0o600) replaces the old truncating write so a crash
-    # mid-write can't brick all providers.
-    #
-    # Hold the whole read-modify-write under a cross-process ``file_lock`` so
-    # a concurrent Meta 53-day auto-refresh (auth._save_meta_token) or another
-    # CLI/web wizard run cannot last-writer-wins away the section this call is
-    # not touching (both take the same ``credentials.json.lock``).
+    # ``load_existing_json`` RAISES on malformed JSON rather than reading it
+    # as {} and erasing every other provider's auth; ``atomic_write_json``
+    # (tmp + fsync + os.replace + 0o600) means a crash mid-write cannot brick
+    # all providers. The cross-process ``file_lock`` keeps a concurrent Meta
+    # auto-refresh (auth._save_meta_token) or another wizard run from
+    # last-writer-wins away the section this call is not touching.
     with file_lock(lock_path_for(resolved)):
         existing: dict[str, Any] = load_existing_json(resolved)
-
-        if google is not None:
-            _merge_google_section(existing, google, customer_id)
-        if meta is not None:
-            _merge_meta_section(existing, meta, account_id)
-
-        # Keep a .bak of the prior good file, then write atomically. The
-        # atomic writer also applies owner-only (0o600) permissions.
+        _merge_sections(
+            existing,
+            google,
+            meta,
+            customer_id,
+            account_id,
+            google_granted_scopes,
+            resolved,
+        )
+        # Keep a .bak of the prior good file, then write atomically.
         backup_file(resolved)
         atomic_write_json(existing, resolved)
 
@@ -1148,19 +1115,30 @@ async def setup_google_ads(
         customer_id=selected_id,
     )
 
-    # Save
     save_credentials(
         path=credentials_path,
         google=final_creds,
+        google_granted_scopes=oauth_result.granted_scopes,
     )
-
-    # Report the path ``save_credentials`` actually wrote to — resolving
-    # this any other way would print the legacy location while the write
-    # went to a runtime-relocated store (#510).
-    print(f"\nCredentials saved: {credentials_path or runtime_credentials_path()}")
-    print("Google Ads setup complete.\n")
+    _print_google_setup_done(credentials_path or runtime_credentials_path())
 
     return final_creds
+
+
+def _print_google_setup_done(path: Path) -> None:
+    """Close the Google setup with where it saved and what GA4 can reuse.
+
+    ``path`` is the one ``save_credentials`` actually wrote to — resolving it
+    any other way would print the legacy location while the write went to a
+    runtime-relocated store (#510).
+    """
+    print(f"\nCredentials saved: {path}")
+    print("Google Ads setup complete.\n")
+    if store_has_managed_ga4(path):
+        print(
+            "GA4 (ga4-official) can use this authorization: "
+            "run `mureo providers add ga4-official`."
+        )
 
 
 # ===========================================================================

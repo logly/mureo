@@ -28,6 +28,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mureo.core.ga4_adc import ADC_SUFFIX
 from mureo.meta_ads._api_version import OAUTH_DIALOG_URL
 from mureo.web._helpers import SOCKET_READ_TIMEOUT_SECONDS
 from mureo.web.auth_wizard import (  # noqa: I001
@@ -156,6 +157,29 @@ def _url(wiz: Any, path: str) -> str:
 
 def _fetch(wiz: Any, path: str) -> HTTPResponse:
     return urllib.request.urlopen(_url(wiz, path), timeout=2.0)
+
+
+_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
+_GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
+
+
+def _prime_google_callback(wiz: Any) -> None:
+    """A session that has just been sent to Google's consent screen."""
+    wiz.session.google_flow = MagicMock()
+    wiz.session.google_developer_token = None
+    wiz.session.google_client_id = "123456789012-abc.apps.googleusercontent.com"
+    wiz.session.google_client_secret = "SECRET-xyz"
+    wiz.session.google_oauth_state = "state-xyz"
+
+
+def _open_no_redirect(wiz: Any, target: str | urllib.request.Request) -> None:
+    """Open ``target`` and expect the wizard's 302."""
+    if isinstance(target, str):
+        target = _url(wiz, target)
+    opener = urllib.request.build_opener(_NoRedirect())
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        opener.open(target, timeout=2.0)
+    assert exc_info.value.code == 302
 
 
 class TestGoogleAdsFormRoute:
@@ -484,6 +508,100 @@ class TestGoogleAdsCallbackRoute:
         assert g["login_customer_id"] is None
         # Session cleared on the fallback path (no picker to reach).
         assert wizard.session.google_developer_token is None
+
+    @pytest.mark.parametrize(
+        ("granted", "ga4_written"),
+        [((_ADS_SCOPE, _GA4_SCOPE), True), ((_ADS_SCOPE,), False)],
+    )
+    def test_callback_passes_the_granted_scopes_to_the_save(
+        self,
+        wizard: Any,
+        tmp_path: Path,
+        granted: tuple[str, ...],
+        ga4_written: bool,
+    ) -> None:
+        """The GA4 section is derived from the authorization only when
+        Google granted analytics.readonly with it."""
+        _prime_google_callback(wizard)
+
+        from mureo.auth_setup import OAuthResult
+
+        async def _no_accounts(_creds: Any) -> list[dict[str, Any]]:
+            return []
+
+        with (
+            patch(
+                "mureo.web.auth_wizard.exchange_google_code",
+                return_value=OAuthResult(
+                    refresh_token="REFRESH_TOKEN",
+                    access_token="ACCESS_TOKEN",
+                    granted_scopes=granted,
+                ),
+            ),
+            patch(
+                "mureo.web.auth_wizard.list_accessible_accounts",
+                side_effect=_no_accounts,
+            ),
+        ):
+            _open_no_redirect(
+                wizard, "/google-ads/callback?code=AUTH_CODE&state=state-xyz"
+            )
+
+        import json
+
+        creds_file = tmp_path / ".mureo" / "credentials.json"
+        data = json.loads(creds_file.read_text(encoding="utf-8"))
+        assert ("ga4" in data) is ga4_written
+        adc = tmp_path / ".mureo" / ("credentials" + ADC_SUFFIX)
+        assert adc.exists() is ga4_written
+        if ga4_written:
+            assert data["ga4"]["service_account_path"] == str(adc)
+
+    def test_picker_submit_uses_the_scopes_from_the_callback(
+        self, wizard: Any, tmp_path: Path
+    ) -> None:
+        """The account picker saves later, from the session; the scopes the
+        callback saw travel with it and are cleared with the secrets."""
+        _prime_google_callback(wizard)
+
+        from mureo.auth_setup import OAuthResult
+
+        async def _one_account(_creds: Any) -> list[dict[str, Any]]:
+            return [{"id": "1111111111", "name": "A", "parent_id": None}]
+
+        with (
+            patch(
+                "mureo.web.auth_wizard.exchange_google_code",
+                return_value=OAuthResult(
+                    refresh_token="REFRESH_TOKEN",
+                    access_token="ACCESS_TOKEN",
+                    granted_scopes=(_ADS_SCOPE, _GA4_SCOPE),
+                ),
+            ),
+            patch(
+                "mureo.web.auth_wizard.list_accessible_accounts",
+                side_effect=_one_account,
+            ),
+        ):
+            _open_no_redirect(
+                wizard, "/google-ads/callback?code=AUTH_CODE&state=state-xyz"
+            )
+        assert wizard.session.google_granted_scopes == (_ADS_SCOPE, _GA4_SCOPE)
+
+        data = urllib.parse.urlencode(
+            {"csrf_token": wizard.session.csrf_token, "account_id": "1111111111"}
+        ).encode()
+        req = urllib.request.Request(
+            _url(wizard, "/google-ads/select-account"), data=data, method="POST"
+        )
+        _open_no_redirect(wizard, req)
+
+        import json
+
+        creds_file = tmp_path / ".mureo" / "credentials.json"
+        saved = json.loads(creds_file.read_text(encoding="utf-8"))
+        assert saved["ga4"]["project_id"] == "123456789012"
+        assert wizard.session.google_granted_scopes == ()
 
     def test_user_declines_shows_friendly_error(self, wizard: Any) -> None:
         """Google redirects back with ``error=access_denied`` when the

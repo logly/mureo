@@ -38,20 +38,29 @@
     const textKey = "auth_wizard.google.already_authenticated";
     text.textContent = MUREO.t(textKey);
     text.setAttribute("data-i18n", textKey);
+    note.appendChild(text);
+    note.appendChild(document.createTextNode(" "));
+    note.appendChild(
+      buildReauthorizeGoogleButton(state, render, "data-google-reauthorize")
+    );
+    return note;
+  }
+
+  // "Re-authorize Google": sets the run-local flag (never persisted) that
+  // queues the Google slot, then `onClick` brings that slot in. `marker` is
+  // the data attribute naming which note the button belongs to.
+  function buildReauthorizeGoogleButton(state, onClick, marker) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "btn btn-secondary";
     btn.textContent = MUREO.t("auth_wizard.google.reauthorize");
     btn.setAttribute("data-i18n", "auth_wizard.google.reauthorize");
-    btn.setAttribute("data-google-reauthorize", "");
+    btn.setAttribute(marker, "");
     btn.addEventListener("click", function () {
       state.reauthorizeGoogle = true;
-      render();
+      onClick();
     });
-    note.appendChild(text);
-    note.appendChild(document.createTextNode(" "));
-    note.appendChild(btn);
-    return note;
+    return btn;
   }
 
   // The store already holds the ``ga4`` section, so its slot was skipped.
@@ -67,6 +76,83 @@
     text.setAttribute("data-i18n", textKey);
     note.appendChild(text);
     return note;
+  }
+
+  // The Google authorization this run just saved carried GA4 read-only, so
+  // the server derived the ``ga4`` section from it (mureo.core.ga4_adc) and
+  // the GA4 slot was dropped. Say so, in place of the slot.
+  function buildGa4FromGoogleNote() {
+    const note = document.createElement("div");
+    note.className = "wizard-shared-with-sc-note";
+    note.setAttribute("data-ga4-from-google-oauth", "");
+    const text = document.createElement("span");
+    const textKey = "auth_wizard.ga4.from_google_oauth";
+    text.textContent = MUREO.t(textKey);
+    text.setAttribute("data-i18n", textKey);
+    note.appendChild(text);
+    return note;
+  }
+
+  // Google OAuth slot done: when GA4 is selected and its input slot is still
+  // ahead, re-read /api/status once. A usable ``ga4`` section there means
+  // the authorization filled it, so the slot leaves the queue and a note
+  // goes above slotHost, where advancing the queue cannot clear it.
+  // Returns the Promise of that check (resolving to whether the slot was
+  // dropped), or null when none is due, so every other slot still advances
+  // synchronously.
+  function dropGa4SlotIfSaved(queue, cursor, state, host, slotHost) {
+    const done = queue[cursor.index];
+    if (!done || done.oauthProvider !== "google" || !state.platforms.ga4) return null;
+    const ga4Index = queue.findIndex(function (slot, i) {
+      return i > cursor.index && slot.key === "ga4";
+    });
+    if (ga4Index === -1 || typeof MUREO.loadStatus !== "function") return null;
+    return MUREO.loadStatus().then(function () {
+      const status = MUREO.state && MUREO.state.status;
+      const present = (status && status.credentials_present) || {};
+      if (!present.ga4) return false;
+      // Set before the DOM check: a step left while the status loaded is
+      // rendered again later from state, and only this flag keeps that
+      // render from bringing the GA4 slot back.
+      state.ga4SavedByGoogleOauth = true;
+      // The step was left while the status loaded; its DOM is gone.
+      if (slotHost.isConnected === false) return false;
+      queue.splice(ga4Index, 1);
+      host.insertBefore(buildReusedHeading("wizard.auth.ga4_title"), slotHost);
+      host.insertBefore(buildGa4FromGoogleNote(), slotHost);
+      return true;
+    });
+  }
+
+  // GA4 inputs shown while a Google authorization is on disk: it lacks GA4
+  // read-only (minted before mureo asked for it, or unticked), and
+  // re-authorizing is how mureo fills both values. The button is offered
+  // only when this run can queue a Google OAuth slot; otherwise the hint
+  // names the CLI command instead. `onReauthorize` brings the Google slot in
+  // at the current position, so the GA4 slot follows it.
+  function appendGa4ReauthorizeHint(wrap, state, onReauthorize) {
+    const q = window.MUREO_AUTH_QUEUE;
+    if (!q.googleHasOauthOnDisk(state)) return;
+    const canQueueGoogle =
+      (state.platforms.google_ads && !q.isPluginChoice(state, "google_ads")) ||
+      (state.platforms.search_console && !q.isPluginChoice(state, "search_console"));
+    const hint = document.createElement("p");
+    hint.className = "wizard-shared-with-sc-note";
+    hint.setAttribute("data-ga4-reauthorize-hint", "");
+    const text = document.createElement("span");
+    const textKey = canQueueGoogle
+      ? "auth_wizard.ga4.reauthorize_hint"
+      : "auth_wizard.ga4.reauthorize_hint_cli";
+    text.textContent = MUREO.t(textKey);
+    text.setAttribute("data-i18n", textKey);
+    hint.appendChild(text);
+    if (canQueueGoogle) {
+      hint.appendChild(document.createTextNode(" "));
+      hint.appendChild(
+        buildReauthorizeGoogleButton(state, onReauthorize, "data-ga4-reauthorize")
+      );
+    }
+    wrap.appendChild(hint);
   }
 
   // Nothing left to authorize. Outer Back/Next are hidden while the auth
@@ -118,8 +204,11 @@
       host.appendChild(buildGoogleReusedNote(state, render));
     }
     if (ga4Reused) {
+      // A re-render mid-step keeps the note the dropped slot left behind.
       host.appendChild(buildReusedHeading("wizard.auth.ga4_title"));
-      host.appendChild(buildGa4ReusedNote());
+      host.appendChild(
+        state.ga4SavedByGoogleOauth ? buildGa4FromGoogleNote() : buildGa4ReusedNote()
+      );
     }
     pluginReused.forEach(function (p) {
       host.appendChild(buildReusedHeading("wizard.auth." + p + "_title"));
@@ -128,11 +217,43 @@
     return Boolean(googleReused || ga4Reused || pluginReused.length > 0);
   }
 
+  // Re-authorize Google from the GA4 slot: the Google slot goes in at the
+  // current position, so it is authorized in place and the GA4 slot follows
+  // it (dropped by dropGa4SlotIfSaved when Google filled the section),
+  // instead of the whole queue re-rendering from its first slot. Matched on
+  // the OAuth provider: a plugin provider's Google Ads slot is not it.
+  // Returns whether a slot went in.
+  function queueGoogleSlotHere(queue, cursor, state) {
+    state.reauthorizeGoogle = true;
+    const google = window.MUREO_AUTH_QUEUE.buildAuthQueue(state).find(function (s) {
+      return s.oauthProvider === "google";
+    });
+    if (!google) return false;
+    queue.splice(cursor.index, 0, google);
+    return true;
+  }
+
+  // The GA4 check of a finished Google slot has answered (a failed reload
+  // reads as "not dropped"). The step may have been left while the status
+  // loaded; then nothing advances or renders. When the dropped GA4 slot was
+  // the last one, the step stays with the Continue an empty queue renders,
+  // so the note above is read first. `run` is the queue's
+  // {slotHost, cursor, queue, advance, render}.
+  function afterGa4Check(run, dropped) {
+    const slotHost = run.slotHost;
+    if (slotHost.isConnected === false) return;
+    if (dropped && run.cursor.index + 1 >= run.queue.length) {
+      while (slotHost.firstChild) slotHost.removeChild(slotHost.firstChild);
+      appendQueueDoneControls(slotHost, false, run.render);
+    } else {
+      run.advance();
+    }
+  }
+
   function renderSequentialQueue(host, state, render) {
     const anyReused = appendReusedNotes(host, state, render);
     // Slots live in their own child element: advancing the queue clears
-    // ONLY that element, so the note above survives the whole step (it
-    // used to be wiped the moment any other slot followed it).
+    // ONLY that element, so the notes above survive the whole step.
     const slotHost = document.createElement("div");
     host.appendChild(slotHost);
 
@@ -143,24 +264,39 @@
     }
 
     const cursor = { index: 0 };
+    function advance() {
+      cursor.index += 1;
+      if (cursor.index < queue.length) {
+        renderCurrent();
+      } else {
+        leaveAuthStep(render);
+      }
+    }
+    const run = {
+      slotHost: slotHost, cursor: cursor, queue: queue, advance: advance, render: render,
+    };
     function renderCurrent() {
       while (slotHost.firstChild) slotHost.removeChild(slotHost.firstChild);
       const slot = queue[cursor.index];
       if (!slot) return;
       const wrap = renderStepWizard(slot, state, function onSlotDone() {
-        cursor.index += 1;
-        if (cursor.index < queue.length) {
-          renderCurrent();
-        } else {
-          leaveAuthStep(render);
-        }
-      }, state);
+        const check = dropGa4SlotIfSaved(queue, cursor, state, host, slotHost);
+        if (!check) return advance();
+        // A failed status reload must not stall the queue: the GA4 slot
+        // then simply stays and asks for its two values.
+        check
+          .catch(function () { return false; })
+          .then(function (dropped) { afterGa4Check(run, dropped); });
+      }, state, reauthorizeGoogleHere);
       slotHost.appendChild(wrap);
+    }
+    function reauthorizeGoogleHere() {
+      if (queueGoogleSlotHere(queue, cursor, state)) renderCurrent();
     }
     renderCurrent();
   }
 
-  function renderStepWizard(slot, state, onAllDone, outerState) {
+  function renderStepWizard(slot, state, onAllDone, outerState, onReauthorize) {
     const wrap = document.createElement("section");
     const titleKey = "wizard.auth." + slot.key + "_title";
     wrap.innerHTML = "<h3>" + MUREO.t(titleKey) + "</h3>";
@@ -177,7 +313,8 @@
 
     if (slot.key === "google_ads") {
       // Scope guidance: the OAuth button mints a refresh token with the
-      // adwords + webmasters scopes (mureo.auth_setup._GOOGLE_SCOPES).
+      // adwords + webmasters + analytics.readonly scopes
+      // (mureo.auth_setup._GOOGLE_SCOPES).
       // A reused token lacking the adwords scope fails at runtime with
       // ACCESS_TOKEN_SCOPE_INSUFFICIENT, so spell this out + link the
       // official scope reference.
@@ -222,6 +359,9 @@
     // on pollOAuth success — no inner Next button.
     let doneBtn = null;
     if (slot.inputs) {
+      if (slot.key === "ga4") {
+        appendGa4ReauthorizeHint(wrap, outerState || state, onReauthorize);
+      }
       doneBtn = document.createElement("button");
       doneBtn.type = "button";
       doneBtn.className = "btn btn-primary";

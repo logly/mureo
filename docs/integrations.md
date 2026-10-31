@@ -53,12 +53,22 @@ Re-running `mureo configure` lists GA4 on the setup wizard's platform step under
 
 ### Authentication
 
-The official GA4 MCP authenticates through Google's Application Default Credentials (ADC), read-only. It needs two environment variables, stored in the `ga4` section of the credential store. The `mureo configure` wizard (or the dashboard's env-var rows) collects them; both `mureo configure` and `mureo providers add ga4-official` inject the stored values into the provider's MCP entry. When a required value is not stored yet, `mureo providers add` still registers the provider, prints which names are missing, and leaves mureo's native GA4 tools active until the provider can authenticate:
+The official GA4 MCP authenticates through Google's Application Default Credentials (ADC), read-only.
+
+**From the Google authorization.** When Google was authorized through mureo (`mureo configure`, `mureo auth setup` or `mureo auth upgrade-google`), mureo also requests the `https://www.googleapis.com/auth/analytics.readonly` scope. When Google grants it, mureo writes an `authorized_user` ADC file beside the credential store, named `<store name>-ga4-adc.json` (`credentials-ga4-adc.json` for the default store; owner-only, holding a copy of the Google refresh token because the official MCP cannot read the store) and fills the `ga4` section from it, with the OAuth client's Cloud project number as the project id. `ga4-official` is then credentialed with nothing to enter. Requirements:
+
+- the Google Analytics Data API and the Google Analytics Admin API are enabled on the OAuth client's Cloud project (API quota is attributed to that project);
+- the Google account you authorized with has access to the GA4 property;
+- the OAuth consent screen lists the `analytics.readonly` scope.
+
+A `ga4` section that points at any other credential file is left alone, and a project id already stored in the derived section is kept (set your own quota project there and a re-authorization will not replace it). Editing the Google client id, client secret or refresh token, or the GA4 project id, on the dashboard re-writes the derived file; pointing `GOOGLE_APPLICATION_CREDENTIALS` at a file of your own removes it. Removing `google_ads` from the dashboard also removes the derived GA4 file and the `ga4` section that points at it; removing `ga4` removes the file. A re-authorization that no longer grants `analytics.readonly`, or whose client id carries no Cloud project number, removes the derived file and its section too. An authorization made before mureo requested this scope lacks it, and so does one where `analytics.readonly` was unticked on Google's consent screen (mureo logs which scopes Google left out): re-authorize once with `mureo auth upgrade-google`, or press **Re-authorize Google** on the configure wizard's GA4 step, which authorizes Google right there and then continues with GA4.
+
+**With a credential file of your own.** The MCP needs two environment variables, stored in the `ga4` section of the credential store. The `mureo configure` wizard (or the dashboard's env-var rows) collects them; both `mureo configure` and `mureo providers add ga4-official` inject the stored values into the provider's MCP entry. When a required value is not stored yet, `mureo providers add` still registers the provider, prints which names are missing, and leaves mureo's native GA4 tools active until the provider can authenticate:
 
 - `GOOGLE_APPLICATION_CREDENTIALS` — path to an ADC credential file that can authenticate with the `https://www.googleapis.com/auth/analytics.readonly` scope. It does not have to be a service account: a service-account key, the `authorized_user` file written by `gcloud auth application-default login`, or an `external_account` configuration all work. The identity behind the file must be granted access to the GA4 property.
 - `GOOGLE_PROJECT_ID` — the Google Cloud project id. mureo also emits it as `GOOGLE_CLOUD_PROJECT`, the name the upstream README documents.
 
-The GA4 property id is passed per request, not via an environment variable. These credentials are separate from mureo's Google Ads credentials.
+The GA4 property id is passed per request, not via an environment variable. A credential file of your own is separate from mureo's Google Ads credentials.
 
 ## Google Search Console
 

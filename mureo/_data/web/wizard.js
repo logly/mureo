@@ -102,6 +102,10 @@
     // forces the Google OAuth slot back into the queue for this wizard run
     // only (never persisted).
     reauthorizeGoogle: false,
+    // Set by the auth step when the Google authorization of this run filled
+    // the ``ga4`` section, so the GA4 input slot stays out of the queue on a
+    // re-render. Cleared on wizard_start, like ga4Probed.
+    ga4SavedByGoogleOauth: false,
     stepIndex: 0,
   };
 
@@ -720,6 +724,7 @@
     // mid-run (MUREO.state.status is null only before the first load; the
     // flag then stays clear and that first hydrate takes the snapshot).
     STATE.ga4Probed = false;
+    STATE.ga4SavedByGoogleOauth = false;
     probeGa4Section(MUREO.state && MUREO.state.status);
     hydratePluginPlatforms(MUREO.state && MUREO.state.status);
     render();

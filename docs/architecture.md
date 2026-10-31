@@ -339,6 +339,15 @@ mureo/
 │                            #   mureo.web.auth_wizard. The legacy credentials location has one
 │                            #   definition, core.secret_store.default_credentials_path();
 │                            #   runtime_credentials_path() falls back to it when given no default.
+│                            #   ga4_adc.py derives the ga4-official ADC file from a Google
+│                            #   authorization granted analytics.readonly (#938), as
+│                            #   <store name>-ga4-adc.json beside the store, never over a ga4
+│                            #   section naming another file; it takes plain strings, so core
+│                            #   still never imports auth. auth_setup, the CLI and
+│                            #   web.env_var_writer (removal, dashboard edits re-write or remove
+│                            #   the file) / status_collector import its names.
+│                            #   google_scopes.py holds the Google OAuth scopes and the
+│                            #   granted-set check both auth_setup OAuth paths run.
 │                            #   Function-local imports: ruff PLC0415, reasons per AGENTS.md (#863).
 ├── policy/                  # Deterministic policy gate (STRATEGY.md → allow / deny / require-approval)
 │                            #   guardrails.py parses `## Guardrails` (Guardrails, parse_guardrails,

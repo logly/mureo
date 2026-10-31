@@ -113,6 +113,10 @@ mureo auth check-meta
 # Interactive authentication wizard (terminal prompts)
 mureo auth setup
 
+# Re-authorize Google with the stored client id/secret, adding the
+# Search Console and GA4 read-only scopes to an older authorization
+mureo auth upgrade-google
+
 # Browser configuration UI (no terminal input needed) — supersedes the
 # removed `mureo auth setup --web`
 mureo configure

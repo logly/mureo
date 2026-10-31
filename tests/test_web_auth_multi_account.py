@@ -31,6 +31,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mureo.core.ga4_adc import managed_adc_path
 from mureo.core.runtime_context import (
     default_runtime_context,
     reset_runtime_context,
@@ -275,6 +276,46 @@ def test_google_callback_skips_picker_when_multi_account(multi_wizard: Any) -> N
     assert saved["google_ads"]["customer_id"] is None
     assert saved["google_ads"]["developer_token"] == "DT-123"
     assert saved["google_ads"]["refresh_token"] == "REFRESH_TOKEN"
+
+
+@pytest.mark.unit
+def test_google_callback_derives_ga4_next_to_the_backend_store(
+    multi_wizard: Any,
+) -> None:
+    """The shared-client path saves with the granted scopes too, so the
+    GA4 credential file lands beside the backend-resolved store."""
+    from mureo.auth_setup import OAuthResult
+
+    sess = multi_wizard.session
+    sess.google_flow = MagicMock()
+    sess.google_client_id = "123456789012-abc.apps.googleusercontent.com"
+    sess.google_client_secret = "SECRET-xyz"
+    sess.google_oauth_state = "state-xyz"
+    granted = (
+        "https://www.googleapis.com/auth/adwords",
+        "https://www.googleapis.com/auth/analytics.readonly",
+    )
+
+    with patch(
+        "mureo.web.auth_wizard.exchange_google_code",
+        return_value=OAuthResult(
+            refresh_token="REFRESH_TOKEN",
+            access_token="ACCESS_TOKEN",
+            granted_scopes=granted,
+        ),
+    ):
+        opener = urllib.request.build_opener(_NoRedirect())
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            opener.open(
+                _url(multi_wizard, "/google-ads/callback?code=AC&state=state-xyz"),
+                timeout=2.0,
+            )
+        assert exc.value.code == 302
+
+    adc = managed_adc_path(multi_wizard.credentials_path)
+    saved = json.loads(multi_wizard.credentials_path.read_text())
+    assert saved["ga4"]["service_account_path"] == str(adc)
+    assert json.loads(adc.read_text())["refresh_token"] == "REFRESH_TOKEN"
 
 
 @pytest.mark.unit

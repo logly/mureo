@@ -12,10 +12,15 @@ How these tests run the hook payloads is described in
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
+from mureo._credential_guard.bash_guard import (
+    _FILENAME_ALTERNATION,
+    GUARDED_FILENAMES,
+)
 from tests.credential_guard_support import (
     _bash_guard_command,
     _refusal_category,
@@ -271,6 +276,7 @@ class TestSearchByNameRatherThanByDirectory:
             "find ~ -name 'credentials.json'",
             "locate credentials.json",
             "find ~ -name credentials.json.bak",
+            "find ~ -name credentials-ga4-adc.json",
             "fd credentials.json ~",
             # The name reached through a substitution the guard cannot
             # read still denies, because the name itself is written down.
@@ -283,6 +289,12 @@ class TestSearchByNameRatherThanByDirectory:
         )
         assert proc.returncode == 0
         assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize("name", GUARDED_FILENAMES)
+    def test_the_alternation_matches_every_guarded_name(self, name: str) -> None:
+        """The alternation is written by hand to fit the command budget, so
+        the list of names it must cover is checked against it here."""
+        assert re.fullmatch(_FILENAME_ALTERNATION, name), name
 
     @pytest.mark.parametrize(
         "command",

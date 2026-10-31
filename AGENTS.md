@@ -325,6 +325,11 @@ mureo/
 │   │                    #   context/platform_guards.py reads without importing analytics (#879)
 │   ├── account_scope.py # Workspace account scoping (#411): resolve_customer_id / resolve_account_id,
 │   │                    #   called by every platform client opener before it builds a client
+│   ├── ga4_adc.py       # The authorized_user ADC file + `ga4` section derived from a Google
+│   │                    #   authorization granted analytics.readonly (#938), as <store name>-ga4-adc.json
+│   │                    #   beside the store; never over a section naming another file
+│   ├── google_scopes.py # The Google OAuth scopes and the granted-set check (no Google Ads
+│   │                    #   scope fails the setup; Search Console / GA4 are optional)
 │   └── rotation.py      # Size-bounded append files (#758 phase 6): the one MUREO_JOURNAL_MAX_BYTES
 │                        #   reader, the rotated name, and sibling_files (the whole record, oldest first)
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
