@@ -4,17 +4,31 @@ Covers ``run_install`` (list-form argv, no shell=True, dry-run skip,
 returncode propagation, allow-list enforcement) and ``InstallResult``
 immutability.
 
-External calls are mocked at ``mureo.providers.installer.subprocess.run``.
+External calls are mocked at ``mureo.providers.installer.subprocess.run``;
+tests that reach the spawn also stub ``resolve_executable`` (via the
+``_resolved_on_path`` fixture), since a CI runner has no ``pipx``.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import os
 import subprocess
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from mureo.providers import installer
+
+
+@pytest.fixture
+def _resolved_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve every executable to ``/usr/bin/<name>``."""
+    monkeypatch.setattr(
+        installer, "resolve_executable", lambda name: "/usr/bin/" + name
+    )
 
 
 def _make_spec(
@@ -47,6 +61,7 @@ def _make_spec(
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("_resolved_on_path")
 def test_run_install_passes_argv_list_form() -> None:
     """``subprocess.run`` is invoked with exact list-form argv."""
     from mureo.providers.installer import run_install
@@ -71,10 +86,11 @@ def test_run_install_passes_argv_list_form() -> None:
     # First positional is the argv list; or it may have been passed as
     # the first kwarg. Either way the value must equal ``argv``.
     passed_argv = call_args[0] if call_args else call_kwargs.get("args")
-    assert passed_argv == list(argv)
+    assert passed_argv == ["/usr/bin/pipx", *argv[1:]]
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("_resolved_on_path")
 def test_run_install_never_uses_shell_true() -> None:
     """Regression guard: ``shell`` kwarg must be absent or ``False``."""
     from mureo.providers.installer import run_install
@@ -105,6 +121,7 @@ def test_run_install_dry_run_skips_subprocess() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("_resolved_on_path")
 def test_run_install_returns_returncode_stdout_stderr() -> None:
     """Subprocess outputs propagate into the ``InstallResult``."""
     from mureo.providers.installer import run_install
@@ -122,6 +139,7 @@ def test_run_install_returns_returncode_stdout_stderr() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("_resolved_on_path")
 def test_run_install_propagates_nonzero_returncode() -> None:
     """Non-zero returncode does not raise; CLI layer decides what to do."""
     from mureo.providers.installer import run_install
@@ -168,6 +186,7 @@ def test_install_result_is_frozen() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("_resolved_on_path")
 def test_run_install_does_not_pass_env_kwarg() -> None:
     """Subprocess inherits parent env (no ``env=`` kwarg, no credential leak)."""
     from mureo.providers.installer import run_install
@@ -231,6 +250,105 @@ def test_run_install_hosted_http_dry_run_also_skips_subprocess() -> None:
     assert result_dry.returncode == 0
     assert result_real.argv == []
     assert result_dry.argv == []
+
+
+@pytest.mark.unit
+def test_run_install_reports_missing_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An executable found nowhere is a 127 result naming it, not a raise."""
+    monkeypatch.setattr(installer, "resolve_executable", lambda name: None)
+    spec = _make_spec()
+
+    with patch("mureo.providers.installer.subprocess.run") as mock_run:
+        result = installer.run_install(spec)
+
+    mock_run.assert_not_called()
+    assert result.returncode == 127
+    assert result.returncode == installer.EXECUTABLE_MISSING_RETURNCODE
+    assert result.stderr.startswith("pipx not found on PATH")
+    assert result.argv == list(spec.install_argv)
+    assert result.missing_executable == "pipx"
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_resolved_on_path")
+def test_run_install_spawned_exit_127_is_not_a_missing_executable() -> None:
+    """A package manager that runs and exits 127 is an ordinary failure."""
+    spec = _make_spec()
+    with patch("mureo.providers.installer.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=127, stdout="", stderr="inner tool not found"
+        )
+        result = installer.run_install(spec)
+
+    assert result.returncode == 127
+    assert result.missing_executable is None
+
+
+@pytest.mark.unit
+def test_run_install_disallowed_executable_is_never_resolved() -> None:
+    """The allow-list check runs before any PATH lookup."""
+    spec = _make_spec(install_argv=("curl", "https://evil.example.com"))
+
+    with (
+        patch("mureo.providers.installer.resolve_executable") as mock_resolve,
+        pytest.raises(ValueError),
+    ):
+        installer.run_install(spec)
+    mock_resolve.assert_not_called()
+
+
+@pytest.mark.unit
+def test_resolve_executable_prefers_path() -> None:
+    with patch(
+        "mureo.providers.installer.shutil.which", return_value="/somewhere/pipx"
+    ) as mock_which:
+        assert installer.resolve_executable("pipx") == "/somewhere/pipx"
+
+    mock_which.assert_called_once_with("pipx")
+
+
+@pytest.mark.unit
+def test_resolve_executable_falls_back_to_tool_dirs() -> None:
+    with patch(
+        "mureo.providers.installer.shutil.which",
+        side_effect=[None, "/opt/homebrew/bin/pipx"],
+    ) as mock_which:
+        assert installer.resolve_executable("pipx") == "/opt/homebrew/bin/pipx"
+
+    assert mock_which.call_count == 2
+    fallback = mock_which.call_args_list[1].kwargs["path"].split(os.pathsep)
+    assert "/opt/homebrew/bin" in fallback
+    assert "/usr/local/bin" in fallback
+    assert str(Path("~/.local/bin").expanduser()) in fallback
+
+
+@pytest.mark.unit
+def test_resolve_executable_returns_none_when_found_nowhere() -> None:
+    with patch("mureo.providers.installer.shutil.which", return_value=None):
+        assert installer.resolve_executable("pipx") is None
+
+
+@pytest.mark.unit
+def test_run_install_spawns_the_resolved_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The spawn uses the resolved path; the result keeps the catalog argv."""
+    monkeypatch.setattr(
+        installer, "resolve_executable", lambda name: "/opt/homebrew/bin/" + name
+    )
+    spec = _make_spec(install_argv=("pipx", "install", "google-ads-mcp"))
+
+    with patch("mureo.providers.installer.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        result = installer.run_install(spec)
+
+    passed_argv = mock_run.call_args.args[0]
+    assert passed_argv == ["/opt/homebrew/bin/pipx", "install", "google-ads-mcp"]
+    assert result.argv == ["pipx", "install", "google-ads-mcp"]
 
 
 # Silence the unused-import warning when MagicMock is referenced for clarity.

@@ -82,6 +82,24 @@ class TestPlistContent:
         parsed = plistlib.loads(launchd.build_plist(home, port=7613))
         assert parsed["EnvironmentVariables"]["MUREO_MANAGED_SERVICE"] == "1"
 
+    def test_plist_records_installing_shell_path(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """launchd starts the daemon with a minimal PATH, so the plist keeps
+        the installing shell's PATH for ``pipx`` / ``npm`` lookups (#966)."""
+        monkeypatch.setenv("PATH", "/opt/x/bin:/usr/bin")
+        parsed = plistlib.loads(launchd.build_plist(home, port=7613))
+        env = parsed["EnvironmentVariables"]
+        assert env["PATH"] == "/opt/x/bin:/usr/bin"
+        assert env["MUREO_MANAGED_SERVICE"] == "1"
+
+    def test_plist_omits_path_when_shell_has_none(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("PATH", raising=False)
+        parsed = plistlib.loads(launchd.build_plist(home, port=7613))
+        assert "PATH" not in parsed["EnvironmentVariables"]
+
     def test_plist_redirects_stdout_and_stderr(self, home: Path) -> None:
         parsed = plistlib.loads(launchd.build_plist(home, port=7613))
         assert parsed["StandardOutPath"] == str(home / ".mureo" / "configure.log")

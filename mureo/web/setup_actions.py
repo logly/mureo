@@ -445,6 +445,17 @@ def install_basic_setup(
     }
 
 
+def _install_failure(result: installer.InstallResult) -> ActionResult | None:
+    """Map a provider install result to its failure; ``None`` means success."""
+    if result.missing_executable is not None:
+        return ActionResult.failed("installer_missing", result.missing_executable)
+    if result.returncode != 0:
+        return ActionResult.failed(
+            "install_failed", returncode_detail("install", result.returncode)
+        )
+    return None
+
+
 def _install_provider_code(
     provider_id: str, credentials_path: Path | None = None
 ) -> ActionResult:
@@ -464,22 +475,19 @@ def _install_provider_code(
         return ActionResult.failed("internal_error", type(exc).__name__)
 
     if spec.install_kind == "hosted_http":
-        # Claude Code: Meta's hosted MCP CANNOT be OAuth-authenticated as
-        # a user-scope server — it has no RFC 7591 Dynamic Client
-        # Registration, so `/mcp` → Authenticate fails with
-        # "redirect_uris are not registered for this client". Registering
-        # the {"type":"http","url":...} block would only create an
-        # unauthenticatable server. The only Claude Code path that works
-        # today is a Claude.ai account connector (Anthropic brokers the
-        # OAuth there). So mureo does NOT register it locally; it returns
-        # ``manual_required`` and the UI surfaces the claude.ai connector
-        # steps (connector.code.* — identical result shape to the
-        # Desktop hosted_http path).
+        # Claude Code: Meta's hosted MCP CANNOT be OAuth-authenticated as a user-scope
+        # server — it has no RFC 7591 Dynamic Client Registration, so `/mcp` →
+        # Authenticate fails with "redirect_uris are not registered for this client".
+        # Registering the {"type":"http","url":...} block would only create an
+        # unauthenticatable server. The only Claude Code path that works today is a
+        # Claude.ai account connector (Anthropic brokers the OAuth there). So mureo does
+        # NOT register it locally; it returns ``manual_required`` and the UI surfaces
+        # the claude.ai connector steps (connector.code.* — identical result shape to
+        # the Desktop hosted_http path).
         #
-        # No native auto-disable: nothing was registered and the
-        # connector is not yet verified. mureo-native Meta steps aside
-        # only once the connector is confirmed Connected, via
-        # `providers confirm` / the dashboard native-toggle (no-strand).
+        # No native auto-disable: nothing was registered and the connector is not yet
+        # verified. mureo-native Meta steps aside only once the connector is confirmed
+        # Connected, via `providers confirm` / the dashboard native-toggle (no-strand).
         return ActionResult(status="manual_required", detail=spec.id)
 
     try:
@@ -488,10 +496,9 @@ def _install_provider_code(
         logger.exception("install_provider subprocess failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
 
-    if result.returncode != 0:
-        return ActionResult.failed(
-            "install_failed", returncode_detail("install", result.returncode)
-        )
+    failure = _install_failure(result)
+    if failure is not None:
+        return failure
 
     extra_env = credential_env_for(spec, credentials_path)
     platform = spec.coexists_with_mureo_platform
@@ -536,21 +543,18 @@ def _install_provider_desktop(
 ) -> ActionResult:
     """Desktop path — install one official provider.
 
-    pipx/npm: the local ``run_install`` subprocess STILL runs (the
-    install is host-agnostic); on non-zero returncode NO config is
-    written; otherwise the catalog ``mcp_server_config`` block is
-    written to ``claude_desktop_config.json``.
+    pipx/npm: the local ``run_install`` subprocess STILL runs (the install is
+    host-agnostic); on a failed install NO config is written; otherwise the catalog
+    ``mcp_server_config`` block is written to ``claude_desktop_config.json``.
 
-    hosted_http: a remote MCP cannot be wired into Claude Desktop via
-    the config file (Desktop rejects the native http shape; mcp-remote
-    fails on Meta's no-DCR OAuth), so the Meta block is NOT written and
-    the result is ``manual_required`` (the UI shows Connectors steps).
-    mureo-native Meta is intentionally NOT auto-disabled: the official
-    path only works once the user has manually added the connector, and
-    disabling native before that strands the user with zero Meta
-    capability (observed regression — see the Code/CLI hosted_http
-    handling for the same rationale). Consistent across Code, CLI and
-    Desktop.
+    hosted_http: a remote MCP cannot be wired into Claude Desktop via the config file
+    (Desktop rejects the native http shape; mcp-remote fails on Meta's no-DCR OAuth),
+    so the Meta block is NOT written and the result is ``manual_required`` (the UI
+    shows Connectors steps). mureo-native Meta is intentionally NOT auto-disabled:
+    the official path only works once the user has manually added the connector, and
+    disabling native before that strands the user with zero Meta capability (observed
+    regression — see the Code/CLI hosted_http handling for the same rationale).
+    Consistent across Code, CLI and Desktop.
 
     ``credentials.json`` is never touched.
     """
@@ -563,20 +567,18 @@ def _install_provider_desktop(
         return ActionResult.failed("internal_error", type(exc).__name__)
 
     if spec.install_kind == "hosted_http":
-        # A remote MCP cannot be wired into Claude Desktop via the
-        # config file: Desktop rejects the native {"type":"http",...}
-        # shape, and the mcp-remote bridge fails on servers without
-        # OAuth Dynamic Client Registration (Meta's hosted Ads MCP:
-        # "InvalidClientMetadataError: Dynamic registration is not
-        # available"). The only working path is the user adding it via
-        # Claude's Connectors, so the Meta MCP block is NOT written here.
+        # A remote MCP cannot be wired into Claude Desktop via the config file:
+        # Desktop rejects the native {"type":"http",...} shape, and the mcp-remote
+        # bridge fails on servers without OAuth Dynamic Client Registration (Meta's
+        # hosted Ads MCP: "InvalidClientMetadataError: Dynamic registration is not
+        # available"). The only working path is the user adding it via Claude's
+        # Connectors, so the Meta MCP block is NOT written here.
         #
-        # We also do NOT disable mureo-native Meta: the official path is
-        # not usable until the user completes the manual Connectors
-        # setup, and auto-disabling native before that leaves the user
-        # with no Meta capability at all (the reported regression).
-        # Native stays until the user confirms the connector works —
-        # identical to the Code/CLI hosted_http behaviour.
+        # We also do NOT disable mureo-native Meta: the official path is not usable
+        # until the user completes the manual Connectors setup, and auto-disabling
+        # native before that leaves the user with no Meta capability at all. Native
+        # stays until the user confirms the connector works — identical to the
+        # Code/CLI hosted_http behaviour.
         return ActionResult(status="manual_required", detail=spec.id)
 
     if spec.install_argv:
@@ -585,10 +587,9 @@ def _install_provider_desktop(
         except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
             logger.exception("install_provider (desktop) subprocess failed")
             return ActionResult.failed("internal_error", type(exc).__name__)
-        if result.returncode != 0:
-            return ActionResult.failed(
-                "install_failed", returncode_detail("install", result.returncode)
-            )
+        failure = _install_failure(result)
+        if failure is not None:
+            return failure
 
     block: dict[str, Any] = dict(_desktop_block_for(spec))
     extra_env = credential_env_for(spec, credentials_path)
@@ -639,10 +640,9 @@ def _install_provider_codex(
         except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
             logger.exception("install_provider (codex) subprocess failed")
             return ActionResult.failed("internal_error", type(exc).__name__)
-        if result.returncode != 0:
-            return ActionResult.failed(
-                "install_failed", returncode_detail("install", result.returncode)
-            )
+        failure = _install_failure(result)
+        if failure is not None:
+            return failure
 
     block: dict[str, Any] = dict(_desktop_block_for(spec))
     extra_env = credential_env_for(spec, credentials_path)

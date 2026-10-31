@@ -272,16 +272,20 @@ test.describe("provider rows read the refusal code", function () {
 });
 
 test.describe("the wizard's provider install reads the failure code", function () {
-  function installCard(answer) {
+  function installCard(answer, answerFor) {
     const p = loadAuthWizardPage({});
     const toasts = [];
     const t = p.sandbox.MUREO.t;
-    // The failure template carries the detail; every other key stays a key.
-    p.sandbox.MUREO.t = function (key, params) {
-      return key === "wizard.providers_install.failed" ? "failed:{detail}" : t(key, params);
+    // The failure templates carry the detail; every other key stays a key.
+    const templates = {
+      "wizard.providers_install.failed": "failed:{detail}",
+      "wizard.providers_install.installer_missing": "missing:{detail}:{detail} --version",
     };
-    p.sandbox.MUREO.postJson = function () {
-      return Promise.resolve(answer);
+    p.sandbox.MUREO.t = function (key, params) {
+      return key in templates ? templates[key] : t(key, params);
+    };
+    p.sandbox.MUREO.postJson = function (url) {
+      return Promise.resolve(answerFor ? answerFor(url) : answer);
     };
     p.sandbox.MUREO.toast = function (message) {
       toasts.push(message);
@@ -301,7 +305,7 @@ test.describe("the wizard's provider install reads the failure code", function (
       .querySelectorAll("button")
       .find((b) => b.textContent === "dashboard.action_install");
     assert.ok(button, "the install button must render");
-    return { button: button, toasts: toasts, done: done, state: state };
+    return { button: button, toasts: toasts, done: done, state: state, host: host };
   }
 
   test.it("a failed install shows its code (error, then detail)", async function () {
@@ -309,6 +313,37 @@ test.describe("the wizard's provider install reads the failure code", function (
     card.button.click();
     await settle();
     assert.deepEqual(card.toasts, ["failed:install_failed"]);
+  });
+
+  test.it("a missing package manager is named in every {detail} slot", async function () {
+    const card = installCard(failed("installer_missing", "pipx"));
+    card.button.click();
+    await settle();
+    assert.deepEqual(card.toasts, ["missing:pipx:pipx --version"]);
+  });
+
+  test.it("the save-and-retry path names a missing package manager too", async function () {
+    const installs = [
+      succeeded({ status: "needs_credentials", detail: "google-ads-official" }),
+      failed("installer_missing", "pipx"),
+    ];
+    const card = installCard(null, function (url) {
+      return url === "/api/providers/install" ? installs.shift() : succeeded({});
+    });
+    card.button.click();
+    await settle();
+    const retry = card.host
+      .querySelectorAll("button")
+      .find((b) => b.textContent === "wizard.providers_install.save_retry");
+    assert.ok(retry, "the needs-credentials card must offer save-and-retry");
+    retry.parentNode.querySelector("input").value = "/tmp/sa.json";
+    retry.click();
+    await settle();
+    const lines = card.host
+      .querySelectorAll("p")
+      .map((n) => n.textContent)
+      .filter((text) => text.startsWith("missing:"));
+    assert.deepEqual(lines, ["missing:pipx:pipx --version"]);
   });
 
   test.it("a refusal without a detail shows its code", async function () {

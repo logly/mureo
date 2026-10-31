@@ -78,13 +78,19 @@
       // Still short of full creds (e.g. the service-account path is missing).
       setStatus("wizard.providers_install.still_needs_credentials");
     } else {
-      const tmpl = MUREO.t("wizard.providers_install.failed");
-      const detail = outcome.ok ? res.body.detail || st : outcome.code || "request_failed";
+      let key = "wizard.providers_install.failed";
+      let detail = outcome.ok ? res.body.detail || st : outcome.code || "request_failed";
+      if (outcome.code === "installer_missing") { // detail: the executable
+        key = "wizard.providers_install.installer_missing";
+        detail = outcome.body.detail || "unknown";
+      }
+      const tmpl = MUREO.t(key);
       status.hidden = false;
       // Replacement via a function so a server-derived detail containing
       // "$" sequences (e.g. "$&", "$1") is inserted literally rather than
-      // triggering String.replace's special-pattern substitution.
-      status.textContent = tmpl.replace("{detail}", function () {
+      // triggering String.replace's special-pattern substitution; global,
+      // since a template may name {detail} more than once.
+      status.textContent = tmpl.replace(/\{detail\}/g, function () {
         return detail;
       });
     }
@@ -270,6 +276,9 @@
   // and fail.
   async function handleInstallOutcome(outcome, ctx) {
     if (!outcome.ok) {
+      if (outcome.code === "installer_missing") { // detail: the executable
+        return ctx.fail(outcome.body.detail, "wizard.providers_install.installer_missing");
+      }
       return ctx.fail(outcome.code || "request_failed"); // error, then detail
     }
     const st = outcome.body.status;
@@ -314,12 +323,13 @@
     const statusLine = document.createElement("p");
     statusLine.className = "dashboard-provider-hosted-note";
     statusLine.hidden = true;
-    function fail(detail) {
-      const tmpl = MUREO.t("wizard.providers_install.failed");
+    function fail(detail, key) {
+      const tmpl = MUREO.t(key || "wizard.providers_install.failed");
       // Function replacement so a "$"-containing detail is inserted
-      // literally (see the note at the providers-install failure path).
+      // literally (see the note at the providers-install failure path);
+      // global, since a template may name {detail} more than once.
       const safeDetail = detail || "unknown";
-      const msg = tmpl.replace("{detail}", function () {
+      const msg = tmpl.replace(/\{detail\}/g, function () {
         return safeDetail;
       });
       statusLine.hidden = false;

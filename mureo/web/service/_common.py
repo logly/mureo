@@ -14,7 +14,10 @@ with ``shell=False`` (POSIX) or rendered into a single-line command string
 
 from __future__ import annotations
 
+import os
 import sys
+
+from mureo.web.service import SERVICE_ENVIRONMENT
 
 
 def service_argv(*, port: int) -> tuple[str, ...]:
@@ -51,4 +54,25 @@ def service_command(*, port: int) -> str:
     return " ".join([f'"{executable}"', *rest])
 
 
-__all__ = ["service_argv", "service_command"]
+def service_environment() -> dict[str, str]:
+    """Environment the launchd / systemd unit injects into the daemon.
+
+    The managed-service marker plus the ``PATH`` of the shell that runs
+    ``mureo service install``: a login-time supervisor starts the daemon
+    with its own minimal ``PATH``, which lacks ``/opt/homebrew/bin``,
+    ``/usr/local/bin`` and ``~/.local/bin``, so provider installs that
+    spawn ``pipx`` or ``npm`` would not find them. Recording the operator's
+    ``PATH`` makes the daemon see the same tools the shell does. Only
+    absolute entries are kept: an empty or relative entry would resolve
+    against the daemon's working directory, not the shell's. ``PATH`` is
+    omitted when no absolute entry remains.
+    """
+    env = dict(SERVICE_ENVIRONMENT)
+    entries = os.environ.get("PATH", "").split(os.pathsep)
+    path = os.pathsep.join(entry for entry in entries if os.path.isabs(entry))
+    if path:
+        env["PATH"] = path
+    return env
+
+
+__all__ = ["service_argv", "service_command", "service_environment"]

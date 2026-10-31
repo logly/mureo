@@ -29,6 +29,7 @@ import pytest
 from mureo.web.service import systemd
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -66,6 +67,66 @@ class TestUnitContent:
         """Marker so the daemon knows Restart=always will relaunch it and may
         exit-to-restart after a self-upgrade."""
         assert "Environment=MUREO_MANAGED_SERVICE=1" in systemd.build_unit(port=7613)
+
+    def test_unit_records_installing_shell_path(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A systemd user unit does not inherit the login shell's PATH, so
+        the unit keeps it for ``pipx`` / ``npm`` lookups (#966)."""
+        monkeypatch.setenv("PATH", "/opt/x/bin:/usr/bin")
+        lines = systemd.build_unit(port=7613).splitlines()
+        assert "Environment=PATH=/opt/x/bin:/usr/bin" in lines
+        assert "Environment=MUREO_MANAGED_SERVICE=1" in lines
+
+    def test_unit_quotes_a_path_with_spaces(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("PATH", "/Applications/My Tools/bin:/usr/bin")
+        lines = systemd.build_unit(port=7613).splitlines()
+        assert 'Environment="PATH=/Applications/My Tools/bin:/usr/bin"' in lines
+
+    def test_unit_escapes_quotes_and_backslashes_in_path(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("PATH", '/opt/a"b\\c/bin')
+        lines = systemd.build_unit(port=7613).splitlines()
+        assert 'Environment="PATH=/opt/a\\"b\\\\c/bin"' in lines
+
+    def test_unit_quotes_a_path_with_a_single_quote(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """systemd treats ``'`` as a quote, so the value is double-quoted."""
+        monkeypatch.setenv("PATH", "/opt/it's/bin:/usr/bin")
+        lines = systemd.build_unit(port=7613).splitlines()
+        assert 'Environment="PATH=/opt/it\'s/bin:/usr/bin"' in lines
+
+    def test_unit_escapes_newline_and_tab_in_path(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A raw newline would end the directive, so it is written ``\\n``."""
+        monkeypatch.setenv("PATH", "/opt/a\nb/bin:/opt/c\td/bin:/opt/e\rf/bin")
+        unit = systemd.build_unit(port=7613)
+        lines = unit.splitlines()
+        assert (
+            'Environment="PATH=/opt/a\\nb/bin:/opt/c\\td/bin:/opt/e\\rf/bin"' in lines
+        )
+        assert "\t" not in unit and "\r" not in unit
+        assert not any(line.startswith("b/bin") for line in lines)
+
+    def test_unit_escapes_percent_specifiers_in_path(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """systemd expands ``%`` specifiers in ``Environment=``, so a literal
+        ``%`` is written ``%%``."""
+        monkeypatch.setenv("PATH", "/opt/100%/bin:/usr/bin")
+        lines = systemd.build_unit(port=7613).splitlines()
+        assert "Environment=PATH=/opt/100%%/bin:/usr/bin" in lines
+
+    def test_unit_omits_path_when_shell_has_none(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("PATH", raising=False)
+        assert "PATH=" not in systemd.build_unit(port=7613)
 
     def test_unit_wantedby_default_target(self, home: Path) -> None:
         assert "WantedBy=default.target" in systemd.build_unit(port=7613)
@@ -110,6 +171,49 @@ class TestInstall:
             result = systemd.install(home=home, port=7613)
         assert result.ok is False
         assert result.message
+
+    @staticmethod
+    def _run_with_active(
+        active: bool, restart: subprocess.CompletedProcess[str] | None = None
+    ) -> tuple[list[list[str]], Callable[..., object]]:
+        calls: list[list[str]] = []
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            calls.append(argv)
+            if "is-active" in argv:
+                return _ok() if active else _fail("inactive")
+            if "restart" in argv and restart is not None:
+                return restart
+            return _ok()
+
+        return calls, fake_run
+
+    def test_install_fresh_unit_is_not_restarted(self, home: Path) -> None:
+        calls, fake_run = self._run_with_active(False)
+        with patch.object(systemd.subprocess, "run", side_effect=fake_run):
+            result = systemd.install(home=home, port=7613)
+        assert result.ok is True
+        assert result.message == "enabled"
+        assert not any("restart" in argv for argv in calls)
+
+    def test_install_restarts_a_running_unit(self, home: Path) -> None:
+        """``enable --now`` leaves a running unit as it is, so the rewritten
+        unit only takes effect after a restart."""
+        calls, fake_run = self._run_with_active(True)
+        with patch.object(systemd.subprocess, "run", side_effect=fake_run):
+            result = systemd.install(home=home, port=7613)
+        assert result.ok is True
+        assert result.message == "restarted"
+        enable = ["systemctl", "--user", "enable", "--now", systemd.UNIT_NAME]
+        restart = ["systemctl", "--user", "restart", systemd.UNIT_NAME]
+        assert calls.index(restart) > calls.index(enable)
+
+    def test_install_reports_restart_failure(self, home: Path) -> None:
+        _, fake_run = self._run_with_active(True, restart=_fail("restart boom"))
+        with patch.object(systemd.subprocess, "run", side_effect=fake_run):
+            result = systemd.install(home=home, port=7613)
+        assert result.ok is False
+        assert result.message == "restart boom"
 
 
 @pytest.mark.unit

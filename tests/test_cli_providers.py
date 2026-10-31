@@ -50,6 +50,13 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     # (which would mutate the developer's actual ~/.claude.json).
     monkeypatch.setattr("mureo.providers.config_writer.shutil.which", lambda _: None)
     monkeypatch.setattr("mureo.auth_setup.shutil.which", lambda _: None)
+    # The two patches above replace the shared ``shutil.which``, so the
+    # installer's executable lookup is pinned separately: every package
+    # manager resolves to ``/usr/bin/<name>`` (a CI runner has no ``pipx``).
+    monkeypatch.setattr(
+        "mureo.providers.installer.resolve_executable",
+        lambda name: "/usr/bin/" + name,
+    )
 
     mock_run = MagicMock(
         return_value=subprocess.CompletedProcess(
@@ -106,7 +113,7 @@ def test_list_after_add_shows_installed(home: Path) -> None:
 
 @pytest.mark.integration
 def test_add_invokes_pipx_for_google_ads(home: Path) -> None:
-    """``add google-ads-official`` calls ``subprocess.run`` with argv[0]='pipx'."""
+    """``add google-ads-official`` spawns the resolved ``pipx``."""
     result = _invoke("providers", "add", "google-ads-official")
     assert result.exit_code == 0, result.output
 
@@ -114,7 +121,7 @@ def test_add_invokes_pipx_for_google_ads(home: Path) -> None:
     assert mock_run.call_count == 1
     call_args, call_kwargs = mock_run.call_args
     argv = call_args[0] if call_args else call_kwargs.get("args")
-    assert argv[0] == "pipx"
+    assert argv[0] == "/usr/bin/pipx"
 
 
 @pytest.mark.integration

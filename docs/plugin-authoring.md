@@ -3022,7 +3022,8 @@ extension route that answers the same way is read the same way.
   where a route already uses it (`credentials_file_corrupt`,
   `not_authenticated`). `500` means the action was attempted and failed
   (`internal_error` with the exception class name in `detail`,
-  `install_failed`, `upgrade_failed`, `update_check_failed`,
+  `install_failed`, `installer_missing` with the executable name in `detail`
+  (`pipx`), `upgrade_failed`, `update_check_failed`,
   `picker_failed`, `demo_init_failed`, `bundle_import_failed`,
   `byod_remove_failed`, `basic_setup_failed`, `basic_clear_failed`,
   `extension_handler_error`). `403` (CSRF / Host),

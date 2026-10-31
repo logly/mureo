@@ -1,3 +1,10 @@
+## [Unreleased]
+
+### Fixed
+
+- **`mureo service install` records the installing shell's `PATH`** in the launchd plist / systemd unit, so a provider install from the auto-started configure daemon finds `pipx` and `npm` (#966). Re-run `mureo service install` after upgrading to pick it up.
+- **Provider install names a missing `pipx` / `npm`** instead of `internal_error`, and looks in `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin` when the daemon's `PATH` lacks them (#966).
+
 ## [0.38.0] - 2026-10-31
 
 ### Added

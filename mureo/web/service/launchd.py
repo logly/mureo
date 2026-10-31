@@ -26,13 +26,12 @@ from pathlib import Path
 from mureo.web.instance import probe_mureo_instance, read_state_file
 from mureo.web.service import (
     SERVICE_BIND_HOST,
-    SERVICE_ENVIRONMENT,
     SERVICE_PORT,
     OpResult,
     StatusResult,
     dashboard_url,
 )
-from mureo.web.service._common import service_argv
+from mureo.web.service._common import service_argv, service_environment
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,8 @@ def build_plist(home: Path | None = None, *, port: int = SERVICE_PORT) -> bytes:
     it exits; stdout/stderr are captured under ``~/.mureo`` for debugging.
     ``EnvironmentVariables`` stamps the managed-service marker so the daemon
     knows ``KeepAlive`` will relaunch it and may exit-to-restart after a
-    self-upgrade.
+    self-upgrade, and records the installing shell's ``PATH`` so the
+    daemon finds ``pipx`` / ``npm`` (launchd's default ``PATH`` does not).
     """
     resolved = _home(home)
     out_path, err_path = _log_paths(resolved)
@@ -72,7 +72,7 @@ def build_plist(home: Path | None = None, *, port: int = SERVICE_PORT) -> bytes:
         "ProgramArguments": list(service_argv(port=port)),
         "RunAtLoad": True,
         "KeepAlive": True,
-        "EnvironmentVariables": dict(SERVICE_ENVIRONMENT),
+        "EnvironmentVariables": service_environment(),
         "StandardOutPath": str(out_path),
         "StandardErrorPath": str(err_path),
     }

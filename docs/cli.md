@@ -170,6 +170,7 @@ Notes:
 
 - **Windows**: `mureo service install` registers an on-logon Scheduled Task. Creating it writes to the Task Scheduler root, which needs an **elevated** shell — run it from a PowerShell opened via *Run as administrator* (being in the Administrators group is not enough). The task itself then runs at logon with your normal (non-elevated) rights.
 - After upgrading mureo, run `mureo service restart` so the running daemon picks up the new code (Task Scheduler and the supervisors do not relaunch a cleanly-exited process automatically on every platform).
+- The service definition records the `PATH` of the shell that ran `mureo service install`, so the daemon finds `pipx`, `npm` and other tools the way your shell does. If you install such a tool later, or `mureo configure` reports that one is not found, run `mureo service install` again: it overwrites the definition and restarts the daemon on macOS and Linux. `mureo service restart` alone keeps the old definition. The recorded `PATH` is a snapshot: entries that disappear later (a removed virtualenv or version-manager shim directory) are not followed, so run `mureo service install` again after such changes.
 - The configure dashboard's **About** tab also has a **Restart configure** button that does the same thing from the browser: a managed service restarts via its supervisor, while an interactive `mureo configure` restarts itself in place. The page waits for the server to come back and reloads automatically.
 
 ### Configure log

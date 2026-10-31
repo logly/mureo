@@ -24,13 +24,12 @@ from pathlib import Path
 from mureo.web.instance import probe_mureo_instance, read_state_file
 from mureo.web.service import (
     SERVICE_BIND_HOST,
-    SERVICE_ENVIRONMENT,
     SERVICE_PORT,
     OpResult,
     StatusResult,
     dashboard_url,
 )
-from mureo.web.service._common import service_command
+from mureo.web.service._common import service_command, service_environment
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +47,35 @@ def unit_path(home: Path | None = None) -> Path:
     return _home(home) / ".config" / "systemd" / "user" / UNIT_NAME
 
 
+def _environment_line(key: str, value: str) -> str:
+    """One ``Environment=`` line, quoted the way systemd unquotes it.
+
+    ``%`` is doubled because systemd expands ``%`` specifiers in the value.
+    A value with whitespace or a quote character is double-quoted; inside
+    the quotes systemd reads C escapes, so a newline, carriage return or
+    tab is written ``\\n`` / ``\\r`` / ``\\t`` and cannot end the directive.
+    """
+    literal = value.replace("%", "%%")
+    if not any(ch.isspace() or ch in "\\\"'" for ch in literal):
+        return f"Environment={key}={literal}\n"
+    escaped = (
+        literal.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+    return f'Environment="{key}={escaped}"\n'
+
+
 def build_unit(*, port: int = SERVICE_PORT) -> str:
     """Build the systemd unit body.
 
     ``Type=simple`` (the daemon never forks); ``Restart=always`` brings it
     back if it crashes; ``WantedBy=default.target`` enables it for the
-    user's login session.
+    user's login session. The installing shell's ``PATH`` is recorded so
+    the daemon finds ``pipx`` / ``npm`` (a user unit does not inherit the
+    login shell's ``PATH``).
     """
     exec_start = service_command(port=port)
     return (
@@ -65,9 +87,11 @@ def build_unit(*, port: int = SERVICE_PORT) -> str:
         "Type=simple\n"
         f"ExecStart={exec_start}\n"
         # Managed-service marker so the daemon knows Restart=always will
-        # relaunch it and may exit-to-restart after a self-upgrade.
+        # relaunch it and may exit-to-restart after a self-upgrade, plus the
+        # installing shell's PATH.
         + "".join(
-            f"Environment={key}={value}\n" for key, value in SERVICE_ENVIRONMENT.items()
+            _environment_line(key, value)
+            for key, value in service_environment().items()
         )
         + "Restart=always\n"
         "RestartSec=2\n"
@@ -90,7 +114,11 @@ def _systemctl(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def install(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
-    """Write the unit, reload, and enable --now. Idempotent (overwrites)."""
+    """Write the unit, reload, and enable --now.
+
+    Idempotent (overwrites); a running unit is restarted so the rewritten
+    unit takes effect (``enable --now`` leaves a running unit as it is).
+    """
     path = unit_path(home)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -102,12 +130,20 @@ def install(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
     except OSError as exc:
         return OpResult(ok=False, message=f"could not write unit: {exc}")
     try:
+        # The write above does not change the unit's active state, so the
+        # probe still reflects the daemon that was running before install.
+        was_active = _systemctl("is-active", UNIT_NAME).returncode == 0
         reload_proc = _systemctl("daemon-reload")
         if reload_proc.returncode != 0:
             return OpResult(ok=False, message=(reload_proc.stderr or "").strip())
         enable_proc = _systemctl("enable", "--now", UNIT_NAME)
         if enable_proc.returncode != 0:
             return OpResult(ok=False, message=(enable_proc.stderr or "").strip())
+        if was_active:
+            restart_proc = _systemctl("restart", UNIT_NAME)
+            if restart_proc.returncode != 0:
+                return OpResult(ok=False, message=(restart_proc.stderr or "").strip())
+            return OpResult(ok=True, message="restarted")
     except FileNotFoundError:
         return OpResult(ok=False, message="systemctl not found on PATH")
     except OSError as exc:  # pragma: no cover - defensive
