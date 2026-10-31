@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Changed
+
+- **The endpoint copy row of the hosted-MCP cards is built in one place**
+  (#964). `connector_url_row.js` holds the code-plus-copy-button row that
+  Meta's connector steps and the TikTok install card both show;
+  `showManualSetup` in `auth_wizards_meta.js` shrinks accordingly. The
+  providers-install step of the configure wizard gains a JS test that
+  drives every answer of `/api/providers/install`, the save-and-retry
+  flow, and the TikTok and Meta hosted cards. No behaviour change.
+
 ### Fixed
 
 - **`mureo service install` records the installing shell's `PATH`** in the launchd plist / systemd unit, so a provider install from the auto-started configure daemon finds `pipx` and `npm` (#966). Re-run `mureo service install` after upgrading to pick it up.

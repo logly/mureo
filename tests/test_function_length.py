@@ -379,7 +379,7 @@ KNOWN_OVER_LIMIT_JS: dict[tuple[str, str], int] = {
     ("mureo/_data/web/amazon_oauth.js", "buildAuthorizeSection"): 54,
     ("mureo/_data/web/auth_wizards_meta.js", "buildMetaMethodChooser"): 55,
     ("mureo/_data/web/auth_wizards_meta.js", "buildMetaTokenCard"): 309,
-    ("mureo/_data/web/auth_wizards_meta.js", "showManualSetup"): 165,
+    ("mureo/_data/web/auth_wizards_meta.js", "showManualSetup"): 140,
     ("mureo/_data/web/dashboard_about.js", "runUpgrade"): 52,
     ("mureo/_data/web/dashboard_advisors.js", "wireAdvisorForm"): 58,
     ("mureo/_data/web/dashboard_creative.js", "renderCreativeGallery"): 61,
@@ -413,7 +413,7 @@ KNOWN_OVER_LIMIT_JS: dict[tuple[str, str], int] = {
 
 # shrink-only; remove an entry when you fix it, never add one
 KNOWN_LONG_FILES: dict[str, int] = {
-    "mureo/_data/web/auth_wizards_meta.js": 855,
+    "mureo/_data/web/auth_wizards_meta.js": 831,
     "mureo/_data/web/dashboard_plugins.js": 858,
     "mureo/_data/web/dashboard_reports_detail.js": 910,
     "mureo/_data/web/dashboard_reports_report.js": 845,

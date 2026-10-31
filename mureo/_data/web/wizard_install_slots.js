@@ -4,7 +4,8 @@
 // install that answers `needs_credentials`. Kept out of auth_wizards.js so
 // that file stays within the 800-line budget. Loaded BEFORE auth_wizards.js,
 // which re-exports renderProvidersInstall through window.MUREO_AUTH; the
-// Meta connector card is read off window.MUREO_AUTH_META at call time.
+// Meta connector card (window.MUREO_AUTH_META) and the endpoint copy row
+// (window.MUREO_CONNECTOR_ROW) are read at call time.
 
 (function () {
   "use strict";
@@ -179,40 +180,6 @@
     return card;
   }
 
-  // Endpoint + copy button — handy for the Desktop custom-connector
-  // dialog or to confirm the URL for `claude mcp add`.
-  function buildEndpointCopyRow(url) {
-    const urlRow = document.createElement("div");
-    urlRow.className = "connector-url-row";
-    const code = document.createElement("code");
-    code.textContent = url;
-    const copyBtn = document.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "btn btn-secondary connector-copy-btn";
-    copyBtn.textContent = MUREO.t("connector.copy");
-    copyBtn.setAttribute("data-i18n", "connector.copy");
-    copyBtn.addEventListener("click", function () {
-      const done = function () {
-        copyBtn.textContent = MUREO.t("connector.copied");
-        setTimeout(function () {
-          copyBtn.textContent = MUREO.t("connector.copy");
-        }, 1500);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard
-          .writeText(url)
-          .then(done, function () {
-            MUREO.toast(url);
-          });
-      } else {
-        MUREO.toast(url);
-      }
-    });
-    urlRow.appendChild(code);
-    urlRow.appendChild(copyBtn);
-    return urlRow;
-  }
-
   // TikTok (tiktok-ads-official): hosted_http, but it supports OAuth
   // Dynamic Client Registration AND has no mureo-native platform — so it
   // needs neither Meta's connector-confirm flow nor a native-disable
@@ -237,7 +204,9 @@
     wrap.appendChild(note);
     // The endpoint row is omitted on Codex, where the provider is not wired.
     if (state.host !== "codex") {
-      wrap.appendChild(buildEndpointCopyRow(TIKTOK_HOSTED_URL));
+      wrap.appendChild(
+        window.MUREO_CONNECTOR_ROW.buildEndpointCopyRow(TIKTOK_HOSTED_URL)
+      );
     }
     return wrap;
   }

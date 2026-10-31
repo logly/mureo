@@ -2,7 +2,8 @@
 // Split out of auth_wizards.js (house 800-line budget); pure move, no
 // behavior change. Loaded BEFORE auth_wizards.js and consumed through
 // window.MUREO_AUTH_META: the hosted-connector setup card, the
-// connection-method chooser, and the system-user token card.
+// connection-method chooser, and the system-user token card. The setup
+// card's endpoint row comes from window.MUREO_CONNECTOR_ROW.
 
 (function () {
   "use strict";
@@ -74,32 +75,7 @@
     step3.textContent = MUREO.t(kp + "step3");
     step3.setAttribute("data-i18n", kp + "step3");
     liUrl.appendChild(step3);
-    const urlRow = document.createElement("div");
-    urlRow.className = "connector-url-row";
-    const code = document.createElement("code");
-    code.textContent = META_HOSTED_URL;
-    const copyBtn = document.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "btn btn-secondary connector-copy-btn";
-    copyBtn.textContent = MUREO.t("connector.copy");
-    copyBtn.setAttribute("data-i18n", "connector.copy");
-    copyBtn.addEventListener("click", function () {
-      const done = function () {
-        copyBtn.textContent = MUREO.t("connector.copied");
-        setTimeout(function () {
-          copyBtn.textContent = MUREO.t("connector.copy");
-        }, 1500);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(META_HOSTED_URL).then(done, function () {
-          MUREO.toast(META_HOSTED_URL);
-        });
-      } else {
-        MUREO.toast(META_HOSTED_URL);
-      }
-    });
-    urlRow.appendChild(code);
-    urlRow.appendChild(copyBtn);
+    const urlRow = window.MUREO_CONNECTOR_ROW.buildEndpointCopyRow(META_HOSTED_URL);
     liUrl.appendChild(urlRow);
     ol.appendChild(liUrl);
 
