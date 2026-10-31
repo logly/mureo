@@ -607,13 +607,15 @@ const DASHBOARD_FILES = [
 
 // The configure wizard's auth step, in app.html's order. The others must run
 // before auth_wizards.js, which reaches them through their globals: the
-// plugin-choice rule (window.MUREO_WIZARD_CHOICE), the Meta cards
+// plugin-choice rule (window.MUREO_WIZARD_CHOICE), the shared endpoint copy
+// row (window.MUREO_CONNECTOR_ROW), the Meta cards
 // (window.MUREO_AUTH_META), a plugin provider's slot pieces
 // (window.MUREO_AUTH_PLUGIN), the providers-install step
 // (window.MUREO_AUTH_INSTALL), the auth queue (window.MUREO_AUTH_QUEUE) and
 // the declarative credential slot (window.MUREO_AUTH_PLUGIN_SLOT).
 const AUTH_WIZARD_FILES = [
   "wizard_provider_choice.js",
+  "connector_url_row.js",
   "auth_wizards_meta.js",
   "auth_wizards_plugin.js",
   "wizard_install_slots.js",

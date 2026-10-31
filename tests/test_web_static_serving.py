@@ -56,6 +56,7 @@ class TestStaticAllowList:
             "landing.js",
             "wizard.js",
             "wizard_provider_choice.js",
+            "connector_url_row.js",
             "auth_wizards.js",
             "auth_wizards_plugin.js",
             "wizard_install_slots.js",
@@ -80,6 +81,7 @@ class TestStaticAllowList:
         auth_bundle = [
             html.index(f"/static/{name}")
             for name in (
+                "connector_url_row.js",
                 "auth_wizards_meta.js",
                 "auth_wizards_plugin.js",
                 "wizard_install_slots.js",
