@@ -36,9 +36,35 @@
   // instead of silently swallowing a persistent failure (a silent
   // failure is exactly what routed a Desktop user down the Code path).
   function syncHostToServer(host, retried) {
-    return MUREO.postJson("/api/host", { host: host }).catch(function () {
-      if (!retried) return syncHostToServer(host, true);
-      MUREO.toast(MUREO.t("wizard.host.sync_failed"));
+    return MUREO.postJson("/api/host", { host: host })
+      .then(function (res) {
+        if (!res || !res.ok) return null;
+        // A failure inside the refresh is not a failed host sync: it must
+        // not reach the retry below, which would post the host again.
+        return refreshStatusForHost(host).catch(function (err) {
+          console.error("status refresh failed", err);
+        });
+      })
+      .catch(function () {
+        if (!retried) return syncHostToServer(host, true);
+        MUREO.toast(MUREO.t("wizard.host.sync_failed"));
+      });
+  }
+
+  // The status snapshot is computed for the server session's host. Once the
+  // chosen host is on the server, a snapshot taken under another host is
+  // replaced, so the basic step's pills describe the chosen host (#960).
+  // Only the basic step is redrawn: it is the one that reads the snapshot
+  // while showing. A host-step render would push the host again, and any
+  // later step builds from the fresh snapshot when it is entered.
+  function refreshStatusForHost(host) {
+    const status = MUREO.state && MUREO.state.status;
+    if (!status || status.host === host) return Promise.resolve(status);
+    return MUREO.loadStatus().then(function (fresh) {
+      if (!fresh) return null;
+      hydrateStateFromStatus(fresh);
+      if (currentStep() === "basic") render();
+      return fresh;
     });
   }
 
