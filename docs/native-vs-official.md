@@ -218,11 +218,12 @@ Setup, environment variables, and the full caveat list: [amazon-ads.md](./amazon
 
 When you install an official provider for a platform mureo also serves natively,
 mureo sets `MUREO_DISABLE_<PLATFORM>=1` on its own MCP server block so the two do
-not expose duplicate tools. Per issue #102 / PR #265, `mureo configure`
-**does not disable native tools until the official provider is actually
-credentialed** (every one of its `required_env` names resolved to a stored
-value), so that path never leaves you with zero working tools; the
-`mureo providers add` CLI sets the flag as soon as it registers the provider.
+not expose duplicate tools. Per issue #102 / PR #265, neither `mureo configure`
+nor `mureo providers add` **disables native tools until the official provider
+is actually credentialed** (every one of its `required_env` names resolved to
+a stored value), so neither path leaves you with zero working tools. Both
+inject the stored values into the provider's MCP entry; when one is missing,
+the CLI prints which names it still needs (#945).
 Removing the official provider clears the flag and re-enables native tools.
 
 - Switch native → official: `mureo providers add <provider>` (or the configure dashboard toggle)

@@ -11,13 +11,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
     from mureo.providers.catalog import ProviderSpec
 
@@ -39,6 +38,10 @@ from mureo.cli.setup_codex import (
 # Read through the modules (not bound to names here) so monkeypatched
 # provider installers and settings writers are honoured at call time.
 from mureo.providers import catalog, config_writer, installer, mureo_env
+from mureo.providers.credential_env import (
+    credential_env_for,
+    register_with_credential_gate,
+)
 from mureo.web.action_result import ERROR_STATUS, ActionResult, returncode_detail
 from mureo.web.codex_mcp import (
     install_codex_mcp_block,
@@ -60,7 +63,6 @@ from mureo.web.desktop_mcp import (
     set_mureo_disable_env_desktop,
     unset_mureo_disable_env_desktop,
 )
-from mureo.web.env_var_writer import build_provider_env
 from mureo.web.host_paths import get_host_paths
 from mureo.web.setup_state import PART_HOOK, PART_MCP, PART_SKILLS
 
@@ -443,97 +445,6 @@ def install_basic_setup(
     }
 
 
-def _credential_env_for(
-    spec: ProviderSpec, credentials_path: Path | None
-) -> dict[str, str]:
-    """Resolve the credential env an official MCP needs from credentials.json.
-
-    The upstream local-install MCPs (e.g. ``google-ads-mcp``) read their
-    config ONLY from environment variables — never mureo's
-    ``credentials.json`` — so a freshly registered provider is unusable
-    unless this env is injected into its ``mcpServers[<id>]`` block.
-
-    ``hosted_http`` providers are excluded: Meta's hosted Ads MCP
-    authenticates via interactive browser OAuth on first connect (no
-    env vars to pre-populate), and injecting stale meta_ads creds would
-    be wrong. Returns ``{}`` (caller writes the pre-fix bare block) for
-    hosted entries, providers with no overlapping platform, or when no
-    matching credentials exist yet.
-
-    The env is built from the provider's declared ``required_env`` +
-    ``optional_env`` (not a blanket section dump), so only the names the
-    upstream actually reads are injected — e.g. Google Ads' ADC env
-    (``GOOGLE_APPLICATION_CREDENTIALS`` + optional MCC login id and legacy
-    dev-token), never the Client-Library trio the upstream ignores (#102).
-    """
-    if spec.install_kind == "hosted_http":
-        return {}
-    section = spec.coexists_with_mureo_platform
-    if not section:
-        return {}
-    return build_provider_env(
-        (*spec.required_env, *spec.optional_env),
-        section,
-        credentials_path=credentials_path,
-    )
-
-
-# Required env names whose value is a path the upstream MCP opens at
-# launch. A value that does not point at a readable regular file cannot
-# authenticate, so it must not count as credentialed (no-strand, #102 /
-# #761).
-_FILE_PATH_ENV: frozenset[str] = frozenset({"GOOGLE_APPLICATION_CREDENTIALS"})
-
-
-def _readable_file(value: str) -> bool:
-    """True when ``value``, exactly as stored, is an absolute regular file.
-
-    The value is injected verbatim into the upstream's env block and opened
-    there by a process that does no shell expansion, so the check must use
-    the same bytes: no ``expanduser`` (``~/sa.json`` would pass here and
-    fail there) and no relative paths (resolved against the MCP host's cwd,
-    not ours).
-    """
-    try:
-        path = Path(value)
-        return path.is_absolute() and path.is_file() and os.access(path, os.R_OK)
-    except (OSError, ValueError):
-        return False
-
-
-def _is_credentialed(spec: ProviderSpec, extra_env: Mapping[str, str]) -> bool:
-    """True when EVERY ``required_env`` name resolved to a stored value.
-
-    This is the #102 native-disable gate: mureo steps its native tools aside
-    only when the official server can actually authenticate. ``extra_env`` is
-    built from the provider's ``required_env`` + ``optional_env``, so a
-    required name is "credentialed" exactly when it is present in
-    ``extra_env``. A client-library-only Google Ads user (no
-    ``GOOGLE_APPLICATION_CREDENTIALS``) is therefore correctly NOT
-    credentialed — the old ``bool(extra_env)`` gate wrongly treated them as
-    credentialed and stranded them (native off, official unable to auth).
-
-    The ``bool(spec.required_env)`` guard keeps a provider with NO declared
-    required env from being vacuously "credentialed" (``all(())`` is True):
-    such a provider could never authenticate from env alone, so native must
-    stay on. Unreachable today (the only empty-``required_env`` entry is the
-    hosted Meta provider, which short-circuits before the gate) but it
-    preserves the no-strand invariant if a future provider changes that.
-
-    Presence alone is not enough for a path-valued name (``_FILE_PATH_ENV``,
-    e.g. ``GOOGLE_APPLICATION_CREDENTIALS``): the upstream opens that file at
-    launch, so a stored path that is missing, unreadable or a directory means
-    an official server that cannot authenticate. Such a value therefore does
-    NOT credential the provider — the install reports ``needs_credentials``
-    and mureo-native stays on instead of being switched off behind it (#761).
-    """
-    return bool(spec.required_env) and all(
-        name in extra_env
-        and (name not in _FILE_PATH_ENV or _readable_file(extra_env[name]))
-        for name in spec.required_env
-    )
-
-
 def _install_provider_code(
     provider_id: str, credentials_path: Path | None = None
 ) -> ActionResult:
@@ -582,29 +493,10 @@ def _install_provider_code(
             "install_failed", returncode_detail("install", result.returncode)
         )
 
-    extra_env = _credential_env_for(spec, credentials_path)
+    extra_env = credential_env_for(spec, credentials_path)
     platform = spec.coexists_with_mureo_platform
-    # Decision C + plan B (#102): only disable the overlapping mureo-native
-    # platform once the official provider is actually credentialed — meaning
-    # ALL of its ``required_env`` resolved to a stored value, not merely that
-    # SOME google_ads env exists. The upstream MCP reads its config ONLY from
-    # env vars (Google Ads via ADC: GOOGLE_APPLICATION_CREDENTIALS; dev-token
-    # optional), so a partially-credentialed registration cannot authenticate;
-    # disabling native then would strand the user with zero working tools for
-    # that platform (official dead AND native off). When not fully credentialed
-    # we register the provider (with whatever partial env is present),
-    # (re-)enable native, and signal that credentials are still needed.
-    credentialed = platform is not None and _is_credentialed(spec, extra_env)
     try:
-        if credentialed:
-            mureo_env.add_provider_and_disable_in_mureo(spec, extra_env=extra_env)
-        else:
-            config_writer.add_provider_to_claude_settings(spec, extra_env=extra_env)
-            if platform is not None:
-                # Clear any MUREO_DISABLE_<platform> a prior credentialed
-                # install left behind, so re-registering without full creds
-                # never leaves native off AND official unauthenticated.
-                mureo_env.unset_mureo_disable_env(platform)
+        credentialed = register_with_credential_gate(spec, extra_env)
     except Exception as exc:  # noqa: BLE001 — any fault is a failed internal_error
         logger.exception("install_provider settings write failed")
         return ActionResult.failed("internal_error", type(exc).__name__)
@@ -699,7 +591,7 @@ def _install_provider_desktop(
             )
 
     block: dict[str, Any] = dict(_desktop_block_for(spec))
-    extra_env = _credential_env_for(spec, credentials_path)
+    extra_env = credential_env_for(spec, credentials_path)
     if extra_env:
         block = {**block, "env": {**block.get("env", {}), **extra_env}}
     try:
@@ -753,7 +645,7 @@ def _install_provider_codex(
             )
 
     block: dict[str, Any] = dict(_desktop_block_for(spec))
-    extra_env = _credential_env_for(spec, credentials_path)
+    extra_env = credential_env_for(spec, credentials_path)
     if extra_env:
         block = {**block, "env": {**block.get("env", {}), **extra_env}}
     try:

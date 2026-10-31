@@ -14,12 +14,14 @@ flows into subprocess argv.
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from mureo.core.atomic_json import load_existing_json
+from mureo.core.runtime_context import runtime_credentials_path
 from mureo.providers.catalog import CATALOG, ProviderSpec, get_provider
 from mureo.providers.coexistence import coexistence_warning
 from mureo.providers.config_writer import (
@@ -29,12 +31,19 @@ from mureo.providers.config_writer import (
     is_provider_installed,
     remove_provider_from_claude_settings,
 )
+from mureo.providers.credential_env import (
+    credential_env_for,
+    register_with_credential_gate,
+    unresolved_required_env,
+)
 from mureo.providers.installer import run_install
 from mureo.providers.mureo_env import (
-    add_provider_and_disable_in_mureo,
     set_mureo_disable_env,
     unset_mureo_disable_env,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 providers_app = typer.Typer(
     name="providers",
@@ -92,6 +101,48 @@ def _emit_coexistence(spec: ProviderSpec, *, mureo_block_present: bool) -> None:
         typer.echo(warning)
 
 
+_NEEDS_CREDENTIALS_NOTE = (
+    "note: {provider_id} {state} yet: "
+    "{names} could not be resolved from the credential store (missing, or "
+    "pointing at a file that cannot be read). Run `mureo configure` and "
+    "finish the {platform} step (or set them on the dashboard), then "
+    "run this command again. mureo's native {platform} tools stay active "
+    "until then."
+)
+_NEEDS_CREDENTIALS_STATE = "is registered but cannot authenticate"
+_NEEDS_CREDENTIALS_STATE_DRY_RUN = "would be registered but could not authenticate"
+
+
+def _emit_needs_credentials(
+    spec: ProviderSpec, extra_env: Mapping[str, str], *, dry_run: bool = False
+) -> None:
+    """Tell the operator the provider cannot authenticate yet, on stderr.
+
+    The CLI counterpart of the configure UI's ``needs_credentials`` card:
+    the provider is registered with whatever env resolved, native stays
+    on, and the message names the required env still unresolved so the
+    operator knows what to store before re-running the install. With
+    ``dry_run`` nothing was registered, so the note says what would happen.
+    """
+    platform = spec.coexists_with_mureo_platform
+    if platform is None:
+        return
+    names = ", ".join(unresolved_required_env(spec, extra_env))
+    typer.echo(
+        _NEEDS_CREDENTIALS_NOTE.format(
+            provider_id=spec.id,
+            state=(
+                _NEEDS_CREDENTIALS_STATE_DRY_RUN
+                if dry_run
+                else _NEEDS_CREDENTIALS_STATE
+            ),
+            names=names,
+            platform=platform,
+        ),
+        err=True,
+    )
+
+
 def _emit_hosted_auth_notice(spec: ProviderSpec, *, dry_run: bool) -> None:
     """Print how to wire a hosted MCP via a Claude.ai connector.
 
@@ -133,7 +184,11 @@ def _emit_hosted_auth_notice(spec: ProviderSpec, *, dry_run: bool) -> None:
 
 
 def _dry_run_preview(spec: ProviderSpec) -> None:
-    """Print the planned subprocess argv, ``mcpServers`` delta, and env write."""
+    """Print the planned subprocess argv, ``mcpServers`` delta, and env write.
+
+    Ends with the note the real install would print: the coexistence note
+    when every required env resolves, the needs-credentials note otherwise.
+    """
     if spec.install_kind == "hosted_http":
         typer.echo(f"[dry-run] {spec.id}: hosted endpoint, no local install step")
     else:
@@ -144,12 +199,27 @@ def _dry_run_preview(spec: ProviderSpec) -> None:
         f"{json.dumps({spec.id: dict(spec.mcp_server_config)}, ensure_ascii=False)}"
     )
     platform = spec.coexists_with_mureo_platform
-    if platform is not None:
-        env_var = f"MUREO_DISABLE_{platform.upper()}"
-        typer.echo(
-            f'[dry-run] {spec.id}: would set mcpServers.mureo.env.{env_var}="1" '
-            f"(if mureo block is present)"
-        )
+    if platform is None:
+        return
+    # Same resolver as the real install; it reads the store, never writes.
+    extra_env = credential_env_for(spec, runtime_credentials_path())
+    unresolved = unresolved_required_env(spec, extra_env)
+    injected = ", ".join(sorted(extra_env)) or "(none)"
+    typer.echo(
+        f"[dry-run] {spec.id}: would inject env {injected}; "
+        f"unresolved required env {', '.join(unresolved) or '(none)'}"
+    )
+    if unresolved:
+        _emit_needs_credentials(spec, extra_env, dry_run=True)
+        return
+    env_var = f"MUREO_DISABLE_{platform.upper()}"
+    typer.echo(
+        f'[dry-run] {spec.id}: would set mcpServers.mureo.env.{env_var}="1" '
+        f"(if mureo block is present)"
+    )
+    # In dry-run we don't know whether a mureo block is on disk —
+    # assume the common case (present) for the message.
+    _emit_coexistence(spec, mureo_block_present=True)
 
 
 def _add_one(spec: ProviderSpec, *, dry_run: bool) -> bool:
@@ -159,12 +229,10 @@ def _add_one(spec: ProviderSpec, *, dry_run: bool) -> bool:
     Hosted entries (``install_kind="hosted_http"``) skip the install step
     entirely — only the ``mcpServers`` config write runs.
 
-    When ``spec.coexists_with_mureo_platform`` is non-None and a native
-    ``mcpServers.mureo`` block exists, the same atomic write also flips
-    ``mcpServers.mureo.env.MUREO_DISABLE_<PLATFORM>=1`` so the mureo MCP
-    server auto-disables its native tool family for that platform. When
-    no mureo block exists, the provider is registered as before and a
-    degraded coexistence note is emitted instead.
+    When ``spec.coexists_with_mureo_platform`` is non-None, the env the
+    provider reads is injected from the credential store, and native is
+    disabled only when every required value resolved (see
+    :func:`_register_installed`).
     """
     if spec.install_kind == "hosted_http":
         # Hosted MCPs are NOT registered locally: Claude Code cannot always
@@ -187,11 +255,12 @@ def _add_one(spec: ProviderSpec, *, dry_run: bool) -> bool:
 
     if dry_run:
         _dry_run_preview(spec)
-        # In dry-run we don't know whether a mureo block is on disk —
-        # assume the common case (present) for the message.
-        _emit_coexistence(spec, mureo_block_present=True)
         return True
 
+    # Resolved before installing, so a fault reading the credential store
+    # never leaves the package installed but unregistered.
+    credentials_path = runtime_credentials_path()
+    extra_env = credential_env_for(spec, credentials_path)
     result = run_install(spec, dry_run=False)
     if result.returncode != 0:
         typer.echo(
@@ -201,31 +270,52 @@ def _add_one(spec: ProviderSpec, *, dry_run: bool) -> bool:
         )
         return False
 
-    mureo_block_present = _register_provider(spec)
-    typer.echo(f"installed {spec.id}")
-    _emit_coexistence(spec, mureo_block_present=mureo_block_present)
+    _register_installed(spec, extra_env)
     return True
 
 
-def _register_provider(spec: ProviderSpec) -> bool:
-    """Write the ``mcpServers`` entry (plus disable env var if applicable).
+def _register_installed(spec: ProviderSpec, extra_env: Mapping[str, str]) -> None:
+    """Register an installed provider with its credential env, then report.
 
-    Returns ``True`` if a ``mcpServers.mureo`` block was present in the
-    settings file (so the auto-disable env var was written too), ``False``
-    otherwise. When there is no coexistence overlap, returns ``True`` (the
-    coexistence message is not emitted anyway).
+    ``extra_env`` comes from the same store the setup wizard writes to
+    (:func:`~mureo.core.runtime_context.runtime_credentials_path`). When
+    the provider is credentialed and a native ``mcpServers.mureo`` block
+    exists, the same atomic write flips
+    ``mcpServers.mureo.env.MUREO_DISABLE_<PLATFORM>=1`` and the coexistence
+    note follows (the degraded variant when no mureo block exists). When it
+    is not credentialed, native stays on and the missing env is named.
+    """
+    credentialed, mureo_block_present = _register_provider(spec, extra_env)
+    typer.echo(f"installed {spec.id}")
+    if credentialed:
+        _emit_coexistence(spec, mureo_block_present=mureo_block_present)
+    else:
+        _emit_needs_credentials(spec, extra_env)
+
+
+def _register_provider(
+    spec: ProviderSpec, extra_env: Mapping[str, str]
+) -> tuple[bool, bool]:
+    """Write the ``mcpServers`` entry with ``extra_env`` (plus disable env var).
+
+    Returns ``(credentialed, mureo_block_present)``. ``credentialed`` is
+    whether every ``required_env`` resolved, so the overlapping native
+    platform was disabled; ``mureo_block_present`` is whether a
+    ``mcpServers.mureo`` block was present in the settings file. When
+    there is no coexistence overlap, returns ``(True, True)``: there is no
+    native platform to gate and the coexistence message is not emitted.
     """
     if spec.coexists_with_mureo_platform is None:
-        add_provider_to_claude_settings(spec)
-        return True
+        add_provider_to_claude_settings(spec, extra_env=extra_env)
+        return True, True
 
-    # Single atomic write covering both the new provider block AND the
-    # disable env var on mureo's block (when present).
-    add_provider_and_disable_in_mureo(spec)
+    # When credentialed, one atomic write covers both the new provider
+    # block AND the disable env var on mureo's block (when present).
+    credentialed = register_with_credential_gate(spec, extra_env)
     # Re-read to determine whether the mureo block was actually present —
     # ``add_provider_and_disable_in_mureo`` doesn't surface that flag (it
     # returns an ``AddResult`` because both writes share one ``os.replace``).
-    return _mureo_block_exists()
+    return credentialed, _mureo_block_exists()
 
 
 def _mureo_block_exists() -> bool:

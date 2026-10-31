@@ -53,7 +53,7 @@ Re-running `mureo configure` lists GA4 on the setup wizard's platform step under
 
 ### Authentication
 
-The official GA4 MCP authenticates through Google's Application Default Credentials (ADC), read-only. It needs two environment variables, stored in the `ga4` section of the credential store. `mureo providers add ga4-official` does not prompt for them: the `mureo configure` wizard (or the dashboard's env-var rows) collects them, and installing the provider from `mureo configure` injects the stored values into its MCP entry:
+The official GA4 MCP authenticates through Google's Application Default Credentials (ADC), read-only. It needs two environment variables, stored in the `ga4` section of the credential store. The `mureo configure` wizard (or the dashboard's env-var rows) collects them; both `mureo configure` and `mureo providers add ga4-official` inject the stored values into the provider's MCP entry. When a required value is not stored yet, `mureo providers add` still registers the provider, prints which names are missing, and leaves mureo's native GA4 tools active until the provider can authenticate:
 
 - `GOOGLE_APPLICATION_CREDENTIALS` — path to an ADC credential file that can authenticate with the `https://www.googleapis.com/auth/analytics.readonly` scope. It does not have to be a service account: a service-account key, the `authorized_user` file written by `gcloud auth application-default login`, or an `external_account` configuration all work. The identity behind the file must be granted access to the GA4 property.
 - `GOOGLE_PROJECT_ID` — the Google Cloud project id. mureo also emits it as `GOOGLE_CLOUD_PROJECT`, the name the upstream README documents.

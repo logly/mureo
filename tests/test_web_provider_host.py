@@ -65,7 +65,7 @@ def _isolate_credentials_default(
     """Point the credentials.json DEFAULT path at an isolated tmp file.
 
     ``install_provider`` defaults ``credentials_path=None``, which makes
-    ``_credential_env_for`` resolve the real ``~/.mureo/credentials.json``.
+    ``credential_env_for`` resolve the real ``~/.mureo/credentials.json``.
     Without this fixture, any test exercising the real config-write path
     for a pipx provider would pick up the developer's actual Google Ads
     credentials and leak them into assertions/output. Explicit
@@ -73,7 +73,7 @@ def _isolate_credentials_default(
     """
     iso = tmp_path / "_iso_credentials.json"
     monkeypatch.setattr(
-        "mureo.web.env_var_writer._resolve_credentials_path",
+        "mureo.providers.credential_env._resolve_credentials_path",
         lambda p: p if p is not None else iso,
     )
 
@@ -94,7 +94,7 @@ def _ok_install() -> InstallResult:
 
 def _google_creds(tmp_path: Path) -> Path:
     """Write a synthetic credentials.json with FULLY-credentialed Google Ads
-    ADC config (#102 plan B) and return its path, so ``_credential_env_for``
+    ADC config (#102) and return its path, so ``credential_env_for``
     resolves all of the provider's ``required_env`` and the native
     auto-disable gate fires.
 
@@ -490,17 +490,17 @@ class TestInstallProviderInjectsCredentialEnv:
 
 
 # ---------------------------------------------------------------------------
-# _is_credentialed — the native-disable gate (#102 plan B)
+# is_credentialed — the native-disable gate (#102)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestIsCredentialedGate:
     def test_all_required_present_is_credentialed(self, tmp_path: Path) -> None:
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         spec = get_provider(_GOOGLE)  # required: DEV_TOKEN + GAC
-        assert _is_credentialed(
+        assert is_credentialed(
             spec,
             {
                 "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
@@ -511,18 +511,18 @@ class TestIsCredentialedGate:
     def test_missing_one_required_is_not_credentialed(self) -> None:
         """The client-library-only case: dev token present but the ADC
         service-account path missing → NOT credentialed (the core fix)."""
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         spec = get_provider(_GOOGLE)
-        assert not _is_credentialed(spec, {"GOOGLE_ADS_DEVELOPER_TOKEN": "DT"})
+        assert not is_credentialed(spec, {"GOOGLE_ADS_DEVELOPER_TOKEN": "DT"})
 
     def test_optional_env_is_not_required(self, tmp_path: Path) -> None:
         """A missing OPTIONAL name does not block credentialing."""
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         spec = get_provider(_GOOGLE)
         # No GOOGLE_ADS_LOGIN_CUSTOMER_ID (optional) → still credentialed.
-        assert _is_credentialed(
+        assert is_credentialed(
             spec,
             {
                 "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
@@ -535,11 +535,11 @@ class TestIsCredentialedGate:
         NO declared required env must NOT be treated as credentialed — it
         could never authenticate from env alone, so native must stay on.
         Guards against ``all(())`` being vacuously True."""
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         spec = replace(get_provider(_GOOGLE), required_env=(), optional_env=())
-        assert not _is_credentialed(spec, {})
-        assert not _is_credentialed(spec, {"ANYTHING": "X"})
+        assert not is_credentialed(spec, {})
+        assert not is_credentialed(spec, {"ANYTHING": "X"})
 
 
 # ---------------------------------------------------------------------------

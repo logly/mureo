@@ -328,6 +328,10 @@ mureo/
 │   └── rotation.py      # Size-bounded append files (#758 phase 6): the one MUREO_JOURNAL_MAX_BYTES
 │                        #   reader, the rotated name, and sibling_files (the whole record, oldest first)
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
+│                        #   credential_env.py: the credential env a provider reads and the
+│                        #   native-disable gate, shared by `mureo providers add` and the
+│                        #   configure UI install route (#945); holds the env-var allow-list
+│                        #   that web/env_var_writer.py imports back (providers -> core only)
 ├── policy/              # Built-in policy gates (strategy_gate) — ship with OSS, run by default
 │   ├── guardrails.py         # The `## Guardrails` parser (Guardrails, parse_guardrails,
 │   │                         #   guardrails_from_entries); imports nothing from context, so

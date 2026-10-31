@@ -1,6 +1,6 @@
 """A path-valued credential only counts when the file is readable (#761).
 
-``_is_credentialed`` is the #102 no-strand gate: mureo steps its native
+``is_credentialed`` is the #102 no-strand gate: mureo steps its native
 tools aside only once the official MCP can actually authenticate. It used
 to be satisfied by the mere PRESENCE of every ``required_env`` name — but
 ``GOOGLE_APPLICATION_CREDENTIALS`` is a path the upstream server opens at
@@ -37,7 +37,7 @@ def _isolate_credentials_default(
     """Keep the ``credentials_path=None`` default off the real user file."""
     iso = tmp_path / "_iso_credentials.json"
     monkeypatch.setattr(
-        "mureo.web.env_var_writer._resolve_credentials_path",
+        "mureo.providers.credential_env._resolve_credentials_path",
         lambda p: p if p is not None else iso,
     )
 
@@ -120,30 +120,30 @@ class TestInstallProviderRequiresReadableCredentialFile:
 @pytest.mark.unit
 class TestIsCredentialedChecksTheFile:
     def test_readable_file_is_credentialed(self, tmp_path: Path) -> None:
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         sa_file = tmp_path / "sa.json"
         sa_file.write_text("{}", "utf-8")
         spec = get_provider(_GOOGLE)
 
-        assert _is_credentialed(spec, {"GOOGLE_APPLICATION_CREDENTIALS": str(sa_file)})
+        assert is_credentialed(spec, {"GOOGLE_APPLICATION_CREDENTIALS": str(sa_file)})
 
     def test_directory_is_not_credentialed(self, tmp_path: Path) -> None:
         """A directory is not something the upstream can open as JSON."""
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         spec = get_provider(_GOOGLE)
 
-        assert not _is_credentialed(
+        assert not is_credentialed(
             spec, {"GOOGLE_APPLICATION_CREDENTIALS": str(tmp_path)}
         )
 
     def test_missing_file_is_not_credentialed(self, tmp_path: Path) -> None:
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         spec = get_provider(_GOOGLE)
 
-        assert not _is_credentialed(
+        assert not is_credentialed(
             spec, {"GOOGLE_APPLICATION_CREDENTIALS": str(tmp_path / "gone.json")}
         )
 
@@ -153,7 +153,7 @@ class TestIsCredentialedChecksTheFile:
         """The stored value is placed verbatim into the MCP's env, where no
         shell expands ``~`` and the cwd is not ours; a value that only
         resolves after expansion or relative to our cwd would strand."""
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         sa_file = tmp_path / "sa.json"
         sa_file.write_text("{}", "utf-8")
@@ -162,20 +162,20 @@ class TestIsCredentialedChecksTheFile:
         spec = get_provider(_GOOGLE)
 
         for value in ("~/sa.json", "sa.json", "./sa.json"):
-            assert not _is_credentialed(
+            assert not is_credentialed(
                 spec, {"GOOGLE_APPLICATION_CREDENTIALS": value}
             ), value
 
     def test_non_path_required_env_is_unaffected(self, tmp_path: Path) -> None:
         """Only the declared path-valued names get the file check; every
         other required name still counts as credentialed on presence."""
-        from mureo.web.setup_actions import _is_credentialed
+        from mureo.providers.credential_env import is_credentialed
 
         sa_file = tmp_path / "sa.json"
         sa_file.write_text("{}", "utf-8")
         spec = get_provider("ga4-official")  # GAC + GOOGLE_PROJECT_ID
 
-        assert _is_credentialed(
+        assert is_credentialed(
             spec,
             {
                 "GOOGLE_APPLICATION_CREDENTIALS": str(sa_file),
