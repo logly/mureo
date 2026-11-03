@@ -55,11 +55,10 @@ from mureo.auth_setup import (
     google_auth_url,
     save_credentials,
 )
-from mureo.core.secret_store import FilesystemSecretStore
 from mureo.logging_setup import safe_http_log_line
 from mureo.oauth_authcode import OAuthExchangeError, exchange_authorization_code
 from mureo.web._helpers import SOCKET_READ_TIMEOUT_SECONDS
-from mureo.web.plugin_credentials import notify_oauth_persisted
+from mureo.web.plugin_oauth_spec import PluginOAuthSpec, persist_plugin_token
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -1218,19 +1217,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             )
             return
 
-        # Persist atomically in one write (#217): start from what is on disk, layer the
-        # operator's submitted form values (client id/secret, callback URL, non-OAuth
-        # fields), then the obtained token last so it can never be clobbered. With
-        # Authenticate-is-save there may be *nothing* on disk yet — the form values and
-        # token land together, so first-time setup needs no prior Save. The #201 path
-        # has empty ``persist_values``, so its merge-only behaviour is unchanged.
-        store = FilesystemSecretStore(path=self.server.wizard.credentials_path)
-        merged = dict(store.load(spec.provider))
-        merged.update(spec.persist_values)
-        merged[spec.target_field] = result.refresh_token
-        store.save(spec.provider, merged)
-        notify_oauth_persisted(spec.provider, merged, store.path)
-
+        persist_plugin_token(spec, result, self.server.wizard.credentials_path)
         self.send_response(302)
         self.send_header("Location", "/done")
         self.end_headers()
@@ -1347,47 +1334,6 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 # WebAuthWizard — public API
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class PluginOAuthSpec:
-    """Parameters for one generic plugin authorization-code flow (#201).
-
-    Constructed by :meth:`mureo.web.oauth_bridge.OAuthBridge.start_plugin_oauth`
-    from the provider's :class:`~mureo.core.providers.AccountOAuthConfig`
-    plus the client id/secret the operator already saved, and handed to the
-    spawned :class:`WebAuthWizard`. ``provider`` is the registry name, which
-    is also the ``credentials.json`` section key the obtained token is
-    merge-saved under; ``state`` is the CSRF nonce echoed back on the
-    provider's redirect.
-
-    ``callback_path`` is the path component of the operator-supplied
-    loopback callback URL (#216); the wizard serves *this* route instead of
-    the built-in ``/oauth/callback`` so the redirect_uri matches the one
-    pre-registered in the provider's console exactly. ``persist_values``
-    holds the operator's submitted form values (client id/secret, callback
-    URL, any non-OAuth field) that are written **atomically with** the
-    obtained token in a single section, so first-time setup needs no prior
-    Save (#217). Both default to the #201 behaviour (the standard callback
-    path; persist only the token), keeping standalone construction valid.
-    """
-
-    provider: str
-    target_field: str
-    token_url: str
-    client_id: str
-    client_secret: str
-    redirect_uri: str
-    state: str
-    callback_path: str = "/oauth/callback"
-    persist_values: dict[str, str] = field(default_factory=dict)
-    # Token-endpoint client-auth style passed to ``exchange_authorization_code``
-    # (#201 follow-up): ``"basic"`` (default) or ``"body"`` for providers that
-    # reject HTTP Basic, e.g. Yahoo! JAPAN biz-oauth.
-    token_auth_style: str = "basic"
-    # Extra ``(name, value)`` headers for the token request, copied from
-    # ``AccountOAuthConfig.token_headers``; empty sends none.
-    token_headers: tuple[tuple[str, str], ...] = field(default=(), repr=False)
 
 
 class WebAuthWizard:

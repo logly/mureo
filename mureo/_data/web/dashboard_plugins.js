@@ -23,11 +23,12 @@
 // wizard renders the same form as a card (`buildPluginCredentialsForm`) for
 // a plugin provider chosen on its connection step, passing `onStored`: a
 // callback that fires whenever the card changes the provider's stored
-// section (the OAuth consent completed, or the account picker saved). Both
-// wrap the one `buildPluginCredentialsBody`.
+// section (the OAuth consent completed, the account picker saved, or a
+// Disconnect removed it). Both wrap the one `buildPluginCredentialsBody`.
 //
 // Shipping shape: a plain `<script>`-loaded file publishing ONE global,
-// `window.MUREO_DASHBOARD_PLUGINS`. Must load BEFORE dashboard.js.
+// `window.MUREO_DASHBOARD_PLUGINS`. Must load BEFORE dashboard.js, and AFTER
+// plugin_disconnect.js (the OAuth token status row and Disconnect button).
 
 (function () {
   "use strict";
@@ -214,26 +215,6 @@
     return values;
   }
 
-  // #217/#338 — read-only status row for an OAuth-obtained target field
-  // (the token is acquired via consent, never typed). #338: reflect the
-  // stored state — a configured token shows "Configured ✓" instead of the
-  // "click Authenticate" prompt, so the operator isn't told to re-auth an
-  // already-connected provider.
-  function appendOAuthTargetStatus(form, field) {
-    const row = document.createElement("p");
-    row.className = "plugin-oauth-target muted";
-    const rowLabel = document.createElement("span");
-    rowLabel.textContent = field.display_name + ": ";
-    const rowValue = document.createElement("span");
-    rowValue.setAttribute("data-oauth-target-status", "");
-    rowValue.textContent = field.configured
-      ? MUREO.t("dashboard.plugin_oauth_target_configured")
-      : MUREO.t("dashboard.plugin_oauth_target_unset");
-    row.appendChild(rowLabel);
-    row.appendChild(rowValue);
-    form.appendChild(row);
-  }
-
   // Colored ✓ / ✗ status mark as its own element (kept separate from any
   // data-i18n text node so a locale re-translation can't wipe it). Same
   // mark as dashboard_setup.js's statusMark; MUREO exposes no shared DOM
@@ -372,6 +353,18 @@
     const status = document.createElement("span");
     status.className = "plugin-oauth-status muted";
     actions.appendChild(status);
+    // #970 — a stored token can be disconnected (and revoked, when supported).
+    const target = plugin.fields.find(function (f) {
+      return f.key === plugin.oauth.target_field;
+    });
+    if (target && target.configured === true) {
+      const onDone = function () {
+        renderPluginCredentials();
+        if (typeof onStored === "function") onStored();
+      };
+      const disconnect = window.MUREO_PLUGIN_DISCONNECT.buildDisconnectButton;
+      actions.appendChild(disconnect(plugin.provider_name, onDone));
+    }
     form.appendChild(actions);
 
     form.addEventListener("submit", function (evt) {
@@ -417,7 +410,7 @@
     }
     plugin.fields.forEach(function (field) {
       if (oauth && field.key === oauth.target_field) {
-        appendOAuthTargetStatus(form, field);
+        window.MUREO_PLUGIN_DISCONNECT.appendOAuthTargetStatus(form, field);
       } else if (
         oauth &&
         oauth.has_account_lister &&

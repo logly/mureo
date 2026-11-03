@@ -27,6 +27,7 @@ from mureo.oauth_authcode import (
     build_authorization_code_url,
     exchange_authorization_code,
     parse_loopback_callback_url,
+    revoke_token,
 )
 
 # ---------------------------------------------------------------------------
@@ -82,8 +83,9 @@ def test_build_url_rejects_non_https_authorize_url() -> None:
 
 
 class _FakeResponse:
-    def __init__(self, payload: dict[str, Any]) -> None:
+    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
         self._payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self) -> None:
         return None
@@ -346,6 +348,162 @@ def test_exchange_rejects_invalid_headers_before_sending(
             redirect_uri="http://127.0.0.1:1/oauth/callback",
             headers=headers,
         )
+    assert _FakeClient.last_call == {}
+
+
+# ---------------------------------------------------------------------------
+# revoke_token (#970) — RFC 7009 revocation: a bool for every HTTP answer, a
+# raise for a transport failure (logged once, by the caller), and nothing
+# secret in the logs.
+# ---------------------------------------------------------------------------
+
+
+class _NonJsonResponse(_FakeResponse):
+    def json(self) -> dict[str, Any]:
+        raise ValueError("not JSON")
+
+
+def _revoke_client(response: _FakeResponse) -> type[_FakeClient]:
+    """A client that records the POST like ``_FakeClient`` and answers
+    ``response``."""
+
+    class _Revoke(_FakeClient):
+        def post(
+            self, url: str, *, data: Any = None, auth: Any = None, headers: Any = None
+        ) -> _FakeResponse:
+            super().post(url, data=data, auth=auth, headers=headers)
+            return response
+
+    return _Revoke
+
+
+def _revoke(**overrides: Any) -> bool:
+    kwargs: dict[str, Any] = {
+        "revoke_url": "https://a.test/revoke",
+        "token": "RT-old",
+        "client_id": "CID",
+        "client_secret": "SECRET",
+    }
+    kwargs.update(overrides)
+    return revoke_token(**kwargs)
+
+
+@pytest.mark.unit
+def test_revoke_posts_token_with_basic_auth_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "mureo.oauth_authcode.httpx.Client", _revoke_client(_FakeResponse({}))
+    )
+    assert _revoke() is True
+    call = _FakeClient.last_call
+    assert call["url"] == "https://a.test/revoke"
+    assert call["data"] == {"token": "RT-old"}
+    assert call["auth"] == ("CID", "SECRET")
+    assert call["headers"] is None
+
+
+@pytest.mark.unit
+def test_revoke_body_style_puts_creds_in_form(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "mureo.oauth_authcode.httpx.Client", _revoke_client(_FakeResponse({}))
+    )
+    assert _revoke(client_auth="body") is True
+    call = _FakeClient.last_call
+    assert call["auth"] is None
+    assert call["data"] == {
+        "token": "RT-old",
+        "client_id": "CID",
+        "client_secret": "SECRET",
+    }
+
+
+@pytest.mark.unit
+def test_revoke_sends_extra_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mureo.oauth_authcode.httpx.Client", _revoke_client(_FakeResponse({}))
+    )
+    assert _revoke(headers={"X-Example": "abc"}) is True
+    assert _FakeClient.last_call["headers"] == {"X-Example": "abc"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (_FakeResponse({}, status_code=200), True),
+        (_FakeResponse({"error": "invalid_token"}, status_code=400), True),
+        (_FakeResponse({"error": "invalid_client"}, status_code=400), False),
+        (_NonJsonResponse({}, status_code=400), False),
+        (_FakeResponse({}, status_code=500), False),
+        (_FakeResponse({}, status_code=503), False),
+    ],
+)
+def test_revoke_outcome_by_status(
+    monkeypatch: pytest.MonkeyPatch, response: _FakeResponse, expected: bool
+) -> None:
+    """200, and 400 ``invalid_token`` (already revoked or expired), count as
+    done; every other answer is a failed revocation."""
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _revoke_client(response))
+    assert _revoke() is expected
+
+
+@pytest.mark.unit
+def test_revoke_transport_error_propagates_unlogged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A request that cannot be made raises ``httpx.HTTPError``; the caller
+    owns the one warning, so nothing is logged here."""
+
+    class _Boom(_FakeClient):
+        def post(
+            self, url: str, *, data: Any = None, auth: Any = None, headers: Any = None
+        ) -> _FakeResponse:
+            raise httpx.ConnectError(f"boom {data} {auth} {headers}")
+
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _Boom)
+    with caplog.at_level("DEBUG"), pytest.raises(httpx.ConnectError):
+        _revoke(headers={"X-Example": "SENSITIVE_HEADER"})
+    assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+    assert "RT-old" not in caplog.text
+    assert "SECRET" not in caplog.text
+    assert "SENSITIVE_HEADER" not in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status_code", [200, 400, 500])
+def test_revoke_never_logs_token_or_secret(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    status_code: int,
+) -> None:
+    response = _FakeResponse({"error": "invalid_token"}, status_code=status_code)
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _revoke_client(response))
+    with caplog.at_level("DEBUG"):
+        _revoke(token="SENSITIVE_TOKEN", client_secret="SENSITIVE_SECRET")
+    assert "SENSITIVE_TOKEN" not in caplog.text
+    assert "SENSITIVE_SECRET" not in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"revoke_url": "http://a.test/revoke"}, "revoke_url"),
+        ({"revoke_url": "https://a.test/revoke\r\n"}, "revoke_url"),
+        ({"headers": {"Authorization": "Bearer x"}}, "^revoke_token headers: "),
+        ({"headers": {"X-Example": "a\r\nX: 1"}}, "^revoke_token headers: "),
+    ],
+)
+def test_revoke_rejects_bad_configuration_before_sending(
+    monkeypatch: pytest.MonkeyPatch, overrides: dict[str, Any], match: str
+) -> None:
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _FakeClient)
+    monkeypatch.setattr(_FakeClient, "last_call", {})
+    with pytest.raises(ValueError, match=match):
+        _revoke(**overrides)
     assert _FakeClient.last_call == {}
 
 

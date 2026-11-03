@@ -601,6 +601,9 @@ const DASHBOARD_FILES = [
   "dashboard_reports_table.js",
   "dashboard_reports.js",
   "dashboard_creative.js",
+  // The plugin OAuth card's token status row and Disconnect button
+  // (window.MUREO_PLUGIN_DISCONNECT), read by dashboard_plugins.js.
+  "plugin_disconnect.js",
   "dashboard_plugins.js",
   "dashboard.js",
 ];

@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Added
+
+- **A plugin provider can declare `revoke_url` on `AccountOAuthConfig`** (#970), its RFC 7009 token revocation endpoint. When re-authentication replaces a stored token with a different one, mureo saves the new token first and then revokes the old one, with the client credentials stored beside it. The OAuth card gains a Disconnect button once a token is stored; it calls the new `POST /api/credentials/plugins/<provider>/disconnect`, which revokes the stored token and removes the provider's credential section after copying `credentials.json` to `credentials.json.bak` (the route removes the section for any plugin provider, with or without `revoke_url`, and answers `noop` when nothing was stored). A server that revokes every token of a grant at once should not declare `revoke_url` unless re-authentication always issues a new grant. The revocation request carries `token=` with the client authentication of `token_auth_style` and the same `token_headers` as the code exchange. HTTP 200, and HTTP 400 `invalid_token`, count as revoked; any other outcome is logged once as a WARNING naming the provider and never blocks the save or the removal. `revoke_url` must be an `https://` URL, checked like `token_url`. A provider that leaves it unset behaves exactly as before.
+
 ## [0.38.1] - 2026-11-01
 
 ### Changed

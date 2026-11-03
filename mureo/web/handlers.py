@@ -158,6 +158,7 @@ from mureo.web.plugin_credentials import (
     plugin_platform_status,
     save_plugin_credentials,
 )
+from mureo.web.plugin_oauth_revoke import disconnect_plugin_provider
 from mureo.web.reports import (
     ClientArchiveError,
     build_report_summary,
@@ -307,6 +308,12 @@ _OAUTH_PROVIDER_RE = re.compile(
 # untouched. ``provider`` is a snake_case registry name.
 _PLUGIN_OAUTH_RE = re.compile(
     r"^/api/credentials/plugins/(?P<provider>[a-z0-9_]+)/oauth/(?P<verb>start|status)$"
+)
+
+# #970 — Disconnect: remove a plugin provider's credential section, revoking
+# its stored OAuth token first when the provider declares ``revoke_url``.
+_PLUGIN_DISCONNECT_RE = re.compile(
+    r"^/api/credentials/plugins/(?P<provider>[a-z0-9_]+)/disconnect$"
 )
 
 # #336 — post-auth account picker. A GET lists the accounts the provider's
@@ -754,6 +761,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             plugin_oauth_match.group("verb") == "start"
         ):
             self._post_plugin_oauth_start(plugin_oauth_match.group("provider"), payload)
+            return
+        plugin_disconnect_match = _PLUGIN_DISCONNECT_RE.match(path)
+        if plugin_disconnect_match is not None:
+            self._post_plugin_disconnect(plugin_disconnect_match.group("provider"))
             return
         ext_api_match = _EXTENSION_API_RE.match(path)
         if ext_api_match is not None:
@@ -2008,6 +2019,33 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             credentials_path=self.wizard.host_paths.credentials_path,
         )
         send_json(self, result.as_dict())
+
+    def _post_plugin_disconnect(self, provider: str) -> None:
+        """Remove a plugin provider's saved credentials (#970).
+
+        The plugin counterpart of ``/api/credentials/remove``: the whole
+        section goes, after a best-effort revocation of the stored OAuth
+        token when the provider declares ``revoke_url``. A malformed
+        ``account_oauth`` declaration is ``400 invalid_oauth_config``, as on
+        ``/oauth/start``, and removes nothing.
+        """
+        try:
+            removed = disconnect_plugin_provider(
+                provider, credentials_path=self.wizard.host_paths.credentials_path
+            )
+        except UnknownProviderError:
+            send_error_json(self, 404, "unknown_provider")
+            return
+        except (TypeError, ValueError):
+            send_error_json(self, 400, "invalid_oauth_config")
+            return
+        except Exception as exc:  # noqa: BLE001 — every write fault is one code
+            logger.warning(
+                "plugin disconnect failed for %s: %s", provider, type(exc).__name__
+            )
+            send_error_json(self, 500, "internal_error")
+            return
+        send_json(self, {"status": "ok" if removed else "noop", "provider": provider})
 
     def _fill_blank_plugin_values_from_store(
         self, provider: str, values: dict[str, str], keys: set[str]

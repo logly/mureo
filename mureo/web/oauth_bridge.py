@@ -15,7 +15,8 @@ from mureo.oauth_authcode import (
     parse_loopback_callback_url,
 )
 from mureo.web._helpers import read_json_safe
-from mureo.web.auth_wizard import PluginOAuthSpec, WebAuthWizard
+from mureo.web.auth_wizard import WebAuthWizard
+from mureo.web.plugin_oauth_spec import PluginOAuthSpec
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -214,14 +215,11 @@ class OAuthBridge:
         the wizard binds *that* URL's port and the URL is sent verbatim as
         the ``redirect_uri``. Validation is loopback-only.
 
-        ``persist_values`` (#217) are the operator's submitted form values
-        (client id/secret, callback URL, any non-OAuth field); the callback
-        writes them atomically with the obtained token in one section, so
-        first-time setup needs no prior Save.
-
-        ``provider`` is the registry name, used both as the bridge's
-        bookkeeping key and as the ``credentials.json`` section the
-        obtained ``refresh_token`` lands in.
+        ``persist_values`` (#217), the operator's submitted form values (client
+        id/secret, callback URL, any non-OAuth field), are written atomically
+        with the obtained token in one section, so first-time setup needs no
+        prior Save. ``provider`` is the registry name: the bridge's bookkeeping
+        key and the ``credentials.json`` section the token lands in.
         """
         self.cancel(provider)
 
@@ -284,6 +282,9 @@ class OAuthBridge:
             persist_values=dict(persist_values or {}),
             token_auth_style=oauth_config.token_auth_style,
             token_headers=oauth_config.token_headers,
+            revoke_url=oauth_config.revoke_url,
+            client_id_field=oauth_config.client_id_field,
+            client_secret_field=oauth_config.client_secret_field,
         )
         consent_url = build_authorization_code_url(
             authorize_url=oauth_config.authorize_url,

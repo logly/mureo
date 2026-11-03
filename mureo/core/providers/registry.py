@@ -91,7 +91,7 @@ from mureo.core.providers.credentials import (
     AccountCredentialField,
     AccountOAuthConfig,
 )
-from mureo.oauth_authcode import validate_token_headers
+from mureo.oauth_authcode import validate_endpoint_url, validate_token_headers
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -624,10 +624,9 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
     (``ValueError`` otherwise); ``token_headers`` is checked by
     :func:`mureo.oauth_authcode.validate_token_headers` (``TypeError`` for
     the shape, ``ValueError`` for a name or value). All checks fail loudly
-    at this boundary
-    — a mis-typed declaration or a typo'd field name would otherwise
-    surface only as a dead "Authenticate" button or a credential written
-    under a key nothing reads.
+    at this boundary — a mis-typed declaration or a typo'd field name would
+    otherwise surface only as a dead "Authenticate" button or a credential
+    written under a key nothing reads.
 
     Args:
         provider: The provider instance to introspect. Uses
@@ -639,12 +638,12 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
 
     Raises:
         TypeError: ``account_oauth`` is present but not an
-            :class:`AccountOAuthConfig`, or ``token_headers`` is not a
-            tuple of ``(name, value)`` ``str`` pairs.
+            :class:`AccountOAuthConfig`, ``token_headers`` is not a tuple
+            of ``(name, value)`` ``str`` pairs, or ``revoke_url`` is not a str.
         ValueError: A ``*_field`` reference does not name a declared
-            ``account_credential_fields`` key, or a ``token_headers``
-            entry has an invalid, reserved or repeated name or a value
-            that is not non-empty visible ASCII.
+            ``account_credential_fields`` key, a ``token_headers`` entry
+            has an invalid, reserved or repeated name or a non-visible-ASCII
+            value, or ``revoke_url`` is not a clean ``https://`` URL.
     """
     raw_name = getattr(provider, "name", None)
     identity = raw_name if isinstance(raw_name, str) and raw_name else repr(provider)
@@ -673,6 +672,7 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
             f"does not name a declared account_credential_fields key"
         )
     _validate_token_headers(identity, config.token_headers)
+    _validate_revoke_url(identity, config.revoke_url)
     return config
 
 
@@ -684,6 +684,23 @@ def _validate_token_headers(identity: str, headers: object) -> None:
     declaration fails here, at the boundary, not mid-exchange.
     """
     validate_token_headers(headers, where=f"{identity}.account_oauth.token_headers")
+
+
+def _validate_revoke_url(identity: str, revoke_url: object) -> None:
+    """Fail loudly on a malformed ``AccountOAuthConfig.revoke_url`` (#970).
+
+    ``None`` declares no revocation. Otherwise the URL gets the check the
+    token endpoint gets (``https://`` only, no control characters), so a
+    plaintext endpoint is refused before any token is sent to it.
+    """
+    if revoke_url is None:
+        return
+    where = f"{identity}.account_oauth.revoke_url"
+    if not isinstance(revoke_url, str):
+        raise TypeError(
+            f"{where} must be a str or None, got {type(revoke_url).__name__}"
+        )
+    validate_endpoint_url(revoke_url, where=where)
 
 
 def get_oauth_account_lister(provider: object) -> Callable[..., object] | None:

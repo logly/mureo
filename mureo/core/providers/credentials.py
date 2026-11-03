@@ -194,14 +194,28 @@ class AccountOAuthConfig:
             sent on the authorization-code exchange the configure wizard
             performs against ``token_url`` — for example an installation
             identifier a brokering token endpoint requires. That exchange
-            is the only request that sends them; a provider that refreshes
-            tokens itself must send them in its own requests. Read from the
+            and the revocation at :attr:`revoke_url` are the only requests
+            that send them; a provider that refreshes tokens itself must
+            send them in its own requests. Read from the
             provider class, so fixed when the plugin is imported. Do not put
             secrets here: the value lives in plugin code and is sent to the
             token endpoint on every exchange (it is not written to logs or
             failure messages). Checked by
             :func:`mureo.oauth_authcode.validate_token_headers`. Default:
             empty tuple (no extra headers).
+        revoke_url: The provider's RFC 7009 token revocation endpoint, or
+            ``None`` (the default: nothing is revoked). When set, mureo
+            revokes the replaced token once re-authentication has saved the
+            new one, and the stored token before Disconnect removes the
+            provider's credential section, POSTing ``token=<value>`` with
+            the client authentication of :attr:`token_auth_style` and the
+            :attr:`token_headers`. HTTP 200, and HTTP 400 with
+            ``error=invalid_token`` (already revoked or expired), count as
+            done; any other outcome is logged once and never blocks the
+            save or the removal. Do not declare it for a server that
+            revokes every token of a grant at once unless re-authentication
+            always issues a new grant: revoking the replaced token would
+            revoke the new one too. Must be an ``https://`` URL.
 
     A provider may also expose an optional ``on_oauth_persisted`` hook on
     its class, read by :func:`mureo.core.providers.get_oauth_persist_hook`
@@ -224,6 +238,7 @@ class AccountOAuthConfig:
     callback_hint: str | None = None
     callback_hint_i18n: Mapping[str, str] = field(default_factory=dict)
     token_headers: tuple[tuple[str, str], ...] = field(default=(), repr=False)
+    revoke_url: str | None = None
 
 
 # The built-in platforms the configure UI can hand to a provider: each has a
