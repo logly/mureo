@@ -65,6 +65,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "dashboard_reports_table.js",
     "dashboard_reports.js",
     "dashboard_creative.js",
+    "plugin_disconnect.js",
     "dashboard_plugins.js",
     "dashboard.js",
     "extensions.js",

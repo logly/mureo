@@ -46,11 +46,11 @@ def test_credential_input_prefills_current_values() -> None:
 def test_oauth_target_status_reflects_configured() -> None:
     """#338: the OAuth target status row shows "Configured ✓" when the token
     is already stored, instead of always prompting to Authenticate."""
-    js = _read("dashboard_plugins.js")
+    assert "appendOAuthTargetStatus" in _read("dashboard_plugins.js")
+    js = _read("plugin_disconnect.js")
     assert "dashboard.plugin_oauth_target_configured" in js
     # Branch is keyed off the injected field.configured state.
     assert "field.configured" in js
-    assert "appendOAuthTargetStatus" in js
 
 
 @pytest.mark.unit

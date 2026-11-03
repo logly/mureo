@@ -38,7 +38,10 @@ def test_dashboard_renders_readonly_target_status() -> None:
     """#217: the OAuth ``target_field`` (the refresh token) is shown as a
     read-only status row, not a text input — it is obtained via
     Authenticate, never typed."""
-    js = _read("dashboard_plugins.js")
+    assert "MUREO_PLUGIN_DISCONNECT.appendOAuthTargetStatus" in _read(
+        "dashboard_plugins.js"
+    )
+    js = _read("plugin_disconnect.js")
     assert "data-oauth-target-status" in js
     assert "dashboard.plugin_oauth_target_unset" in js
 
@@ -76,3 +79,17 @@ def test_dashboard_callback_url_prefill_consults_provider_default() -> None:
     URL the operator must register."""
     js = _read("dashboard_plugins.js")
     assert "default_callback_url" in js
+
+
+@pytest.mark.unit
+def test_dashboard_offers_disconnect_for_a_stored_token() -> None:
+    """#970: an OAuth card whose token is stored offers Disconnect, which
+    confirms, then POSTs the provider's ``/disconnect`` route."""
+    assert "MUREO_PLUGIN_DISCONNECT.buildDisconnectButton" in _read(
+        "dashboard_plugins.js"
+    )
+    js = _read("plugin_disconnect.js")
+    assert "data-plugin-disconnect" in js
+    assert '"/disconnect"' in js
+    assert "dashboard.confirm_plugin_disconnect" in js
+    assert "dashboard.plugin_oauth_disconnect" in js

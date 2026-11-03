@@ -12,14 +12,16 @@ exchange-failure path — without making any real network call.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import urllib.error
 import urllib.request
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from mureo.web.auth_wizard import PluginOAuthSpec, WebAuthWizard
@@ -661,3 +663,189 @@ def test_notify_oauth_persisted_unregistered_provider_is_noop(
     notify_oauth_persisted(
         "nobody", {"refresh_token": _HOOK_TOKEN}, tmp_path / "credentials.json"
     )
+
+
+# ---------------------------------------------------------------------------
+# revoke_url (#970) — re-authentication revokes the token it replaces, best
+# effort: a failed revocation never blocks saving the new token.
+# ---------------------------------------------------------------------------
+
+_REVOKE_URL = "https://biz-oauth.yahoo.co.jp/oauth/v1/revoke"
+
+
+@contextlib.contextmanager
+def _serving_wizard(
+    tmp_path: Path, section: dict[str, str], *, revoke_url: str | None
+) -> Iterator[Any]:
+    creds_path = tmp_path / ".mureo" / "credentials.json"
+    creds_path.parent.mkdir(parents=True)
+    creds_path.write_text(json.dumps({"yahoo_ads": section}))
+    spec = PluginOAuthSpec(
+        provider="yahoo_ads",
+        target_field="refresh_token",
+        token_url="https://biz-oauth.yahoo.co.jp/oauth/v1/token",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:0/oauth/callback",
+        state="state-xyz",
+        token_auth_style="body",
+        token_headers=(("X-Example", "abc"),),
+        revoke_url=revoke_url,
+    )
+    wiz = WebAuthWizard(credentials_path=creds_path, plugin_oauth=spec)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    wiz.wait_until_ready(timeout=2.0)
+    try:
+        yield wiz
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
+
+
+_STORED = {"client_id": "CID", "client_secret": "SECRET", "refresh_token": "RT-old"}
+
+
+@pytest.fixture
+def revoke_wizard(tmp_path: Path) -> Iterator[Any]:
+    with _serving_wizard(tmp_path, dict(_STORED), revoke_url=_REVOKE_URL) as wiz:
+        yield wiz
+
+
+def _reauth(wiz: Any, revoke: Any, new_token: str = "RT-new") -> tuple[int, str]:
+    """Run the callback with a stubbed exchange and ``revoke`` standing in
+    for ``revoke_token``; return (status, Location)."""
+    from mureo.oauth_authcode import AuthCodeResult
+
+    with (
+        patch(
+            "mureo.web.auth_wizard.exchange_authorization_code",
+            return_value=AuthCodeResult(refresh_token=new_token, access_token="AT"),
+        ),
+        patch("mureo.web.plugin_oauth_revoke.revoke_token", revoke),
+    ):
+        opener = urllib.request.build_opener(_NoRedirect())
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            opener.open(
+                _url(wiz, "/oauth/callback?code=AC&state=state-xyz"),
+                timeout=2.0,
+            )
+    return exc.value.code, exc.value.headers.get("Location", "")
+
+
+def _stored_token(wiz: Any) -> str:
+    return str(
+        json.loads(wiz.credentials_path.read_text())["yahoo_ads"]["refresh_token"]
+    )
+
+
+@pytest.mark.unit
+def test_reauth_revokes_the_replaced_token(revoke_wizard: Any) -> None:
+    revoke = MagicMock(return_value=True)
+    assert _reauth(revoke_wizard, revoke) == (302, "/done")
+    revoke.assert_called_once_with(
+        revoke_url=_REVOKE_URL,
+        token="RT-old",
+        client_id="CID",
+        client_secret="SECRET",
+        client_auth="body",
+        headers={"X-Example": "abc"},
+    )
+    assert _stored_token(revoke_wizard) == "RT-new"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "revoke",
+    [
+        MagicMock(return_value=False),
+        MagicMock(side_effect=RuntimeError("revocation exploded RT-old")),
+    ],
+    ids=["refused", "raised"],
+)
+def test_reauth_failed_revocation_still_saves_new_token(
+    revoke_wizard: Any, revoke: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("WARNING", logger="mureo.web.plugin_oauth_revoke"):
+        assert _reauth(revoke_wizard, revoke) == (302, "/done")
+    assert _stored_token(revoke_wizard) == "RT-new"
+    warnings = [r for r in caplog.records if r.name == "mureo.web.plugin_oauth_revoke"]
+    assert len(warnings) == 1
+    assert warnings[0].levelname == "WARNING"
+    assert "yahoo_ads" in warnings[0].getMessage()
+    assert "RT-old" not in caplog.text
+    assert "SECRET" not in caplog.text
+
+
+@pytest.mark.unit
+def test_reauth_unreachable_revoke_endpoint_is_one_warning(
+    revoke_wizard: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Through the real ``revoke_token``: an endpoint that cannot be reached
+    is a single WARNING for the whole callback, and the new token is kept."""
+    from mureo.oauth_authcode import revoke_token
+
+    with (
+        caplog.at_level("WARNING"),
+        patch(
+            "mureo.oauth_authcode._post_form",
+            side_effect=httpx.ConnectError("down RT-old SECRET"),
+        ),
+    ):
+        assert _reauth(revoke_wizard, revoke_token) == (302, "/done")
+    assert _stored_token(revoke_wizard) == "RT-new"
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert warnings[0].name == "mureo.web.plugin_oauth_revoke"
+    assert "yahoo_ads" in warnings[0].getMessage()
+    assert "ConnectError" in warnings[0].getMessage()
+    assert "RT-old" not in caplog.text
+    assert "SECRET" not in caplog.text
+
+
+@pytest.mark.unit
+def test_reauth_without_previous_token_does_not_revoke(tmp_path: Path) -> None:
+    section = {"client_id": "CID", "client_secret": "SECRET"}
+    revoke = MagicMock(return_value=True)
+    with _serving_wizard(tmp_path, section, revoke_url=_REVOKE_URL) as wiz:
+        assert _reauth(wiz, revoke) == (302, "/done")
+        assert _stored_token(wiz) == "RT-new"
+    revoke.assert_not_called()
+
+
+@pytest.mark.unit
+def test_reauth_returning_the_same_token_does_not_revoke(
+    revoke_wizard: Any,
+) -> None:
+    revoke = MagicMock(return_value=True)
+    assert _reauth(revoke_wizard, revoke, new_token="RT-old") == (302, "/done")
+    revoke.assert_not_called()
+
+
+@pytest.mark.unit
+def test_reauth_without_revoke_url_does_not_revoke(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    revoke = MagicMock(return_value=True)
+    with (
+        caplog.at_level("DEBUG", logger="mureo.web.plugin_oauth_revoke"),
+        _serving_wizard(tmp_path, dict(_STORED), revoke_url=None) as wiz,
+    ):
+        assert _reauth(wiz, revoke) == (302, "/done")
+        assert _stored_token(wiz) == "RT-new"
+    revoke.assert_not_called()
+    assert not [r for r in caplog.records if r.name == "mureo.web.plugin_oauth_revoke"]
+
+
+@pytest.mark.unit
+def test_default_spec_revoke_url_is_none() -> None:
+    spec = PluginOAuthSpec(
+        provider="p",
+        target_field="refresh_token",
+        token_url="https://a.test/token",
+        client_id="c",
+        client_secret="s",
+        redirect_uri="http://127.0.0.1:1/oauth/callback",
+        state="x",
+    )
+    assert spec.revoke_url is None

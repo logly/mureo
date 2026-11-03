@@ -58,6 +58,7 @@ class TestStaticAllowList:
             "wizard_provider_choice.js",
             "connector_url_row.js",
             "auth_wizards.js",
+            "plugin_disconnect.js",
             "auth_wizards_plugin.js",
             "wizard_install_slots.js",
             "wizard_auth_queue.js",
@@ -91,6 +92,9 @@ class TestStaticAllowList:
             )
         ]
         assert auth_bundle == sorted(auth_bundle)
+        assert html.index("/static/plugin_disconnect.js") < html.index(
+            "/static/dashboard_plugins.js"
+        )
 
 
 @pytest.mark.unit

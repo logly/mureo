@@ -7,7 +7,8 @@ and exchanges the returned ``code`` for a ``refresh_token`` using plain
 HTTP, so any standards-compliant OAuth2 provider a plugin declares (via
 :class:`mureo.core.providers.AccountOAuthConfig`) works without bespoke
 code — Yahoo! JAPAN Ads (``https://biz-oauth.yahoo.co.jp/oauth/v1/...``)
-being the first consumer.
+being the first consumer. It also revokes a token at a declared RFC 7009
+revocation endpoint (:func:`revoke_token`, #970).
 
 Client authentication uses the HTTP Basic scheme (RFC 6749 §2.3.1, the
 form Yahoo's token endpoint expects). Secrets — the client secret, the
@@ -30,8 +31,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: Outbound timeout for the token exchange. Matches the conservative
-#: default used by the Meta flow in :mod:`mureo.auth_setup`.
+#: Outbound timeout for the token exchange and revocation. Matches the
+#: conservative default used by the Meta flow in :mod:`mureo.auth_setup`.
 _HTTP_TIMEOUT = httpx.Timeout(30.0)
 
 # RFC 7230 §3.2.6 ``token``: the characters an HTTP header name may use.
@@ -75,20 +76,21 @@ class AuthCodeResult:
     access_token: str
 
 
-def _require_https(url: str, label: str) -> None:
-    """Reject anything but a clean ``https://host`` URL.
+def validate_endpoint_url(url: str, *, where: str) -> None:
+    """Reject anything but a clean ``https://host`` URL (``ValueError``).
 
     Guards against a plugin declaring a plaintext endpoint (the secret
     would traverse the wire unencrypted) and against control characters
     that could smuggle a second header/URL when the value is later placed
-    in a redirect. Loopback ``redirect_uri`` values are intentionally not
-    routed through here — they are ``http://127.0.0.1:<port>`` by design.
+    in a redirect. ``where`` prefixes the message. Loopback ``redirect_uri``
+    values are intentionally not routed through here — they are
+    ``http://127.0.0.1:<port>`` by design.
     """
     if any(c in url for c in "\r\n\t") or url.strip() != url:
-        raise ValueError(f"{label} contains illegal whitespace/control characters")
+        raise ValueError(f"{where} contains illegal whitespace/control characters")
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or not parsed.netloc:
-        raise ValueError(f"{label} must be an https:// URL, got {parsed.scheme!r}")
+        raise ValueError(f"{where} must be an https:// URL, got {parsed.scheme!r}")
 
 
 def validate_token_headers(headers: object, *, where: str) -> None:
@@ -192,7 +194,7 @@ def build_authorization_code_url(
     an empty ``scope=``). All values are percent-encoded, so a hostile
     ``redirect_uri`` / ``state`` cannot break out of the query string.
     """
-    _require_https(authorize_url, "authorize_url")
+    validate_endpoint_url(authorize_url, where="authorize_url")
     params: dict[str, str] = {
         "response_type": "code",
         "client_id": client_id,
@@ -238,36 +240,20 @@ def exchange_authorization_code(
     The exception message never includes the code, secret, or token; only
     the failure class is surfaced so a stack trace cannot leak material.
     """
-    _require_https(token_url, "token_url")
+    validate_endpoint_url(token_url, where="token_url")
     if headers:
         validate_token_headers(tuple(headers.items()), where="headers")
+    basic_auth, auth_fields = _client_auth(client_id, client_secret, client_auth)
     body = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": redirect_uri,
+        **auth_fields,
     }
-    # Pick the client-auth transport: Basic header (default) or in-body
-    # credentials (Yahoo! JAPAN biz-oauth rejects Basic). httpx's ``auth``
-    # parameter has no typed ``None``, so for body style we omit it entirely
-    # (the client configures no auth, so nothing is sent).
-    basic_auth: tuple[str, str] | None = None
-    if client_auth == "body":
-        body["client_id"] = client_id
-        body["client_secret"] = client_secret
-    else:
-        basic_auth = (client_id, client_secret)
-    # httpx treats ``headers=None`` as "no extra headers".
-    extra_headers = dict(headers) if headers else None
     try:
-        with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
-            if basic_auth is None:
-                response = client.post(token_url, data=body, headers=extra_headers)
-            else:
-                response = client.post(
-                    token_url, data=body, auth=basic_auth, headers=extra_headers
-                )
-            response.raise_for_status()
-            payload = response.json()
+        response = _post_form(token_url, body, basic_auth, headers)
+        response.raise_for_status()
+        payload = response.json()
     except httpx.HTTPError as exc:
         # Type only — httpx exceptions can embed the request URL/headers.
         raise OAuthExchangeError(
@@ -286,11 +272,95 @@ def exchange_authorization_code(
     return AuthCodeResult(refresh_token=refresh_token, access_token=access_token)
 
 
+def _post_form(
+    url: str,
+    body: Mapping[str, str],
+    basic_auth: tuple[str, str] | None,
+    headers: Mapping[str, str] | None,
+) -> httpx.Response:
+    """POST ``body`` form-encoded to ``url``; the one send of this module.
+
+    ``basic_auth`` is the HTTP Basic pair, or ``None`` when the client
+    credentials travel in ``body``. ``headers`` are the extra request headers
+    (``None`` or empty sends none). Raises ``httpx.HTTPError`` when the
+    request cannot be made or completed; the status is the caller's to judge.
+    """
+    extra_headers = dict(headers) if headers else None
+    with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
+        # httpx types no ``auth=None``: body style omits the argument.
+        if basic_auth is None:
+            return client.post(url, data=body, headers=extra_headers)
+        return client.post(url, data=body, auth=basic_auth, headers=extra_headers)
+
+
+def _client_auth(
+    client_id: str, client_secret: str, client_auth: str
+) -> tuple[tuple[str, str] | None, dict[str, str]]:
+    """Return ``(basic_auth, extra_body_fields)`` for ``client_auth``.
+
+    ``"body"`` puts the client id/secret in the form body (Yahoo! JAPAN
+    biz-oauth rejects Basic) and no Basic credentials; anything else is the
+    HTTP Basic header (RFC 6749 §2.3.1). The token exchange and revocation
+    share this so both present the client the same way.
+    """
+    if client_auth == "body":
+        return None, {"client_id": client_id, "client_secret": client_secret}
+    return (client_id, client_secret), {}
+
+
+def revoke_token(
+    *,
+    revoke_url: str,
+    token: str,
+    client_id: str,
+    client_secret: str,
+    client_auth: str = "basic",
+    headers: Mapping[str, str] | None = None,
+) -> bool:
+    """Revoke ``token`` at an RFC 7009 revocation endpoint; ``True`` when done.
+
+    POSTs ``token=<token>`` (form-encoded) to ``revoke_url`` with the client
+    authentication of ``client_auth`` and the extra ``headers``, exactly as
+    :func:`exchange_authorization_code` presents them. HTTP 200 is done. Some
+    issuers answer HTTP 400 ``error=invalid_token`` for a token that is
+    already revoked or expired, and that counts as done too. Every other
+    status, and a non-JSON 400 body, returns ``False``: the caller decides
+    what a refused revocation means.
+
+    Raises ``httpx.HTTPError`` when the request cannot be made or completed;
+    nothing is logged for it here, so the caller's report is the only one. A
+    malformed ``revoke_url`` or ``headers`` is a configuration error and
+    raises ``ValueError`` / ``TypeError`` before anything is sent. Nothing
+    from the request or the response is logged.
+    """
+    validate_endpoint_url(revoke_url, where="revoke_url")
+    if headers:
+        validate_token_headers(tuple(headers.items()), where="revoke_token headers")
+    basic_auth, auth_fields = _client_auth(client_id, client_secret, client_auth)
+    body = {"token": token, **auth_fields}
+    response = _post_form(revoke_url, body, basic_auth, headers)
+    if response.status_code == 200:
+        logger.info("token revocation accepted")
+        return True
+    return response.status_code == 400 and _is_invalid_token(response)
+
+
+def _is_invalid_token(response: httpx.Response) -> bool:
+    """Whether a 400 body is RFC 7009's ``{"error": "invalid_token"}``."""
+    try:
+        payload = response.json()
+    except ValueError:  # a non-JSON body
+        return False
+    return isinstance(payload, dict) and payload.get("error") == "invalid_token"
+
+
 __all__ = [
     "AuthCodeResult",
     "OAuthExchangeError",
     "build_authorization_code_url",
     "exchange_authorization_code",
     "parse_loopback_callback_url",
+    "revoke_token",
+    "validate_endpoint_url",
     "validate_token_headers",
 ]

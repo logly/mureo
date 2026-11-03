@@ -516,9 +516,10 @@ account_oauth = AccountOAuthConfig(
 `token_headers` (default `()`) is a tuple of `(name, value)` pairs sent as
 extra HTTP headers on the authorization-code exchange the configure wizard
 performs against `token_url` — for example an installation identifier a
-brokering token endpoint requires. That exchange is the only request that
-sends them; a provider that refreshes tokens itself must send them in its own
-requests. Nothing is added to the authorize URL.
+brokering token endpoint requires. That exchange and the revocation at
+`revoke_url` (below) are the only requests that send them; a provider that
+refreshes tokens itself must send them in its own requests. Nothing is added
+to the authorize URL.
 
 `account_oauth` is read from the provider **class**, so the values are fixed
 when the plugin module is imported; they cannot be computed per run. Do not
@@ -551,6 +552,70 @@ class ExampleProvider:
         token_headers=(("X-Installation-Id", INSTALLATION_ID),),
     )
 ```
+
+#### Token revocation (`revoke_url`)
+
+`revoke_url` (default `None`) is the provider's RFC 7009 token revocation
+endpoint (#970). When it is unset, mureo never revokes anything. When it is
+set, mureo revokes the token stored in `target_field` at two moments:
+
+- **Re-authentication.** When the authorization-code callback obtains a new
+  token and a different one is already stored, the new token is saved first
+  and the replaced one is revoked after it, so replacing a token does not
+  leave the old one working, and a save that fails does not leave the
+  provider with no working token. The replaced token is revoked with the
+  client id and secret stored beside it (the ones it was issued to); when the
+  section does not hold both, with the ones submitted for this
+  authentication.
+- **Disconnect.** The OAuth card shows a Disconnect button once a token is
+  stored. It calls `POST /api/credentials/plugins/<provider>/disconnect`,
+  which revokes the stored token and then removes the provider's whole
+  section from `~/.mureo/credentials.json`. The route also works for a
+  provider without `revoke_url` (or without `account_oauth`): it only removes
+  the section. It answers `{"status": "ok"}` when a section was removed and
+  `{"status": "noop"}` when nothing was stored.
+
+```python
+account_oauth = AccountOAuthConfig(
+    authorize_url="https://broker.example.com/oauth/authorize",
+    token_url="https://broker.example.com/oauth/token",
+    client_id_field="client_id",
+    client_secret_field="client_secret",
+    target_field="refresh_token",
+    revoke_url="https://broker.example.com/oauth/revoke",
+)
+```
+
+The request is a form-encoded `POST` of `token=<stored token>`, with the
+client id and secret presented as `token_auth_style` says (HTTP Basic, or
+`client_id` / `client_secret` form fields for `"body"`) and the same
+`token_headers` as the code exchange. On Disconnect the client id and secret
+are read from the stored section; when they are missing the token is not
+revoked, which is logged, and the section is removed anyway. Disconnect
+copies `credentials.json` to `credentials.json.bak` before rewriting it.
+
+HTTP 200 counts as revoked, and so does HTTP 400 with
+`{"error": "invalid_token"}` (the token was already revoked or has expired).
+Any other outcome (another status, a network error, a body that is not
+JSON) is logged once as a WARNING naming the provider and never blocks the
+save or the removal. The token, the client secret, the headers and the
+response body are never logged.
+
+Both revocations run synchronously inside the request, with the same
+30-second timeout as the code exchange, so an endpoint that hangs delays the
+callback's redirect or the Disconnect response by up to that long.
+
+Some authorization servers revoke every token of the same grant when one of
+them is revoked. If re-authenticating with such a server returns a token from
+the grant already stored, revoking the replaced token also revokes the new
+one. A provider whose server behaves that way should not declare
+`revoke_url` unless re-authentication always issues a new grant.
+
+`revoke_url` gets the checks `token_url` gets: it must be an `https://` URL
+with a host and no whitespace or control characters. `get_account_oauth_config`
+rejects anything else (`TypeError` for a value that is not a `str`,
+`ValueError` otherwise), so Authenticate and Disconnect answer
+`400 invalid_oauth_config` for such a provider.
 
 #### Post-auth account picker (`list_oauth_accounts`)
 

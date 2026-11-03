@@ -491,3 +491,126 @@ def test_status_idle_before_start(wizard: ConfigureWizard) -> None:
 def test_status_404_for_unknown_provider(wizard: ConfigureWizard) -> None:
     status, _ = get(wizard, "/api/credentials/plugins/nope_ads/oauth/status")
     assert status == 404
+
+
+# ---------------------------------------------------------------------------
+# POST …/disconnect (#970) — removes the provider's credential section
+# ---------------------------------------------------------------------------
+
+_DISCONNECT = "/api/credentials/plugins/yahoo_ads/disconnect"
+
+
+@pytest.mark.unit
+def test_disconnect_removes_stored_section(wizard: ConfigureWizard) -> None:
+    _store_section(wizard, {"client_id": "CID", "refresh_token": "RT"})
+    status, body = post(wizard, _DISCONNECT, {})
+    assert status == 200, body
+    assert body == {"status": "ok", "provider": "yahoo_ads"}
+    saved = json.loads(wizard.host_paths.credentials_path.read_text())
+    assert "yahoo_ads" not in saved
+
+
+@pytest.mark.unit
+def test_disconnect_noop_when_nothing_stored(wizard: ConfigureWizard) -> None:
+    status, body = post(wizard, _DISCONNECT, {})
+    assert status == 200, body
+    assert body == {"status": "noop", "provider": "yahoo_ads"}
+
+
+@pytest.mark.unit
+def test_disconnect_404_for_unknown_provider(wizard: ConfigureWizard) -> None:
+    status, body = post(wizard, "/api/credentials/plugins/nobody_ads/disconnect", {})
+    assert status == 404
+    assert body["error"] == "unknown_provider"
+
+
+@pytest.mark.unit
+def test_disconnect_400_when_revoke_url_invalid(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _BadRevoke:
+        name = "broker_ads"
+        display_name = "Broker Ads"
+        capabilities = frozenset()
+        account_credential_fields = _FIELDS
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://broker.example.com/oauth/authorize",
+            token_url="https://broker.example.com/oauth/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            revoke_url="http://broker.example.com/oauth/revoke",
+        )
+
+    monkeypatch.setitem(default_registry._entries, "broker_ads", _entry(_BadRevoke))
+    path = wizard.host_paths.credentials_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"broker_ads": {"refresh_token": "RT"}}))
+    status, body = post(wizard, "/api/credentials/plugins/broker_ads/disconnect", {})
+    assert status == 400
+    assert body["error"] == "invalid_oauth_config"
+    # A rejected declaration removes nothing.
+    assert "broker_ads" in json.loads(path.read_text())
+
+
+@pytest.mark.unit
+def test_disconnect_revokes_stored_token_through_the_route(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _Revocable:
+        name = "broker_ads"
+        display_name = "Broker Ads"
+        capabilities = frozenset()
+        account_credential_fields = _FIELDS
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://broker.example.com/oauth/authorize",
+            token_url="https://broker.example.com/oauth/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            revoke_url="https://broker.example.com/oauth/revoke",
+        )
+
+    monkeypatch.setitem(default_registry._entries, "broker_ads", _entry(_Revocable))
+    path = wizard.host_paths.credentials_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    section = {"client_id": "CID", "client_secret": "SECRET", "refresh_token": "RT"}
+    path.write_text(json.dumps({"broker_ads": section}))
+    with patch(
+        "mureo.web.plugin_oauth_revoke.revoke_token", return_value=True
+    ) as revoke:
+        status, body = post(
+            wizard, "/api/credentials/plugins/broker_ads/disconnect", {}
+        )
+    assert status == 200, body
+    assert body == {"status": "ok", "provider": "broker_ads"}
+    revoke.assert_called_once_with(
+        revoke_url="https://broker.example.com/oauth/revoke",
+        token="RT",
+        client_id="CID",
+        client_secret="SECRET",
+        client_auth="basic",
+        headers=None,
+    )
+    assert "broker_ads" not in json.loads(path.read_text())
+
+
+@pytest.mark.unit
+def test_disconnect_500_when_removal_fails(wizard: ConfigureWizard) -> None:
+    with patch(
+        "mureo.web.handlers.disconnect_plugin_provider",
+        side_effect=OSError("disk full"),
+    ):
+        status, body = post(wizard, _DISCONNECT, {})
+    assert status == 500
+    assert body["error"] == "internal_error"
+
+
+@pytest.mark.unit
+def test_disconnect_requires_csrf(wizard: ConfigureWizard) -> None:
+    _store_section(wizard, {"refresh_token": "RT"})
+    status, body = post(wizard, _DISCONNECT, {}, csrf=None)
+    assert status == 403
+    assert body["error"] == "csrf_invalid"
+    saved = json.loads(wizard.host_paths.credentials_path.read_text())
+    assert "yahoo_ads" in saved

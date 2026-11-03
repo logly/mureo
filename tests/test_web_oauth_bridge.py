@@ -555,6 +555,43 @@ class TestStartPluginOAuth:
         finally:
             bridge.cancel("broker_ads")
 
+    def test_threads_revoke_url_and_client_field_keys(
+        self,
+        patched_wizard_class: Any,
+        fake_configure_wizard: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """The spec carries ``revoke_url`` and the stored section's client
+        id/secret keys, so re-authentication can revoke the replaced token
+        with the client credentials it was issued to."""
+        from mureo.core.providers import AccountOAuthConfig
+
+        config = AccountOAuthConfig(
+            authorize_url="https://broker.example.com/oauth/authorize",
+            token_url="https://broker.example.com/oauth/token",
+            client_id_field="app_id",
+            client_secret_field="app_secret",
+            target_field="refresh_token",
+            revoke_url="https://broker.example.com/oauth/revoke",
+        )
+        bridge = OAuthBridge()
+        try:
+            bridge.start_plugin_oauth(
+                provider="broker_ads",
+                configure_wizard=fake_configure_wizard,
+                oauth_config=config,
+                client_id="CID",
+                client_secret="SECRET",
+                callback_url=self._CALLBACK_URL,
+                credentials_path=tmp_path / "creds.json",
+            )
+            spec = patched_wizard_class.instances[0].plugin_oauth
+            assert spec.revoke_url == "https://broker.example.com/oauth/revoke"
+            assert spec.client_id_field == "app_id"
+            assert spec.client_secret_field == "app_secret"
+        finally:
+            bridge.cancel("broker_ads")
+
     def test_builds_external_consent_url_and_pins_spec(
         self,
         patched_wizard_class: Any,

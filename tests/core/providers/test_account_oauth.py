@@ -478,3 +478,57 @@ def test_reader_invalid_token_header_message_omits_value() -> None:
         )
     assert "X-Example" in str(exc.value)
     assert "SENSITIVE" not in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# revoke_url — RFC 7009 revocation endpoint (#970), held to the same rules
+# as token_url so a bad declaration fails at the boundary.
+# ---------------------------------------------------------------------------
+
+
+def _revoke_provider(revoke_url: object) -> object:
+    class _Revoke:
+        name = "broker"
+        account_credential_fields = (_CLIENT_ID, _CLIENT_SECRET, _REFRESH)
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://a.test/authorize",
+            token_url="https://a.test/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            revoke_url=revoke_url,  # type: ignore[arg-type]
+        )
+
+    return _Revoke()
+
+
+@pytest.mark.unit
+def test_config_revoke_url_defaults_none() -> None:
+    assert _OAUTH.revoke_url is None
+
+
+@pytest.mark.unit
+def test_reader_accepts_https_revoke_url() -> None:
+    cfg = get_account_oauth_config(_revoke_provider("https://a.test/revoke"))
+    assert cfg is not None and cfg.revoke_url == "https://a.test/revoke"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "revoke_url",
+    [
+        "http://a.test/revoke",  # plaintext
+        "https://a.test/revoke\r\nX: 1",  # control characters
+        " https://a.test/revoke",  # surrounding whitespace
+        "https:///revoke",  # no host
+    ],
+)
+def test_reader_rejects_invalid_revoke_url(revoke_url: str) -> None:
+    with pytest.raises(ValueError, match=r"broker\.account_oauth\.revoke_url"):
+        get_account_oauth_config(_revoke_provider(revoke_url))
+
+
+@pytest.mark.unit
+def test_reader_rejects_non_str_revoke_url() -> None:
+    with pytest.raises(TypeError, match=r"broker\.account_oauth\.revoke_url"):
+        get_account_oauth_config(_revoke_provider(b"https://a.test/revoke"))

@@ -394,6 +394,10 @@ mureo/
     │                        #   send_steps for the multi-step routes: 200 per-step envelope, or
     │                        #   500 basic_setup_failed / basic_clear_failed + "steps" when every
     │                        #   step failed (#891)
+    ├── plugin_oauth_revoke.py # Plugin Disconnect + best-effort RFC 7009 revocation of a stored
+    │                        #   token at AccountOAuthConfig.revoke_url, on re-auth and Disconnect (#970)
+    ├── plugin_oauth_spec.py # PluginOAuthSpec (the frozen plugin OAuth hand-off from oauth_bridge.py
+    │                        #   to auth_wizard.py) + persist_plugin_token, the callback's save step
     ├── static_assets.py     # The files GET /static/<name> may serve (_STATIC_ALLOWLIST) and
     │                        #   their content types (_STATIC_CONTENT_TYPES)
     └── auth_wizard.py       # OAuth handoff server spawned by web/oauth_bridge.py (Google + Meta)
