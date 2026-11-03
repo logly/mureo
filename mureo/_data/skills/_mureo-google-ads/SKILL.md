@@ -2,7 +2,7 @@
 name: _mureo-google-ads
 description: "Google Ads: Manage campaigns, ad groups, ads, keywords, budgets, and performance analysis."
 metadata:
-  version: 0.38.1
+  version: 0.39.0
   openclaw:
     category: "advertising"
     requires:
