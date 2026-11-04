@@ -139,6 +139,22 @@
     return "ext-card-" + name + "-" + index;
   }
 
+  // Extension cards sit after every built-in card in a group (built-in
+  // sections carry no data-ext-card-order) in ascending order; a card
+  // goes before the first holder with a greater order, so equal orders
+  // keep discovery order.
+  function _insertCardByOrder(group, holder, order) {
+    const kids = group.children;
+    for (let i = 0; i < kids.length; i += 1) {
+      const raw = kids[i].getAttribute("data-ext-card-order");
+      if (raw !== null && Number(raw) > order) {
+        group.insertBefore(holder, kids[i]);
+        return;
+      }
+    }
+    group.appendChild(holder);
+  }
+
   function _renderCards(extension) {
     (extension.dashboard_cards || []).forEach(function (card, index) {
       if (!card || CARD_GROUPS.indexOf(card.group) === -1) return;
@@ -150,11 +166,13 @@
       const holder = document.createElement("div");
       holder.id = _cardId(extension.name, index);
       holder.setAttribute("data-ext-card-owner", extension.name);
+      const order = Number(card.order) || 0;
+      holder.setAttribute("data-ext-card-order", String(order));
       // innerHTML is fine here for the same reason as _populate: the
       // server rejected inline-executable content at discovery time
       // and the CSP refuses any that slip through.
       holder.innerHTML = card.html_fragment;
-      group.appendChild(holder);
+      _insertCardByOrder(group, holder, order);
       _injectStyles(extension.name, card.styles || []);
       _injectScripts(extension.name, card.scripts || []);
     });

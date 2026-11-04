@@ -68,6 +68,20 @@ _REPORTS_CARD = (
 
 
 @pytest.mark.unit
+def test_extensions_js_places_cards_by_declared_order() -> None:
+    js = _read("extensions.js")
+    # Each holder records its order so later cards can be placed among the
+    # extension cards already in the group; built-in sections carry none,
+    # so they always stay ahead of every extension card.
+    assert 'holder.setAttribute("data-ext-card-order", String(order));' in js
+    assert "const order = Number(card.order) || 0;" in js
+    assert "function _insertCardByOrder(group, holder, order)" in js
+    assert 'getAttribute("data-ext-card-order")' in js
+    assert "group.insertBefore(holder, " in js
+    assert "_insertCardByOrder(group, holder, order);" in js
+
+
+@pytest.mark.unit
 def test_extensions_js_appends_card_holder_directly_to_the_group() -> None:
     # The Reports-tab frame selects the holder as a direct child of the
     # group div; wrapping it would silently drop the frame.
