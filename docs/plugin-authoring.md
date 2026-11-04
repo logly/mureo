@@ -2994,12 +2994,18 @@ Contract:
 - Unlike a view, cards are injected **eagerly** when extension
   discovery renders (a built-in tab has no per-plugin click hook), so
   card scripts must be idempotent and cheap to load.
+- `order` (an `int`, default `0`) places the card within its group:
+  cards sit in ascending `order` after every built-in card, and cards
+  with equal `order` keep discovery order, so a card that belongs at the
+  bottom of its group (e.g. a destructive restore action after the
+  ordinary settings) declares a large value such as
+  `DashboardCard(group="advanced", html_fragment=..., order=100)`.
 - `dashboard_cards()` is called exactly once during discovery, like
   `view()`. A non-callable attribute, non-tuple return, or foreign
   element skips the whole extension with a `WebExtensionWarning`.
 - The index payload carries the cards as `dashboard_cards` (always
   present, `[]` when none): one
-  `{group, html_fragment, scripts, styles}` object per card.
+  `{group, html_fragment, scripts, styles, order}` object per card.
 
 ### `pyproject.toml`
 

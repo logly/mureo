@@ -1004,6 +1004,30 @@ def test_dashboard_card_rejects_non_tuple_assets() -> None:
 
 
 @pytest.mark.unit
+def test_dashboard_card_order_defaults_to_zero() -> None:
+    from mureo.web.extensions import DashboardCard
+
+    assert DashboardCard(group="advanced", html_fragment="<p>x</p>").order == 0
+
+
+@pytest.mark.unit
+def test_dashboard_card_accepts_an_explicit_order() -> None:
+    from mureo.web.extensions import DashboardCard
+
+    card = DashboardCard(group="advanced", html_fragment="<p>x</p>", order=100)
+    assert card.order == 100
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("order", [True, "1", 1.0, None])
+def test_dashboard_card_rejects_a_non_int_order(order: Any) -> None:
+    from mureo.web.extensions import DashboardCard
+
+    with pytest.raises(TypeError, match="DashboardCard.order must be int"):
+        DashboardCard(group="advanced", html_fragment="<p>x</p>", order=order)
+
+
+@pytest.mark.unit
 def test_web_extension_entry_defaults_dashboard_cards_to_empty() -> None:
     from mureo.web.extensions import WebExtensionEntry
 
@@ -1174,6 +1198,63 @@ def test_discover_skips_extension_with_non_callable_dashboard_cards(
         entries = discover_web_extensions()
     assert [e.name for e in entries] == ["demo"]
     assert any("non-callable-cards" in str(w.message) for w in caught)
+
+
+class _BottomCard:
+    """Discovered first by name, but asks for the bottom of its group."""
+
+    name = "a-bottom-card"
+    display_name = "Bottom card"
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+    def dashboard_cards(self) -> tuple[Any, ...]:
+        from mureo.web.extensions import DashboardCard
+
+        return (
+            DashboardCard(group="advanced", html_fragment="<p>last</p>", order=100),
+        )
+
+
+class _DefaultOrderCard:
+    name = "b-default-card"
+    display_name = "Default card"
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+    def dashboard_cards(self) -> tuple[Any, ...]:
+        from mureo.web.extensions import DashboardCard
+
+        return (DashboardCard(group="advanced", html_fragment="<p>first</p>"),)
+
+
+@pytest.mark.unit
+def test_discover_keeps_card_orders_as_declared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Discovery does not sort cards by ``order``: entries stay in name order
+    and each card keeps its declared value, so placement is left to the
+    renderer, which knows where the built-in cards are."""
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(
+        monkeypatch,
+        [
+            _FakeEP("a-bottom-card", _BottomCard),
+            _FakeEP("b-default-card", _DefaultOrderCard),
+        ],
+    )
+    entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["a-bottom-card", "b-default-card"]
+    assert [c.order for e in entries for c in e.dashboard_cards] == [100, 0]
 
 
 @pytest.mark.unit

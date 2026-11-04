@@ -360,6 +360,7 @@ mureo/
 │   │                    #   send_steps: multi-step envelope, 500 + "steps" only when every step failed (#891)
 │   ├── static_assets.py # The files GET /static/<name> may serve (_STATIC_ALLOWLIST) and their
 │   │                    #   content types; add a new mureo/_data/web/ file here
+│   ├── _extension_contributions.py # StaticAsset / ViewContribution / DashboardCard, re-exported by extensions.py
 │   └── auth_wizard.py   # Browser-based OAuth wizard spawned by web/oauth_bridge.py (per-platform creds)
 ├── demo/                # `mureo demo init` synthetic-bundle bootstrap (round-trips through BYOD)
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)

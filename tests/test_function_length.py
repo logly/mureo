@@ -432,7 +432,6 @@ KNOWN_LONG_FILES: dict[str, int] = {
     "mureo/mcp/tools_creative_studio.py": 806,
     "mureo/mcp/tools_mureo_context.py": 1569,
     "mureo/web/auth_wizard.py": 1427,
-    "mureo/web/extensions.py": 801,
     "mureo/web/handlers.py": 2318,
     "mureo/web/setup_actions.py": 1131,
 }

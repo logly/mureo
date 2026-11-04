@@ -1,3 +1,9 @@
+## [0.40.0] - 2026-11-05
+
+### Added
+
+- **`DashboardCard.order` lets an extension place its card within a built-in group.** Cards of one group sit in ascending `order` (the sort is stable, so equal values keep discovery order), always after the built-in cards; the default is `0`, and a card that belongs at the bottom of its group declares a large value such as `100`. The `/api/extensions` payload gains `order` on each `dashboard_cards` entry. Extensions that do not set it are unaffected. `StaticAsset`, `ViewContribution` and `DashboardCard` now live in `mureo/web/_extension_contributions.py` and are still imported from `mureo.web.extensions`.
+
 ## [0.39.0] - 2026-11-04
 
 ### Added
