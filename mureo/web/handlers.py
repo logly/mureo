@@ -2145,6 +2145,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                         "html_fragment": card.html_fragment,
                         "scripts": [a.filename for a in card.scripts],
                         "styles": [a.filename for a in card.styles],
+                        "order": card.order,
                     }
                     for card in entry.dashboard_cards
                 ],

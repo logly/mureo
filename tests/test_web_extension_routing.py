@@ -503,8 +503,45 @@ def test_extensions_index_includes_dashboard_cards(
             "html_fragment": "<section data-cardful>Cardful</section>",
             "scripts": ["cardful.js"],
             "styles": ["cardful.css"],
+            "order": 0,
         }
     ]
+
+
+def _make_ordered_card_entry(name: str, order: int) -> WebExtensionEntry:
+    from mureo.web.extensions import DashboardCard
+
+    card = DashboardCard(group="advanced", html_fragment="<p>c</p>", order=order)
+    return WebExtensionEntry(
+        name=name,
+        display_name=name,
+        routes=(),
+        view=None,
+        source_distribution=None,
+        dashboard_cards=(card,),
+    )
+
+
+@pytest.fixture
+def _ordered_card_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mureo.web.extensions._cached_entries",
+        (
+            _make_ordered_card_entry("a-bottom", 100),
+            _make_ordered_card_entry("b-default", 0),
+        ),
+    )
+
+
+@pytest.mark.unit
+def test_extensions_index_lists_card_orders_as_declared(
+    _ordered_card_entries: None, wizard: ConfigureWizard
+) -> None:
+    """The index keeps discovery order and each card's declared ``order``;
+    the renderer, not the server, places cards by it."""
+    payload = json.loads(get_raw(wizard, "/api/extensions").read().decode())
+    orders = [card["order"] for item in payload for card in item["dashboard_cards"]]
+    assert orders == [100, 0]
 
 
 @pytest.mark.unit
