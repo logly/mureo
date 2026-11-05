@@ -101,6 +101,29 @@ class TestParseStrategy:
         assert result[0].content == "TURNAROUND_RESCUE"
 
     @pytest.mark.unit
+    def test_parse_strategy_business_category(self) -> None:
+        """`## Business Category` parse: one token, kept as written."""
+        md = "# Strategy\n\n## Business Category\nlead_gen\n"
+        result = parse_strategy(md)
+        assert len(result) == 1
+        assert result[0].context_type == "business_category"
+        assert result[0].title == "Business Category"
+        assert result[0].content == "lead_gen"
+        assert render_strategy(result) == md
+
+    @pytest.mark.unit
+    def test_parse_strategy_business_category_keeps_any_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The vocabulary guides the agent; parsing never rejects a value."""
+        md = "# Strategy\n\n## Business Category\nsubscription box\n"
+        with caplog.at_level(logging.WARNING, logger="mureo.context.strategy"):
+            result = parse_strategy(md)
+        assert result[0].context_type == "business_category"
+        assert result[0].content == "subscription box"
+        assert caplog.records == []
+
+    @pytest.mark.unit
     def test_parse_strategy_unknown_section_preserved(self) -> None:
         """Unknown sections are PRESERVED as raw passthrough (#276).
 

@@ -94,8 +94,14 @@ _CAMPAIGN_ALWAYS_KEYS: tuple[str, ...] = (
     "campaign_goal",
     "notes",
 )
-#: Emitted only when set (#656 / #468), after the keys above.
-_CAMPAIGN_OPTIONAL_KEYS: tuple[str, ...] = ("monthly_budget", "metrics", "ads")
+#: Emitted only when set: ``campaign_type`` right after ``bidding_details``,
+#: the rest (#656 / #468) after the keys above.
+_CAMPAIGN_OPTIONAL_KEYS: tuple[str, ...] = (
+    "campaign_type",
+    "monthly_budget",
+    "metrics",
+    "ads",
+)
 CAMPAIGN_KNOWN_KEYS: frozenset[str] = frozenset(
     (*_CAMPAIGN_REQUIRED_KEYS, *_CAMPAIGN_ALWAYS_KEYS, *_CAMPAIGN_OPTIONAL_KEYS)
 )
@@ -232,6 +238,7 @@ def parse_campaign(c: dict[str, Any]) -> CampaignSnapshot:
         **_required_strings(c, _CAMPAIGN_REQUIRED_KEYS),
         bidding_strategy_type=c.get("bidding_strategy_type"),
         bidding_details=c.get("bidding_details"),
+        campaign_type=c.get("campaign_type"),
         daily_budget=c.get("daily_budget"),
         monthly_budget=c.get("monthly_budget"),
         device_targeting=_parse_device_targeting(c.get("device_targeting")),
@@ -456,11 +463,17 @@ def _canonical_campaign(c: CampaignSnapshot) -> dict[str, Any]:
         "status": c.status,
         "bidding_strategy_type": c.bidding_strategy_type,
         "bidding_details": c.bidding_details,
-        "daily_budget": c.daily_budget,
-        "device_targeting": device_targeting,
-        "campaign_goal": c.campaign_goal,
-        "notes": c.notes,
     }
+    # The platform's own campaign type: emit only when it was read, so a
+    # campaign that predates the field stays byte-stable on round-trip. It
+    # sits beside the bidding fields because both describe how the campaign
+    # is set up on the platform.
+    if c.campaign_type is not None:
+        result["campaign_type"] = c.campaign_type
+    result["daily_budget"] = c.daily_budget
+    result["device_targeting"] = device_targeting
+    result["campaign_goal"] = c.campaign_goal
+    result["notes"] = c.notes
     # The campaign's own monthly budget (#656): emit only where the platform
     # has that concept and it was read, so a per-day campaign stays
     # byte-stable and an absent figure is never written as a 0.

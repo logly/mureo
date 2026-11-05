@@ -38,7 +38,9 @@ right:
 
 - **Campaign snapshot** (root `campaigns[]` and `platforms[<p>].campaigns[]`) —
   required: `campaign_id` (str), `campaign_name` (str), `status` (str).
-  Optional: `bidding_strategy_type`, `daily_budget`, `campaign_goal`, `notes`,
+  Optional: `bidding_strategy_type`, `campaign_type` (the platform's own
+  campaign type, verbatim — Google Ads `SEARCH`, Meta `OUTCOME_LEADS`),
+  `daily_budget`, `campaign_goal`, `notes`,
   `device_targeting`, and `metrics` (the per-campaign performance object:
   `spend` / `impressions` / `clicks` / `conversions` / `cpa` / `ctr` / …).
 - **Platform entry** (`platforms[<platform>]`) — required: `account_id` (str;

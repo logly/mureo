@@ -354,6 +354,7 @@ _CAMPAIGN_FIELD_VALUES: dict[str, Any] = {
     "status": "ENABLED",
     "bidding_strategy_type": "TARGET_CPA",
     "bidding_details": {"target_cpa": 5000},
+    "campaign_type": "SEARCH",
     "daily_budget": 12000.0,
     "monthly_budget": 360000.0,
     "device_targeting": ({"device": "MOBILE", "modifier": 1.2},),

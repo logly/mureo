@@ -26,6 +26,12 @@ _SECTION_MAP: dict[str, str] = {
     "Brand Voice": "brand_voice",
     "Market Context": "market_context",
     "Operation Mode": "operation_mode",
+    # The advertiser's business model as one token (``ec``, ``lead_gen``,
+    # ``app``, ``store``, ``recruit``, ``brand``, ``other``). The vocabulary
+    # guides the agent that writes the section; the parser keeps any value,
+    # because a reader that dropped an unlisted one would lose the
+    # operator's own wording.
+    "Business Category": "business_category",
 }
 
 # Reverse mapping from context_type to heading (except Custom/Deep Research/Sales Material)
