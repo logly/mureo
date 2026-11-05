@@ -22,6 +22,12 @@
 
 _Local-first. Strategy-grounded. Safety-gated._
 
+<p align="center">
+  <img src="docs/img/daily-check-demo.gif" width="800" alt="A /daily-check run in Claude Code: the command is typed, a 7-day campaign table fills in, Prospecting B is flagged as approaching its CPA target, a bid-cap change from 520 to 470 is proposed with rollback ready, and the action is written to action_log with a 7-day observation window">
+</p>
+
+<p align="center"><em>One <code>/daily-check</code> turn, illustrated. Real anonymized output is further down.</em></p>
+
 Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the official ad-platform [MCPs](https://modelcontextprotocol.io/) and gives your AI a strategy to follow, an outcome to be measured against, and an audit trail you can show to anyone — **credentials never leave your machine**.
 
 > Commercial editions are also available — including a cloud-hosted service and a local Agency edition for teams and agencies. See **[mureo.jp](https://mureo.jp)**.

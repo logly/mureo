@@ -22,6 +22,12 @@
 
 _お手元のPCで完結。戦略に基づく。安全に運用。_
 
+<p align="center">
+  <img src="docs/img/daily-check-demo.ja.gif" width="800" alt="Claude Code での /daily-check の実行。コマンドが入力され、7日間のキャンペーン表が埋まり、新規獲得 B が CPA 目標に接近していると判定され、入札上限を ¥520 から ¥470 へ下げる案が rollback ready の状態で提示され、観測期限7日後として action_log に記録される">
+</p>
+
+<p align="center"><em><code>/daily-check</code> の実行イメージです。実際の出力例は下にあります。</em></p>
+
 Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラットフォームの公式 [MCP](https://modelcontextprotocol.io/) の上に乗り、AI に、守るべき戦略と、測るべき成果と、誰にでも見せられる監査証跡を持たせます。**認証情報はお手元のPCから出ません。**
 
 > チームや代理店向けの商用版（クラウド版と、ローカルで動く Agency 版）もご用意しています。詳しくは **[mureo.jp](https://mureo.jp)** をご覧ください。
