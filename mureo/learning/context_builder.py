@@ -85,21 +85,33 @@ def _find_campaign(
 ) -> tuple[str | None, CampaignSnapshot | None]:
     """The campaign ``campaign_id`` and the ``platforms`` key it sits under.
 
-    The v1 top-level ``campaigns`` comes first (no platform key). v2 moved
-    campaigns under ``platforms.<key>.campaigns``, so those are searched
-    next — only ``platforms[platform]`` when ``platform`` is given, because
-    a campaign id is unique per platform, not across them.
+    v2 keeps campaigns under ``platforms.<key>.campaigns``, so those are
+    searched first — only ``platforms[platform]`` when ``platform`` is given,
+    because a campaign id is unique per platform, not across them. Without
+    ``platform``, an id found under two keys is ambiguous and nothing is
+    returned rather than a guess by key order.
+
+    The v1 top-level ``campaigns`` is the fallback, only for an id found
+    under no platform key: ``upsert_campaign`` mirrors every campaign into
+    that platform-blind list, so a hit there for an id some platform holds
+    may be another platform's campaign.
     """
-    for snap in state.campaigns:
-        if snap.campaign_id == campaign_id:
-            return None, snap
-    for key, platform_state in (state.platforms or {}).items():
-        if platform and key != platform:
-            continue
-        for snap in platform_state.campaigns:
-            if snap.campaign_id == campaign_id:
-                return key, snap
-    return None, None
+    hits = [
+        (key, snap)
+        for key, platform_state in (state.platforms or {}).items()
+        for snap in platform_state.campaigns
+        if snap.campaign_id == campaign_id
+    ]
+    if platform:
+        scoped = [hit for hit in hits if hit[0] == platform]
+        if scoped:
+            return scoped[0]
+    elif len({key for key, _snap in hits}) == 1:
+        return hits[0]
+    if hits:
+        return None, None
+    flat = next((c for c in state.campaigns if c.campaign_id == campaign_id), None)
+    return None, flat
 
 
 def _campaign_lines(snap: CampaignSnapshot) -> list[str]:

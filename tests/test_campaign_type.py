@@ -10,7 +10,9 @@ rule ``bidding_strategy_type`` follows. Pinned here:
 - a value that is not a string is carried and written back as found, the
   way the codec treats the other free-form campaign fields;
 - a writer puts it in the codec's position, and a campaign kept with
-  ``raw`` keeps its on-disk order.
+  ``raw`` keeps its on-disk order;
+- an upsert that omits it keeps the stored value, one that supplies it
+  replaces the stored value.
 """
 
 from __future__ import annotations
@@ -137,3 +139,45 @@ class TestCampaignTypeWriters:
         doc = read_state_file(path)
         assert doc.platforms is not None
         assert doc.platforms["meta_ads"].campaigns[0].campaign_type == "OUTCOME_LEADS"
+
+    def test_an_upsert_without_it_keeps_the_stored_value(self, tmp_path: Path) -> None:
+        path = tmp_path / "STATE.json"
+        first = CampaignSnapshot(
+            campaign_id="c1",
+            campaign_name="Brand",
+            status="ENABLED",
+            campaign_type="SEARCH",
+        )
+        upsert_campaign(path, first, platform="google_ads", account_id="1")
+
+        upsert_campaign(
+            path,
+            CampaignSnapshot(campaign_id="c1", campaign_name="Brand", status="PAUSED"),
+            platform="google_ads",
+            account_id="1",
+        )
+
+        doc = read_state_file(path)
+        assert doc.platforms is not None
+        stored = doc.platforms["google_ads"].campaigns[0]
+        assert stored.status == "PAUSED"
+        assert stored.campaign_type == "SEARCH"
+
+    def test_a_supplied_value_replaces_the_stored_one(self, tmp_path: Path) -> None:
+        path = tmp_path / "STATE.json"
+        for campaign_type in ("DISPLAY", "SEARCH"):
+            upsert_campaign(
+                path,
+                CampaignSnapshot(
+                    campaign_id="c1",
+                    campaign_name="Brand",
+                    status="ENABLED",
+                    campaign_type=campaign_type,
+                ),
+                platform="google_ads",
+                account_id="1",
+            )
+
+        doc = read_state_file(path)
+        assert doc.platforms is not None
+        assert doc.platforms["google_ads"].campaigns[0].campaign_type == "SEARCH"

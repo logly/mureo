@@ -50,7 +50,8 @@ from mureo.context.state_io import _locked_state_mutation, _now_iso
 def _merge_ads(
     existing: CampaignSnapshot, incoming: CampaignSnapshot
 ) -> CampaignSnapshot:
-    """Inherit ``ads`` from ``existing`` when ``incoming`` did not supply it.
+    """Inherit ``ads`` and ``campaign_type`` from ``existing`` when
+    ``incoming`` did not supply them.
 
     An upsert replaces the whole snapshot, but ad-level state has no input on
     most calls: the standard flows fetch ads only for ACTIVE campaigns (an
@@ -59,14 +60,21 @@ def _merge_ads(
     ``ads`` from the last known statuses back to ``None`` ("never fetched"),
     silently destroying the audit trail #468 exists to create.
 
-    Only ``None`` ("not supplied") inherits. An empty tuple is a real
-    observation ("fetched, this campaign has no ads") and overwrites, as does
-    any non-empty list. Each :class:`AdState` carries its own ``as_of``, so an
-    inherited entry stays honestly dated rather than passing for fresh.
+    ``campaign_type`` is a static property of the campaign, set when it is
+    created, so an upsert that only refreshes metrics or status carries no
+    new value for it and must not clear the one already stored.
+
+    Only ``None`` ("not supplied") inherits. For ``ads`` an empty tuple is a
+    real observation ("fetched, this campaign has no ads") and overwrites, as
+    does any non-empty list. Each :class:`AdState` carries its own ``as_of``,
+    so an inherited entry stays honestly dated rather than passing for fresh.
     """
-    if incoming.ads is not None or existing.ads is None:
-        return incoming
-    return replace(incoming, ads=existing.ads)
+    inherited: dict[str, Any] = {}
+    if incoming.ads is None and existing.ads is not None:
+        inherited["ads"] = existing.ads
+    if incoming.campaign_type is None and existing.campaign_type is not None:
+        inherited["campaign_type"] = existing.campaign_type
+    return replace(incoming, **inherited) if inherited else incoming
 
 
 def _upsert_into(

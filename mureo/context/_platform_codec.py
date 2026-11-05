@@ -94,8 +94,9 @@ _CAMPAIGN_ALWAYS_KEYS: tuple[str, ...] = (
     "campaign_goal",
     "notes",
 )
-#: Emitted only when set: ``campaign_type`` right after ``bidding_details``,
-#: the rest (#656 / #468) after the keys above.
+#: Emitted only when set. ``campaign_type`` goes right after
+#: ``bidding_details``; ``monthly_budget`` / ``metrics`` / ``ads`` (#656 /
+#: #468) follow the always-emitted keys above.
 _CAMPAIGN_OPTIONAL_KEYS: tuple[str, ...] = (
     "campaign_type",
     "monthly_budget",

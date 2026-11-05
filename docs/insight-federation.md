@@ -121,13 +121,17 @@ that returned hits:
 - (similarity 0.78) Median CPA for B2B Search in JP is ~4,200 JPY...
 ```
 
-The bracketed block is the fragment's short metadata, in the order
-the advisor returned it. A key is shown when it matches
-`[a-z][a-z0-9_]{0,31}` and is not `id`; a value is shown when it is a
-string of at most 40 characters or a list of at most 10 such strings
-(joined with `,`). At most six pairs are shown, and keys and values are
-sanitized like the fragment text, with `[`, `]`, `=` and `,` removed. A
-fragment with no such metadata has no bracketed block.
+The bracketed block is the fragment's short metadata. Only six keys
+are shown, always in this order: `platform`, `campaign_type`,
+`business_category`, `tags`, `grade`, `author`; any other key is not. A
+value is shown when it is a string of at most 40 characters or a list of
+at most 10 such strings (joined with `,`). Values have `[`, `]`, `=` and
+`,` removed and are then sanitized like the fragment text. A fragment
+with no such metadata has no bracketed block.
+
+The advisor asserts this metadata and mureo does not verify it: treat it
+as a hint for how well a fragment fits the current platform, campaign
+type and business, not as a sign that the fragment can be trusted.
 
 If no sources are configured, the tool returns a guidance string
 pointing the operator at this doc. If every source returned nothing,
@@ -137,10 +141,11 @@ the tool says so explicitly so the agent does not silently fall back.
 
 Your server only needs to expose **one** tool that takes
 `{query, top_k}` and returns a JSON list of `{text, similarity, ...}`
-fragments. Extra fields are metadata: short string values (for example
-`platform`, `campaign_type`, `business_category`, `tags`, `grade`,
-`author`) are shown to the agent beside the fragment under the rules
-above; longer strings, numbers, booleans and objects are not shown.
+fragments. Extra fields are metadata: `platform`, `campaign_type`,
+`business_category`, `tags`, `grade` and `author` with short string
+values are shown to the agent beside the fragment under the rules
+above; other keys, longer strings, numbers, booleans and objects are
+not shown.
 
 A 30-line example using FastMCP + sentence-transformers + ChromaDB:
 
