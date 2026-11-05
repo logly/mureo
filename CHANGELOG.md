@@ -1,3 +1,16 @@
+## [Unreleased]
+
+### Added
+
+- **`campaign_type` on STATE.json campaign snapshots.** The platform's own name for the campaign type, verbatim (Google Ads `advertising_channel_type` such as `SEARCH` or `PERFORMANCE_MAX`, Meta `objective` such as `OUTCOME_LEADS`); mureo keeps no cross-platform mapping, as with `bidding_strategy_type`. It is written right after `bidding_details` and only when set, so a STATE.json written before the field existed parses unchanged and gains no key. `mureo_state_upsert_campaign` accepts it, and an upsert that omits it keeps the value already stored for that platform's campaign, since the type does not change with each metrics refresh. `/sync-state` copies it from the campaign list (`channel_type` on Google Ads, `objective` on Meta).
+- **A `## Business Category` STRATEGY.md section** holding one token for the advertiser's business model: `ec`, `lead_gen`, `app`, `store`, `recruit`, `brand` or `other`. `/onboard` asks for it. The list guides the agent; the parser keeps any value.
+- **`mureo_consult_advisor` takes an optional `platform`** (the STATE.json platform key). It narrows the campaign lookup to that platform and adds a `Platform:` line to the advisor query (the schema declares at most 120 characters, and whitespace in it collapses to single spaces); the query also gains a `Campaign type:` line when the snapshot has one, and recent actions recorded for another platform are left out. Without `platform`, a campaign id found under two platform keys is treated as ambiguous and no campaign is added.
+- **Advisor metadata is shown with each fragment** as `- (similarity 0.82) [platform=google_ads, campaign_type=SEARCH, tags=bidding,tracking] <text>`, so the agent can weigh how well a fragment fits the current platform, campaign type and business. Only `platform`, `campaign_type`, `business_category`, `tags`, `grade` and `author` are shown, in that order, and only with short string values (at most 40 characters, or lists of at most 10 such strings); values lose `[`, `]`, `=` and `,` and are then sanitized like the fragment text. The advisor asserts this metadata and mureo does not verify it, so it is a hint for relevance, not a trust signal. A fragment without such metadata renders exactly as before.
+
+### Fixed
+
+- **`mureo_consult_advisor` finds campaigns in v2 STATE.json.** The campaign lookup read only the v1 top-level `campaigns`, so with campaigns under `platforms.<key>.campaigns` no campaign context reached the advisors. It now searches `platforms` first and falls back to the top-level list only for an id no platform holds, because that list mirrors every platform's campaigns without their platform.
+
 ## [0.40.0] - 2026-11-05
 
 ### Added

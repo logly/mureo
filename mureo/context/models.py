@@ -148,6 +148,15 @@ class CampaignSnapshot:
     status: str
     bidding_strategy_type: str | None = None
     bidding_details: dict[str, Any] | None = None
+    # The platform's OWN name for the campaign type, verbatim: Google Ads
+    # ``advertising_channel_type`` (``SEARCH``, ``PERFORMANCE_MAX``, ...), Meta
+    # ``objective`` (``OUTCOME_LEADS``, ...), Amazon ``SPONSORED_PRODUCTS``.
+    # mureo keeps no cross-platform mapping — the rule ``bidding_strategy_type``
+    # follows — because any mapping would lose the distinctions a platform
+    # draws. ``None`` is "the platform has no such concept, or mureo has not
+    # read it". Optional with a None default so old STATE.json files parse
+    # unchanged and gain no new key on the next write.
+    campaign_type: str | None = None
     daily_budget: float | None = None
     # The campaign's own MONTHLY budget, where the platform has that concept
     # (#656) — a figure some platforms accept alongside the daily one. It sits

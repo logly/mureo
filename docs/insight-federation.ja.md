@@ -86,16 +86,35 @@ advisor が 1 つあっても、他の advisor をブロックしません。
   「Brand-Search の今週の CPA が 30% 上がっているのはなぜ?」
   ＞「Google 広告のコツ」
 - `campaign_id` (任意) — 指定すると mureo がそのキャンペーンの
-  name / status / daily_budget と直近の action_log を query に
-  注入するので、advisor のベクトル検索が文脈付きでマッチング
-  できます。
+  name / status / daily_budget / キャンペーン種類と直近の action_log
+  を query に注入するので、advisor のベクトル検索が文脈付きで
+  マッチングできます。キャンペーンは STATE.json の最上位
+  `campaigns` と、すべての `platforms.<key>.campaigns` から探します。
+- `platform` (任意) — STATE.json の媒体キー (`google_ads`,
+  `meta_ads`, `plugin:<distribution>:<provider>`)。キャンペーン ID は
+  媒体の中でしか一意でないため、キャンペーンの検索をその媒体に
+  絞り込み、query にも追加します。
+
+mureo が送る query は次の形です (欠けている項目は省かれ、質問は
+常に先頭に来ます):
+
+```
+Question: why is CPA up 30% on Brand-Search this week?
+Platform: google_ads
+Campaign: Brand-Search [ENABLED] (daily_budget=8000.0)
+Campaign type: SEARCH
+Recent actions:
+- 2026-04-01T10:30:00+09:00 Added 15 negative keywords: ...
+Strategy:
+- Business Category: ec
+```
 
 応答は単一の Markdown ブロックで、ヒットした advisor ごとに 1 つ
 section が並びます:
 
 ```
 ## acme
-- (similarity 0.92) CV が少ない時はマイクロコンバージョンを使う...
+- (similarity 0.92) [platform=google_ads, campaign_type=SEARCH, tags=bidding] CV が少ない時はマイクロコンバージョンを使う...
 - (similarity 0.81) Brand Search の CPA インフレは通常...
 
 ---
@@ -103,6 +122,19 @@ section が並びます:
 ## benchmarks
 - (similarity 0.78) 日本 B2B 検索の CPA 中央値は約 4,200 JPY...
 ```
+
+角括弧の部分は断片の短いメタデータです。表示するキーは
+`platform`, `campaign_type`, `business_category`, `tags`, `grade`,
+`author` の 6 つだけで、常にこの順に並びます。それ以外のキーは
+表示しません。値は 40 文字以内の文字列、または 40 文字以内の
+文字列を 10 個まで並べた配列 (`,` で連結) の場合に表示します。
+値は `[`, `]`, `=`, `,` を取り除いたうえで、断片本文と同じ無害化
+を通します。該当するメタデータの無い断片には角括弧の部分が
+付きません。
+
+このメタデータは advisor の自己申告で、mureo は検証しません。
+断片が今の媒体・キャンペーン種類・ビジネスにどれだけ合うかの
+手がかりとして扱い、断片を信頼してよい根拠にはしないでください。
 
 source が 1 件も設定されていなければ、本ドキュメントを案内する
 ガイダンス文字列を返します。全 source が空応答だった場合は
@@ -113,8 +145,11 @@ source が 1 件も設定されていなければ、本ドキュメントを案�
 
 server 側で必要なツールは **1 つ** だけです。
 `{query, top_k}` を受け取り、`{text, similarity, ...}` 形式の
-断片を JSON 配列で返します。追加フィールド (`tags`, `case_id`,
-ソース URL …) はそのまま agent へ転送されます。
+断片を JSON 配列で返します。追加フィールドはメタデータとして
+扱われ、`platform`, `campaign_type`, `business_category`, `tags`,
+`grade`, `author` の短い文字列値は上記の規則で断片の横に agent へ
+表示されます。それ以外のキー、長い文字列、数値、真偽値、
+オブジェクトは表示されません。
 
 FastMCP + sentence-transformers + ChromaDB を使った 30 行
 程度のサンプル:

@@ -454,6 +454,53 @@ async def test_upsert_campaign_schema_offers_the_monthly_budget(cwd_to_tmp) -> N
     assert "monthly_budget" in campaign_schema["properties"]
 
 
+async def test_upsert_campaign_writes_the_campaign_type(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_upsert_campaign")
+    campaign_schema = tool.inputSchema["properties"]["campaign"]
+    assert campaign_schema["properties"]["campaign_type"]["type"] == "string"
+
+    campaign = {
+        "campaign_id": "camp_t",
+        "campaign_name": "Brand",
+        "status": "ENABLED",
+        "campaign_type": "SEARCH",
+        "platform": "google_ads",
+        "account_id": "act_123",
+    }
+    result = await mod.handle_tool(
+        "mureo_state_upsert_campaign", {"campaign": campaign}
+    )
+
+    plat = json.loads(result[0].text)["platforms"]["google_ads"]
+    assert plat["campaigns"][0]["campaign_type"] == "SEARCH"
+
+
+async def test_a_metrics_only_upsert_keeps_the_campaign_type(cwd_to_tmp) -> None:
+    """The type is set once per campaign; a refresh that omits it keeps it."""
+    mod = _import_tools()
+    base = {
+        "campaign_id": "camp_t",
+        "campaign_name": "Leads",
+        "status": "ACTIVE",
+        "platform": "meta_ads",
+        "account_id": "act_123",
+    }
+    await mod.handle_tool(
+        "mureo_state_upsert_campaign",
+        {"campaign": {**base, "campaign_type": "OUTCOME_LEADS"}},
+    )
+
+    result = await mod.handle_tool(
+        "mureo_state_upsert_campaign",
+        {"campaign": {**base, "metrics": {"spend": 100.0}}},
+    )
+
+    snap = json.loads(result[0].text)["platforms"]["meta_ads"]["campaigns"][0]
+    assert snap["campaign_type"] == "OUTCOME_LEADS"
+    assert snap["metrics"]["spend"] == 100.0
+
+
 async def test_upsert_campaign_without_metrics_still_works(cwd_to_tmp) -> None:
     """Regression: an upsert with no ``metrics`` key still succeeds and the
     persisted snapshot carries no ``metrics`` field."""

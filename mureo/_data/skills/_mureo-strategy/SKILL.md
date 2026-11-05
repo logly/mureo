@@ -40,6 +40,7 @@ These files live in the project working directory and are read by AI agents to m
 | `## Brand Voice` | `brand_voice` | Tone, style, and language guidelines |
 | `## Market Context` | `market_context` | Competitive landscape and market trends |
 | `## Operation Mode` | `operation_mode` | Current operation mode (see below) |
+| `## Business Category` | `business_category` | The advertiser's business model as one token (see below) |
 | `## Custom: <title>` | `custom` | Freeform custom strategy entry |
 | `## Deep Research: <title>` | `deep_research` | Results from website/competitor research |
 | `## Sales Material: <title>` | `sales_material` | Extracted info from sales documents |
@@ -90,6 +91,10 @@ These files live in the project working directory and are read by AI agents to m
 
 EFFICIENCY_STABILIZE
 
+## Business Category
+
+ec
+
 ## Custom: Seasonal Strategy
 
 - Q1 (Jan-Mar): Budget conservative, focus on efficiency
@@ -127,6 +132,7 @@ EFFICIENCY_STABILIZE
 - Standard sections use exact heading names (`Persona`, `USP`, etc.)
 - Custom/research sections use the `Prefix: Title` format
 - Unknown section headings are logged as warnings and skipped during parsing
+- `## Business Category` holds one token for the advertiser's business model: `ec` (online sales), `lead_gen` (lead / form conversions), `app` (app installs), `store` (store visits), `recruit` (recruiting), `brand` (awareness) or `other`. The list guides what to write; a different value is kept as written, never rejected
 - The file always starts with `# Strategy` (h1 level)
 
 ### Goal Format
@@ -435,6 +441,7 @@ explicit `noise_pct` passed to `mureo_outcome_evaluate` overrides
           "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
           "bidding_details": {"target_cpa": 5000,
                               "bidding_strategy_system_status": "LEARNING_BUDGET_CHANGE"},
+          "campaign_type": "SEARCH",
           "daily_budget": 8000.0,
           "campaign_goal": "Lead generation for SaaS trial signups",
           "notes": "Learning period ends ~April 5. Do not change bids."
@@ -495,6 +502,7 @@ explicit `noise_pct` passed to `mureo_outcome_evaluate` overrides
 | `status` | string | Yes | `ENABLED`, `PAUSED`, or `REMOVED` |
 | `bidding_strategy_type` | string | No | The platform's OWN name for the strategy, verbatim (Google Ads e.g. `MAXIMIZE_CONVERSIONS`, `TARGET_CPA`). Omit for a platform that does not select delivery by a bid — see `../_mureo-state-schema/SKILL.md` → *Status vocabulary contract* |
 | `bidding_details` | object | No | Strategy-specific details (target_cpa, target_roas, etc.); omitted alongside `bidding_strategy_type` |
+| `campaign_type` | string | No | The platform's OWN name for the campaign type, verbatim (Google Ads `advertising_channel_type`, e.g. `SEARCH`, `PERFORMANCE_MAX`; Meta `objective`, e.g. `OUTCOME_LEADS`). Omit for a platform without the concept |
 | `daily_budget` | number | No | Daily budget in currency units |
 | `device_targeting` | array | No | Device bid modifiers |
 | `campaign_goal` | string | No | Business objective for this campaign |

@@ -67,6 +67,10 @@ Guide me through setting up mureo for a new marketing account.
        ask me. Picking `ONBOARDING_LEARNING` for a long-running campaign
        makes the first daily-check wrongly tell me to "prioritize data
        accumulation" when the data is already there.
+   - **Business Category**: Ask which one describes the business model and
+     write that token under `## Business Category`: `ec` (online sales),
+     `lead_gen` (lead / form conversions), `app` (app installs), `store`
+     (store visits), `recruit` (recruiting), `brand` (awareness) or `other`.
 
    If I don't know the answers to any of the above sections (Persona, USP,
    Target Audience, Brand Voice, Market Context — Operation Mode is chosen

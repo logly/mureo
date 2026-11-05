@@ -516,9 +516,7 @@ def _parse_ads_argument(raw: Any) -> tuple[AdState, ...] | None:
     return tuple(ads)
 
 
-async def handle_state_upsert_campaign(
-    arguments: dict[str, Any],
-) -> list[TextContent]:
+async def handle_state_upsert_campaign(arguments: dict[str, Any]) -> list[TextContent]:
     raw = _require(arguments, "campaign")
     if not isinstance(raw, dict):
         raise ValueError("campaign must be an object")
@@ -537,6 +535,7 @@ async def handle_state_upsert_campaign(
         status=_require(raw, "status"),
         bidding_strategy_type=raw.get("bidding_strategy_type"),
         bidding_details=raw.get("bidding_details"),
+        campaign_type=raw.get("campaign_type"),
         daily_budget=raw.get("daily_budget"),
         monthly_budget=raw.get("monthly_budget"),
         device_targeting=device_targeting,

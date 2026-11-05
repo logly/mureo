@@ -61,6 +61,7 @@ Key selling points extracted from the 2024 product deck.
 | `## Brand Voice` | `brand_voice` | Communication tone and style |
 | `## Market Context` | `market_context` | Market conditions and trends |
 | `## Operation Mode` | `operation_mode` | Current operational focus |
+| `## Business Category` | `business_category` | The advertiser's business model as one token: `ec`, `lead_gen`, `app`, `store`, `recruit`, `brand` or `other` (guidance; any value is kept) |
 | `## Custom: <title>` | `custom` | Any custom context with a title |
 | `## Deep Research: <title>` | `deep_research` | Research findings with a title |
 | `## Sales Material: <title>` | `sales_material` | Extracted sales material with a title |
@@ -1734,6 +1735,7 @@ so it opens its one client's report either way.
 | `status` | `string` | Yes | Current status (ENABLED, PAUSED, etc.) |
 | `bidding_strategy_type` | `string` | No | Bidding strategy type |
 | `bidding_details` | `object` | No | Strategy-specific details |
+| `campaign_type` | `string` | No | The platform's own name for the campaign type, verbatim (Google Ads `advertising_channel_type`, e.g. `SEARCH`; Meta `objective`, e.g. `OUTCOME_LEADS`). Omitted for a platform without the concept |
 | `daily_budget` | `number` | No | Daily budget amount |
 | `device_targeting` | `array` | No | Device bid modifiers |
 | `campaign_goal` | `string` | No | Human-readable campaign goal |

@@ -77,22 +77,42 @@ who expect shell-script-style inheritance.
 
 ## Calling the tool
 
-`mureo_consult_advisor` takes two arguments:
+`mureo_consult_advisor` takes three arguments:
 
 - `question` (required) — the specific question to research. Concrete
   beats generic: "why is CPA up 30% on Brand-Search this week?" works
   much better than "tips for Google Ads".
 - `campaign_id` (optional) — when provided, mureo attaches the
-  campaign's name / status / daily budget plus the most recent
-  action-log entries to the query, so the advisor's vector search
-  can match against richer context.
+  campaign's name / status / daily budget / campaign type plus the most
+  recent action-log entries to the query, so the advisor's vector
+  search can match against richer context. The campaign is looked up
+  in the top-level `campaigns` and in every `platforms.<key>.campaigns`
+  of STATE.json.
+- `platform` (optional) — the STATE.json platform key (`google_ads`,
+  `meta_ads`, `plugin:<distribution>:<provider>`). It narrows the
+  campaign lookup to that platform, since a campaign id is unique only
+  within one platform, and is added to the query.
+
+The query mureo sends looks like this (missing pieces are dropped; the
+question always comes first):
+
+```
+Question: why is CPA up 30% on Brand-Search this week?
+Platform: google_ads
+Campaign: Brand-Search [ENABLED] (daily_budget=8000.0)
+Campaign type: SEARCH
+Recent actions:
+- 2026-04-01T10:30:00+09:00 Added 15 negative keywords: ...
+Strategy:
+- Business Category: ec
+```
 
 The response is a single Markdown block, one section per advisor
 that returned hits:
 
 ```
 ## acme
-- (similarity 0.92) Use micro-conversions when CV volume is sparse...
+- (similarity 0.92) [platform=google_ads, campaign_type=SEARCH, tags=bidding] Use micro-conversions when CV volume is sparse...
 - (similarity 0.81) Brand search CPA inflation typically tracks...
 
 ---
@@ -100,6 +120,18 @@ that returned hits:
 ## benchmarks
 - (similarity 0.78) Median CPA for B2B Search in JP is ~4,200 JPY...
 ```
+
+The bracketed block is the fragment's short metadata. Only six keys
+are shown, always in this order: `platform`, `campaign_type`,
+`business_category`, `tags`, `grade`, `author`; any other key is not. A
+value is shown when it is a string of at most 40 characters or a list of
+at most 10 such strings (joined with `,`). Values have `[`, `]`, `=` and
+`,` removed and are then sanitized like the fragment text. A fragment
+with no such metadata has no bracketed block.
+
+The advisor asserts this metadata and mureo does not verify it: treat it
+as a hint for how well a fragment fits the current platform, campaign
+type and business, not as a sign that the fragment can be trusted.
 
 If no sources are configured, the tool returns a guidance string
 pointing the operator at this doc. If every source returned nothing,
@@ -109,8 +141,11 @@ the tool says so explicitly so the agent does not silently fall back.
 
 Your server only needs to expose **one** tool that takes
 `{query, top_k}` and returns a JSON list of `{text, similarity, ...}`
-fragments. Extra fields (`tags`, `case_id`, source URLs, …) are
-forwarded verbatim to the agent.
+fragments. Extra fields are metadata: `platform`, `campaign_type`,
+`business_category`, `tags`, `grade` and `author` with short string
+values are shown to the agent beside the fragment under the rules
+above; other keys, longer strings, numbers, booleans and objects are
+not shown.
 
 A 30-line example using FastMCP + sentence-transformers + ChromaDB:
 

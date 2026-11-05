@@ -304,6 +304,7 @@ mureo/
 │   ├── _handlers_tracking.py              # Tracking-parameter consistency handler (#550)
 │   ├── tools_mureo_context.py            # STRATEGY.md / STATE.json read-write + outcome eval
 │   ├── _handlers_mureo_context.py        # Mureo-context handlers (atomic file writes)
+│   ├── _campaign_schema.py               # mureo_state_upsert_campaign's `campaign` argument schema
 │   ├── _outcome_thresholds.py            # Outcome verdict thresholds from ## Guardrails (#888)
 │   ├── tools_analytics_registry.py       # mureo_analytics_modules_list / _run (#440)
 │   ├── tools_learning.py                 # mureo_learning_insights_get / mureo_consult_advisor
