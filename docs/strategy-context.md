@@ -313,7 +313,7 @@ A platform key is one of:
   through the plugin / bridge path, where `<dist>` is the provider's pip
   **distribution** name and `<provider>` the **entry-point name** that
   platform is registered under. One distribution may ship several platforms
-  (`mureo-lineyahoo-bridge` ships `line_ads`, `yahoo_ads` and
+  (`mureo-lineyahoo-bridge` ships `yahoo_ads` and
   `yahoo_ads_display`), so the distribution alone cannot name one of them —
   see #537. The shape does not depend on how many a distribution happens to
   ship: Amazon Ads is `plugin:mureo-amazon-ads-bridge:amazon_ads`.

@@ -3309,16 +3309,16 @@ label from, and the `platform` field `mureo_analytics_modules_list`
 reports — so a skill holding a STATE.json key finds your analytics.
 
 **Why both halves.** One distribution may ship several platforms:
-`mureo-lineyahoo-bridge` registers `line_ads`, `yahoo_ads` and
+`mureo-lineyahoo-bridge` registers `yahoo_ads` and
 `yahoo_ads_display`. Keyed on the distribution alone (the original #481
-form) all three collapse onto one key, so a writer files three
+form) both collapse onto one key, so a writer files two
 platforms' spend under one entry — one platform's numbers recorded as
 another's — and the key cannot be resolved back to which platform it
 meant.
 
 **The shape never depends on how many platforms you happen to ship.** A
 single-platform distribution gets the same two-part key as a
-three-platform one. Deriving the shape from that count would silently
+two-platform one. Deriving the shape from that count would silently
 change your first platform's key the day you add a second, breaking
 joins for data already written under it.
 

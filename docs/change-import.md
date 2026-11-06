@@ -35,7 +35,6 @@ are different from "nothing happened there".
 | Meta Ads | `meta_ads` | Ad Account Activity (`/activities` edge on the Marketing API) | **No** | mureo ships no client for that edge. The data exists on Meta's side; mureo does not fetch it yet |
 | Amazon Ads (official-MCP bridge) | `plugin:mureo-amazon-ads-bridge:amazon_ads` | Vendor API | **No** | The bridge can opt in through the ABI hook below; it does not today |
 | Yahoo Ads (Search / Display) | `plugin:<dist>:yahoo_ads` / `…:yahoo_ads_display` | Vendor change history | **No** | Same — plugin-side, via the ABI hook |
-| LINE Ads | `plugin:<dist>:line_ads` | Vendor API | **No** | Same |
 | SmartNews Ads | `plugin:<dist>:…` | Vendor API | **No** | Same |
 | TikTok Ads (hosted connector) | `tiktok_ads` | The connector's own tools | **No — and mureo cannot** | TikTok is outside mureo's data path entirely: mureo holds no credentials and dispatches nothing. A skill that can call the connector's change tools records what it finds through `mureo_state_action_log_append` with `origin: "external"` (see *Hosted connectors* below) |
 | Search Console / GA4 | — | n/a | n/a | Not ad-serving platforms; no change surface to import |
