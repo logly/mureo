@@ -95,9 +95,10 @@ def _imports_inside(package: str, path: pathlib.Path) -> bool:
                 return True
             if node.module is not None and _is_inside(node.module, package):
                 return True
-        elif isinstance(node, ast.Import):
-            if any(_is_inside(alias.name, package) for alias in node.names):
-                return True
+        elif isinstance(node, ast.Import) and any(
+            _is_inside(alias.name, package) for alias in node.names
+        ):
+            return True
     return False
 
 
