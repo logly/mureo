@@ -14,10 +14,10 @@ Why the provider is part of the key (#537)
 ------------------------------------------
 #481 keyed on the distribution alone, which assumes a distribution ships
 exactly one platform. It does not have to:
-``mureo-lineyahoo-bridge`` registers ``line_ads``, ``yahoo_ads`` and
-``yahoo_ads_display``. Under the distribution-only key all three
+``mureo-lineyahoo-bridge`` registers ``yahoo_ads`` and
+``yahoo_ads_display``. Under the distribution-only key both
 canonicalise to ``plugin:mureo-lineyahoo-bridge``, so a writer that
-canonicalises correctly files three platforms' spend under one entry —
+canonicalises correctly files two platforms' spend under one entry —
 one platform's numbers recorded as another's — and the key cannot be
 resolved back to which platform it meant.
 
