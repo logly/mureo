@@ -112,7 +112,7 @@ _OPS_PARAMS: Final[tuple[str, ...]] = (
 )
 
 #: Journal families whose name is also the platform a change was made on.
-_PLATFORM_FAMILIES: Final[frozenset[str]] = frozenset(
+PLATFORM_FAMILIES: Final[frozenset[str]] = frozenset(
     {"google_ads", "meta_ads", "search_console"}
 )
 
@@ -463,7 +463,7 @@ def applied_params_of(arguments: Mapping[str, Any]) -> dict[str, Any] | None:
 
 def _platform_of(name: str) -> str | None:
     family = tool_family(name)
-    return family if family in _PLATFORM_FAMILIES else None
+    return family if family in PLATFORM_FAMILIES else None
 
 
 def _record_unentried(
@@ -564,6 +564,7 @@ __all__ = [
     "EXPECTED_PROPERTY",
     "EXPECTED_REQUIRED",
     "INJECTED_EXPECTED_PROPERTY",
+    "PLATFORM_FAMILIES",
     "REASON_REQUIRED",
     "OpsParams",
     "applied_params_of",

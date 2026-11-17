@@ -107,7 +107,8 @@ _MUTATING_BUILTIN_SUFFIXES: frozenset[str] = frozenset(
         "_upload",
         "_send",
         "_set",
-        "_tag",
+        # "_tag" is deliberately absent: google_ads_conversions_tag only
+        # fetches tag snippets and does not change platform state.
         "_boost",
         "_activate",
         "_revoke",
