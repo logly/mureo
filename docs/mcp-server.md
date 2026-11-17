@@ -1429,6 +1429,20 @@ Missing required parameters raise `ValueError`, which the MCP protocol surfaces 
 ValueError: Required parameter customer_id is not specified
 ```
 
+### Checking a stored call before dispatch
+
+A caller that stores a tool call and dispatches it later (an approval queue, a scheduled run) can ask two questions up front. Both functions live in `mureo/mcp/tool_checks.py` and are exported from `mureo.mcp` (#983, #984):
+
+```python
+from mureo.mcp import check_tool_call, writes_to_platform
+
+writes_to_platform("google_ads_campaigns_update_status")  # True
+check_tool_call("google_ads_campaigns_list", {"status_filter": "PAUSED"})  # None
+```
+
+- **`writes_to_platform(name)`** returns `True` when dispatching the tool can change something on a platform account (Google Ads, Meta Ads, Search Console, a plugin platform). A plugin tool answers with its declared semantics, and one that declares none counts as writing. `rollback_apply` is `True`: it re-applies a change on the platform it reverses. Tools that write mureo's local state (`mureo_state_*`, `mureo_strategy_set`, `mureo_batch_*`), analysis tools and `creative_studio_*` are `False`. An unknown name raises `ValueError("Unknown tool: <name>")`, so a typo is never reported as safe.
+- **`check_tool_call(name, arguments)`** raises `ValueError` when dispatch would reject the call as a caller error: an unknown tool, a malformed `reason` / `expected` / `decision_id` / `approval`, an `inputSchema` violation, switching ops history off through `mureo_state_settings_set`, or a missing `reason` / `expected` while ops history is on. The message is the one dispatch raises, because the same functions run in the same order. It runs no policy gate, calls no platform, writes nothing and journals nothing. It reads the workspace's `STATE.json` only to learn whether ops history is enabled, as dispatch does. A call that passes can still be refused by a policy gate or fail on the platform. `ToolSchemaUnusableError` (the tool's schema cannot check the call) propagates unchanged: it is not a caller error.
+
 ### Rate Limiting
 
 - **Google Ads**: Uses gRPC with automatic retry built into the SDK.

@@ -271,6 +271,7 @@ mureo/
 ├── mcp/                     # MCP server
 │   ├── __main__.py                        # python -m mureo.mcp entry point
 │   ├── server.py                          # MCP server setup (stdio transport)
+│   ├── tool_checks.py                     # writes_to_platform / check_tool_call: dispatch's own classification and caller-error checks, for a stored call (#983, #984)
 │   ├── _plugin_tables.py                  # _PLUGIN_DISPATCH / _PLUGIN_SEMANTICS dict objects, below server so
 │   │                                      #   the journal hook imports them at top level; server fills
 │   │                                      #   them in place at load (and on reload) (#879)

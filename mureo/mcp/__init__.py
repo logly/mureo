@@ -5,9 +5,12 @@ from mureo.mcp.server import (
     handle_list_tools,
     main,
 )
+from mureo.mcp.tool_checks import check_tool_call, writes_to_platform
 
 __all__ = [
+    "check_tool_call",
     "handle_call_tool",
     "handle_list_tools",
     "main",
+    "writes_to_platform",
 ]
