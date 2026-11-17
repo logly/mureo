@@ -51,7 +51,7 @@ google_ads_conversions_get	read
 google_ads_conversions_list	read
 google_ads_conversions_performance	read
 google_ads_conversions_remove	write
-google_ads_conversions_tag	write
+google_ads_conversions_tag	read
 google_ads_conversions_update	write
 google_ads_cost_increase_investigate	read
 google_ads_cpc_detect_trend	read

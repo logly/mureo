@@ -142,7 +142,6 @@ _MUTATING_CATALOGUE: frozenset[str] = frozenset(
         "google_ads_campaigns_update_status",
         "google_ads_conversions_create",
         "google_ads_conversions_remove",
-        "google_ads_conversions_tag",
         "google_ads_conversions_update",
         "google_ads_device_targeting_set",
         "google_ads_keywords_add",
