@@ -9,6 +9,7 @@ diff; the parity cases pin that the pre-check raises dispatch's own message.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ import pytest
 from mureo.context.models import StateDocument
 from mureo.context.settings_store import set_ops_history_enabled
 from mureo.context.state import write_state_file
+from mureo.core.actor import ACTION_REASON_MAX_CHARS
 from mureo.core.runtime_context import reset_runtime_context
 from mureo.mcp import check_tool_call, journal, server, writes_to_platform
 from mureo.mcp._ops_history_param import EXPECTED_REQUIRED
@@ -25,7 +27,15 @@ from mureo.mcp._plugin_tables import _PLUGIN_DISPATCH, _PLUGIN_SEMANTICS
 from mureo.mcp._tools_settings import SWITCH_OFF_REFUSED
 from mureo.mcp.plugin_semantics import ToolSemantics
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+    pytest.mark.unit,
+    # A family switched off by MUREO_DISABLE_* is not served, so its tools are
+    # unknown to the predicate and the pinned table cannot be compared.
+    pytest.mark.skipif(
+        any(key.startswith("MUREO_DISABLE_") for key in os.environ),
+        reason="a MUREO_DISABLE_* variable is set",
+    ),
+]
 
 TABLE = Path(__file__).parent / "data" / "tool_platform_writes.txt"
 STATUS_TOOL = "google_ads_campaigns_update_status"
@@ -177,6 +187,8 @@ _BAD_CALLS: list[tuple[str, dict[str, Any]]] = [
     ("nope_nope", {}),
     (LIST_TOOL, {"status_filter": 7}),
     (STATUS_TOOL, _status_args(approval=BAD_APPROVAL)),
+    (STATUS_TOOL, _status_args(reason="x" * (ACTION_REASON_MAX_CHARS + 1))),
+    (STATUS_TOOL, _status_args(reason="Paused by mistake.", expected={"bad": 1})),
     ("mureo_state_settings_set", {"ops_history_enabled": False}),
 ]
 
@@ -184,7 +196,7 @@ _BAD_CALLS: list[tuple[str, dict[str, Any]]] = [
 @pytest.mark.parametrize(
     ("name", "arguments"),
     _BAD_CALLS,
-    ids=["unknown", "schema", "approval", "switch_off"],
+    ids=["unknown", "schema", "approval", "long_reason", "bad_expected", "switch_off"],
 )
 async def test_check_matches_dispatch(
     workspace: Path,

@@ -4,8 +4,9 @@ A caller that stores a call and dispatches it later — an approval queue, a
 scheduled run, a list of pending changes — needs to know, when it stores the
 call, whether the call will touch a platform account and whether dispatch
 would turn it away as malformed. Both answers come from the functions the
-dispatcher itself runs (:func:`mureo.mcp.server.handle_call_tool`), so they
-cannot drift from it:
+dispatcher itself runs (:func:`mureo.mcp.server.handle_call_tool`), called
+in dispatch order; the parity tests in ``tests/test_tool_checks.py`` pin
+that the messages stay equal:
 
 * :func:`writes_to_platform` — the journal's family label and the
   dispatcher's own mutating classification.
@@ -23,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Final
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp import server as _server
 from mureo.mcp._journal_hook import (
-    _PLUGIN_FAMILY,
+    PLUGIN_FAMILY,
     UNKNOWN_FAMILY,
     tool_family,
     tool_mutating,
@@ -42,7 +43,7 @@ if TYPE_CHECKING:
 #: Built-in families whose mutating tools change a platform account.
 #: ``rollback`` is one: ``rollback_apply`` re-applies, on the platform, the
 #: inverse of the change it reverses.
-PLATFORM_WRITE_FAMILIES: Final[frozenset[str]] = PLATFORM_FAMILIES | {"rollback"}
+_PLATFORM_WRITE_FAMILIES: Final[frozenset[str]] = PLATFORM_FAMILIES | {"rollback"}
 
 
 def _known_family(name: str) -> str:
@@ -72,9 +73,9 @@ def writes_to_platform(name: str) -> bool:
             is never reported as safe.
     """
     family = _known_family(name)
-    if family == _PLUGIN_FAMILY:
+    if family == PLUGIN_FAMILY:
         return tool_mutating(name, family)
-    return family in PLATFORM_WRITE_FAMILIES and is_mutating_builtin_tool(name)
+    return family in _PLATFORM_WRITE_FAMILIES and is_mutating_builtin_tool(name)
 
 
 def check_tool_call(name: str, arguments: Mapping[str, Any]) -> None:
@@ -102,10 +103,13 @@ def check_tool_call(name: str, arguments: Mapping[str, Any]) -> None:
         name, dict(arguments), _server._REASON_TOOLS
     )
     ops, handler_args = split_ops_params(name, handler_args, _server._OPS_TOOLS)
+    # The injected-parameter sets and the schema check live on the server
+    # module, which is frozen in size, so they are read from there rather than
+    # re-exported.
     _server._validate_tool_input(name, dict(arguments))
     check_settings_call(name, handler_args)
     if name in _server._OPS_TOOLS:
         check_ops_call(name, reason, ops, handler_args)
 
 
-__all__ = ["PLATFORM_WRITE_FAMILIES", "check_tool_call", "writes_to_platform"]
+__all__ = ["check_tool_call", "writes_to_platform"]

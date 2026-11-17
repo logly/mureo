@@ -5,6 +5,10 @@
 - **`mureo.mcp.writes_to_platform(name)`** (#984) answers whether dispatching a tool can change something on a platform account (Google Ads, Meta Ads, Search Console, a plugin platform). A plugin tool answers with its declared semantics, and one that declares none counts as writing, as the dispatcher treats it. A built-in tool writes when it is mutating and belongs to a platform family or to `rollback`, because `rollback_apply` re-applies a change on the platform it reverses. Tools that write mureo's local state, analysis tools and `creative_studio_*` answer `False`. An unknown name raises `ValueError("Unknown tool: <name>")`, so a typo is never reported as safe. `PLATFORM_FAMILIES` in `mureo/mcp/_ops_history_param.py` is now public and shared by both.
 - **`mureo.mcp.check_tool_call(name, arguments)`** (#983) raises `ValueError` when dispatch would reject a call as a caller error, with dispatch's own message: it runs the same parameter split, `inputSchema` check, ops-history switch-off refusal and `reason` / `expected` requirement, in the same order. It runs no policy gate, calls no platform, writes nothing and journals nothing; it reads the workspace's `STATE.json` only to learn whether ops history is enabled, which decides whether `expected` is required. A call that passes can still be refused by a policy gate at dispatch. See "Checking a stored call before dispatch" in `docs/mcp-server.md`.
 
+### Changed
+
+- **`google_ads_conversions_tag` is classified as read-only.** It only fetches the tag snippets of a conversion action, as its description says, but the `_tag` suffix put it in the mutating table, so it carried the injected `reason` parameter and the STRATEGY.md reminder and was journalled as a platform write. The suffix is gone from the table: the tool no longer accepts `reason`, is journalled as a read and answers `False` to `writes_to_platform`. Bundled here because the pinned classification table must hold a true row for it.
+
 ## [0.41.0] - 2026-11-05
 
 ### Added

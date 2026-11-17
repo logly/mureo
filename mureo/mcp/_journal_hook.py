@@ -79,7 +79,7 @@ JOURNAL_OUTCOMES: tuple[str, ...] = (
 #: an agent calling a tool that does not exist is worth seeing.
 UNKNOWN_FAMILY = "unknown"
 
-_PLUGIN_FAMILY = "plugin"
+PLUGIN_FAMILY = "plugin"
 
 #: Random bytes in a journal ``call_id``.
 _CALL_ID_BYTES = 8
@@ -140,7 +140,7 @@ def tool_family(name: str) -> str:
 
 def tool_mutating(name: str, family: str) -> bool:
     """Whether ``name`` is a mutation, by the dispatcher's own rules."""
-    if family != _PLUGIN_FAMILY:
+    if family != PLUGIN_FAMILY:
         return is_mutating_builtin_tool(name)
     semantics = _PLUGIN_SEMANTICS.get(name)
     return True if semantics is None else bool(semantics.mutating)
@@ -293,7 +293,7 @@ class JournalledCall:
                 rationale=self.rationale,
                 duration_ms=int((time.monotonic() - self._started) * 1000),
                 source=(
-                    plugin_source_of(self.tool) if family == _PLUGIN_FAMILY else None
+                    plugin_source_of(self.tool) if family == PLUGIN_FAMILY else None
                 ),
                 rollback=is_rollback_dispatch_active(),
                 call_id=self.call_id,
@@ -326,6 +326,7 @@ def journal_call(tool: str, arguments: dict[str, Any]) -> Iterator[JournalledCal
 
 
 __all__ = [
+    "PLUGIN_FAMILY",
     "JOURNAL_OUTCOMES",
     "UNKNOWN_FAMILY",
     "JournalledCall",
