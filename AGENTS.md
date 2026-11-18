@@ -156,7 +156,12 @@ mureo/
 │   ├── journal_read.py                    # Reading JOURNAL.jsonl back — the parse, the date, the
 │   │                                      #   filter and the tail reader, shared with `mureo journal`.
 │   │                                      #   The *_files forms walk the rotated siblings as one record
-│   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89)
+│   ├── tool_guidance.py                   # Plugin tool notes (`_meta["mureo"]["guidance"]`) on when to
+│   │                                      #   consider a tool — rendered into the MCP server's
+│   │                                      #   `instructions`, only for plugin tools this server serves
+│   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89);
+│                                          #   served_tool_owners: the tool → provider map both
+│                                          #   always-on `instructions` blocks are scoped by
 ├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair + journal; ad ops are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── setup_cmd.py     # `mureo setup claude-code` / `cursor` / `codex` / `gemini`
@@ -345,9 +350,13 @@ mureo/
 │   │                         #   context/monthly_budget.py reads it at top level.
 │   │                         #   strategy_gate re-exports its public names (#879)
 │   ├── learning_rules.py     # Per-platform learning-period facts + their first-party sources (#548)
+│   ├── always_on_block.py    # Greedy whole-line fitting + omission notice for a bounded block on
+│   │                         #   the MCP server's `instructions`; shared by platform_model.py
+│   │                         #   and mcp/tool_guidance.py
 │   ├── platform_model.py     # Per-platform delivery-model prose + first-party sources (#648) —
-│   │                         #   the ONLY always-on plugin channel: rendered into the MCP
-│   │                         #   server's `instructions`, scoped to the platforms served
+│   │                         #   rendered into the MCP server's `instructions`, scoped to the
+│   │                         #   platforms served (plugin tool notes are the other always-on
+│   │                         #   channel, mcp/tool_guidance.py)
 │   └── learning_reset.py     # Reset-class + learning-state pre-flight the gate refuses on
 ├── learning/            # Read-side /learn companion: insight federation across configured sources
 ├── creative_studio/     # Creator-grade ad-creative (image) generation via pluggable providers

@@ -64,7 +64,7 @@ from mureo.plugin_warnings import PluginToolWarning
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
 
     from mcp.types import Tool
 
@@ -348,6 +348,41 @@ def plugin_provider_name(provider: object) -> str:
     return value if isinstance(value, str) else ""
 
 
+def served_tool_owners(
+    tools: Iterable[Tool], dispatch: Mapping[str, object]
+) -> dict[str, str]:
+    """Which provider contributed each plugin tool this server exposes (#648).
+
+    The ownership map ``platform_model_instructions`` and
+    ``tool_guidance_instructions`` decide scope from. Only plugin tools
+    appear: mureo's own built-in tools are deliberately absent, so a
+    third-party model claiming ``google_ads_`` or ``meta_ads_`` matches
+    nothing and renders nothing. Core registers no models, so leaving its tools
+    unowned costs nothing and removes a whole class of impersonation.
+
+    The owner is the breadcrumb ``collect_plugin_tools`` stamps from
+    ``ProviderEntry.name`` — the registry key, which is itself first-wins
+    protected — rather than an attribute the instance could restyle later. The
+    fallback to ``name`` covers the ``__slots__`` provider whose stamp the
+    collector had to skip.
+
+    Intersected with the exposed ``tools``: a ``dispatch`` entry with no
+    exposed tool is not a served tool, and only a served tool puts a platform
+    in scope.
+    """
+    exposed = frozenset(tool.name for tool in tools)
+    owners: dict[str, str] = {}
+    for name, provider in dispatch.items():
+        if name not in exposed:
+            continue
+        owner = getattr(provider, "_mureo_provider_name", None) or getattr(
+            provider, "name", None
+        )
+        if isinstance(owner, str) and owner:
+            owners[name] = owner
+    return owners
+
+
 __all__ = [
     "MCPReversibleToolProvider",
     "MCPToolProvider",
@@ -355,4 +390,5 @@ __all__ = [
     "collect_plugin_tools",
     "plugin_provider_name",
     "plugin_source",
+    "served_tool_owners",
 ]

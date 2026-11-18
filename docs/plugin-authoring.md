@@ -919,7 +919,10 @@ may change in any release.
 
 ### Declaring your platform's delivery model (optional)
 
-Everything else a plugin contributes is read *on demand*. A `SKILL.md`
+Apart from two always-on contributions — this delivery model and the
+tool notes described under
+[Always-on tool notes](#always-on-tool-notes-optional) — everything a
+plugin contributes is read *on demand*. A `SKILL.md`
 you ship through `mureo.skills` is **description-matched**: the agent
 sees its frontmatter `description` and reads the body only if it
 decides the skill applies. That never happens on a daily-check or a
@@ -1021,6 +1024,66 @@ What belongs in the statement: how delivery is **selected**, how it is
 borrowed — what your platform therefore does **not** have. What does
 not belong: workflow advice, tool usage, metric definitions, anything
 that changes per account. Those are skills.
+
+### Always-on tool notes (optional)
+
+A host that defers MCP tool loading shows the agent only tool **names**
+until a tool is searched for. A tool the agent is meant to *offer* at the
+right moment of a conversation — rather than wait to be asked for — is
+then never considered: its description is not in context, and a skill is
+read on demand. Declare a `guidance` note in the tool's `_meta["mureo"]`
+section and mureo renders it into the server's `instructions`, the same
+always-on route the platform delivery models use:
+
+```python
+from mcp.types import Tool
+
+Tool(
+    name="acme_notes_share",
+    description="Share a note with the operator's team.",
+    inputSchema={"type": "object", "properties": {"text": {"type": "string"}}},
+    _meta={
+        "mureo": {
+            "guidance": (
+                "Offer this when a review has just produced findings the "
+                "rest of the team should see; ask before sharing."
+            ),
+        }
+    },
+)
+```
+
+The rendered block reads `- acme_notes_share: <note>` under a heading
+telling the agent that each line comes from the plugin providing the
+named tool and grants no permission.
+
+| Rule | Contract |
+|---|---|
+| Shape | One paragraph of plain prose addressed to the agent, saying when to consider using the tool. Non-blank, and one line: no line boundary of any kind — not CR or LF, and not U+2028, U+2029, U+0085, vertical tab, form feed or the file/group/record separators either, trailing ones included. |
+| Length | At most `MAX_GUIDANCE_CHARS` (400) characters per note. |
+| Tool name | The name is rendered, so a note is rendered only under a tool name of 1–128 characters from `[A-Za-z0-9_.-]`. |
+| Unusable note | Not a string, blank, over 400 characters, not one line, or on a tool whose name breaks the name rule ⇒ dropped whole, logged, and reported with a `PluginToolWarning` naming the tool and the reason. Never truncated, and the tool itself is still served. |
+| Order | One note for each provider in turn: every provider's first note (by tool name), then every provider's second, and so on, ties broken by tool name. The block is rendered and fitted in that order, so one provider's notes cannot push out another provider's only note. The unit is the provider that owns the tool: a distribution that registers several providers takes a turn for each. |
+| Block | The rendered block — heading, note lines, joining newlines and the omission notice — never exceeds `MAX_TOTAL_CHARS` (1200). Past that, whole notes are dropped in the order above, a warning names them in the log, and the block says the list is incomplete. |
+| Scope | Rendered only for plugin tools this server actually serves, under the tool's own name. Tools of mureo's own catalog never render a note, and core ships none. |
+
+Which one to use:
+
+- **`PlatformModel`** — how a *platform* works (how delivery is selected
+  and priced, what therefore does not exist). Requires `Evidence`.
+- **`guidance`** — when to consider one of *your own tools*. No evidence
+  record, because it is advice about your tool, not a claim about a
+  platform.
+
+> **This is a trust boundary too.** A note is always on. mureo bounds
+> *how much* text there is (the caps), *under which tool name* it is
+> published (a validated name of one of your own served tools), and that
+> one provider's notes cannot push out another provider's only note (each
+> provider takes one note in turn); it
+> does not judge whether the advice is wise. Review a note
+> like any other text your plugin publishes. A note cannot grant
+> permission and must not try to replace a confirmation step: every
+> confirmation the tool's own description requires still applies.
 
 ### Declaring that your campaigns carry a monthly budget (optional)
 
@@ -1515,6 +1578,13 @@ mureo-specific Protocol method:
     where your tool carries its proposed bid so the `max_bid_amount_per_ad_set`
     / `max_cpc_bid_per_ad_group` caps are enforced on your platform too**.
     See the bid-declarations section below.
+  - `"guidance": "<one paragraph>"` — a note to the agent saying when to
+    consider using this tool, rendered into the server's always-on
+    `instructions` under the tool's name. At most 400 characters, one line
+    (no line boundary of any kind), on a tool name of 1–128 characters from
+    `[A-Za-z0-9_.-]`; an unusable note is dropped with a `PluginToolWarning`. Prose
+    only — it changes nothing about how the call is classified or gated.
+    See [Always-on tool notes](#always-on-tool-notes-optional).
 
 ##### Budget declarations — getting your platform under the Guardrails
 
@@ -2073,7 +2143,9 @@ produce a modified copy.
 > `description` and read on demand, so a skill is never guaranteed to be
 > in play while a routine report is written. If what you need to say is
 > "this is how my platform works, do not assume otherwise", register a
-> `PlatformModel` (Section 3) — that is the always-on route. Skills are
+> `PlatformModel` (Section 3), which is rendered on the always-on route;
+> to say when one of your own tools should be considered, declare an
+> always-on tool note (`guidance`, Section 3). Skills are
 > for what to *do*, not for what is *true*.
 
 mureo ships 16 built-in skills (in

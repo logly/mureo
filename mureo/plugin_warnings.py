@@ -33,8 +33,9 @@ class PluginToolWarning(UserWarning):
 
     Raised for a plugin that cannot be instantiated, whose ``mcp_tools()``
     fails, whose tool name collides with a built-in or another plugin's, or
-    whose ``inputSchema`` cannot be compiled (that last one costs the tool its
-    input validation; the tool still dispatches).
+    whose ``inputSchema`` cannot be compiled (that one costs the tool its
+    input validation; the tool still dispatches), or whose ``guidance`` note
+    cannot be rendered — that costs the tool its note only.
 
     A distinct subclass so a strict deployment can opt into
     ``warnings.filterwarnings("error", category=PluginToolWarning)`` and refuse
