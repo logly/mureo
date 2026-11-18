@@ -163,7 +163,7 @@ Campaign diagnostics that pinpoint *why* ads aren't delivering -- budget constra
 
 ### Learnable operational know-how
 
-When you correct the agent or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so the agent doesn't repeat the same mistakes and applies what it learned to similar situations across your account.
+When you correct the agent or share an operational insight, `/learn` saves it to a persistent knowledge base. In every future session the MCP server tells the agent to load that knowledge before it diagnoses or changes an account, so the agent doesn't repeat the same mistakes and applies what it learned to similar situations across your account.
 
 ```
 You: /learn That's not a real CPA spike -- this industry always dips in Golden Week.

@@ -87,10 +87,10 @@ class InsightSource:
         if not isinstance(self.tool, str) or not self.tool.strip():
             raise ValueError("tool must be a non-empty string")
         if self.transport == "stdio":
-            if not self.command or not self.command.strip():
+            if not isinstance(self.command, str) or not self.command.strip():
                 raise ValueError("stdio transport requires a 'command'")
         else:  # sse / http
-            if not self.url or not self.url.strip():
+            if not isinstance(self.url, str) or not self.url.strip():
                 raise ValueError(f"{self.transport} transport requires a 'url'")
         # ``top_k`` upper cap protects against accidental megafetches.
         if (
@@ -158,17 +158,8 @@ def load_insight_sources(path: Path | None = None) -> InsightSourceConfig:
     sources: list[InsightSource] = []
     seen_names: set[str] = set()
     for idx, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            logger.warning("insight_sources: entry %d is not an object, skipping", idx)
-            continue
-        try:
-            src = _build_source(entry)
-        except (ValueError, TypeError) as exc:
-            # TypeError guards against a JSON null/list/dict reaching int()/
-            # float() in _build_source (e.g. {"top_k": null}) — without it that
-            # one bad entry would crash the whole advisor-config load instead of
-            # being skipped, breaking the "empty config + WARNING" contract.
-            logger.warning("insight_sources: entry %d invalid (%s), skipping", idx, exc)
+        src = _parse_entry(idx, entry)
+        if src is None:
             continue
         if src.name in seen_names:
             logger.warning(
@@ -182,6 +173,24 @@ def load_insight_sources(path: Path | None = None) -> InsightSourceConfig:
         sources.append(src)
 
     return InsightSourceConfig(sources=tuple(sources))
+
+
+def _parse_entry(idx: int, entry: object) -> InsightSource | None:
+    """Build the source at position ``idx``, or ``None`` (and a WARNING) if invalid."""
+    if not isinstance(entry, dict):
+        logger.warning("insight_sources: entry %d is not an object, skipping", idx)
+        return None
+    try:
+        return _build_source(entry)
+    except (ValueError, TypeError, OverflowError) as exc:
+        # TypeError guards against a JSON null/list/dict reaching int()/
+        # float() in _build_source (e.g. {"top_k": null}) — without it that
+        # one bad entry would crash the whole advisor-config load instead of
+        # being skipped, breaking the "empty config + WARNING" contract.
+        # OverflowError is the same guard for a number those two cannot
+        # represent: an infinite top_k, an integer too large for a float.
+        logger.warning("insight_sources: entry %d invalid (%s), skipping", idx, exc)
+        return None
 
 
 def serialize_insight_source(source: InsightSource) -> dict[str, Any]:

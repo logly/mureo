@@ -14,6 +14,8 @@ metadata:
 # Google Ads (v25)
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
+**Before you diagnose or change anything**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions or making a change.
+
 > Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 > **There is no `mureo google-ads …` CLI command.** Every operation below is an

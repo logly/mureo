@@ -305,3 +305,11 @@ disclosure-of-all-tenants.
 Both tools coexist. v0.9.18's `mureo_learning_insights_get` is
 unchanged; v0.9.19's `mureo_consult_advisor` adds the external
 surface alongside it.
+
+When at least one source is configured, the MCP server's `instructions`
+name `mureo_consult_advisor` (and `mureo_learning_insights_get` when
+`/learn` insights are saved), telling the agent to call them before it
+diagnoses or changes an ad account even when no workflow skill is running.
+The check runs when the server starts, so a source added mid-session is
+named from the next session. See "Saved knowledge" in
+[mcp-server.md](mcp-server.md).

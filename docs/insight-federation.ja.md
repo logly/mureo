@@ -318,3 +318,11 @@ bind します。1 回の検索が partition をまたいではいけません�
 両ツールは共存します。v0.9.18 の `mureo_learning_insights_get` は
 変更なし、v0.9.19 の `mureo_consult_advisor` がその隣に
 外部参照面として追加されます。
+
+source が 1 つ以上設定されていると、MCP サーバーの `instructions` が
+`mureo_consult_advisor` を(`/learn` の知見が保存されていれば
+`mureo_learning_insights_get` も)名指しし、ワークフロー skill を使わない
+会話でも、広告アカウントを診断・変更する前に呼ぶようエージェントに指示します。
+判定はサーバー起動時に行うため、セッション途中で追加した source は次の
+セッションから反映されます。詳しくは [mcp-server.md](mcp-server.md) の
+「Saved knowledge」を参照してください。

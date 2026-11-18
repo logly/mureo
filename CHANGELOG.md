@@ -1,3 +1,18 @@
+## [Unreleased]
+
+### Added
+
+- **The server's `instructions` tell the agent to read saved knowledge before it diagnoses or changes an ad account.** The workflow skills' "Before you start" line and the learning tools' descriptions are not in the model's context until a skill runs or a tool is searched for, so a direct request made without a workflow skill reached the agent with nothing saying that saved knowledge exists. A fourth block, after the tool notes, names `mureo_learning_insights_get` when `/learn` insights are saved and `mureo_consult_advisor` when an advisor source is configured, one `- <tool name>: <sentence>` line each under a heading. It is an instruction, not an enforcement, and is computed when the server starts, so knowledge saved mid-session takes effect in the next session. An install with nothing saved and no advisor source keeps byte-identical `instructions`. The new module is `mureo.mcp.knowledge_instructions`; the probes are `saved_insights_present()` and `advisors_configured()` in `mureo.mcp.tools_learning`, which use the same rules as the two tools' handlers. See "Saved knowledge" in `docs/mcp-server.md`.
+
+### Changed
+
+- **The platform skills (`_mureo-google-ads`, `_mureo-meta-ads`, `_mureo-amazon-ads`) point to the shared Diagnostic preamble** with a "Before you diagnose or change anything" line, and the preamble in `_mureo-shared` now states that it applies to any diagnosis or change, including a direct request made without a workflow skill. `mureo_learning_insights_get`'s description also covers proposing or making a change outside the diagnostic workflows.
+- **The README, `README.ja.md` and the `/learn` skill no longer say saved knowledge is loaded at the start of every session**, which nothing did; they now say the server tells the agent to load it before diagnosing or changing an account. `docs/insight-federation.md` describes when the advisor tool is named in `instructions`.
+
+### Fixed
+
+- **An advisor source entry with a wrong-typed or out-of-range value is skipped instead of raising.** `load_insight_sources` promises the empty config and a warning on any failure, but a non-text `command` or `url` raised `AttributeError`, and an infinite `top_k` or an integer `timeout_sec` too large for a float raised `OverflowError`, which failed every `mureo_consult_advisor` call. The entry is now reported and skipped like any other invalid entry, and its valid siblings are kept.
+
 ## [0.43.0] - 2026-11-18
 
 ### Added

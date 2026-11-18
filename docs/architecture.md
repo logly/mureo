@@ -309,6 +309,7 @@ mureo/
 │   ├── _outcome_thresholds.py            # Outcome verdict thresholds from ## Guardrails (#888)
 │   ├── tools_analytics_registry.py       # mureo_analytics_modules_list / _run (#440)
 │   ├── tools_learning.py                 # mureo_learning_insights_get / mureo_consult_advisor
+│   ├── knowledge_instructions.py         # Always-on instruction to read saved knowledge (server instructions)
 │   └── tools_creative_studio.py          # creative_studio_* (generate / edit / compose)
 ├── core/                    # Provider registry + shared entry-point plumbing (mureo.native_skills group)
 │                            #   and the RuntimeContext store Protocols (StateStore, ...). core never
