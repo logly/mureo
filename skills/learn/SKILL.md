@@ -10,9 +10,10 @@ metadata:
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
 
 Save a marketing diagnosis insight to the pro-diagnosis knowledge base.
-Saved insights are loaded at the start of future sessions and applied
-across `/daily-check`, `/rescue`, `/budget-rebalance`, and the other
-diagnostic workflows.
+In every future session the MCP server tells the agent to load saved
+insights before it diagnoses or changes an ad account, and
+`/daily-check`, `/rescue`, `/budget-rebalance` and the other diagnostic
+workflows load them before drawing conclusions.
 
 The skill persists insights by shelling out to `mureo learn add`,
 which routes the write through the KnowledgeStore Protocol. The

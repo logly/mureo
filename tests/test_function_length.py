@@ -283,7 +283,6 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
     ("mureo/learning/context_builder.py", "build_query"): 63,
     ("mureo/learning/federation.py", "_open_session"): 52,
     ("mureo/learning/federation.py", "_parse_fragments"): 54,
-    ("mureo/learning/insight_sources.py", "load_insight_sources"): 56,
     ("mureo/mcp/_handlers_analysis.py", "_resolve_state_file"): 53,
     (
         "mureo/mcp/_handlers_delivery_collapse.py",

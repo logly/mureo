@@ -165,7 +165,9 @@ TOOLS: list[Tool] = [
             "Call this near the start of every diagnostic workflow "
             "(/daily-check, /rescue, /budget-rebalance, "
             "/creative-refresh, /goal-review, /competitive-scan, "
-            "/search-term-cleanup) BEFORE drawing conclusions, so "
+            "/search-term-cleanup) BEFORE drawing conclusions, and "
+            "before proposing or making a change to an ad account "
+            "outside those workflows, so "
             "accumulated practitioner know-how informs the analysis "
             "instead of being ignored. Returns a guidance string when "
             "no insights have been saved in either tier."
@@ -313,6 +315,39 @@ def _workspace_content(store: Any) -> str | None:
     if not text.strip():
         return None
     return text
+
+
+def saved_insights_present() -> bool:
+    """Whether :data:`TOOLS`' insights tool has a saved insight to return.
+
+    Uses the same rules the tool's handler does: the operator tier counts
+    when it is not scaffold-only, the workspace tier when
+    :func:`_workspace_content` returns its text. An operator read that raises,
+    or returns something other than text, counts as no content, for the reason
+    :func:`_workspace_content` gives: a third-party ``KnowledgeStore`` can fail
+    transiently, and a probe run while the server starts must not turn that
+    into a failure.
+    """
+    store = get_runtime_context().knowledge_store
+    try:
+        operator_present = not _is_scaffold_only(store.read_operator_knowledge())
+    except Exception:  # noqa: BLE001 — must never break the probe
+        logger.warning(
+            "learning insights: reading the operator tier failed — treating "
+            "it as empty",
+            exc_info=True,
+        )
+        operator_present = False
+    return operator_present or _workspace_content(store) is not None
+
+
+def advisors_configured() -> bool:
+    """Whether at least one advisor source is configured.
+
+    The same load the advisor tool's handler makes; a missing or malformed
+    file is the empty config :func:`load_insight_sources` already returns.
+    """
+    return bool(load_insight_sources().sources)
 
 
 def _compose_two_tier_payload(operator_text: str, workspace_text: str) -> str:

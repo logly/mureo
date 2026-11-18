@@ -18,6 +18,8 @@ metadata:
 > declaration-first guardrails, `action_log` promotion, structural strategy
 > parity for mutations. This file does not repeat any of it.
 
+**Before you diagnose or change anything**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions or making a change.
+
 > Tool names below refer to the built-in platforms; a namespaced variant (see `_mureo-shared` → Namespaced built-in variants) is used with its prefix substituted.
 
 > **Canonical platform key: `plugin:mureo-amazon-ads-bridge:amazon_ads`.** Use it verbatim

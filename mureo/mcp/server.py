@@ -104,6 +104,7 @@ from mureo.mcp.exclusion_preflight import (
 from mureo.mcp.exclusion_preflight import (
     refusal_content as exclusion_refusal_content,
 )
+from mureo.mcp.knowledge_instructions import knowledge_instructions
 from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
 from mureo.mcp.plugin_semantics import (
@@ -136,6 +137,7 @@ from mureo.mcp.tools_creative_studio import (
 from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
 from mureo.mcp.tools_learning import TOOLS as LEARNING_TOOLS
+from mureo.mcp.tools_learning import advisors_configured, saved_insights_present
 from mureo.mcp.tools_learning import handle_tool as handle_learning_tool
 from mureo.mcp.tools_learning_preflight import TOOLS as LEARNING_PREFLIGHT_TOOLS
 from mureo.mcp.tools_learning_preflight import (
@@ -1136,6 +1138,16 @@ def _tool_guidance_instruction() -> str:
     return tool_guidance_instructions(_ALL_TOOLS, _plugin_tool_owners())
 
 
+def _knowledge_instruction() -> str:
+    """Saved-knowledge block, fixed at ``initialize``: new knowledge shows next session."""
+    try:
+        has_insights = saved_insights_present()
+    except runtime_context.RuntimeContextFactoryError:  # as _workspace_instruction
+        return ""
+    advisors = advisors_configured()
+    return knowledge_instructions(has_insights=has_insights, has_advisors=advisors)
+
+
 def _plugin_tool_owners() -> dict[str, str]:
     """:func:`~mureo.mcp.tool_provider.served_tool_owners` for this server."""
     return served_tool_owners(_ALL_TOOLS, _PLUGIN_DISPATCH)
@@ -1144,15 +1156,15 @@ def _plugin_tool_owners() -> dict[str, str]:
 def _server_instructions() -> str | None:
     """Compose the server's MCP ``instructions``, or ``None`` if there is none.
 
-    Three contributions, in this order — the bound-workspace notice, the
-    per-platform delivery models (#648) and the plugin tool notes — joined by a
-    blank line, each only when non-empty.
+    Four contributions, in this order — the bound-workspace notice, the
+    platform delivery models (#648), the plugin tool notes and the saved
+    knowledge — joined by a blank line, each only when non-empty.
 
     Returns ``None`` when all are empty, which is the default single-workspace
-    install with no platform model registered and no tool note declared: its
+    install with no platform model, tool note, insight or advisor source: its
     ``InitializeResult`` stays byte-identical, so standalone OSS users see no
-    change. A multi-workspace install with neither gets exactly the workspace
-    string it got before.
+    change. A multi-workspace install with none of the others gets exactly the
+    workspace string it got before.
     """
     sections = [
         section
@@ -1160,6 +1172,7 @@ def _server_instructions() -> str | None:
             _workspace_instruction(),
             _platform_model_instruction(),
             _tool_guidance_instruction(),
+            _knowledge_instruction(),
         )
         if section
     ]

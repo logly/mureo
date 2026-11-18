@@ -263,6 +263,55 @@ class TestLoadInsightSources:
             cfg = load_insight_sources(path)
         assert [s.name for s in cfg.sources] == ["ok"]
 
+    @pytest.mark.parametrize(
+        "bad_entry",
+        [
+            {"name": "bad", "transport": "stdio", "tool": "t", "command": 5},
+            {"name": "bad", "transport": "http", "tool": "t", "url": 5},
+            {"name": "bad", "transport": "sse", "tool": "t", "url": ["u"]},
+            {
+                "name": "bad",
+                "transport": "stdio",
+                "tool": "t",
+                "command": "x",
+                "top_k": float("inf"),
+            },
+            {
+                "name": "bad",
+                "transport": "stdio",
+                "tool": "t",
+                "command": "x",
+                "timeout_sec": 10**400,
+            },
+        ],
+        ids=[
+            "command-not-text",
+            "url-not-text",
+            "url-list",
+            "top_k-infinite",
+            "timeout-too-large-for-float",
+        ],
+    )
+    def test_entry_with_wrong_value_type_skipped_others_kept(
+        self,
+        bad_entry: dict[str, object],
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A wrong-typed or out-of-range value skips that entry, never raises."""
+        path = tmp_path / "insight_sources.json"
+        ok = {
+            "name": "ok",
+            "transport": "stdio",
+            "command": "ok-mcp",
+            "tool": "vector_search",
+        }
+        path.write_text(json.dumps({"sources": [bad_entry, ok]}), encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="mureo.learning.insight_sources"):
+            cfg = load_insight_sources(path)
+        assert [s.name for s in cfg.sources] == ["ok"]
+        assert any("entry 0 invalid" in r.getMessage() for r in caplog.records)
+
     def test_explicit_empty_env_round_trips_through_loader(
         self, tmp_path: Path
     ) -> None:

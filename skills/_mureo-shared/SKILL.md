@@ -482,9 +482,13 @@ Detection limits — including the cases where it **may flag something you meant
 
 > Workflow skills (daily-check, rescue, budget-rebalance, goal-review,
 > search-term-cleanup, competitive-scan, creative-refresh, creative-generate,
-> weekly-report, lead-form-create) point here with a **Before you start** line.
-> This is the single canonical copy of that preamble — run it before drawing
-> any conclusions.
+> weekly-report, lead-form-create) point here with a **Before you start** line,
+> and the platform skills (_mureo-google-ads, _mureo-meta-ads,
+> _mureo-amazon-ads) with a **Before you diagnose or change anything** line.
+> It applies to any diagnosis of an ad account or change to one, including a
+> direct request made without a workflow skill. This is the single canonical
+> copy of that preamble — run it before drawing any conclusions or making a
+> change.
 
 **Before you start**: Call `mureo_learning_insights_get` (no arguments) and treat the returned Markdown as authoritative practitioner know-how. Those insights were recorded by the operator via `/learn` precisely because they're worth applying — let them inform every conclusion you draw below. When the response is the "no insights saved yet" guidance, proceed without it.
 
