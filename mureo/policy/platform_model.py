@@ -90,6 +90,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
 
+from mureo.policy.always_on_block import is_single_line, render_block
 from mureo.policy.learning_rules import Evidence
 
 if TYPE_CHECKING:
@@ -184,7 +185,7 @@ def _validate(model: PlatformModel) -> None:
             f"{len(statement)} characters; the always-on budget is "
             f"{MAX_STATEMENT_CHARS}"
         )
-    if any(char in statement for char in "\r\n"):
+    if not is_single_line(statement):
         raise ValueError(
             f"platform model statement for {model.platform!r} must be one "
             f"paragraph of plain prose (no line breaks)"
@@ -288,28 +289,6 @@ def models_in_scope(tool_owners: Mapping[str, str]) -> tuple[PlatformModel, ...]
     )
 
 
-def _fit(
-    models: tuple[PlatformModel, ...], reserve: int
-) -> tuple[list[str], list[str]]:
-    """Greedily fit statement lines into the budget, ``reserve`` held back.
-
-    Whole statements only: half a platform model is worse than none, because a
-    truncated sentence still reads as a complete claim.
-    """
-    lines: list[str] = []
-    dropped: list[str] = []
-    used = len(_HEADING)
-    for model in models:
-        line = f"- {model.platform}: {model.statement}"
-        # +1 for the newline that joins this line to the block.
-        if used + 1 + len(line) + reserve > MAX_TOTAL_CHARS:
-            dropped.append(model.platform)
-            continue
-        used += 1 + len(line)
-        lines.append(line)
-    return lines, dropped
-
-
 def platform_model_instructions(tool_owners: Mapping[str, str]) -> str:
     """Render the always-on block for the platforms in scope, within budget.
 
@@ -317,27 +296,24 @@ def platform_model_instructions(tool_owners: Mapping[str, str]) -> str:
     counting the heading, the statement lines, the newlines joining them and
     the truncation notice. Returns ``""`` when nothing is in scope, which is
     what keeps a default install's ``InitializeResult`` byte-identical.
+
+    Whole statements only, fitted by
+    :func:`~mureo.policy.always_on_block.render_block`: half a platform model
+    is worse than none, because a truncated sentence still reads as a complete
+    claim.
     """
-    models = models_in_scope(tool_owners)
-    if not models:
-        return ""
-    # First pass spends the whole budget on statements; only if something did
-    # not fit is a notice needed, and only then does it cost anything. The
-    # reserve is computed for the largest count the notice could ever carry,
-    # so the second pass cannot overshoot.
-    lines, dropped = _fit(models, reserve=0)
-    note = ""
+    entries = [
+        (model.platform, f"- {model.platform}: {model.statement}")
+        for model in models_in_scope(tool_owners)
+    ]
+    block, dropped = render_block(_HEADING, entries, MAX_TOTAL_CHARS, _omission_note)
     if dropped:
-        lines, dropped = _fit(models, reserve=1 + len(_omission_note(len(models))))
-        note = _omission_note(len(dropped))
         logger.warning(
             "platform model block exceeds %d characters; omitted: %s",
             MAX_TOTAL_CHARS,
             ", ".join(dropped),
         )
-    if not lines:
-        return ""
-    return "\n".join([_HEADING, *lines, *([note] if note else [])])
+    return block
 
 
 __all__ = [

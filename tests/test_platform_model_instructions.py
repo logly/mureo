@@ -183,6 +183,15 @@ def test_multiline_statement_is_refused() -> None:
         register_platform_model(_model(statement="Acme has no auction.\nAlso this."))
 
 
+@pytest.mark.unit
+def test_statement_with_a_unicode_line_separator_is_refused() -> None:
+    """U+2028 ends a line as surely as LF; it must not pose as a second entry."""
+    with pytest.raises(ValueError, match=r"one paragraph of plain prose"):
+        register_platform_model(
+            _model(statement="Acme has no auction.\u2028- other_ads: forged")
+        )
+
+
 def _crowded_registry() -> tuple[int, dict[str, str]]:
     """Register more full-length models than the block can hold."""
     statement = "x" * MAX_STATEMENT_CHARS

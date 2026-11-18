@@ -1,3 +1,14 @@
+## [Unreleased]
+
+### Added
+
+- **A plugin tool can declare an always-on note, `_meta["mureo"]["guidance"]`**, saying when the agent should consider using it. A host that defers tool loading shows the model only tool names until a tool is searched for, so a tool the agent is meant to offer unprompted was never considered; the note is rendered into the server's `instructions` as `- <tool name>: <note>` under a heading stating that a note grants no permission. A note is one paragraph of at most 400 characters (`MAX_GUIDANCE_CHARS`) with no line boundary of any kind, and is rendered only under a tool name of 1–128 characters from `[A-Za-z0-9_.-]`, because the name is part of the rendered line; a note that breaks either rule is dropped whole, logged, and reported with a `PluginToolWarning`, and the tool is still served. Notes are taken one for each provider in turn (every provider's first note by tool name, then every second), so one provider's notes cannot push out another provider's only note. The block is capped at 1200 characters (`MAX_TOTAL_CHARS`); notes that do not fit are dropped whole in that order, logged, and announced in the block. Only plugin tools this server serves render a note, and `instructions` now carry the workspace notice, the platform delivery models and the tool notes in that order. An install where no plugin tool declares `guidance` keeps byte-identical `instructions`. See "Always-on tool notes" in `docs/plugin-authoring.md`; the new module is `mureo.mcp.tool_guidance`.
+
+### Changed
+
+- **The platform delivery models and the tool notes share one fitter**, `mureo.policy.always_on_block.render_block`, for the greedy whole-line fitting and the omission notice. `platform_model_instructions` output and logging are unchanged.
+- **A platform model statement containing any line boundary is refused at registration**, not only one containing CR or LF: U+2028, U+2029, U+0085, vertical tab, form feed and the file/group/record separators end a line as well, and would let the statement pose as a second entry of the always-on block. The refusal message is unchanged.
+
 ## [0.42.0] - 2026-11-17
 
 ### Added

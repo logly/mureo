@@ -110,10 +110,12 @@ from mureo.mcp.plugin_semantics import (
     derive_semantics,
     record_mutation_action_log,
 )
+from mureo.mcp.tool_guidance import tool_guidance_instructions
 from mureo.mcp.tool_provider import (
     collect_plugin_tools,
     plugin_provider_name,
     plugin_source,
+    served_tool_owners,
 )
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analysis import handle_tool as handle_analysis_tool
@@ -1129,51 +1131,36 @@ def _platform_model_instruction() -> str:
     return platform_model_instructions(_plugin_tool_owners())
 
 
+def _tool_guidance_instruction() -> str:
+    """The served plugin tools' own notes on when to consider them."""
+    return tool_guidance_instructions(_ALL_TOOLS, _plugin_tool_owners())
+
+
 def _plugin_tool_owners() -> dict[str, str]:
-    """Which provider contributed each plugin tool this server exposes (#648).
-
-    The ownership map ``platform_model_instructions`` decides scope from. Only
-    plugin tools appear: mureo's own built-in tools are deliberately absent, so
-    a third-party model claiming ``google_ads_`` or ``meta_ads_`` matches
-    nothing and renders nothing. Core registers no models, so leaving its tools
-    unowned costs nothing and removes a whole class of impersonation.
-
-    The owner is the breadcrumb ``collect_plugin_tools`` stamps from
-    ``ProviderEntry.name`` — the registry key, which is itself first-wins
-    protected — rather than an attribute the instance could restyle later. The
-    fallback to ``name`` covers the ``__slots__`` provider whose stamp the
-    collector had to skip.
-
-    Intersected with ``_ALL_TOOLS``: a dispatch entry with no exposed tool is
-    not a served tool, and only a served tool puts a platform in scope.
-    """
-    exposed = frozenset(tool.name for tool in _ALL_TOOLS)
-    owners: dict[str, str] = {}
-    for name, provider in _PLUGIN_DISPATCH.items():
-        if name not in exposed:
-            continue
-        owner = getattr(provider, "_mureo_provider_name", None) or getattr(
-            provider, "name", None
-        )
-        if isinstance(owner, str) and owner:
-            owners[name] = owner
-    return owners
+    """:func:`~mureo.mcp.tool_provider.served_tool_owners` for this server."""
+    return served_tool_owners(_ALL_TOOLS, _PLUGIN_DISPATCH)
 
 
 def _server_instructions() -> str | None:
     """Compose the server's MCP ``instructions``, or ``None`` if there is none.
 
-    Two contributions today — the bound-workspace notice and the per-platform
-    delivery models (#648) — joined only when non-empty.
+    Three contributions, in this order — the bound-workspace notice, the
+    per-platform delivery models (#648) and the plugin tool notes — joined by a
+    blank line, each only when non-empty.
 
-    Returns ``None`` when both are empty, which is the default single-workspace
-    install with no platform model registered: its ``InitializeResult`` stays
-    byte-identical, so standalone OSS users see no change. A multi-workspace
-    install with no models gets exactly the workspace string it got before.
+    Returns ``None`` when all are empty, which is the default single-workspace
+    install with no platform model registered and no tool note declared: its
+    ``InitializeResult`` stays byte-identical, so standalone OSS users see no
+    change. A multi-workspace install with neither gets exactly the workspace
+    string it got before.
     """
     sections = [
         section
-        for section in (_workspace_instruction(), _platform_model_instruction())
+        for section in (
+            _workspace_instruction(),
+            _platform_model_instruction(),
+            _tool_guidance_instruction(),
+        )
         if section
     ]
     if not sections:
