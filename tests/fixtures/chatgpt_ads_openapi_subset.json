@@ -1,5 +1,5 @@
 {
-  "_comment": "Cut from the Advertiser API OpenAPI document (info.version 2.3.0, read 2026-11-19) for the operations the chatgpt_ads tools call. Array-typed query parameters are also listed with the bracket suffix the API reference's curl examples send (fields[], time_ranges[], include[]). A POST operation lists the property names of its JSON request body under body; an empty list means the operation takes no body.",
+  "_comment": "Cut from the Advertiser API OpenAPI document (info.version 2.3.0, read 2026-11-19) for the operations the chatgpt_ads tools call. Array-typed query parameters are also listed with the bracket suffix the API reference's curl examples send (fields[], time_ranges[], include[]). A POST operation lists the property names of its JSON request body under body; an empty list means the operation takes no body. fields lists every dotted property path of a JSON body ([] marks an array item), so a nested key the document does not define is refused; headers lists the request headers an operation documents beyond Authorization; multipart lists the form fields of a multipart/form-data body.",
   "openapi_version": "2.3.0",
   "operations": [
     {
@@ -281,6 +281,190 @@
         "expected_revision",
         "start_date",
         "end_date"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "name",
+        "description",
+        "start_time",
+        "end_time",
+        "status",
+        "budget",
+        "bidding_type",
+        "objective",
+        "billing_event_type",
+        "mode",
+        "product_feed_id",
+        "business_agent_id",
+        "targeting",
+        "landing_page_configuration",
+        "conversion_event_setting_ids"
+      ],
+      "fields": [
+        "name",
+        "description",
+        "start_time",
+        "end_time",
+        "status",
+        "budget",
+        "budget.lifetime_spend_limit_micros",
+        "budget.daily_spend_limit_micros",
+        "bidding_type",
+        "objective",
+        "billing_event_type",
+        "mode",
+        "product_feed_id",
+        "business_agent_id",
+        "targeting",
+        "targeting.locations",
+        "targeting.locations.countries",
+        "targeting.locations.include",
+        "targeting.locations.include[].id",
+        "targeting.locations.include[].name",
+        "targeting.locations.include[].type",
+        "targeting.locations.include[].country_code",
+        "targeting.locations.include[].region_code",
+        "targeting.excluded_locations",
+        "targeting.excluded_locations.countries",
+        "targeting.excluded_locations.include",
+        "targeting.excluded_locations.include[].id",
+        "targeting.excluded_locations.include[].name",
+        "targeting.excluded_locations.include[].type",
+        "targeting.excluded_locations.include[].country_code",
+        "targeting.excluded_locations.include[].region_code",
+        "targeting.custom_audiences",
+        "targeting.custom_audiences.ids",
+        "targeting.excluded_custom_audiences",
+        "targeting.excluded_custom_audiences.ids",
+        "targeting.platforms",
+        "targeting.platforms.included",
+        "landing_page_configuration",
+        "landing_page_configuration.query_string_template",
+        "conversion_event_setting_ids"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "campaign_id",
+        "name",
+        "description",
+        "context_hints",
+        "status",
+        "bidding_config",
+        "product_set",
+        "landing_page_configuration"
+      ],
+      "fields": [
+        "campaign_id",
+        "name",
+        "description",
+        "context_hints",
+        "status",
+        "bidding_config",
+        "bidding_config.billing_event_type",
+        "bidding_config.strategy",
+        "bidding_config.max_bid_micros",
+        "bidding_config.custom_audience_bid_multipliers",
+        "bidding_config.custom_audience_bid_multipliers[].custom_audience_id",
+        "bidding_config.custom_audience_bid_multipliers[].bid_multiplier_micros",
+        "product_set",
+        "product_set.product_feed_id",
+        "product_set.filters",
+        "product_set.filters[].field",
+        "product_set.filters[].operator",
+        "product_set.filters[].values",
+        "landing_page_configuration",
+        "landing_page_configuration.query_string_template"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ads",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "ad_group_id",
+        "name",
+        "creative",
+        "status",
+        "landing_page_configuration"
+      ],
+      "fields": [
+        "ad_group_id",
+        "name",
+        "creative",
+        "creative.file_ids",
+        "creative.type",
+        "creative.title",
+        "creative.body",
+        "creative.price",
+        "creative.target_url",
+        "creative.file_id",
+        "creative.image_crop",
+        "creative.image_crop.x",
+        "creative.image_crop.y",
+        "creative.image_crop.width",
+        "creative.image_crop.height",
+        "status",
+        "landing_page_configuration",
+        "landing_page_configuration.query_string_template"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns/{campaign_id}/archive",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups/{ad_group_id}/archive",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ads/{ad_id}/archive",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ads/{ad_id}/preview",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/upload",
+      "query": [],
+      "multipart": [
+        "image_url",
+        "file",
+        "purpose"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/geo_lookup/search",
+      "query": [
+        "q",
+        "limit"
       ]
     }
   ]

@@ -1,12 +1,17 @@
-"""One coroutine per ChatGPT Ads read tool, the handler table and ``run_tool``.
+"""One coroutine per ChatGPT Ads read tool, the tool and handler tables and
+``run_tool``.
 
 Handlers return plain Python data; :mod:`mureo.chatgpt_ads.provider` turns it
 (or a client exception) into the tool result. Every argument is checked
-before the first request (:mod:`mureo.chatgpt_ads._validation`). The handlers
-that change the account live in :mod:`mureo.chatgpt_ads.handlers_mutations`
-and are merged into :data:`HANDLERS` here, so :func:`run_tool` is the one way
-any handler runs. :func:`run_with_client` is the client lifetime and deadline
-under it, shared with :mod:`mureo.chatgpt_ads.change_feed`.
+before the first request (:mod:`mureo.chatgpt_ads._validation`). The other
+tool families live in their own modules (``handlers_mutations``,
+``handlers_create``, ``handlers_creative`` and their ``tools_*``) and are
+composed here: :data:`ALL_TOOLS` is the provider's tool list and
+:data:`HANDLERS` its handler table, so :func:`run_tool` is the one way any
+handler runs, and which tools change the account is read off the composed
+list rather than kept per module. :func:`run_with_client` is the client
+lifetime and deadline under it, shared with
+:mod:`mureo.chatgpt_ads.change_feed`.
 """
 
 from __future__ import annotations
@@ -23,24 +28,35 @@ from mureo.chatgpt_ads._api import (
     PAGE_MAX_INSIGHTS,
     TOOL_DEADLINE_SECONDS,
 )
-from mureo.chatgpt_ads._errors import MAY_HAVE_BEEN_APPLIED, ChatGPTAdsAPIError
+from mureo.chatgpt_ads._errors import (
+    MAY_HAVE_BEEN_APPLIED,
+    REPEAT_WITH_IDEMPOTENCY_KEY,
+    ChatGPTAdsAPIError,
+)
 from mureo.chatgpt_ads._period import resolve_period, today_in, unix_bounds
 from mureo.chatgpt_ads._validation import integer, name_value, path_id
-from mureo.chatgpt_ads.handlers_mutations import (
-    MUTATING_TOOL_NAMES,
-    MUTATION_HANDLERS,
-    Handler,
+from mureo.chatgpt_ads.handlers_create import (
+    CREATE_HANDLERS,
+    idempotency_key_value,
 )
+from mureo.chatgpt_ads.handlers_creative import CREATIVE_HANDLERS
+from mureo.chatgpt_ads.handlers_mutations import MUTATION_HANDLERS, Handler
 from mureo.chatgpt_ads.tools import (
     CONVERSION_METRICS,
     DEFAULT_INSIGHTS_LIMIT,
     DEFAULT_LIST_LIMIT,
     DELIVERY_METRICS,
     MAX_TOOL_LIMIT,
+    TOOLS,
 )
+from mureo.chatgpt_ads.tools_create import CREATE_TOOLS
+from mureo.chatgpt_ads.tools_creative import CREATIVE_TOOLS
+from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+    from mcp.types import Tool
 
     from mureo.chatgpt_ads.client import ChatGPTAdsClient
 
@@ -265,7 +281,33 @@ HANDLERS: dict[str, Handler] = {
     "chatgpt_ads_insights_report": _insights_report,
     "chatgpt_ads_change_history_list": _change_history_list,
     **MUTATION_HANDLERS,
+    **CREATE_HANDLERS,
+    **CREATIVE_HANDLERS,
 }
+
+#: Every tool the provider lists, in order.
+ALL_TOOLS: tuple[Tool, ...] = (
+    *TOOLS,
+    *MUTATION_TOOLS,
+    *CREATE_TOOLS,
+    *CREATIVE_TOOLS,
+)
+
+#: Tools that change the account, read off their ``readOnlyHint``; one
+#: set over every module, so a new module cannot be left out of the
+#: deadline message.
+MUTATING_TOOL_NAMES = frozenset(
+    tool.name
+    for tool in ALL_TOOLS
+    if not (tool.annotations and tool.annotations.readOnlyHint)
+)
+#: Creates that carry an ``Idempotency-Key``: the tools offering the
+#: ``idempotency_key`` argument.
+_IDEMPOTENT_TOOL_NAMES = frozenset(
+    tool.name
+    for tool in ALL_TOOLS
+    if "idempotency_key" in tool.inputSchema["properties"]
+)
 
 
 def _open_client(api_key: str) -> ChatGPTAdsClient:
@@ -285,6 +327,7 @@ async def run_with_client(
     *,
     deadline: float = TOOL_DEADLINE_SECONDS,
     mutating: bool = False,
+    idempotency_key: str | None = None,
 ) -> _T:
     """Run ``work`` on a client of its own within ``deadline`` seconds.
 
@@ -293,7 +336,9 @@ async def run_with_client(
     is a :class:`ChatGPTAdsAPIError` raised after the ``except`` block, so
     nothing from the cancelled request is chained onto it; for ``mutating``
     work it ends with :data:`MAY_HAVE_BEEN_APPLIED`, because the request may
-    have reached the platform before it was cancelled.
+    have reached the platform before it was cancelled. For a create sent with
+    ``idempotency_key`` it ends with :data:`REPEAT_WITH_IDEMPOTENCY_KEY`
+    instead: repeating with that key is the safe next step.
     """
     async with _open_client(api_key) as client:
         try:
@@ -301,7 +346,9 @@ async def run_with_client(
         except asyncio.TimeoutError:
             pass
     message = f"the call did not finish within {deadline:g} seconds"
-    if mutating:
+    if idempotency_key is not None:
+        message = f"{message} {REPEAT_WITH_IDEMPOTENCY_KEY.format(key=idempotency_key)}"
+    elif mutating:
         message = f"{message} {MAY_HAVE_BEEN_APPLIED}"
     raise ChatGPTAdsAPIError(message, status=0)
 
@@ -315,17 +362,30 @@ async def run_tool(
 ) -> Any:
     """Run tool ``name`` within ``deadline`` seconds (see :func:`run_with_client`).
 
-    Validation errors propagate like client errors.
+    Validation errors propagate like client errors. A create's idempotency
+    key is resolved here, once per call, and handed to the handler, so the
+    request and the deadline message name the same key.
     """
     handler = HANDLERS.get(name)
     if handler is None:
         raise ValueError(f"Unknown ChatGPT Ads tool: {name}")
+    key = None
+    if name in _IDEMPOTENT_TOOL_NAMES:
+        key = idempotency_key_value(arguments)
+        arguments = {**arguments, "idempotency_key": key}
     return await run_with_client(
         lambda client: handler(client, arguments),
         api_key,
         deadline=deadline,
         mutating=name in MUTATING_TOOL_NAMES,
+        idempotency_key=key,
     )
 
 
-__all__ = ["HANDLERS", "run_tool", "run_with_client"]
+__all__ = [
+    "ALL_TOOLS",
+    "HANDLERS",
+    "MUTATING_TOOL_NAMES",
+    "run_tool",
+    "run_with_client",
+]

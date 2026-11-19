@@ -236,7 +236,11 @@ Claude  →  local mureo MCP  →  https://api.ads.openai.com/v1
   history; eleven change status, names, schedules, budgets, bids and the
   account daily spending limit. Each change is promoted into `action_log`
   with a reversal captured before the write, so `rollback_apply` can undo
-  it. Creating entities is tracked in #995.
+  it. Six more create campaigns, ad groups and ads (always paused, with an
+  idempotency key) and archive them; with an image upload they are recorded
+  without a reversal, because a created entity has no id before the call and
+  an archive cannot be undone on the platform. An ad preview and a location
+  search complete the set.
 - **No deep mureo analytics** (anomaly baselines, RSA audit, CV-mismatch) and
   no BYOD.
 

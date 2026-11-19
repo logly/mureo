@@ -43,9 +43,9 @@ from mureo.chatgpt_ads.change_feed import (
 )
 from mureo.chatgpt_ads.provider import (
     CHATGPT_ADS_SOURCE_DISTRIBUTION,
+    ChatGPTAdsProvider,
     register_chatgpt_ads_provider,
 )
-from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
 from mureo.context.state import append_action_log, read_state_file
 from mureo.core.auth_failure import AUTH_CAUSE_NO_CREDENTIALS, PlatformAuthError
@@ -592,7 +592,7 @@ class TestFailures:
 
 def _entry(tool: str, arguments: dict[str, Any], *, minutes: int = 1) -> ActionLogEntry:
     """mureo's own record of ``tool``, from the identity the tool declares."""
-    by_name = {t.name: t for t in MUTATION_TOOLS}
+    by_name = {t.name: t for t in ChatGPTAdsProvider().mcp_tools()}
     declaration = derive_semantics(by_name[tool]).identity
     campaign_id, ad_id, entity_type, entity_id = extract_mutation_identity(
         arguments, declaration

@@ -5,7 +5,11 @@ where httpx itself raises with the request in hand — is checked for the
 sentinel in log records (DEBUG and up), exception text and repr, tool results
 and the credentials dataclass repr. The same holds for a mutation (a POST and
 the read before it), for the before-state capture that runs ahead of one, and
-for the change feed and the import outcome a failed feed read becomes.
+for the change feed and the import outcome a failed feed read becomes, and
+for the create, archive, upload, preview and location-search tools: a create
+sent with an idempotency key, the multipart upload and the preview's
+read-only POST each fail through their own request path, and the create's
+deadline message names the key.
 """
 
 from __future__ import annotations
@@ -477,4 +481,188 @@ async def test_a_capture_read_echoing_the_key_logs_only_the_type(
         assert SENTINEL_KEY not in record.getMessage()
         assert SENTINEL_KEY not in repr(record.args)
         assert record.exc_info is None
+    assert SENTINEL_KEY not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Create, archive, upload, preview and location search (#995)
+# ---------------------------------------------------------------------------
+
+_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + b"\x00\x00\x02\x80" * 2
+
+
+def _new_tool_calls(tmp_path: Path) -> list[tuple[str, str, dict[str, Any]]]:
+    """(tool, the path it requests, valid arguments) for every new tool."""
+    image = tmp_path / "card.png"
+    image.write_bytes(_PNG + b"\x08\x06\x00\x00\x00" + b"\x00" * 4)
+    creative = {
+        "type": "chat_card",
+        "title": "Trail shoes",
+        "body": "Light shoes.",
+        "target_url": "https://example.com",
+    }
+    return [
+        (
+            "chatgpt_ads_campaigns_create",
+            "/campaigns",
+            {
+                "name": "Spring",
+                "budget": {"daily_spend_limit_micros": 10**6},
+                "bidding_type": "clicks",
+            },
+        ),
+        (
+            "chatgpt_ads_ad_groups_create",
+            "/ad_groups",
+            {
+                "campaign_id": "c_1",
+                "name": "Shoes",
+                "bidding_config": {"billing_event_type": "click"},
+            },
+        ),
+        (
+            "chatgpt_ads_ads_create",
+            "/ads",
+            {"ad_group_id": "g_1", "name": "Card", "creative": creative},
+        ),
+        (
+            "chatgpt_ads_campaigns_archive",
+            "/campaigns/c_1/archive",
+            {"campaign_id": "c_1"},
+        ),
+        (
+            "chatgpt_ads_ad_groups_archive",
+            "/ad_groups/g_1/archive",
+            {"ad_group_id": "g_1"},
+        ),
+        ("chatgpt_ads_ads_archive", "/ads/a_1/archive", {"ad_id": "a_1"}),
+        ("chatgpt_ads_images_upload_file", "/upload", {"file_path": str(image)}),
+        ("chatgpt_ads_ads_preview", "/ads/a_1/preview", {"ad_id": "a_1"}),
+        ("chatgpt_ads_locations_search", "/geo_lookup/search", {"query": "calif"}),
+    ]
+
+
+_NEW_TOOLS = [
+    "chatgpt_ads_campaigns_create",
+    "chatgpt_ads_ad_groups_create",
+    "chatgpt_ads_ads_create",
+    "chatgpt_ads_campaigns_archive",
+    "chatgpt_ads_ad_groups_archive",
+    "chatgpt_ads_ads_archive",
+    "chatgpt_ads_images_upload_file",
+    "chatgpt_ads_ads_preview",
+    "chatgpt_ads_locations_search",
+]
+
+
+def _new_call(tmp_path: Path, name: str) -> tuple[str, dict[str, Any]]:
+    path, arguments = next((p, a) for n, p, a in _new_tool_calls(tmp_path) if n == name)
+    return path, arguments
+
+
+async def _run_clean(
+    caplog: pytest.LogCaptureFixture, name: str, arguments: dict[str, Any]
+) -> None:
+    """Run ``name`` through the provider; neither the result nor the log may
+    carry the key."""
+    caplog.set_level(logging.DEBUG)
+    result = await ChatGPTAdsProvider().handle_mcp_tool(name, arguments)
+    assert SENTINEL_KEY not in result[0].text
+    assert SENTINEL_KEY not in caplog.text
+
+
+@pytest.mark.usefixtures("_key")
+@pytest.mark.parametrize("name", _NEW_TOOLS)
+@pytest.mark.parametrize(
+    "answer",
+    [answer for _, answer in _answers()]
+    + [(500, _ECHO), (422, _ECHO), (500, _ESCAPED_ECHO), (401, _ESCAPED_ECHO)],
+    ids=[label for label, _ in _answers()]
+    + ["500-echo", "422-echo", "500-escaped", "401-escaped"],
+)
+async def test_no_new_tool_outcome_carries_the_key(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+    name: str,
+    answer: tuple[int, Any],
+) -> None:
+    path, arguments = _new_call(tmp_path, name)
+    api = FakeAPI().add(path, *answer)
+    monkeypatch.setattr(handlers, "_open_client", lambda _key: api.client())
+    await _run_clean(caplog, name, arguments)
+    assert api.requests[0].headers["Authorization"] == f"Bearer {SENTINEL_KEY}"
+
+
+@pytest.mark.usefixtures("_key")
+@pytest.mark.parametrize("name", _NEW_TOOLS)
+@pytest.mark.parametrize(
+    "exc_type", [httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError]
+)
+async def test_httpx_errors_on_a_new_tool_are_not_quoted(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+    name: str,
+    exc_type: type[httpx.RequestError],
+) -> None:
+    def _raise(request: httpx.Request) -> httpx.Response:
+        raise exc_type(_leaky(request), request=request)
+
+    monkeypatch.setattr(
+        handlers,
+        "_open_client",
+        lambda _key: ChatGPTAdsClient(_key, transport=httpx.MockTransport(_raise)),
+    )
+    _, arguments = _new_call(tmp_path, name)
+    await _run_clean(caplog, name, arguments)
+
+
+@pytest.mark.parametrize(
+    ("call", "answer"),
+    [
+        ("post_key", (500, _ECHO)),
+        ("post_key", (500, _ESCAPED_ECHO)),
+        ("post_read", (500, _ECHO)),
+        ("post_file", (500, _ECHO)),
+        ("post_file", (500, _ESCAPED_ECHO)),
+    ],
+    ids=["create", "create-escaped", "read", "upload", "upload-escaped"],
+)
+async def test_a_failed_new_post_chain_does_not_carry_the_key(
+    call: str, answer: tuple[int, Any]
+) -> None:
+    api = FakeAPI().add("/ads", *answer).add("/ads/a_1/preview", *answer)
+    api.add("/upload", *answer)
+    client = api.client()
+    requests = {
+        "post_key": lambda: client.post("/ads", {"name": "x"}, idempotency_key="k"),
+        "post_read": lambda: client.post_read("/ads/a_1/preview"),
+        "post_file": lambda: client.post_file(
+            "/upload", filename="card.png", content=_PNG, content_type="image/png"
+        ),
+    }
+    with pytest.raises(Exception) as info:
+        await requests[call]()
+    _assert_chain_is_clean(info.value)
+
+
+async def test_a_create_past_the_deadline_does_not_carry_the_key(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def _hang(_client: Any, _arguments: dict[str, Any]) -> Any:
+        await asyncio.sleep(10)
+
+    monkeypatch.setitem(handlers.HANDLERS, "chatgpt_ads_ads_create", _hang)
+    monkeypatch.setattr(handlers, "_open_client", lambda _key: FakeAPI().client())
+    caplog.set_level(logging.DEBUG)
+    with pytest.raises(Exception) as info:
+        await handlers.run_tool(
+            "chatgpt_ads_ads_create",
+            {"idempotency_key": "k"},
+            SENTINEL_KEY,
+            deadline=0.01,
+        )
+    assert 'idempotency_key="k"' in str(info.value)
+    _assert_chain_is_clean(info.value)
     assert SENTINEL_KEY not in caplog.text

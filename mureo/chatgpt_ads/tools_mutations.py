@@ -55,18 +55,18 @@ SCHEDULE_KEYS = ("start_time", "end_time")
 #: with nothing to compare. Spelled out as any provider outside the policy
 #: package has to; a test holds them equal to the names the gate reads.
 _CONVENTION_CURRENT_KEY = "current_daily_budget"
-_CONVENTION_TOTAL_KEY = "projected_total_daily_budget"
-BUDGET_CONTEXT_KEYS = (_CONVENTION_CURRENT_KEY, _CONVENTION_TOTAL_KEY)
+CONVENTION_TOTAL_KEY = "projected_total_daily_budget"
+BUDGET_CONTEXT_KEYS = (_CONVENTION_CURRENT_KEY, CONVENTION_TOTAL_KEY)
 BILLING_EVENT_TYPES = ("impression", "click")
 #: Strategies a request may name. Responses can also say ``automated_bid``,
 #: which a request expresses by omitting both ``strategy`` and
 #: ``max_bid_micros``.
 BID_STRATEGIES = ("fixed_bid", "maximize_clicks", "maximize_conversions")
 
-_MUTATES = ToolAnnotations(readOnlyHint=False)
+MUTATES = ToolAnnotations(readOnlyHint=False)
 
-_CAMPAIGN_IDENTITY = {"identity": {"campaign_id": "campaign_id"}}
-_AD_GROUP_IDENTITY = {
+CAMPAIGN_IDENTITY = {"identity": {"campaign_id": "campaign_id"}}
+AD_GROUP_IDENTITY = {
     "identity": {"entity_type": "ad_group", "entity_id": "ad_group_id"}
 }
 _AD_IDENTITY = {"identity": {"ad_id": "ad_id"}}
@@ -75,7 +75,7 @@ _CAMPAIGN_ID = id_param("Campaign", "cmpn_123")
 _AD_GROUP_ID = id_param("Ad group", "adgrp_123")
 _AD_ID = id_param("Ad", "ad_123")
 
-_NAME = {
+NAME = {
     "type": "string",
     "minLength": NAME_MIN_CHARS,
     "maxLength": NAME_MAX_CHARS,
@@ -84,7 +84,7 @@ _NAME = {
 }
 
 
-def _schedule_param(which: str) -> dict[str, Any]:
+def schedule_param(which: str) -> dict[str, Any]:
     return {
         "type": ["integer", "null"],
         "minimum": SCHEDULE_MIN_SECONDS,
@@ -96,7 +96,7 @@ def _schedule_param(which: str) -> dict[str, Any]:
     }
 
 
-_BUDGET = {
+BUDGET = {
     "type": "object",
     "additionalProperties": False,
     "minProperties": 1,
@@ -126,7 +126,7 @@ _MULTIPLIER: dict[str, Any] = {
     },
 }
 
-_BIDDING_CONFIG: dict[str, Any] = {
+BIDDING_CONFIG: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "required": ["billing_event_type"],
@@ -150,8 +150,26 @@ _BIDDING_CONFIG: dict[str, Any] = {
 }
 
 _MAX_BID_PATH = "bidding_config.max_bid_micros"
+#: What the STRATEGY.md caps read off a tool that sends a campaign
+#: ``budget`` / a ``bidding_config``. The bid sits on both bid channels:
+#: which of the two bid caps an operator wrote says nothing about the
+#: billing event of an ad group, so each cap that is set holds the bid.
+BUDGET_DECLARATION = {
+    "budget": {
+        "daily": "budget.daily_spend_limit_micros",
+        "lifetime": "budget.lifetime_spend_limit_micros",
+        "unit": "micros",
+    }
+}
+BID_DECLARATION = {
+    "bid": {
+        "bid_amount": _MAX_BID_PATH,
+        "cpc_bid": _MAX_BID_PATH,
+        "unit": "micros",
+    }
+}
 #: The keys a ``bidding_config`` and one of its multipliers may carry.
-BIDDING_CONFIG_KEYS = frozenset(_BIDDING_CONFIG["properties"])
+BIDDING_CONFIG_KEYS = frozenset(BIDDING_CONFIG["properties"])
 MULTIPLIER_KEYS = frozenset(_MULTIPLIER["properties"])
 
 _REVERSAL_NOTE = (
@@ -172,22 +190,23 @@ def _status_tool(entity: str, noun: str, id_key: str, example: str, verb: str) -
         )
     description = (
         f"{effect} Returns the updated platform object unchanged. Mutates the "
-        f"account. {_REVERSAL_NOTE} Archive is not available here; use Ads "
-        f"Manager. For the opposite change use chatgpt_ads_{entity}_{other}."
+        f"account. {_REVERSAL_NOTE} For the opposite change use "
+        f"chatgpt_ads_{entity}_{other}; to retire it for good use "
+        f"chatgpt_ads_{entity}_archive, which cannot be undone."
     )
     return build_tool(
         f"chatgpt_ads_{entity}_{verb}",
         description,
         {id_key: id_param(noun.capitalize(), example)},
         [id_key],
-        annotations=_MUTATES,
-        declarations=_IDENTITY_BY_KEY[id_key],
+        annotations=MUTATES,
+        declarations=IDENTITY_BY_KEY[id_key],
     )
 
 
-_IDENTITY_BY_KEY = {
-    "campaign_id": _CAMPAIGN_IDENTITY,
-    "ad_group_id": _AD_GROUP_IDENTITY,
+IDENTITY_BY_KEY = {
+    "campaign_id": CAMPAIGN_IDENTITY,
+    "ad_group_id": AD_GROUP_IDENTITY,
     "ad_id": _AD_IDENTITY,
 }
 
@@ -208,21 +227,21 @@ _CAMPAIGNS_UPDATE = build_tool(
     "only the fields given change, and null clears start_time or end_time. "
     f"{_REVERSAL_NOTE} Give at least one of name, start_time, end_time. For "
     "the budget use chatgpt_ads_campaigns_update_budget; to pause or activate "
-    "use chatgpt_ads_campaigns_pause / chatgpt_ads_campaigns_enable. Archive "
-    "is not available here.",
+    "use chatgpt_ads_campaigns_pause / chatgpt_ads_campaigns_enable; to "
+    "retire it for good, chatgpt_ads_campaigns_archive (irreversible).",
     {
         "campaign_id": _CAMPAIGN_ID,
-        "name": _NAME,
-        "start_time": _schedule_param("start time"),
-        "end_time": _schedule_param("end time"),
+        "name": NAME,
+        "start_time": schedule_param("start time"),
+        "end_time": schedule_param("end time"),
     },
     ["campaign_id"],
-    annotations=_MUTATES,
-    declarations=_CAMPAIGN_IDENTITY,
+    annotations=MUTATES,
+    declarations=CAMPAIGN_IDENTITY,
 )
 
 
-def _context_param(what: str) -> dict[str, Any]:
+def context_param(what: str) -> dict[str, Any]:
     return {
         "type": "number",
         "minimum": 0,
@@ -252,22 +271,15 @@ _CAMPAIGNS_UPDATE_BUDGET = build_tool(
     "first.",
     {
         "campaign_id": _CAMPAIGN_ID,
-        "budget": _BUDGET,
-        _CONVENTION_CURRENT_KEY: _context_param("The campaign's current daily budget"),
-        _CONVENTION_TOTAL_KEY: _context_param(
+        "budget": BUDGET,
+        _CONVENTION_CURRENT_KEY: context_param("The campaign's current daily budget"),
+        CONVENTION_TOTAL_KEY: context_param(
             "The account's total daily budget across campaigns after this change"
         ),
     },
     ["campaign_id", "budget"],
-    annotations=_MUTATES,
-    declarations={
-        **_CAMPAIGN_IDENTITY,
-        "budget": {
-            "daily": "budget.daily_spend_limit_micros",
-            "lifetime": "budget.lifetime_spend_limit_micros",
-            "unit": "micros",
-        },
-    },
+    annotations=MUTATES,
+    declarations={**CAMPAIGN_IDENTITY, **BUDGET_DECLARATION},
 )
 
 _AD_GROUPS_UPDATE = build_tool(
@@ -275,12 +287,12 @@ _AD_GROUPS_UPDATE = build_tool(
     "Renames one ChatGPT Ads ad group. Returns the updated platform object "
     f"unchanged. Mutates the account. {_REVERSAL_NOTE} For bids use "
     "chatgpt_ads_ad_groups_update_bid; to pause or activate use "
-    "chatgpt_ads_ad_groups_pause / chatgpt_ads_ad_groups_enable. Archive is "
-    "not available here.",
-    {"ad_group_id": _AD_GROUP_ID, "name": _NAME},
+    "chatgpt_ads_ad_groups_pause / chatgpt_ads_ad_groups_enable; to retire "
+    "it for good, chatgpt_ads_ad_groups_archive (irreversible).",
+    {"ad_group_id": _AD_GROUP_ID, "name": NAME},
     ["ad_group_id", "name"],
-    annotations=_MUTATES,
-    declarations=_AD_GROUP_IDENTITY,
+    annotations=MUTATES,
+    declarations=AD_GROUP_IDENTITY,
 )
 
 _AD_GROUPS_UPDATE_BID = build_tool(
@@ -298,20 +310,10 @@ _AD_GROUPS_UPDATE_BID = build_tool(
     "amount x 1000), so a per-click cap does not meaningfully constrain it. The "
     f"campaign budget is what bounds spend. {_REVERSAL_NOTE} Read the current "
     "config with chatgpt_ads_ad_groups_get first.",
-    {"ad_group_id": _AD_GROUP_ID, "bidding_config": _BIDDING_CONFIG},
+    {"ad_group_id": _AD_GROUP_ID, "bidding_config": BIDDING_CONFIG},
     ["ad_group_id", "bidding_config"],
-    annotations=_MUTATES,
-    # One amount on both bid channels: which of the two STRATEGY.md bid caps
-    # an operator wrote says nothing about the billing event of this ad
-    # group, so each cap that is set holds the bid.
-    declarations={
-        **_AD_GROUP_IDENTITY,
-        "bid": {
-            "bid_amount": _MAX_BID_PATH,
-            "cpc_bid": _MAX_BID_PATH,
-            "unit": "micros",
-        },
-    },
+    annotations=MUTATES,
+    declarations={**AD_GROUP_IDENTITY, **BID_DECLARATION},
 )
 
 _ACCOUNT_DAILY_SPEND_LIMIT_SET = build_tool(
@@ -339,7 +341,7 @@ _ACCOUNT_DAILY_SPEND_LIMIT_SET = build_tool(
         }
     },
     ["amount_micros"],
-    annotations=_MUTATES,
+    annotations=MUTATES,
     # Declared rather than left to the gate's built-in scan, which reads an
     # undeclared ``amount_micros`` as a daily budget in micros anyway: the
     # declaration states the unit instead of relying on that convention.
@@ -370,18 +372,30 @@ MUTATION_TOOLS: tuple[Tool, ...] = (
 )
 
 __all__ = [
+    "AD_GROUP_IDENTITY",
+    "BIDDING_CONFIG",
     "BIDDING_CONFIG_KEYS",
+    "BID_DECLARATION",
     "BID_STRATEGIES",
+    "BUDGET",
     "BUDGET_CONTEXT_KEYS",
+    "BUDGET_DECLARATION",
     "BILLING_EVENT_TYPES",
     "BUDGET_KEYS",
+    "CAMPAIGN_IDENTITY",
+    "CONVENTION_TOTAL_KEY",
+    "IDENTITY_BY_KEY",
     "MAX_BID_MICROS",
     "MAX_BID_MULTIPLIER_MICROS",
     "MIN_BID_MULTIPLIER_MICROS",
     "MIN_BUDGET_MICROS",
     "MULTIPLIER_KEYS",
+    "MUTATES",
     "MUTATION_TOOLS",
+    "NAME",
     "SCHEDULE_KEYS",
     "SCHEDULE_MAX_SECONDS",
     "SCHEDULE_MIN_SECONDS",
+    "context_param",
+    "schedule_param",
 ]

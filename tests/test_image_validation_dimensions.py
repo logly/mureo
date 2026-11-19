@@ -15,12 +15,14 @@ into a giant bitmap), preserving the behaviour forgiving callers rely on.
 
 from __future__ import annotations
 
+import os
 import struct
 from typing import TYPE_CHECKING
 
 import pytest
 
-from mureo._image_validation import validate_image_file
+from mureo import _image_validation
+from mureo._image_validation import read_image_file, validate_image_file
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -211,3 +213,194 @@ def test_read_image_dimensions_says_unknown_rather_than_guessing(
     if payload is not None:
         img.write_bytes(payload)
     assert read_image_dimensions(img) == (None, None)
+
+
+# --- read_image_file: the bytes that were checked, identified ------------
+
+
+def _read(
+    path: Path,
+    *,
+    max_size_bytes: int = 30 * 1024 * 1024,
+    max_pixels: int = 100_000_000,
+    allowed: frozenset[str] = _IMG_EXTS,
+) -> tuple[Path, bytes]:
+    return read_image_file(
+        str(path),
+        max_size_bytes=max_size_bytes,
+        max_size_label="the cap",
+        allowed_extensions=allowed,
+        max_pixels=max_pixels,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "name,payload",
+    [
+        ("hero.png", _png(1200, 628)),
+        ("hero.jpg", _jpeg(600, 314)),
+        ("hero.jpeg", _jpeg(600, 314)),
+        ("hero.webp", _webp_vp8x(960, 1200)),
+    ],
+)
+def test_read_image_file_returns_the_checked_bytes(
+    tmp_path: Path, name: str, payload: bytes
+) -> None:
+    img = tmp_path / name
+    img.write_bytes(payload)
+    path, content = _read(img)
+    assert path == img
+    assert content == payload
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", ["notes.png", "notes.jpg", "notes.webp"])
+def test_read_image_file_refuses_content_it_cannot_identify(
+    tmp_path: Path, name: str
+) -> None:
+    """Unlike ``validate_image_file``, an unidentified file is refused: the
+    caller sends these bytes elsewhere and must not send a non-image."""
+    secret = "not an image, and not to be quoted"
+    img = tmp_path / name
+    img.write_text(secret, encoding="utf-8")
+    with pytest.raises(ValueError, match="not a recognisable") as excinfo:
+        _read(img)
+    assert secret not in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_read_image_file_refuses_an_extension_it_cannot_identify(
+    tmp_path: Path,
+) -> None:
+    img = tmp_path / "anim.gif"
+    img.write_bytes(b"GIF89a" + b"\x00" * 32)
+    with pytest.raises(ValueError, match="not a recognisable"):
+        _read(img, allowed=frozenset({"gif"}))
+
+
+@pytest.mark.unit
+def test_read_image_file_keeps_the_spoofing_error(tmp_path: Path) -> None:
+    img = tmp_path / "fake.png"
+    img.write_bytes(_jpeg(100, 100))
+    with pytest.raises(ValueError, match="possible extension spoofing"):
+        _read(img)
+
+
+@pytest.mark.unit
+def test_read_image_file_keeps_the_pixel_cap(tmp_path: Path) -> None:
+    img = tmp_path / "bomb.png"
+    img.write_bytes(_png(20_000, 20_000))
+    with pytest.raises(ValueError, match="exceed the maximum allowed"):
+        _read(img)
+
+
+@pytest.mark.unit
+def test_read_image_file_size_cap_is_inclusive(tmp_path: Path) -> None:
+    payload = _png(10, 10)
+    img = tmp_path / "small.png"
+    img.write_bytes(payload)
+    assert _read(img, max_size_bytes=len(payload))[1] == payload
+    with pytest.raises(ValueError, match="File size exceeds the limit"):
+        _read(img, max_size_bytes=len(payload) - 1)
+
+
+@pytest.mark.unit
+def test_read_image_file_caps_what_it_reads_not_what_stat_said(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file that grows after it was measured is still refused: the read
+    itself stops one byte past the cap."""
+    payload = _png(10, 10) + b"\x00" * 100
+    img = tmp_path / "growing.png"
+    img.write_bytes(payload)
+    real_fstat = os.fstat
+
+    def small_fstat(fd: int) -> os.stat_result:
+        st = real_fstat(fd)
+        fields = list(st)
+        fields[6] = 1  # st_size
+        return os.stat_result(fields)
+
+    real_stat = _image_validation.Path.stat
+
+    def small_stat(self: Path, **kwargs: object) -> os.stat_result:
+        st = real_stat(self, **kwargs)  # type: ignore[arg-type]
+        fields = list(st)
+        fields[6] = 1
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(_image_validation.os, "fstat", small_fstat)
+    monkeypatch.setattr(_image_validation.Path, "stat", small_stat)
+    with pytest.raises(ValueError, match="File size exceeds the limit"):
+        _read(img, max_size_bytes=50)
+
+
+@pytest.mark.unit
+def test_read_image_file_follows_a_link_only_to_an_image(tmp_path: Path) -> None:
+    real = tmp_path / "real.png"
+    real.write_bytes(_png(10, 10))
+    text = tmp_path / "notes.txt"
+    text.write_text("plain text", encoding="utf-8")
+    to_image = tmp_path / "to_image.png"
+    to_text = tmp_path / "to_text.png"
+    try:
+        to_image.symlink_to(real)
+        to_text.symlink_to(text)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+    assert _read(to_image)[1] == real.read_bytes()
+    with pytest.raises(ValueError, match="not a recognisable"):
+        _read(to_text)
+
+
+@pytest.mark.unit
+def test_read_image_file_refuses_a_directory(tmp_path: Path) -> None:
+    folder = tmp_path / "folder.png"
+    folder.mkdir()
+    with pytest.raises(ValueError, match="not a regular file"):
+        _read(folder)
+
+
+@pytest.mark.unit
+def test_read_image_file_refuses_a_fifo(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("os.mkfifo is not available on this platform")
+    fifo = tmp_path / "pipe.png"
+    os.mkfifo(fifo)
+    with pytest.raises(ValueError, match="not a regular file"):
+        _read(fifo)
+
+
+@pytest.mark.unit
+def test_read_image_file_checks_the_open_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The type is judged on what was opened, not on the earlier path check:
+    a name swapped for a FIFO after that check is refused without blocking."""
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("os.mkfifo is not available on this platform")
+    real = tmp_path / "real.png"
+    real.write_bytes(_png(10, 10))
+    fifo = tmp_path / "pipe.png"
+    os.mkfifo(fifo)
+    real_open = os.open
+
+    def swapped_open(path: object, flags: int, *args: object) -> int:
+        return real_open(fifo if str(path).endswith("real.png") else path, flags)
+
+    monkeypatch.setattr(_image_validation.os, "open", swapped_open)
+    with pytest.raises(ValueError, match="not a regular file"):
+        _read(real)
+
+
+@pytest.mark.unit
+def test_read_image_file_keeps_the_path_rules(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        _read(tmp_path / "missing.png")
+    with pytest.raises(ValueError, match="must not contain"):
+        _read(tmp_path / ".." / "x.png")
+    other = tmp_path / "x.bmp"
+    other.write_bytes(b"BM")
+    with pytest.raises(ValueError, match="Unsupported image format"):
+        _read(other)
