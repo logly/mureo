@@ -143,6 +143,7 @@ _BELOW_MCP = (
     "rollback",
     "policy",
     "amazon_ads",
+    "chatgpt_ads",
     "core",
     "analytics",
     "change_import",
@@ -158,6 +159,7 @@ _LOWER_LAYERS_ALONE = (
     "import json, sys\n"
     "import mureo.rollback, mureo.policy.learning_reset\n"
     "import mureo.amazon_ads.bridge, mureo.core.tool_failure\n"
+    "import mureo.chatgpt_ads.provider, mureo.chatgpt_ads.client\n"
     "import mureo.bundled_providers\n"
     "from mureo.amazon_ads.bridge import _normalize_failure\n"
     "from mureo.rollback.planner import _plugin_reversal_keys\n"

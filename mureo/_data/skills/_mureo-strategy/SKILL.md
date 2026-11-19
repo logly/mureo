@@ -144,7 +144,7 @@ Goal sections define quantitative marketing objectives. Each goal uses the `## G
 | `Target` | Yes | Measurable success criterion (e.g., `CPA < 5,000 JPY`) |
 | `Deadline` | Yes | Target date in `YYYY-MM-DD` format |
 | `Current` | No | Current baseline value for tracking progress |
-| `Platform` | No | Applicable ad platforms (e.g., `Google Ads, Meta Ads`, `Amazon Ads`, `TikTok Ads`, or a plugin platform) |
+| `Platform` | No | Applicable ad platforms (e.g., `Google Ads, Meta Ads`, `Amazon Ads`, `ChatGPT Ads`, `TikTok Ads`, or a plugin platform) |
 | `Priority` | No | `HIGH`, `MEDIUM`, or `LOW` |
 
 Multiple goals can coexist in a single STRATEGY.md. Agents should reference goals when making optimization decisions to ensure actions are aligned with measurable business objectives.

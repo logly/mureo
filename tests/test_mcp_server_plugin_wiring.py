@@ -199,14 +199,29 @@ def test_reserved_names_are_exactly_the_builtin_tool_names() -> None:
 
 @pytest.mark.unit
 def test_no_plugins_is_additive_no_op() -> None:
-    """With no third-party entry points, the plugin sets are empty —
-    the regression guarantee for the existing suite.
+    """With no third-party entry points, the plugin sets hold only the
+    bundled ChatGPT Ads provider's tools (Amazon contributes none without a
+    manifest) — the regression guarantee for the existing suite.
     """
+    from mureo.chatgpt_ads.tools import TOOLS as CHATGPT_ADS_TOOLS
     from mureo.mcp import server as mod
 
     mod = importlib.reload(mod)
-    assert frozenset() == mod._PLUGIN_NAMES
-    assert mod._PLUGIN_TOOLS == []
+    assert frozenset(t.name for t in CHATGPT_ADS_TOOLS) == mod._PLUGIN_NAMES
+    assert list(CHATGPT_ADS_TOOLS) == mod._PLUGIN_TOOLS
+
+
+@pytest.mark.unit
+def test_no_plugins_and_both_bundled_providers_disabled_is_empty() -> None:
+    """With both bundled providers switched off and no entry points, the
+    plugin sets are empty again: the disable gates leave nothing behind."""
+    with reloaded_server(
+        lambda **_kw: (),
+        patches={"mureo.core.providers.default_registry._entries": {}},
+        env={"MUREO_DISABLE_CHATGPT_ADS": "1", "MUREO_DISABLE_AMAZON_ADS": "1"},
+    ) as mod:
+        assert frozenset() == mod._PLUGIN_NAMES
+        assert mod._PLUGIN_TOOLS == []
 
 
 # ---------------------------------------------------------------------------

@@ -39,7 +39,7 @@ mureo configure
 
 > `mureo auth setup --web` は**廃止**されました。そのブラウザ認証情報フローは統合された `mureo configure` UI の一部になっています。
 
-ターミナル入力を安全に受け取れない AI エージェントから mureo を案内された場合、あるいは単に GUI を使いたい場合は `mureo configure` を選んでください。localhost のランダムなポートに短命の HTTP サーバーを立ててブラウザで開き、HTML フォームと標準的な OAuth リダイレクトによる Google Ads / Meta Ads / GA4 の認証情報入力 (各項目は対応するコンソールへディープリンク) に加え、ダッシュボードの *接続先の認証情報* セクションにある **Amazon Ads** タブの **Authorize with Amazon** フローで LwA トークンを取得 (Amazon の同意にはループバックコールバックがないため、コードを貼り付ける案内付きのフローです。mureo が同意ページを開き、リダイレクト先のアドレスを貼り戻します。[amazon-ads.ja.md](amazon-ads.ja.md) 参照) もできます。さらに Claude のホスト選択、基本セットアップ (MCP サーバー + 認証ガードフック + skills)、公式 MCP プロバイダの追加、プラットフォームごとの mureo-native / 公式 MCP の切り替え、Demo/BYOD の雛形作成も行えます。フラグ: `--no-browser`、`--timeout-seconds N` (アイドル時の停止、既定 600)。セキュリティ強化 (CSRF ローテーション、OAuth `state` の再検証、DNS リバインディング対策、localhost に固定したリダイレクト検証、汎用化したエラー表示、POST サイズ上限、CSP) も同じものが適用されます。`SECURITY.md` 参照。
+ターミナル入力を安全に受け取れない AI エージェントから mureo を案内された場合、あるいは単に GUI を使いたい場合は `mureo configure` を選んでください。localhost のランダムなポートに短命の HTTP サーバーを立ててブラウザで開き、HTML フォームと標準的な OAuth リダイレクトによる Google Ads / Meta Ads / GA4 の認証情報入力 (各項目は対応するコンソールへディープリンク) に加え、ダッシュボードの *接続先の認証情報* セクションにある **Amazon Ads** タブの **Authorize with Amazon** フローで LwA トークンを取得 (Amazon の同意にはループバックコールバックがないため、コードを貼り付ける案内付きのフローです。mureo が同意ページを開き、リダイレクト先のアドレスを貼り戻します。[amazon-ads.ja.md](amazon-ads.ja.md) 参照) もできます。同じセクションの **ChatGPT Ads** タブには Ads API キーを貼り付けます ([chatgpt-ads.md](chatgpt-ads.md) 参照)。さらに Claude のホスト選択、基本セットアップ (MCP サーバー + 認証ガードフック + skills)、公式 MCP プロバイダの追加、プラットフォームごとの mureo-native / 公式 MCP の切り替え、Demo/BYOD の雛形作成も行えます。フラグ: `--no-browser`、`--timeout-seconds N` (アイドル時の停止、既定 600)。セキュリティ強化 (CSRF ローテーション、OAuth `state` の再検証、DNS リバインディング対策、localhost に固定したリダイレクト検証、汎用化したエラー表示、POST サイズ上限、CSP) も同じものが適用されます。`SECURITY.md` 参照。
 
 認証ステップは、すでにディスクにあるものを再利用します。Google の refresh token が保存済みなら (Google Ads と Search Console は 1 本を共有) Google の認可ステップはスキップされ、UI がそう表示します。新しいトークンを発行したいときのために **Re-authorize Google** ボタンが出ます。GA4 を選んでいて、保存済みの認可に GA4 の読み取りスコープがない場合は、GA4 のステップにも同じボタンが出ます。押すとその位置に Google のステップが入り、新しい認可がスコープを持っていれば GA4 のステップはそこから埋まります ([integrations.md](integrations.md) 参照)。Google の同意画面で Search Console と GA4 の読み取りはチェックを外してかまいません (Google が付与しなかったスコープは mureo がログに残します) が、Google Ads のスコープのチェックを外すと認可は失敗します。保存する refresh token はこのスコープのためのものだからです。
 
@@ -129,6 +129,14 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 | `AMAZON_ADS_MANAGER_ACCOUNT_ID` | いいえ | fixed アカウントモードのみ |
 
 「条件付き」とは、クライアント ID に加えて `AMAZON_ADS_ACCESS_TOKEN` **か**、`AMAZON_ADS_REFRESH_TOKEN` と `AMAZON_ADS_CLIENT_SECRET` の**両方**、のどちらかという意味です。[amazon-ads.ja.md](amazon-ads.ja.md) 参照。
+
+### ChatGPT Ads
+
+| 変数 | 必須 | 説明 |
+|----------|----------|-------------|
+| `CHATGPT_ADS_API_KEY` | キーを保存していない場合は、はい | ご自身の広告アカウントの Advertiser API キー。Ads Manager の設定ページで作成します。1 つのキーで読み取れる広告アカウントは 1 つです |
+
+保存先は `~/.mureo/credentials.json` の `chatgpt_ads` セクションで、項目は `api_key` の 1 つです。`mureo configure` の **ChatGPT Ads** タブが書き込みます。空の値は未設定として扱います。ChatGPT Ads に `OPENAI_API_KEY` が使われることはありません。[chatgpt-ads.md](chatgpt-ads.md) 参照。
 
 **解決順序**: credentials.json が優先されます。環境変数は、credentials.json の該当セクションが無いか不完全な場合にのみ参照されます。
 

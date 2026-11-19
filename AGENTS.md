@@ -83,6 +83,16 @@ mureo/
 │   └── accounts.py      # Ad-account listing
 ├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py        # SearchConsoleApiClient
+├── chatgpt_ads/         # ChatGPT Ads bundled provider over OpenAI's Advertiser API (#992, #993);
+│   │                    #   read-only; imports neither mcp nor web
+│   ├── _api.py          # Base URL, OpenAPI version read, timeout / retry / page-size / throttle constants
+│   ├── _errors.py       # ChatGPTAdsAPIError + error_from_response: the one error-body reader
+│   ├── _period.py       # `period` vocabulary resolved in the ad account's time zone
+│   ├── client.py        # ChatGPTAdsClient (httpx, GET only, 429/5xx retry, cursor walk); imported on first tool call
+│   ├── credentials.py   # Ads API key from the `chatgpt_ads` store section, then CHATGPT_ADS_API_KEY
+│   ├── handlers.py      # Argument validation + one coroutine per tool
+│   ├── tools.py         # The nine read-only Tool definitions
+│   └── provider.py      # ChatGPTAdsProvider, registration, disable gate, platform delivery model
 ├── mcp/                 # MCP server (Google/Meta/Search Console + Rollback/Analysis + Analytics registry, Creative Studio, Learning, mureo Context)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── tool_checks.py                     # writes_to_platform / check_tool_call: dispatch's own classification and caller-error checks, for a stored call (#983, #984)
@@ -388,7 +398,7 @@ mureo/
 │                        #   change import); below mcp, so none of them loads the server (#863);
 │                        #   open_google_ads_client / open_meta_ads_client are the one
 │                        #   Google Ads / Meta Ads openers (#875)
-├── bundled_providers.py # The one table of providers shipped inside mureo (Amazon Ads today);
+├── bundled_providers.py # The one table of providers shipped inside mureo (Amazon Ads and ChatGPT Ads);
 │                        #   the MCP server and the configure UI both register from it before
 │                        #   entry-point discovery; below mcp and web (#992)
 ├── installed_packages.py
@@ -402,9 +412,9 @@ skills/                       # Native slash skills — one `<name>/SKILL.md` pe
 │                             #   by `mureo/cli/native_skills.py`.
 ├── onboard/, daily-check/, rescue/, budget-rebalance/, …   # ~20 operational (workflow) skills
 │   └── SKILL.md
-└── _mureo-*/                 # 9 foundation skills: _mureo-shared / _mureo-state-schema /
+└── _mureo-*/                 # 10 foundation skills: _mureo-shared / _mureo-state-schema /
     └── SKILL.md              #   _mureo-report-persist / _mureo-strategy / _mureo-google-ads / _mureo-meta-ads /
-                              #   _mureo-amazon-ads / _mureo-learning / _mureo-pro-diagnosis
+                              #   _mureo-amazon-ads / _mureo-chatgpt-ads / _mureo-learning / _mureo-pro-diagnosis
 docs/integrations.md          # Platform discovery + external MCP integration guide
 ```
 
@@ -663,6 +673,7 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 - Google Ads: `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`
 - Meta Ads: `META_ADS_ACCESS_TOKEN`, `META_ADS_APP_ID`, `META_ADS_APP_SECRET`
 - Amazon Ads: `AMAZON_ADS_CLIENT_ID` plus either `AMAZON_ADS_ACCESS_TOKEN` or both of `AMAZON_ADS_REFRESH_TOKEN` / `AMAZON_ADS_CLIENT_SECRET`; optional `AMAZON_ADS_REGION`, `AMAZON_ADS_ACCOUNT_MODE`, `AMAZON_ADS_PROFILE_ID`, `AMAZON_ADS_ACCOUNT_ID`, `AMAZON_ADS_MANAGER_ACCOUNT_ID`
+- ChatGPT Ads: `CHATGPT_ADS_API_KEY` (never `OPENAI_API_KEY`, which is Creative Studio's image-generation key). The key is set once as the HTTP client's default header and never interpolated into a message, exception or log line; its exact value is replaced in an error body before the body is read, and httpx transport errors are reported by class name only, raised outside the `except` so nothing is chained
 - The `auth_setup.py` wizard writes credentials to `~/.mureo/credentials.json`
 - **No log line may carry a token, secret or credential value** — log the field name, the exception *type*, or a scrubbed detail, never the value. Since #581 the configure server installs a real handler (`mureo/logging_setup.py` → `~/.mureo/logs/configure.log`, `MUREO_LOG_LEVEL` to raise it), so a leaky `logger.*` call is now a leak on disk rather than a dead line. HTTP access logs go through `safe_http_log_line`, which drops query strings (an OAuth callback carries `?code=`)
 

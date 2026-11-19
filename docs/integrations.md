@@ -1,6 +1,6 @@
 # External Tool Integration Guide
 
-mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console, plus official-MCP platforms it brings in itself: **Amazon Ads** (bridged through mureo) and **TikTok Ads** (hosted connector). For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
+mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console, plus official-MCP platforms it brings in itself: **Amazon Ads** (bridged through mureo) and **TikTok Ads** (hosted connector), and a bundled read-only provider for **ChatGPT Ads** that calls OpenAI's Advertiser API directly. For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
 
 ## How It Works
 
@@ -210,6 +210,30 @@ Amazon's tools then appear under **Amazon's own names** (e.g. `campaign_manageme
 `client_id` plus **either** `access_token` **or both** of `refresh_token` and `client_secret`. With the pair, mureo mints the access token before the first forwarded call and refreshes it once on expiry, persisting it atomically at `0600`. Full walkthrough, environment-variable table, and caveats: [`amazon-ads.md`](amazon-ads.md).
 
 > **Scope**: mureo's deep per-platform analytics (anomaly baselines, `result_indicator` CV-mismatch, RSA audit) are not available for Amazon yet — tracked in issue #120. Treat Amazon read findings as advisory. Amazon is also not part of BYOD by design.
+
+## ChatGPT Ads
+
+### Status: Bundled provider — read-only (mureo calls the API directly)
+
+ChatGPT Ads is read through OpenAI's **Advertiser API** by a provider that ships inside mureo. There is no separate MCP server to register: mureo calls the API itself, so the request path is
+
+```
+Claude  →  local mureo MCP  →  https://api.ads.openai.com/v1
+```
+
+The Ads API key stays in the `chatgpt_ads` section of `~/.mureo/credentials.json` and never enters the host's MCP configuration. Every call rides mureo's plugin safety layer (audit trail, per-tool throttle). Nine read-only tools cover the ad account, campaigns, ad groups, ads, insights and the change history; none changes anything on the platform yet (#994, #995). The STATE.json platform key is `plugin:mureo-chatgpt-ads:chatgpt_ads`.
+
+### Configuration
+
+1. Create an Ads API key on the Settings page in Ads Manager, for your own ad account. One key reads one ad account.
+2. Paste it on the **ChatGPT Ads** card of `mureo configure` (the **ChatGPT Ads** tab of the dashboard's **Connection credentials** section), or set `CHATGPT_ADS_API_KEY`.
+3. The `chatgpt_ads_*` tools are listed by default, with or without a key, and the key is read on each call, so saving it needs no server restart. `MUREO_DISABLE_CHATGPT_ADS=1` leaves the tools out.
+
+### Authentication
+
+One field, `api_key` (secret, required), sent as a bearer token. A missing key is reported as `auth_error` with `auth_cause: no_credentials`, a rejected one (401, or a 403 that is not a feature gate) as `token_invalid`. Full walkthrough, units, data freshness, limits and the points not yet exercised against a live account: [`chatgpt-ads.md`](chatgpt-ads.md).
+
+> **Scope**: mureo's deep per-platform analytics (anomaly baselines, `result_indicator` CV-mismatch, RSA audit) do not exist for ChatGPT Ads. Treat its findings as advisory. ChatGPT Ads is not part of BYOD.
 
 ## Future Platforms
 

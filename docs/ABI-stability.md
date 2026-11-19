@@ -616,9 +616,10 @@ without a deprecation cycle:
   `default_registry`** singleton. The class `Registry` is exposed
   for tests / advanced use.
 
-- **Platform models default to silence**: mureo core registers no
-  `PlatformModel` of its own, and a platform with no registered model
-  contributes no text to `instructions`. mureo will not start
+- **Platform models default to silence**: the built-in tool families
+  register no `PlatformModel`, and a platform with no registered model
+  contributes no text to `instructions`. A bundled provider registers
+  its own under the same rules (the ChatGPT Ads provider does). mureo will not start
   generating a default statement for an unregistered platform — that
   would be the guess the mechanism exists to prevent.
 - **A refused `PlatformModel` raises, it is not truncated**: an

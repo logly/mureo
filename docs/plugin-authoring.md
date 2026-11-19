@@ -1001,9 +1001,11 @@ Four rules the registry enforces, and why:
 - **Scope, not installation.** A platform whose tools this server does
   not serve contributes nothing, so an operator is never charged
   always-on context for a platform they are not running.
-- **Silence is the default.** mureo core registers **no** models of its
-  own, and a platform with no registered model contributes no text at
-  all. Absence is reported as silence, never filled in with a guess —
+- **Silence is the default.** The built-in tool families register **no**
+  models, and a platform with no registered model contributes no text at
+  all. A bundled provider may register its own under the same rules —
+  the ChatGPT Ads provider does, so a default install whose server serves
+  its tools carries that one line. Absence is reported as silence, never filled in with a guess —
   the same rule `mureo.policy.learning_rules` applies to a platform it
   has no first-party enumeration for.
 
@@ -1065,7 +1067,7 @@ named tool and grants no permission.
 | Unusable note | Not a string, blank, over 400 characters, not one line, or on a tool whose name breaks the name rule ⇒ dropped whole, logged, and reported with a `PluginToolWarning` naming the tool and the reason. Never truncated, and the tool itself is still served. |
 | Order | One note for each provider in turn: every provider's first note (by tool name), then every provider's second, and so on, ties broken by tool name. The block is rendered and fitted in that order, so one provider's notes cannot push out another provider's only note. The unit is the provider that owns the tool: a distribution that registers several providers takes a turn for each. |
 | Block | The rendered block — heading, note lines, joining newlines and the omission notice — never exceeds `MAX_TOTAL_CHARS` (1200). Past that, whole notes are dropped in the order above, a warning names them in the log, and the block says the list is incomplete. |
-| Scope | Rendered only for plugin tools this server actually serves, under the tool's own name. Tools of mureo's own catalog never render a note, and core ships none. |
+| Scope | Rendered only for plugin tools this server actually serves, under the tool's own name. Tools of the built-in tool families never render a note and declare none. A bundled provider's tools are plugin tools and may declare one; none of the bundled providers' tools (Amazon Ads, ChatGPT Ads) does today. |
 
 Which one to use:
 

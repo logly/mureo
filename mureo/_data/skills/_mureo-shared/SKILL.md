@@ -143,6 +143,8 @@ Beyond the built-in platforms, an entry-point provider installed as a mureo plug
 
 > **Amazon Ads (official-MCP bridge):** when configured, mureo bridges the official Amazon Ads MCP and exposes Amazon's own tool names (e.g. `campaign_management-*`, `account_management-*`). It rides this exact same provider-platform path — enumerate it best-effort, label it `Amazon Ads (official MCP) — …`, and apply the identical honest scope below. mureo's deep per-platform analytics are **not** available for it (tracked in #120); treat it as advisory. Its tool surface, the calling requirements that otherwise burn turns (`accessRequestedAccount`, one ad product per query, the global-account `profileId` rule) and its single-state ad model are documented in `../_mureo-amazon-ads/SKILL.md`.
 
+> **ChatGPT Ads (bundled provider):** mureo ships nine read-only `chatgpt_ads_*` tools over OpenAI's Advertiser API, listed by default (`MUREO_DISABLE_CHATGPT_ADS=1` removes them). Enumerate it on the same provider-platform path under the key `plugin:mureo-chatgpt-ads:chatgpt_ads`, label it `ChatGPT Ads — …`, and apply the identical honest scope below. One API key reads one ad account; budgets and bids are micros while insights spend / CPC / CPM are currency units, and same-day figures are provisional. Its tools, units and failure handling are documented in `../_mureo-chatgpt-ads/SKILL.md`.
+
 Honest scope for a plugin platform:
 
 - **Include** the basic listing / performance / health its tools support.
@@ -218,7 +220,7 @@ Add to your MCP client configuration:
 }
 ```
 
-The MCP server exposes tools for Google Ads, Meta Ads, and Search Console over stdio, plus any plugin / bridged-platform tools that are configured — including Amazon Ads under Amazon's own tool names (see *Plugin platforms* above).
+The MCP server exposes tools for Google Ads, Meta Ads, and Search Console over stdio, plus any plugin / bridged-platform tools that are configured — including Amazon Ads under Amazon's own tool names and the bundled read-only ChatGPT Ads tools (`chatgpt_ads_*`) (see *Plugin platforms* above).
 
 ### Verify MCP Connection
 
@@ -448,7 +450,7 @@ The guardrails are the only surface that stops one.
 |---|---|---|
 | Google Ads | Yes — `bidding_strategy_system_status` from the campaign snapshot in STATE.json | Yes — Google's own `LEARNING_*` enum members |
 | Meta Ads | No — Meta exposes `learning_stage_info` on the **ad set**, mureo does not fetch it and STATE.json is campaign-level | No — Meta documents "significant edits" without enumerating them |
-| Amazon Ads (bridge), Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
+| Amazon Ads (bridge), ChatGPT Ads (bundled provider), Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
 
 So the check is **complete on Google Ads and honest everywhere else**. For a
 Google campaign, keep `bidding_details.bidding_strategy_system_status` fresh in
@@ -484,7 +486,8 @@ Detection limits — including the cases where it **may flag something you meant
 > search-term-cleanup, competitive-scan, creative-refresh, creative-generate,
 > weekly-report, lead-form-create) point here with a **Before you start** line,
 > and the platform skills (_mureo-google-ads, _mureo-meta-ads,
-> _mureo-amazon-ads) with a **Before you diagnose or change anything** line.
+> _mureo-amazon-ads, _mureo-chatgpt-ads) with a **Before you diagnose or
+> change anything** line.
 > It applies to any diagnosis of an ad account or change to one, including a
 > direct request made without a workflow skill. This is the single canonical
 > copy of that preamble — run it before drawing any conclusions or making a

@@ -19,13 +19,14 @@ plugin that mureo discovers through the provider registry (the
 *drivers*. They are not mutually exclusive: mureo is the control plane, and an
 official MCP is a thin driver onto the platform's own API.
 
-There are **three** connection models in mureo today:
+There are **four** connection models in mureo today:
 
 | Model | Who holds the credentials | Who is in the request path | Example |
 |---|---|---|---|
 | **mureo-native** | mureo (`~/.mureo/credentials.json`) | mureo → platform API | Google Ads, Meta Ads, Search Console |
 | **Official, host-registered** | the AI host / connector | client → platform MCP (mureo is bypassed) | `google-ads-official`, `meta-ads-official`, TikTok's hosted MCP |
 | **Official, mureo-mediated bridge** | mureo (`~/.mureo/credentials.json`) | mureo → platform MCP | **Amazon Ads** |
+| **Bundled provider, direct API** | mureo (`~/.mureo/credentials.json`) | mureo (provider path) → platform API | **ChatGPT Ads** (read-only) |
 
 The third model matters because the second one costs you mureo's safety layer:
 a host-registered official MCP never reaches mureo's dispatcher, so its calls
@@ -211,6 +212,32 @@ Claude  →  local mureo MCP  →  Amazon hosted MCP endpoint
 | BYOD / `mureo demo` (CSV, no live API) | Yes | No | No (out of scope by design) |
 
 Setup, environment variables, and the full caveat list: [amazon-ads.md](./amazon-ads.md).
+
+---
+
+## ChatGPT Ads — a bundled provider over the platform API
+
+mureo reads ChatGPT Ads through OpenAI's Advertiser API with a provider that
+ships inside mureo (`mureo/chatgpt_ads/`). No MCP server sits in between:
+
+```
+Claude  →  local mureo MCP  →  https://api.ads.openai.com/v1
+```
+
+- **Credentials stay with mureo.** The Ads API key lives in the `chatgpt_ads`
+  section of `~/.mureo/credentials.json` (or `CHATGPT_ADS_API_KEY`). One key
+  reads one ad account.
+- **Provider path, not a built-in family.** The tools are served the way a
+  plugin's are: audited and throttled per tool. Their names are mureo's
+  (`chatgpt_ads_*`), and their list is fixed, so the documented tool total
+  includes them.
+- **Read-only today.** Nine tools read the account, campaigns, ad groups, ads,
+  insights and the change history; changes are tracked in #994 and #995. With
+  no mutations there is nothing to promote into `action_log` or roll back.
+- **No deep mureo analytics** (anomaly baselines, RSA audit, CV-mismatch) and
+  no BYOD.
+
+Setup, units, limits and failure shapes: [chatgpt-ads.md](./chatgpt-ads.md).
 
 ---
 

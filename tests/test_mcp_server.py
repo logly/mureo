@@ -84,10 +84,15 @@ class TestListTools:
         analysis_delivery_collapse_check + analysis_delivery_collapse_diagnose
         (#546) + analysis_exclusion_impact_preview (#547) +
         analysis_tracking_consistency_check (#550). Learning pre-flight is 1:
-        mureo_learning_reset_preflight (#548)."""
+        mureo_learning_reset_preflight (#548).
+
+        ChatGPT Ads is 9, served by the bundled provider rather than a
+        built-in tool family (#993): account_get, campaigns_list /
+        campaigns_get, ad_groups_list / ad_groups_get, ads_list / ads_get,
+        insights_report, change_history_list."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 229
+        assert len(tools) == 238
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads and Meta Ads tools are included."""

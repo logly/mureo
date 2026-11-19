@@ -46,6 +46,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from mureo.amazon_ads.provider import amazon_ads_disabled, register_amazon_provider
+from mureo.chatgpt_ads.provider import (
+    chatgpt_ads_disabled,
+    register_chatgpt_ads_provider,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -58,7 +62,10 @@ if TYPE_CHECKING:
 #: (first-wins, so possibly a foreign one).
 _BUNDLED_PROVIDERS: tuple[
     tuple[Callable[[], bool], Callable[[], ProviderEntry]], ...
-] = ((amazon_ads_disabled, register_amazon_provider),)
+] = (
+    (amazon_ads_disabled, register_amazon_provider),
+    (chatgpt_ads_disabled, register_chatgpt_ads_provider),
+)
 
 
 def register_bundled_providers() -> tuple[ProviderEntry, ...]:

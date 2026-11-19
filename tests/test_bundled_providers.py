@@ -18,6 +18,7 @@ from mureo import bundled_providers
 from mureo.amazon_ads.bridge import AmazonAdsBridge
 from mureo.amazon_ads.provider import AMAZON_PROVIDER_NAME
 from mureo.bundled_providers import discover_with_bundled, register_bundled_providers
+from mureo.chatgpt_ads.provider import CHATGPT_ADS_PROVIDER_NAME, ChatGPTAdsProvider
 from mureo.core.providers import default_registry
 from mureo.core.providers.registry import ProviderEntry, RegistryWarning
 from tests.test_amazon_provider_registration import _isolated_registry  # noqa: F401
@@ -84,12 +85,18 @@ class TestRegisterBundledProviders:
         assert [e.name for e in entries] == ["on_ads"]
         assert "off_ads" not in default_registry
 
-    def test_the_real_table_registers_amazon(self) -> None:
+    def test_the_real_table_registers_amazon_then_chatgpt_ads(self) -> None:
         entries = register_bundled_providers()
 
-        assert [e.name for e in entries] == [AMAZON_PROVIDER_NAME]
+        assert [e.name for e in entries] == [
+            AMAZON_PROVIDER_NAME,
+            CHATGPT_ADS_PROVIDER_NAME,
+        ]
         assert default_registry.get(AMAZON_PROVIDER_NAME).provider_class is (
             AmazonAdsBridge
+        )
+        assert default_registry.get(CHATGPT_ADS_PROVIDER_NAME).provider_class is (
+            ChatGPTAdsProvider
         )
 
     def test_the_real_amazon_row_honours_its_disable_switch(
@@ -97,8 +104,18 @@ class TestRegisterBundledProviders:
     ) -> None:
         monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", "1")
 
-        assert register_bundled_providers() == ()
+        assert [e.name for e in register_bundled_providers()] == [
+            CHATGPT_ADS_PROVIDER_NAME
+        ]
         assert AMAZON_PROVIDER_NAME not in default_registry
+
+    def test_the_real_chatgpt_ads_row_honours_its_disable_switch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MUREO_DISABLE_CHATGPT_ADS", "1")
+
+        assert [e.name for e in register_bundled_providers()] == [AMAZON_PROVIDER_NAME]
+        assert CHATGPT_ADS_PROVIDER_NAME not in default_registry
 
     def test_repeat_calls_are_silent(self) -> None:
         first = register_bundled_providers()
