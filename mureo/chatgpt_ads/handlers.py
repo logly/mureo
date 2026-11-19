@@ -5,7 +5,8 @@ Handlers return plain Python data; :mod:`mureo.chatgpt_ads.provider` turns it
 (or a client exception) into the tool result. Every argument is checked
 before the first request (:mod:`mureo.chatgpt_ads._validation`). The other
 tool families live in their own modules (``handlers_mutations``,
-``handlers_create``, ``handlers_creative`` and their ``tools_*``) and are
+``handlers_create``, ``handlers_creative``, ``handlers_audiences``,
+``handlers_measurement`` and their ``tools_*``) and are
 composed here: :data:`ALL_TOOLS` is the provider's tool list and
 :data:`HANDLERS` its handler table, so :func:`run_tool` is the one way any
 handler runs, and which tools change the account is read off the composed
@@ -18,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import timezone
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from mureo.chatgpt_ads._api import (
@@ -30,27 +30,39 @@ from mureo.chatgpt_ads._api import (
 )
 from mureo.chatgpt_ads._errors import (
     MAY_HAVE_BEEN_APPLIED,
+    REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY,
     REPEAT_WITH_IDEMPOTENCY_KEY,
     ChatGPTAdsAPIError,
 )
 from mureo.chatgpt_ads._period import resolve_period, today_in, unix_bounds
-from mureo.chatgpt_ads._validation import integer, name_value, path_id
+from mureo.chatgpt_ads._validation import (
+    attribution_window_value,
+    flag,
+    granularity_value,
+    limit_value,
+    name_value,
+    path_id,
+    period_value,
+)
+from mureo.chatgpt_ads.handlers_audiences import AUDIENCE_HANDLERS
 from mureo.chatgpt_ads.handlers_create import (
     CREATE_HANDLERS,
     idempotency_key_value,
 )
 from mureo.chatgpt_ads.handlers_creative import CREATIVE_HANDLERS
+from mureo.chatgpt_ads.handlers_measurement import MEASUREMENT_HANDLERS
 from mureo.chatgpt_ads.handlers_mutations import MUTATION_HANDLERS, Handler
 from mureo.chatgpt_ads.tools import (
     CONVERSION_METRICS,
     DEFAULT_INSIGHTS_LIMIT,
     DEFAULT_LIST_LIMIT,
     DELIVERY_METRICS,
-    MAX_TOOL_LIMIT,
     TOOLS,
 )
+from mureo.chatgpt_ads.tools_audiences import AUDIENCE_TOOLS, MEMBERS_TOOL_NAMES
 from mureo.chatgpt_ads.tools_create import CREATE_TOOLS
 from mureo.chatgpt_ads.tools_creative import CREATIVE_TOOLS
+from mureo.chatgpt_ads.tools_measurement import MEASUREMENT_TOOLS
 from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 
 if TYPE_CHECKING:
@@ -76,35 +88,10 @@ _SCOPES = (
     ("ad_group_id", "ad_group", "/ad_groups"),
     ("ad_id", "ad", "/ads"),
 )
-_GRANULARITIES = ("none", "daily")
-_ATTRIBUTION_WINDOWS = (7, 14, 30)
 
 
 def _optional_id(arguments: dict[str, Any], key: str) -> str | None:
     return None if arguments.get(key) is None else path_id(arguments, key)
-
-
-def _flag(arguments: dict[str, Any], key: str) -> bool:
-    value = arguments.get(key, False)
-    if not isinstance(value, bool):
-        raise ValueError(f"{key} must be true or false")
-    return value
-
-
-def _limit(arguments: dict[str, Any], default: int) -> int:
-    return integer(arguments.get("limit", default), "limit", 1, MAX_TOOL_LIMIT)
-
-
-def _period(arguments: dict[str, Any], default: str) -> str:
-    """The ``period`` argument, checked before any request.
-
-    Every preset is valid on any day, so resolving against the UTC day here
-    only rejects malformed values and over-long ranges; the window itself is
-    resolved again in the account's zone once that is known.
-    """
-    period = arguments.get("period", default)
-    resolve_period(period, today_in(timezone.utc))
-    return str(period)
 
 
 def _list_filters(arguments: dict[str, Any], *keys: str) -> list[tuple[str, str]]:
@@ -118,7 +105,7 @@ def _list_filters(arguments: dict[str, Any], *keys: str) -> list[tuple[str, str]
 
 def _include(arguments: dict[str, Any]) -> list[tuple[str, str]]:
     """``include[]=serving_issues`` when ``include_serving_issues`` is set."""
-    wanted = _flag(arguments, "include_serving_issues")
+    wanted = flag(arguments, "include_serving_issues")
     return [("include[]", "serving_issues")] if wanted else []
 
 
@@ -128,7 +115,7 @@ async def _account_get(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> A
 
 async def _campaigns_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
     params = [*_list_filters(arguments, "name"), *_include(arguments)]
-    limit = _limit(arguments, DEFAULT_LIST_LIMIT)
+    limit = limit_value(arguments, DEFAULT_LIST_LIMIT)
     return await client.list_all(
         "/campaigns", params, limit=limit, page_max=PAGE_MAX_ENTITIES
     )
@@ -144,7 +131,7 @@ async def _ad_groups_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -
     # not); required is the reading that cannot be rejected.
     params = [("campaign_id", path_id(arguments, "campaign_id"))]
     params += _list_filters(arguments, "name")
-    limit = _limit(arguments, DEFAULT_LIST_LIMIT)
+    limit = limit_value(arguments, DEFAULT_LIST_LIMIT)
     return await client.list_all(
         "/ad_groups", params, limit=limit, page_max=PAGE_MAX_ENTITIES
     )
@@ -156,7 +143,7 @@ async def _ad_groups_get(client: ChatGPTAdsClient, arguments: dict[str, Any]) ->
 
 async def _ads_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
     params = _list_filters(arguments, "ad_group_id", "name")
-    limit = _limit(arguments, DEFAULT_LIST_LIMIT)
+    limit = limit_value(arguments, DEFAULT_LIST_LIMIT)
     return await client.list_all(
         "/ads", params, limit=limit, page_max=PAGE_MAX_ENTITIES
     )
@@ -204,23 +191,10 @@ def _metrics(arguments: dict[str, Any]) -> tuple[str, ...]:
     return tuple(value)
 
 
-def _granularity(arguments: dict[str, Any]) -> str:
-    granularity = arguments.get("time_granularity", "none")
-    if granularity not in _GRANULARITIES:
-        raise ValueError(f"time_granularity must be one of {', '.join(_GRANULARITIES)}")
-    return str(granularity)
-
-
 def _attribution(arguments: dict[str, Any]) -> list[tuple[str, str]]:
     """``attribution_window_days`` when given; omitted, the API default applies."""
-    window = arguments.get("attribution_window_days")
-    if window is None:
-        return []
-    # ``type() is int``: a bool or ``7.0`` compares equal to an allowed
-    # value but is not the integer the API documents.
-    if type(window) is not int or window not in _ATTRIBUTION_WINDOWS:
-        raise ValueError("attribution_window_days must be 7, 14 or 30")
-    return [("attribution_window_days", str(window))]
+    window = attribution_window_value(arguments)
+    return [] if window is None else [("attribution_window_days", str(window))]
 
 
 def _insights_fields(
@@ -237,13 +211,13 @@ def _insights_fields(
 
 
 async def _insights_report(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
-    period = _period(arguments, "last_30d")
+    period = period_value(arguments, "last_30d")
     scope, path = _insights_scope(arguments)
     level = _insights_level(arguments, scope)
-    granularity = _granularity(arguments)
+    granularity = granularity_value(arguments)
     fields = _insights_fields(level, granularity, _metrics(arguments))
     attribution = _attribution(arguments)
-    limit = _limit(arguments, DEFAULT_INSIGHTS_LIMIT)
+    limit = limit_value(arguments, DEFAULT_INSIGHTS_LIMIT)
     since, until = resolve_period(period, today_in(await client.account_timezone()))
     window = {"type": "date_range", "since": str(since), "until": str(until)}
     params = [
@@ -259,9 +233,9 @@ async def _insights_report(client: ChatGPTAdsClient, arguments: dict[str, Any]) 
 async def _change_history_list(
     client: ChatGPTAdsClient, arguments: dict[str, Any]
 ) -> Any:
-    period = _period(arguments, "last_7d")
+    period = period_value(arguments, "last_7d")
     filters = _list_filters(arguments, "campaign_id", "ad_group_id", "ad_id")
-    limit = _limit(arguments, DEFAULT_LIST_LIMIT)
+    limit = limit_value(arguments, DEFAULT_LIST_LIMIT)
     zone = await client.account_timezone()
     start, end = unix_bounds(*resolve_period(period, today_in(zone)), zone)
     params = [*filters, ("start_time", str(start)), ("end_time", str(end))]
@@ -283,6 +257,8 @@ HANDLERS: dict[str, Handler] = {
     **MUTATION_HANDLERS,
     **CREATE_HANDLERS,
     **CREATIVE_HANDLERS,
+    **AUDIENCE_HANDLERS,
+    **MEASUREMENT_HANDLERS,
 }
 
 #: Every tool the provider lists, in order.
@@ -291,6 +267,8 @@ ALL_TOOLS: tuple[Tool, ...] = (
     *MUTATION_TOOLS,
     *CREATE_TOOLS,
     *CREATIVE_TOOLS,
+    *AUDIENCE_TOOLS,
+    *MEASUREMENT_TOOLS,
 )
 
 #: Tools that change the account, read off their ``readOnlyHint``; one
@@ -301,8 +279,9 @@ MUTATING_TOOL_NAMES = frozenset(
     for tool in ALL_TOOLS
     if not (tool.annotations and tool.annotations.readOnlyHint)
 )
-#: Creates that carry an ``Idempotency-Key``: the tools offering the
-#: ``idempotency_key`` argument.
+#: Requests that carry an ``Idempotency-Key`` (the creates, and the audience
+#: membership add and remove): the tools offering the ``idempotency_key``
+#: argument.
 _IDEMPOTENT_TOOL_NAMES = frozenset(
     tool.name
     for tool in ALL_TOOLS
@@ -328,6 +307,7 @@ async def run_with_client(
     deadline: float = TOOL_DEADLINE_SECONDS,
     mutating: bool = False,
     idempotency_key: str | None = None,
+    repeat_sentence: str = REPEAT_WITH_IDEMPOTENCY_KEY,
 ) -> _T:
     """Run ``work`` on a client of its own within ``deadline`` seconds.
 
@@ -336,9 +316,11 @@ async def run_with_client(
     is a :class:`ChatGPTAdsAPIError` raised after the ``except`` block, so
     nothing from the cancelled request is chained onto it; for ``mutating``
     work it ends with :data:`MAY_HAVE_BEEN_APPLIED`, because the request may
-    have reached the platform before it was cancelled. For a create sent with
-    ``idempotency_key`` it ends with :data:`REPEAT_WITH_IDEMPOTENCY_KEY`
-    instead: repeating with that key is the safe next step.
+    have reached the platform before it was cancelled. For a request sent
+    with ``idempotency_key`` it ends with ``repeat_sentence`` instead
+    (:data:`REPEAT_WITH_IDEMPOTENCY_KEY` for a create,
+    :data:`REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY` for an audience membership
+    change): repeating with that key is the safe next step.
     """
     async with _open_client(api_key) as client:
         try:
@@ -347,7 +329,7 @@ async def run_with_client(
             pass
     message = f"the call did not finish within {deadline:g} seconds"
     if idempotency_key is not None:
-        message = f"{message} {REPEAT_WITH_IDEMPOTENCY_KEY.format(key=idempotency_key)}"
+        message = f"{message} {repeat_sentence.format(key=idempotency_key)}"
     elif mutating:
         message = f"{message} {MAY_HAVE_BEEN_APPLIED}"
     raise ChatGPTAdsAPIError(message, status=0)
@@ -379,6 +361,11 @@ async def run_tool(
         deadline=deadline,
         mutating=name in MUTATING_TOOL_NAMES,
         idempotency_key=key,
+        repeat_sentence=(
+            REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY
+            if name in MEMBERS_TOOL_NAMES
+            else REPEAT_WITH_IDEMPOTENCY_KEY
+        ),
     )
 
 

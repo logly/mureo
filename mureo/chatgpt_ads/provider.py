@@ -136,7 +136,9 @@ class ChatGPTAdsProvider:
     """Tools over OpenAI's Advertiser API: nine reads, the spend-limit read,
     eleven changes that are recorded with a reversal, create and archive for
     campaigns, ad groups and ads (no reversal), an image upload, an ad
-    preview and a location search."""
+    preview, a location search, custom audiences filled from a local
+    identifier file, and conversion measurement (pixels, event settings and
+    the conversion report)."""
 
     name = CHATGPT_ADS_PROVIDER_NAME
     display_name = "ChatGPT Ads"

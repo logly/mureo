@@ -86,18 +86,21 @@ class TestListTools:
         analysis_tracking_consistency_check (#550). Learning pre-flight is 1:
         mureo_learning_reset_preflight (#548).
 
-        ChatGPT Ads is 30, served by the bundled provider rather than a
+        ChatGPT Ads is 41, served by the bundled provider rather than a
         built-in tool family (#993, #994, #995): account_get, campaigns_list /
         campaigns_get, ad_groups_list / ad_groups_get, ads_list / ads_get,
         insights_report, change_history_list, account_spend_limits_get,
         ads_preview, locations_search, the eleven edits: pause / enable for
         campaigns, ad groups and ads, campaigns_update /
         campaigns_update_budget, ad_groups_update / ad_groups_update_bid,
-        account_daily_spend_limit_set; and create / archive for campaigns,
-        ad groups and ads, plus images_upload_file."""
+        account_daily_spend_limit_set; create / archive for campaigns,
+        ad groups and ads, plus images_upload_file; custom audiences
+        (audiences_list / _get / _create, audiences_members_add / _remove,
+        audiences_operations_get); and conversion measurement (pixels_list /
+        _create, conversion_events_list / _create, conversions_report)."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 259
+        assert len(tools) == 270
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads and Meta Ads tools are included."""

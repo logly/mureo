@@ -1,6 +1,6 @@
 ---
 name: _mureo-chatgpt-ads
-description: "ChatGPT Ads (bundled provider over OpenAI's Advertiser API): read the ad account, spending limits, campaigns, ad groups, ads, performance insights and the change history; pause and activate, rename, reschedule, set budgets, bids and the account daily spending limit, each recorded with a reversal; create campaigns, ad groups and ads (always paused), archive them irreversibly, upload images, preview ads and search locations."
+description: "ChatGPT Ads (bundled provider over OpenAI's Advertiser API): read the ad account, spending limits, campaigns, ad groups, ads, performance insights and the change history; pause and activate, rename, reschedule, set budgets, bids and the account daily spending limit, each recorded with a reversal; create campaigns, ad groups and ads (always paused), archive them irreversibly, upload images, preview ads and search locations; create and fill custom audiences from a local identifier file; set up pixels and conversion events and report conversions."
 metadata:
   version: 0.44.0
   openclaw:
@@ -30,14 +30,15 @@ metadata:
 
 ## What this surface is — and is not
 
-- **Twelve read tools and eighteen tools that change the account** over
-  OpenAI's Advertiser API, the API behind ChatGPT Ads. mureo calls the API
-  itself; no other MCP server is involved.
+- **Eighteen read tools and twenty-three tools that change the account**
+  over OpenAI's Advertiser API, the API behind ChatGPT Ads. mureo calls the
+  API itself; no other MCP server is involved.
 - **What can change:** pause and activate a campaign, ad group or ad; rename
   or reschedule a campaign; set a campaign's budget; rename an ad group; set
   an ad group's bidding config; set the account's daily spending limit;
   create a campaign, ad group or ad (always paused); archive one; upload an
-  image. Nothing edits a creative, targeting or context hints after
+  image; create a custom audience and add or remove its members; create a
+  pixel or a conversion event setting. Nothing edits a creative, targeting or context hints after
   creation, or removes the account limit: for those, say the change has to
   be made in Ads Manager; do not look for another tool.
 - **One API key = one ad account.** The key the operator configured selects
@@ -228,6 +229,74 @@ that does not read an amount does not bound it.
   before asking for approval. Whether archiving a campaign or ad group also
   archives its children is not documented.
 
+### Custom audiences
+
+| Tool | Use it to |
+|------|-----------|
+| `chatgpt_ads_audiences_list` / `chatgpt_ads_audiences_get` | Find audiences (`intended_use` filter) and read one's status and size (`audience_id`) |
+| `chatgpt_ads_audiences_create` | Create an empty audience (`name`, optional `description`) |
+| `chatgpt_ads_audiences_members_add` / `_remove` | Add or remove members from a local file (`audience_id`, `file_path`, `identifier_type`) |
+| `chatgpt_ads_audiences_operations_get` | Poll an add or remove until its `status` is no longer `processing` |
+
+- **Identifiers never go in arguments.** Arguments reach the audit trail and
+  the conversation. Ask the operator for a path to a UTF-8 `.txt` or `.csv`
+  file (at most 2 MiB), one identifier per line, no header, every line of the
+  `identifier_type` named: `email` and `phone` (E.164 with `+` and country
+  code) are hashed with SHA-256 on the machine; `email_sha256` and
+  `phone_number_sha256` are sent as given; `gaid` is sent unhashed. Never
+  read, quote or summarise the file's lines in the conversation.
+- **One value per line.** A quoted value or a comma-separated row is an
+  invalid line, so the platform's own CSV upload format (a header row,
+  several columns) is not this file: ask for the one column. An email must be
+  a plain ASCII address (no quotes, `mailto:`, brackets or invisible
+  characters, a dotted domain); for non-ASCII addresses the operator hashes
+  them and passes `email_sha256`. A phone written `+44 (0)20 ...` is invalid:
+  drop the bracketed zero.
+- **One invalid line refuses the whole call**, with the count and up to 10
+  line numbers; nothing is sent. A file must hold 1 to 10,000 distinct
+  identifiers: an empty one is refused on its own; split a larger one and
+  call once per part.
+- **Consent is the operator's.** Upload only first-party data the
+  advertiser has the right and consent to use; say so before the first add.
+- **Size and region.** Inclusion and bid-multiplier use need at least 25,000
+  matched users; exclusion has no minimum. Custom audiences are not supported
+  for campaigns that target the EEA or Switzerland.
+- **Lost answers.** An add or remove carries an idempotency key; when it ends
+  with `repeat the call with idempotency_key="..."`, repeat it with that key,
+  the same arguments and the same file. An audience create has no key: list
+  audiences before creating another.
+- **`succeeded` is not a match count.** It means the operation finished; a
+  remove from an opt-out list removes nobody whose address was spelled
+  differently when it was uploaded. Say so when reporting a remove.
+- **No reversal.** `rollback_apply` cannot undo an add or remove: removing
+  what was added would also drop members who were there before.
+- **Remove is destructive** (`destructiveHint`, like an archive) and can take
+  an audience below the 25,000 matched users inclusion and bid multipliers
+  need; say so before asking for approval.
+
+### Conversion measurement
+
+| Tool | Use it to |
+|------|-----------|
+| `chatgpt_ads_pixels_list` / `chatgpt_ads_pixels_create` | Find or create a web pixel (`name`) |
+| `chatgpt_ads_conversion_events_list` | Find conversion event settings and their ids |
+| `chatgpt_ads_conversion_events_create` | Create an event setting (`name`, `event_type`, `source_id`; `custom_event_name` when `event_type` is `custom`; always the documented 30-day click window) |
+| `chatgpt_ads_conversions_report` | Conversion totals, click- and view-through counts, sales and per-event details for a period |
+
+- **Event settings are permanent.** No API edits or deletes one; confirm the
+  name, type and source with the operator before creating it.
+- **`source_id` is the pixel's `id`**, not its `pixel_id` (that one
+  initialises the JavaScript Pixel). An answer `Client data source not found`
+  means `source_id` is not a pixel of this account: list the pixels again.
+- **`feature_not_enabled` on the pixel list or create** means conversions are
+  not enabled for the account; relay it, do not retry. A 404 on event
+  settings is an ordinary `API error:`.
+- **The report** takes `period`, `level`, `time_granularity` and
+  `attribution_window_days` as `chatgpt_ads_insights_report` does, and needs
+  `entity_ids` (1 to 100) unless `group_by_entity` is false. There is no
+  pagination: more than 2,000 rows is refused, so narrow the ids or the
+  period. Use `chatgpt_ads_insights_report` for conversions next to spend.
+
 ## Units — do not mix them
 
 | Value | Unit |
@@ -258,8 +327,9 @@ finalized activity and can arrive later; conversions take at least a day.
 | `"status": "auth_error"`, `"auth_cause": "token_invalid"` | A key is configured and the API rejected it (wrong, revoked, or without access to the account) | Check the key in Ads Manager, issue a new one if needed, and save it in the same tab |
 | `"status": "error"`, `"error": "feature_not_enabled"` | The account does not have that feature enabled | Relay `detail` as-is and say the feature has to be enabled for the account on the platform's side; mureo cannot enable it. Do not retry unchanged |
 | Text starting `API error:` | Any other platform error, already retried where a retry could help (429 / 5xx on reads, 429 on changes) | Quote the message; for a 429 suggest waiting and narrowing the request |
-| Text ending `The change may have been applied; read the entity before retrying.` | A change ended in a 5xx, an unreadable success answer, a transport error or the deadline, after the request may have reached the platform | Read the entity with its `*_get` tool and report what it shows; never repeat the change blind |
+| Text ending `The change may have been applied; check the account before retrying.` | A change ended in a 5xx, an unreadable success answer, a transport error or the deadline, after the request may have reached the platform | Read the entity with its `*_get` tool (or list audiences, pixels or event settings after a create without a key) and report what it shows; never repeat the change blind |
 | Text ending `repeat the call with idempotency_key="<key>" and the same arguments: ...` | A create ended the same way; the platform may hold the new entity | Repeat the create with that `idempotency_key` and unchanged arguments after the operator agrees; if that fails too, list by `name` before creating with a new key |
+| Text ending `repeat the call with idempotency_key="<key>", the same arguments and the same file: ...` | An audience add or remove ended the same way; the operation may have been accepted | Repeat it with that key, the same arguments and the same file after the operator agrees |
 
 An `auth_error` is not data: never render `detail` where a metric belongs and
 never read the missing numbers as zero. Mark ChatGPT Ads as **not read** with
@@ -267,8 +337,10 @@ its `auth_cause`, and keep going with the other platforms.
 
 A `ValueError` means the call itself was malformed (an unknown period, two
 scope ids, a level above the scope, an unknown metric, an image of another
-type, not identified as its extension's format, or over 30MB). A `FileNotFoundError` means the image path does not
-exist. Fix the arguments; nothing was sent to the API.
+type, not identified as its extension's format, or over 30MB; an identifier
+file with an invalid line or too many identifiers). A `FileNotFoundError`
+means the image or identifier file path does not exist. Fix the arguments;
+nothing was sent to the API.
 
 ## Important notes
 

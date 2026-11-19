@@ -21,8 +21,10 @@ from mureo.chatgpt_ads import handlers
 from mureo.chatgpt_ads._errors import MAY_HAVE_BEEN_APPLIED, ChatGPTAdsAPIError
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
 from mureo.chatgpt_ads.tools import TOOLS
+from mureo.chatgpt_ads.tools_audiences import AUDIENCE_TOOLS
 from mureo.chatgpt_ads.tools_create import CREATE_TOOLS
 from mureo.chatgpt_ads.tools_creative import CREATIVE_TOOLS
+from mureo.chatgpt_ads.tools_measurement import MEASUREMENT_TOOLS
 from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from mureo.mcp.plugin_semantics import derive_semantics
 from tests._chatgpt_ads_fakes import (
@@ -87,6 +89,8 @@ class TestDefinitions:
             *MUTATION_TOOLS,
             *CREATE_TOOLS,
             *CREATIVE_TOOLS,
+            *AUDIENCE_TOOLS,
+            *MEASUREMENT_TOOLS,
         )
 
     @pytest.mark.parametrize("tool", MUTATION_TOOLS, ids=lambda t: t.name)

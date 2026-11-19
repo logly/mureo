@@ -466,6 +466,190 @@
         "q",
         "limit"
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/custom_audiences",
+      "query": [
+        "intended_use",
+        "custom_audience_ids",
+        "policy_revision",
+        "matched_count_granularity",
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/custom_audiences",
+      "query": [],
+      "body": [
+        "name",
+        "description",
+        "file_id",
+        "identifier_type",
+        "identifier_resolution",
+        "filename",
+        "mimetype",
+        "file_size"
+      ],
+      "fields": [
+        "name",
+        "description",
+        "file_id",
+        "identifier_type",
+        "identifier_resolution",
+        "filename",
+        "mimetype",
+        "file_size"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/custom_audiences/{custom_audience_id}",
+      "query": [
+        "matched_count_granularity"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/custom_audiences/{custom_audience_id}/add",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "file_id",
+        "identifiers",
+        "identifier_type",
+        "identifier_resolution",
+        "expected_revision"
+      ],
+      "fields": [
+        "file_id",
+        "identifiers",
+        "identifiers[].identifier_type",
+        "identifiers[].identifier",
+        "identifier_type",
+        "identifier_resolution",
+        "expected_revision"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/custom_audiences/{custom_audience_id}/remove",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "file_id",
+        "identifiers",
+        "identifier_type",
+        "identifier_resolution",
+        "expected_revision"
+      ],
+      "fields": [
+        "file_id",
+        "identifiers",
+        "identifiers[].identifier_type",
+        "identifiers[].identifier",
+        "identifier_type",
+        "identifier_resolution",
+        "expected_revision"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/custom_audiences/{custom_audience_id}/operations/{operation_id}",
+      "query": []
+    },
+    {
+      "method": "GET",
+      "path": "/conversions/pixels",
+      "query": [
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/conversions/pixels",
+      "query": [],
+      "body": [
+        "name",
+        "client_type"
+      ],
+      "fields": [
+        "name",
+        "client_type"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/conversions/event_settings",
+      "query": [
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/conversions/event_settings",
+      "query": [],
+      "body": [
+        "name",
+        "event_type",
+        "custom_event_name",
+        "attribution_window_days",
+        "source_ids"
+      ],
+      "fields": [
+        "name",
+        "event_type",
+        "custom_event_name",
+        "attribution_window_days",
+        "source_ids"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/conversions/insights",
+      "query": [],
+      "body": [
+        "include",
+        "event_names",
+        "attribution_time_basis",
+        "aggregation_level",
+        "time_granularity",
+        "breakdown",
+        "time_ranges",
+        "entity_ids",
+        "group_by_entity",
+        "include_zero_rows",
+        "attribution_window_days",
+        "view_through_attribution_window_days"
+      ],
+      "fields": [
+        "include",
+        "event_names",
+        "attribution_time_basis",
+        "aggregation_level",
+        "time_granularity",
+        "breakdown",
+        "time_ranges",
+        "entity_ids",
+        "group_by_entity",
+        "include_zero_rows",
+        "attribution_window_days",
+        "view_through_attribution_window_days"
+      ]
     }
   ]
 }

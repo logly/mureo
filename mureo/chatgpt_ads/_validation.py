@@ -10,14 +10,19 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import timezone
 from typing import Any
 from urllib.parse import urlsplit
 
+from mureo.chatgpt_ads._period import resolve_period, today_in
 from mureo.chatgpt_ads.tools import (
+    ATTRIBUTION_WINDOWS,
     ID_PATTERN,
+    MAX_TOOL_LIMIT,
     NAME_MAX_CHARS,
     NAME_MIN_CHARS,
     NAME_PATTERN,
+    TIME_GRANULARITIES,
 )
 
 _ID_RE = re.compile(ID_PATTERN)
@@ -124,6 +129,54 @@ def number(
     return figure
 
 
+def limit_value(arguments: dict[str, Any], default: int) -> int:
+    """A list or report tool's ``limit``: rows to collect, 1 to the tool cap."""
+    return integer(arguments.get("limit", default), "limit", 1, MAX_TOOL_LIMIT)
+
+
+def flag(arguments: dict[str, Any], key: str) -> bool:
+    """A boolean argument; absent is ``False``."""
+    value = arguments.get(key, False)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be true or false")
+    return value
+
+
+def period_value(arguments: dict[str, Any], default: str) -> str:
+    """The ``period`` argument, checked before any request.
+
+    Every preset is valid on any day, so resolving against the UTC day here
+    only rejects malformed values and over-long ranges; the window itself is
+    resolved again in the account's zone once that is known.
+    """
+    period = arguments.get("period", default)
+    resolve_period(period, today_in(timezone.utc))
+    return str(period)
+
+
+def granularity_value(arguments: dict[str, Any]) -> str:
+    """The ``time_granularity`` argument; absent is ``none``."""
+    granularity = arguments.get("time_granularity", "none")
+    if granularity not in TIME_GRANULARITIES:
+        raise ValueError(
+            f"time_granularity must be one of {', '.join(TIME_GRANULARITIES)}"
+        )
+    return str(granularity)
+
+
+def attribution_window_value(arguments: dict[str, Any]) -> int | None:
+    """The ``attribution_window_days`` argument; ``None`` when absent."""
+    window = arguments.get("attribution_window_days")
+    if window is None:
+        return None
+    # ``type() is int``: a bool or ``7.0`` compares equal to an allowed
+    # value but is not the integer the API documents.
+    if type(window) is not int or window not in ATTRIBUTION_WINDOWS:
+        *head, last = (str(days) for days in ATTRIBUTION_WINDOWS)
+        raise ValueError(f"attribution_window_days must be {', '.join(head)} or {last}")
+    return window
+
+
 def http_url(value: object, key: str, max_chars: int) -> str:
     """``value`` as an absolute http(s) URL of at most ``max_chars``.
 
@@ -164,11 +217,16 @@ def _is_http_url(value: str, max_chars: int) -> bool:
 
 
 __all__ = [
+    "attribution_window_value",
+    "flag",
+    "granularity_value",
     "http_url",
     "id_value",
     "integer",
+    "limit_value",
     "line_text",
     "name_value",
     "number",
     "path_id",
+    "period_value",
 ]

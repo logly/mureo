@@ -87,7 +87,9 @@ CREATIVE_BODY_MAX_CHARS = 100
 TARGET_URL_MAX_CHARS = 2048
 IMAGE_CROP_KEYS = ("x", "y", "width", "height")
 
-_DESTROYS = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+#: A change that removes something and records no reversal: an archive, or
+#: an audience membership removal.
+DESTROYS = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
 _NAME_BOUNDS = f"{NAME_MIN_CHARS} to {NAME_MAX_CHARS} characters"
 
 _PAUSED_NOTE = (
@@ -408,7 +410,7 @@ def _archive_tool(entity: str, noun: str, id_key: str, example: str) -> Tool:
         description,
         {id_key: id_param(noun.capitalize(), example)},
         [id_key],
-        annotations=_DESTROYS,
+        annotations=DESTROYS,
         declarations=IDENTITY_BY_KEY[id_key],
     )
 
@@ -431,6 +433,7 @@ __all__ = [
     "CREATIVE_BODY_MAX_CHARS",
     "CREATIVE_TITLE_MAX_CHARS",
     "CREATIVE_TITLE_MIN_CHARS",
+    "DESTROYS",
     "IDEMPOTENCY_KEY",
     "IDEMPOTENCY_KEY_MAX_CHARS",
     "IDEMPOTENCY_KEY_PATTERN",

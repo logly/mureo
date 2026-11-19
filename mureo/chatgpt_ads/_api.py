@@ -76,6 +76,17 @@ MAX_CHANGED_FIELDS: Final = 20
 #: non-hourly delivery reporting keeps the most recent 365 days.
 MAX_WINDOW_DAYS: Final = 365
 
+#: Largest identifier file an audience add or remove reads. 10,000 hashed
+#: lines are about 650 KB; the cap leaves room for longer raw lines and
+#: refuses a file that cannot be one inline request before parsing it.
+MAX_IDENTIFIER_FILE_BYTES: Final = 2 * 1024 * 1024
+MAX_IDENTIFIER_FILE_LABEL: Final = "2 MiB"
+
+#: Identifiers one add or remove sends inline. The reference calls up to
+#: 10,000 the small-update path (not a hard item-count limit; larger
+#: batches go through file processing, which mureo does not offer).
+MAX_INLINE_IDENTIFIERS: Final = 10_000
+
 #: Per-tool throttle. The API allows 600 requests per minute per endpoint
 #: (10/s) and 1,200 overall. The throttle counts tool calls, and one call can
 #: issue several sequential requests (pages, the time-zone lookup, retries)
