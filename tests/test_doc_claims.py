@@ -26,8 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from mureo.chatgpt_ads.tools import TOOLS as CHATGPT_ADS_TOOLS
-from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS as CHATGPT_ADS_MUTATIONS
+from mureo.chatgpt_ads.handlers import ALL_TOOLS as CHATGPT_ADS_TOOLS
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analytics_registry import TOOLS as ANALYTICS_REGISTRY_TOOLS
 from mureo.mcp.tools_batch import TOOLS as BATCH_TOOLS
@@ -65,7 +64,6 @@ _TOOL_FAMILIES = (
     LEARNING_PREFLIGHT_TOOLS,
     CREATIVE_STUDIO_TOOLS,
     CHATGPT_ADS_TOOLS,
-    CHATGPT_ADS_MUTATIONS,
 )
 
 #: Each shipped surface that states the total, paired with the pattern that

@@ -5,8 +5,17 @@ File validation logic shared by Meta Ads / Google Ads (supports images and video
 
 from __future__ import annotations
 
+import io
+import os
+import stat
 from pathlib import Path
 from typing import BinaryIO
+
+#: Size cap for a local image upload, and its label in error messages.
+#: Shared by the Meta Ads and ChatGPT Ads file uploads so one number
+#: governs both; neither platform's own limit is the reason for it.
+LOCAL_UPLOAD_MAX_IMAGE_BYTES = 30 * 1024 * 1024
+LOCAL_UPLOAD_MAX_IMAGE_LABEL = "30MB"
 
 # Reject images whose declared pixel area could exhaust CPU/memory when a
 # downstream consumer decodes them (Creative Studio hands validated images
@@ -88,11 +97,15 @@ def _validate_media_file(
     # File size check
     size = path.stat().st_size
     if size > max_size_bytes:
-        raise ValueError(
-            f"File size exceeds the limit: " f"{size:,} bytes (limit: {max_size_label})"
-        )
+        raise _size_error(size, max_size_label)
 
     return path
+
+
+def _size_error(size: int, max_size_label: str) -> ValueError:
+    return ValueError(
+        f"File size exceeds the limit: " f"{size:,} bytes (limit: {max_size_label})"
+    )
 
 
 def _png_dimensions(header: bytes) -> tuple[int | None, int | None]:
@@ -181,8 +194,8 @@ def _webp_dimensions(header: bytes) -> tuple[int | None, int | None]:
     return (None, None)
 
 
-def _probe_image(path: Path) -> tuple[str, int | None, int | None] | None:
-    """Identify a PNG/JPEG/WebP file by magic bytes and read its dimensions.
+def _probe_stream(fh: BinaryIO) -> tuple[str, int | None, int | None] | None:
+    """Identify a PNG/JPEG/WebP stream by magic bytes and read its dimensions.
 
     Returns ``(format, width, height)`` where ``width``/``height`` may be
     ``None`` when the header is recognised but the dimensions cannot be parsed
@@ -190,18 +203,39 @@ def _probe_image(path: Path) -> tuple[str, int | None, int | None] | None:
     known image signature. Std-lib only — this project intentionally has no
     image-library dependency (see pyproject).
     """
+    header = fh.read(_PROBE_BYTES)
+    if header.startswith(_PNG_SIGNATURE):
+        return ("png", *_png_dimensions(header))
+    if header[:3] == b"\xff\xd8\xff":
+        return ("jpeg", *_jpeg_dimensions(fh))
+    if len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return ("webp", *_webp_dimensions(header))
+    return None
+
+
+def _probe_image(path: Path) -> tuple[str, int | None, int | None] | None:
+    """:func:`_probe_stream` over the file at ``path``; ``None`` when it
+    cannot be read."""
     try:
         with path.open("rb") as fh:
-            header = fh.read(_PROBE_BYTES)
-            if header.startswith(_PNG_SIGNATURE):
-                return ("png", *_png_dimensions(header))
-            if header[:3] == b"\xff\xd8\xff":
-                return ("jpeg", *_jpeg_dimensions(fh))
-            if len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WEBP":
-                return ("webp", *_webp_dimensions(header))
+            return _probe_stream(fh)
     except OSError:
         return None
-    return None
+
+
+def _spoofing_error(fmt: str, declared: str) -> ValueError:
+    return ValueError(
+        f"Image content ({fmt}) does not match its .{declared} extension "
+        "(possible extension spoofing)"
+    )
+
+
+def _enforce_pixel_cap(width: int | None, height: int | None, max_pixels: int) -> None:
+    if width is not None and height is not None and width * height > max_pixels:
+        raise ValueError(
+            f"Image dimensions {width}x{height} exceed the maximum allowed "
+            f"{max_pixels:,} pixels"
+        )
 
 
 def _enforce_image_header(path: Path, *, max_pixels: int) -> None:
@@ -221,15 +255,8 @@ def _enforce_image_header(path: Path, *, max_pixels: int) -> None:
     declared = path.suffix.lower().lstrip(".")
     expected = _EXT_TO_FORMAT.get(declared)
     if expected is not None and fmt != expected:
-        raise ValueError(
-            f"Image content ({fmt}) does not match its .{declared} extension "
-            "(possible extension spoofing)"
-        )
-    if width is not None and height is not None and width * height > max_pixels:
-        raise ValueError(
-            f"Image dimensions {width}x{height} exceed the maximum allowed "
-            f"{max_pixels:,} pixels"
-        )
+        raise _spoofing_error(fmt, declared)
+    _enforce_pixel_cap(width, height, max_pixels)
 
 
 def read_image_dimensions(path: Path) -> tuple[int | None, int | None]:
@@ -284,6 +311,85 @@ def validate_image_file(
     )
     _enforce_image_header(path, max_pixels=max_pixels)
     return path
+
+
+#: Open flags for :func:`read_image_file`: read-only; non-blocking where the
+#: platform has it, so a name swapped for a FIFO cannot block the open; and
+#: binary where the platform distinguishes it (Windows), so no byte is
+#: translated on the way in.
+_READ_FLAGS = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+
+
+def _read_regular_file(
+    path: Path, file_path: str, max_size_bytes: int, max_size_label: str
+) -> bytes:
+    """The bytes of the regular file at ``path``, read through one descriptor.
+
+    The type and size are judged on the open descriptor, and the read stops
+    one byte past the cap, so a file swapped or grown after the path checks
+    is still refused.
+    """
+    with os.fdopen(os.open(path, _READ_FLAGS), "rb") as fh:
+        info = os.fstat(fh.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError(f"Invalid file path: not a regular file: {file_path}")
+        if info.st_size > max_size_bytes:
+            raise _size_error(info.st_size, max_size_label)
+        content = fh.read(max_size_bytes + 1)
+    if len(content) > max_size_bytes:
+        raise _size_error(len(content), max_size_label)
+    return content
+
+
+def _require_identified(content: bytes, declared: str, max_pixels: int) -> None:
+    """``content`` must identify as the format its extension names."""
+    expected = _EXT_TO_FORMAT.get(declared)
+    probed = _probe_stream(io.BytesIO(content))
+    if expected is None or probed is None:
+        raise ValueError(
+            f"Image content is not a recognisable {expected or declared} image"
+        )
+    fmt, width, height = probed
+    if fmt != expected:
+        raise _spoofing_error(fmt, declared)
+    _enforce_pixel_cap(width, height, max_pixels)
+
+
+def read_image_file(
+    file_path: str,
+    *,
+    max_size_bytes: int,
+    max_size_label: str,
+    allowed_extensions: frozenset[str],
+    max_pixels: int = _MAX_IMAGE_PIXELS,
+) -> tuple[Path, bytes]:
+    """Validate an image file and return it with the very bytes that were checked.
+
+    :func:`validate_image_file` checks a path and lets a file it cannot
+    identify through, which suits callers that hand the path to a local
+    consumer. A caller that sends the file elsewhere needs more: it must send
+    what was checked, not whatever the name points at by the time it reads
+    it, and it must not send a file it could not identify. This opens the
+    file once, judges type and size on that descriptor, and identifies the
+    bytes read: the declared extension must be one this module can identify
+    and the content must be that format.
+
+    Raises:
+        ValueError: Path traversal, unsupported or unidentified format, not a
+            regular file, size exceeded, extension spoofing, or dimensions
+            over ``max_pixels``. No file content appears in a message.
+        FileNotFoundError: File does not exist.
+    """
+    path = _validate_media_file(
+        file_path,
+        max_size_bytes=max_size_bytes,
+        max_size_label=max_size_label,
+        allowed_extensions=allowed_extensions,
+        media_type_label="image",
+    )
+    content = _read_regular_file(path, file_path, max_size_bytes, max_size_label)
+    _require_identified(content, path.suffix.lower().lstrip("."), max_pixels)
+    return path, content
 
 
 def validate_video_file(

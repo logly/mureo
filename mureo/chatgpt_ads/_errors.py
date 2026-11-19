@@ -49,6 +49,20 @@ MAY_HAVE_BEEN_APPLIED = (
     "The change may have been applied; read the entity before retrying."
 )
 
+#: Ends the message of a create sent with an idempotency key that ended
+#: without a readable answer, in place of :data:`MAY_HAVE_BEEN_APPLIED`. The
+#: platform returns the existing object for a repeat with the same key when
+#: it can see the matching earlier create, so that repeat is the safest next
+#: step; a new key could create a duplicate. The sentence keeps that
+#: condition rather than promising more. Filled with ``.format(key=...)``;
+#: the key is not a secret.
+REPEAT_WITH_IDEMPOTENCY_KEY = (
+    "The entity may have been created; repeat the call with "
+    'idempotency_key="{key}" and the same arguments: when the platform can '
+    "see the earlier create it returns that entity instead of creating a "
+    "second one."
+)
+
 #: A platform error code worth quoting and matching on. Anything else (a
 #: newline, a 100k-character value, prose) is treated as no code at all.
 _CODE_PATTERN = re.compile(r"[A-Za-z0-9_.-]{1,64}")
@@ -155,7 +169,8 @@ def error_from_response(
     (``token_invalid``): the key is wrong, revoked or lacks access to the
     account. Everything else is a :class:`ChatGPTAdsAPIError`, whose message
     ends with ``note`` when one is given (the client passes
-    :data:`MAY_HAVE_BEEN_APPLIED` for a POST answered with 5xx).
+    :data:`MAY_HAVE_BEEN_APPLIED`, or :data:`REPEAT_WITH_IDEMPOTENCY_KEY`
+    for a create sent with a key, when a change is answered with 5xx).
     """
     message, code = _read_body(body_text)
     summary = _summary(status, message, code)
@@ -170,6 +185,7 @@ def error_from_response(
 __all__ = [
     "MAY_HAVE_BEEN_APPLIED",
     "NO_ERROR_DETAIL",
+    "REPEAT_WITH_IDEMPOTENCY_KEY",
     "ChatGPTAdsAPIError",
     "error_from_response",
 ]

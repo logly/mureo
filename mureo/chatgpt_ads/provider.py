@@ -48,10 +48,8 @@ from mureo.chatgpt_ads.credentials import (
     NO_CREDENTIALS_DETAIL,
     load_chatgpt_ads_credentials,
 )
-from mureo.chatgpt_ads.handlers import HANDLERS, run_tool
+from mureo.chatgpt_ads.handlers import ALL_TOOLS, HANDLERS, run_tool
 from mureo.chatgpt_ads.reversal import capture_reversal
-from mureo.chatgpt_ads.tools import TOOLS
-from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from mureo.core.auth_failure import (
     AUTH_CAUSE_NO_CREDENTIALS,
     PlatformAuthError,
@@ -136,7 +134,9 @@ def _text_result(payload: Any) -> list[TextContent]:
 
 class ChatGPTAdsProvider:
     """Tools over OpenAI's Advertiser API: nine reads, the spend-limit read,
-    and eleven changes that are recorded with a reversal."""
+    eleven changes that are recorded with a reversal, create and archive for
+    campaigns, ad groups and ads (no reversal), an image upload, an ad
+    preview and a location search."""
 
     name = CHATGPT_ADS_PROVIDER_NAME
     display_name = "ChatGPT Ads"
@@ -148,7 +148,7 @@ class ChatGPTAdsProvider:
 
     def mcp_tools(self) -> tuple[Tool, ...]:
         """The tool definitions. Pure: no credentials, no network."""
-        return (*TOOLS, *MUTATION_TOOLS)
+        return ALL_TOOLS
 
     async def capture_reversal(
         self, name: str, arguments: dict[str, Any]

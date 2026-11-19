@@ -18,14 +18,17 @@ from typing import Any, cast
 
 import httpx
 
-from mureo._image_validation import validate_image_file
+from mureo._image_validation import (
+    LOCAL_UPLOAD_MAX_IMAGE_BYTES,
+    LOCAL_UPLOAD_MAX_IMAGE_LABEL,
+    validate_image_file,
+)
 from mureo.core.tool_failure import exception_text
 from mureo.core.url_guard import UnsafeUrlError, validate_public_url
 
 logger = logging.getLogger(__name__)
 
 # Meta Ads image upload limits
-_META_MAX_IMAGE_SIZE_BYTES = 30 * 1024 * 1024  # 30MB
 _META_ALLOWED_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "bmp", "tiff"})
 
 # Per-request timeout for image uploads. The file may be up to 30MB (base64 of
@@ -577,8 +580,8 @@ class CreativesMixin:
         """
         path = validate_image_file(
             file_path,
-            max_size_bytes=_META_MAX_IMAGE_SIZE_BYTES,
-            max_size_label="30MB",
+            max_size_bytes=LOCAL_UPLOAD_MAX_IMAGE_BYTES,
+            max_size_label=LOCAL_UPLOAD_MAX_IMAGE_LABEL,
             allowed_extensions=_META_ALLOWED_IMAGE_EXTENSIONS,
         )
 

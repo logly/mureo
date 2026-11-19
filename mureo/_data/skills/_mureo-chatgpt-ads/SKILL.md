@@ -1,6 +1,6 @@
 ---
 name: _mureo-chatgpt-ads
-description: "ChatGPT Ads (bundled provider over OpenAI's Advertiser API): read the ad account, spending limits, campaigns, ad groups, ads, performance insights and the change history; pause and activate, rename, reschedule, set budgets, bids and the account daily spending limit, each recorded with a reversal."
+description: "ChatGPT Ads (bundled provider over OpenAI's Advertiser API): read the ad account, spending limits, campaigns, ad groups, ads, performance insights and the change history; pause and activate, rename, reschedule, set budgets, bids and the account daily spending limit, each recorded with a reversal; create campaigns, ad groups and ads (always paused), archive them irreversibly, upload images, preview ads and search locations."
 metadata:
   version: 0.44.0
   openclaw:
@@ -30,15 +30,16 @@ metadata:
 
 ## What this surface is — and is not
 
-- **Ten read tools and eleven change tools** over OpenAI's Advertiser API,
-  the API behind ChatGPT Ads. mureo calls the API itself; no other MCP server
-  is involved.
+- **Twelve read tools and eighteen tools that change the account** over
+  OpenAI's Advertiser API, the API behind ChatGPT Ads. mureo calls the API
+  itself; no other MCP server is involved.
 - **What can change:** pause and activate a campaign, ad group or ad; rename
   or reschedule a campaign; set a campaign's budget; rename an ad group; set
-  an ad group's bidding config; set the account's daily spending limit.
-  Nothing creates or archives an entity, edits a creative or targeting, or
-  removes the account limit: for those, say the change has to be made in Ads
-  Manager; do not look for another tool.
+  an ad group's bidding config; set the account's daily spending limit;
+  create a campaign, ad group or ad (always paused); archive one; upload an
+  image. Nothing edits a creative, targeting or context hints after
+  creation, or removes the account limit: for those, say the change has to
+  be made in Ads Manager; do not look for another tool.
 - **One API key = one ad account.** The key the operator configured selects
   the account, so no tool takes an account id. To report on another ad
   account, the operator has to configure that account's own key. The key
@@ -69,6 +70,8 @@ that time zone; say which account you read.
 | `chatgpt_ads_insights_report` | Performance for a period |
 | `chatgpt_ads_change_history_list` | Who changed what, before explaining a performance shift |
 | `chatgpt_ads_account_spend_limits_get` | Read the account's spending limits, its daily rule and `revision` (invoice-billed accounts only) |
+| `chatgpt_ads_ads_preview` | Show how an ad renders: an HTML iframe snippet that expires after 24 hours (not for a draft ad). It changes no campaign, ad group or ad (the platform renders and saves an expiring preview snapshot), which is why it is treated as a read |
+| `chatgpt_ads_locations_search` | Find location ids for campaign targeting by name (`query`, `limit` default 20, at most 100) |
 
 Lists follow the API's cursor until `limit` rows are collected (at most 1000)
 and come back as one array; there is no cursor to pass back.
@@ -113,7 +116,8 @@ recorded for this platform in STATE.json must be the `id` that
 nothing is imported and the outcome is `unavailable`; when none is recorded,
 the import runs unchecked and its notes say so. An account-level change such
 as the daily spending limit is always imported as external, even when mureo
-made it.
+made it, and so is the entry for an entity mureo created (its record cannot
+name an id that did not exist yet).
 
 ## Changing the account
 
@@ -173,10 +177,56 @@ that does not read an amount does not bound it.
   name is restored whole or not at all; a campaign update leaves such a field
   out and says so), or when the change was a no-op (pausing a campaign that
   was not active). An account-limit
-  change names no campaign, ad group or ad.
+  change names no campaign, ad group or ad. Creates, archives and uploads
+  are recorded with no reversal (see below).
 - **No learning-period rules.** `mureo_learning_reset_preflight` answers
   `unknown` for these tools; do not claim a change will or will not reset
   learning.
+
+### Creating and archiving
+
+| Tool | Use it to |
+|------|-----------|
+| `chatgpt_ads_campaigns_create` | Create a campaign (`name`, `budget`, `bidding_type`; optional `targeting`, schedule, conversion event settings) |
+| `chatgpt_ads_ad_groups_create` | Create an ad group in a campaign (`campaign_id`, `name`, `bidding_config`; optional `context_hints`) |
+| `chatgpt_ads_images_upload_file` | Upload a local JPEG, PNG or WebP image (at least 640x640, at most 30MB); its content must be identified as the format its extension names, and the bytes checked are the bytes sent. Its `file_id` goes into `creative.file_id`. Not retried on a 5xx or a transport error |
+| `chatgpt_ads_ads_create` | Create an ad in an ad group (`ad_group_id`, `name`, `creative`: a single-image chat card) |
+| `chatgpt_ads_campaigns_archive` / `chatgpt_ads_ad_groups_archive` / `chatgpt_ads_ads_archive` | Archive an entity, irreversibly |
+
+- **Created paused, always.** There is no `status` argument; nothing created
+  can spend until the operator approves the matching `*_enable` call. Show
+  the full object (name, budget, bidding, targeting, creative) before the
+  create, as for any change.
+- **`budget` holds exactly one** of `daily_spend_limit_micros` or
+  `lifetime_spend_limit_micros`. Pass `projected_total_daily_budget`
+  (currency units) so `max_total_daily_budget` can be checked.
+  `max_daily_budget_per_campaign` does not bound a lifetime budget; only
+  `max_lifetime_budget_per_campaign` does.
+- **mureo's own bounds** (the platform states none): up to 250 `countries`,
+  1000 audience ids, 1000 `conversion_event_setting_ids`, 255 characters per
+  descriptive `include` field, and 1 to 1000 characters per `context_hints`
+  item. `target_url` needs a host and takes no `user:password@` and no
+  backslash.
+- **`bidding_type` cannot be changed later.** `impressions` pairs with
+  impression billing and `fixed_bid`; `clicks` with click billing and
+  `fixed_bid` or `maximize_clicks`; `conversions` with click billing and
+  `fixed_bid` or `maximize_conversions` and exactly one conversion event
+  setting. The maximize strategies need a daily budget. The platform enforces
+  this; say so before the operator picks one.
+- **Ads go to review** on creation (`in_review`, then `approved` or
+  `rejected`); read the outcome with `chatgpt_ads_ads_get`.
+- **Lost answers.** A create carries an idempotency key. When it ends with
+  `repeat the call with idempotency_key="..."`, repeat the same call with
+  that key and the same arguments: when the platform can see the earlier
+  create it returns that entity instead of creating a second one. If that
+  repeat fails too, list by name (`chatgpt_ads_campaigns_list`,
+  `chatgpt_ads_ad_groups_list` or `chatgpt_ads_ads_list` with `name`) before
+  creating with a new key. Do not repeat a create without the key.
+- **No undo.** `rollback_apply` cannot undo a create or an archive. Undo a
+  create by leaving it paused, or archive it once the operator confirms.
+  Archiving cannot be reversed on the platform: prefer pausing, and say so
+  before asking for approval. Whether archiving a campaign or ad group also
+  archives its children is not documented.
 
 ## Units — do not mix them
 
@@ -209,18 +259,21 @@ finalized activity and can arrive later; conversions take at least a day.
 | `"status": "error"`, `"error": "feature_not_enabled"` | The account does not have that feature enabled | Relay `detail` as-is and say the feature has to be enabled for the account on the platform's side; mureo cannot enable it. Do not retry unchanged |
 | Text starting `API error:` | Any other platform error, already retried where a retry could help (429 / 5xx on reads, 429 on changes) | Quote the message; for a 429 suggest waiting and narrowing the request |
 | Text ending `The change may have been applied; read the entity before retrying.` | A change ended in a 5xx, an unreadable success answer, a transport error or the deadline, after the request may have reached the platform | Read the entity with its `*_get` tool and report what it shows; never repeat the change blind |
+| Text ending `repeat the call with idempotency_key="<key>" and the same arguments: ...` | A create ended the same way; the platform may hold the new entity | Repeat the create with that `idempotency_key` and unchanged arguments after the operator agrees; if that fails too, list by `name` before creating with a new key |
 
 An `auth_error` is not data: never render `detail` where a metric belongs and
 never read the missing numbers as zero. Mark ChatGPT Ads as **not read** with
 its `auth_cause`, and keep going with the other platforms.
 
 A `ValueError` means the call itself was malformed (an unknown period, two
-scope ids, a level above the scope, an unknown metric). Fix the arguments;
-nothing was sent to the API.
+scope ids, a level above the scope, an unknown metric, an image of another
+type, not identified as its extension's format, or over 30MB). A `FileNotFoundError` means the image path does not
+exist. Fix the arguments; nothing was sent to the API.
 
 ## Important notes
 
-- Read tools write nothing to `action_log`. A change tool that fails is not
+- Read tools (the ad preview and location search included) write nothing to
+  `action_log`. A change tool that fails is not
   recorded either; a change recorded without a reversal has to be undone by
   hand with the matching change tool.
 - The operator can switch the provider off with `MUREO_DISABLE_CHATGPT_ADS=1`;

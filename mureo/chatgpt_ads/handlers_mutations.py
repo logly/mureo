@@ -35,7 +35,6 @@ from mureo.chatgpt_ads.tools_mutations import (
     MIN_BID_MULTIPLIER_MICROS,
     MIN_BUDGET_MICROS,
     MULTIPLIER_KEYS,
-    MUTATION_TOOLS,
     SCHEDULE_KEYS,
     SCHEDULE_MAX_SECONDS,
     SCHEDULE_MIN_SECONDS,
@@ -47,19 +46,13 @@ if TYPE_CHECKING:
 
 Handler = Callable[["ChatGPTAdsClient", dict[str, Any]], Awaitable[Any]]
 
-#: Tools that change the account, read off their ``readOnlyHint``.
-MUTATING_TOOL_NAMES = frozenset(
-    tool.name
-    for tool in MUTATION_TOOLS
-    if not (tool.annotations and tool.annotations.readOnlyHint)
-)
-
 _SPEND_LIMITS_PATH = "/ad_account/spend_limit_windows"
 _TO_ADS_MANAGER = "Change the budget type in Ads Manager."
 
 
-def _status_handler(prefix: str, id_key: str, action: str) -> Handler:
-    """``POST {prefix}/{id}/{action}`` with no body."""
+def status_handler(prefix: str, id_key: str, action: str) -> Handler:
+    """``POST {prefix}/{id}/{action}`` with no body (pause, activate,
+    archive)."""
 
     async def _handler(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
         return await client.post(f"{prefix}/{path_id(arguments, id_key)}/{action}")
@@ -319,20 +312,16 @@ async def _account_daily_spend_limit_set(
 
 
 MUTATION_HANDLERS: dict[str, Handler] = {
-    "chatgpt_ads_campaigns_pause": _status_handler(
-        "/campaigns", "campaign_id", "pause"
-    ),
-    "chatgpt_ads_campaigns_enable": _status_handler(
+    "chatgpt_ads_campaigns_pause": status_handler("/campaigns", "campaign_id", "pause"),
+    "chatgpt_ads_campaigns_enable": status_handler(
         "/campaigns", "campaign_id", "activate"
     ),
-    "chatgpt_ads_ad_groups_pause": _status_handler(
-        "/ad_groups", "ad_group_id", "pause"
-    ),
-    "chatgpt_ads_ad_groups_enable": _status_handler(
+    "chatgpt_ads_ad_groups_pause": status_handler("/ad_groups", "ad_group_id", "pause"),
+    "chatgpt_ads_ad_groups_enable": status_handler(
         "/ad_groups", "ad_group_id", "activate"
     ),
-    "chatgpt_ads_ads_pause": _status_handler("/ads", "ad_id", "pause"),
-    "chatgpt_ads_ads_enable": _status_handler("/ads", "ad_id", "activate"),
+    "chatgpt_ads_ads_pause": status_handler("/ads", "ad_id", "pause"),
+    "chatgpt_ads_ads_enable": status_handler("/ads", "ad_id", "activate"),
     "chatgpt_ads_campaigns_update": _campaigns_update,
     "chatgpt_ads_campaigns_update_budget": _campaigns_update_budget,
     "chatgpt_ads_ad_groups_update": _ad_groups_update,
@@ -342,7 +331,6 @@ MUTATION_HANDLERS: dict[str, Handler] = {
 }
 
 __all__ = [
-    "MUTATING_TOOL_NAMES",
     "MUTATION_HANDLERS",
     "Handler",
     "bidding_config_value",
@@ -351,4 +339,5 @@ __all__ = [
     "daily_spend_limits",
     "required_name",
     "schedule_value",
+    "status_handler",
 ]

@@ -17,6 +17,7 @@ from mureo.chatgpt_ads._api import OPENAPI_VERSION
 from mureo.chatgpt_ads._errors import (
     MAY_HAVE_BEEN_APPLIED,
     NO_ERROR_DETAIL,
+    REPEAT_WITH_IDEMPOTENCY_KEY,
     ChatGPTAdsAPIError,
 )
 from mureo.chatgpt_ads.client import ChatGPTAdsClient
@@ -24,6 +25,7 @@ from mureo.core.auth_failure import AUTH_CAUSE_TOKEN_INVALID, PlatformAuthError
 from tests._chatgpt_ads_fakes import (
     SENTINEL_KEY,
     FakeAPI,
+    multipart_parts,
     openapi_fixture_version,
     page,
     rows,
@@ -202,6 +204,161 @@ class TestPostBody:
             await api.client().get("/ad_account")
         assert "not JSON" in str(info.value)
         assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+
+
+_KEY_SENTENCE = REPEAT_WITH_IDEMPOTENCY_KEY.format(key="k-1")
+
+
+class TestPostRead:
+    """A POST the platform documents as a read: retried like a GET, never
+    flagged as possibly applied."""
+
+    async def test_a_5xx_is_retried(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 503, {})
+        api.add("/ads/a_1/preview", body={"data": []})
+        sleeps: list[float] = []
+        assert await api.client(sleeps).post_read("/ads/a_1/preview") == {"data": []}
+        assert [r.method for r in api.requests] == ["POST", "POST"]
+        assert sleeps == [1.0]
+
+    async def test_a_final_5xx_carries_no_applied_note(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 500, {"error": {"message": "x"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_read("/ads/a_1/preview")
+        assert len(api.requests) == 3
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+
+    async def test_an_unreadable_answer_carries_no_applied_note(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 200, "<html>proxy</html>")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_read("/ads/a_1/preview")
+        assert "not JSON" in str(info.value)
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+
+    async def test_a_transport_error_carries_no_applied_note(self) -> None:
+        def _raise(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("slow", request=request)
+
+        client = ChatGPTAdsClient(SENTINEL_KEY, transport=httpx.MockTransport(_raise))
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await client.post_read("/ads/a_1/preview")
+        assert str(info.value) == "transport error (ReadTimeout)"
+
+    async def test_a_429_is_retried(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 429, {})
+        api.add("/ads/a_1/preview", body={"data": []})
+        assert await api.client().post_read("/ads/a_1/preview") == {"data": []}
+        assert len(api.requests) == 2
+
+    async def test_a_final_429_carries_no_applied_note(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 429, {"error": {"message": "x"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_read("/ads/a_1/preview")
+        assert len(api.requests) == 3
+        assert "429" in str(info.value)
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+        assert "idempotency_key" not in str(info.value)
+
+
+class TestIdempotentPost:
+    async def test_an_empty_key_is_refused_before_sending(self) -> None:
+        """An empty ``Idempotency-Key`` header is never valid, and treating
+        it as "no key" would silently drop the retry guarantee."""
+        api = FakeAPI().add("/campaigns", body={"id": "cmpn_1"})
+        with pytest.raises(ValueError, match="idempotency_key"):
+            await api.client().post("/campaigns", {"name": "x"}, idempotency_key="")
+        assert api.requests == []
+
+    async def test_the_key_travels_as_a_header(self) -> None:
+        api = FakeAPI().add("/campaigns", body={"id": "cmpn_1"})
+        out = await api.client().post(
+            "/campaigns", {"name": "x"}, idempotency_key="k-1"
+        )
+        assert out == {"id": "cmpn_1"}
+        assert api.requests[0].headers["Idempotency-Key"] == "k-1"
+
+    async def test_without_a_key_no_header_is_sent(self) -> None:
+        api = FakeAPI().add("/campaigns", body={"id": "cmpn_1"})
+        await api.client().post("/campaigns", {"name": "x"})
+        assert "Idempotency-Key" not in api.requests[0].headers
+
+    async def test_a_5xx_is_retried_with_the_same_key_and_body(self) -> None:
+        api = FakeAPI().add("/campaigns", 502, {})
+        api.add("/campaigns", 503, {})
+        api.add("/campaigns", body={"id": "cmpn_1"})
+        sleeps: list[float] = []
+        client = api.client(sleeps)
+        out = await client.post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert out == {"id": "cmpn_1"}
+        assert len(api.requests) == 3
+        assert {r.headers["Idempotency-Key"] for r in api.requests} == {"k-1"}
+        assert {r.content for r in api.requests} == {api.requests[0].content}
+        assert sleeps == [1.0, 2.0]
+
+    async def test_a_final_5xx_names_the_key(self) -> None:
+        api = FakeAPI().add("/campaigns", 500, {"error": {"message": "boom"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert len(api.requests) == 3
+        assert str(info.value).endswith(_KEY_SENTENCE)
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+
+    async def test_a_transport_error_names_the_key(self) -> None:
+        def _raise(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("slow", request=request)
+
+        client = ChatGPTAdsClient(SENTINEL_KEY, transport=httpx.MockTransport(_raise))
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await client.post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert str(info.value).endswith(_KEY_SENTENCE)
+
+    async def test_an_unreadable_answer_names_the_key(self) -> None:
+        api = FakeAPI().add("/campaigns", 200, "<html>proxy</html>")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert str(info.value).endswith(_KEY_SENTENCE)
+        assert len(api.requests) == 1
+
+    async def test_a_4xx_is_final_and_unflagged(self) -> None:
+        api = FakeAPI().add("/campaigns", 422, {"error": {"message": "bad"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert len(api.requests) == 1
+        assert "k-1" not in str(info.value)
+
+
+class TestPostFile:
+    async def test_the_file_is_one_multipart_field(self) -> None:
+        api = FakeAPI().add("/upload", body={"file_id": "file_1"})
+        out = await api.client().post_file(
+            "/upload", filename="card.png", content=b"\x89PNG", content_type="image/png"
+        )
+        assert out == {"file_id": "file_1"}
+        parts = multipart_parts(api.requests[0])
+        assert set(parts) == {"file"}
+        assert 'filename="card.png"' in parts["file"]["headers"]["Content-Disposition"]
+        assert parts["file"]["headers"]["Content-Type"] == "image/png"
+        assert parts["file"]["content"] == b"\x89PNG"
+
+    async def test_a_5xx_is_final_and_may_have_been_applied(self) -> None:
+        api = FakeAPI().add("/upload", 500, {"error": {"message": "boom"}})
+        api.add("/upload", body={"file_id": "file_1"})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_file(
+                "/upload", filename="a.png", content=b"x", content_type="image/png"
+            )
+        assert len(api.requests) == 1
+        assert str(info.value).endswith(MAY_HAVE_BEEN_APPLIED)
+
+    async def test_an_error_body_echoing_the_key_is_redacted(self) -> None:
+        escaped = "".join(f"\\u{ord(c):04x}" for c in SENTINEL_KEY)
+        api = FakeAPI().add("/upload", 400, '{"error": {"message": "' + escaped + '"}}')
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_file(
+                "/upload", filename="a.png", content=b"x", content_type="image/png"
+            )
+        assert SENTINEL_KEY not in str(info.value)
+        assert "***" in str(info.value)
 
 
 class TestListAll:

@@ -17,8 +17,8 @@ from typing import Any
 import pytest
 
 from mureo.chatgpt_ads import handlers
+from mureo.chatgpt_ads.handlers import ALL_TOOLS
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
-from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from tests._chatgpt_ads_fakes import SENTINEL_KEY, FakeAPI
 from tests._server_reload import reloaded_server
 
@@ -34,7 +34,7 @@ _NAMES = {
     "chatgpt_ads_ads_get",
     "chatgpt_ads_insights_report",
     "chatgpt_ads_change_history_list",
-    *(t.name for t in MUTATION_TOOLS),
+    *(t.name for t in ALL_TOOLS),
 }
 
 

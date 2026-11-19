@@ -20,8 +20,10 @@ tool declares (which amounts those are is under [Units](#units)).
 groups, ads, insights and the change history) and eleven tools that change the
 account: pause and activate a campaign, ad group or ad, rename or reschedule a
 campaign, set a campaign's budget, rename an ad group, set an ad group's
-bidding config, and set the account's daily spending limit. Creating entities
-is tracked in #995. Changes made on the account outside mureo are imported
+bidding config, and set the account's daily spending limit. Six more tools
+create a campaign, ad group or ad (always paused) and archive one, and three
+support them: an image upload, an ad preview and a location search (#995).
+Changes made on the account outside mureo are imported
 from its audit log (see [Change import](#change-import)). The API is in beta
 and adds fields often, so every object and row is returned as the platform
 sent it, with unknown fields and enum values left as they are.
@@ -80,7 +82,7 @@ and the server's `instructions` carry no ChatGPT Ads delivery-model line (see
 Every tool takes no account argument (the key selects the account) and
 rejects arguments its schema does not declare. The read tools carry
 `readOnlyHint`; the tools that change the account are listed under
-[Changes](#changes).
+[Changes](#changes), [Creating](#creating) and [Archiving](#archiving).
 
 | Tool | API | Arguments (defaults) |
 |------|-----|----------------------|
@@ -94,6 +96,8 @@ rejects arguments its schema does not declare. The read tools carry
 | `chatgpt_ads_ads_get` | `GET /ads/{ad_id}` | `ad_id` (required) |
 | `chatgpt_ads_insights_report` | `GET /ad_account/insights`, `/campaigns/{id}/insights`, `/ad_groups/{id}/insights`, `/ads/{id}/insights` | `period` (`last_30d`), `level` (`campaign`), at most one of `campaign_id` / `ad_group_id` / `ad_id`, `time_granularity` (`none`), `metrics` (delivery set), `attribution_window_days` (API default), `limit` (1000) |
 | `chatgpt_ads_change_history_list` | `GET /audit_logs` | `period` (`last_7d`), `campaign_id`, `ad_group_id`, `ad_id`, `limit` (50) |
+| `chatgpt_ads_ads_preview` | `POST /ads/{ad_id}/preview` | `ad_id` (required) |
+| `chatgpt_ads_locations_search` | `GET /geo_lookup/search` | `query` (required, sent as `q`), `limit` (20) |
 
 - **Ids** (`campaign_id`, `ad_group_id`, `ad_id`) must match
   `^[A-Za-z0-9_-]{1,128}$`; anything else is refused before a request is
@@ -113,6 +117,16 @@ rejects arguments its schema does not declare. The read tools carry
   (`daily_limit` / `daily_limits`, with spent and remaining micros), the
   `revision` and the earliest allowed start dates. It answers only for
   accounts on invoice billing and keys that may manage billing.
+- **`chatgpt_ads_ads_preview`** returns the platform's preview unchanged:
+  `data[].body` is an HTML iframe snippet that expires after 24 hours. It is
+  a `POST` that changes no campaign, ad group or ad (the platform renders and
+  saves an expiring preview snapshot), which is why it is treated as a read
+  and retried like a `GET`. An ad still in draft cannot be previewed.
+- **`chatgpt_ads_locations_search`** looks up regions and markets by name.
+  `query` is 1 to 200 characters and not all spaces; `limit` is 1 to 100. The
+  answer (`query`, `count`, `results` with `id`, `name`, `canonical_name`,
+  `type`, `country_code` and parent fields) is returned unchanged; a result's
+  `id` goes into `targeting.locations.include` of a campaign create.
 
 ### Changes
 
@@ -129,7 +143,8 @@ rejects arguments its schema does not declare. The read tools carry
 
 Each tool returns the platform's answer unchanged: the updated campaign, ad
 group or ad, or, for the account limit, the account's spending limits after
-the change. Archiving is not available; use Ads Manager. Budget and bid edits
+the change. Archiving is a separate, irreversible tool (see
+[Archiving](#archiving)). Budget and bid edits
 are tools of their own, not fields of the general update tools, because
 mureo reads the kind of a recorded change off its tool name when it matches a
 platform's change history against `action_log`
@@ -223,6 +238,131 @@ of at least 0, or carries a `daily_limits` that is not an array or a
 `daily_limits` array is the list of rules; otherwise the single
 `daily_limit` is (absent or `null` = none).
 
+### Creating
+
+| Tool | API | Arguments |
+|------|-----|-----------|
+| `chatgpt_ads_campaigns_create` | `POST /campaigns` | `name`, `budget`, `bidding_type` (required), `targeting`, `start_time`, `end_time`, `conversion_event_setting_ids`, `projected_total_daily_budget`, `idempotency_key` |
+| `chatgpt_ads_ad_groups_create` | `POST /ad_groups` | `campaign_id`, `name`, `bidding_config` (required), `context_hints`, `idempotency_key` |
+| `chatgpt_ads_ads_create` | `POST /ads` | `ad_group_id`, `name`, `creative` (required), `idempotency_key` |
+| `chatgpt_ads_images_upload_file` | `POST /upload` (multipart field `file`) | `file_path` (required) |
+
+Each create returns the new platform object unchanged; its `id` is what the
+next level's create needs (campaign → ad group → ad).
+
+- **Always paused.** The create tools take no `status`; mureo always sends
+  `"status": "paused"`, and a `status` argument is refused. Nothing created
+  through mureo can spend until the matching `*_enable` tool is called.
+- **`budget`** takes exactly one of `daily_spend_limit_micros` or
+  `lifetime_spend_limit_micros` (at least 1000000; the platform refuses both
+  and neither, and mureo refuses them before sending). The daily minimum
+  also depends on the currency, which the platform checks. A STRATEGY.md
+  `max_daily_budget_per_campaign` does not bound a lifetime budget: a create
+  with only `lifetime_spend_limit_micros` passes it however large, and only
+  `max_lifetime_budget_per_campaign` bounds that amount.
+- **`bidding_type`** (`impressions`, `clicks` or `conversions`) cannot be
+  changed once the campaign exists. The platform pairs it with the ad
+  groups' bidding: `impressions` with impression billing and `fixed_bid`;
+  `clicks` with click billing and `fixed_bid` or `maximize_clicks`;
+  `conversions` with click billing and `fixed_bid` or
+  `maximize_conversions`, and exactly one conversion event setting. The
+  maximize strategies need a daily budget. mureo states these rules in the
+  tool descriptions and leaves them to the platform: the ad group create does
+  not know its campaign's `bidding_type` without another read.
+- **`targeting`** is passed through unchanged, with only the documented keys
+  at every level: `locations` / `excluded_locations` (`countries` as up to
+  250 ISO 3166-1 alpha-2 codes, `include` as up to 2500 location objects
+  whose `id` comes from `chatgpt_ads_locations_search`), `custom_audiences` /
+  `excluded_custom_audiences` (`ids`, up to 1000), and `platforms.included`
+  (`ios_app`, `android_app`, `web`, `desktop_web`, `ios_web`,
+  `android_web`). Omitted, the platform default applies. The descriptive
+  fields of an `include` object (`name`, `type`, `country_code`,
+  `region_code`, copied from a search result) are at most 255 characters
+  each.
+- **mureo's own bounds.** The platform states no limit for these, so mureo
+  sets them to bound one request body: up to 250 `countries` (ISO 3166-1
+  assigns 249 codes), up to 1000 audience ids and 1000
+  `conversion_event_setting_ids`, at most 255 characters per descriptive
+  `include` field, and 1 to 1000 characters per `context_hints` item. Both the
+  schema and the handler enforce them, before any request.
+- **`start_time` / `end_time`** are Unix seconds in the same range as the
+  campaign update; `null` is refused, leave a key out instead.
+- **`conversion_event_setting_ids`** (up to 1000) and the ids inside
+  `targeting` follow the id rule above.
+- **`projected_total_daily_budget`** is the same optional context key as on
+  the budget tool (currency units, checked, never sent), so
+  `max_total_daily_budget` can be evaluated. `current_daily_budget` means
+  nothing for a new campaign and is not offered.
+- **`bidding_config`** is the same object as on
+  `chatgpt_ads_ad_groups_update_bid`, and the bid caps cover the same amount
+  (see [What the bid caps cover](#changes)).
+- **`context_hints`** is up to 2000 free-form strings of 1 to 1000
+  characters each that guide placement; they are not hard eligibility rules.
+- **`creative`** is a single-image chat card, the only creative type mureo
+  offers: `type` `chat_card`, `title` 3 to 50 characters on one line, `body`
+  up to 100 characters, `target_url` the `http` / `https` landing page (up to
+  2048 characters, required; a host is required, and user-info such as
+  `user:password@`, a backslash, whitespace or a control character is
+  refused; mureo only checks the shape, since it never fetches the page and
+  the platform does in its own review), `file_id` from the image upload, and
+  `image_crop` (`x`, `y`, `width`, `height`, each a fraction from 0 to 1;
+  only with `file_id`). Multi-image and product-template creatives are not
+  offered.
+- **Review.** An ad enters the platform's review when it is created
+  (`review_status` `in_review`, then `approved` or `rejected`); read it with
+  `chatgpt_ads_ads_get`.
+
+**Idempotency key.** Each create sends an `Idempotency-Key` header: the
+`idempotency_key` argument (1 to 255 letters, digits, `_` or `-`), or a key
+mureo generates once per call. Every attempt of one call reuses it. The
+platform documents that, for a repeat with the same key, it returns the
+existing object instead of creating a duplicate when a matching earlier create
+is visible to it, so a create, unlike other changes, is retried on a 5xx (at
+most 3 attempts in total, as for a `GET`). That retry waits the normal backoff
+before repeating; whether a create still in flight is already visible to the
+repeat is not documented. When a create ends in a 5xx, a non-JSON success
+body, a transport error or the call deadline, the error text ends with the key
+instead of the "may have been applied" sentence: `The entity may have been
+created; repeat the call with idempotency_key="<key>" and the same arguments:
+when the platform can see the earlier create it returns that entity instead of
+creating a second one.` The key is not a secret.
+
+**Images.** `chatgpt_ads_images_upload_file` checks the local file the way
+mureo's other image uploads do before sending anything: the extension must be
+`.jpg`, `.jpeg`, `.png` or `.webp`, the file must exist and be a regular
+file whose content is identified as the format its extension names (so a
+file that is not an image, or a link to one, with an image extension is
+refused), a path with `..` is refused, and the file may be at most 30MB (the
+platform documents no size limit; the cap is the one mureo's Meta Ads image
+upload uses). The platform requires creative images to be JPEG, PNG or WebP
+and at least 640×640 pixels, which mureo does not check. The file is sent
+with its file name and the content type of its extension; the file is
+opened once, and the bytes checked are the bytes sent. The returned
+`file_id` goes into `creative.file_id`. An upload is not retried on a 5xx or
+a transport error (a 429 is retried, like every request).
+Errors from the platform or the transport never quote the path or the file's
+bytes; a refused path is named in the argument error.
+
+**Undoing a create.** No reversal is recorded and `rollback_apply` cannot
+undo a create: the entity has no id before the call. To undo one by hand,
+leave it paused (it cannot spend), or archive it with the matching
+`*_archive` tool once you are sure (irreversible).
+
+### Archiving
+
+| Tool | API | Arguments |
+|------|-----|-----------|
+| `chatgpt_ads_campaigns_archive` | `POST /campaigns/{campaign_id}/archive` | `campaign_id` (required) |
+| `chatgpt_ads_ad_groups_archive` | `POST /ad_groups/{ad_group_id}/archive` | `ad_group_id` (required) |
+| `chatgpt_ads_ads_archive` | `POST /ads/{ad_id}/archive` | `ad_id` (required) |
+
+An archive sends no body and returns the updated object unchanged. It is
+**irreversible**: the platform has no restore operation, mureo records no
+reversal, and `rollback_plan_get` reports the entry as not supported. The
+tools carry `destructiveHint`. To stop spending reversibly, pause instead.
+Whether archiving a campaign or an ad group also archives its children is not
+documented.
+
 ### Recorded changes and rollback
 
 When the MCP server runs in a directory with a `STATE.json`, each change is
@@ -259,6 +399,13 @@ spent. A prior `automated_bid` config is restored without `strategy` or
 `max_bid_micros`; a `null` value is treated as absent, and response-only keys
 are not restored. If the prior read fails or times out, the change goes ahead
 without a reversal; only the error's type is logged.
+
+Creates, archives and the image upload are recorded in `action_log` too, with
+no reversal (see [Undoing a create](#creating) and [Archiving](#archiving)).
+An archive names the archived entity. A create cannot name the entity it
+creates, whose id exists only once the call returns: an ad group create
+records its `campaign_id`, an ad create its ad group, and a campaign create
+and the image upload no entity.
 
 No learning-period reset rules are registered for ChatGPT Ads: the platform's
 documentation states none, so `mureo_learning_reset_preflight` reports the
@@ -338,6 +485,14 @@ deduplicated.
   changes are recognised by tool name, target and a 10-minute window, as
   [change-import.md](change-import.md#deduplication) describes, and are not
   imported a second time.
+- **Creates and archives.** A create's record cannot name the entity it
+  created, so the audit-log entry for a campaign, ad group or ad mureo
+  created is imported as an external change. An archive reported as a
+  `status` change is imported as external too: the entry reads as a status
+  change and the archive tool's name does not. An archive entry that names
+  no changed field is recognised as mureo's own for a campaign or an ad
+  group, but not for an ad. These are the deduper's verdicts on plausible
+  entries; the platform does not publish how it reports either operation.
 - **Always imported as external.** An account-level change (the daily
   spending limit) and an entry on any resource other than a campaign, ad
   group or ad carry no identity, so they are imported as external even when
@@ -420,7 +575,10 @@ click count to get CPC; use the returned `cpc`.
   [Not yet exercised](#not-yet-exercised-against-a-live-account)); a 5xx on a
   `POST` is final, because the change may
   have been applied before the answer was lost and repeating it could apply
-  it twice. A numeric `Retry-After` header of up to 30 seconds sets the wait;
+  it twice. Two `POST`s are retried on a 5xx like a `GET`: the ad preview,
+  which changes no campaign, ad group or ad (it saves an expiring preview
+  snapshot), and a create, which carries an idempotency key (see
+  [Creating](#creating)). A numeric `Retry-After` header of up to 30 seconds sets the wait;
   a longer one is not waited for, and the answer is reported at once. Without
   a usable header the wait doubles from 1 second. A 429 or 5xx on the last
   attempt is reported as an API error. A transport error is not retried.
@@ -433,8 +591,9 @@ click count to get CPC; use the returned `cpc`.
 - **Timeout.** 30 seconds per request, and 120 seconds for the whole tool
   call (every page, retry and backoff together). A call that runs out of time
   is reported as `API error: the call did not finish within 120 seconds`;
-  for a change tool the text goes on to say the change may have been applied
-  (see [Errors](#errors)). The read that records a reversal has its own
+  for a change tool the text goes on to say the change may have been applied,
+  and for a create it names the idempotency key to repeat it with (see
+  [Failures](#failures)). The read that records a reversal has its own
   15-second limit.
 - **Page cap.** One call requests at most 50 pages. A list that needs more is
   reported as an API error asking for a lower `limit` or narrower filters,
@@ -454,6 +613,8 @@ click count to get CPC; use the returned `cpc`.
 | A transport error | text `API error: transport error (<error class>)` |
 | The call deadline, the page cap, a list cursor that does not advance | text `API error: ...` (see [Limits](#limits)) |
 | A change tool that ends in a 5xx, a non-JSON success body, a transport error or the call deadline | the same text, ending `The change may have been applied; read the entity before retrying.` |
+| A create that ends the same way | the same text, ending with the repeat-with-`idempotency_key` sentence, which returns the earlier entity when the platform can see the earlier create (see [Creating](#creating)) |
+| An image file that is missing, not a regular file, of another type, whose content is not identified as the format its extension names, over 30MB, or named with `..` | `FileNotFoundError` or `ValueError` from mureo's shared image check, before any request |
 | `chatgpt_ads_account_daily_spend_limit_set` with more than one daily rule | `{"status": "refused", "error": "multiple_daily_spend_limits", "detail": ...}`, before any change |
 | `chatgpt_ads_account_daily_spend_limit_set` whose spending-limits answer is not a JSON object, or carries an unusable `revision` or daily rules in an unexpected shape | text `API error: ...; nothing was changed`, before any change |
 | `chatgpt_ads_campaigns_update_budget` that would change the budget type | `{"status": "refused", "error": "budget_kind_change", "detail": ...}`, before any change; `budget_unreadable` when the current budget holds neither amount |
@@ -462,7 +623,10 @@ click count to get CPC; use the returned `cpc`.
 A change that ends in a 5xx, a non-JSON success body, a transport error or
 the deadline may have reached the platform before the answer was lost. Read
 the entity with the matching `*_get` tool before trying again; repeating the
-call blind could apply it twice.
+call blind could apply it twice. A create is the exception: repeat it with the
+`idempotency_key` its error names and the same arguments. If that repeat fails
+too, list by name (`chatgpt_ads_campaigns_list`, `chatgpt_ads_ad_groups_list`
+or `chatgpt_ads_ads_list` with `name`) before creating with a new key.
 
 The platform's message is quoted only from a JSON object body. It is
 collapsed to one line, stripped of non-printable characters, passed through
@@ -495,10 +659,11 @@ The STATE.json platform key is `plugin:mureo-chatgpt-ads:chatgpt_ads`.
 
 ## Not supported today
 
-- **Creating and archiving.** No tool creates a campaign, ad group or ad
-  (#995) or archives one. No tool changes an ad's creative, an ad group's
-  targeting, or a date-range spending limit, or removes the account's daily
-  limit.
+- **Editing after creation.** No tool changes an ad's creative, a
+  campaign's targeting or an ad group's context hints once created, or a
+  date-range spending limit, or removes the account's daily limit. Creatives
+  other than the single-image chat card (multi-image, product templates) are
+  not offered.
 - **Partner access.** No OAuth and no partner key: mureo never sends the
   `OpenAI-Ad-Account` header, so it reads only the ad account an advertiser
   key is scoped to.
@@ -581,6 +746,18 @@ account. These points are unverified:
 - **Account id.** That the `id` of `GET /ad_account` is the value to compare
   with the account id recorded in STATE.json; change import refuses the
   window when the two differ.
+- **Idempotent replay.** That a create repeated with the same
+  `Idempotency-Key` and body returns the first entity rather than a second
+  one or an error, and what the platform answers when the same key comes
+  with a different body. Also whether a create still in flight is already
+  visible to a repeat: mureo's own retry of a 5xx waits its normal backoff
+  first, and the platform documents the replay only for a matching earlier
+  create that is visible to it.
+- **Upload size limit.** The platform documents no maximum image size; the
+  30MB cap is mureo's. A smaller platform limit would surface as an API
+  error.
+- **Archive cascade.** Whether archiving a campaign or an ad group archives
+  its ad groups and ads, and how an archive appears in the audit log.
 
 ## Terms
 

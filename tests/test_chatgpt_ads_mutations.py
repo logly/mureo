@@ -15,21 +15,29 @@ import json
 from typing import Any
 
 import httpx
-import jsonschema
 import pytest
 
 from mureo.chatgpt_ads import handlers
 from mureo.chatgpt_ads._errors import MAY_HAVE_BEEN_APPLIED, ChatGPTAdsAPIError
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
 from mureo.chatgpt_ads.tools import TOOLS
+from mureo.chatgpt_ads.tools_create import CREATE_TOOLS
+from mureo.chatgpt_ads.tools_creative import CREATIVE_TOOLS
 from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
-from mureo.core.tool_failure import failure_of
 from mureo.mcp.plugin_semantics import derive_semantics
-from tests._chatgpt_ads_fakes import SENTINEL_KEY, FakeAPI, sent_body
+from tests._chatgpt_ads_fakes import (
+    FakeAPI,
+    by_name,
+    call_tool,
+    fail_tool,
+    install_fake_api,
+    schema_errors,
+    sent_body,
+)
 
 pytestmark = pytest.mark.unit
 
-_BY_NAME = {t.name: t for t in MUTATION_TOOLS}
+_BY_NAME = by_name(MUTATION_TOOLS)
 
 #: Pause / enable tool → (path it posts to, its id argument).
 _STATUS_TOOLS = {
@@ -67,30 +75,19 @@ def _campaign(**budget: int | None) -> dict[str, Any]:
 
 @pytest.fixture()
 def api(monkeypatch: pytest.MonkeyPatch) -> FakeAPI:
-    fake = FakeAPI()
-    monkeypatch.setenv("CHATGPT_ADS_API_KEY", SENTINEL_KEY)
-    monkeypatch.setattr(handlers, "_open_client", lambda _key: fake.client())
-    return fake
-
-
-async def _call(name: str, arguments: dict[str, Any]) -> Any:
-    result = await ChatGPTAdsProvider().handle_mcp_tool(name, arguments)
-    assert failure_of(result) is None, result[0].text
-    return json.loads(result[0].text)
-
-
-async def _fail(name: str, arguments: dict[str, Any]):  # type: ignore[no-untyped-def]
-    result = await ChatGPTAdsProvider().handle_mcp_tool(name, arguments)
-    failure = failure_of(result)
-    assert failure is not None, result[0].text
-    return failure
+    return install_fake_api(monkeypatch)
 
 
 class TestDefinitions:
     def test_twelve_tools_follow_the_stage_one_tuple(self) -> None:
         names = tuple(t.name for t in MUTATION_TOOLS)
         assert names == (*_MUTATIONS, "chatgpt_ads_account_spend_limits_get")
-        assert ChatGPTAdsProvider().mcp_tools() == (*TOOLS, *MUTATION_TOOLS)
+        assert ChatGPTAdsProvider().mcp_tools() == (
+            *TOOLS,
+            *MUTATION_TOOLS,
+            *CREATE_TOOLS,
+            *CREATIVE_TOOLS,
+        )
 
     @pytest.mark.parametrize("tool", MUTATION_TOOLS, ids=lambda t: t.name)
     def test_closed_schema_and_throttle(self, tool) -> None:  # type: ignore[no-untyped-def]
@@ -106,7 +103,10 @@ class TestDefinitions:
         ("name", "phrases"),
         [
             ("chatgpt_ads_campaigns_enable", ("eligible to spend", "reversal")),
-            ("chatgpt_ads_campaigns_pause", ("reversal", "Archive")),
+            (
+                "chatgpt_ads_campaigns_pause",
+                ("reversal", "chatgpt_ads_campaigns_archive", "cannot be undone"),
+            ),
             (
                 "chatgpt_ads_campaigns_update_budget",
                 (
@@ -163,7 +163,7 @@ class TestRequests:
     ) -> None:
         path, key, value = _STATUS_TOOLS[name]
         api.add(path, body={"id": value, "status": "x"})
-        assert await _call(name, {key: value}) == {"id": value, "status": "x"}
+        assert await call_tool(name, {key: value}) == {"id": value, "status": "x"}
         sent = api.requests[0]
         assert sent.method == "POST"
         assert sent.content == b""
@@ -173,7 +173,7 @@ class TestRequests:
         self, api: FakeAPI
     ) -> None:
         api.add("/campaigns/c_1", body={"id": "c_1"})
-        await _call(
+        await call_tool(
             "chatgpt_ads_campaigns_update",
             {"campaign_id": "c_1", "name": "Spring", "end_time": None},
         )
@@ -186,7 +186,7 @@ class TestRequests:
     async def test_campaign_schedule_is_sent_as_given(self, api: FakeAPI) -> None:
         api.add("/campaigns/c_1", body={"id": "c_1"})
         args = {"campaign_id": "c_1", "start_time": 1_800_000_000, "end_time": None}
-        await _call("chatgpt_ads_campaigns_update", args)
+        await call_tool("chatgpt_ads_campaigns_update", args)
         assert sent_body(api.requests[0]) == {
             "start_time": 1_800_000_000,
             "end_time": None,
@@ -196,7 +196,7 @@ class TestRequests:
         api.add("/campaigns/c_1", body=_campaign(daily_spend_limit_micros=50_000_000))
         api.add("/campaigns/c_1", body={"id": "c_1"})
         budget = {"daily_spend_limit_micros": 75_000_000}
-        await _call(
+        await call_tool(
             "chatgpt_ads_campaigns_update_budget",
             {"campaign_id": "c_1", "budget": budget},
         )
@@ -205,14 +205,14 @@ class TestRequests:
 
     async def test_ad_group_rename(self, api: FakeAPI) -> None:
         api.add("/ad_groups/g_1", body={"id": "g_1"})
-        await _call(
+        await call_tool(
             "chatgpt_ads_ad_groups_update", {"ad_group_id": "g_1", "name": "abc"}
         )
         assert sent_body(api.requests[0]) == {"name": "abc"}
 
     async def test_bidding_config_is_sent_unchanged(self, api: FakeAPI) -> None:
         api.add("/ad_groups/g_1", body={"id": "g_1"})
-        await _call(
+        await call_tool(
             "chatgpt_ads_ad_groups_update_bid",
             {"ad_group_id": "g_1", "bidding_config": _BIDDING},
         )
@@ -223,7 +223,7 @@ class TestRequests:
     ) -> None:
         api.add("/ad_groups/g_1", body={"id": "g_1"})
         config = {"billing_event_type": "impression"}
-        await _call(
+        await call_tool(
             "chatgpt_ads_ad_groups_update_bid",
             {"ad_group_id": "g_1", "bidding_config": config},
         )
@@ -437,32 +437,27 @@ _VALID = [
 ]
 
 
-def _schema_errors(name: str, arguments: dict[str, Any]) -> list[Any]:
-    validator = jsonschema.Draft202012Validator(_BY_NAME[name].inputSchema)
-    return list(validator.iter_errors(arguments))
-
-
 @pytest.mark.parametrize(("name", "arguments"), _INVALID)
 def test_the_schema_refuses_what_the_handler_refuses(
     name: str, arguments: dict[str, Any]
 ) -> None:
     if (name, json.dumps(arguments)) in _HANDLER_ONLY:
-        assert _schema_errors(name, arguments) == []
+        assert schema_errors(_BY_NAME[name], arguments) == []
     else:
-        assert _schema_errors(name, arguments) != []
+        assert schema_errors(_BY_NAME[name], arguments) != []
 
 
 @pytest.mark.parametrize(("name", "arguments"), _VALID)
 async def test_valid_arguments_pass_the_schema_and_the_handler(
     api: FakeAPI, name: str, arguments: dict[str, Any]
 ) -> None:
-    assert _schema_errors(name, arguments) == []
+    assert schema_errors(_BY_NAME[name], arguments) == []
     api.add("/campaigns/c_1", body=_campaign(daily_spend_limit_micros=5_000_000))
     api.add("/campaigns/c_1", body={"id": "c_1"})
     api.add("/ad_groups/g_1", body={"id": "g_1"})
     api.add("/ad_account/spend_limit_windows", body={"object": "list"})
     api.add("/ad_account/daily_spend_limit", body={"spend_limits": {}})
-    await _call(name, arguments)
+    await call_tool(name, arguments)
     assert api.requests[-1].method == "POST"
 
 
@@ -477,7 +472,7 @@ class TestBudgetType:
         api.add("/campaigns/c_1", body=_campaign(**current))
         api.add("/campaigns/c_1", body={"id": "c_1"})
         budget = {"daily_spend_limit_micros": 7_000_000}
-        await _call(self._SET, {"campaign_id": "c_1", "budget": budget})
+        await call_tool(self._SET, {"campaign_id": "c_1", "budget": budget})
         assert [r.method for r in api.requests] == ["GET", "POST"]
         assert sent_body(api.requests[1]) == {"budget": budget}
 
@@ -509,7 +504,7 @@ class TestBudgetType:
         self, api: FakeAPI, current: dict[str, int], sent: dict[str, int]
     ) -> None:
         api.add("/campaigns/c_1", body=_campaign(**current))
-        failure = await _fail(self._SET, {"campaign_id": "c_1", "budget": sent})
+        failure = await fail_tool(self._SET, {"campaign_id": "c_1", "budget": sent})
         assert (failure.status, failure.code) == ("refused", "budget_kind_change")
         for key in (*current, *sent):
             assert key in failure.detail
@@ -532,7 +527,7 @@ class TestBudgetType:
     ) -> None:
         api.add("/campaigns/c_1", body=campaign)
         budget = {"daily_spend_limit_micros": 5_000_000}
-        failure = await _fail(self._SET, {"campaign_id": "c_1", "budget": budget})
+        failure = await fail_tool(self._SET, {"campaign_id": "c_1", "budget": budget})
         assert (failure.status, failure.code) == ("refused", "budget_unreadable")
         assert "Ads Manager" in failure.detail
         assert [r.method for r in api.requests] == ["GET"]
@@ -550,7 +545,7 @@ class TestAccountDailySpendLimit:
             },
         )
         api.add("/ad_account/daily_spend_limit", body={"spend_limits": {}})
-        out = await _call(
+        out = await call_tool(
             "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 50_000_000}
         )
         assert out == {"spend_limits": {}}
@@ -564,7 +559,9 @@ class TestAccountDailySpendLimit:
         windows = {"object": "list", "data": [], "daily_limit": None}
         api.add("/ad_account/spend_limit_windows", body=windows)
         api.add("/ad_account/daily_spend_limit", body={"spend_limits": {}})
-        await _call("chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 0})
+        await call_tool(
+            "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 0}
+        )
         assert sent_body(api.requests[1]) == {
             "amount_micros": 0,
             "expected_revision": 0,
@@ -576,7 +573,7 @@ class TestAccountDailySpendLimit:
     ) -> None:
         windows = {"object": "list", "daily_limit": None, "revision": revision}
         api.add("/ad_account/spend_limit_windows", body=windows)
-        failure = await _fail(
+        failure = await fail_tool(
             "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
         )
         assert "unusable revision" in failure.detail
@@ -589,7 +586,7 @@ class TestAccountDailySpendLimit:
         self, api: FakeAPI, answer: object
     ) -> None:
         api.add("/ad_account/spend_limit_windows", body=answer)
-        failure = await _fail(
+        failure = await fail_tool(
             "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
         )
         assert "not a JSON object" in failure.detail
@@ -609,7 +606,7 @@ class TestAccountDailySpendLimit:
     ) -> None:
         answer = {"object": "list", "revision": 4, **windows}
         api.add("/ad_account/spend_limit_windows", body=answer)
-        failure = await _fail(
+        failure = await fail_tool(
             "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
         )
         assert "unexpected shape" in failure.detail
@@ -627,7 +624,9 @@ class TestAccountDailySpendLimit:
         }
         api.add("/ad_account/spend_limit_windows", body=windows)
         api.add("/ad_account/daily_spend_limit", body={"spend_limits": {}})
-        await _call("chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 5})
+        await call_tool(
+            "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 5}
+        )
         assert [r.method for r in api.requests] == ["GET", "POST"]
         assert sent_body(api.requests[1])["expected_revision"] == 4
 
@@ -642,7 +641,7 @@ class TestAccountDailySpendLimit:
         self, api: FakeAPI, windows: dict[str, Any]
     ) -> None:
         api.add("/ad_account/spend_limit_windows", body={"object": "list", **windows})
-        failure = await _fail(
+        failure = await fail_tool(
             "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
         )
         assert (failure.status, failure.code) == (
@@ -661,19 +660,21 @@ class TestAccountDailySpendLimit:
             body={"object": "list", "daily_limit": {"amount_micros": 9}, "revision": 2},
         )
         api.add("/ad_account/daily_spend_limit", body={"spend_limits": {}})
-        await _call("chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 5})
+        await call_tool(
+            "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 5}
+        )
         assert sent_body(api.requests[1])["expected_revision"] == 2
 
     async def test_the_read_tool(self, api: FakeAPI) -> None:
         windows = {"object": "list", "data": [], "daily_limit": None, "revision": 3}
         api.add("/ad_account/spend_limit_windows", body=windows)
-        assert await _call("chatgpt_ads_account_spend_limits_get", {}) == windows
+        assert await call_tool("chatgpt_ads_account_spend_limits_get", {}) == windows
 
 
 class TestFailures:
     async def test_401_is_token_invalid(self, api: FakeAPI) -> None:
         api.add("/ads/a_1/pause", 401, {"error": {"message": "bad key"}})
-        failure = await _fail("chatgpt_ads_ads_pause", {"ad_id": "a_1"})
+        failure = await fail_tool("chatgpt_ads_ads_pause", {"ad_id": "a_1"})
         assert (failure.status, failure.code) == ("auth_error", "token_invalid")
 
     async def test_feature_gate(self, api: FakeAPI) -> None:
@@ -682,7 +683,7 @@ class TestFailures:
             403,
             {"error": {"message": "Spend limits are not enabled for this account"}},
         )
-        failure = await _fail(
+        failure = await fail_tool(
             "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
         )
         assert (failure.status, failure.code) == ("error", "feature_not_enabled")
@@ -699,7 +700,7 @@ class TestFailures:
                 }
             },
         )
-        failure = await _fail(
+        failure = await fail_tool(
             "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
         )
         assert failure.code == "api_error"
@@ -709,7 +710,7 @@ class TestFailures:
 
     async def test_no_key(self, api: FakeAPI, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("CHATGPT_ADS_API_KEY")
-        failure = await _fail("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
+        failure = await fail_tool("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
         assert failure.code == "no_credentials"
         assert api.requests == []
 
@@ -719,13 +720,13 @@ class TestRetries:
     async def test_a_5xx_post_is_final(self, api: FakeAPI, status: int) -> None:
         api.add("/campaigns/c_1/pause", status, {"error": {"message": "boom"}})
         api.add("/campaigns/c_1/pause", body={"id": "c_1"})
-        failure = await _fail("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
+        failure = await fail_tool("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
         assert len(api.requests) == 1
         assert failure.detail.endswith(MAY_HAVE_BEEN_APPLIED)
 
     async def test_a_transport_error_on_post_is_final(self, api: FakeAPI) -> None:
         api.raise_on["/v1/campaigns/c_1/pause"] = httpx.ReadTimeout("slow")
-        failure = await _fail("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
+        failure = await fail_tool("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
         assert len(api.requests) == 1
         assert "ReadTimeout" in failure.detail
         assert failure.detail.endswith(MAY_HAVE_BEEN_APPLIED)
@@ -733,12 +734,12 @@ class TestRetries:
     async def test_a_429_post_is_retried(self, api: FakeAPI) -> None:
         api.add("/campaigns/c_1/pause", 429, {})
         api.add("/campaigns/c_1/pause", body={"id": "c_1"})
-        assert await _call("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
+        assert await call_tool("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
         assert len(api.requests) == 2
 
     async def test_a_429_post_exhausted_was_not_applied(self, api: FakeAPI) -> None:
         api.add("/campaigns/c_1/pause", 429, {"error": {"message": "slow down"}})
-        failure = await _fail("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
+        failure = await fail_tool("chatgpt_ads_campaigns_pause", {"campaign_id": "c_1"})
         assert len(api.requests) == 3
         assert MAY_HAVE_BEEN_APPLIED not in failure.detail
 
@@ -746,7 +747,9 @@ class TestRetries:
         api.add("/ad_account/spend_limit_windows", 500, {})
         api.add("/ad_account/spend_limit_windows", body={"object": "list"})
         api.add("/ad_account/daily_spend_limit", body={"spend_limits": {}})
-        await _call("chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1})
+        await call_tool(
+            "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
+        )
         assert [r.method for r in api.requests] == ["GET", "GET", "POST"]
 
     async def test_a_mutation_past_the_deadline_may_have_been_applied(

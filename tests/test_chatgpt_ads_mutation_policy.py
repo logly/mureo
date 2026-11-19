@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from mureo.change_import.dedupe import action_kind
-from mureo.chatgpt_ads import handlers
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
 from mureo.chatgpt_ads.tools_mutations import BUDGET_CONTEXT_KEYS, MUTATION_TOOLS
 from mureo.core.tool_failure import failure_of
@@ -28,7 +27,13 @@ from mureo.policy.declaration_resolution import (
 from mureo.policy.declarations import ArgumentPaths
 from mureo.policy.learning_reset import classify_change
 from mureo.policy.learning_rules import ResetRisk, rules_for_tool
-from tests._chatgpt_ads_fakes import SENTINEL_KEY, FakeAPI, sent_body
+from tests._chatgpt_ads_fakes import (
+    FakeAPI,
+    by_name,
+    install_fake_api,
+    sent_body,
+    strategy_gate,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -38,7 +43,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.unit
 
-_BY_NAME = {t.name: t for t in MUTATION_TOOLS}
+_BY_NAME = by_name(MUTATION_TOOLS)
 
 _STATUS_TOOLS = tuple(
     f"chatgpt_ads_{family}_{action}"
@@ -210,20 +215,7 @@ def _clean_registries() -> Iterator[None]:
 def gate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _clean_registries: None
 ) -> StrategyPolicyGate:
-    from mureo.mcp.server import (
-        _register_plugin_bid_declarations,
-        _register_plugin_budget_declarations,
-        _register_plugin_pattern_fallbacks,
-    )
-    from mureo.policy.strategy_gate import StrategyPolicyGate
-
-    semantics = {t.name: derive_semantics(t) for t in MUTATION_TOOLS}
-    _register_plugin_budget_declarations(semantics)
-    _register_plugin_bid_declarations(semantics)
-    _register_plugin_pattern_fallbacks(semantics)
-    (tmp_path / "STRATEGY.md").write_text(_GUARDRAILS, encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
-    return StrategyPolicyGate()
+    return strategy_gate(tmp_path, monkeypatch, MUTATION_TOOLS, _GUARDRAILS)
 
 
 def _daily(micros: int, **context: float) -> dict[str, Any]:
@@ -336,10 +328,7 @@ class TestStrategyGate:
 
 @pytest.fixture()
 def api(monkeypatch: pytest.MonkeyPatch) -> FakeAPI:
-    fake = FakeAPI()
-    monkeypatch.setenv("CHATGPT_ADS_API_KEY", SENTINEL_KEY)
-    monkeypatch.setattr(handlers, "_open_client", lambda _key: fake.client())
-    return fake
+    return install_fake_api(monkeypatch)
 
 
 class TestContextKeysAreNeverSent:

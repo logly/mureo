@@ -5,11 +5,22 @@ carries the bearer header, retries with exponential backoff the way
 :mod:`mureo.meta_ads.client` does, follows list cursors, and caches the ad
 account's time zone so a report and its period agree on what "today" is.
 
-Retries differ by method. A GET is retried on 429 and on every 5xx. A POST
-changes something, so it is retried on 429 only (the request was not
-processed); a 5xx or a transport error on a POST is final, because the change
-may have been applied before the answer was lost, and its message ends with
-:data:`MAY_HAVE_BEEN_APPLIED`.
+Every request states two things about itself (:class:`_Policy`): whether a
+5xx answer is worth another attempt, and what its failure message adds when
+the answer was lost. A 429 is always retried (the request was not processed).
+
+- ``get`` and ``post_read`` are retried on 5xx and add nothing.
+  ``post_read`` is the ad preview: a POST that changes no campaign, ad group
+  or ad (the platform renders and saves an expiring preview snapshot), so it
+  is treated as a read.
+- ``post`` changes something, so a 5xx or a transport error is final: the
+  change may have been applied before the answer was lost, and the message
+  ends with :data:`MAY_HAVE_BEEN_APPLIED`. ``post_file`` (an upload, which
+  is not idempotent) holds the same rule.
+- ``post`` with an idempotency key is retried on 5xx, because the platform
+  returns the existing object for a repeat with the same key when it can see
+  the matching earlier create, and its message ends with
+  :data:`REPEAT_WITH_IDEMPOTENCY_KEY` naming the key.
 
 Credential hygiene: the key is sent as a default header on the underlying
 ``httpx.AsyncClient``, and one private copy is kept for a single purpose —
@@ -27,7 +38,8 @@ from __future__ import annotations
 import asyncio
 import json
 import math
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import timezone, tzinfo
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -45,6 +57,7 @@ from mureo.chatgpt_ads._api import (
 )
 from mureo.chatgpt_ads._errors import (
     MAY_HAVE_BEEN_APPLIED,
+    REPEAT_WITH_IDEMPOTENCY_KEY,
     ChatGPTAdsAPIError,
     error_from_response,
 )
@@ -64,30 +77,53 @@ _KEY_MARKER = "***"
 
 _GET = "GET"
 _POST = "POST"
+#: The request header that carries a create's idempotency key.
+_IDEMPOTENCY_HEADER = "Idempotency-Key"
+#: The multipart form field an upload sends its file in.
+_FILE_FIELD = "file"
 
 #: A JSON request body.
 Body = dict[str, Any]
 
 
-def _retryable(method: str, status: int) -> bool:
+@dataclass(frozen=True)
+class _Policy:
+    """The two decisions one request makes about a failed answer.
+
+    ``retry_server_errors``: is a 5xx worth another attempt? Only when
+    repeating the request cannot apply a change twice. ``lost_answer_note``:
+    the sentence a 5xx, a transport error or an unreadable success answer
+    adds, because the platform may have acted before the answer was lost.
+    """
+
+    retry_server_errors: bool
+    lost_answer_note: str
+
+
+#: A read, whatever its HTTP method.
+_READ = _Policy(retry_server_errors=True, lost_answer_note="")
+#: A change that a repeat could apply twice.
+_CHANGE = _Policy(retry_server_errors=False, lost_answer_note=MAY_HAVE_BEEN_APPLIED)
+
+
+def _idempotent_create(key: str) -> _Policy:
+    """A create the platform deduplicates by ``key``: safe to repeat."""
+    note = REPEAT_WITH_IDEMPOTENCY_KEY.format(key=key)
+    return _Policy(retry_server_errors=True, lost_answer_note=note)
+
+
+def _retryable(policy: _Policy, status: int) -> bool:
     """Is another attempt worth making?
 
     429 always: the platform refused the request without processing it. A 5xx
-    only for a GET; a POST answered with 5xx may have been applied, and
-    repeating it could apply the change twice.
+    only where the policy says a repeat is safe.
     """
-    return status == 429 or (method == _GET and status >= 500)
+    return status == 429 or (policy.retry_server_errors and status >= 500)
 
 
-def _applied_note(method: str) -> str:
-    """What a failed answer adds: for a POST, that the change may have been
-    applied; for a GET, nothing."""
-    return MAY_HAVE_BEEN_APPLIED if method == _POST else ""
-
-
-def _final_message(method: str, message: str) -> str:
-    """``message``, flagged when a POST ended without a readable answer."""
-    note = _applied_note(method)
+def _final_message(policy: _Policy, message: str) -> str:
+    """``message``, ending with the policy's note when it has one."""
+    note = policy.lost_answer_note
     return f"{message} {note}" if note else message
 
 
@@ -108,12 +144,12 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float | None:
     return value if value <= MAX_RETRY_AFTER_SECONDS else None
 
 
-def _decode(response: httpx.Response, method: str = _GET) -> Any:
+def _decode(response: httpx.Response, policy: _Policy = _READ) -> Any:
     """The JSON body of a success answer; an unreadable body is an API error.
 
-    For a POST the error ends with :data:`MAY_HAVE_BEEN_APPLIED`: a 2xx says
-    the platform took the change, but an intermediary can answer 200 with a
-    page of its own, so "may" is as far as the answer goes.
+    For a change the error ends with the policy's note: a 2xx says the
+    platform took the change, but an intermediary can answer 200 with a page
+    of its own, so "may" is as far as the answer goes.
     """
     try:
         return response.json()
@@ -121,10 +157,18 @@ def _decode(response: httpx.Response, method: str = _GET) -> Any:
         pass
     raise ChatGPTAdsAPIError(
         _final_message(
-            method, f"HTTP {response.status_code}: the response body is not JSON"
+            policy, f"HTTP {response.status_code}: the response body is not JSON"
         ),
         status=response.status_code,
     )
+
+
+def _post_answer(response: httpx.Response, policy: _Policy) -> Any:
+    """The decoded body of a POST answer; an empty one (a 204, or only
+    whitespace) is ``{}``: the platform acted and had nothing to add."""
+    if not response.content.strip():
+        return {}
+    return _decode(response, policy)
 
 
 def _page_rows(response: httpx.Response) -> tuple[dict[str, Any], list[Any]]:
@@ -202,19 +246,25 @@ class ChatGPTAdsClient:
         return decoded.replace(self._api_key, _KEY_MARKER)
 
     async def _send(
-        self, method: str, path: str, params: Params, body: Body | None
+        self,
+        method: str,
+        path: str,
+        params: Params,
+        policy: _Policy,
+        payload: Mapping[str, Any],
     ) -> httpx.Response:
-        """One request; ``body=None`` sends none. A transport failure becomes
-        an API error naming its class."""
+        """One request; ``payload`` holds its httpx body and header keywords
+        (empty = no body). A transport failure becomes an API error naming
+        its class."""
         failure = ""
         try:
             return await self._http.request(
-                method, path, params=list(params), json=body
+                method, path, params=list(params), **payload
             )
         except (httpx.RequestError, httpx.InvalidURL) as exc:
             failure = type(exc).__name__
         raise ChatGPTAdsAPIError(
-            _final_message(method, f"transport error ({failure})"), status=0
+            _final_message(policy, f"transport error ({failure})"), status=0
         )
 
     async def _request(
@@ -223,13 +273,14 @@ class ChatGPTAdsClient:
         params: Params,
         *,
         method: str = _GET,
-        body: Body | None = None,
+        policy: _Policy = _READ,
+        payload: Mapping[str, Any] | None = None,
     ) -> httpx.Response:
         """One request, retried while :func:`_retryable`; a non-success
-        answer raises."""
+        answer raises, its body redacted before it is read."""
         for attempt in range(MAX_ATTEMPTS):
-            response = await self._send(method, path, params, body)
-            retry = _retryable(method, response.status_code)
+            response = await self._send(method, path, params, policy, payload or {})
+            retry = _retryable(policy, response.status_code)
             if not retry or attempt == MAX_ATTEMPTS - 1:
                 break
             delay = _retry_delay(response, attempt)
@@ -242,23 +293,61 @@ class ChatGPTAdsClient:
         raise error_from_response(
             status,
             self._redacted(response.text),
-            note=_applied_note(method) if status >= 500 else "",
+            note=policy.lost_answer_note if status >= 500 else "",
         )
 
     async def get(self, path: str, params: Params = ()) -> Any:
         """The decoded JSON body of ``GET path``."""
         return _decode(await self._request(path, params))
 
-    async def post(self, path: str, body: Body | None = None) -> Any:
+    async def post(
+        self, path: str, body: Body | None = None, *, idempotency_key: str | None = None
+    ) -> Any:
         """The decoded JSON body of ``POST path``; ``body=None`` sends none.
 
-        An empty success body (a 204, or only whitespace) is ``{}``: the
-        platform took the change and had nothing to add.
+        With ``idempotency_key`` the request carries the ``Idempotency-Key``
+        header and a 5xx is retried with the same key and body. An empty key
+        is refused: the header is never valid empty, and reading it as "no
+        key" would drop the retry rule the caller asked for. An empty success
+        body is ``{}``.
         """
-        response = await self._request(path, (), method=_POST, body=body)
-        if not response.content.strip():
-            return {}
-        return _decode(response, _POST)
+        if idempotency_key == "":
+            raise ValueError("idempotency_key must not be empty")
+        payload: dict[str, Any] = {} if body is None else {"json": body}
+        policy = _CHANGE
+        if idempotency_key is not None:
+            payload["headers"] = {_IDEMPOTENCY_HEADER: idempotency_key}
+            policy = _idempotent_create(idempotency_key)
+        response = await self._request(
+            path, (), method=_POST, policy=policy, payload=payload
+        )
+        return _post_answer(response, policy)
+
+    async def post_read(self, path: str, body: Body | None = None) -> Any:
+        """``POST path`` for an endpoint that changes no campaign, ad group or
+        ad (the ad preview, which renders and saves an expiring snapshot):
+        retried like a GET, and its failures never say a change may have been
+        applied."""
+        payload = {} if body is None else {"json": body}
+        response = await self._request(
+            path, (), method=_POST, policy=_READ, payload=payload
+        )
+        return _post_answer(response, _READ)
+
+    async def post_file(
+        self, path: str, *, filename: str, content: bytes, content_type: str
+    ) -> Any:
+        """``POST path`` with ``content`` as the multipart field ``file``.
+
+        An upload is not idempotent, so it follows the change rule: a 5xx or
+        a transport error is final and may have been applied (a 429 is
+        retried, like every request).
+        """
+        payload = {"files": {_FILE_FIELD: (filename, content, content_type)}}
+        response = await self._request(
+            path, (), method=_POST, policy=_CHANGE, payload=payload
+        )
+        return _post_answer(response, _CHANGE)
 
     async def list_all(
         self, path: str, params: Params, *, limit: int, page_max: int

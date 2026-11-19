@@ -83,20 +83,24 @@ mureo/
 │   └── accounts.py      # Ad-account listing
 ├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py        # SearchConsoleApiClient
-├── chatgpt_ads/         # ChatGPT Ads bundled provider over OpenAI's Advertiser API (#992, #993, #994);
-│   │                    #   reads and changes; imports neither mcp nor web
+├── chatgpt_ads/         # ChatGPT Ads bundled provider over OpenAI's Advertiser API (#992-#995);
+│   │                    #   reads, changes, creates and archives; imports neither mcp nor web
 │   ├── _api.py          # Base URL, OpenAPI version read, timeout / retry / page-size / throttle constants
 │   ├── _errors.py       # ChatGPTAdsAPIError + error_from_response: the one error-body reader
 │   ├── _period.py       # `period` vocabulary resolved in the ad account's time zone
-│   ├── _validation.py   # Argument checks shared by both handler modules
-│   ├── client.py        # ChatGPTAdsClient (httpx, GET / POST; 429 retried, 5xx only for GET; cursor walk); imported on first tool call
+│   ├── _validation.py   # Argument checks shared by the handler modules
+│   ├── client.py        # ChatGPTAdsClient (httpx, GET / POST / multipart upload; each request states its 5xx retry and lost-answer note; cursor walk); imported on first tool call
 │   ├── credentials.py   # Ads API key from the `chatgpt_ads` store section, then CHATGPT_ADS_API_KEY
-│   ├── handlers.py      # One coroutine per read tool, the merged handler table, run_tool, run_with_client
+│   ├── handlers.py      # One coroutine per read tool, the composed tool list and handler table, run_tool, run_with_client
 │   ├── change_feed.py   # ChatGPTAdsChangeFeed: the audit log as external changes for change import
 │   ├── handlers_mutations.py # One coroutine per change tool + the spend-limit read
+│   ├── handlers_create.py # Create (always paused, idempotency key) and archive handlers
+│   ├── handlers_creative.py # Image upload, ad preview, location search
 │   ├── reversal.py      # capture_reversal: the prior read that becomes the recorded reversal
 │   ├── tools.py         # The nine read Tool definitions + build_tool / id_param
 │   ├── tools_mutations.py # The change tools + the spend-limit read, with their declarations
+│   ├── tools_create.py  # The create and archive tools, from the tools_mutations fragments
+│   ├── tools_creative.py # The image upload, ad preview and location search tools
 │   └── provider.py      # ChatGPTAdsProvider, registration (with its change feed), disable gate, platform delivery model
 ├── mcp/                 # MCP server (Google/Meta/Search Console + Rollback/Analysis + Analytics registry, Creative Studio, Learning, mureo Context)
 │   ├── server.py                          # MCP Server entry point (stdio-based)

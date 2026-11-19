@@ -22,6 +22,7 @@ import pytest
 
 from mureo.chatgpt_ads import credentials as credentials_module
 from mureo.chatgpt_ads.credentials import load_chatgpt_ads_credentials
+from mureo.chatgpt_ads.handlers import ALL_TOOLS
 from mureo.chatgpt_ads.provider import (
     CHATGPT_ADS_DISABLE_ENV_VAR,
     CHATGPT_ADS_PLATFORM_MODEL,
@@ -33,7 +34,6 @@ from mureo.chatgpt_ads.provider import (
     register_chatgpt_ads_provider,
 )
 from mureo.chatgpt_ads.tools import TOOLS
-from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from mureo.core.platform_keys import plugin_platform_key
 from mureo.core.providers import default_registry, get_account_credential_fields
 from mureo.core.providers.registry import ProviderEntry, RegistryWarning
@@ -89,7 +89,7 @@ class TestIdentifiers:
     def test_no_identifier_names_the_vendor(self) -> None:
         names = [
             *_TOOL_NAMES,
-            *(t.name for t in MUTATION_TOOLS),
+            *(t.name for t in ALL_TOOLS),
             CHATGPT_ADS_PROVIDER_NAME,
             CHATGPT_ADS_DISABLE_ENV_VAR,
         ]
@@ -107,7 +107,7 @@ class TestTools:
             raise AssertionError("touched credentials")
 
         monkeypatch.setattr(credentials_module, "get_runtime_context", _boom)
-        assert ChatGPTAdsProvider().mcp_tools() == (*TOOLS, *MUTATION_TOOLS)
+        assert ChatGPTAdsProvider().mcp_tools() == ALL_TOOLS
 
     @pytest.mark.parametrize("tool", TOOLS, ids=lambda t: t.name)
     def test_every_tool_is_read_only_with_a_closed_schema(self, tool) -> None:  # type: ignore[no-untyped-def]

@@ -17,12 +17,11 @@ import jsonschema
 import pytest
 
 from mureo.chatgpt_ads import handlers
+from mureo.chatgpt_ads.handlers import ALL_TOOLS
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
-from mureo.chatgpt_ads.tools import TOOLS
-from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from tests._chatgpt_ads_fakes import SENTINEL_KEY, FakeAPI, sent_body
 
-_SCHEMAS = {t.name: t.inputSchema for t in (*TOOLS, *MUTATION_TOOLS)}
+_SCHEMAS = {t.name: t.inputSchema for t in ALL_TOOLS}
 
 _ID_PATHS = (
     ("campaign_id", "/campaigns"),
