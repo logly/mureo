@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from mureo.core.policy import PolicyGate
     from mureo.mcp._journal_hook import JournalledCall
 
-from mureo.amazon_ads.provider import amazon_ads_disabled, register_amazon_provider
+from mureo.bundled_providers import discover_with_bundled
 
 # Read through the module (not bound to a name here) so a monkeypatched
 # ``get_runtime_context`` is honoured at call time.
@@ -288,58 +288,19 @@ _RESERVED_BUILTIN_NAMES: frozenset[str] = frozenset(
 # before. Built-in tool names are reserved so a plugin can never shadow a
 # core tool. Discovery faults are contained (PluginToolWarning), never fatal.
 # ---------------------------------------------------------------------------
-def _discover_with_amazon() -> tuple[Any, ...]:
-    """Registry-discovered entry-point providers PLUS the internal
-    Amazon Ads bridge (#113).
+def _discover_with_bundled() -> tuple[Any, ...]:
+    """Entry-point providers plus the bundled ones (:mod:`mureo.bundled_providers`).
 
-    The Amazon bridge is in-tree (not an entry point), but it satisfies
-    the same ``MCPToolProvider`` shape, so feeding it through the
-    SAME collection makes it inherit the #114 safety layer (audit /
-    throttle / Phase 2/4 strategy promotion) with zero dispatch
-    changes. ``registry.discover_providers`` is resolved live here so a
-    monkeypatched registry / module reload is still honoured. When the
-    Amazon manifest is absent, ``AmazonAdsBridge.mcp_tools()`` returns
-    ``()`` → no tools added → behaviour is byte-identical to before.
-
-    #121: the entry is now built AND registered by
-    ``mureo.amazon_ads.provider`` — one definition shared with the
-    ``mureo configure`` UI, which needs it in ``default_registry`` to
-    render the Amazon credentials card. ``discover_providers`` returns
-    only what the entry-point pass registered, so the registration does
-    not by itself put Amazon in ``entries``; the explicit append below
-    is still what exposes the tools, guarded so an ``amazon_ads`` entry
-    point (were one ever installed) cannot double-expose them.
-
-    ORDER MATTERS: the built-in is registered BEFORE entry-point
-    discovery, matching ``ConfigureWizard._discover_providers_safely``.
-    The registry is first-wins, so registering first is what makes the
-    in-tree bridge deterministically beat a third-party plugin that
-    claims the ``amazon_ads`` name — in both processes, not just
-    whichever happened to run its registration earlier. A genuinely
-    pre-registered foreign ``amazon_ads`` (registered before this
-    function runs at all) still wins, which is the documented
-    first-wins contract.
+    ``discover_providers`` is resolved at call time so a monkeypatched
+    registry / module reload is still honoured.
     """
-    if amazon_ads_disabled():
-        # ``MUREO_DISABLE_AMAZON_ADS=1`` — the bridge is neither registered nor
-        # appended, so no Amazon tools are exposed AND the configure UI does
-        # not render a card for a bridge this server will not serve. A
-        # third-party ``amazon_ads`` entry point (were one installed) is left
-        # to discovery, exactly as the other MUREO_DISABLE_* gates leave the
-        # official MCP they step aside for.
-        return tuple(_registry.discover_providers())
-
-    amazon = register_amazon_provider()
-    entries = list(_registry.discover_providers())
-    if not any(entry.name == amazon.name for entry in entries):
-        entries.append(amazon)
-    return tuple(entries)
+    return discover_with_bundled(lambda: _registry.discover_providers())
 
 
 _PLUGIN_TOOLS: list[Tool]
 _PLUGIN_TOOLS, _collected_dispatch = collect_plugin_tools(
     reserved_names=_RESERVED_BUILTIN_NAMES,
-    discover=_discover_with_amazon,
+    discover=_discover_with_bundled,
 )
 # ``_PLUGIN_DISPATCH`` is the dict object :mod:`mureo.mcp._plugin_tables`
 # holds (#879); refilled in place so a reload of this module refreshes every

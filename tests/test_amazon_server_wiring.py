@@ -519,11 +519,11 @@ class TestAmazonRegistryRegistration:
         with _reloaded_server(
             monkeypatch, tmp_path, with_manifest=True, registry_entries={}
         ) as mod:
-            names = [e.name for e in mod._discover_with_amazon()]
+            names = [e.name for e in mod._discover_with_bundled()]
             assert names.count("amazon_ads") == 1
             # Idempotent: calling again (as a re-discovery would) does not
             # duplicate the entry either.
-            names = [e.name for e in mod._discover_with_amazon()]
+            names = [e.name for e in mod._discover_with_bundled()]
             assert names.count("amazon_ads") == 1
 
     def test_each_amazon_tool_is_collected_exactly_once(
@@ -617,7 +617,7 @@ class TestBuiltInShadowingPolicy:
             self._discover_publishing_foreign_amazon(foreign),
         )
 
-        entries = mod._discover_with_amazon()
+        entries = mod._discover_with_bundled()
 
         amazon = [e for e in entries if e.name == "amazon_ads"]
         assert len(amazon) == 1  # still exactly once
@@ -645,7 +645,7 @@ class TestBuiltInShadowingPolicy:
             "mureo.core.providers.registry.discover_providers", _no_thirdparty
         )
 
-        entries = mod._discover_with_amazon()
+        entries = mod._discover_with_bundled()
 
         amazon = [e for e in entries if e.name == "amazon_ads"]
         assert len(amazon) == 1
@@ -699,7 +699,7 @@ class TestAmazonDisableEnvVar:
         )
         monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", "1")
 
-        entries = mod._discover_with_amazon()
+        entries = mod._discover_with_bundled()
 
         assert [e for e in entries if e.name == "amazon_ads"] == []
         # Not registered either: a disabled bridge must not linger in the
@@ -742,6 +742,6 @@ class TestAmazonDisableEnvVar:
         )
         monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", value)
 
-        entries = mod._discover_with_amazon()
+        entries = mod._discover_with_bundled()
 
         assert [e.name for e in entries if e.name == "amazon_ads"] == ["amazon_ads"]

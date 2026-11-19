@@ -38,13 +38,15 @@ from mureo.core.auth_failure import (
 
 # The envelope READER lives in ``mureo.core`` so the layers below this one
 # (rollback, the Amazon bridge) can use it without importing the server
-# (#863). Re-exported here, the same objects, next to the writer below.
+# (#863), and so does the envelope dict ``failure_payload``. Re-exported
+# here, the same objects, next to the ``TextContent`` writer below.
 from mureo.core.tool_failure import API_ERROR_CODE as API_ERROR_CODE
 from mureo.core.tool_failure import API_ERROR_PREFIX as API_ERROR_PREFIX
 from mureo.core.tool_failure import FAILURE_STATUSES as FAILURE_STATUSES
 from mureo.core.tool_failure import Failure as Failure
 from mureo.core.tool_failure import exception_text as exception_text
 from mureo.core.tool_failure import failure_of as failure_of
+from mureo.core.tool_failure import failure_payload as failure_payload
 from mureo.core.tool_failure import is_auth_error_result as is_auth_error_result
 from mureo.core.tool_failure import is_error_result as is_error_result
 
@@ -241,15 +243,11 @@ def _failure_result(
     and ``"error"`` otherwise; ``code`` is a stable snake_case identifier an
     agent can branch on, ``detail`` the operator-readable text. ``fields`` ride
     along beside the envelope (``findings``, ``plan`` ...) and never override it.
+    The dict is :func:`failure_payload`, built in ``mureo.core`` so the layers
+    below this one write the same envelope; this only wraps it.
     :func:`failure_of` is the reader; keep the two in step.
     """
-    payload: dict[str, Any] = {
-        **fields,
-        "status": "refused" if refused else "error",
-        "error": code,
-        "detail": detail,
-    }
-    return _json_result(payload)
+    return _json_result(failure_payload(code, detail, refused=refused, **fields))
 
 
 def _no_creds_result(msg: str) -> list[TextContent]:

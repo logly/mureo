@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from mcp.types import TextContent
 
+from mureo.core.tool_failure import failure_payload
 from mureo.mcp import _helpers
 from mureo.mcp._helpers import (
     API_ERROR_PREFIX,
@@ -86,6 +87,67 @@ class TestFailureResult:
 
     def test_statuses_are_the_two_failure_words(self) -> None:
         assert frozenset({"refused", "error"}) == FAILURE_STATUSES
+
+    def test_text_is_the_json_of_the_core_payload(self) -> None:
+        result = _failure_result("plan_refused", "café plan", refused=True, n=2)
+        assert result[0].text == json.dumps(
+            failure_payload("plan_refused", "café plan", refused=True, n=2),
+            ensure_ascii=False,
+        )
+
+    def test_text_is_byte_identical_to_the_envelope(self) -> None:
+        result = _failure_result("module_failed", "boom", findings=[1])
+        assert result[0].text == (
+            '{"findings": [1], "status": "error", '
+            '"error": "module_failed", "detail": "boom"}'
+        )
+
+
+class _TextItem:
+    """A result item that only carries ``.text``, as ``failure_of`` reads it."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class TestFailurePayload:
+    """The envelope dict, built in ``mureo.core`` so lower layers can use it."""
+
+    def test_default_status_is_error(self) -> None:
+        assert failure_payload("module_failed", "boom") == {
+            "status": "error",
+            "error": "module_failed",
+            "detail": "boom",
+        }
+
+    def test_refused_flag_sets_status_refused(self) -> None:
+        payload = failure_payload("batch_refused", "no", refused=True)
+        assert payload == {
+            "status": "refused",
+            "error": "batch_refused",
+            "detail": "no",
+        }
+
+    def test_fields_ride_beside_and_never_override_the_envelope(self) -> None:
+        payload = failure_payload(
+            "invalid_arguments", "real", status="ok", error="not a code", plan=None
+        )
+        assert payload == {
+            "plan": None,
+            "status": "error",
+            "error": "invalid_arguments",
+            "detail": "real",
+        }
+
+    @pytest.mark.parametrize("refused", [False, True])
+    def test_failure_of_reads_it_back(self, refused: bool) -> None:
+        payload = failure_payload("x_failed", "the detail", refused=refused, k=1)
+        failure = failure_of([_TextItem(json.dumps(payload))])
+        status = "refused" if refused else "error"
+        assert failure == Failure(status, "x_failed", "the detail")
+
+    def test_helpers_reexports_the_core_object(self) -> None:
+        assert _helpers.failure_payload is failure_payload
 
 
 class TestFailureOf:

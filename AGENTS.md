@@ -323,8 +323,9 @@ mureo/
 │   ├── importer.py      # Watermark, action_log write, per-platform outcome
 │   └── builtin/         # Native feeds — google_ads only today; see docs/change-import.md
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
-│   ├── tool_failure.py  # The MCP failure-envelope READER (failure_of / is_error_result, #863); the
-│   │                    #   writer stays in mcp/_helpers.py, which re-exports these names.
+│   ├── tool_failure.py  # The MCP failure-envelope READER (failure_of / is_error_result, #863) and
+│   │                    #   the refused / error envelope dict (failure_payload); mcp/_helpers.py
+│   │                    #   wraps it in TextContent and re-exports these names.
 │   │                    #   exception_text: the one exception-to-text formatter (#603, #865)
 │   ├── credential_source.py # Per-call credential-source ABI (#821); mcp/credential_source.py
 │   │                    #   re-exports the same objects (#863)
@@ -387,6 +388,9 @@ mureo/
 │                        #   change import); below mcp, so none of them loads the server (#863);
 │                        #   open_google_ads_client / open_meta_ads_client are the one
 │                        #   Google Ads / Meta Ads openers (#875)
+├── bundled_providers.py # The one table of providers shipped inside mureo (Amazon Ads today);
+│                        #   the MCP server and the configure UI both register from it before
+│                        #   entry-point discovery; below mcp and web (#992)
 ├── installed_packages.py
 │                        # The installed mureo / mureo-* distributions, for `mureo upgrade`
 │                        #   and the dashboard's About / update check / upgrade (#863)
@@ -522,7 +526,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 
 Structure drifts before logic breaks: a second error envelope, a helper that duplicates another, a new name for an existing concept, a function-local import added to dodge a cycle. The 2026-10 structural audit found all four here (#862–#866). These rules exist so that a change decided by one person and written by another — or by an agent — keeps the shape the codebase already has.
 
-- **One failure shape per boundary.** MCP tools fail through the helpers `mureo/mcp/_helpers.py` provides (`api_error_handler`, the `API error:` envelope, the `auth_error` result, `_json_result`, the `refused` / `error` envelope of `_failure_result`), read back by `failure_of` in `mureo/core/tool_failure.py` (the reader, re-exported by `_helpers`; the writer stays in `_helpers` because it builds MCP `TextContent`, #863); web handlers fail through `send_error_json` (`mureo/web/_helpers.py`; `send_failure` picks 400 or 500 from the caller's fault codes), and web actions return `ActionResult` (`mureo/web/action_result.py`: `refused` = 400, `failed` = 500) sent by `send_result`; the contract is "Failure contract" in `docs/plugin-authoring.md`. Do not add a new error shape, status word or `{"error": ...}` variant. If the existing helper cannot express a case, extend the helper in one place and update `failure_of` (which `is_error_result` and the journal read) with it (#862, #864).
+- **One failure shape per boundary.** MCP tools fail through the helpers `mureo/mcp/_helpers.py` provides (`api_error_handler`, the `API error:` envelope, the `auth_error` result, `_json_result`, the `refused` / `error` envelope of `_failure_result`), read back by `failure_of` in `mureo/core/tool_failure.py` (the reader, re-exported by `_helpers`; the envelope dict is `failure_payload` in the same module so layers below the server can build it, and `_helpers` wraps it in MCP `TextContent`, #863); web handlers fail through `send_error_json` (`mureo/web/_helpers.py`; `send_failure` picks 400 or 500 from the caller's fault codes), and web actions return `ActionResult` (`mureo/web/action_result.py`: `refused` = 400, `failed` = 500) sent by `send_result`; the contract is "Failure contract" in `docs/plugin-authoring.md`. Do not add a new error shape, status word or `{"error": ...}` variant. If the existing helper cannot express a case, extend the helper in one place and update `failure_of` (which `is_error_result` and the journal read) with it (#862, #864).
 - **Reuse before writing.** Before adding a helper, search for one with the same purpose — not only the same name — and diff the bodies. A byte-identical or near-identical copy is a defect; mixin type stubs that resolve to one implementation are not.
 - **No function-local imports to break an import cycle.** Fix the dependency direction instead. If one is unavoidable, comment the reason on the import and open an issue (#863). Startup-cost deferrals stay documented as such. Ruff enforces this (`PLC0415`): a function-local import under `mureo/` carries `# noqa: PLC0415 — <reason>` with exactly one of `startup cost (#NNN)` (a heavy import kept off a hot entry point, with a `# Startup cost (~X CPU): ...` line above it), `optional dependency` (not a required dependency; the `ImportError` is handled at the site), `import cycle: mureo.<a> -> mureo.<b> (#879)` (a real load-time cycle not yet removed; `<b>` is the module the statement imports, and #879 is the cycle inventory) or `PEP 562 re-export (#863)`. `tests/test_plc0415_reasons.py` runs ruff with `--ignore-noqa` and checks every site it finds; a file-level `# ruff: noqa` that covers the rule is refused. No per-file ignore under `mureo/` may list the rule: the `tests/**` entry is the only place in the ruff config that switches it off.
 - **One name per concept.** Check the existing vocabulary (`period`, `customer_id`, `account_id`, `platform`, …) before introducing a parameter, field or key name.

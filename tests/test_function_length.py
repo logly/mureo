@@ -427,7 +427,7 @@ KNOWN_LONG_FILES: dict[str, int] = {
     "mureo/mcp/_tools_google_ads_campaigns.py": 944,
     "mureo/mcp/_tools_google_ads_extensions.py": 1060,
     "mureo/mcp/_tools_meta_ads_campaigns.py": 859,
-    "mureo/mcp/server.py": 1223,
+    "mureo/mcp/server.py": 1184,
     "mureo/mcp/tools_creative_studio.py": 806,
     "mureo/mcp/tools_mureo_context.py": 1416,
     "mureo/web/auth_wizard.py": 1427,
