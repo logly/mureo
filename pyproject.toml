@@ -66,6 +66,11 @@ dependencies = [
     # 1.84.1 is the first release without the compromised root. google-ads
     # already requires grpcio>=1.59.0,<2.0.0, so this only raises the floor.
     "grpcio>=1.84.1,<2",
+    # zoneinfo reads the operating system's time zone database, and Windows
+    # ships none. mureo.chatgpt_ads resolves a reporting period in the ad
+    # account's IANA zone; without this package every zone lookup fails there
+    # and the period silently falls back to UTC days.
+    "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

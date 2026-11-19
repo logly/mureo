@@ -137,7 +137,8 @@ Relative values resolve against **today in the ad account's time zone**, the
 in that zone. Near midnight the account's today and the host's differ by a day.
 When the account names no zone, or one the host's time zone database does not
 know, UTC is used. For this reason the insights and change-history tools send
-one `GET /ad_account` before the report itself.
+one `GET /ad_account` before the report itself. Windows has no system time
+zone database, so mureo installs the `tzdata` package there.
 
 A window longer than 365 days is refused.
 
