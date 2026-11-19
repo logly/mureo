@@ -50,3 +50,18 @@ def test_grpcio_floor_excludes_the_compromised_roots() -> None:
     assert not req.specifier.contains("1.84.0")
     # google-ads requires grpcio<2.0.0; the floor must not widen past it.
     assert not req.specifier.contains("2.0.0")
+
+
+def test_windows_installs_the_time_zone_database() -> None:
+    """``zoneinfo`` has no database to read on Windows without ``tzdata``.
+
+    ``mureo.chatgpt_ads`` resolves reporting periods in the ad account's IANA
+    zone and falls back to UTC when the zone is unknown, so losing this
+    dependency would not raise there: it would shift every period by the
+    account's UTC offset.
+    """
+    req = _requirement("tzdata")
+    assert req.marker is not None
+    assert req.marker.evaluate({"sys_platform": "win32"})
+    assert not req.marker.evaluate({"sys_platform": "linux"})
+    assert not req.marker.evaluate({"sys_platform": "darwin"})
