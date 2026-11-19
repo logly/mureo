@@ -1,18 +1,17 @@
-"""Argument validation and one coroutine per ChatGPT Ads tool.
+"""One coroutine per ChatGPT Ads read tool, the handler table and ``run_tool``.
 
 Handlers return plain Python data; :mod:`mureo.chatgpt_ads.provider` turns it
 (or a client exception) into the tool result. Every argument is checked
-before the first request, so a malformed call costs no API quota and a path
-id can never steer a URL: the MCP server already validates against the
-schema, but the provider is callable directly too.
+before the first request (:mod:`mureo.chatgpt_ads._validation`). The handlers
+that change the account live in :mod:`mureo.chatgpt_ads.handlers_mutations`
+and are merged into :data:`HANDLERS` here, so :func:`run_tool` is the one way
+any handler runs.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import re
-from collections.abc import Awaitable, Callable
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
@@ -22,25 +21,24 @@ from mureo.chatgpt_ads._api import (
     PAGE_MAX_INSIGHTS,
     TOOL_DEADLINE_SECONDS,
 )
-from mureo.chatgpt_ads._errors import ChatGPTAdsAPIError
+from mureo.chatgpt_ads._errors import MAY_HAVE_BEEN_APPLIED, ChatGPTAdsAPIError
 from mureo.chatgpt_ads._period import resolve_period, today_in, unix_bounds
+from mureo.chatgpt_ads._validation import integer, name_value, path_id
+from mureo.chatgpt_ads.handlers_mutations import (
+    MUTATING_TOOL_NAMES,
+    MUTATION_HANDLERS,
+    Handler,
+)
 from mureo.chatgpt_ads.tools import (
     CONVERSION_METRICS,
     DEFAULT_INSIGHTS_LIMIT,
     DEFAULT_LIST_LIMIT,
     DELIVERY_METRICS,
-    ID_PATTERN,
     MAX_TOOL_LIMIT,
-    NAME_MAX_CHARS,
-    NAME_MIN_CHARS,
 )
 
 if TYPE_CHECKING:
     from mureo.chatgpt_ads.client import ChatGPTAdsClient
-
-Handler = Callable[["ChatGPTAdsClient", dict[str, Any]], Awaitable[Any]]
-
-_ID_RE = re.compile(ID_PATTERN)
 
 #: Tool ``level`` → the API's ``aggregation_level``, in hierarchy order.
 _AGGREGATION_LEVELS = {
@@ -60,38 +58,8 @@ _GRANULARITIES = ("none", "daily")
 _ATTRIBUTION_WINDOWS = (7, 14, 30)
 
 
-def _path_id(arguments: dict[str, Any], key: str) -> str:
-    """A required id, checked before it is put into a URL path."""
-    value = arguments.get(key)
-    if not isinstance(value, str) or not _ID_RE.fullmatch(value):
-        raise ValueError(f"{key} is required: letters, digits, '_' or '-', 1-128 chars")
-    return value
-
-
 def _optional_id(arguments: dict[str, Any], key: str) -> str | None:
-    return None if arguments.get(key) is None else _path_id(arguments, key)
-
-
-def _name(arguments: dict[str, Any], key: str) -> str | None:
-    """The ``name`` filter, held to the API's bounds.
-
-    The API takes 3 to 1,000 characters with at least one that is not a
-    space; an empty string is refused rather than read as "no filter", so a
-    caller that meant to filter never gets the unfiltered list.
-    """
-    value = arguments.get(key)
-    if value is None:
-        return None
-    if (
-        not isinstance(value, str)
-        or not NAME_MIN_CHARS <= len(value) <= NAME_MAX_CHARS
-        or not value.strip()
-    ):
-        raise ValueError(
-            f"{key} must be {NAME_MIN_CHARS}-{NAME_MAX_CHARS} characters, "
-            "not all spaces"
-        )
-    return value
+    return None if arguments.get(key) is None else path_id(arguments, key)
 
 
 def _flag(arguments: dict[str, Any], key: str) -> bool:
@@ -102,11 +70,7 @@ def _flag(arguments: dict[str, Any], key: str) -> bool:
 
 
 def _limit(arguments: dict[str, Any], default: int) -> int:
-    value = arguments.get("limit", default)
-    valid = isinstance(value, int) and not isinstance(value, bool)
-    if not valid or not 1 <= value <= MAX_TOOL_LIMIT:
-        raise ValueError(f"limit must be an integer from 1 to {MAX_TOOL_LIMIT}")
-    return int(value)
+    return integer(arguments.get("limit", default), "limit", 1, MAX_TOOL_LIMIT)
 
 
 def _period(arguments: dict[str, Any], default: str) -> str:
@@ -126,7 +90,7 @@ def _list_filters(arguments: dict[str, Any], *keys: str) -> list[tuple[str, str]
     return [
         (key, value)
         for key in keys
-        if (value := (_name if key == "name" else _optional_id)(arguments, key))
+        if (value := (name_value if key == "name" else _optional_id)(arguments, key))
     ]
 
 
@@ -149,14 +113,14 @@ async def _campaigns_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -
 
 
 async def _campaigns_get(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
-    campaign_id = _path_id(arguments, "campaign_id")
+    campaign_id = path_id(arguments, "campaign_id")
     return await client.get(f"/campaigns/{campaign_id}", _include(arguments))
 
 
 async def _ad_groups_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
     # The reference marks campaign_id required (the OpenAPI document does
     # not); required is the reading that cannot be rejected.
-    params = [("campaign_id", _path_id(arguments, "campaign_id"))]
+    params = [("campaign_id", path_id(arguments, "campaign_id"))]
     params += _list_filters(arguments, "name")
     limit = _limit(arguments, DEFAULT_LIST_LIMIT)
     return await client.list_all(
@@ -165,7 +129,7 @@ async def _ad_groups_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -
 
 
 async def _ad_groups_get(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
-    return await client.get(f"/ad_groups/{_path_id(arguments, 'ad_group_id')}")
+    return await client.get(f"/ad_groups/{path_id(arguments, 'ad_group_id')}")
 
 
 async def _ads_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
@@ -177,7 +141,7 @@ async def _ads_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
 
 
 async def _ads_get(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
-    return await client.get(f"/ads/{_path_id(arguments, 'ad_id')}")
+    return await client.get(f"/ads/{path_id(arguments, 'ad_id')}")
 
 
 def _insights_scope(arguments: dict[str, Any]) -> tuple[str, str]:
@@ -294,6 +258,7 @@ HANDLERS: dict[str, Handler] = {
     "chatgpt_ads_ads_get": _ads_get,
     "chatgpt_ads_insights_report": _insights_report,
     "chatgpt_ads_change_history_list": _change_history_list,
+    **MUTATION_HANDLERS,
 }
 
 
@@ -319,7 +284,9 @@ async def run_tool(
 
     Client and validation errors propagate. Running out of time is a
     :class:`ChatGPTAdsAPIError` raised after the ``except`` block, so nothing
-    from the cancelled request is chained onto it.
+    from the cancelled request is chained onto it; for a tool that changes the
+    account it ends with :data:`MAY_HAVE_BEEN_APPLIED`, because the request
+    may have reached the platform before it was cancelled.
     """
     handler = HANDLERS.get(name)
     if handler is None:
@@ -329,9 +296,10 @@ async def run_tool(
             return await asyncio.wait_for(handler(client, arguments), deadline)
         except asyncio.TimeoutError:
             pass
-    raise ChatGPTAdsAPIError(
-        f"the call did not finish within {deadline:g} seconds", status=0
-    )
+    message = f"the call did not finish within {deadline:g} seconds"
+    if name in MUTATING_TOOL_NAMES:
+        message = f"{message} {MAY_HAVE_BEEN_APPLIED}"
+    raise ChatGPTAdsAPIError(message, status=0)
 
 
 __all__ = ["HANDLERS", "run_tool"]

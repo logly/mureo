@@ -14,11 +14,19 @@ import time, so it is in place before the server builds its instructions, and
 :func:`mureo.policy.platform_model.models_in_scope` renders it only while
 this provider actually owns the ``chatgpt_ads_`` tools.
 
+It also opts into before-state capture
+(:class:`mureo.mcp.tool_provider.MCPReversibleToolProvider`):
+:meth:`ChatGPTAdsProvider.capture_reversal` hands each mutation to
+:mod:`mureo.chatgpt_ads.reversal`, so a change made through mureo lands in
+``action_log`` with a reversal ``rollback_apply`` can execute.
+
 ``handle_mcp_tool`` is the single place a client exception becomes a result:
 a missing key and a rejected key are the auth-failure envelope, a feature not
 enabled for the account is the ``feature_not_enabled`` failure envelope, and
-every other platform error is the ``API error:`` text. A malformed argument
-raises ``ValueError``, which the server records and re-raises.
+every other platform error is the ``API error:`` text. A refusal a handler
+decides on itself (several daily spend limits) is returned as the handler's
+own ``refused`` failure envelope. A malformed argument raises ``ValueError``,
+which the server records and re-raises.
 """
 
 from __future__ import annotations
@@ -36,7 +44,9 @@ from mureo.chatgpt_ads.credentials import (
     load_chatgpt_ads_credentials,
 )
 from mureo.chatgpt_ads.handlers import HANDLERS, run_tool
+from mureo.chatgpt_ads.reversal import capture_reversal
 from mureo.chatgpt_ads.tools import TOOLS
+from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from mureo.core.auth_failure import (
     AUTH_CAUSE_NO_CREDENTIALS,
     PlatformAuthError,
@@ -125,7 +135,8 @@ def _text_result(payload: Any) -> list[TextContent]:
 
 
 class ChatGPTAdsProvider:
-    """Nine read-only tools over OpenAI's Advertiser API."""
+    """Tools over OpenAI's Advertiser API: nine reads, the spend-limit read,
+    and eleven changes that are recorded with a reversal."""
 
     name = CHATGPT_ADS_PROVIDER_NAME
     display_name = "ChatGPT Ads"
@@ -137,7 +148,16 @@ class ChatGPTAdsProvider:
 
     def mcp_tools(self) -> tuple[Tool, ...]:
         """The tool definitions. Pure: no credentials, no network."""
-        return TOOLS
+        return (*TOOLS, *MUTATION_TOOLS)
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """The reversal of mutation ``name``, read before it runs; best effort.
+
+        See :mod:`mureo.chatgpt_ads.reversal`.
+        """
+        return await capture_reversal(name, arguments)
 
     async def handle_mcp_tool(
         self, name: str, arguments: dict[str, Any]

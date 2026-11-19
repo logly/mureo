@@ -203,12 +203,13 @@ def test_no_plugins_is_additive_no_op() -> None:
     bundled ChatGPT Ads provider's tools (Amazon contributes none without a
     manifest) — the regression guarantee for the existing suite.
     """
-    from mureo.chatgpt_ads.tools import TOOLS as CHATGPT_ADS_TOOLS
+    from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
     from mureo.mcp import server as mod
 
+    chatgpt_ads_tools = ChatGPTAdsProvider().mcp_tools()
     mod = importlib.reload(mod)
-    assert frozenset(t.name for t in CHATGPT_ADS_TOOLS) == mod._PLUGIN_NAMES
-    assert list(CHATGPT_ADS_TOOLS) == mod._PLUGIN_TOOLS
+    assert frozenset(t.name for t in chatgpt_ads_tools) == mod._PLUGIN_NAMES
+    assert list(chatgpt_ads_tools) == mod._PLUGIN_TOOLS
 
 
 @pytest.mark.unit

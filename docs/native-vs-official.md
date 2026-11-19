@@ -26,7 +26,7 @@ There are **four** connection models in mureo today:
 | **mureo-native** | mureo (`~/.mureo/credentials.json`) | mureo → platform API | Google Ads, Meta Ads, Search Console |
 | **Official, host-registered** | the AI host / connector | client → platform MCP (mureo is bypassed) | `google-ads-official`, `meta-ads-official`, TikTok's hosted MCP |
 | **Official, mureo-mediated bridge** | mureo (`~/.mureo/credentials.json`) | mureo → platform MCP | **Amazon Ads** |
-| **Bundled provider, direct API** | mureo (`~/.mureo/credentials.json`) | mureo (provider path) → platform API | **ChatGPT Ads** (read-only) |
+| **Bundled provider, direct API** | mureo (`~/.mureo/credentials.json`) | mureo (provider path) → platform API | **ChatGPT Ads** |
 
 The third model matters because the second one costs you mureo's safety layer:
 a host-registered official MCP never reaches mureo's dispatcher, so its calls
@@ -217,7 +217,7 @@ Setup, environment variables, and the full caveat list: [amazon-ads.md](./amazon
 
 ## ChatGPT Ads — a bundled provider over the platform API
 
-mureo reads ChatGPT Ads through OpenAI's Advertiser API with a provider that
+mureo reads and changes ChatGPT Ads through OpenAI's Advertiser API with a provider that
 ships inside mureo (`mureo/chatgpt_ads/`). No MCP server sits in between:
 
 ```
@@ -228,12 +228,15 @@ Claude  →  local mureo MCP  →  https://api.ads.openai.com/v1
   section of `~/.mureo/credentials.json` (or `CHATGPT_ADS_API_KEY`). One key
   reads one ad account.
 - **Provider path, not a built-in family.** The tools are served the way a
-  plugin's are: audited and throttled per tool. Their names are mureo's
+  plugin's are: audited and throttled per tool, and the changes are gated by the STRATEGY.md caps on the amounts each tool declares (which caps read which amounts is in chatgpt-ads.md). Their names are mureo's
   (`chatgpt_ads_*`), and their list is fixed, so the documented tool total
   includes them.
-- **Read-only today.** Nine tools read the account, campaigns, ad groups, ads,
-  insights and the change history; changes are tracked in #994 and #995. With
-  no mutations there is nothing to promote into `action_log` or roll back.
+- **Changes are recorded and reversible.** Ten tools read the account, its
+  spending limits, campaigns, ad groups, ads, insights and the change
+  history; eleven change status, names, schedules, budgets, bids and the
+  account daily spending limit. Each change is promoted into `action_log`
+  with a reversal captured before the write, so `rollback_apply` can undo
+  it. Creating entities is tracked in #995.
 - **No deep mureo analytics** (anomaly baselines, RSA audit, CV-mismatch) and
   no BYOD.
 

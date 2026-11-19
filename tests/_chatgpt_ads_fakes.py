@@ -41,8 +41,14 @@ def _template_regex(template: str) -> re.Pattern[str]:
     return re.compile("^/v1" + re.sub(r"\{[^}]+\}", "[^/]+", template) + "$")
 
 
+def sent_body(request: httpx.Request) -> Any:
+    """The decoded JSON body of ``request``, or ``None`` when it sent none."""
+    return json.loads(request.content) if request.content else None
+
+
 def assert_matches_contract(request: httpx.Request) -> None:
-    """Fail unless the request's path and query names are in the fixture."""
+    """Fail unless the request's path, query names and body keys are in the
+    fixture. An operation the fixture lists without ``body`` takes none."""
     for op in openapi_operations():
         if op["method"] == request.method and _template_regex(op["path"]).match(
             request.url.path
@@ -51,6 +57,11 @@ def assert_matches_contract(request: httpx.Request) -> None:
                 op["query"]
             )
             assert not unknown, f"{request.url.path}: undocumented params {unknown}"
+            body = sent_body(request)
+            if body is not None:
+                assert isinstance(body, dict), f"{request.url.path}: body not an object"
+                extra = set(body) - set(op.get("body", ()))
+                assert not extra, f"{request.url.path}: undocumented body keys {extra}"
             return
     raise AssertionError(f"{request.method} {request.url.path} is not in the fixture")
 
@@ -60,7 +71,8 @@ class FakeAPI:
     """Route table + request log behind an ``httpx.MockTransport``.
 
     ``routes`` maps a URL path (``/v1/campaigns``) to a list of answers,
-    consumed in order; the last answer repeats once the list runs out.
+    consumed in order whatever the method (a ``GET`` and a ``POST`` on the same
+    path share one list); the last answer repeats once the list runs out.
     """
 
     routes: dict[str, list[Answer]] = field(default_factory=dict)

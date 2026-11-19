@@ -20,6 +20,7 @@ MCP_TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 def _all_registered_tools():
     """Return every Tool registered across all mureo tool surface modules."""
     from mureo.chatgpt_ads import tools as chatgpt_ads_tools
+    from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
     from mureo.mcp import (
         tools_analysis,
         tools_google_ads,
@@ -40,6 +41,7 @@ def _all_registered_tools():
         tools_search_console,
     ):
         out.extend(mod.TOOLS)
+    out.extend(MUTATION_TOOLS)
     return out
 
 

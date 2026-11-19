@@ -14,7 +14,11 @@ import pytest
 
 from mureo.chatgpt_ads import client as client_module
 from mureo.chatgpt_ads._api import OPENAPI_VERSION
-from mureo.chatgpt_ads._errors import NO_ERROR_DETAIL, ChatGPTAdsAPIError
+from mureo.chatgpt_ads._errors import (
+    MAY_HAVE_BEEN_APPLIED,
+    NO_ERROR_DETAIL,
+    ChatGPTAdsAPIError,
+)
 from mureo.chatgpt_ads.client import ChatGPTAdsClient
 from mureo.core.auth_failure import AUTH_CAUSE_TOKEN_INVALID, PlatformAuthError
 from tests._chatgpt_ads_fakes import (
@@ -169,6 +173,35 @@ class TestGet:
         api = FakeAPI().add("/ad_account", body={"id": "a"})
         async with api.client() as client:
             assert await client.get("/ad_account") == {"id": "a"}
+
+
+class TestPostBody:
+    @pytest.mark.parametrize(
+        ("status", "body"), [(204, None), (200, None), (200, "  \n\t")]
+    )
+    async def test_an_empty_success_body_is_an_empty_object(
+        self, status: int, body: str | None
+    ) -> None:
+        api = FakeAPI().add("/campaigns/c_1/pause", status, body)
+        assert await api.client().post("/campaigns/c_1/pause") == {}
+
+    async def test_a_body_that_is_not_json_may_have_been_applied(self) -> None:
+        api = FakeAPI().add("/campaigns/c_1/pause", 200, "<html>proxy</html>")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post("/campaigns/c_1/pause")
+        assert "not JSON" in str(info.value)
+        assert str(info.value).endswith(MAY_HAVE_BEEN_APPLIED)
+        assert len(api.requests) == 1
+
+    @pytest.mark.parametrize("body", [None, "  ", "<html>proxy</html>"])
+    async def test_a_get_keeps_reading_any_unreadable_body_as_an_error(
+        self, body: str | None
+    ) -> None:
+        api = FakeAPI().add("/ad_account", 200, body)
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().get("/ad_account")
+        assert "not JSON" in str(info.value)
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
 
 
 class TestListAll:

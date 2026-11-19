@@ -83,15 +83,19 @@ mureo/
 │   └── accounts.py      # Ad-account listing
 ├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py        # SearchConsoleApiClient
-├── chatgpt_ads/         # ChatGPT Ads bundled provider over OpenAI's Advertiser API (#992, #993);
-│   │                    #   read-only; imports neither mcp nor web
+├── chatgpt_ads/         # ChatGPT Ads bundled provider over OpenAI's Advertiser API (#992, #993, #994);
+│   │                    #   reads and changes; imports neither mcp nor web
 │   ├── _api.py          # Base URL, OpenAPI version read, timeout / retry / page-size / throttle constants
 │   ├── _errors.py       # ChatGPTAdsAPIError + error_from_response: the one error-body reader
 │   ├── _period.py       # `period` vocabulary resolved in the ad account's time zone
-│   ├── client.py        # ChatGPTAdsClient (httpx, GET only, 429/5xx retry, cursor walk); imported on first tool call
+│   ├── _validation.py   # Argument checks shared by both handler modules
+│   ├── client.py        # ChatGPTAdsClient (httpx, GET / POST; 429 retried, 5xx only for GET; cursor walk); imported on first tool call
 │   ├── credentials.py   # Ads API key from the `chatgpt_ads` store section, then CHATGPT_ADS_API_KEY
-│   ├── handlers.py      # Argument validation + one coroutine per tool
-│   ├── tools.py         # The nine read-only Tool definitions
+│   ├── handlers.py      # One coroutine per read tool, the merged handler table, run_tool
+│   ├── handlers_mutations.py # One coroutine per change tool + the spend-limit read
+│   ├── reversal.py      # capture_reversal: the prior read that becomes the recorded reversal
+│   ├── tools.py         # The nine read Tool definitions + build_tool / id_param
+│   ├── tools_mutations.py # The change tools + the spend-limit read, with their declarations
 │   └── provider.py      # ChatGPTAdsProvider, registration, disable gate, platform delivery model
 ├── mcp/                 # MCP server (Google/Meta/Search Console + Rollback/Analysis + Analytics registry, Creative Studio, Learning, mureo Context)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
