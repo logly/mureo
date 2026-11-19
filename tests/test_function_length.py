@@ -95,7 +95,7 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
     ("mureo/byod/bundle.py", "import_bundle"): 173,
     ("mureo/byod/clients.py", "ByodGoogleAdsClient.get_search_terms_report"): 70,
     ("mureo/change_import/builtin/google_ads.py", "_row_identity"): 52,
-    ("mureo/change_import/importer.py", "_import_one_platform"): 113,
+    ("mureo/change_import/importer.py", "_import_one_platform"): 102,
     ("mureo/cli/_repair_preview.py", "echo_undecidable_duplicates"): 52,
     ("mureo/cli/byod_cmd.py", "import_"): 54,
     ("mureo/cli/configure_cmd.py", "configure"): 81,

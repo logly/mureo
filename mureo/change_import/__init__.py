@@ -64,6 +64,7 @@ from mureo.change_import.protocol import (
 from mureo.change_import.registry import (
     ChangeFeedRegistry,
     ChangeFeedWarning,
+    change_feed_platform_keys,
     clear_change_feed_registry,
     default_change_feed_registry,
     discover_change_feeds,
@@ -71,6 +72,7 @@ from mureo.change_import.registry import (
     list_change_feed_platforms,
     plugin_source,
     register_change_feed,
+    resolve_change_feed,
 )
 
 __all__ = [
@@ -86,6 +88,7 @@ __all__ = [
     "ChangeImportStatus",
     "ExternalChange",
     "ImportVerdict",
+    "change_feed_platform_keys",
     "classify_change",
     "clear_change_feed_registry",
     "default_change_feed_registry",
@@ -98,5 +101,6 @@ __all__ = [
     "list_change_feed_platforms",
     "plugin_source",
     "register_change_feed",
+    "resolve_change_feed",
     "to_action_log_entry",
 ]

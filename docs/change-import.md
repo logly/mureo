@@ -378,6 +378,24 @@ class AcmeChangeFeed:
 acme_ads = "my_plugin.change_feed:AcmeChangeFeed"
 ```
 
+**How the feed meets the platform's key (#998).** The feed registers under
+its plain registry name (`acme_ads`), and labels its `ExternalChange`s with
+that name. The platform's STATE.json key is the canonical
+`plugin:<distribution>:acme_ads`, and mureo matches the two by the
+distribution that registered the feed — recorded from the entry point's
+`dist`, never taken from the feed. A feed with no recorded distribution, or
+one from another distribution with the same name, does not answer for that
+key; the legacy `plugin:<distribution>` short form resolves only while that
+distribution registers exactly one feed. Imported entries are filed under the
+canonical key — the same key mureo's own entries for the platform carry — so
+the dedupe against mureo's own changes and the `external_id` join on it. A
+provider that registers its feed in-process rather than through the entry
+point passes its distribution explicitly:
+`register_change_feed(feed, source_distribution="my-plugin")`.
+Registration is first-wins on the registry name across distributions: if two
+distributions ship a feed with the same name, the second is dropped with a
+`ChangeFeedWarning` and its platform has no feed.
+
 Two obligations worth stating plainly:
 
 - **Set `truncated` when your response was capped.** Reporting a capped page
