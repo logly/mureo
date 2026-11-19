@@ -18,7 +18,10 @@ It also opts into before-state capture
 (:class:`mureo.mcp.tool_provider.MCPReversibleToolProvider`):
 :meth:`ChatGPTAdsProvider.capture_reversal` hands each mutation to
 :mod:`mureo.chatgpt_ads.reversal`, so a change made through mureo lands in
-``action_log`` with a reversal ``rollback_apply`` can execute.
+``action_log`` with a reversal ``rollback_apply`` can execute. Registering
+the provider also registers its change feed
+(:mod:`mureo.chatgpt_ads.change_feed`), so ``mureo_external_changes_import``
+records changes made on the account outside mureo.
 
 ``handle_mcp_tool`` is the single place a client exception becomes a result:
 a missing key and a rejected key are the auth-failure envelope, a feature not
@@ -37,10 +40,12 @@ from typing import Any
 
 from mcp.types import TextContent, Tool
 
+from mureo.change_import.registry import register_change_feed
 from mureo.chatgpt_ads._api import CHATGPT_ADS_PROVIDER_NAME
 from mureo.chatgpt_ads._errors import ChatGPTAdsAPIError
+from mureo.chatgpt_ads.change_feed import ChatGPTAdsChangeFeed
 from mureo.chatgpt_ads.credentials import (
-    CHATGPT_ADS_API_KEY_ENV_VAR,
+    NO_CREDENTIALS_DETAIL,
     load_chatgpt_ads_credentials,
 )
 from mureo.chatgpt_ads.handlers import HANDLERS, run_tool
@@ -69,11 +74,6 @@ CHATGPT_ADS_SOURCE_DISTRIBUTION = "mureo-chatgpt-ads"
 #: Set to the exact string ``"1"`` to keep mureo from registering the
 #: provider at all.
 CHATGPT_ADS_DISABLE_ENV_VAR = "MUREO_DISABLE_CHATGPT_ADS"
-
-_NO_CREDENTIALS_DETAIL = (
-    "No ChatGPT Ads API key is configured. Add it on the ChatGPT Ads card of "
-    f"`mureo configure`, or set {CHATGPT_ADS_API_KEY_ENV_VAR}."
-)
 
 _API_KEY_DESCRIPTION = (
     "Advertiser API key for your own ad account. Create it on the Settings "
@@ -169,7 +169,7 @@ class ChatGPTAdsProvider:
         credentials = load_chatgpt_ads_credentials()
         if credentials is None:
             return _text_result(
-                auth_failure_payload(AUTH_CAUSE_NO_CREDENTIALS, _NO_CREDENTIALS_DETAIL)
+                auth_failure_payload(AUTH_CAUSE_NO_CREDENTIALS, NO_CREDENTIALS_DETAIL)
             )
         try:
             payload = await run_tool(name, arguments, credentials.api_key)
@@ -220,11 +220,20 @@ def register_chatgpt_ads_provider() -> ProviderEntry:
     Call before entry-point discovery. The membership check keeps a repeat
     call silent (``Registry.register`` would warn on a duplicate name), and a
     ``chatgpt_ads`` entry registered earlier is left in place (first-wins).
+
+    The change feed (:class:`ChatGPTAdsChangeFeed`) is registered with this
+    provider's own entry only, under :data:`CHATGPT_ADS_SOURCE_DISTRIBUTION`,
+    so it answers for ``plugin:mureo-chatgpt-ads:chatgpt_ads``. A
+    ``chatgpt_ads`` entry registered by something else keeps its own feed,
+    or none.
     """
     if CHATGPT_ADS_PROVIDER_NAME in default_registry:
         return default_registry.get(CHATGPT_ADS_PROVIDER_NAME)
     entry = provider_entry()
     default_registry.register(entry)
+    register_change_feed(
+        ChatGPTAdsChangeFeed(), source_distribution=CHATGPT_ADS_SOURCE_DISTRIBUTION
+    )
     return entry
 
 

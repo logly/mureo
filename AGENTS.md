@@ -91,12 +91,13 @@ mureo/
 │   ├── _validation.py   # Argument checks shared by both handler modules
 │   ├── client.py        # ChatGPTAdsClient (httpx, GET / POST; 429 retried, 5xx only for GET; cursor walk); imported on first tool call
 │   ├── credentials.py   # Ads API key from the `chatgpt_ads` store section, then CHATGPT_ADS_API_KEY
-│   ├── handlers.py      # One coroutine per read tool, the merged handler table, run_tool
+│   ├── handlers.py      # One coroutine per read tool, the merged handler table, run_tool, run_with_client
+│   ├── change_feed.py   # ChatGPTAdsChangeFeed: the audit log as external changes for change import
 │   ├── handlers_mutations.py # One coroutine per change tool + the spend-limit read
 │   ├── reversal.py      # capture_reversal: the prior read that becomes the recorded reversal
 │   ├── tools.py         # The nine read Tool definitions + build_tool / id_param
 │   ├── tools_mutations.py # The change tools + the spend-limit read, with their declarations
-│   └── provider.py      # ChatGPTAdsProvider, registration, disable gate, platform delivery model
+│   └── provider.py      # ChatGPTAdsProvider, registration (with its change feed), disable gate, platform delivery model
 ├── mcp/                 # MCP server (Google/Meta/Search Console + Rollback/Analysis + Analytics registry, Creative Studio, Learning, mureo Context)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── tool_checks.py                     # writes_to_platform / check_tool_call: dispatch's own classification and caller-error checks, for a stored call (#983, #984)
@@ -335,7 +336,8 @@ mureo/
 │   │                    #   `builtin_change_feeds()` on first use (builtin/ never imports it, #879)
 │   ├── dedupe.py        # Already-imported vs mureo's own change (why one is approximate)
 │   ├── importer.py      # Watermark, action_log write, per-platform outcome
-│   └── builtin/         # Native feeds — google_ads only today; see docs/change-import.md
+│   └── builtin/         # Native feeds — google_ads only; the bundled ChatGPT Ads provider registers
+│                        #   its own feed (mureo/chatgpt_ads/change_feed.py); see docs/change-import.md
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
 │   ├── tool_failure.py  # The MCP failure-envelope READER (failure_of / is_error_result, #863) and
 │   │                    #   the refused / error envelope dict (failure_payload); mcp/_helpers.py

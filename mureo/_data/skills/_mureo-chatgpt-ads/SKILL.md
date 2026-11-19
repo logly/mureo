@@ -102,6 +102,19 @@ and come back as one array; there is no cursor to pass back.
 one campaign, ad group or ad. Read it before attributing a performance change
 to the market.
 
+Changes made on this account outside mureo are recorded into `action_log` by
+`mureo_external_changes_import`, from the same audit log (at most 1,000
+entries per pass, oldest first). A capped pass says `truncated` and its note
+names the time it read through: run the import again, which continues from
+the newest change imported, and if it stops at the same point, pass the
+`since` the note gives rather than repeating the same call. The account id
+recorded for this platform in STATE.json must be the `id` that
+`chatgpt_ads_account_get` returns: when the key reads another account,
+nothing is imported and the outcome is `unavailable`; when none is recorded,
+the import runs unchecked and its notes say so. An account-level change such
+as the daily spending limit is always imported as external, even when mureo
+made it.
+
 ## Changing the account
 
 Every change follows `_mureo-shared` → *Confirm Before Write Operations*:

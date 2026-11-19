@@ -329,6 +329,23 @@ def test_lower_layer_source_never_imports_mcp(package: str) -> None:
 
 
 @pytest.mark.unit
+def test_change_import_source_never_imports_chatgpt_ads() -> None:
+    """The ChatGPT Ads provider registers its change feed INTO change_import
+    (#994); change_import importing the provider back would be a cycle."""
+    root = pathlib.Path(mureo.__file__).parent / "change_import"
+    offenders = [
+        f"{path.relative_to(root.parent)}:{lineno} imports {name}"
+        for path in sorted(root.rglob("*.py"))
+        for lineno, name in _imports_of(
+            ast.parse(path.read_text("utf-8")),
+            _package_of(path),
+            "mureo.chatgpt_ads",
+        )
+    ]
+    assert offenders == []
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("name", _ENVELOPE_READER_NAMES)
 def test_envelope_reader_is_one_object_on_both_paths(name: str) -> None:
     assert getattr(helpers, name) is getattr(tool_failure, name)

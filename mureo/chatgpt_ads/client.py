@@ -25,6 +25,7 @@ empty.
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import timezone, tzinfo
@@ -34,6 +35,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 
 from mureo.chatgpt_ads._api import (
+    AD_ACCOUNT_PATH,
     BASE_URL,
     INITIAL_BACKOFF_SECONDS,
     MAX_ATTEMPTS,
@@ -183,9 +185,21 @@ class ChatGPTAdsClient:
         await self._http.aclose()
 
     def _redacted(self, body_text: str) -> str:
+        """``body_text`` with the key replaced, as sent and as decoded.
+
+        The error parser JSON-decodes the body, and a ``\\uXXXX`` escape can
+        spell the key without the raw text containing it. So a JSON body is
+        also re-serialised with the escapes resolved and replaced again; any
+        other body is returned with the raw replacement only.
+        """
         if not self._api_key:
             return body_text
-        return body_text.replace(self._api_key, _KEY_MARKER)
+        raw = body_text.replace(self._api_key, _KEY_MARKER)
+        try:
+            decoded = json.dumps(json.loads(raw), ensure_ascii=False)
+        except (ValueError, RecursionError):  # not JSON, or nested past the limit
+            return raw
+        return decoded.replace(self._api_key, _KEY_MARKER)
 
     async def _send(
         self, method: str, path: str, params: Params, body: Body | None
@@ -291,7 +305,7 @@ class ChatGPTAdsClient:
         ``zoneinfo`` does not know.
         """
         if self._timezone is None:
-            account = await self.get("/ad_account")
+            account = await self.get(AD_ACCOUNT_PATH)
             value = account.get("timezone") if isinstance(account, dict) else None
             self._timezone = _zone(value)
         return self._timezone

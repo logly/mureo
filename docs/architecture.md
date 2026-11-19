@@ -180,13 +180,15 @@ mureo/
 │   ├── _validation.py       # Argument checks shared by both handler modules (ids, names, bounded integers)
 │   ├── client.py            # ChatGPTAdsClient (httpx, GET / POST; 429 retried, 5xx only for GET; cursor walk); imported on first tool call
 │   ├── credentials.py       # Ads API key from the `chatgpt_ads` store section, then CHATGPT_ADS_API_KEY
-│   ├── handlers.py          # One coroutine per read tool, the merged handler table, run_tool (call deadline)
+│   ├── handlers.py          # One coroutine per read tool, the merged handler table, run_tool;
+│   │                        #   run_with_client (client lifetime + call deadline, shared with the feed)
+│   ├── change_feed.py       # ChatGPTAdsChangeFeed: GET /audit_logs as external changes (account checked first, oldest first, 1,000 per pass)
 │   ├── handlers_mutations.py # One coroutine per change tool + the spend-limit read
 │   ├── reversal.py          # capture_reversal: one prior read → the reversal recorded in action_log
 │   ├── tools.py             # The nine read Tool definitions + build_tool / id_param (pure data)
 │   ├── tools_mutations.py   # The eleven change tools + the spend-limit read, with identity / budget / bid declarations (pure data)
-│   └── provider.py          # ChatGPTAdsProvider, registration (first-wins on `chatgpt_ads`), disable gate,
-│                            #   platform delivery model
+│   └── provider.py          # ChatGPTAdsProvider, registration (first-wins on `chatgpt_ads`; registers the
+│                            #   change feed with its own entry), disable gate, platform delivery model
 ├── search_console/          # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py            # SearchConsoleApiClient
 ├── analysis/                # Cross-platform analysis utilities
@@ -400,7 +402,8 @@ mureo/
 │   │                        #   on first use (builtin/ never imports the registry, #879)
 │   ├── dedupe.py            # Already-imported vs mureo's own change
 │   ├── importer.py          # Window, action_log write, per-platform outcome
-│   └── builtin/google_ads.py  # change_event feed (the only native feed today)
+│   └── builtin/google_ads.py  # change_event feed (the only built-in feed; the bundled ChatGPT Ads
+│                              #   provider registers its own, mureo/chatgpt_ads/change_feed.py)
 ├── byod/                    # Bring Your Own Data (XLSX bundle importer + CSV-backed read-only clients)
 ├── adapters/                # Protocol reference implementation (mureo.core.providers); BYOD adapters: byod/adapters/
 ├── demo/                    # Synthetic demo workspace scaffolding

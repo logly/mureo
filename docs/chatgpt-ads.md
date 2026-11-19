@@ -21,9 +21,10 @@ groups, ads, insights and the change history) and eleven tools that change the
 account: pause and activate a campaign, ad group or ad, rename or reschedule a
 campaign, set a campaign's budget, rename an ad group, set an ad group's
 bidding config, and set the account's daily spending limit. Creating entities
-is tracked in #995. The API is in beta and adds fields often, so every object
-and row is returned as the platform sent it, with unknown fields and enum
-values left as they are.
+is tracked in #995. Changes made on the account outside mureo are imported
+from its audit log (see [Change import](#change-import)). The API is in beta
+and adds fields often, so every object and row is returned as the platform
+sent it, with unknown fields and enum values left as they are.
 
 ## 1. Create an Ads API key
 
@@ -290,6 +291,66 @@ reset risk of these tools as `unknown`.
 seconds: from midnight of the first day to the last second of the last day, in
 the ad account's time zone.
 
+## Change import
+
+`mureo_external_changes_import` records changes made on the ad account
+outside mureo (in Ads Manager, or by another API client) into `action_log`,
+from the same audit log. The provider registers this change feed together
+with its tools, so it answers for `plugin:mureo-chatgpt-ads:chatgpt_ads`; with
+`MUREO_DISABLE_CHATGPT_ADS=1` there is no feed either. See
+[change-import.md](change-import.md) for how an import is recorded and
+deduplicated.
+
+- **What is imported.** Each audit-log entry whose `ts` falls inside the
+  window the pass asked for becomes one `external_change:<TYPE>` entry, where
+  `<TYPE>` is the entry's `obj_type` in upper snake case (`Campaign` →
+  `CAMPAIGN`, `AdGroup` → `AD_GROUP`). The operation is the first word of
+  `audit_log_type` (`update_campaign` → `UPDATE`), and the changed fields are
+  the keys of `changes`: at most 20 changed fields per entry, in the order the
+  entry gives them, each made of letters, digits, `_` and `.` (at most 64
+  characters). Ids and the actor are kept only when made of letters, digits
+  and `_ . : @ -` (at most 200 characters). The free-text `item_name` is never
+  copied, and `actor_type` is not read: it names the kind of actor, not the
+  client that made the change. An entry without a usable `ts`, or dated
+  outside the window, is skipped and counted in a note; one entry dated in
+  the future would otherwise move the next pass's start past now.
+- **Which account.** One API key reads one ad account, and the key is shared
+  by every workspace on the machine. The account id recorded for this
+  platform in STATE.json must be the `id` that `chatgpt_ads_account_get`
+  returns. Before reading the audit log the feed reads `GET /ad_account`; when
+  the key reads a different account nothing is imported and the outcome is
+  `unavailable` (the reason names neither id). When STATE.json records no
+  account id the check is skipped, and the result carries a note saying so.
+- **Oldest first, 1,000 per pass.** The window is read oldest first and one
+  pass imports at most 1,000 entries. A capped pass says `truncated: true`,
+  and its note names the time it read through. Run the import again: the
+  next pass continues from the newest change imported. mureo's own changes
+  are not stored, so they do not move that point; if the next pass stops at
+  the same point, pass the `since` the note gives. A capped pass whose
+  entries did not come back oldest first, or whose first 1,000 entries cannot
+  be dated, imports nothing and is an `error` outcome asking for an explicit
+  `since` that leaves at most 1,000 entries in the window.
+- **Which entries carry an identity.** A campaign entry names `campaign_id`,
+  an ad group entry names the ad group (`entity_type: "ad_group"`,
+  `entity_id`, plus its `campaign_id`), and an ad entry names `ad_id` (plus
+  its `campaign_id`, not its ad group). These are the identities the change
+  tools record, so mureo's own pause / enable, budget, bid, name and schedule
+  changes are recognised by tool name, target and a 10-minute window, as
+  [change-import.md](change-import.md#deduplication) describes, and are not
+  imported a second time.
+- **Always imported as external.** An account-level change (the daily
+  spending limit) and an entry on any resource other than a campaign, ad
+  group or ad carry no identity, so they are imported as external even when
+  mureo made them. The deduper also reads the changed-field names, so an
+  entry with more than 20 changed fields can be imported as external even
+  when mureo made it.
+- **What it cannot see.** The platform publishes neither how long it keeps
+  audit-log entries nor which changes it records, so an empty window is not
+  evidence that the account was static. Every result says so in its notes.
+- **Failures.** A missing or rejected key, an ad-account answer without a
+  usable `id`, and every API error are reported as the platform's `error`
+  outcome, never as a quiet window.
+
 ## Periods and time zone
 
 `period` takes the same vocabulary as the Meta Ads tools: `today`,
@@ -505,6 +566,21 @@ account. These points are unverified:
 - **Pausing a paused entity.** Whether pause on an entity that is already
   paused, or activate on one that is already active, is accepted unchanged or
   answered with an error.
+- **Audit-log vocabulary.** The reference documents one example entry, a
+  campaign rename (`audit_log_type` `update_campaign`, `obj_type` `Campaign`,
+  `changes` with a `name` key). The other `audit_log_type` and `obj_type`
+  values and the keys of `changes` are not published, so the ad group and ad
+  spellings change import expects (`AdGroup`, `Ad`) are unverified.
+- **Pause and activate in the audit log.** Whether a pause or an activate is
+  reported with a `status` key in `changes`. If it is not, mureo's own pause /
+  enable is not recognised and is imported as an external change.
+- **Ordering.** Whether `order=asc` returns entries oldest first across
+  pages, which a capped change-import pass relies on to leave only newer
+  entries for the next pass. A capped pass that sees entries out of order
+  imports nothing.
+- **Account id.** That the `id` of `GET /ad_account` is the value to compare
+  with the account id recorded in STATE.json; change import refuses the
+  window when the two differ.
 
 ## Terms
 
