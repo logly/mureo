@@ -28,6 +28,7 @@ is no feed" and from "the feed failed".
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -42,16 +43,18 @@ from mureo.change_import.models import (
     ChangeImportStatus,
     ImportVerdict,
 )
-from mureo.change_import.registry import get_change_feed
+from mureo.change_import.registry import resolve_change_feed
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
 from mureo.context.state import append_action_log, read_state_file
 from mureo.core import clock
+from mureo.core.platform_keys import is_plugin_platform_key, plugin_provider
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from mureo.change_import.models import ChangeFeedResult, ExternalChange
+    from mureo.change_import.protocol import ChangeFeedProvider
     from mureo.context.models import StateDocument
 
 #: Observation window applied to an imported change. mureo has no idea what
@@ -180,13 +183,45 @@ def _account_id(
 
 
 async def _fetch(
-    platform: str, account_id: str, *, since: datetime, until: datetime
+    feed: ChangeFeedProvider, account_id: str, *, since: datetime, until: datetime
 ) -> ChangeFeedResult:
-    """Ask ``platform``'s registered feed for the window. Raises on failure."""
-    feed = get_change_feed(platform)
-    if feed is None:  # pragma: no cover — caller checks first
-        raise LookupError(platform)
+    """Ask ``feed`` for the window. Raises on failure.
+
+    Takes the feed the caller already resolved rather than looking it up
+    again, so the feed that was checked for and the feed that is read cannot
+    disagree.
+    """
     return await feed.fetch_change_events(account_id, since=since, until=until)
+
+
+def _no_feed_outcome(platform: str, now: datetime) -> ChangeImportOutcome:
+    """The outcome for a platform no feed answers for.
+
+    Honest degradation, as ``analytics_not_available_for_<platform>``: absence
+    of a feed is NOT evidence that nothing happened there. A legacy
+    ``plugin:<distribution>`` key gets one more note, because "no feed" is
+    also what that key yields when its distribution registers several feeds,
+    and the remedy (the canonical key) differs from the one for a platform
+    that has no feed at all.
+    """
+    notes: tuple[str, ...] = (
+        f"mureo has no change feed for {platform}, so manual work there "
+        "is invisible to mureo. This is not evidence that none happened.",
+    )
+    if is_plugin_platform_key(platform) and plugin_provider(platform) == "":
+        notes = (
+            *notes,
+            f"{platform} names a distribution rather than a platform, so it "
+            "resolves to a change feed only while that distribution registers "
+            f"exactly one; the canonical key {platform}:<name> selects one.",
+        )
+    return ChangeImportOutcome(
+        platform=platform,
+        status=ChangeImportStatus.UNAVAILABLE,
+        reason=f"change_import_unavailable_for_{platform}",
+        until=now.isoformat(),
+        notes=notes,
+    )
 
 
 async def _import_one_platform(
@@ -200,20 +235,9 @@ async def _import_one_platform(
     window_minutes: int,
 ) -> ChangeImportOutcome:
     """Run one platform's import. Never raises."""
-    if get_change_feed(platform) is None:
-        # Honest degradation, the same contract as
-        # ``analytics_not_available_for_<platform>``. Absence of a feed is
-        # NOT evidence that nothing happened on that platform.
-        return ChangeImportOutcome(
-            platform=platform,
-            status=ChangeImportStatus.UNAVAILABLE,
-            reason=f"change_import_unavailable_for_{platform}",
-            until=now.isoformat(),
-            notes=(
-                f"mureo has no change feed for {platform}, so manual work there "
-                "is invisible to mureo. This is not evidence that none happened.",
-            ),
-        )
+    feed = resolve_change_feed(platform)
+    if feed is None:
+        return _no_feed_outcome(platform, now)
 
     start = (
         since
@@ -222,7 +246,7 @@ async def _import_one_platform(
     )
     try:
         result = await _fetch(
-            platform, _account_id(doc, platform, account_ids), since=start, until=now
+            feed, _account_id(doc, platform, account_ids), since=start, until=now
         )
     except (KeyboardInterrupt, SystemExit):
         raise
@@ -254,7 +278,7 @@ async def _import_one_platform(
             notes=(*result.notes, result.unavailable_reason),
         )
 
-    own, foreign = _split_by_platform(result.changes, platform)
+    own, foreign = _own_changes(result.changes, feed.platform, platform)
     imported: list[int] = []
     already = 0
     attributed = 0
@@ -304,19 +328,39 @@ async def _import_one_platform(
     )
 
 
-def _split_by_platform(
-    changes: tuple[ExternalChange, ...], platform: str
+def _own_changes(
+    changes: tuple[ExternalChange, ...], feed_platform: str, platform: str
 ) -> tuple[tuple[ExternalChange, ...], tuple[ExternalChange, ...]]:
-    """Partition ``changes`` into this platform's and everything else's.
+    """Split off the feed's own changes and relabel them to the STATE key.
 
-    A feed answers for the platform it registered under and no other. Writing
-    a change it labelled with a different key would let one distribution's feed
-    file entries against another platform's account — silently, since every
-    downstream surface joins on that key. Cheap to enforce, so enforce it: the
-    strays are dropped and reported rather than trusted or discarded quietly.
+    A feed labels its changes with its registry name (``feed_platform``), but
+    the platform's STATE.json key may be the canonical
+    ``plugin:<distribution>:<name>`` (#998). Everything downstream — the
+    dedupe against mureo's own entries, the ``external_id``, the
+    ``action_log`` entry and the watermark — joins on the STATE key, so the
+    relabel happens here, before anything reads the platform. For a built-in
+    platform the two are the same string and the relabel is the identity.
     """
-    own = tuple(c for c in changes if c.platform == platform)
-    foreign = tuple(c for c in changes if c.platform != platform)
+    own, foreign = _split_by_platform(changes, feed_platform)
+    if feed_platform == platform:
+        return own, foreign
+    return tuple(replace(c, platform=platform) for c in own), foreign
+
+
+def _split_by_platform(
+    changes: tuple[ExternalChange, ...], feed_platform: str
+) -> tuple[tuple[ExternalChange, ...], tuple[ExternalChange, ...]]:
+    """Partition ``changes`` into this feed's and everything else's.
+
+    ``feed_platform`` is the feed's registry name. A feed answers for the platform
+    it registered under and no other. Writing a change it labelled with a
+    different name would let one distribution's feed file entries against
+    another platform's account — silently, since every downstream surface
+    joins on that key. Cheap to enforce, so enforce it: the strays are
+    dropped and reported rather than trusted or discarded quietly.
+    """
+    own = tuple(c for c in changes if c.platform == feed_platform)
+    foreign = tuple(c for c in changes if c.platform != feed_platform)
     return own, foreign
 
 

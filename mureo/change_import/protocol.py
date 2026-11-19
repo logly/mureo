@@ -60,14 +60,14 @@ class ChangeFeedProvider(Protocol):
     """
 
     platform: str
-    """The canonical platform key this feed answers for.
+    """The registry name this feed registers under.
 
-    For a built-in this IS the STATE.json ``platforms`` key
-    (``"google_ads"``). For a plugin or bridge it is the module's *registry
-    name*, which MUST equal the provider's ``name`` in the ``mureo.providers``
-    group — it is the ``<provider>`` half of ``plugin:<distribution>:<provider>``
-    (#537), which mureo builds itself from the distribution that shipped the
-    entry point. Do NOT write a ``plugin:``-prefixed value here; the registry
+    For a built-in it is also the STATE.json ``platforms`` key
+    (``"google_ads"``). For a plugin or bridge it is NOT the platform key:
+    mureo builds the canonical key from the distribution that registered the
+    feed and files imported entries under it (#998). The name MUST equal the
+    provider's ``name`` in the ``mureo.providers`` group — it is the
+    ``<provider>`` half of ``plugin:<distribution>:<provider>`` (#537). Do NOT write a ``plugin:``-prefixed value here; the registry
     refuses one, because a module allowed to name itself after another
     distribution could shadow that distribution's key.
     """

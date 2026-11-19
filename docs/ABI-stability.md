@@ -319,7 +319,7 @@ The contract:
 
 | Member | Stability |
 |---|---|
-| `platform: str` class attribute | Required; the module's registry name — the `<provider>` half of `plugin:<dist>:<provider>`. A `plugin:`-prefixed value is refused. |
+| `platform: str` class attribute | Required; the module's registry name — the `<provider>` half of `plugin:<dist>:<provider>`. A `plugin:`-prefixed value is refused. mureo matches the feed to the canonical key by the distribution that registered it (#998) and files imported entries under that key; see [change-import.md](./change-import.md#the-abi-hook--adding-a-change-feed). |
 | `async fetch_change_events(account_id, *, since, until) -> ChangeFeedResult` | Required signature. Raising is a valid "cannot fetch"; the importer reports `error` per platform. A feed that is registered but cannot answer for a given account/mode sets `ChangeFeedResult.unavailable_reason` instead, which the importer maps to `unavailable` — returning an empty result would be reported as a checked-and-quiet window. |
 
 ### Why a new Protocol AND a new group

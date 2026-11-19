@@ -650,7 +650,7 @@ Optional: `platforms` (array of platform keys; omit to cover every platform in S
 | `unavailable` | The platform was **not checked**: either mureo has no change feed for it, or a registered feed could not answer for this account/mode (BYOD, unsupported account type). `reason: "change_import_unavailable_for_<platform>"`; the specific cause is in `notes`. Not evidence that nothing happened |
 | `error` | The feed exists but could not be read (expired token, missing credentials). Also unchecked, also not evidence of quiet |
 
-`blind_spots` collects the `unavailable` and `error` platforms; `truncated_platforms` collects those whose feed capped its response, meaning older changes inside that window are unreachable and **cannot be recovered later**. `feeds_available_for` lists the platforms that have a registered feed at all.
+`blind_spots` collects the `unavailable` and `error` platforms; `truncated_platforms` collects those whose feed capped its response, meaning older changes inside that window are unreachable and **cannot be recovered later**. `feeds_available_for` lists the platforms that have a registered feed at all, as platform keys exactly as they appear in STATE.json (`plugin:<dist>:<provider>` for a plugin feed), so it compares directly with `platforms[].platform` and `blind_spots`.
 
 Per-platform coverage — which feeds exist, which mureo reads today, and what each omits — is in [`docs/change-import.md`](change-import.md). Do not infer it from tool availability.
 
