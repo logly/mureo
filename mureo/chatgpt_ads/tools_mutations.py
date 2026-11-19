@@ -27,15 +27,12 @@ from typing import Any
 from mcp.types import Tool, ToolAnnotations
 
 from mureo.chatgpt_ads.tools import (
+    ID_PATTERN,
     NAME_MAX_CHARS,
     NAME_MIN_CHARS,
     NAME_PATTERN,
     build_tool,
     id_param,
-)
-from mureo.policy.declaration_resolution import (
-    _CONVENTION_CURRENT_KEY,
-    _CONVENTION_TOTAL_KEY,
 )
 
 #: Smallest campaign budget amount the API accepts, in micros (one unit).
@@ -55,7 +52,10 @@ SCHEDULE_KEYS = ("start_time", "end_time")
 #: mureo's cross-provider budget context keys (currency units, never sent to
 #: the platform). The strategy gate reads them for the percentage-increase and
 #: account-total caps; a closed schema without them would leave both caps
-#: with nothing to compare.
+#: with nothing to compare. Spelled out as any provider outside the policy
+#: package has to; a test holds them equal to the names the gate reads.
+_CONVENTION_CURRENT_KEY = "current_daily_budget"
+_CONVENTION_TOTAL_KEY = "projected_total_daily_budget"
 BUDGET_CONTEXT_KEYS = (_CONVENTION_CURRENT_KEY, _CONVENTION_TOTAL_KEY)
 BILLING_EVENT_TYPES = ("impression", "click")
 #: Strategies a request may name. Responses can also say ``automated_bid``,
@@ -112,12 +112,12 @@ _BUDGET = {
     ),
 }
 
-_MULTIPLIER = {
+_MULTIPLIER: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "required": ["custom_audience_id", "bid_multiplier_micros"],
     "properties": {
-        "custom_audience_id": {"type": "string"},
+        "custom_audience_id": {"type": "string", "pattern": ID_PATTERN},
         "bid_multiplier_micros": {
             "type": "integer",
             "minimum": MIN_BID_MULTIPLIER_MICROS,
@@ -126,7 +126,7 @@ _MULTIPLIER = {
     },
 }
 
-_BIDDING_CONFIG = {
+_BIDDING_CONFIG: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "required": ["billing_event_type"],
@@ -148,6 +148,11 @@ _BIDDING_CONFIG = {
         "selects automatic bidding. bid_multiplier_micros 1000000 = 1.0x."
     ),
 }
+
+_MAX_BID_PATH = "bidding_config.max_bid_micros"
+#: The keys a ``bidding_config`` and one of its multipliers may carry.
+BIDDING_CONFIG_KEYS = frozenset(_BIDDING_CONFIG["properties"])
+MULTIPLIER_KEYS = frozenset(_MULTIPLIER["properties"])
 
 _REVERSAL_NOTE = (
     "mureo records a reversal in STATE.json action_log, so rollback_apply can "
@@ -285,19 +290,27 @@ _AD_GROUPS_UPDATE_BID = build_tool(
     "whole bidding_config object. Bids are micros of the account currency "
     "(1,000,000 = one unit); with impression billing the bid is per "
     "impression (CPM / 1000). Omitting both strategy and max_bid_micros "
-    "selects automatic bidding. The STRATEGY.md cap max_cpc_bid_per_ad_group "
-    "reads max_bid_micros only: audience bid multipliers (up to 10x) and the "
-    "strategies without a bid (automatic, maximize_*) are not bounded by it, "
-    "and with impression billing the amount is per impression (CPM = amount "
-    "x 1000), so a per-click cap does not meaningfully constrain it. The "
+    "selects automatic bidding. The STRATEGY.md bid caps "
+    "(max_cpc_bid_per_ad_group, max_bid_amount_per_ad_set) read "
+    "max_bid_micros only: audience bid multipliers (up to 10x) and the "
+    "strategies without a bid (automatic, maximize_*) are not bounded by "
+    "them, and with impression billing the amount is per impression (CPM = "
+    "amount x 1000), so a per-click cap does not meaningfully constrain it. The "
     f"campaign budget is what bounds spend. {_REVERSAL_NOTE} Read the current "
     "config with chatgpt_ads_ad_groups_get first.",
     {"ad_group_id": _AD_GROUP_ID, "bidding_config": _BIDDING_CONFIG},
     ["ad_group_id", "bidding_config"],
     annotations=_MUTATES,
+    # One amount on both bid channels: which of the two STRATEGY.md bid caps
+    # an operator wrote says nothing about the billing event of this ad
+    # group, so each cap that is set holds the bid.
     declarations={
         **_AD_GROUP_IDENTITY,
-        "bid": {"cpc_bid": "bidding_config.max_bid_micros", "unit": "micros"},
+        "bid": {
+            "bid_amount": _MAX_BID_PATH,
+            "cpc_bid": _MAX_BID_PATH,
+            "unit": "micros",
+        },
     },
 )
 
@@ -357,6 +370,7 @@ MUTATION_TOOLS: tuple[Tool, ...] = (
 )
 
 __all__ = [
+    "BIDDING_CONFIG_KEYS",
     "BID_STRATEGIES",
     "BUDGET_CONTEXT_KEYS",
     "BILLING_EVENT_TYPES",
@@ -365,6 +379,7 @@ __all__ = [
     "MAX_BID_MULTIPLIER_MICROS",
     "MIN_BID_MULTIPLIER_MICROS",
     "MIN_BUDGET_MICROS",
+    "MULTIPLIER_KEYS",
     "MUTATION_TOOLS",
     "SCHEDULE_KEYS",
     "SCHEDULE_MAX_SECONDS",

@@ -27,12 +27,16 @@ _NAME_RE = re.compile(NAME_PATTERN)
 _LINE_BREAKS = frozenset("\n\r\u2028\u2029")
 
 
-def path_id(arguments: dict[str, Any], key: str) -> str:
-    """A required id, checked before it is put into a URL path."""
-    value = arguments.get(key)
+def id_value(value: object, key: str) -> str:
+    """``value`` as a platform id: the one shape every id argument takes."""
     if not isinstance(value, str) or not _ID_RE.fullmatch(value):
         raise ValueError(f"{key} is required: letters, digits, '_' or '-', 1-128 chars")
     return value
+
+
+def path_id(arguments: dict[str, Any], key: str) -> str:
+    """A required id, checked before it is put into a URL path."""
+    return id_value(arguments.get(key), key)
 
 
 def name_value(arguments: dict[str, Any], key: str) -> str | None:
@@ -85,16 +89,18 @@ def number(value: object, key: str, minimum: float) -> float:
     """``value`` as a finite number of at least ``minimum``.
 
     An integer or a float, never a bool: ``True`` compares equal to 1 but is
-    not a figure anyone meant.
+    not a figure anyone meant. An integer too large for a float counts as
+    not finite.
     """
-    if (
-        not isinstance(value, (int, float))
-        or isinstance(value, bool)
-        or not math.isfinite(value)
-        or value < minimum
-    ):
-        raise ValueError(f"{key} must be a number of at least {minimum:g}")
-    return float(value)
+    figure = math.nan
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            figure = float(value)
+        except OverflowError:
+            figure = math.inf
+    if not math.isfinite(figure) or figure < minimum:
+        raise ValueError(f"{key} must be a finite number of at least {minimum:g}")
+    return figure
 
 
-__all__ = ["integer", "name_value", "number", "path_id"]
+__all__ = ["id_value", "integer", "name_value", "number", "path_id"]

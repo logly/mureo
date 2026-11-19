@@ -17,9 +17,16 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from mureo.chatgpt_ads._errors import ChatGPTAdsAPIError
-from mureo.chatgpt_ads._validation import integer, name_value, number, path_id
+from mureo.chatgpt_ads._validation import (
+    id_value,
+    integer,
+    name_value,
+    number,
+    path_id,
+)
 from mureo.chatgpt_ads.tools_mutations import (
     BID_STRATEGIES,
+    BIDDING_CONFIG_KEYS,
     BILLING_EVENT_TYPES,
     BUDGET_CONTEXT_KEYS,
     BUDGET_KEYS,
@@ -27,6 +34,7 @@ from mureo.chatgpt_ads.tools_mutations import (
     MAX_BID_MULTIPLIER_MICROS,
     MIN_BID_MULTIPLIER_MICROS,
     MIN_BUDGET_MICROS,
+    MULTIPLIER_KEYS,
     MUTATION_TOOLS,
     SCHEDULE_KEYS,
     SCHEDULE_MAX_SECONDS,
@@ -47,15 +55,6 @@ MUTATING_TOOL_NAMES = frozenset(
 )
 
 _SPEND_LIMITS_PATH = "/ad_account/spend_limit_windows"
-_BIDDING_KEYS = frozenset(
-    {
-        "billing_event_type",
-        "strategy",
-        "max_bid_micros",
-        "custom_audience_bid_multipliers",
-    }
-)
-_MULTIPLIER_KEYS = frozenset({"custom_audience_id", "bid_multiplier_micros"})
 _TO_ADS_MANAGER = "Change the budget type in Ads Manager."
 
 
@@ -122,15 +121,12 @@ def _multipliers(value: object) -> None:
     if not isinstance(value, list):
         raise ValueError(f"{key} must be an array")
     for item in value:
-        if (
-            not isinstance(item, dict)
-            or set(item) != _MULTIPLIER_KEYS
-            or not isinstance(item["custom_audience_id"], str)
-        ):
+        if not isinstance(item, dict) or set(item) != MULTIPLIER_KEYS:
             raise ValueError(
-                f"each {key} item needs exactly custom_audience_id (string) and "
+                f"each {key} item needs exactly custom_audience_id and "
                 "bid_multiplier_micros"
             )
+        id_value(item["custom_audience_id"], f"{key}[].custom_audience_id")
         integer(
             item["bid_multiplier_micros"],
             f"{key}[].bid_multiplier_micros",
@@ -141,9 +137,9 @@ def _multipliers(value: object) -> None:
 
 def bidding_config_value(value: object) -> dict[str, Any]:
     """A complete ``bidding_config`` object in the request shape."""
-    if not isinstance(value, dict) or set(value) - _BIDDING_KEYS:
+    if not isinstance(value, dict) or set(value) - BIDDING_CONFIG_KEYS:
         raise ValueError(
-            f"bidding_config must be an object with only: {', '.join(sorted(_BIDDING_KEYS))}"
+            f"bidding_config must be an object with only: {', '.join(sorted(BIDDING_CONFIG_KEYS))}"
         )
     if value.get("billing_event_type") not in BILLING_EVENT_TYPES:
         raise ValueError(
@@ -251,6 +247,25 @@ def daily_spend_limits(windows: object) -> list[Any]:
     return [] if single is None else [single]
 
 
+def _check_rule_shapes(windows: dict[str, Any]) -> None:
+    """Stop unless the daily-rule fields have the documented types.
+
+    The count of rules decides whether the write is safe, so a field that
+    cannot be counted (``daily_limits`` that is not an array, a
+    ``daily_limit`` that is not an object) is not read as "no rule".
+    """
+    rules, single = windows.get("daily_limits"), windows.get("daily_limit")
+    if (rules is None or isinstance(rules, list)) and (
+        single is None or isinstance(single, dict)
+    ):
+        return
+    raise ChatGPTAdsAPIError(
+        "the spend-limits answer carries daily rules in an unexpected shape; "
+        "nothing was changed",
+        status=0,
+    )
+
+
 def _expected_revision(windows: dict[str, Any]) -> int:
     """The revision to send: 0 when the answer has none, as the API reference
     says; a revision that is present but unusable stops the write, because a
@@ -288,6 +303,7 @@ async def _account_daily_spend_limit_set(
             "the spend-limits answer is not a JSON object; nothing was changed",
             status=0,
         )
+    _check_rule_shapes(windows)
     rules = daily_spend_limits(windows)
     if len(rules) > 1:
         return failure_payload(

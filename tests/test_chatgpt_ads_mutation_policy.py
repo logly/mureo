@@ -99,9 +99,9 @@ class TestSemantics:
         assert budget.budget.current_key is None
         bid = derive_semantics(_BY_NAME["chatgpt_ads_ad_groups_update_bid"])
         assert bid.bid is not None and bid.bid.micros is True
-        assert bid.bid.cpc_bid_key == ArgumentPaths.parse(
-            "bidding_config.max_bid_micros"
-        )
+        path = ArgumentPaths.parse("bidding_config.max_bid_micros")
+        assert bid.bid.cpc_bid_key == path
+        assert bid.bid.bid_amount_key == path
         account = derive_semantics(
             _BY_NAME["chatgpt_ads_account_daily_spend_limit_set"]
         )
@@ -287,6 +287,26 @@ class TestStrategyGate:
         allowed: bool,
     ) -> None:
         assert gate.evaluate(name, arguments).allowed is allowed
+
+    @pytest.mark.parametrize(
+        ("micros", "allowed"), [(4_000_000, True), (6_000_000, False)]
+    )
+    def test_the_ad_set_bid_cap_holds_the_same_amount(
+        self,
+        gate: StrategyPolicyGate,
+        tmp_path: Path,
+        micros: int,
+        allowed: bool,
+    ) -> None:
+        import mureo.policy.strategy_gate as sg
+
+        guardrails = "## Guardrails\n- max_bid_amount_per_ad_set: 5\n"
+        (tmp_path / "STRATEGY.md").write_text(guardrails, encoding="utf-8")
+        sg._cache.clear()
+        decision = gate.evaluate("chatgpt_ads_ad_groups_update_bid", _bid(micros))
+        assert decision.allowed is allowed
+        if not allowed:
+            assert "max_bid_amount_per_ad_set" in (decision.reason or "")
 
     @pytest.mark.parametrize(
         ("context", "allowed", "cap"),

@@ -146,7 +146,8 @@ campaign-edit name could never be recognised as mureo's own budget change.
   and/or `lifetime_spend_limit_micros`, each at least 1000000 and nothing
   else. The platform replaces the whole object, so a key left out is removed,
   and an amount replaces the old one rather than adding to it. The platform
-  rejects a lifetime budget below the amount already spent.
+  rejects a lifetime budget below the amount already spent, and can reject a
+  daily budget below an ad group's effective bid.
 - **The budget type cannot change.** The tool reads the campaign first (one
   more request) and compares the amounts its budget holds (a value other than
   `null`) with the keys sent. When they differ (a daily budget sent as a
@@ -168,22 +169,31 @@ campaign-edit name could never be recognised as mureo's own budget change.
   also replaces as a whole: `billing_event_type` (`impression` or `click`,
   required), `strategy` (`fixed_bid`, `maximize_clicks` or
   `maximize_conversions`), `max_bid_micros` (1 to 30400000000000) and
-  `custom_audience_bid_multipliers` (items of `custom_audience_id` and
+  `custom_audience_bid_multipliers` (items of `custom_audience_id`, an id of
+  1 to 128 letters, digits, `_` or `-`, and
   `bid_multiplier_micros`, 100000 to 10000000, where 1000000 is 1.0x).
   Omitting both `strategy` and `max_bid_micros` selects automatic bidding,
   which responses report as `automated_bid`. With impression billing the bid
   is per impression, not per thousand: CPM / 1000.
-- **What the bid cap covers.** `max_cpc_bid_per_ad_group` reads
-  `max_bid_micros` only. Audience bid multipliers (up to 10x) and the
-  strategies without a bid (automatic bidding, `maximize_clicks`,
-  `maximize_conversions`) are not bounded by it, and with impression billing
+- **What the bid caps cover.** `max_cpc_bid_per_ad_group` and
+  `max_bid_amount_per_ad_set` both read `max_bid_micros`, and nothing else:
+  which of the two an operator wrote says nothing about an ad group's
+  billing event, so each one that is set holds the bid. Audience bid
+  multipliers (up to 10x) and the strategies without a bid (automatic
+  bidding, `maximize_clicks`, `maximize_conversions`) are not bounded by
+  them, and with impression billing
   the amount is per impression (CPM = amount × 1000), so a per-click cap does
   not meaningfully constrain it. The campaign budget is what bounds spend.
-- **`amount_micros`** is an integer of at least 0, in multiples of the
-  currency's smallest unit. The STRATEGY.md cap
+- **`amount_micros`** is an integer of at least 0. The platform expects a
+  multiple of the currency's smallest unit, which mureo does not check. The
+  STRATEGY.md cap
   `max_daily_budget_per_campaign` also holds this amount, although the limit
   is account-wide: mureo's policy gate reads an `amount_micros` argument as a
   daily budget in micros, declared or not.
+
+The platform rules quoted here and in the next section (which budgets and
+limits it rejects, which accounts and keys may use the account limit) are
+the API reference's; mureo does not enforce them itself.
 
 Every argument is checked before the first request; a bool or a float where
 an integer is expected is refused.
@@ -206,9 +216,11 @@ pointing to Ads Manager. Otherwise it sends the amount with
 `expected_revision` set to the `revision` it read (0 when the answer carries
 none), so a change made in between is not silently overwritten. Before any
 write it also stops, with an API error that says nothing was changed, when the
-answer is not a JSON object or carries a `revision` that is not a whole number
-of at least 0. A non-empty `daily_limits` array is the list of rules;
-otherwise the single `daily_limit` is (absent or `null` = none).
+answer is not a JSON object, carries a `revision` that is not a whole number
+of at least 0, or carries a `daily_limits` that is not an array or a
+`daily_limit` that is not an object (`null` is fine for both). A non-empty
+`daily_limits` array is the list of rules; otherwise the single
+`daily_limit` is (absent or `null` = none).
 
 ### Recorded changes and rollback
 
@@ -299,7 +311,7 @@ A window longer than 365 days is refused.
 
 | Value | Unit |
 |-------|------|
-| Budgets and bid amounts on campaigns and ad groups, the account's spending limits, and every amount a change tool takes | **micros** of the account currency (1,000,000 = one unit) |
+| Budgets and bid amounts on campaigns and ad groups, the account's spending limits, and every amount a change tool sends to the platform | **micros** of the account currency (1,000,000 = one unit) |
 | `bid_multiplier_micros` | micros of a multiplier (1,000,000 = 1.0x) |
 | Insights `spend`, `cpc`, `cpm` | the account currency's **major units** (12.50 = 12.50) |
 | Insights `ctr` | a ratio |
@@ -313,7 +325,7 @@ read, in `micros`, so they are compared after dividing by 1,000,000:
 | `max_daily_budget_per_campaign` | `budget.daily_spend_limit_micros`, and the account's `amount_micros` | |
 | `max_lifetime_budget_per_campaign` | `budget.lifetime_spend_limit_micros` | |
 | `max_daily_budget_increase_pct`, `max_total_daily_budget` | `current_daily_budget` / `projected_total_daily_budget` (currency units), when the caller passes them | a call that leaves them out |
-| `max_cpc_bid_per_ad_group` | `bidding_config.max_bid_micros` | audience multipliers, the strategies without a bid, and impression billing, where the amount is per impression |
+| `max_cpc_bid_per_ad_group`, `max_bid_amount_per_ad_set` | `bidding_config.max_bid_micros` | audience multipliers, the strategies without a bid, and impression billing, where the amount is per impression |
 
 ## Data freshness
 
@@ -359,8 +371,10 @@ click count to get CPC; use the returned `cpc`.
   days in the account's time zone and at most 365 days.
 - **Timeout.** 30 seconds per request, and 120 seconds for the whole tool
   call (every page, retry and backoff together). A call that runs out of time
-  is reported as `API error: the call did not finish within 120 seconds`.
-  The read that records a reversal has its own 15-second limit.
+  is reported as `API error: the call did not finish within 120 seconds`;
+  for a change tool the text goes on to say the change may have been applied
+  (see [Errors](#errors)). The read that records a reversal has its own
+  15-second limit.
 - **Page cap.** One call requests at most 50 pages. A list that needs more is
   reported as an API error asking for a lower `limit` or narrower filters,
   rather than returned short. A page that says more rows follow without an
@@ -380,7 +394,7 @@ click count to get CPC; use the returned `cpc`.
 | The call deadline, the page cap, a list cursor that does not advance | text `API error: ...` (see [Limits](#limits)) |
 | A change tool that ends in a 5xx, a non-JSON success body, a transport error or the call deadline | the same text, ending `The change may have been applied; read the entity before retrying.` |
 | `chatgpt_ads_account_daily_spend_limit_set` with more than one daily rule | `{"status": "refused", "error": "multiple_daily_spend_limits", "detail": ...}`, before any change |
-| `chatgpt_ads_account_daily_spend_limit_set` whose spending-limits answer is not a JSON object or carries an unusable `revision` | text `API error: ...; nothing was changed`, before any change |
+| `chatgpt_ads_account_daily_spend_limit_set` whose spending-limits answer is not a JSON object, or carries an unusable `revision` or daily rules in an unexpected shape | text `API error: ...; nothing was changed`, before any change |
 | `chatgpt_ads_campaigns_update_budget` that would change the budget type | `{"status": "refused", "error": "budget_kind_change", "detail": ...}`, before any change; `budget_unreadable` when the current budget holds neither amount |
 | A missing or malformed argument | `ValueError`, raised before any request |
 
@@ -482,6 +496,12 @@ account. These points are unverified:
 - **`expected_revision`.** How the platform answers when the revision has
   moved on since mureo read it, and whether an account with no daily rule
   accepts revision 0.
+- **The fields a reversal reads.** `status` values `active` and `paused`,
+  `start_time` / `end_time` at the top level of a campaign, `budget` and
+  `bidding_config` in the shapes above, and `amount_micros` on a daily rule
+  are as the API reference and the OpenAPI document give them. If a live
+  answer differs, the affected change is recorded without a reversal, or
+  with a caveat, and no error is raised.
 - **Pausing a paused entity.** Whether pause on an entity that is already
   paused, or activate on one that is already active, is accepted unchanged or
   answered with an error.

@@ -140,9 +140,10 @@ that does not read an amount does not bound it.
 - **Bids.** `billing_event_type` (`impression` or `click`) is required. With
   impression billing the bid is per impression, not per thousand: CPM / 1000.
   Omitting both `strategy` and `max_bid_micros` selects automatic bidding,
-  which reads back as `automated_bid`. `max_cpc_bid_per_ad_group` reads
-  `max_bid_micros` only: audience multipliers (up to 10x) and the strategies
-  without a bid are not bounded by it, and with impression billing the amount
+  which reads back as `automated_bid`. `max_cpc_bid_per_ad_group` and
+  `max_bid_amount_per_ad_set` read `max_bid_micros` only: audience
+  multipliers (up to 10x) and the strategies without a bid are not bounded
+  by them, and with impression billing the amount
   is per impression (CPM = amount × 1000). The campaign budget is what bounds
   spend; say so when a change raises multipliers or switches strategy.
 - **Account daily limit.** Invoice-billed accounts only. mureo reads the

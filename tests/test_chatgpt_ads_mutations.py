@@ -126,7 +126,7 @@ class TestDefinitions:
                     "automatic bidding",
                     "reversal",
                     "multipliers (up to 10x)",
-                    "not bounded by it",
+                    "not bounded by them",
                     "CPM = amount x 1000",
                     "campaign budget is what bounds spend",
                 ),
@@ -349,6 +349,24 @@ _INVALID = [
             },
         },
     ),
+    *(
+        (
+            "chatgpt_ads_ad_groups_update_bid",
+            {
+                "ad_group_id": "g_1",
+                "bidding_config": {
+                    "billing_event_type": "click",
+                    "custom_audience_bid_multipliers": [
+                        {
+                            "custom_audience_id": audience_id,
+                            "bid_multiplier_micros": 1_000_000,
+                        }
+                    ],
+                },
+            },
+        )
+        for audience_id in ("", "aud 1", "aud/1", "a" * 129)
+    ),
     ("chatgpt_ads_account_daily_spend_limit_set", {}),
     ("chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": -1}),
     ("chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": False}),
@@ -362,6 +380,25 @@ async def test_invalid_arguments_send_nothing(
 ) -> None:
     with pytest.raises(ValueError):
         await ChatGPTAdsProvider().handle_mcp_tool(name, arguments)
+    assert api.requests == []
+
+
+@pytest.mark.parametrize(
+    "key", ["current_daily_budget", "projected_total_daily_budget"]
+)
+async def test_a_context_figure_too_large_for_a_float_is_refused(
+    api: FakeAPI, key: str
+) -> None:
+    """The schema takes any number of at least 0; the handler needs a finite one."""
+    arguments = {
+        "campaign_id": "c_1",
+        "budget": {"daily_spend_limit_micros": 1_000_000},
+        key: 10**400,
+    }
+    with pytest.raises(ValueError, match="finite"):
+        await ChatGPTAdsProvider().handle_mcp_tool(
+            "chatgpt_ads_campaigns_update_budget", arguments
+        )
     assert api.requests == []
 
 
@@ -556,6 +593,27 @@ class TestAccountDailySpendLimit:
             "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
         )
         assert "not a JSON object" in failure.detail
+        assert [r.method for r in api.requests] == ["GET"]
+
+    @pytest.mark.parametrize(
+        "windows",
+        [
+            {"daily_limits": {"a": {}, "b": {}}},
+            {"daily_limits": "two"},
+            {"daily_limits": [], "daily_limit": [{}, {}]},
+            {"daily_limit": "one"},
+        ],
+    )
+    async def test_daily_rules_in_an_unexpected_shape_stop_the_write(
+        self, api: FakeAPI, windows: dict[str, Any]
+    ) -> None:
+        answer = {"object": "list", "revision": 4, **windows}
+        api.add("/ad_account/spend_limit_windows", body=answer)
+        failure = await _fail(
+            "chatgpt_ads_account_daily_spend_limit_set", {"amount_micros": 1}
+        )
+        assert "unexpected shape" in failure.detail
+        assert "nothing was changed" in failure.detail
         assert [r.method for r in api.requests] == ["GET"]
 
     async def test_an_empty_list_beside_a_single_rule_counts_as_one(

@@ -67,8 +67,9 @@ LIFETIME_BELOW_SPEND_CAVEAT = (
     "the platform rejects a lifetime budget below the amount already spent"
 )
 
-#: Most audience multipliers one bid reversal carries. Bounds what one
-#: ``action_log`` entry adds to STATE.json; a config with more gets no reversal.
+#: Most audience multipliers one bid reversal carries; a config with more
+#: gets no reversal. With the id shape the tool's check holds each item to,
+#: this bounds what one ``action_log`` entry adds to STATE.json.
 MAX_REVERSAL_MULTIPLIERS = 1000
 
 _AUTOMATED_BID = "automated_bid"
