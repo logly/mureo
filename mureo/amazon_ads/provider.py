@@ -27,8 +27,9 @@ to hold. The registry is first-wins, so whichever registration lands
 first owns the ``amazon_ads`` slot: registering first is what makes the
 in-tree bridge deterministically beat a third-party distribution that
 publishes a ``mureo.providers`` entry point under the same name. Both
-in-tree callers honour this —
-:func:`mureo.mcp.server._discover_with_amazon` and
+in-tree callers go through :mod:`mureo.bundled_providers`, which
+honours this —
+:func:`mureo.mcp.server._discover_with_bundled` and
 :meth:`mureo.web.server.ConfigureWizard._discover_providers_safely` —
 so the MCP process and the configure process resolve the name
 identically.

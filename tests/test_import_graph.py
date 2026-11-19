@@ -133,7 +133,7 @@ def test_every_mureo_module_imports_as_the_first_import(
 
 # ---------------------------------------------------------------------------
 # rollback / policy / amazon_ads / core / analytics / change_import /
-# client_factory never import ``mureo.mcp`` (#863)
+# client_factory / bundled_providers never import ``mureo.mcp`` (#863)
 # ---------------------------------------------------------------------------
 
 #: Packages (and top-level modules) below ``mureo.mcp``. ``mureo/mcp/__init__``
@@ -147,6 +147,7 @@ _BELOW_MCP = (
     "analytics",
     "change_import",
     "client_factory.py",
+    "bundled_providers.py",
 )
 
 #: Child: import the lower layers and nothing else, run the two call paths
@@ -157,6 +158,7 @@ _LOWER_LAYERS_ALONE = (
     "import json, sys\n"
     "import mureo.rollback, mureo.policy.learning_reset\n"
     "import mureo.amazon_ads.bridge, mureo.core.tool_failure\n"
+    "import mureo.bundled_providers\n"
     "from mureo.amazon_ads.bridge import _normalize_failure\n"
     "from mureo.rollback.planner import _plugin_reversal_keys\n"
     "_plugin_reversal_keys('some_plugin_tool')\n"
@@ -189,8 +191,9 @@ _LIVE_CLIENT_OPENERS_ALONE = (
     " 'auth': 'mureo.auth' in sys.modules}))\n"
 )
 
-#: The failure-envelope reader moved to ``mureo.core.tool_failure``;
-#: ``mureo.mcp._helpers`` re-exports the same objects.
+#: The failure-envelope reader and the envelope dict builder live in
+#: ``mureo.core.tool_failure``; ``mureo.mcp._helpers`` re-exports the same
+#: objects.
 _ENVELOPE_READER_NAMES = (
     "FAILURE_STATUSES",
     "API_ERROR_PREFIX",
@@ -199,6 +202,7 @@ _ENVELOPE_READER_NAMES = (
     "Failure",
     "failure_of",
     "is_error_result",
+    "failure_payload",
 )
 
 
