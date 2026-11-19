@@ -4,27 +4,42 @@ With a sentinel key, every outcome — success, each failure class, the paths
 where httpx itself raises with the request in hand — is checked for the
 sentinel in log records (DEBUG and up), exception text and repr, tool results
 and the credentials dataclass repr. The same holds for a mutation (a POST and
-the read before it) and for the before-state capture that runs ahead of one.
+the read before it), for the before-state capture that runs ahead of one, and
+for the change feed and the import outcome a failed feed read becomes.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Any
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
 
-from mureo.chatgpt_ads import handlers
+from mureo.change_import import (
+    ChangeImportStatus,
+    clear_change_feed_registry,
+    default_change_feed_registry,
+    import_external_changes,
+    register_change_feed,
+)
+from mureo.chatgpt_ads import change_feed, handlers
 from mureo.chatgpt_ads._errors import MAY_HAVE_BEEN_APPLIED
+from mureo.chatgpt_ads.change_feed import ChatGPTAdsChangeFeed
 from mureo.chatgpt_ads.client import ChatGPTAdsClient
 from mureo.chatgpt_ads.credentials import (
     ChatGPTAdsCredentials,
     load_chatgpt_ads_credentials,
 )
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
+from mureo.core.auth_failure import PlatformAuthError
 from tests._chatgpt_ads_fakes import SENTINEL_KEY, FakeAPI
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 pytestmark = pytest.mark.unit
 
@@ -280,6 +295,167 @@ async def test_a_mutation_past_the_deadline_does_not_carry_the_key(
             deadline=0.01,
         )
     assert str(info.value).endswith(MAY_HAVE_BEEN_APPLIED)
+    _assert_chain_is_clean(info.value)
+    assert SENTINEL_KEY not in caplog.text
+
+
+_FEED_KEY = "plugin:mureo-chatgpt-ads:chatgpt_ads"
+_UNTIL = datetime(2026, 3, 2, tzinfo=timezone.utc)
+
+
+def _hanging_client(_key: str) -> ChatGPTAdsClient:
+    async def _hang(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(10)
+        raise AssertionError("unreachable")
+
+    return ChatGPTAdsClient(_key, transport=httpx.MockTransport(_hang))
+
+
+def _raising_client(_key: str) -> ChatGPTAdsClient:
+    def _raise(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(_leaky(request), request=request)
+
+    return ChatGPTAdsClient(_key, transport=httpx.MockTransport(_raise))
+
+
+def _feed_failures() -> list[Any]:
+    def _answer(status: int, body: Any) -> Any:
+        def _client(_key: str) -> ChatGPTAdsClient:
+            return FakeAPI().add("/audit_logs", status, body).client()
+
+        return _client
+
+    return [
+        pytest.param(_answer(401, _ECHO), id="401-echo"),
+        pytest.param(_answer(403, _ECHO), id="403-echo"),
+        pytest.param(_answer(500, _ECHO), id="500-echo"),
+        pytest.param(_answer(200, f"<html>{SENTINEL_KEY}</html>"), id="not-json"),
+        pytest.param(_raising_client, id="transport"),
+        pytest.param(_hanging_client, id="deadline"),
+    ]
+
+
+def _feed_state(tmp_path: Path) -> Path:
+    path = tmp_path / "STATE.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": "2",
+                "platforms": {_FEED_KEY: {"account_id": "", "campaigns": []}},
+                "action_log": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.mark.usefixtures("_key")
+@pytest.mark.parametrize("opener", _feed_failures())
+async def test_no_change_feed_failure_carries_the_key(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+    opener: Any,
+) -> None:
+    monkeypatch.setattr(handlers, "_open_client", opener)
+    monkeypatch.setattr(change_feed, "TOOL_DEADLINE_SECONDS", 0.05)
+    caplog.set_level(logging.DEBUG)
+    feed = ChatGPTAdsChangeFeed()
+    with pytest.raises(Exception) as info:
+        await feed.fetch_change_events(
+            "", since=datetime(2026, 3, 1, tzinfo=timezone.utc), until=_UNTIL
+        )
+    _assert_chain_is_clean(info.value)
+
+    clear_change_feed_registry()
+    default_change_feed_registry().clear()
+    try:
+        register_change_feed(feed, source_distribution="mureo-chatgpt-ads")
+        outcomes = await import_external_changes(_feed_state(tmp_path), now=_UNTIL)
+    finally:
+        clear_change_feed_registry()
+    assert outcomes[0].status is ChangeImportStatus.ERROR
+    assert SENTINEL_KEY not in repr(outcomes[0])
+    assert SENTINEL_KEY not in caplog.text
+
+
+#: A body that spells the key only in JSON escapes: the raw text never
+#: contains it, the decoded message and code do.
+_ESCAPED_KEY = "".join(f"\\u{ord(char):04x}" for char in SENTINEL_KEY)
+_ESCAPED_ECHO = (
+    '{"error": {"message": "upstream saw ' + _ESCAPED_KEY + '", '
+    '"code": "' + _ESCAPED_KEY + '"}}'
+)
+
+
+def test_the_escaped_body_really_spells_the_key() -> None:
+    assert SENTINEL_KEY not in _ESCAPED_ECHO
+    decoded = json.loads(_ESCAPED_ECHO)["error"]
+    assert decoded == {"message": f"upstream saw {SENTINEL_KEY}", "code": SENTINEL_KEY}
+
+
+@pytest.mark.usefixtures("_key")
+@pytest.mark.parametrize("status", [401, 500])
+async def test_a_key_in_json_escapes_never_reaches_a_tool_result(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, status: int
+) -> None:
+    api = FakeAPI().add("/ad_account", status, _ESCAPED_ECHO)
+    monkeypatch.setattr(handlers, "_open_client", lambda _key: api.client())
+    caplog.set_level(logging.DEBUG)
+    result = await ChatGPTAdsProvider().handle_mcp_tool("chatgpt_ads_account_get", {})
+    assert SENTINEL_KEY not in result[0].text
+    assert SENTINEL_KEY not in caplog.text
+
+    with pytest.raises(Exception) as info:
+        await api.client().get("/ad_account")
+    _assert_chain_is_clean(info.value)
+
+
+@pytest.mark.usefixtures("_key")
+@pytest.mark.parametrize("status", [401, 500])
+async def test_a_key_in_json_escapes_never_reaches_the_feed_or_the_import(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+    status: int,
+) -> None:
+    def _client(_key: str) -> ChatGPTAdsClient:
+        return FakeAPI().add("/audit_logs", status, _ESCAPED_ECHO).client()
+
+    monkeypatch.setattr(handlers, "_open_client", _client)
+    caplog.set_level(logging.DEBUG)
+    feed = ChatGPTAdsChangeFeed()
+    with pytest.raises(Exception) as info:
+        await feed.fetch_change_events(
+            "", since=datetime(2026, 3, 1, tzinfo=timezone.utc), until=_UNTIL
+        )
+    _assert_chain_is_clean(info.value)
+
+    clear_change_feed_registry()
+    default_change_feed_registry().clear()
+    try:
+        register_change_feed(feed, source_distribution="mureo-chatgpt-ads")
+        outcomes = await import_external_changes(_feed_state(tmp_path), now=_UNTIL)
+    finally:
+        clear_change_feed_registry()
+    assert outcomes[0].status is ChangeImportStatus.ERROR
+    assert SENTINEL_KEY not in repr(outcomes[0])
+    assert SENTINEL_KEY not in caplog.text
+
+
+async def test_a_missing_key_fails_the_feed_without_a_request(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.delenv("CHATGPT_ADS_API_KEY", raising=False)
+    opened: list[str] = []
+    monkeypatch.setattr(handlers, "_open_client", opened.append)
+    caplog.set_level(logging.DEBUG)
+    with pytest.raises(PlatformAuthError) as info:
+        await ChatGPTAdsChangeFeed().fetch_change_events(
+            "", since=datetime(2026, 3, 1, tzinfo=timezone.utc), until=_UNTIL
+        )
+    assert opened == []
     _assert_chain_is_clean(info.value)
     assert SENTINEL_KEY not in caplog.text
 

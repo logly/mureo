@@ -21,6 +21,12 @@ from mureo.core.runtime_context import get_runtime_context
 #: Environment fallback, read when the credential store has no usable key.
 CHATGPT_ADS_API_KEY_ENV_VAR = "CHATGPT_ADS_API_KEY"
 
+#: What a missing key is reported as, by the tools and the change feed alike.
+NO_CREDENTIALS_DETAIL = (
+    "No ChatGPT Ads API key is configured. Add it on the ChatGPT Ads card of "
+    f"`mureo configure`, or set {CHATGPT_ADS_API_KEY_ENV_VAR}."
+)
+
 
 @dataclass(frozen=True)
 class ChatGPTAdsCredentials:
@@ -51,6 +57,7 @@ def load_chatgpt_ads_credentials() -> ChatGPTAdsCredentials | None:
 
 __all__ = [
     "CHATGPT_ADS_API_KEY_ENV_VAR",
+    "NO_CREDENTIALS_DETAIL",
     "ChatGPTAdsCredentials",
     "load_chatgpt_ads_credentials",
 ]

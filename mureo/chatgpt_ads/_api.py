@@ -19,6 +19,10 @@ CHATGPT_ADS_PROVIDER_NAME: Final = "chatgpt_ads"
 
 BASE_URL: Final = "https://api.ads.openai.com/v1"
 
+#: The ad account the API key reads. Read by the account tool, the
+#: client's time-zone lookup and the change feed's account check.
+AD_ACCOUNT_PATH: Final = "/ad_account"
+
 #: ``info.version`` of the OpenAPI document the contract fixture
 #: (``tests/fixtures/chatgpt_ads_openapi_subset.json``) was cut from.
 OPENAPI_VERSION: Final = "2.3.0"
@@ -56,6 +60,17 @@ PAGE_MAX_INSIGHTS: Final = 2000
 #: at the smallest page maximum, so reaching this means the platform is
 #: returning tiny pages, and the call stops instead of walking on.
 MAX_PAGES_PER_CALL: Final = 50
+
+#: Audit-log rows one change-import pass reads. The feed asks for one more
+#: row than this to learn whether the window holds more: 1,001 rows at
+#: :data:`PAGE_MAX_AUDIT_LOGS` per page is 11 pages, well inside
+#: :data:`MAX_PAGES_PER_CALL`.
+CHANGE_FEED_ROW_CAP: Final = 1000
+
+#: Changed-field names one imported audit-log row keeps. The importer
+#: joins the names into the entry's summary, so the count bounds what
+#: one row adds to STATE.json.
+MAX_CHANGED_FIELDS: Final = 20
 
 #: Longest reporting window. Conversion metrics refuse more than 365 days, and
 #: non-hourly delivery reporting keeps the most recent 365 days.

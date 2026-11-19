@@ -5,7 +5,8 @@ Handlers return plain Python data; :mod:`mureo.chatgpt_ads.provider` turns it
 before the first request (:mod:`mureo.chatgpt_ads._validation`). The handlers
 that change the account live in :mod:`mureo.chatgpt_ads.handlers_mutations`
 and are merged into :data:`HANDLERS` here, so :func:`run_tool` is the one way
-any handler runs.
+any handler runs. :func:`run_with_client` is the client lifetime and deadline
+under it, shared with :mod:`mureo.chatgpt_ads.change_feed`.
 """
 
 from __future__ import annotations
@@ -13,9 +14,10 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from mureo.chatgpt_ads._api import (
+    AD_ACCOUNT_PATH,
     PAGE_MAX_AUDIT_LOGS,
     PAGE_MAX_ENTITIES,
     PAGE_MAX_INSIGHTS,
@@ -38,7 +40,11 @@ from mureo.chatgpt_ads.tools import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from mureo.chatgpt_ads.client import ChatGPTAdsClient
+
+_T = TypeVar("_T")
 
 #: Tool ``level`` → the API's ``aggregation_level``, in hierarchy order.
 _AGGREGATION_LEVELS = {
@@ -101,7 +107,7 @@ def _include(arguments: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 async def _account_get(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
-    return await client.get("/ad_account")
+    return await client.get(AD_ACCOUNT_PATH)
 
 
 async def _campaigns_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
@@ -273,6 +279,33 @@ def _open_client(api_key: str) -> ChatGPTAdsClient:
     return ChatGPTAdsClient(api_key)
 
 
+async def run_with_client(
+    work: Callable[[ChatGPTAdsClient], Awaitable[_T]],
+    api_key: str,
+    *,
+    deadline: float = TOOL_DEADLINE_SECONDS,
+    mutating: bool = False,
+) -> _T:
+    """Run ``work`` on a client of its own within ``deadline`` seconds.
+
+    The one place a client is opened and timed: tool calls and the change
+    feed both come through here. Client errors propagate. Running out of time
+    is a :class:`ChatGPTAdsAPIError` raised after the ``except`` block, so
+    nothing from the cancelled request is chained onto it; for ``mutating``
+    work it ends with :data:`MAY_HAVE_BEEN_APPLIED`, because the request may
+    have reached the platform before it was cancelled.
+    """
+    async with _open_client(api_key) as client:
+        try:
+            return await asyncio.wait_for(work(client), deadline)
+        except asyncio.TimeoutError:
+            pass
+    message = f"the call did not finish within {deadline:g} seconds"
+    if mutating:
+        message = f"{message} {MAY_HAVE_BEEN_APPLIED}"
+    raise ChatGPTAdsAPIError(message, status=0)
+
+
 async def run_tool(
     name: str,
     arguments: dict[str, Any],
@@ -280,26 +313,19 @@ async def run_tool(
     *,
     deadline: float = TOOL_DEADLINE_SECONDS,
 ) -> Any:
-    """Run tool ``name`` within ``deadline`` seconds.
+    """Run tool ``name`` within ``deadline`` seconds (see :func:`run_with_client`).
 
-    Client and validation errors propagate. Running out of time is a
-    :class:`ChatGPTAdsAPIError` raised after the ``except`` block, so nothing
-    from the cancelled request is chained onto it; for a tool that changes the
-    account it ends with :data:`MAY_HAVE_BEEN_APPLIED`, because the request
-    may have reached the platform before it was cancelled.
+    Validation errors propagate like client errors.
     """
     handler = HANDLERS.get(name)
     if handler is None:
         raise ValueError(f"Unknown ChatGPT Ads tool: {name}")
-    async with _open_client(api_key) as client:
-        try:
-            return await asyncio.wait_for(handler(client, arguments), deadline)
-        except asyncio.TimeoutError:
-            pass
-    message = f"the call did not finish within {deadline:g} seconds"
-    if name in MUTATING_TOOL_NAMES:
-        message = f"{message} {MAY_HAVE_BEEN_APPLIED}"
-    raise ChatGPTAdsAPIError(message, status=0)
+    return await run_with_client(
+        lambda client: handler(client, arguments),
+        api_key,
+        deadline=deadline,
+        mutating=name in MUTATING_TOOL_NAMES,
+    )
 
 
-__all__ = ["HANDLERS", "run_tool"]
+__all__ = ["HANDLERS", "run_tool", "run_with_client"]
