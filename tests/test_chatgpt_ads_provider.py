@@ -3,7 +3,8 @@
 Pins the identifiers that end up in ``STATE.json`` history, the registration
 contract shared with the other bundled providers (idempotent, first-wins,
 switched off by ``MUREO_DISABLE_CHATGPT_ADS``), the credential card the
-configure UI renders, the read-only classification of every tool and the
+configure UI renders, the read-only classification of the nine read tools
+(the mutations are pinned in ``test_chatgpt_ads_mutations.py``) and the
 platform delivery model.
 """
 
@@ -32,6 +33,7 @@ from mureo.chatgpt_ads.provider import (
     register_chatgpt_ads_provider,
 )
 from mureo.chatgpt_ads.tools import TOOLS
+from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from mureo.core.platform_keys import plugin_platform_key
 from mureo.core.providers import default_registry, get_account_credential_fields
 from mureo.core.providers.registry import ProviderEntry, RegistryWarning
@@ -85,7 +87,12 @@ class TestIdentifiers:
         assert ChatGPTAdsProvider.display_name == "ChatGPT Ads"
 
     def test_no_identifier_names_the_vendor(self) -> None:
-        names = [*_TOOL_NAMES, CHATGPT_ADS_PROVIDER_NAME, CHATGPT_ADS_DISABLE_ENV_VAR]
+        names = [
+            *_TOOL_NAMES,
+            *(t.name for t in MUTATION_TOOLS),
+            CHATGPT_ADS_PROVIDER_NAME,
+            CHATGPT_ADS_DISABLE_ENV_VAR,
+        ]
         assert not [n for n in names if "openai" in n.lower()]
 
 
@@ -100,7 +107,7 @@ class TestTools:
             raise AssertionError("touched credentials")
 
         monkeypatch.setattr(credentials_module, "get_runtime_context", _boom)
-        assert ChatGPTAdsProvider().mcp_tools() == TOOLS
+        assert ChatGPTAdsProvider().mcp_tools() == (*TOOLS, *MUTATION_TOOLS)
 
     @pytest.mark.parametrize("tool", TOOLS, ids=lambda t: t.name)
     def test_every_tool_is_read_only_with_a_closed_schema(self, tool) -> None:  # type: ignore[no-untyped-def]

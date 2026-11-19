@@ -12,6 +12,7 @@ import json
 import pytest
 
 from mureo.chatgpt_ads._errors import (
+    MAY_HAVE_BEEN_APPLIED,
     NO_ERROR_DETAIL,
     ChatGPTAdsAPIError,
     error_from_response,
@@ -153,3 +154,11 @@ def test_a_gate_signal_on_another_status_is_not_a_gate() -> None:
     error = error_from_response(400, body)
     assert isinstance(error, ChatGPTAdsAPIError)
     assert not error.is_feature_gate
+
+
+def test_a_note_ends_the_message_and_keeps_the_classification() -> None:
+    body = json.dumps({"error": {"message": "boom", "code": "server_error"}})
+    error = error_from_response(503, body, note=MAY_HAVE_BEEN_APPLIED)
+    assert isinstance(error, ChatGPTAdsAPIError)
+    assert str(error) == f"{error_from_response(503, body)} {MAY_HAVE_BEEN_APPLIED}"
+    assert (error.status, error.code) == (503, "server_error")

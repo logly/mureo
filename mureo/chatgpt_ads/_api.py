@@ -27,7 +27,8 @@ OPENAPI_READ_ON: Final = "2026-11-19"
 #: Per-request timeout, the same as the Meta client's.
 REQUEST_TIMEOUT_SECONDS: Final = 30.0
 
-#: Attempts for one GET that keeps answering 429 or 5xx. Counted the way
+#: Attempts for one request that keeps answering a retryable status (429, and
+#: 5xx for a GET). Counted the way
 #: ``mureo.meta_ads.client._MAX_RETRIES`` counts: attempts, not extra tries.
 MAX_ATTEMPTS: Final = 3
 INITIAL_BACKOFF_SECONDS: Final = 1.0
@@ -39,6 +40,12 @@ MAX_RETRY_AFTER_SECONDS: Final = 30.0
 #: paginated read together. Each request has its own timeout, but a long list
 #: of slow pages would otherwise hold the call open for many minutes.
 TOOL_DEADLINE_SECONDS: Final = 120.0
+
+#: Bound on the one read a mutation's before-state capture makes. The capture
+#: runs before the write, so a slow read must not hold the write back for long:
+#: on expiry the write proceeds without a reversal. The same value as the
+#: Amazon Ads capture deadline.
+REVERSAL_READ_DEADLINE_SECONDS: Final = 15.0
 
 #: Largest page each list endpoint accepts (OpenAPI ``limit`` maximum).
 PAGE_MAX_ENTITIES: Final = 500

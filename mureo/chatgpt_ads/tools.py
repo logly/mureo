@@ -1,10 +1,12 @@
-"""The nine read-only ChatGPT Ads tool definitions.
+"""The nine ChatGPT Ads read tools, and the builder every tool uses.
 
 Pure data: building them needs no credentials and no network, so the MCP
 server can list them at start. Every tool declares ``readOnlyHint`` and the
 same throttle, which the plugin safety layer reads
 (:mod:`mureo.mcp.plugin_semantics`) — the provider is served through the
-plugin path, not the built-in tool families.
+plugin path, not the built-in tool families. The tools that change the
+account are in :mod:`mureo.chatgpt_ads.tools_mutations`, built by
+:func:`build_tool` here so the two sets cannot drift in shape.
 """
 
 from __future__ import annotations
@@ -26,6 +28,11 @@ DEFAULT_INSIGHTS_LIMIT = MAX_TOOL_LIMIT
 #: Bounds the API puts on the ``name`` filter of the list endpoints.
 NAME_MIN_CHARS = 3
 NAME_MAX_CHARS = 1000
+#: The API's own pattern for a name: at least one character that is not a
+#: space, on one line. The schemas carry it as the API states it; the
+#: handlers search it too and refuse a line break themselves, because
+#: Python's regex dialect lets some line breaks through.
+NAME_PATTERN = r"^.*\S.*$"
 
 #: Delivery metrics, sent as ``{level}.{metric}`` (the reference's canonical
 #: field names). The Reporting guide's examples use flat names such as
@@ -42,13 +49,13 @@ CONVERSION_METRICS = (
 )
 
 _READ_ONLY = ToolAnnotations(readOnlyHint=True)
-_META = {"mureo": {"throttle": {"rate": THROTTLE_RATE, "burst": THROTTLE_BURST}}}
+_THROTTLE = {"throttle": {"rate": THROTTLE_RATE, "burst": THROTTLE_BURST}}
 
 #: Path ids are put into URLs, so they are held to a conservative pattern.
 ID_PATTERN = "^[A-Za-z0-9_-]{1,128}$"
 
 
-def _id_param(entity: str, example: str) -> dict[str, Any]:
+def id_param(entity: str, example: str) -> dict[str, Any]:
     return {
         "type": "string",
         "pattern": ID_PATTERN,
@@ -76,6 +83,7 @@ _NAME_PARAM = {
     "type": "string",
     "minLength": NAME_MIN_CHARS,
     "maxLength": NAME_MAX_CHARS,
+    "pattern": NAME_PATTERN,
     "description": (
         "Return only entities whose name matches this text: 3 to 1000 "
         "characters, not all spaces."
@@ -97,9 +105,20 @@ _PERIOD_DESCRIPTION = (
 _ENTITY_LIMIT = _limit_param(DEFAULT_LIST_LIMIT, "The API serves at most 500 per page.")
 
 
-def _tool(
-    name: str, description: str, properties: dict[str, Any], required: list[str]
+def build_tool(
+    name: str,
+    description: str,
+    properties: dict[str, Any],
+    required: list[str],
+    *,
+    annotations: ToolAnnotations = _READ_ONLY,
+    declarations: dict[str, Any] | None = None,
 ) -> Tool:
+    """One tool with a closed schema and the shared throttle.
+
+    ``declarations`` are further ``meta["mureo"]`` keys (``identity``,
+    ``budget``, ``bid``), merged over the throttle declaration.
+    """
     return Tool(
         name=name,
         description=description,
@@ -109,12 +128,12 @@ def _tool(
             "required": required,
             "additionalProperties": False,
         },
-        annotations=_READ_ONLY,
-        _meta=_META,
+        annotations=annotations,
+        _meta={"mureo": {**_THROTTLE, **(declarations or {})}},
     )
 
 
-_ACCOUNT_GET = _tool(
+_ACCOUNT_GET = build_tool(
     "chatgpt_ads_account_get",
     "Gets the ChatGPT Ads ad account the configured API key belongs to. "
     "Returns the platform object unchanged: id, name, status, timezone, "
@@ -126,7 +145,7 @@ _ACCOUNT_GET = _tool(
     [],
 )
 
-_CAMPAIGNS_LIST = _tool(
+_CAMPAIGNS_LIST = build_tool(
     "chatgpt_ads_campaigns_list",
     "Lists campaigns in the ChatGPT Ads account. Returns a JSON array of "
     "campaign objects as the platform returns them (id, name, status, "
@@ -142,7 +161,7 @@ _CAMPAIGNS_LIST = _tool(
     [],
 )
 
-_CAMPAIGNS_GET = _tool(
+_CAMPAIGNS_GET = build_tool(
     "chatgpt_ads_campaigns_get",
     "Gets one ChatGPT Ads campaign. Returns the platform object unchanged: "
     "status, objective, bidding_type, billing_event_type, targeting, schedule "
@@ -151,13 +170,13 @@ _CAMPAIGNS_GET = _tool(
     "include_serving_issues to see why a campaign is not delivering. To list "
     "campaigns use chatgpt_ads_campaigns_list.",
     {
-        "campaign_id": _id_param("Campaign", "cmpn_123"),
+        "campaign_id": id_param("Campaign", "cmpn_123"),
         "include_serving_issues": _SERVING_ISSUES_PARAM,
     },
     ["campaign_id"],
 )
 
-_AD_GROUPS_LIST = _tool(
+_AD_GROUPS_LIST = build_tool(
     "chatgpt_ads_ad_groups_list",
     "Lists the ad groups of one ChatGPT Ads campaign. Returns a JSON array of "
     "ad group objects as the platform returns them (id, name, status, "
@@ -165,14 +184,14 @@ _AD_GROUPS_LIST = _tool(
     "campaign_id is required. For one ad group use chatgpt_ads_ad_groups_get; "
     "for its ads use chatgpt_ads_ads_list.",
     {
-        "campaign_id": _id_param("Parent campaign", "cmpn_123"),
+        "campaign_id": id_param("Parent campaign", "cmpn_123"),
         "name": _NAME_PARAM,
         "limit": _ENTITY_LIMIT,
     },
     ["campaign_id"],
 )
 
-_AD_GROUPS_GET = _tool(
+_AD_GROUPS_GET = build_tool(
     "chatgpt_ads_ad_groups_get",
     "Gets one ChatGPT Ads ad group. Returns the platform object unchanged: "
     "status, bidding_config (bid amounts in micros of the account currency, "
@@ -180,11 +199,11 @@ _AD_GROUPS_GET = _tool(
     "this to read an ad group's bid settings or why it is not serving before "
     "explaining its results. To list the ad groups of a campaign use "
     "chatgpt_ads_ad_groups_list.",
-    {"ad_group_id": _id_param("Ad group", "adgrp_123")},
+    {"ad_group_id": id_param("Ad group", "adgrp_123")},
     ["ad_group_id"],
 )
 
-_ADS_LIST = _tool(
+_ADS_LIST = build_tool(
     "chatgpt_ads_ads_list",
     "Lists ads in the ChatGPT Ads account, optionally within one ad group. "
     "Returns a JSON array of ad objects as the platform returns them (id, "
@@ -192,25 +211,25 @@ _ADS_LIST = _tool(
     "this to find an ad_id or check review status across ads; for one ad's "
     "full record use chatgpt_ads_ads_get.",
     {
-        "ad_group_id": _id_param("Parent ad group", "adgrp_123"),
+        "ad_group_id": id_param("Parent ad group", "adgrp_123"),
         "name": _NAME_PARAM,
         "limit": _ENTITY_LIMIT,
     },
     [],
 )
 
-_ADS_GET = _tool(
+_ADS_GET = build_tool(
     "chatgpt_ads_ads_get",
     "Gets one ChatGPT Ads ad. Returns the platform object unchanged: status, "
     "review_status and review detail, appeal, creative and serving_issues. "
     "Read-only. Use this to see why one ad was rejected or is not serving and "
     "what its creative says. To list ads use chatgpt_ads_ads_list; for its "
     "performance use chatgpt_ads_insights_report with ad_id.",
-    {"ad_id": _id_param("Ad", "ad_123")},
+    {"ad_id": id_param("Ad", "ad_123")},
     ["ad_id"],
 )
 
-_INSIGHTS_REPORT = _tool(
+_INSIGHTS_REPORT = build_tool(
     "chatgpt_ads_insights_report",
     "Reports ChatGPT Ads performance. Returns a JSON array of rows as the API "
     "returns them: the row entity's id and name, readable_time for daily rows, "
@@ -234,9 +253,9 @@ _INSIGHTS_REPORT = _tool(
                 "scoped to an ad group or ad. Must not be above the scope."
             ),
         },
-        "campaign_id": _id_param("Campaign to scope the report to", "cmpn_123"),
-        "ad_group_id": _id_param("Ad group to scope the report to", "adgrp_123"),
-        "ad_id": _id_param("Ad to scope the report to", "ad_123"),
+        "campaign_id": id_param("Campaign to scope the report to", "cmpn_123"),
+        "ad_group_id": id_param("Ad group to scope the report to", "adgrp_123"),
+        "ad_id": id_param("Ad to scope the report to", "ad_123"),
         "time_granularity": {
             "type": "string",
             "enum": ["none", "daily"],
@@ -279,7 +298,7 @@ _INSIGHTS_REPORT = _tool(
     [],
 )
 
-_CHANGE_HISTORY_LIST = _tool(
+_CHANGE_HISTORY_LIST = build_tool(
     "chatgpt_ads_change_history_list",
     "Lists the ChatGPT Ads account's change history (audit log). Returns a "
     "JSON array of entries as the platform returns them: id, ts, actor_id, "
@@ -292,9 +311,9 @@ _CHANGE_HISTORY_LIST = _tool(
             "type": "string",
             "description": f"{_PERIOD_DESCRIPTION} Default 'last_7d'.",
         },
-        "campaign_id": _id_param("Campaign whose changes to return", "cmpn_123"),
-        "ad_group_id": _id_param("Ad group whose changes to return", "adgrp_123"),
-        "ad_id": _id_param("Ad whose changes to return", "ad_123"),
+        "campaign_id": id_param("Campaign whose changes to return", "cmpn_123"),
+        "ad_group_id": id_param("Ad group whose changes to return", "adgrp_123"),
+        "ad_id": id_param("Ad whose changes to return", "ad_123"),
         "limit": _limit_param(
             DEFAULT_LIST_LIMIT, "The API serves at most 100 entries per page."
         ),
@@ -323,5 +342,8 @@ __all__ = [
     "MAX_TOOL_LIMIT",
     "NAME_MAX_CHARS",
     "NAME_MIN_CHARS",
+    "NAME_PATTERN",
     "TOOLS",
+    "build_tool",
+    "id_param",
 ]

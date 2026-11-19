@@ -276,7 +276,7 @@ STATE.jsonから接続媒体を検出:
 
 ### MCP サーバーとツール一覧
 
-mureo は **238 の MCP ツール** を stdio で公開します。Google広告（92）、Meta広告（90）、Search Console（10）、ChatGPT 広告（9、読み取り専用）に加え、rollback、バッチ（一括変更を1つの取り消し単位にまとめる）、変更インポート（mureo の外で行われた変更の記録）、異常検知、配信停止の検知と診断、除外の配信インパクトプレビュー、トラッキングパラメータ整合性、戦略と状態のコンテキスト、分析モジュールレジストリ、学習、学習期間リセットのプリフライト、Creative Studio を含みます。Amazon 広告を設定している場合は、ローカルのマニフェストからブリッジされた Amazon のツールがこれに加わります（ツール名も本数も Amazon 側のもので、mureo が定義するものではありません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。MCP 対応クライアントなら何からでも接続できます。
+mureo は **250 の MCP ツール** を stdio で公開します。Google広告（92）、Meta広告（90）、Search Console（10）、ChatGPT 広告（21）に加え、rollback、バッチ（一括変更を1つの取り消し単位にまとめる）、変更インポート（mureo の外で行われた変更の記録）、異常検知、配信停止の検知と診断、除外の配信インパクトプレビュー、トラッキングパラメータ整合性、戦略と状態のコンテキスト、分析モジュールレジストリ、学習、学習期間リセットのプリフライト、Creative Studio を含みます。Amazon 広告を設定している場合は、ローカルのマニフェストからブリッジされた Amazon のツールがこれに加わります（ツール名も本数も Amazon 側のもので、mureo が定義するものではありません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。MCP 対応クライアントなら何からでも接続できます。
 
 ```json
 {
@@ -315,7 +315,7 @@ mureo auth check-meta      # Meta広告の認証情報を表示（マスク済�
 
 **Amazon 広告**は、Amazon の公式 MCP を **mureo が中継（ブリッジ）** する形で対応しています。ホストに直接登録するのではなく、`Claude → ローカルの mureo MCP → Amazon のホスト型 MCP エンドポイント` という経路になります。Login with Amazon の認証情報は `~/.mureo/credentials.json` の `amazon_ads` セクション（`mureo configure` の接続先の認証情報にある **Amazon Ads** タブ、または `AMAZON_ADS_*` 環境変数で設定）に保存され、ホストの MCP 設定には入りません。短命なアクセストークンの発行と自動更新は mureo が行います。初回に `mureo amazon refresh-manifest` を一度実行してローカルのツールマニフェストを作り、MCP サーバーを再起動すると、Amazon 側のツール名（`campaign_management-*`、`account_management-*`）がそのまま現れ、組み込みプラットフォームと同じように監査・スロットリング・戦略ゲートの対象になります。変更操作は `platform=plugin:mureo-amazon-ads-bridge` として action log に記録されます。mureo ネイティブの詳細分析（異常検知の基準値、RSA 監査）は Amazon にはまだ用意されていないため、Amazon の分析結果は参考情報として扱ってください。**[Amazon 広告ガイド →](docs/amazon-ads.ja.md)**
 
-**ChatGPT 広告**は、mureo に同梱のプロバイダが OpenAI の Advertiser API を通じて読み取ります。広告アカウント、キャンペーン、広告グループ、広告、インサイト、変更履歴を読む 9 つの読み取り専用ツールです。Ads Manager の設定ページでご自身の広告アカウント用の Ads API キーを作成し（1 つのキーで読めるアカウントは 1 つです）、`mureo configure` の **ChatGPT Ads** カードに貼り付けるか、`CHATGPT_ADS_API_KEY` に設定します。媒体側を変更するツールはまだありません。`MUREO_DISABLE_CHATGPT_ADS=1` を設定するとこのプロバイダを無効にできます。**[ChatGPT Ads ガイド →](docs/chatgpt-ads.md)**（英語）
+**ChatGPT 広告**は、mureo に同梱のプロバイダが OpenAI の Advertiser API を通じて読み取り、変更します。広告アカウント、利用上限、キャンペーン、広告グループ、広告、インサイト、変更履歴を読む 10 個のツールと、一時停止・再開、名前、配信期間、予算、入札、アカウントの 1 日の利用上限を変更する 11 個のツールがあり、変更はそれぞれ取り消し操作とともに `action_log` に記録されます。Ads Manager の設定ページでご自身の広告アカウント用の Ads API キーを作成し（1 つのキーで読めるアカウントは 1 つです）、`mureo configure` の **ChatGPT Ads** カードに貼り付けるか、`CHATGPT_ADS_API_KEY` に設定します。`MUREO_DISABLE_CHATGPT_ADS=1` を設定するとこのプロバイダを無効にできます。**[ChatGPT Ads ガイド →](docs/chatgpt-ads.md)**（英語）
 
 **TikTok 広告**は、TikTok の公式ホスト型 MCP（TikTok for Business MCP Server）経由で対応しています。mureo は公式プロバイダ `tiktok-ads-official` として同梱しており、`mureo configure` のダッシュボードまたは `mureo providers add` で追加し、初回接続時にブラウザで TikTok for Business アカウントにサインインして認可するだけです（Developer Token は不要）。接続後は `tiktok_ads` が他媒体と同格のプラットフォームとして扱われ、`/daily-check` やレポートに含まれ、承認済みの変更は action log に記録されます。mureo ネイティブの分析（異常検知の基準値、RSA 監査）は引き続き Google / Meta 向けです。
 

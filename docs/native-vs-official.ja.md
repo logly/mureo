@@ -28,7 +28,7 @@ Search Console の 3 プラットフォームです（本リポジトリの `mur
 | **mureo標準（native）** | mureo（`~/.mureo/credentials.json`） | mureo → プラットフォームAPI | Google Ads、Meta Ads、Search Console |
 | **公式MCP・ホスト登録型** | AIホスト / コネクタ側 | クライアント → プラットフォームMCP（mureo を経由しない） | `google-ads-official`、`meta-ads-official`、TikTok のホスト型MCP |
 | **公式MCP・mureo 中継（ブリッジ）型** | mureo（`~/.mureo/credentials.json`） | mureo → プラットフォームMCP | **Amazon Ads** |
-| **同梱プロバイダ・API 直接型** | mureo（`~/.mureo/credentials.json`） | mureo（プロバイダ経路）→ プラットフォームAPI | **ChatGPT Ads**（読み取り専用） |
+| **同梱プロバイダ・API 直接型** | mureo（`~/.mureo/credentials.json`） | mureo（プロバイダ経路）→ プラットフォームAPI | **ChatGPT Ads** |
 
 3 つ目が重要なのは、2 つ目では mureo の安全機構が働かないからです。ホストに
 登録された公式MCPの呼び出しは mureo のディスパッチャに届かないため、ハード
@@ -216,7 +216,7 @@ Claude  →  ローカルの mureo MCP  →  Amazon のホスト型MCPエンド�
 ## ChatGPT Ads — プラットフォームAPIを直接呼ぶ同梱プロバイダ
 
 mureo は、本体に同梱したプロバイダ（`mureo/chatgpt_ads/`）で OpenAI の
-Advertiser API を呼び、ChatGPT Ads を読み取ります。間に MCP サーバーは入りません。
+Advertiser API を呼び、ChatGPT Ads の読み取りと変更を行います。間に MCP サーバーは入りません。
 
 ```
 Claude  →  ローカルの mureo MCP  →  https://api.ads.openai.com/v1
@@ -226,12 +226,16 @@ Claude  →  ローカルの mureo MCP  →  https://api.ads.openai.com/v1
   `chatgpt_ads` セクション（または `CHATGPT_ADS_API_KEY`）に置きます。1 つの
   キーで読み取れる広告アカウントは 1 つです。
 - **標準ツール群ではなく、プロバイダ経路。** ツールはプラグインと同じ経路で
-  提供され、ツールごとに監査とスロットルがかかります。ツール名は mureo のもの
+  提供され、ツールごとに監査とスロットルがかかり、変更には各ツールが宣言した金額に
+  STRATEGY.md の上限が適用されます（どの上限がどの金額を読むかは chatgpt-ads.md
+  を参照）。ツール名は mureo のもの
   （`chatgpt_ads_*`）で、一覧は固定のため、文書に記載するツール総数に含まれます。
-- **現時点では読み取り専用。** 9 つのツールが、広告アカウント、キャンペーン、
-  広告グループ、広告、インサイト、変更履歴を読み取ります。変更操作は #994 と
-  #995 で扱います。変更が無いため、`action_log` への記録やロールバックの対象も
-  ありません。
+- **変更は記録され、取り消せる。** 10 個の読み取りツールが、広告アカウント、
+  利用上限、キャンペーン、広告グループ、広告、インサイト、変更履歴を読み取り、
+  11 個の変更ツールが、ステータス、名前、配信期間、予算、入札、アカウントの
+  1 日の利用上限を変更します。変更はそれぞれ、書き込み前に取得した取り消し
+  操作とともに `action_log` に記録され、`rollback_apply` で元に戻せます。
+  エンティティの作成は #995 で扱います。
 - **mureo の詳細分析（異常検知の基準値、RSA監査、CV定義の不一致検出）と BYOD
   には未対応。**
 

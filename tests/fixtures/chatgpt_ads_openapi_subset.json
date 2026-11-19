@@ -1,5 +1,5 @@
 {
-  "_comment": "Cut from the Advertiser API OpenAPI document (info.version 2.3.0, read 2026-11-19) for the GET operations the chatgpt_ads tools call. Array-typed query parameters are also listed with the bracket suffix the API reference's curl examples send (fields[], time_ranges[], include[]).",
+  "_comment": "Cut from the Advertiser API OpenAPI document (info.version 2.3.0, read 2026-11-19) for the operations the chatgpt_ads tools call. Array-typed query parameters are also listed with the bracket suffix the API reference's curl examples send (fields[], time_ranges[], include[]). A POST operation lists the property names of its JSON request body under body; an empty list means the operation takes no body.",
   "openapi_version": "2.3.0",
   "operations": [
     {
@@ -198,6 +198,89 @@
         "actor_id",
         "start_time",
         "end_time"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_account/spend_limit_windows",
+      "query": []
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns/{campaign_id}/pause",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns/{campaign_id}/activate",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups/{ad_group_id}/pause",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups/{ad_group_id}/activate",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ads/{ad_id}/pause",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ads/{ad_id}/activate",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns/{campaign_id}",
+      "query": [],
+      "body": [
+        "name",
+        "description",
+        "start_time",
+        "end_time",
+        "status",
+        "budget",
+        "targeting",
+        "landing_page_configuration",
+        "conversion_event_setting_ids"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups/{ad_group_id}",
+      "query": [],
+      "body": [
+        "name",
+        "description",
+        "context_hints",
+        "status",
+        "bidding_config",
+        "product_set",
+        "landing_page_configuration"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ad_account/daily_spend_limit",
+      "query": [],
+      "body": [
+        "window_id",
+        "amount_micros",
+        "expected_revision",
+        "start_date",
+        "end_date"
       ]
     }
   ]

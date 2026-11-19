@@ -1,9 +1,15 @@
 """HTTP client for OpenAI's Advertiser API (the API behind ChatGPT Ads).
 
-GET only. One client lives for one tool call: it carries the bearer header,
-retries 429 / 5xx with exponential backoff the way
+GET and POST through one request path. One client lives for one tool call: it
+carries the bearer header, retries with exponential backoff the way
 :mod:`mureo.meta_ads.client` does, follows list cursors, and caches the ad
 account's time zone so a report and its period agree on what "today" is.
+
+Retries differ by method. A GET is retried on 429 and on every 5xx. A POST
+changes something, so it is retried on 429 only (the request was not
+processed); a 5xx or a transport error on a POST is final, because the change
+may have been applied before the answer was lost, and its message ends with
+:data:`MAY_HAVE_BEEN_APPLIED`.
 
 Credential hygiene: the key is sent as a default header on the underlying
 ``httpx.AsyncClient``, and one private copy is kept for a single purpose —
@@ -35,7 +41,11 @@ from mureo.chatgpt_ads._api import (
     MAX_RETRY_AFTER_SECONDS,
     REQUEST_TIMEOUT_SECONDS,
 )
-from mureo.chatgpt_ads._errors import ChatGPTAdsAPIError, error_from_response
+from mureo.chatgpt_ads._errors import (
+    MAY_HAVE_BEEN_APPLIED,
+    ChatGPTAdsAPIError,
+    error_from_response,
+)
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -50,10 +60,33 @@ Sleep = Callable[[float], Awaitable[None]]
 #: :mod:`mureo.core.scrub` writes for a secret value.
 _KEY_MARKER = "***"
 
+_GET = "GET"
+_POST = "POST"
 
-def _retryable(status: int) -> bool:
-    """429 and every 5xx are worth another attempt; other answers are final."""
-    return status == 429 or status >= 500
+#: A JSON request body.
+Body = dict[str, Any]
+
+
+def _retryable(method: str, status: int) -> bool:
+    """Is another attempt worth making?
+
+    429 always: the platform refused the request without processing it. A 5xx
+    only for a GET; a POST answered with 5xx may have been applied, and
+    repeating it could apply the change twice.
+    """
+    return status == 429 or (method == _GET and status >= 500)
+
+
+def _applied_note(method: str) -> str:
+    """What a failed answer adds: for a POST, that the change may have been
+    applied; for a GET, nothing."""
+    return MAY_HAVE_BEEN_APPLIED if method == _POST else ""
+
+
+def _final_message(method: str, message: str) -> str:
+    """``message``, flagged when a POST ended without a readable answer."""
+    note = _applied_note(method)
+    return f"{message} {note}" if note else message
 
 
 def _retry_delay(response: httpx.Response, attempt: int) -> float | None:
@@ -73,14 +106,21 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float | None:
     return value if value <= MAX_RETRY_AFTER_SECONDS else None
 
 
-def _decode(response: httpx.Response) -> Any:
-    """The JSON body of a success answer; an unreadable body is an API error."""
+def _decode(response: httpx.Response, method: str = _GET) -> Any:
+    """The JSON body of a success answer; an unreadable body is an API error.
+
+    For a POST the error ends with :data:`MAY_HAVE_BEEN_APPLIED`: a 2xx says
+    the platform took the change, but an intermediary can answer 200 with a
+    page of its own, so "may" is as far as the answer goes.
+    """
     try:
         return response.json()
     except (ValueError, RecursionError):  # not JSON, or nested past the limit
         pass
     raise ChatGPTAdsAPIError(
-        f"HTTP {response.status_code}: the response body is not JSON",
+        _final_message(
+            method, f"HTTP {response.status_code}: the response body is not JSON"
+        ),
         status=response.status_code,
     )
 
@@ -108,7 +148,7 @@ def _zone(value: object) -> tzinfo:
 
 
 class ChatGPTAdsClient:
-    """GET access to one ad account, as scoped by its API key."""
+    """Access to one ad account, as scoped by its API key."""
 
     def __init__(
         self,
@@ -147,20 +187,36 @@ class ChatGPTAdsClient:
             return body_text
         return body_text.replace(self._api_key, _KEY_MARKER)
 
-    async def _send(self, path: str, params: Params) -> httpx.Response:
-        """One GET. A transport failure becomes an API error naming its class."""
+    async def _send(
+        self, method: str, path: str, params: Params, body: Body | None
+    ) -> httpx.Response:
+        """One request; ``body=None`` sends none. A transport failure becomes
+        an API error naming its class."""
         failure = ""
         try:
-            return await self._http.get(path, params=list(params))
+            return await self._http.request(
+                method, path, params=list(params), json=body
+            )
         except (httpx.RequestError, httpx.InvalidURL) as exc:
             failure = type(exc).__name__
-        raise ChatGPTAdsAPIError(f"transport error ({failure})", status=0)
+        raise ChatGPTAdsAPIError(
+            _final_message(method, f"transport error ({failure})"), status=0
+        )
 
-    async def _request(self, path: str, params: Params) -> httpx.Response:
-        """One GET, retried on 429 / 5xx; a non-success answer raises."""
+    async def _request(
+        self,
+        path: str,
+        params: Params,
+        *,
+        method: str = _GET,
+        body: Body | None = None,
+    ) -> httpx.Response:
+        """One request, retried while :func:`_retryable`; a non-success
+        answer raises."""
         for attempt in range(MAX_ATTEMPTS):
-            response = await self._send(path, params)
-            if not _retryable(response.status_code) or attempt == MAX_ATTEMPTS - 1:
+            response = await self._send(method, path, params, body)
+            retry = _retryable(method, response.status_code)
+            if not retry or attempt == MAX_ATTEMPTS - 1:
                 break
             delay = _retry_delay(response, attempt)
             if delay is None:
@@ -168,12 +224,27 @@ class ChatGPTAdsClient:
             await self._sleep(delay)
         if response.is_success:
             return response
-        body = self._redacted(response.text)
-        raise error_from_response(response.status_code, body)
+        status = response.status_code
+        raise error_from_response(
+            status,
+            self._redacted(response.text),
+            note=_applied_note(method) if status >= 500 else "",
+        )
 
     async def get(self, path: str, params: Params = ()) -> Any:
         """The decoded JSON body of ``GET path``."""
         return _decode(await self._request(path, params))
+
+    async def post(self, path: str, body: Body | None = None) -> Any:
+        """The decoded JSON body of ``POST path``; ``body=None`` sends none.
+
+        An empty success body (a 204, or only whitespace) is ``{}``: the
+        platform took the change and had nothing to add.
+        """
+        response = await self._request(path, (), method=_POST, body=body)
+        if not response.content.strip():
+            return {}
+        return _decode(response, _POST)
 
     async def list_all(
         self, path: str, params: Params, *, limit: int, page_max: int

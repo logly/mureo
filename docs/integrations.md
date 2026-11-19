@@ -1,6 +1,6 @@
 # External Tool Integration Guide
 
-mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console, plus official-MCP platforms it brings in itself: **Amazon Ads** (bridged through mureo) and **TikTok Ads** (hosted connector), and a bundled read-only provider for **ChatGPT Ads** that calls OpenAI's Advertiser API directly. For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
+mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console, plus official-MCP platforms it brings in itself: **Amazon Ads** (bridged through mureo) and **TikTok Ads** (hosted connector), and a bundled provider for **ChatGPT Ads** that calls OpenAI's Advertiser API directly. For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
 
 ## How It Works
 
@@ -221,7 +221,7 @@ ChatGPT Ads is read through OpenAI's **Advertiser API** by a provider that ships
 Claude  →  local mureo MCP  →  https://api.ads.openai.com/v1
 ```
 
-The Ads API key stays in the `chatgpt_ads` section of `~/.mureo/credentials.json` and never enters the host's MCP configuration. Every call rides mureo's plugin safety layer (audit trail, per-tool throttle). Nine read-only tools cover the ad account, campaigns, ad groups, ads, insights and the change history; none changes anything on the platform yet (#994, #995). The STATE.json platform key is `plugin:mureo-chatgpt-ads:chatgpt_ads`.
+The Ads API key stays in the `chatgpt_ads` section of `~/.mureo/credentials.json` and never enters the host's MCP configuration. Every call rides mureo's plugin safety layer (audit trail, per-tool throttle, and for changes an `action_log` entry with a reversal and the STRATEGY.md caps on the amounts each tool declares; see `docs/chatgpt-ads.md` for which caps read which amounts). Ten read tools cover the ad account, its spending limits, campaigns, ad groups, ads, insights and the change history; eleven change tools pause and activate, rename, reschedule, and set budgets, bids and the account daily spending limit. Creating entities is tracked in #995. The STATE.json platform key is `plugin:mureo-chatgpt-ads:chatgpt_ads`.
 
 ### Configuration
 

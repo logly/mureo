@@ -1,4 +1,4 @@
-"""The nine ChatGPT Ads tools, end to end through the provider.
+"""The nine ChatGPT Ads read tools, end to end through the provider.
 
 Each call goes provider → handler → client → ``httpx.MockTransport``; the
 contract fixture checks every request, and the result is read back the way the
@@ -152,7 +152,21 @@ class TestEntityReads:
         with pytest.raises(ValueError, match="chatgpt_ads_nope"):
             await ChatGPTAdsProvider().handle_mcp_tool("chatgpt_ads_nope", {})
 
-    @pytest.mark.parametrize("name", ["", "ab", "   ", "x" * 1001, " " * 1000])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "",
+            "ab",
+            "   ",
+            pytest.param("x" * 1001, id="1001_chars"),
+            pytest.param(" " * 1000, id="1000_spaces"),
+            "Spring\n",
+            "Spring\nSale",
+            "Spring\rSale",
+            "Spring\u2028Sale",
+            "Spring\u2029",
+        ],
+    )
     @pytest.mark.parametrize(
         "tool", ["chatgpt_ads_campaigns_list", "chatgpt_ads_ads_list"]
     )

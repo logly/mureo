@@ -41,6 +41,14 @@ _MAX_TEXT_CHARS = 200
 #: still travels; the body itself never does.
 NO_ERROR_DETAIL = "no readable error detail in the response body"
 
+#: Ends the message of a change that ended without a readable answer: a 5xx,
+#: a transport error or the call deadline. The platform may have applied the
+#: change before the answer was lost, so repeating it blind could apply it
+#: twice, and the operator needs to know to look before trying again.
+MAY_HAVE_BEEN_APPLIED = (
+    "The change may have been applied; read the entity before retrying."
+)
+
 #: A platform error code worth quoting and matching on. Anything else (a
 #: newline, a 100k-character value, prose) is treated as no code at all.
 _CODE_PATTERN = re.compile(r"[A-Za-z0-9_.-]{1,64}")
@@ -139,20 +147,29 @@ def _summary(status: int, message: str | None, code: str | None) -> str:
 
 
 def error_from_response(
-    status: int, body_text: str
+    status: int, body_text: str, *, note: str = ""
 ) -> ChatGPTAdsAPIError | PlatformAuthError:
     """Classify a non-success answer.
 
     401, and a 403 that is not a feature gate, are :class:`PlatformAuthError`
     (``token_invalid``): the key is wrong, revoked or lacks access to the
-    account. Everything else is a :class:`ChatGPTAdsAPIError`.
+    account. Everything else is a :class:`ChatGPTAdsAPIError`, whose message
+    ends with ``note`` when one is given (the client passes
+    :data:`MAY_HAVE_BEEN_APPLIED` for a POST answered with 5xx).
     """
     message, code = _read_body(body_text)
     summary = _summary(status, message, code)
+    if note:
+        summary = f"{summary} {note}"
     gate = _is_gate(status, message, code)
     if status == 401 or (status == 403 and not gate):
         return PlatformAuthError(summary)
     return ChatGPTAdsAPIError(summary, status=status, code=code, is_feature_gate=gate)
 
 
-__all__ = ["NO_ERROR_DETAIL", "ChatGPTAdsAPIError", "error_from_response"]
+__all__ = [
+    "MAY_HAVE_BEEN_APPLIED",
+    "NO_ERROR_DETAIL",
+    "ChatGPTAdsAPIError",
+    "error_from_response",
+]

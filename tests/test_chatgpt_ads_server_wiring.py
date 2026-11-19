@@ -1,9 +1,10 @@
 """ChatGPT Ads rides the plugin collect/dispatch path of the MCP server.
 
-The bundled provider is served like any entry-point plugin: its nine tools
+The bundled provider is served like any entry-point plugin: all its tools
 are listed, a call reaches the provider (and the plugin audit), a read never
 lands in ``STATE.json``'s ``action_log``, and ``MUREO_DISABLE_CHATGPT_ADS=1``
-removes every tool.
+removes every tool. How a mutation lands in ``action_log`` is pinned in
+``test_chatgpt_ads_reversal.py``.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import pytest
 
 from mureo.chatgpt_ads import handlers
 from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
+from mureo.chatgpt_ads.tools_mutations import MUTATION_TOOLS
 from tests._chatgpt_ads_fakes import SENTINEL_KEY, FakeAPI
 from tests._server_reload import reloaded_server
 
@@ -32,6 +34,7 @@ _NAMES = {
     "chatgpt_ads_ads_get",
     "chatgpt_ads_insights_report",
     "chatgpt_ads_change_history_list",
+    *(t.name for t in MUTATION_TOOLS),
 }
 
 
@@ -49,7 +52,7 @@ def _server(env: dict[str, str | None] | None = None):  # type: ignore[no-untype
         yield mod
 
 
-async def test_the_nine_tools_are_listed_and_owned_by_the_provider() -> None:
+async def test_every_tool_is_listed_and_owned_by_the_provider() -> None:
     with _server() as mod:
         listed = {t.name for t in await mod.handle_list_tools()}
         assert listed >= _NAMES
