@@ -10,9 +10,10 @@ Every request states two things about itself (:class:`_Policy`): whether a
 the answer was lost. A 429 is always retried (the request was not processed).
 
 - ``get`` and ``post_read`` are retried on 5xx and add nothing.
-  ``post_read`` is the ad preview: a POST that changes no campaign, ad group
-  or ad (the platform renders and saves an expiring preview snapshot), so it
-  is treated as a read.
+  ``post_read`` is the ad preview (a POST that changes no campaign, ad group
+  or ad: the platform renders and saves an expiring preview snapshot) and
+  the conversion report (a POST that carries the report's filters), so both
+  are treated as reads.
 - ``post`` changes something, so a 5xx or a transport error is final: the
   change may have been applied before the answer was lost, and the message
   ends with :data:`MAY_HAVE_BEEN_APPLIED`. ``post_file`` (an upload, which
@@ -21,6 +22,13 @@ the answer was lost. A 429 is always retried (the request was not processed).
   returns the existing object for a repeat with the same key when it can see
   the matching earlier create, and its message ends with
   :data:`REPEAT_WITH_IDEMPOTENCY_KEY` naming the key.
+- ``post_operation`` (an audience membership add or remove, where the key is
+  required) follows the same rule with
+  :data:`REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY`: a repeat with the key
+  returns or resumes the first accepted operation. Its body carries audience
+  identifiers, so its policy also masks digest- and advertising-id-shaped
+  text in the platform's error message. Both keyed requests go through one
+  private method; the two public ones differ only in the policy they build.
 
 Credential hygiene: the key is sent as a default header on the underlying
 ``httpx.AsyncClient``, and one private copy is kept for a single purpose —
@@ -57,6 +65,7 @@ from mureo.chatgpt_ads._api import (
 )
 from mureo.chatgpt_ads._errors import (
     MAY_HAVE_BEEN_APPLIED,
+    REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY,
     REPEAT_WITH_IDEMPOTENCY_KEY,
     ChatGPTAdsAPIError,
     error_from_response,
@@ -88,16 +97,20 @@ Body = dict[str, Any]
 
 @dataclass(frozen=True)
 class _Policy:
-    """The two decisions one request makes about a failed answer.
+    """The decisions one request makes about a failed answer.
 
     ``retry_server_errors``: is a 5xx worth another attempt? Only when
     repeating the request cannot apply a change twice. ``lost_answer_note``:
     the sentence a 5xx, a transport error or an unreadable success answer
     adds, because the platform may have acted before the answer was lost.
+    ``hide_identifiers``: mask digest- and advertising-id-shaped text in the
+    platform's error message, for a request whose body carries audience
+    identifiers the answer could echo.
     """
 
     retry_server_errors: bool
     lost_answer_note: str
+    hide_identifiers: bool = False
 
 
 #: A read, whatever its HTTP method.
@@ -106,10 +119,19 @@ _READ = _Policy(retry_server_errors=True, lost_answer_note="")
 _CHANGE = _Policy(retry_server_errors=False, lost_answer_note=MAY_HAVE_BEEN_APPLIED)
 
 
-def _idempotent_create(key: str) -> _Policy:
-    """A create the platform deduplicates by ``key``: safe to repeat."""
-    note = REPEAT_WITH_IDEMPOTENCY_KEY.format(key=key)
-    return _Policy(retry_server_errors=True, lost_answer_note=note)
+def _idempotent(sentence: str, key: str, *, hide_identifiers: bool = False) -> _Policy:
+    """A request the platform deduplicates by ``key``: safe to repeat.
+
+    ``sentence`` is the lost-answer note naming the key: a create's
+    (:data:`REPEAT_WITH_IDEMPOTENCY_KEY`) or an audience operation's
+    (:data:`REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY`).
+    """
+    note = sentence.format(key=key)
+    return _Policy(
+        retry_server_errors=True,
+        lost_answer_note=note,
+        hide_identifiers=hide_identifiers,
+    )
 
 
 def _retryable(policy: _Policy, status: int) -> bool:
@@ -294,6 +316,7 @@ class ChatGPTAdsClient:
             status,
             self._redacted(response.text),
             note=policy.lost_answer_note if status >= 500 else "",
+            hide_identifiers=policy.hide_identifiers,
         )
 
     async def get(self, path: str, params: Params = ()) -> Any:
@@ -311,23 +334,58 @@ class ChatGPTAdsClient:
         key" would drop the retry rule the caller asked for. An empty success
         body is ``{}``.
         """
-        if idempotency_key == "":
-            raise ValueError("idempotency_key must not be empty")
-        payload: dict[str, Any] = {} if body is None else {"json": body}
-        policy = _CHANGE
         if idempotency_key is not None:
-            payload["headers"] = {_IDEMPOTENCY_HEADER: idempotency_key}
-            policy = _idempotent_create(idempotency_key)
+            policy = _idempotent(REPEAT_WITH_IDEMPOTENCY_KEY, idempotency_key)
+            return await self._keyed_post(path, body, idempotency_key, policy)
+        payload = {} if body is None else {"json": body}
+        response = await self._request(
+            path, (), method=_POST, policy=_CHANGE, payload=payload
+        )
+        return _post_answer(response, _CHANGE)
+
+    async def post_operation(
+        self, path: str, body: Body, *, idempotency_key: str
+    ) -> Any:
+        """``POST path`` for an audience membership add or remove.
+
+        The API requires the ``Idempotency-Key`` header here, and a repeat
+        with the same key returns or resumes the first accepted operation, so
+        a 5xx is retried with the same key and body, and a lost answer ends
+        with :data:`REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY` naming the key. The
+        body carries audience identifiers, so an error message that echoes
+        them is masked before it is read. An empty key is refused, as
+        :meth:`post` refuses it.
+        """
+        policy = _idempotent(
+            REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY,
+            idempotency_key,
+            hide_identifiers=True,
+        )
+        return await self._keyed_post(path, body, idempotency_key, policy)
+
+    async def _keyed_post(
+        self, path: str, body: Body | None, key: str, policy: _Policy
+    ) -> Any:
+        """``POST path`` with the ``Idempotency-Key`` header, under ``policy``.
+
+        The one keyed request path behind :meth:`post` and
+        :meth:`post_operation`; each only builds its policy.
+        """
+        if not key:
+            raise ValueError("idempotency_key must not be empty")
+        payload: dict[str, Any] = {"headers": {_IDEMPOTENCY_HEADER: key}}
+        if body is not None:
+            payload["json"] = body
         response = await self._request(
             path, (), method=_POST, policy=policy, payload=payload
         )
         return _post_answer(response, policy)
 
     async def post_read(self, path: str, body: Body | None = None) -> Any:
-        """``POST path`` for an endpoint that changes no campaign, ad group or
-        ad (the ad preview, which renders and saves an expiring snapshot):
-        retried like a GET, and its failures never say a change may have been
-        applied."""
+        """``POST path`` for an endpoint that changes no campaign, ad group,
+        ad or audience (the ad preview, which renders and saves an expiring
+        snapshot; the conversion report, which only reads): retried like a
+        GET, and its failures never say a change may have been applied."""
         payload = {} if body is None else {"json": body}
         response = await self._request(
             path, (), method=_POST, policy=_READ, payload=payload

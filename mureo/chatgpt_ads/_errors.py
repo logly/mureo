@@ -30,6 +30,7 @@ import json
 import re
 from typing import Any
 
+from mureo.chatgpt_ads._hashing import without_identifiers
 from mureo.core.auth_failure import PlatformAuthError
 from mureo.core.scrub import PROSE, scrub_capped
 from mureo.logging_setup import one_log_line, truncate_text
@@ -44,9 +45,11 @@ NO_ERROR_DETAIL = "no readable error detail in the response body"
 #: Ends the message of a change that ended without a readable answer: a 5xx,
 #: a transport error or the call deadline. The platform may have applied the
 #: change before the answer was lost, so repeating it blind could apply it
-#: twice, and the operator needs to know to look before trying again.
+#: twice, and the operator needs to know to look before trying again. "The
+#: account" rather than "the entity": a create without an idempotency key
+#: (a custom audience) has no id to read, only a list to check.
 MAY_HAVE_BEEN_APPLIED = (
-    "The change may have been applied; read the entity before retrying."
+    "The change may have been applied; check the account before retrying."
 )
 
 #: Ends the message of a create sent with an idempotency key that ended
@@ -61,6 +64,19 @@ REPEAT_WITH_IDEMPOTENCY_KEY = (
     'idempotency_key="{key}" and the same arguments: when the platform can '
     "see the earlier create it returns that entity instead of creating a "
     "second one."
+)
+
+#: The sibling of :data:`REPEAT_WITH_IDEMPOTENCY_KEY` for an audience
+#: membership add or remove. What such a call starts is an operation, not an
+#: entity, and the platform's contract for it differs: a repeat with the same
+#: key returns or resumes the first accepted operation without checking the
+#: new body, so the sentence asks for the same file as well as the same
+#: arguments. Filled with ``.format(key=...)``.
+REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY = (
+    "The operation may have been accepted; repeat the call with "
+    'idempotency_key="{key}", the same arguments and the same file: a repeat '
+    "with that key returns or resumes the first accepted operation instead of "
+    "starting a second one."
 )
 
 #: A platform error code worth quoting and matching on. Anything else (a
@@ -154,14 +170,22 @@ def _is_gate(status: int, message: str | None, code: str | None) -> bool:
     return any(phrase in lowered for phrase in _GATE_PHRASES)
 
 
-def _summary(status: int, message: str | None, code: str | None) -> str:
+def _summary(
+    status: int, message: str | None, code: str | None, *, hide_identifiers: bool
+) -> str:
+    if hide_identifiers:
+        # The message before the clean and the cut, so a cut can never leave
+        # part of a digest behind; the code too, whose pattern a digest or
+        # an advertising id also fits.
+        message = without_identifiers(message) if message is not None else None
+        code = without_identifiers(code) if code else code
     head = f"HTTP {status}" + (f" ({code})" if code else "")
     cleaned = _clean(message) if message is not None else ""
     return f"{head}: {cleaned or NO_ERROR_DETAIL}"
 
 
 def error_from_response(
-    status: int, body_text: str, *, note: str = ""
+    status: int, body_text: str, *, note: str = "", hide_identifiers: bool = False
 ) -> ChatGPTAdsAPIError | PlatformAuthError:
     """Classify a non-success answer.
 
@@ -171,9 +195,15 @@ def error_from_response(
     ends with ``note`` when one is given (the client passes
     :data:`MAY_HAVE_BEEN_APPLIED`, or :data:`REPEAT_WITH_IDEMPOTENCY_KEY`
     for a create sent with a key, when a change is answered with 5xx).
+
+    With ``hide_identifiers`` (an audience add or remove, whose answer can
+    echo the identifiers it was sent) every digest- or advertising-id-shaped
+    run in the platform's message becomes ``***``, whatever the status. The
+    note is appended afterwards, so the idempotency key it names survives
+    even when shaped like an advertising id.
     """
     message, code = _read_body(body_text)
-    summary = _summary(status, message, code)
+    summary = _summary(status, message, code, hide_identifiers=hide_identifiers)
     if note:
         summary = f"{summary} {note}"
     gate = _is_gate(status, message, code)
@@ -185,6 +215,7 @@ def error_from_response(
 __all__ = [
     "MAY_HAVE_BEEN_APPLIED",
     "NO_ERROR_DETAIL",
+    "REPEAT_OPERATION_WITH_IDEMPOTENCY_KEY",
     "REPEAT_WITH_IDEMPOTENCY_KEY",
     "ChatGPTAdsAPIError",
     "error_from_response",

@@ -240,7 +240,10 @@ Claude  →  local mureo MCP  →  https://api.ads.openai.com/v1
   idempotency key) and archive them; with an image upload they are recorded
   without a reversal, because a created entity has no id before the call and
   an archive cannot be undone on the platform. An ad preview and a location
-  search complete the set.
+  search complete the set. Six more read, create and fill custom audiences
+  from a local identifier file (hashed on the machine, never passed as
+  arguments), and five set up pixels and conversion events and report
+  conversions; audience membership changes record no reversal.
 - **No deep mureo analytics** (anomaly baselines, RSA audit, CV-mismatch) and
   no BYOD.
 

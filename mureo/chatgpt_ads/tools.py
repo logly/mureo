@@ -96,13 +96,27 @@ _SERVING_ISSUES_PARAM = {
         "delivering. Default false."
     ),
 }
-_PERIOD_DESCRIPTION = (
+#: The ``period`` argument's text, shared by every tool that takes one.
+PERIOD_DESCRIPTION = (
     "Window as 'today', 'yesterday', 'last_7d', 'last_14d', 'last_30d', "
     "'last_90d', 'this_month', 'last_month' or explicit "
     "'YYYY-MM-DD..YYYY-MM-DD' (both ends inclusive), resolved in the ad "
     "account's time zone. 'last_Nd' ends yesterday. At most 365 days."
 )
-_ENTITY_LIMIT = _limit_param(DEFAULT_LIST_LIMIT, "The API serves at most 500 per page.")
+#: The ``limit`` of a list tool over an endpoint that pages at 500.
+ENTITY_LIMIT = _limit_param(DEFAULT_LIST_LIMIT, "The API serves at most 500 per page.")
+#: ``time_granularity`` values of both reports.
+TIME_GRANULARITIES = ("none", "daily")
+#: Click attribution windows, in days, both reports accept.
+ATTRIBUTION_WINDOWS = (7, 14, 30)
+TIME_GRANULARITY = {
+    "type": "string",
+    "enum": list(TIME_GRANULARITIES),
+    "description": (
+        "'none' (default) returns one row per entity for the whole "
+        "window; 'daily' adds one row per day."
+    ),
+}
 
 
 def build_tool(
@@ -156,7 +170,7 @@ _CAMPAIGNS_LIST = build_tool(
     {
         "name": _NAME_PARAM,
         "include_serving_issues": _SERVING_ISSUES_PARAM,
-        "limit": _ENTITY_LIMIT,
+        "limit": ENTITY_LIMIT,
     },
     [],
 )
@@ -186,7 +200,7 @@ _AD_GROUPS_LIST = build_tool(
     {
         "campaign_id": id_param("Parent campaign", "cmpn_123"),
         "name": _NAME_PARAM,
-        "limit": _ENTITY_LIMIT,
+        "limit": ENTITY_LIMIT,
     },
     ["campaign_id"],
 )
@@ -213,7 +227,7 @@ _ADS_LIST = build_tool(
     {
         "ad_group_id": id_param("Parent ad group", "adgrp_123"),
         "name": _NAME_PARAM,
-        "limit": _ENTITY_LIMIT,
+        "limit": ENTITY_LIMIT,
     },
     [],
 )
@@ -243,7 +257,7 @@ _INSIGHTS_REPORT = build_tool(
     {
         "period": {
             "type": "string",
-            "description": f"{_PERIOD_DESCRIPTION} Default 'last_30d'.",
+            "description": f"{PERIOD_DESCRIPTION} Default 'last_30d'.",
         },
         "level": {
             "type": "string",
@@ -256,14 +270,7 @@ _INSIGHTS_REPORT = build_tool(
         "campaign_id": id_param("Campaign to scope the report to", "cmpn_123"),
         "ad_group_id": id_param("Ad group to scope the report to", "adgrp_123"),
         "ad_id": id_param("Ad to scope the report to", "ad_123"),
-        "time_granularity": {
-            "type": "string",
-            "enum": ["none", "daily"],
-            "description": (
-                "'none' (default) returns one row per entity for the whole "
-                "window; 'daily' adds one row per day."
-            ),
-        },
+        "time_granularity": TIME_GRANULARITY,
         "metrics": {
             "type": "array",
             "items": {
@@ -282,7 +289,7 @@ _INSIGHTS_REPORT = build_tool(
         },
         "attribution_window_days": {
             "type": "integer",
-            "enum": [7, 14, 30],
+            "enum": list(ATTRIBUTION_WINDOWS),
             "description": (
                 "Click attribution window for conversion metrics. Omit for the "
                 "API default (30). Does not change delivery metrics."
@@ -309,7 +316,7 @@ _CHANGE_HISTORY_LIST = build_tool(
     {
         "period": {
             "type": "string",
-            "description": f"{_PERIOD_DESCRIPTION} Default 'last_7d'.",
+            "description": f"{PERIOD_DESCRIPTION} Default 'last_7d'.",
         },
         "campaign_id": id_param("Campaign whose changes to return", "cmpn_123"),
         "ad_group_id": id_param("Ad group whose changes to return", "adgrp_123"),
@@ -334,15 +341,20 @@ TOOLS: tuple[Tool, ...] = (
 )
 
 __all__ = [
+    "ATTRIBUTION_WINDOWS",
     "CONVERSION_METRICS",
     "DEFAULT_INSIGHTS_LIMIT",
     "DEFAULT_LIST_LIMIT",
     "DELIVERY_METRICS",
+    "ENTITY_LIMIT",
     "ID_PATTERN",
     "MAX_TOOL_LIMIT",
     "NAME_MAX_CHARS",
     "NAME_MIN_CHARS",
     "NAME_PATTERN",
+    "PERIOD_DESCRIPTION",
+    "TIME_GRANULARITIES",
+    "TIME_GRANULARITY",
     "TOOLS",
     "build_tool",
     "id_param",

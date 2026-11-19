@@ -485,78 +485,105 @@ async def test_a_capture_read_echoing_the_key_logs_only_the_type(
 
 
 # ---------------------------------------------------------------------------
-# Create, archive, upload, preview and location search (#995)
+# Create, archive, upload, preview, location search, custom audiences and
+# conversion measurement (#995)
 # ---------------------------------------------------------------------------
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + b"\x00\x00\x02\x80" * 2
 
 
-def _new_tool_calls(tmp_path: Path) -> list[tuple[str, str, dict[str, Any]]]:
-    """(tool, the path it requests, valid arguments) for every new tool."""
-    image = tmp_path / "card.png"
-    image.write_bytes(_PNG + b"\x08\x06\x00\x00\x00" + b"\x00" * 4)
-    creative = {
-        "type": "chat_card",
-        "title": "Trail shoes",
-        "body": "Light shoes.",
-        "target_url": "https://example.com",
-    }
-    return [
-        (
-            "chatgpt_ads_campaigns_create",
-            "/campaigns",
-            {
-                "name": "Spring",
-                "budget": {"daily_spend_limit_micros": 10**6},
-                "bidding_type": "clicks",
-            },
-        ),
-        (
-            "chatgpt_ads_ad_groups_create",
-            "/ad_groups",
-            {
-                "campaign_id": "c_1",
-                "name": "Shoes",
-                "bidding_config": {"billing_event_type": "click"},
-            },
-        ),
-        (
-            "chatgpt_ads_ads_create",
-            "/ads",
-            {"ad_group_id": "g_1", "name": "Card", "creative": creative},
-        ),
-        (
-            "chatgpt_ads_campaigns_archive",
-            "/campaigns/c_1/archive",
-            {"campaign_id": "c_1"},
-        ),
-        (
-            "chatgpt_ads_ad_groups_archive",
-            "/ad_groups/g_1/archive",
-            {"ad_group_id": "g_1"},
-        ),
-        ("chatgpt_ads_ads_archive", "/ads/a_1/archive", {"ad_id": "a_1"}),
-        ("chatgpt_ads_images_upload_file", "/upload", {"file_path": str(image)}),
-        ("chatgpt_ads_ads_preview", "/ads/a_1/preview", {"ad_id": "a_1"}),
-        ("chatgpt_ads_locations_search", "/geo_lookup/search", {"query": "calif"}),
-    ]
+#: Stand for the local files two tools read; :func:`_new_call` writes them.
+_IMAGE_FILE = "<image file>"
+_MEMBERS_FILE = "<members file>"
+_MEMBERS = {
+    "audience_id": "caud_1",
+    "file_path": _MEMBERS_FILE,
+    "identifier_type": "email",
+}
+_CREATIVE = {
+    "type": "chat_card",
+    "title": "Trail shoes",
+    "body": "Light shoes.",
+    "target_url": "https://example.com",
+}
 
+#: Every new tool → (the path it requests, valid arguments).
+_NEW_TOOL_CALLS: dict[str, tuple[str, dict[str, Any]]] = {
+    "chatgpt_ads_campaigns_create": (
+        "/campaigns",
+        {
+            "name": "Spring",
+            "budget": {"daily_spend_limit_micros": 10**6},
+            "bidding_type": "clicks",
+        },
+    ),
+    "chatgpt_ads_ad_groups_create": (
+        "/ad_groups",
+        {
+            "campaign_id": "c_1",
+            "name": "Shoes",
+            "bidding_config": {"billing_event_type": "click"},
+        },
+    ),
+    "chatgpt_ads_ads_create": (
+        "/ads",
+        {"ad_group_id": "g_1", "name": "Card", "creative": _CREATIVE},
+    ),
+    "chatgpt_ads_campaigns_archive": (
+        "/campaigns/c_1/archive",
+        {"campaign_id": "c_1"},
+    ),
+    "chatgpt_ads_ad_groups_archive": (
+        "/ad_groups/g_1/archive",
+        {"ad_group_id": "g_1"},
+    ),
+    "chatgpt_ads_ads_archive": ("/ads/a_1/archive", {"ad_id": "a_1"}),
+    "chatgpt_ads_images_upload_file": ("/upload", {"file_path": _IMAGE_FILE}),
+    "chatgpt_ads_ads_preview": ("/ads/a_1/preview", {"ad_id": "a_1"}),
+    "chatgpt_ads_locations_search": ("/geo_lookup/search", {"query": "calif"}),
+    "chatgpt_ads_audiences_list": ("/custom_audiences", {}),
+    "chatgpt_ads_audiences_get": (
+        "/custom_audiences/caud_1",
+        {"audience_id": "caud_1"},
+    ),
+    "chatgpt_ads_audiences_create": ("/custom_audiences", {"name": "Buyers"}),
+    "chatgpt_ads_audiences_members_add": ("/custom_audiences/caud_1/add", _MEMBERS),
+    "chatgpt_ads_audiences_members_remove": (
+        "/custom_audiences/caud_1/remove",
+        _MEMBERS,
+    ),
+    "chatgpt_ads_audiences_operations_get": (
+        "/custom_audiences/caud_1/operations/op_1",
+        {"audience_id": "caud_1", "operation_id": "op_1"},
+    ),
+    "chatgpt_ads_pixels_list": ("/conversions/pixels", {}),
+    "chatgpt_ads_pixels_create": ("/conversions/pixels", {"name": "Site"}),
+    "chatgpt_ads_conversion_events_list": ("/conversions/event_settings", {}),
+    "chatgpt_ads_conversion_events_create": (
+        "/conversions/event_settings",
+        {"name": "Orders", "event_type": "order_created", "source_id": "s_1"},
+    ),
+    "chatgpt_ads_conversions_report": (
+        "/conversions/insights",
+        {"entity_ids": ["c_1"]},
+    ),
+}
 
-_NEW_TOOLS = [
-    "chatgpt_ads_campaigns_create",
-    "chatgpt_ads_ad_groups_create",
-    "chatgpt_ads_ads_create",
-    "chatgpt_ads_campaigns_archive",
-    "chatgpt_ads_ad_groups_archive",
-    "chatgpt_ads_ads_archive",
-    "chatgpt_ads_images_upload_file",
-    "chatgpt_ads_ads_preview",
-    "chatgpt_ads_locations_search",
-]
+_NEW_TOOLS = list(_NEW_TOOL_CALLS)
 
 
 def _new_call(tmp_path: Path, name: str) -> tuple[str, dict[str, Any]]:
-    path, arguments = next((p, a) for n, p, a in _new_tool_calls(tmp_path) if n == name)
+    """``name``'s path and arguments, with its local file written."""
+    path, arguments = _NEW_TOOL_CALLS[name]
+    file_path = arguments.get("file_path")
+    if file_path == _IMAGE_FILE:
+        image = tmp_path / "card.png"
+        image.write_bytes(_PNG + b"\x08\x06\x00\x00\x00" + b"\x00" * 4)
+        arguments = {**arguments, "file_path": str(image)}
+    elif file_path == _MEMBERS_FILE:
+        members = tmp_path / "members.txt"
+        members.write_text("jamie@example.com\n", encoding="utf-8")
+        arguments = {**arguments, "file_path": str(members)}
     return path, arguments
 
 
@@ -588,10 +615,12 @@ async def test_no_new_tool_outcome_carries_the_key(
     answer: tuple[int, Any],
 ) -> None:
     path, arguments = _new_call(tmp_path, name)
-    api = FakeAPI().add(path, *answer)
+    # The conversion report reads the account time zone first.
+    api = FakeAPI().add("/ad_account", body={"timezone": "UTC"}).add(path, *answer)
     monkeypatch.setattr(handlers, "_open_client", lambda _key: api.client())
     await _run_clean(caplog, name, arguments)
-    assert api.requests[0].headers["Authorization"] == f"Bearer {SENTINEL_KEY}"
+    assert api.requests[-1].url.path == f"/v1{path}"
+    assert api.requests[-1].headers["Authorization"] == f"Bearer {SENTINEL_KEY}"
 
 
 @pytest.mark.usefixtures("_key")
@@ -626,16 +655,30 @@ async def test_httpx_errors_on_a_new_tool_are_not_quoted(
         ("post_read", (500, _ECHO)),
         ("post_file", (500, _ECHO)),
         ("post_file", (500, _ESCAPED_ECHO)),
+        ("post_operation", (500, _ECHO)),
+        ("post_operation", (500, _ESCAPED_ECHO)),
     ],
-    ids=["create", "create-escaped", "read", "upload", "upload-escaped"],
+    ids=[
+        "create",
+        "create-escaped",
+        "read",
+        "upload",
+        "upload-escaped",
+        "operation",
+        "operation-escaped",
+    ],
 )
 async def test_a_failed_new_post_chain_does_not_carry_the_key(
     call: str, answer: tuple[int, Any]
 ) -> None:
     api = FakeAPI().add("/ads", *answer).add("/ads/a_1/preview", *answer)
-    api.add("/upload", *answer)
+    api.add("/upload", *answer).add("/custom_audiences/caud_1/add", *answer)
     client = api.client()
+    members = {"identifiers": [{"identifier_type": "gaid", "identifier": "x"}]}
     requests = {
+        "post_operation": lambda: client.post_operation(
+            "/custom_audiences/caud_1/add", members, idempotency_key="k"
+        ),
         "post_key": lambda: client.post("/ads", {"name": "x"}, idempotency_key="k"),
         "post_read": lambda: client.post_read("/ads/a_1/preview"),
         "post_file": lambda: client.post_file(

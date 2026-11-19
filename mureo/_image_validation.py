@@ -1,6 +1,8 @@
 """Common media file upload validation
 
-File validation logic shared by Meta Ads / Google Ads (supports images and videos).
+File validation logic shared by Meta Ads / Google Ads (supports images and videos),
+and the bounded one-open read the ChatGPT Ads uploads use (images, and the text
+file of audience identifiers).
 """
 
 from __future__ import annotations
@@ -313,10 +315,10 @@ def validate_image_file(
     return path
 
 
-#: Open flags for :func:`read_image_file`: read-only; non-blocking where the
-#: platform has it, so a name swapped for a FIFO cannot block the open; and
-#: binary where the platform distinguishes it (Windows), so no byte is
-#: translated on the way in.
+#: Open flags for :func:`read_image_file` and :func:`read_data_file`:
+#: read-only; non-blocking where the platform has it, so a name swapped for a
+#: FIFO cannot block the open; and binary where the platform distinguishes it
+#: (Windows), so no byte is translated on the way in.
 _READ_FLAGS = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
 
 
@@ -390,6 +392,36 @@ def read_image_file(
     content = _read_regular_file(path, file_path, max_size_bytes, max_size_label)
     _require_identified(content, path.suffix.lower().lstrip("."), max_pixels)
     return path, content
+
+
+def read_data_file(
+    file_path: str,
+    *,
+    max_size_bytes: int,
+    max_size_label: str,
+    allowed_extensions: frozenset[str],
+) -> tuple[Path, bytes]:
+    """Validate a local data file and return it with the very bytes read.
+
+    The read of :func:`read_image_file` without the image check: the same
+    path rules, one open, type and size judged on that descriptor, and a read
+    that stops one byte past the cap, so what the caller parses is what was
+    checked. Used for files whose content is parsed rather than forwarded
+    (a list of audience identifiers).
+
+    Raises:
+        ValueError: Path traversal, unsupported extension, not a regular
+            file, or size exceeded. No file content appears in a message.
+        FileNotFoundError: File does not exist.
+    """
+    path = _validate_media_file(
+        file_path,
+        max_size_bytes=max_size_bytes,
+        max_size_label=max_size_label,
+        allowed_extensions=allowed_extensions,
+        media_type_label="data",
+    )
+    return path, _read_regular_file(path, file_path, max_size_bytes, max_size_label)
 
 
 def validate_video_file(
