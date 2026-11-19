@@ -311,7 +311,7 @@ Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distin
 
 ### MCP server & tool list
 
-mureo exposes **229 MCP tools** over stdio: Google Ads (92), Meta Ads (90), Search Console (10), plus rollback, batch (group a bulk change into one revertible unit), change import (record changes made outside mureo), anomaly detection, delivery-collapse detection and diagnosis, exclusion delivery-impact preview, tracking-parameter consistency, strategy/state context, analytics registry, learning, learning-period reset pre-flight, and Creative Studio. When Amazon Ads is configured, the bridged Amazon tools are added on top from the local manifest (their names and count are Amazon's, not mureo's — see [docs/amazon-ads.md](docs/amazon-ads.md)). Any MCP-compatible client can connect:
+mureo exposes **238 MCP tools** over stdio: Google Ads (92), Meta Ads (90), Search Console (10), ChatGPT Ads (9, read-only), plus rollback, batch (group a bulk change into one revertible unit), change import (record changes made outside mureo), anomaly detection, delivery-collapse detection and diagnosis, exclusion delivery-impact preview, tracking-parameter consistency, strategy/state context, analytics registry, learning, learning-period reset pre-flight, and Creative Studio. When Amazon Ads is configured, the bridged Amazon tools are added on top from the local manifest (their names and count are Amazon's, not mureo's — see [docs/amazon-ads.md](docs/amazon-ads.md)). Any MCP-compatible client can connect:
 
 ```json
 {
@@ -328,7 +328,7 @@ Full tool list and client configuration: **[MCP Server Guide →](docs/mcp-serve
 
 ### Authentication
 
-`mureo configure` (browser) or `mureo auth setup` (terminal) walk you through Google Ads and Meta Ads credentials; both write `~/.mureo/credentials.json`. Environment variables work as a fallback for CI. Search Console reuses the Google OAuth credentials. Amazon Ads credentials go in the **Amazon Ads** tab of the configure dashboard's *Connection credentials* section — enter the Login with Amazon client id/secret, then run the tab's **Authorize with Amazon** flow (Amazon has no loopback callback, so it is a guided paste-code flow: mureo opens Amazon's consent page and you paste the redirected address back) — or via the `AMAZON_ADS_*` environment variables. Verify any time:
+`mureo configure` (browser) or `mureo auth setup` (terminal) walk you through Google Ads and Meta Ads credentials; both write `~/.mureo/credentials.json`. Environment variables work as a fallback for CI. Search Console reuses the Google OAuth credentials. Amazon Ads credentials go in the **Amazon Ads** tab of the configure dashboard's *Connection credentials* section — enter the Login with Amazon client id/secret, then run the tab's **Authorize with Amazon** flow (Amazon has no loopback callback, so it is a guided paste-code flow: mureo opens Amazon's consent page and you paste the redirected address back) — or via the `AMAZON_ADS_*` environment variables. The ChatGPT Ads API key goes on the **ChatGPT Ads** card of `mureo configure`, or in `CHATGPT_ADS_API_KEY`. Verify any time:
 
 ```bash
 mureo auth status
@@ -346,9 +346,11 @@ Two local files drive strategy-aware operations. Run `/onboard` to generate them
 - **STATE.json** -- Campaign snapshots, action log. Updated automatically by workflow commands.
 - **Ops history** -- Each change links to the decision behind it, with the effect it was expected to have and an evaluation scored against that expectation. Opt in to require a reason and an expected effect on every change. See [docs/ops-history.md](docs/ops-history.md).
 
-### Connecting Amazon Ads, TikTok Ads, GA4, and other MCP servers
+### Connecting Amazon Ads, ChatGPT Ads, TikTok Ads, GA4, and other MCP servers
 
 **Amazon Ads** is supported through the official Amazon Ads MCP, **bridged by mureo** rather than registered with your AI host: `Claude → local mureo MCP → Amazon's hosted MCP endpoint`. Your Login with Amazon credentials live in the `amazon_ads` section of `~/.mureo/credentials.json` (entered in the **Amazon Ads** tab under Connection credentials in `mureo configure`, or via `AMAZON_ADS_*` env vars) and never enter the host's MCP config; mureo mints and auto-refreshes the short-lived access token for you. Run `mureo amazon refresh-manifest` once to build the local tool manifest, then restart the MCP server — Amazon's own tools (`campaign_management-*`, `account_management-*`) appear and are audited, throttled, and strategy-gated like the built-in platforms, with mutations recorded in `action_log` under `platform=plugin:mureo-amazon-ads-bridge`. mureo's deep per-platform analytics (anomaly baselines, RSA audit) are not available for Amazon yet, so treat Amazon findings as advisory. **[Amazon Ads guide →](docs/amazon-ads.md)**
+
+**ChatGPT Ads** is read through OpenAI's Advertiser API by a provider that ships with mureo: nine read-only tools for the ad account, campaigns, ad groups, ads, insights and the change history. Create an Ads API key on the Settings page in Ads Manager for your own ad account (one key reads one ad account) and paste it on the **ChatGPT Ads** card of `mureo configure`, or set `CHATGPT_ADS_API_KEY`. No tool changes anything on the platform yet. Set `MUREO_DISABLE_CHATGPT_ADS=1` to switch the provider off. **[ChatGPT Ads guide →](docs/chatgpt-ads.md)**
 
 **TikTok Ads** is supported through TikTok's official hosted MCP (the "TikTok for Business MCP Server"). mureo ships it as the `tiktok-ads-official` provider — add it from the `mureo configure` dashboard or with `mureo providers add`, then authenticate in the browser with your TikTok for Business account on first connect (no developer token required). Once connected, workflow commands treat `tiktok_ads` as a first-class platform: `/daily-check` and the reports include it, and confirmed changes are recorded in the action log. mureo-native analytics (anomaly baselines, RSA audit) remain Google / Meta specific.
 

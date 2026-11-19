@@ -21,13 +21,14 @@ Search Console の 3 プラットフォームです（本リポジトリの `mur
 プレーン（司令塔）であり、公式MCP はプラットフォーム自身のAPIへの薄い
 ドライバです。
 
-現在の mureo には、接続方式が **3 種類** あります。
+現在の mureo には、接続方式が **4 種類** あります。
 
 | 方式 | 認証情報の保管場所 | リクエスト経路 | 例 |
 |---|---|---|---|
 | **mureo標準（native）** | mureo（`~/.mureo/credentials.json`） | mureo → プラットフォームAPI | Google Ads、Meta Ads、Search Console |
 | **公式MCP・ホスト登録型** | AIホスト / コネクタ側 | クライアント → プラットフォームMCP（mureo を経由しない） | `google-ads-official`、`meta-ads-official`、TikTok のホスト型MCP |
 | **公式MCP・mureo 中継（ブリッジ）型** | mureo（`~/.mureo/credentials.json`） | mureo → プラットフォームMCP | **Amazon Ads** |
+| **同梱プロバイダ・API 直接型** | mureo（`~/.mureo/credentials.json`） | mureo（プロバイダ経路）→ プラットフォームAPI | **ChatGPT Ads**（読み取り専用） |
 
 3 つ目が重要なのは、2 つ目では mureo の安全機構が働かないからです。ホストに
 登録された公式MCPの呼び出しは mureo のディスパッチャに届かないため、ハード
@@ -211,6 +212,31 @@ Claude  →  ローカルの mureo MCP  →  Amazon のホスト型MCPエンド�
 
 セットアップ手順、環境変数、注意点の全容は
 [amazon-ads.ja.md](./amazon-ads.ja.md) を参照してください。
+
+## ChatGPT Ads — プラットフォームAPIを直接呼ぶ同梱プロバイダ
+
+mureo は、本体に同梱したプロバイダ（`mureo/chatgpt_ads/`）で OpenAI の
+Advertiser API を呼び、ChatGPT Ads を読み取ります。間に MCP サーバーは入りません。
+
+```
+Claude  →  ローカルの mureo MCP  →  https://api.ads.openai.com/v1
+```
+
+- **認証情報は mureo に留まる。** Ads API キーは `~/.mureo/credentials.json` の
+  `chatgpt_ads` セクション（または `CHATGPT_ADS_API_KEY`）に置きます。1 つの
+  キーで読み取れる広告アカウントは 1 つです。
+- **標準ツール群ではなく、プロバイダ経路。** ツールはプラグインと同じ経路で
+  提供され、ツールごとに監査とスロットルがかかります。ツール名は mureo のもの
+  （`chatgpt_ads_*`）で、一覧は固定のため、文書に記載するツール総数に含まれます。
+- **現時点では読み取り専用。** 9 つのツールが、広告アカウント、キャンペーン、
+  広告グループ、広告、インサイト、変更履歴を読み取ります。変更操作は #994 と
+  #995 で扱います。変更が無いため、`action_log` への記録やロールバックの対象も
+  ありません。
+- **mureo の詳細分析（異常検知の基準値、RSA監査、CV定義の不一致検出）と BYOD
+  には未対応。**
+
+セットアップ、単位、上限、失敗時の返り値は [chatgpt-ads.md](./chatgpt-ads.md)
+を参照してください。
 
 ---
 

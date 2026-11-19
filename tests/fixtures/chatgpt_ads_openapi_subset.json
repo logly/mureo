@@ -1,0 +1,204 @@
+{
+  "_comment": "Cut from the Advertiser API OpenAPI document (info.version 2.3.0, read 2026-11-19) for the GET operations the chatgpt_ads tools call. Array-typed query parameters are also listed with the bracket suffix the API reference's curl examples send (fields[], time_ranges[], include[]).",
+  "openapi_version": "2.3.0",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/ad_account",
+      "query": []
+    },
+    {
+      "method": "GET",
+      "path": "/campaigns",
+      "query": [
+        "include",
+        "include[]",
+        "name",
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/campaigns/{campaign_id}",
+      "query": [
+        "include",
+        "include[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_groups",
+      "query": [
+        "include",
+        "include[]",
+        "campaign_id",
+        "name",
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_groups/{ad_group_id}",
+      "query": [
+        "include",
+        "include[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ads",
+      "query": [
+        "include",
+        "include[]",
+        "ad_group_id",
+        "name",
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ads/{ad_id}",
+      "query": [
+        "include",
+        "include[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_account/insights",
+      "query": [
+        "attribution_window_days",
+        "view_through_attribution_window_days",
+        "attribution_time_basis",
+        "time_granularity",
+        "aggregation_level",
+        "limit",
+        "before",
+        "after",
+        "time_ranges",
+        "time_ranges[]",
+        "filters",
+        "filters[]",
+        "fields",
+        "fields[]",
+        "sort",
+        "sort[]",
+        "segments",
+        "segments[]",
+        "override_segment_group_order",
+        "override_segment_group_order[]",
+        "includes",
+        "includes[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/campaigns/{campaign_id}/insights",
+      "query": [
+        "attribution_window_days",
+        "view_through_attribution_window_days",
+        "attribution_time_basis",
+        "time_granularity",
+        "aggregation_level",
+        "limit",
+        "before",
+        "after",
+        "time_ranges",
+        "time_ranges[]",
+        "filters",
+        "filters[]",
+        "fields",
+        "fields[]",
+        "sort",
+        "sort[]",
+        "segments",
+        "segments[]",
+        "override_segment_group_order",
+        "override_segment_group_order[]",
+        "includes",
+        "includes[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_groups/{ad_group_id}/insights",
+      "query": [
+        "attribution_window_days",
+        "view_through_attribution_window_days",
+        "attribution_time_basis",
+        "time_granularity",
+        "aggregation_level",
+        "limit",
+        "before",
+        "after",
+        "time_ranges",
+        "time_ranges[]",
+        "filters",
+        "filters[]",
+        "fields",
+        "fields[]",
+        "sort",
+        "sort[]",
+        "segments",
+        "segments[]",
+        "override_segment_group_order",
+        "override_segment_group_order[]",
+        "includes",
+        "includes[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ads/{ad_id}/insights",
+      "query": [
+        "attribution_window_days",
+        "view_through_attribution_window_days",
+        "attribution_time_basis",
+        "time_granularity",
+        "aggregation_level",
+        "limit",
+        "before",
+        "after",
+        "time_ranges",
+        "time_ranges[]",
+        "filters",
+        "filters[]",
+        "fields",
+        "fields[]",
+        "sort",
+        "sort[]",
+        "segments",
+        "segments[]",
+        "override_segment_group_order",
+        "override_segment_group_order[]",
+        "includes",
+        "includes[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/audit_logs",
+      "query": [
+        "limit",
+        "after",
+        "before",
+        "order",
+        "campaign_id",
+        "ad_group_id",
+        "ad_id",
+        "actor_id",
+        "start_time",
+        "end_time"
+      ]
+    }
+  ]
+}

@@ -541,13 +541,19 @@ class TestAmazonRegistryRegistration:
         self, monkeypatch, tmp_path
     ) -> None:
         """Registry presence must not create tools out of thin air."""
+        from mureo.amazon_ads.bridge import AmazonAdsBridge
         from mureo.core.providers import default_registry
 
         with _reloaded_server(
             monkeypatch, tmp_path, with_manifest=False, registry_entries={}
         ) as mod:
             assert "amazon_ads" in default_registry  # UI can still configure it
-            assert mod._PLUGIN_TOOLS == []
+            # Other bundled providers still contribute theirs; none is Amazon's.
+            assert [
+                name
+                for name, provider in mod._PLUGIN_DISPATCH.items()
+                if isinstance(provider, AmazonAdsBridge)
+            ] == []
 
 
 @pytest.mark.unit

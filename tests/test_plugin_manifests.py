@@ -196,6 +196,7 @@ def test_dual_tree_population_covers_foundation_and_operational_skills() -> None
     foundation = {n for n in names if n.startswith("_mureo-")}
     assert foundation >= {
         "_mureo-amazon-ads",
+        "_mureo-chatgpt-ads",
         "_mureo-google-ads",
         "_mureo-learning",
         "_mureo-meta-ads",

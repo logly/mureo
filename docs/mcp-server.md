@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 229 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 192 advertising and SEO operation tools across Google Ads (92), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 1 change-import tool (record changes made outside mureo), 5 cross-platform analysis tools (anomaly detection, delivery-collapse detection and diagnosis, the exclusion delivery-impact preview and tracking-parameter consistency), 16 mureo-context tools (strategy / state / reports / the dashboard's display contract / per-day history / collection failures — per platform and for the workspace as a whole — / outcome evaluation / decision records / history queries / workspace settings), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 238 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 192 advertising and SEO operation tools across Google Ads (92), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 1 change-import tool (record changes made outside mureo), 5 cross-platform analysis tools (anomaly detection, delivery-collapse detection and diagnosis, the exclusion delivery-impact preview and tracking-parameter consistency), 16 mureo-context tools (strategy / state / reports / the dashboard's display contract / per-day history / collection failures — per platform and for the workspace as a whole — / outcome evaluation / decision records / history queries / workspace settings), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), 5 Creative Studio tools (text-free key-visual generation + banner composition), and 9 read-only ChatGPT Ads tools served by the bundled ChatGPT Ads provider (see [ChatGPT Ads (bundled provider)](#chatgpt-ads-bundled-provider)). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families plus the ChatGPT Ads provider, whose nine tools ship with mureo and are listed unless `MUREO_DISABLE_CHATGPT_ADS=1` is set — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -911,13 +911,14 @@ Read-only: it calls no platform API and changes nothing.
 | Google Ads | **Yes** — `bidding_details.bidding_strategy_system_status` on the campaign's STATE.json snapshot | **Yes** — Google's own `LEARNING_*` enum members ([`BiddingStrategySystemStatus`](https://developers.google.com/google-ads/api/reference/rpc/v25/BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus)) |
 | Meta Ads | No — Meta exposes [`learning_stage_info`](https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-learning-stage-info/) on the **ad set**; mureo's client does not request it and STATE.json is campaign-level | No — Meta documents that "significant edits" restart the phase without enumerating them |
 | Amazon Ads (official-MCP bridge) | No — no learning-state read exists on the bridged tool surface | No |
+| ChatGPT Ads (bundled provider) | No — the provider reads no learning state | No — the provider registers no rules |
 | Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
 
 A plugin or bridge advertises its own platform's rules through `mureo.policy.learning_rules.register_platform_learning_rules`, the same registry pattern the budget/bid declarations use.
 
 **Namespaced built-in variants are classified as the built-in.** A provider that exposes a built-in platform's tool surface again as `<builtin_platform>_<suffix>_<operation>` (see `_mureo-shared` → *Namespaced built-in variants*) is checked against the built-in `<builtin_platform>_<operation>` tool: the same mutation/read verdict, the same reset triggers and the same argument rules, so `google_ads_<suffix>_campaigns_update` with a `bidding_strategy` is a reset exactly as `google_ads_campaigns_update` is, and the refusal and notice name the tool that was called. The match is on the name, preferring the longest built-in `<operation>`. A name that starts with a built-in platform prefix but mirrors no built-in operation is not treated as mureo's own: its declared `readOnlyHint` decides, then the read-only name pattern, as for any plugin tool.
 
-**What a platform has no check for — only a wrong assumption.** The table above is the *data* half: facts mureo can verify. The prose half is `mureo.policy.platform_model.register_platform_model` (#648) — one capped paragraph stating how a platform selects and prices delivery, and what it therefore does not have. It is rendered into the server's MCP `instructions` (the `initialize` response), so it is read before any tool call and does not depend on a skill description matching; it appears only when this server serves tools for that platform. Every model carries the same first-party `Evidence` record, and mureo core registers none of its own — a platform with no registered model contributes nothing rather than a default. Registration is first-wins and a model is rendered only where the provider that registered it actually contributed the matching tools, so a plugin can state how its own platform works but never how another's does; a block that lost statements to the length cap says so in the block itself. See [`plugin-authoring.md` §3](plugin-authoring.md#3-provider-protocols).
+**What a platform has no check for — only a wrong assumption.** The table above is the *data* half: facts mureo can verify. The prose half is `mureo.policy.platform_model.register_platform_model` (#648) — one capped paragraph stating how a platform selects and prices delivery, and what it therefore does not have. It is rendered into the server's MCP `instructions` (the `initialize` response), so it is read before any tool call and does not depend on a skill description matching; it appears only when this server serves tools for that platform. Every model carries the same first-party `Evidence` record. The built-in tool families register none — a platform with no registered model contributes nothing rather than a default — while a bundled provider registers its own: the ChatGPT Ads provider does, so with it enabled (the default) the `instructions` carry its `chatgpt_ads` line. Registration is first-wins and a model is rendered only where the provider that registered it actually contributed the matching tools, so a plugin can state how its own platform works but never how another's does; a block that lost statements to the length cap says so in the block itself. See [`plugin-authoring.md` §3](plugin-authoring.md#3-provider-protocols).
 
 **Plugin tool notes — the third `instructions` contribution.** A host that defers tool loading shows the model only tool names, so a plugin tool the agent is meant to offer unprompted is never considered. A plugin tool can declare `_meta["mureo"]["guidance"]`, one paragraph (at most 400 characters, no line boundary of any kind) saying when to consider it, on a tool name of 1–128 characters from `[A-Za-z0-9_.-]`; it is rendered as `- <tool name>: <note>` under a heading stating that a note grants no permission and that every confirmation the tool's own description requires still applies. Only plugin tools this server serves render a note — tools of mureo's own catalog never do. Notes are taken one for each provider in turn, so one provider's notes cannot push out another provider's only note, and the block is capped at 1200 characters, dropping whole notes in that order with a notice in the block. An unusable note is dropped with a `PluginToolWarning`. See [Always-on tool notes](plugin-authoring.md#always-on-tool-notes-optional).
 
@@ -946,6 +947,27 @@ Generate creator-quality ad creatives — text-free key visuals plus copy compos
 | `creative_studio_brand_kit_get` | Return the loaded brand kit (colours, fonts, logo, clear-space) or tasteful defaults | *(none)* |
 | `creative_studio_edit_visual` | Refine an existing key visual through a provider's edit path (art-direction loop) | `path`, `instruction` |
 | `creative_studio_compose` | Composite ad copy + brand kit over a key visual into per-format banner PNGs | `visual_path`, `headline`, `cta` |
+
+### ChatGPT Ads (bundled provider)
+
+Read ChatGPT Ads accounts through OpenAI's Advertiser API. The tools are served by a provider that ships inside mureo (`mureo/chatgpt_ads/`), so they ride the plugin dispatch branch below (audited, throttled per tool) rather than a built-in tool family, but their list is fixed and counted in the total above. The configured Ads API key selects the ad account, so no tool takes an account argument. All nine are read-only. Budgets and bids in returned objects are micros of the account currency; insights `spend` / `cpc` / `cpm` are major currency units. Setup, periods, data freshness, limits and failure shapes: [`chatgpt-ads.md`](chatgpt-ads.md).
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `chatgpt_ads_account_get` | Get the ad account the API key belongs to (id, name, status, time zone, currency) | *(none)* |
+| `chatgpt_ads_campaigns_list` | List campaigns, optionally with serving issues | *(none)* |
+| `chatgpt_ads_campaigns_get` | Get one campaign (budget, bidding, targeting, schedule) | `campaign_id` |
+| `chatgpt_ads_ad_groups_list` | List the ad groups of one campaign | `campaign_id` |
+| `chatgpt_ads_ad_groups_get` | Get one ad group (bid settings, serving issues) | `ad_group_id` |
+| `chatgpt_ads_ads_list` | List ads, optionally within one ad group | *(none)* |
+| `chatgpt_ads_ads_get` | Get one ad (review status, creative, serving issues) | `ad_id` |
+| `chatgpt_ads_insights_report` | Delivery and conversion metrics for a period, at account / campaign / ad group / ad level, optionally daily | *(none)* |
+| `chatgpt_ads_change_history_list` | The account's audit log for a period, optionally narrowed to one campaign, ad group or ad | *(none)* |
+
+- **Env gate.** `MUREO_DISABLE_CHATGPT_ADS=1` leaves the provider unregistered: none of these tools is listed and the configure UI shows no ChatGPT Ads card.
+- **Failures.** A missing key is `auth_error` / `no_credentials`; a rejected key (401, or a 403 that is not a feature gate) is `auth_error` / `token_invalid`; a feature not enabled for the account is the `feature_not_enabled` error envelope; any other platform error is `API error: ...` text. See [Error Handling](#error-handling).
+- **Delivery model.** The provider registers a platform delivery model, so while these tools are served the server's `instructions` carry a `chatgpt_ads` line (see *What a platform has no check for* under [Learning-period reset pre-flight](#learning-period-reset-pre-flight)).
+- **Platform key.** `plugin:mureo-chatgpt-ads:chatgpt_ads`.
 
 ### Amazon Ads (official-MCP bridge)
 
@@ -987,8 +1009,8 @@ Beyond the built-in platforms above, the server also exposes tools from
 entry-point group. A plugin opts in by implementing the
 `MCPToolProvider` Protocol (`mcp_tools()` + `async handle_mcp_tool()`);
 see [`plugin-authoring.md`](plugin-authoring.md) §3. The in-tree Amazon
-Ads bridge implements the same Protocol, so everything below applies to
-it too.
+Ads bridge and the bundled ChatGPT Ads provider implement the same
+Protocol, so everything below applies to them too.
 
 Server behaviour:
 
@@ -1009,9 +1031,10 @@ Server behaviour:
 
 Plugin tools obey the same `MUREO_DISABLE_*` reasoning only insofar as
 the plugin chooses; the disable env vars gate the built-in families,
-not third-party plugins. The in-tree **Amazon Ads bridge** rides this
-same dispatch branch but *is* mureo's own code, so it does have a gate:
-`MUREO_DISABLE_AMAZON_ADS=1`.
+not third-party plugins. The in-tree **Amazon Ads bridge** and the
+bundled **ChatGPT Ads provider** ride this same dispatch branch but *are*
+mureo's own code, so each has a gate: `MUREO_DISABLE_AMAZON_ADS=1` and
+`MUREO_DISABLE_CHATGPT_ADS=1`.
 
 ## Journal (`JOURNAL.jsonl`)
 

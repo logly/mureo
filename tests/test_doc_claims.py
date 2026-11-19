@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+from mureo.chatgpt_ads.tools import TOOLS as CHATGPT_ADS_TOOLS
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analytics_registry import TOOLS as ANALYTICS_REGISTRY_TOOLS
 from mureo.mcp.tools_batch import TOOLS as BATCH_TOOLS
@@ -45,7 +46,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Every built-in tool family ``mureo.mcp.server`` composes into its tool
 #: list, ungated. A family added to the server without being added here
-#: fails ``test_family_list_covers_every_built_in_tool`` below.
+#: fails ``test_family_list_covers_every_built_in_tool`` below. ChatGPT Ads is
+#: served through the plugin path but ships in every install with a fixed tool
+#: list (#993), so it is part of the shipped surface the docs count; Amazon's
+#: tools come from a per-machine manifest and are not.
 _TOOL_FAMILIES = (
     GOOGLE_ADS_TOOLS,
     META_ADS_TOOLS,
@@ -59,6 +63,7 @@ _TOOL_FAMILIES = (
     LEARNING_TOOLS,
     LEARNING_PREFLIGHT_TOOLS,
     CREATIVE_STUDIO_TOOLS,
+    CHATGPT_ADS_TOOLS,
 )
 
 #: Each shipped surface that states the total, paired with the pattern that
