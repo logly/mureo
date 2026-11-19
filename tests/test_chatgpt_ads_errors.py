@@ -78,7 +78,17 @@ def test_secret_shaped_text_is_scrubbed() -> None:
 
 
 @pytest.mark.parametrize(
-    "code", ["bad\ncode", "x" * 100_000, "has space", "", "a" * 65, "tab\tcode"]
+    "code",
+    [
+        "bad\ncode",
+        # An explicit id: pytest puts the test id into an environment
+        # variable, and Windows refuses one longer than 32,767 characters.
+        pytest.param("x" * 100_000, id="100k_chars"),
+        "has space",
+        "",
+        "a" * 65,
+        "tab\tcode",
+    ],
 )
 def test_a_code_outside_the_pattern_is_treated_as_absent(code: str) -> None:
     body = json.dumps({"error": {"message": "m", "code": code}})
