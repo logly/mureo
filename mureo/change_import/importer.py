@@ -45,7 +45,7 @@ from mureo.change_import.models import (
 )
 from mureo.change_import.registry import resolve_change_feed
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
-from mureo.context.state import append_action_log, read_state_file
+from mureo.context.state import append_action_logs, read_state_file
 from mureo.core import clock
 from mureo.core.platform_keys import is_plugin_platform_key, plugin_provider
 
@@ -243,7 +243,7 @@ async def _import_one_platform(
     now: datetime,
     window_minutes: int,
 ) -> ChangeImportOutcome:
-    """Run one platform's import. Never raises."""
+    """Run one platform's import. A feed that fails is reported, not raised."""
     feed = resolve_change_feed(platform)
     if feed is None:
         return _no_feed_outcome(platform, now)
@@ -288,38 +288,9 @@ async def _import_one_platform(
         )
 
     own, foreign = _own_changes(result.changes, feed.platform, platform)
-    imported: list[int] = []
-    already = 0
-    attributed = 0
-    seen = set(imported_change_ids(doc))
-    for change in own:
-        verdict = classify_change(
-            change, doc, window_minutes=window_minutes, seen_ids=seen
-        )
-        if verdict is ImportVerdict.ALREADY_IMPORTED:
-            already += 1
-            continue
-        if verdict is ImportVerdict.ATTRIBUTED_TO_MUREO:
-            attributed += 1
-            continue
-        # Append through the normal choke point for the state lock and the
-        # atomic write, but explicitly OUT of any open batch (#549).
-        #
-        # A batch is the operator's declared change set — "what I did on
-        # Monday". A change mureo merely observed is by definition not
-        # something they did through mureo, and letting it join would make
-        # that set mean something else: an unrelated UI edit imported while
-        # the batch happened to be open would drop the whole batch's rollback
-        # coverage to ``partial`` and be listed as a member the operator
-        # cannot reverse. The same reasoning as the rollback executor's own
-        # ``rollback_of`` record, which is excluded for the same reason.
-        doc = append_action_log(
-            path,
-            to_action_log_entry(change, recorded_at=now),
-            join_active_batch=False,
-        )
-        imported.append(len(doc.action_log) - 1)
-        seen.add(external_change_id(change))
+    imported, already, attributed = _file_changes(
+        path, own, now=now, window_minutes=window_minutes
+    )
 
     notes = result.notes
     if foreign:
@@ -327,7 +298,7 @@ async def _import_one_platform(
     return ChangeImportOutcome(
         platform=platform,
         status=ChangeImportStatus.IMPORTED,
-        imported=tuple(imported),
+        imported=imported,
         already_imported=already,
         attributed_to_mureo=attributed,
         since=start.isoformat(),
@@ -335,6 +306,57 @@ async def _import_one_platform(
         truncated=result.truncated,
         notes=notes,
     )
+
+
+def _file_changes(
+    path: Path,
+    changes: tuple[ExternalChange, ...],
+    *,
+    now: datetime,
+    window_minutes: int,
+) -> tuple[tuple[int, ...], int, int]:
+    """Classify a page and file what is new with one STATE.json write (#1018).
+
+    Returns the ``action_log`` indices of the filed entries, how many changes
+    were already imported and how many were attributed to mureo. Filing them
+    together keeps a pass to one write however long the page is, and a pass
+    that fails while filing leaves STATE.json as it was.
+
+    The page is classified against STATE.json as it is once the feed has
+    answered, not as it was when the pass began: an entry mureo recorded
+    while the feed was being read still claims its own change. Nothing filed
+    here would have changed a later verdict in the page — ``seen`` grows as
+    changes are accepted, and an entry with ``origin`` set never attributes
+    another.
+    """
+    doc = read_state_file(path)
+    entries: list[ActionLogEntry] = []
+    already = 0
+    attributed = 0
+    seen = set(imported_change_ids(doc))
+    for change in changes:
+        verdict = classify_change(
+            change, doc, window_minutes=window_minutes, seen_ids=seen
+        )
+        if verdict is ImportVerdict.ALREADY_IMPORTED:
+            already += 1
+        elif verdict is ImportVerdict.ATTRIBUTED_TO_MUREO:
+            attributed += 1
+        else:
+            entries.append(to_action_log_entry(change, recorded_at=now))
+            seen.add(external_change_id(change))
+    if not entries:
+        return (), already, attributed
+    # Append through the normal choke point for the state lock and the
+    # atomic write. ``append_action_logs`` files observed entries OUT of any
+    # open batch (#549): a batch is the operator's declared change set, and
+    # an unrelated UI edit imported while one happened to be open would drop
+    # its rollback coverage to ``partial`` and be listed as a member the
+    # operator cannot reverse — the reason the rollback executor's own
+    # ``rollback_of`` record is excluded too.
+    written = append_action_logs(path, entries)
+    total = len(written.action_log)
+    return tuple(range(total - len(entries), total)), already, attributed
 
 
 def _own_changes(

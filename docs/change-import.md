@@ -20,7 +20,9 @@ recovery proceeds by elimination against an unknown change set.
 
 Change import polls each platform's own change history, drops what mureo has
 already recorded and what mureo itself did, and writes the rest into
-`action_log` marked as **observed** rather than performed.
+`action_log` marked as **observed** rather than performed. One pass files a
+platform's imported changes in a single STATE.json write, so for each platform
+a pass either files all of them or none.
 
 ## Per-platform coverage
 
