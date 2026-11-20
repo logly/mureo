@@ -947,7 +947,7 @@ Generate creator-quality ad creatives — text-free key visuals plus copy compos
 | `creative_studio_providers_list` | List image-generation providers, whether each has an API key configured, its capabilities, and model ids | *(none)* |
 | `creative_studio_generate_visual` | Generate text-free key-visual PNGs from a visual-only prompt (a hard no-text constraint is appended) | `prompt` |
 | `creative_studio_brand_kit_get` | Return the loaded brand kit (colours, fonts, logo, clear-space) or tasteful defaults | *(none)* |
-| `creative_studio_edit_visual` | Refine an existing key visual through a provider's edit path (art-direction loop) | `path`, `instruction` |
+| `creative_studio_edit_visual` | Refine an existing key visual through a provider's edit path (art-direction loop). The input is read once and must be a PNG by content, or it is refused | `path`, `instruction` |
 | `creative_studio_compose` | Composite ad copy + brand kit over a key visual into per-format banner PNGs | `visual_path`, `headline`, `cta` |
 
 ### ChatGPT Ads (bundled provider)

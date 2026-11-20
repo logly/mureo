@@ -23,7 +23,7 @@ from typing import Any
 
 from mcp.types import TextContent, Tool
 
-from mureo._image_validation import validate_image_file
+from mureo._image_validation import read_image_file, validate_image_file
 from mureo.context.models import ActionLogEntry
 from mureo.context.state import append_action_log
 from mureo.core.clock import server_now_iso
@@ -221,7 +221,7 @@ TOOLS: list[Tool] = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Path to the PNG visual to edit.",
+                    "description": "Path to a PNG image (by content) of at most 30 MB.",
                 },
                 "instruction": {
                     "type": "string",
@@ -603,13 +603,13 @@ async def _handle_edit_visual(arguments: dict[str, Any]) -> list[TextContent]:
     provider_arg = _opt(arguments, "provider")
 
     try:
-        in_path = validate_image_file(
+        in_path, content = read_image_file(
             str(path_arg),
             max_size_bytes=_MAX_IMAGE_BYTES,
             max_size_label=_MAX_IMAGE_LABEL,
             allowed_extensions=_ALLOWED_IMAGE_EXTENSIONS,
         )
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, OSError) as exc:
         return _error("invalid_arguments", f"invalid image path: {exception_text(exc)}")
 
     provider = _resolve_edit_provider(provider_arg)
@@ -629,7 +629,7 @@ async def _handle_edit_visual(arguments: dict[str, Any]) -> list[TextContent]:
 
     try:
         await _THROTTLER.acquire()
-        edited = await provider.edit(in_path.read_bytes(), instruction)
+        edited = await provider.edit(content, instruction)
     except NotSupportedError as exc:
         return _error(
             "invalid_arguments",

@@ -241,7 +241,8 @@ Claude Code では `/creative-generate` で実行。Desktop / Cowork では自�
   ください。
 - **入力検証。** 生成・編集画像とブランドロゴ画像は、下流で使う前に検証されます。
   プロバイダのエンドポイントは固定ベンダーホスト（ユーザー指定 URL なし）なので、
-  新たな SSRF 面はありません。
+  新たな SSRF 面はありません。`creative_studio_edit_visual` の入力は 1 回だけ
+  読み込まれ、中身が PNG でなければプロバイダに何も送る前に拒否されます。
 - **ガードレール。** STRATEGY.md の `## Guardrails` → `blocked_operations` に
   `creative_studio_generate_visual` を記載すると、mureo のポリシーゲートがその
   ツールを拒否します（ツール名マッチ、追加設定不要）。

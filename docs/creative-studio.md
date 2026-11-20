@@ -241,7 +241,9 @@ the prompt body — the two reinforce each other.
   the image prompt.
 - **Input validation.** Generated, edited, and brand-logo images are validated
   before any downstream use; provider endpoints are fixed vendor hosts (no
-  user-supplied URLs, so no new SSRF surface).
+  user-supplied URLs, so no new SSRF surface). The input of
+  `creative_studio_edit_visual` is read once and must be a PNG by content, or it
+  is refused before anything is sent to the provider.
 - **Guardrails.** Listing `creative_studio_generate_visual` under STRATEGY.md
   `## Guardrails` → `blocked_operations` makes mureo's policy gate refuse the tool
   (name-match, no extra config).
