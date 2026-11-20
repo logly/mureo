@@ -638,16 +638,17 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Path to the image file on the agent's filesystem. "
-                        "Meta accepts JPG, PNG, and GIF up to 30 MB. The "
-                        "content must be an image of the type its "
-                        "extension declares."
+                        "Accepted extensions: .jpg, .jpeg, .png, .gif, .bmp, "
+                        ".tiff, .tif; at most 30 MB. The content must be an "
+                        "image of the type its extension declares."
                     ),
                 },
                 "name": {
                     "type": "string",
                     "description": (
-                        "Optional label stored with the uploaded asset. "
-                        "Used only for library organization."
+                        "Accepted so existing calls keep working, but not "
+                        "sent: this upload carries only the image bytes and "
+                        "Meta names the image itself."
                     ),
                 },
             },

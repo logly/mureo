@@ -399,7 +399,7 @@ see its *Apply or draft* section.
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `meta_ads_images_upload_file` | Upload an image from local file | `account_id`, `file_path` |
+| `meta_ads_images_upload_file` | Upload a local JPEG, PNG, GIF, BMP or TIFF image (`.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.tiff`, `.tif`; at most 30MB, content identified as the format its extension names) and return its image hash | `account_id`, `file_path` |
 
 #### Insights
 
