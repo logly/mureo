@@ -528,6 +528,8 @@ class TestTrail:
         self, tmp_path: Path
     ) -> None:
         path = _file(tmp_path, f"{_SENTINEL}@example.com")
-        recorded = json.dumps(mask_arguments(_args(path)))
-        assert path in recorded
-        assert _SENTINEL not in recorded
+        recorded = mask_arguments(_args(path))
+        # Compared as a value: a serialised Windows path doubles its
+        # backslashes, so the path is not a substring of the JSON text.
+        assert recorded["file_path"] == path
+        assert _SENTINEL not in json.dumps(recorded)
