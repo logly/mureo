@@ -716,6 +716,12 @@ class TestAttribution:
         verdict = _verdict(tmp_path, _entry(tool, arguments), row)
         assert verdict is ImportVerdict.IMPORT
 
+    def test_a_row_naming_two_kinds_is_imported(self, tmp_path: Path) -> None:
+        """A budget and a status changed in one entry is not mureo's budget edit."""
+        entry = _entry("chatgpt_ads_campaigns_update_budget", {"campaign_id": "cmpn_1"})
+        row = {**_CAMPAIGN_ROW, "changes": {"budget": {}, "status": {}}}
+        assert _verdict(tmp_path, entry, row) is ImportVerdict.IMPORT
+
     def test_another_kind_is_imported(self, tmp_path: Path) -> None:
         entry = _entry("chatgpt_ads_campaigns_pause", {"campaign_id": "cmpn_123"})
         assert _verdict(tmp_path, entry, DOCUMENTED_ROW) is ImportVerdict.IMPORT

@@ -29,15 +29,17 @@ as an empty window.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from mureo import client_factory
 from mureo.byod import runtime as byod_runtime
 from mureo.change_import.models import ChangeFeedResult, ExternalChange
 from mureo.core.credential_source import current_google_source
+from mureo.core.zones import zone_or_none
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
 #: Retention the Google Ads API documents for ``change_event``.
 _RETENTION_DAYS = 30
@@ -55,6 +57,52 @@ _TRUNCATION_NOTE = (
     "older changes inside this window are unreachable. Poll more often; they "
     "cannot be recovered later."
 )
+
+_UNKNOWN_ZONE_NOTE = (
+    "The account's time zone could not be read, so change times are kept as "
+    "the platform reported them and read as UTC. A change made through mureo "
+    "may therefore be imported as external."
+)
+
+
+def _window_days(
+    since: datetime, until: datetime, zone: ZoneInfo | None
+) -> tuple[str, str]:
+    """The first and last calendar day to ask for, as ISO dates.
+
+    The filter compares account-local days, so each edge is placed on the
+    account's calendar when the zone is known. The edge's own date is covered
+    as well: an entry imported before change times carried an offset holds an
+    account-local time that reads as UTC, and a start derived from it,
+    converted to the account's zone, can land on the day after the change.
+    Its own date is the day the change was made on.
+    """
+    first, last = since.date(), until.date()
+    if zone is not None:
+        first = min(first, since.astimezone(zone).date())
+        last = max(last, until.astimezone(zone).date())
+    return first.isoformat(), last.isoformat()
+
+
+def _occurred_at(reported: str, zone: ZoneInfo | None) -> str:
+    """The change time as offset-bearing ISO 8601 when the zone is known.
+
+    ``change_date_time`` is account-local with no offset (#1008), while
+    mureo's own entries carry one, so reading the bare value as UTC moves
+    every change by the account's offset and the attribution window misses.
+    A value that already carries an offset is kept; without a known zone, or
+    when the value does not parse, the normalised string is kept as reported.
+    A local time the clocks repeat when they go back is read as its first
+    occurrence: the value itself does not say which one it is.
+    """
+    normalised = reported.replace(" ", "T", 1)
+    try:
+        parsed = datetime.fromisoformat(normalised)
+    except ValueError:
+        return normalised
+    if parsed.tzinfo is not None or zone is None:
+        return normalised
+    return parsed.replace(tzinfo=zone).isoformat()
 
 
 def _id_from_resource_name(resource_name: str, segment: str) -> str | None:
@@ -206,8 +254,11 @@ def _row_identity(row: dict[str, Any], resource_type: str) -> dict[str, Any]:
     return identity
 
 
-def _row_to_change(row: dict[str, Any]) -> ExternalChange | None:
+def _row_to_change(row: dict[str, Any], zone: ZoneInfo | None) -> ExternalChange | None:
     """Normalise one ``list_change_history`` row, or ``None`` if unusable.
+
+    ``zone`` is the account's time zone, which the row's change time is
+    reported in (see :func:`_occurred_at`).
 
     A row without a change timestamp is dropped: the observation window and
     the watermark both anchor on it, and a change dated "now" because its own
@@ -221,9 +272,7 @@ def _row_to_change(row: dict[str, Any]) -> ExternalChange | None:
     changed_fields = row.get("changed_fields") or []
     return ExternalChange(
         platform="google_ads",
-        # Google returns ``YYYY-MM-DD HH:MM:SS`` in the account timezone;
-        # normalise the separator so ``datetime.fromisoformat`` parses it.
-        occurred_at=occurred_at.replace(" ", "T", 1),
+        occurred_at=_occurred_at(occurred_at, zone),
         resource_type=resource_type,
         operation=str(row.get("resource_change_operation") or "UNKNOWN"),
         change_id=str(row.get("resource_name") or ""),
@@ -248,9 +297,11 @@ class GoogleAdsChangeFeed:
     ) -> ChangeFeedResult:
         """Fetch the account's change history for ``[since, until]``.
 
-        The window is narrowed to whole days because ``change_event``'s filter
-        is day-grained on mureo's side; the extra hours at each edge cost
-        nothing, since the deduper drops anything already imported.
+        The window is widened to whole days (see :func:`_window_days`),
+        because ``change_event``'s filter is day-grained on mureo's side and
+        compares account-local times; the extra hours at each edge cost
+        nothing, since the deduper drops anything already imported. When the
+        account's zone cannot be read, the days are the edges' own dates.
         """
         # SDK import is ~1 s of CPU on first use; keep it off the event loop (#809)
         client = await asyncio.to_thread(self._open_client, account_id)
@@ -267,9 +318,10 @@ class GoogleAdsChangeFeed:
                     "checked — this is not evidence that nothing changed."
                 )
             )
+        zone = zone_or_none(await client.get_account_time_zone())
+        start_date, end_date = _window_days(since, until, zone)
         rows = await client.list_change_history(
-            start_date=since.date().isoformat(),
-            end_date=until.date().isoformat(),
+            start_date=start_date, end_date=end_date
         )
         # Startup cost (~0.6 s CPU): the Google Ads SDK behind this constant is deferred to the first live import (#863).
         from mureo.google_ads._extensions_targeting import (  # noqa: PLC0415 — startup cost (#863)
@@ -278,9 +330,13 @@ class GoogleAdsChangeFeed:
 
         truncated = len(rows) >= CHANGE_HISTORY_ROW_LIMIT
         changes = tuple(
-            change for change in (_row_to_change(row) for row in rows) if change
+            change for change in (_row_to_change(row, zone) for row in rows) if change
         )
-        notes = _COVERAGE_NOTES + ((_TRUNCATION_NOTE,) if truncated else ())
+        notes = (
+            _COVERAGE_NOTES
+            + ((_TRUNCATION_NOTE,) if truncated else ())
+            + ((_UNKNOWN_ZONE_NOTE,) if zone is None else ())
+        )
         return ChangeFeedResult(changes=changes, truncated=truncated, notes=notes)
 
     def _open_client(self, account_id: str) -> Any:

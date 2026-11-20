@@ -25,6 +25,7 @@ import pytest
 from mureo.change_import import (
     ATTRIBUTION_WINDOW_MINUTES,
     CHANGE_FEED_ENTRY_POINT_GROUP,
+    DEFAULT_LOOKBACK_DAYS,
     ChangeFeedProvider,
     ChangeFeedResult,
     ChangeFeedWarning,
@@ -46,6 +47,7 @@ from mureo.change_import import (
 from mureo.change_import import registry as registry_mod
 from mureo.change_import.builtin import builtin_change_feeds
 from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
+from mureo.change_import.dedupe import KIND_STATUS, change_kind
 from mureo.change_import.registry import ChangeFeedRegistry
 from mureo.context.batch import batch_members
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
@@ -661,6 +663,54 @@ class TestNoDoubleCounting:
         assert classify_change(_change(occurred_at=NOW.isoformat()), doc) is (
             ImportVerdict.IMPORT
         )
+
+    def test_a_row_naming_two_kinds_has_no_kind(self) -> None:
+        """A budget field and a status field on one row: neither kind (#1009)."""
+        change = _change(changed_fields=("campaign_budget", "status"))
+        assert change_kind(change) == ""
+
+    def test_two_fields_of_one_kind_keep_that_kind(self) -> None:
+        change = _change(changed_fields=("status", "primary_status"))
+        assert change_kind(change) == KIND_STATUS
+
+    def test_a_field_with_no_kind_does_not_hide_one_that_has_it(self) -> None:
+        change = _change(changed_fields=("name", "status"))
+        assert change_kind(change) == KIND_STATUS
+
+    def test_a_mixed_row_is_not_absorbed_by_a_single_kind_action(self) -> None:
+        """mureo edits the budget; the same row also changes the status.
+
+        Matching on the first field would read the row as mureo's budget edit
+        and drop the status change with it.
+        """
+        doc = _log(
+            action="google_ads_budget_update",
+            campaign_id="111",
+            timestamp=NOW - timedelta(minutes=2),
+        )
+        mixed = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("campaign_budget", "status"),
+            operation="UPDATE",
+            campaign_id="111",
+        )
+        assert classify_change(mixed, doc) is ImportVerdict.IMPORT
+
+    def test_a_budget_only_row_is_still_absorbed_by_the_budget_action(self) -> None:
+        doc = _log(
+            action="google_ads_budget_update",
+            campaign_id="111",
+            timestamp=NOW - timedelta(minutes=2),
+        )
+        budget_only = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("campaign_budget",),
+            operation="UPDATE",
+            campaign_id="111",
+        )
+        assert classify_change(budget_only, doc) is ImportVerdict.ATTRIBUTED_TO_MUREO
 
 
 # ---------------------------------------------------------------------------
@@ -1450,6 +1500,60 @@ class TestWatermark:
     @pytest.mark.asyncio
     async def test_an_explicit_since_wins(self, tmp_path: Path) -> None:
         path = _write_state(tmp_path, {"google_ads": "123"})
+        feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+        asked = NOW - timedelta(days=3)
+
+        await import_external_changes(path, since=asked, now=NOW)
+
+        assert feed.calls[0][1] == asked
+
+    @staticmethod
+    def _record_external(path: Path, occurred: datetime, change_id: str) -> None:
+        append_action_log(
+            path,
+            to_action_log_entry(
+                _change(occurred_at=occurred.isoformat(), change_id=change_id),
+                recorded_at=NOW,
+            ),
+            join_active_batch=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_entry_dated_after_now_does_not_move_the_start(
+        self, tmp_path: Path
+    ) -> None:
+        """A start past now would ask every later pass for a future window (#1010)."""
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        older = NOW - timedelta(hours=3)
+        self._record_external(path, NOW + timedelta(days=1), "future")
+        self._record_external(path, older, "older")
+        feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+
+        await import_external_changes(path, now=NOW)
+
+        assert feed.calls[0][1] == older
+
+    @pytest.mark.asyncio
+    async def test_only_a_future_entry_falls_back_to_the_default_lookback(
+        self, tmp_path: Path
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        self._record_external(path, NOW + timedelta(days=1), "future")
+        feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+
+        await import_external_changes(path, now=NOW)
+
+        assert feed.calls[0][1] == NOW - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+
+    @pytest.mark.asyncio
+    async def test_an_explicit_since_still_wins_over_a_future_entry(
+        self, tmp_path: Path
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        self._record_external(path, NOW + timedelta(days=1), "future")
         feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
         register_change_feed(feed)
         asked = NOW - timedelta(days=3)

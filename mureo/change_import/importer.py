@@ -141,19 +141,28 @@ def _parse_iso(value: str) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def latest_imported_at(doc: StateDocument, platform: str) -> datetime | None:
+def latest_imported_at(
+    doc: StateDocument, platform: str, *, now: datetime
+) -> datetime | None:
     """Newest ``occurred_at`` already imported for ``platform``, or ``None``.
 
     The derived watermark. Reads only entries mureo imported (``origin`` is
     external): a mureo-originated entry's ``timestamp`` says when mureo acted,
     which is no evidence about how far the change FEED has been read.
+
+    Entries dated after ``now`` are skipped (#1010). One such entry would
+    otherwise move the start past now, and every later pass would ask for a
+    window that begins in the future. The entry stays in the log and counts
+    again once its time has passed.
     """
     newest: datetime | None = None
     for entry in doc.action_log:
         if not entry.is_external or entry.platform != platform:
             continue
         moment = _parse_iso(entry.occurred_at or entry.timestamp)
-        if moment is not None and (newest is None or moment > newest):
+        if moment is None or moment > now:
+            continue
+        if newest is None or moment > newest:
             newest = moment
     return newest
 
@@ -241,7 +250,7 @@ async def _import_one_platform(
 
     start = (
         since
-        or latest_imported_at(doc, platform)
+        or latest_imported_at(doc, platform, now=now)
         or (now - timedelta(days=DEFAULT_LOOKBACK_DAYS))
     )
     try:
