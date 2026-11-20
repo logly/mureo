@@ -34,11 +34,8 @@ async def handle_images_upload_file(args: dict[str, Any]) -> list[TextContent]:
     file_path = _require(args, "file_path")
     if not os.path.isfile(file_path):
         raise ValueError(f"File not found: {file_path}")
-    _allowed_image_ext = (".png", ".jpg", ".jpeg", ".gif", ".webp")
-    if not file_path.lower().endswith(_allowed_image_ext):
-        raise ValueError(
-            f"Unsupported image format. Allowed: {', '.join(_allowed_image_ext)}"
-        )
+    # The client's read is the only extension check, so the tool and the
+    # upload cannot disagree on which formats are accepted.
     name = _opt(args, "name")
     result = await client.upload_ad_image_file(file_path, name=name)
     return _json_result(result)
