@@ -264,5 +264,16 @@ def truncate_text(value: str, limit: int) -> str:
 
 
 def one_log_line(value: str) -> str:
-    """Collapse newlines so platform-authored text cannot forge a log record."""
-    return " ".join(value.split())
+    """Platform-authored text as one printable line.
+
+    A line break would let the text forge a second log record; an escape
+    introducer, a NUL, any other control character or a bidirectional
+    override would change how a terminal or a log viewer displays the line.
+    Every character :meth:`str.isprintable` rejects goes, the invisible
+    format characters (zero-width joiners and spaces) included.
+    Non-printable characters that are not whitespace are dropped first, so
+    the whitespace collapse that follows still turns a line break into the
+    space that separates two words and leaves no doubled space behind.
+    """
+    kept = "".join(ch for ch in value if ch.isprintable() or ch.isspace())
+    return " ".join(kept.split())

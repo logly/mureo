@@ -67,6 +67,31 @@ reported on every result rather than buried here:
   disapproval, an automated rule firing — none of these appear. An empty
   feed is not evidence of a static account.
 
+### Change times are in the account's time zone
+
+`change_event.change_date_time` carries no offset: it is the time in the
+**account's** time zone. The feed reads `customer.time_zone` once per pass,
+attaches that zone to every change time (`2026-08-05 09:14:00` in an
+Asia/Tokyo account is recorded as `2026-08-05T09:14:00+09:00`), and asks for
+whole days of the account's calendar. mureo's own `action_log` entries carry
+an offset, so without the zone a change in a non-UTC account is off by the
+account's offset and the 10-minute attribution window never matches (#1008).
+
+When the zone cannot be read (the account reports none, or a name the system
+does not know), change times are kept as the platform reported them and read
+as UTC, the days are the window edges' own dates, and the result says so in
+`notes`: a change made through mureo may then be imported as external. A
+failure of the zone query itself is reported as `error`, like a failure of
+the change-history query.
+
+Entries imported before this conversion keep the time they were recorded
+with. They are recognised as already imported by their `external_id`, which
+is the event's `resource_name`, so they are neither imported again nor
+rewritten. A window start derived from such an entry is an account-local
+time read as UTC, so the first day asked for is the earlier of the start's
+own date and its date on the account's calendar (and the last day the later
+of the two): the day the change was made on is always inside the window.
+
 ## How an imported change is recorded
 
 An imported change is an `action_log` entry like any other, with three extra
@@ -186,7 +211,11 @@ A small shared vocabulary — `status`, `budget`, `bid`, `criterion`, `ad`,
   edit as `CAMPAIGN` + `changed_fields=["campaign_budget"]` at least as often
   as it reports it as `CAMPAIGN_BUDGET`; reading only the resource type would
   file the first one as a generic campaign edit — the same bucket a status
-  toggle falls into.
+  toggle falls into. Every field is classified: a row whose fields name more
+  than one of `budget` / `bid` / `status` (a budget and a status edited
+  together) has no kind, so it is imported (#1009). It is not the change
+  any single-kind mureo action made, and matching it on its first field
+  would drop the other edit silently.
 - **From `action_log`**: the tool name, matched verb-before-noun so
   `google_ads_campaigns_update_status` reads as `status` rather than
   `campaign`.
@@ -305,6 +334,12 @@ Where the next poll starts is **derived**, not stored: it is the newest
 of `action_log`. The first pass falls back to a deliberately short 7-day
 lookback — a wider first window does not recover more history, it just makes
 a row-capped feed likelier to truncate and lose the newest changes too.
+
+Imported entries dated after the time of the pass are ignored when the start
+is derived (#1010). One such entry would otherwise move the start past now,
+and every later pass would ask for a window that begins in the future. The
+entry stays in `action_log` and counts again once its time has passed. An
+explicit `since` still wins over the derived start.
 
 > **Continuous polling is the only thing that captures history.** A one-off
 > deep backfill is not available and cannot be made available: what has aged

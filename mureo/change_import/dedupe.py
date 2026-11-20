@@ -29,7 +29,8 @@ overlapping on the same campaign is normal for a while after onboarding (see
 ``/daily-check`` → *Mixed operation*), so this is the common case, not the
 corner. A match therefore also requires the two to be the **same kind of
 change** — see :func:`change_kind` / :func:`action_kind` for the vocabulary
-and :func:`_kinds_match` for the rule.
+and :func:`_kinds_match` for the rule. A row whose fields name more than one
+kind (a budget and a status edited together) has no kind, so it is imported.
 
 **Which way it fails matters.** Wherever the comparison cannot be made —
 identity missing on either side, kind underivable on either side — the change
@@ -99,7 +100,8 @@ KIND_CAMPAIGN = "campaign"
 #: budget edit can arrive as ``CAMPAIGN`` + ``changed_fields=["campaign_budget"]``
 #: as easily as ``CAMPAIGN_BUDGET``; reading only the resource type would call
 #: the first one a generic campaign edit and let it match a status toggle.
-#: Ordered — first hit wins.
+#: Ordered — within ONE field the first hit wins; across fields see
+#: :func:`change_kind`.
 _FIELD_KINDS: tuple[tuple[str, str], ...] = (
     ("budget", KIND_BUDGET),
     ("bid", KIND_BID),
@@ -332,15 +334,29 @@ def change_kind(change: ExternalChange) -> str:
     that as a generic campaign edit — which is exactly the bucket a status
     toggle falls into.
 
+    Every field is classified, and a row whose fields name more than one kind
+    has no kind (#1009). A row editing two settings at once is not the change
+    any single-kind mureo action made, and matching it on its first field
+    would drop the other edit silently.
+
     ``""`` is returned rather than a permissive default. A kind mureo cannot
     derive must not be allowed to match anything; see :func:`_kinds_match`.
     """
-    for field in change.changed_fields:
-        lowered = field.lower()
-        for token, kind in _FIELD_KINDS:
-            if token in lowered:
-                return kind
+    field_kinds = {_field_kind(field) for field in change.changed_fields} - {""}
+    if len(field_kinds) > 1:
+        return ""
+    if field_kinds:
+        return next(iter(field_kinds))
     return _RESOURCE_KINDS.get(change.resource_type.strip().upper(), "")
+
+
+def _field_kind(field: str) -> str:
+    """The kind one ``changed_fields`` entry names, or ``""`` for none."""
+    lowered = field.lower()
+    for token, kind in _FIELD_KINDS:
+        if token in lowered:
+            return kind
+    return ""
 
 
 def action_kind(action: str) -> str:

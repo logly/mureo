@@ -642,7 +642,7 @@ Record changes made **outside** mureo — in a platform's own UI, its editor, or
 |------|-------------|-------------------|
 | `mureo_external_changes_import` | Poll each configured platform's change feed and append anything mureo did not do to `action_log` with `origin: "external"`. Skips changes already imported and changes mureo itself made. Idempotent. | *(none)* |
 
-Optional: `platforms` (array of platform keys; omit to cover every platform in STATE.json), `since` (ISO 8601 window start; omit to resume from the newest change already imported), `path`.
+Optional: `platforms` (array of platform keys; omit to cover every platform in STATE.json), `since` (ISO 8601 window start; omit to resume from the newest change already imported that is not dated after now), `path`.
 
 **The response is designed to be read for blind spots, not just for finds.** Every configured platform appears in `platforms[]`:
 

@@ -381,3 +381,46 @@ class TestLogTextHelpers:
         self, value: str, expected: str
     ) -> None:
         assert logging_setup.one_log_line(value) == expected
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            # A terminal escape sequence loses its introducer, so it cannot
+            # recolour or rewrite the line it is printed on.
+            ("a\x1b[31mred\x1b[0m", "a[31mred[0m"),
+            ("nul\x00byte", "nulbyte"),
+            ("bell\x07 and backspace\x08", "bell and backspace"),
+            ("c1\x9bcsi", "c1csi"),
+            # Bidirectional overrides and isolates reorder what is displayed.
+            ("user \u202egnp.exe\u202c", "user gnp.exe"),
+            ("a\u2066b\u2069c", "abc"),
+            # Line and paragraph separators end a line in a log viewer.
+            ("a\u2028b\u2029c", "a b c"),
+            # A dropped character between two spaces leaves one space.
+            ("a \x1b b", "a b"),
+            ("\x1b\x00", ""),
+            ("del\x7f", "del"),
+            # Format characters are invisible, so they go with the controls.
+            ("a\N{ZERO WIDTH JOINER}b\N{ZERO WIDTH SPACE}c", "abc"),
+            # A no-break space is whitespace: it separates words.
+            ("a\N{NO-BREAK SPACE}b", "a b"),
+            # A lone surrogate cannot be encoded by a log handler.
+            (chr(0xD800) + "x", "x"),
+        ],
+    )
+    def test_one_log_line_drops_non_printable_characters(
+        self, value: str, expected: str
+    ) -> None:
+        assert logging_setup.one_log_line(value) == expected
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "Invalid OAuth token",
+            "\u30a8\u30e9\u30fc: \u7121\u52b9",  # CJK
+            "na\u00efve caf\u00e9 \u2014 ok",
+            "\U0001f642 ok",
+        ],
+    )
+    def test_one_log_line_keeps_printable_text_of_any_script(self, value: str) -> None:
+        assert logging_setup.one_log_line(value) == value
