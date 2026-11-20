@@ -58,6 +58,19 @@ def test_message_newlines_collapse_to_one_line() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize("key", ["message", "error_user_title", "error_user_msg"])
+def test_non_printable_characters_are_dropped(key: str) -> None:
+    out = _fmt({key: "bad \x1b[31mtoken\x00 \u202eevil\u202c", "code": 190})
+    assert out == "bad [31mtoken evil | code=190"
+
+
+@pytest.mark.unit
+def test_a_field_of_only_non_printable_characters_is_dropped() -> None:
+    assert _fmt({"message": "\x1b\x00", "code": 190}) == "code=190"
+    assert _fmt({"message": "\x1b\x00"}) == _FALLBACK
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("key", ["message", "error_user_title", "error_user_msg"])
 def test_text_fields_are_bounded(key: str) -> None:
     out = _fmt({key: "A" * (GRAPH_ERROR_MESSAGE_MAX_CHARS * 3)})
     assert "A" * (GRAPH_ERROR_MESSAGE_MAX_CHARS + 1) not in out

@@ -151,13 +151,10 @@ def _read_body(body_text: str) -> tuple[str | None, str | None]:
 def _clean(message: str) -> str:
     """Platform text made safe to quote on one line.
 
-    Whitespace runs (newlines included) collapse to one space first, so a
-    line break still separates words; every remaining non-printable
-    character is then dropped before the scrub and the cut.
+    :func:`~mureo.logging_setup.one_log_line` makes it one printable line
+    (a line break still separates words); the scrub and the cut follow.
     """
-    line = one_log_line(message)
-    printable = "".join(ch for ch in line if ch.isprintable() or ch == " ")
-    scrubbed = scrub_capped(printable, _MAX_TEXT_CHARS + 1, mode=PROSE)
+    scrubbed = scrub_capped(one_log_line(message), _MAX_TEXT_CHARS + 1, mode=PROSE)
     return truncate_text(scrubbed, _MAX_TEXT_CHARS)
 
 
