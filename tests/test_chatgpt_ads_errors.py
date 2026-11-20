@@ -65,10 +65,10 @@ def test_json_message_text_is_quoted_on_one_line() -> None:
 
 
 def test_non_printable_characters_are_dropped() -> None:
-    message = "a\x1b[31mred\x07 ‮bidi\x85 \x00end"
+    message = "a\x1b[31mred\x07 \u202ebidi\x85 \x00end"
     error = error_from_response(400, json.dumps({"error": {"message": message}}))
     text = str(error)
-    for char in ("\x1b", "\x07", "‮", "\x85", "\x00"):
+    for char in ("\x1b", "\x07", "\u202e", "\x85", "\x00"):
         assert char not in text
     assert "red" in text and "bidi" in text and "end" in text
 
