@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 
+import mureo.context.state_io as state_io
 from mureo.change_import import (
     ATTRIBUTION_WINDOW_MINUTES,
     CHANGE_FEED_ENTRY_POINT_GROUP,
@@ -853,7 +854,7 @@ class TestImportsStayOutOfBatches:
 class TestProvenanceSurvivesBatchStamping:
     """The path #545 does NOT route around.
 
-    The importer passes ``join_active_batch=False``, so it never reaches
+    An import is filed with ``join_active_batch=False``, so it never reaches
     ``stamp_batch`` at all. A hosted connector does: mureo holds no
     credentials for TikTok and dispatches nothing, so an agent records what it
     read from the connector's own change history through
@@ -1561,3 +1562,183 @@ class TestWatermark:
         await import_external_changes(path, since=asked, now=NOW)
 
         assert feed.calls[0][1] == asked
+
+
+# ---------------------------------------------------------------------------
+# One pass files a platform's changes with one STATE.json write (#1018)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestOneWritePerPass:
+    """A write per imported row made a pass quadratic in the page size."""
+
+    @pytest.fixture
+    def writes(self, monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+        calls: list[Path] = []
+        real = state_io.write_state_file
+
+        def _spy(path: Path, doc: Any, **kwargs: Any) -> None:
+            calls.append(path)
+            real(path, doc, **kwargs)
+
+        monkeypatch.setattr(state_io, "write_state_file", _spy)
+        return calls
+
+    @staticmethod
+    def _page(*ids: str) -> tuple[ExternalChange, ...]:
+        return tuple(
+            _change(change_id=f"customers/1/changeEvents/{i}", campaign_id=i)
+            for i in ids
+        )
+
+    @pytest.mark.asyncio
+    async def test_several_changes_are_filed_with_one_write(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        page = self._page("1", "2", "3")
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=page)))
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert len(writes) == 1
+        log = read_state_file(path).action_log
+        assert outcomes[0].imported == (0, 1, 2)
+        assert [log[i].external_id for i in outcomes[0].imported] == [
+            external_change_id(c) for c in page
+        ]
+
+    @pytest.mark.asyncio
+    async def test_an_entry_recorded_while_the_feed_answers_claims_its_change(
+        self, tmp_path: Path
+    ) -> None:
+        """The page is checked against STATE.json as the feed left it.
+
+        mureo records its entry after the platform accepted the change, so a
+        pass that began in between must not file that change as external.
+        """
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        echo = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("status",),
+            operation="UPDATE",
+            campaign_id="111",
+            client_type="GOOGLE_ADS_API",
+        )
+
+        class _RecordsMeanwhile(_StubFeed):
+            async def fetch_change_events(
+                self, account_id: str, *, since: datetime, until: datetime
+            ) -> ChangeFeedResult:
+                append_action_log(
+                    path,
+                    ActionLogEntry(
+                        timestamp=(NOW - timedelta(minutes=1)).isoformat(),
+                        action="google_ads_campaigns_update_status",
+                        platform="google_ads",
+                        campaign_id="111",
+                    ),
+                )
+                return await super().fetch_change_events(
+                    account_id, since=since, until=until
+                )
+
+        register_change_feed(
+            _RecordsMeanwhile("google_ads", ChangeFeedResult(changes=(echo,)))
+        )
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert outcomes[0].attributed_to_mureo == 1
+        assert outcomes[0].imported == ()
+        assert [e.is_external for e in read_state_file(path).action_log] == [False]
+
+    @pytest.mark.asyncio
+    async def test_a_pass_with_everything_already_imported_writes_nothing(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        page = self._page("1", "2")
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=page)))
+        await import_external_changes(path, now=NOW)
+        writes.clear()
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert writes == []
+        assert outcomes[0].imported == ()
+        assert outcomes[0].already_imported == 2
+
+    @pytest.mark.asyncio
+    async def test_a_pass_with_everything_attributed_writes_nothing(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        append_action_log(
+            path,
+            ActionLogEntry(
+                timestamp=(NOW - timedelta(minutes=1)).isoformat(),
+                action="google_ads_campaigns_update_status",
+                platform="google_ads",
+                campaign_id="111",
+            ),
+        )
+        writes.clear()
+        echo = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("status",),
+            operation="UPDATE",
+            campaign_id="111",
+            client_type="GOOGLE_ADS_API",
+        )
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=(echo,))))
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert writes == []
+        assert outcomes[0].attributed_to_mureo == 1
+        assert outcomes[0].imported == ()
+
+    @pytest.mark.asyncio
+    async def test_the_same_change_twice_in_one_page_is_filed_once(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        page = (*self._page("1"), *self._page("1"), *self._page("2"))
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=page)))
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert len(writes) == 1
+        assert outcomes[0].imported == (0, 1)
+        assert outcomes[0].already_imported == 1
+        assert len(read_state_file(path).action_log) == 2
+
+    @pytest.mark.asyncio
+    async def test_reported_indices_start_after_the_entries_already_on_disk(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        for tag in ("x", "y"):
+            append_action_log(
+                path,
+                ActionLogEntry(
+                    timestamp=(NOW - timedelta(days=2)).isoformat(),
+                    action="google_ads_budget_update",
+                    platform="google_ads",
+                    campaign_id=tag,
+                ),
+            )
+        writes.clear()
+        page = self._page("1", "2")
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=page)))
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert len(writes) == 1
+        assert outcomes[0].imported == (2, 3)
+        log = read_state_file(path).action_log
+        assert [log[i].is_external for i in outcomes[0].imported] == [True, True]

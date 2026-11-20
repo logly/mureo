@@ -239,7 +239,7 @@ mureo/
 │   │                        #   and daily; no logic of its own since #917
 │   ├── state_io.py          # read_state_file / write_state_file, the atomic write, the state lock, the clock
 │   ├── campaign_store.py    # upsert_campaign / get_campaign + _platform_base / _stamp_fetched_at
-│   ├── action_log_store.py  # append_action_log — the single recording choke point
+│   ├── action_log_store.py  # append_action_log — the single recording choke point; append_action_logs files several observed entries through it in one write
 │   ├── batch_store.py       # begin_batch / end_batch (the path half of batch.py)
 │   ├── platform_store.py    # set_platform_metrics / _daily / _not_collected, set_workspace_not_collected,
 │   │                        #   set_conversion_action_types

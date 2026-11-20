@@ -11,7 +11,8 @@ re-exported from the module that defines it, lowest layer first.
 - :mod:`mureo.context.campaign_store` — campaign upserts, and the
   platform-entry helpers every targeted write builds on;
 - :mod:`mureo.context.action_log_store` — :func:`append_action_log`, the
-  single recording choke point;
+  single recording choke point, and :func:`append_action_logs`, the same
+  steps for several entries in one write;
 - :mod:`mureo.context.batch_store` — opening and closing a batch;
 - :mod:`mureo.context.platform_store` — a platform entry's rollups,
   ``daily`` history, ``not_collected`` notes and conversion override;
@@ -36,7 +37,7 @@ Three halves were split out earlier, and are re-exported here too:
 
 from __future__ import annotations
 
-from mureo.context.action_log_store import append_action_log
+from mureo.context.action_log_store import append_action_log, append_action_logs
 from mureo.context.batch_store import begin_batch, end_batch
 from mureo.context.campaign_store import _platform_base as _platform_base
 from mureo.context.campaign_store import _stamp_fetched_at as _stamp_fetched_at
@@ -100,6 +101,7 @@ __all__ = [
     # ``no_implicit_reexport`` treats as an accident.
     "_locked_state_mutation",
     "append_action_log",
+    "append_action_logs",
     "begin_batch",
     "end_batch",
     "get_campaign",
