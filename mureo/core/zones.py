@@ -18,13 +18,16 @@ def zone_or_none(value: object) -> ZoneInfo | None:
 
     ``ZoneInfo`` raises :class:`~zoneinfo.ZoneInfoNotFoundError` for a key it
     has no data for and :class:`ValueError` for one that is not a plain key
-    (an absolute path, a ``..`` segment), so a name taken from an API answer
-    can do no more than fail to resolve. The caller decides what an unknown
-    zone means for it.
+    (an absolute path, a ``..`` segment). Where the zone data comes from the
+    ``tzdata`` package rather than the system (always on Windows), a key that
+    names a directory of the database (``America``) or is too long to be a
+    file name surfaces as the :class:`OSError` of the failed open instead. A
+    name taken from an API answer can therefore do no more than fail to
+    resolve. The caller decides what an unknown zone means for it.
     """
     if not isinstance(value, str) or not value:
         return None
     try:
         return ZoneInfo(value)
-    except (ZoneInfoNotFoundError, ValueError):
+    except (ZoneInfoNotFoundError, ValueError, OSError):
         return None
