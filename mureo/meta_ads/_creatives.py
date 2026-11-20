@@ -11,6 +11,7 @@ is why neither module imports the other.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -21,7 +22,7 @@ import httpx
 from mureo._image_validation import (
     LOCAL_UPLOAD_MAX_IMAGE_BYTES,
     LOCAL_UPLOAD_MAX_IMAGE_LABEL,
-    validate_image_file,
+    read_image_file,
 )
 from mureo.core.tool_failure import exception_text
 from mureo.core.url_guard import UnsafeUrlError, validate_public_url
@@ -578,7 +579,8 @@ class CreativesMixin:
             FileNotFoundError: If the file does not exist.
             ValueError: Validation error
         """
-        path = validate_image_file(
+        _, content = await asyncio.to_thread(
+            read_image_file,
             file_path,
             max_size_bytes=LOCAL_UPLOAD_MAX_IMAGE_BYTES,
             max_size_label=LOCAL_UPLOAD_MAX_IMAGE_LABEL,
@@ -595,10 +597,8 @@ class CreativesMixin:
         # Routing through the shared ``_post``/``_request`` machinery adds Meta's
         # error JSON surfacing, retries, 429 and rate-limit handling, and puts
         # auth on the Bearer header (no access_token form field).
-        with open(path, "rb") as f:
-            image_bytes = base64.b64encode(f.read()).decode("utf-8")
-
-        data: dict[str, Any] = {"bytes": image_bytes}
+        # The bytes sent are the bytes read_image_file checked (#1011).
+        data: dict[str, Any] = {"bytes": base64.b64encode(content).decode("utf-8")}
 
         # The file is validated up to 30MB; base64 of that is ~40MB of body, so
         # keep a 60s timeout rather than the shared client's 30s default so a

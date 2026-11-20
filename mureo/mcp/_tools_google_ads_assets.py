@@ -27,10 +27,12 @@ TOOLS: list[Tool] = [
             "customer account; removal must be done through the Google "
             "Ads UI (there is no corresponding delete tool). The file "
             "is validated before upload: max 5 MB, extensions must be "
-            "jpg/jpeg/png/gif. Side effect: reads file_path from the "
-            "local filesystem of the MCP server host and POSTs the raw "
-            "bytes to Google. For creating the ad that references this "
-            "asset afterwards use google_ads_ads_create_display."
+            "jpg/jpeg/png/gif, and the content must be an image of the "
+            "type its extension declares. Side effect: reads file_path "
+            "once from the local filesystem of the MCP server host and "
+            "POSTs exactly the bytes it checked to Google. For creating "
+            "the ad that references this asset afterwards use "
+            "google_ads_ads_create_display."
         ),
         inputSchema={
             "type": "object",

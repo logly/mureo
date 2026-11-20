@@ -15,6 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.test_image_validation_dimensions import _jpeg, _png
+from tests.test_image_validation_formats import _bmp, _gif, _tiff
+
 # ---------------------------------------------------------------------------
 # Meta Ads: upload_ad_image_file
 # ---------------------------------------------------------------------------
@@ -327,9 +330,15 @@ class TestMetaUploadAdImageFile:
         self, meta_client: Any, tmp_path: Path
     ) -> None:
         """jpg, jpeg, png, gif, bmp, tiff all upload as base64 ``bytes``."""
-        for ext in ("jpg", "jpeg", "png", "gif", "bmp", "tiff"):
+        for ext, content in (
+            ("jpg", _jpeg(32, 32)),
+            ("jpeg", _jpeg(32, 32)),
+            ("png", _png(32, 32)),
+            ("gif", _gif(32, 32)),
+            ("bmp", _bmp(32, 32)),
+            ("tiff", _tiff()),
+        ):
             img = tmp_path / f"test.{ext}"
-            content = b"\x00" * 100
             img.write_bytes(content)
             meta_client._http = _mock_shared_http(
                 200, {"images": {"bytes": {"hash": "h", "url": "u"}}}
@@ -393,12 +402,7 @@ class TestGoogleAdsUploadImageAsset:
         mock_enum.IMAGE = 1
         google_client._client.enums.AssetTypeEnum.AssetType = mock_enum
 
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-        with patch.object(loop, "run_in_executor", new_callable=AsyncMock) as mock_exec:
-            mock_exec.return_value = mock_response
-            result = await google_client.upload_image_asset(str(sample_image))
+        result = await google_client.upload_image_asset(str(sample_image))
 
         assert result["resource_name"] == "customers/1234567890/assets/789"
         assert result["id"] == "789"
@@ -464,14 +468,9 @@ class TestGoogleAdsUploadImageAsset:
         mock_enum.IMAGE = 1
         google_client._client.enums.AssetTypeEnum.AssetType = mock_enum
 
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-        with patch.object(loop, "run_in_executor", new_callable=AsyncMock) as mock_exec:
-            mock_exec.return_value = mock_response
-            result = await google_client.upload_image_asset(
-                str(sample_image), name="my-asset"
-            )
+        result = await google_client.upload_image_asset(
+            str(sample_image), name="my-asset"
+        )
 
         assert result["name"] == "my-asset"
 

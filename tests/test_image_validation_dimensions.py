@@ -195,7 +195,7 @@ def test_read_image_dimensions_measures_what_it_can(
 @pytest.mark.parametrize(
     "name,payload",
     [
-        ("animated.gif", b"GIF89a" + b"\x00" * 32),
+        ("zero-size.gif", b"GIF89a" + b"\x00" * 32),
         ("placeholder.png", b"\x00" * 100),
         ("missing.png", None),
     ],
@@ -203,10 +203,10 @@ def test_read_image_dimensions_measures_what_it_can(
 def test_read_image_dimensions_says_unknown_rather_than_guessing(
     tmp_path: Path, name: str, payload: bytes | None
 ) -> None:
-    """``(None, None)`` is the honest answer for a format with no std-lib
-    probe here. A caller enforcing a per-slot shape must read that as "not
-    known", never as "not allowed" — mureo does not guess and does not
-    resize."""
+    """``(None, None)`` is the honest answer for a header declaring no usable
+    size, or content with no std-lib probe here. A caller enforcing a
+    per-slot shape must read that as "not known", never as "not allowed" —
+    mureo does not guess and does not resize."""
     from mureo._image_validation import read_image_dimensions
 
     img = tmp_path / name
@@ -273,10 +273,10 @@ def test_read_image_file_refuses_content_it_cannot_identify(
 def test_read_image_file_refuses_an_extension_it_cannot_identify(
     tmp_path: Path,
 ) -> None:
-    img = tmp_path / "anim.gif"
-    img.write_bytes(b"GIF89a" + b"\x00" * 32)
+    img = tmp_path / "favicon.ico"
+    img.write_bytes(b"\x00\x00\x01\x00" + b"\x00" * 32)
     with pytest.raises(ValueError, match="not a recognisable"):
-        _read(img, allowed=frozenset({"gif"}))
+        _read(img, allowed=frozenset({"ico"}))
 
 
 @pytest.mark.unit

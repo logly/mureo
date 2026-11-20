@@ -638,7 +638,9 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Path to the image file on the agent's filesystem. "
-                        "Meta accepts JPG, PNG, and GIF up to 30 MB."
+                        "Meta accepts JPG, PNG, and GIF up to 30 MB. The "
+                        "content must be an image of the type its "
+                        "extension declares."
                     ),
                 },
                 "name": {
