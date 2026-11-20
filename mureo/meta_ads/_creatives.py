@@ -30,7 +30,9 @@ from mureo.core.url_guard import UnsafeUrlError, validate_public_url
 logger = logging.getLogger(__name__)
 
 # Meta Ads image upload limits
-_META_ALLOWED_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "bmp", "tiff"})
+_META_ALLOWED_IMAGE_EXTENSIONS = frozenset(
+    {"jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif"}
+)
 
 # Per-request timeout for image uploads. The file may be up to 30MB (base64 of
 # that is ~40MB of request body), so this overrides the shared client's shorter

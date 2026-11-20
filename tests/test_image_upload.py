@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -351,6 +352,24 @@ class TestMetaUploadAdImageFile:
             }
             assert kwargs.get("files") is None
 
+    @pytest.mark.asyncio()
+    async def test_upload_ad_image_file_accepts_tif(
+        self, meta_client: Any, tmp_path: Path
+    ) -> None:
+        """``.tif`` is the other spelling of TIFF and uploads like ``.tiff``."""
+        content = _tiff()
+        img = tmp_path / "scan.tif"
+        img.write_bytes(content)
+        meta_client._http = _mock_shared_http(
+            200, {"images": {"bytes": {"hash": "h", "url": "u"}}}
+        )
+
+        result = await meta_client.upload_ad_image_file(str(img))
+
+        assert result["hash"] == "h"
+        _, kwargs = meta_client._http.post.call_args
+        assert kwargs["data"] == {"bytes": base64.b64encode(content).decode("utf-8")}
+
 
 # ---------------------------------------------------------------------------
 # Google Ads: upload_image_asset
@@ -533,6 +552,91 @@ class TestMcpMetaUploadFile:
         assert len(result) == 1
         data = json.loads(result[0].text)
         assert data["hash"] == "abc"
+
+    @staticmethod
+    async def _call_handler_with_real_client(file_path: Path, http: Any) -> list[Any]:
+        """Run the MCP tool against a real client whose HTTP seam is mocked.
+
+        The real client is used so the extension check the upload actually
+        applies is the one exercised, not a mock's.
+        """
+        from mureo.auth import MetaAdsCredentials
+        from mureo.mcp.tools_meta_ads import handle_tool
+        from mureo.meta_ads.client import MetaAdsApiClient
+
+        client = MetaAdsApiClient(access_token="tok", ad_account_id="act_123")
+        client._http = http
+        creds = MetaAdsCredentials(access_token="tok")
+        with (
+            patch("mureo.auth.load_meta_ads_credentials", return_value=creds),
+            patch("mureo.auth.create_meta_ads_client", return_value=client),
+        ):
+            return await handle_tool(
+                "meta_ads_images_upload_file",
+                {"account_id": "act_123", "file_path": str(file_path)},
+            )
+
+    @pytest.mark.parametrize(
+        "name,content",
+        [
+            ("banner.bmp", _bmp(32, 32)),
+            ("scan.tif", _tiff()),
+            ("scan.tiff", _tiff()),
+        ],
+        ids=["bmp", "tif", "tiff"],
+    )
+    @pytest.mark.asyncio()
+    async def test_mcp_meta_upload_file_reaches_post_for_client_extensions(
+        self, tmp_path: Path, name: str, content: bytes
+    ) -> None:
+        """BMP and TIFF files pass the tool and are posted as base64 bytes."""
+        img = tmp_path / name
+        img.write_bytes(content)
+        http = _mock_shared_http(200, {"images": {"bytes": {"hash": "h", "url": "u"}}})
+
+        result = await self._call_handler_with_real_client(img, http)
+
+        assert json.loads(result[0].text)["hash"] == "h"
+        _, kwargs = http.post.call_args
+        assert kwargs["data"] == {"bytes": base64.b64encode(content).decode("utf-8")}
+
+    @pytest.mark.asyncio()
+    async def test_mcp_meta_upload_file_refuses_webp_with_supported_list(
+        self, tmp_path: Path
+    ) -> None:
+        """A ``.webp`` file is refused once, with the formats the upload takes."""
+        img = tmp_path / "photo.webp"
+        img.write_bytes(b"RIFF\x1a\x00\x00\x00WEBPVP8 " + b"\x00" * 32)
+        http = _mock_shared_http(200, {"images": {"bytes": {"hash": "h"}}})
+
+        with pytest.raises(ValueError) as excinfo:
+            await self._call_handler_with_real_client(img, http)
+
+        message = str(excinfo.value)
+        assert message.startswith(
+            "Unsupported image format: .webp (supported formats: "
+        )
+        http.post.assert_not_called()
+
+    def test_file_path_description_names_every_accepted_extension(self) -> None:
+        """The description lists exactly what the upload's extension check takes."""
+        from mureo.mcp.tools_meta_ads import TOOLS
+        from mureo.meta_ads._creatives import _META_ALLOWED_IMAGE_EXTENSIONS
+
+        tool = next(t for t in TOOLS if t.name == "meta_ads_images_upload_file")
+        description = tool.inputSchema["properties"]["file_path"]["description"]
+        # Compared as sets: a substring test would let ".tiff" stand in for a
+        # missing ".tif", and would not notice an extension the upload refuses.
+        listed = set(re.findall(r"\.([a-z]+)", description))
+        assert listed == set(_META_ALLOWED_IMAGE_EXTENSIONS)
+
+    def test_name_description_does_not_claim_the_label_is_stored(self) -> None:
+        """``name`` is never sent, so its description must not say it is kept."""
+        from mureo.mcp.tools_meta_ads import TOOLS
+
+        tool = next(t for t in TOOLS if t.name == "meta_ads_images_upload_file")
+        description = tool.inputSchema["properties"]["name"]["description"]
+        assert "stored" not in description
 
 
 class TestMcpGoogleUploadImage:
