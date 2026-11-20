@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from mcp.types import TextContent, Tool, ToolAnnotations
@@ -340,7 +340,14 @@ class TestPluginAuditAndThrottle:
         log = tmp_path / "plugin_audit.jsonl"
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
         exc = _platform_shaped(RuntimeError)
-        monkeypatch.setattr(_BoomPlugin, "handle_mcp_tool", AsyncMock(side_effect=exc))
+
+        # A real coroutine function, not an ``AsyncMock``: tool exposure asks
+        # ``inspect.iscoroutinefunction``, which answers False for an
+        # ``AsyncMock`` on Python 3.10.0 and would skip the provider.
+        async def _raise(self: Any, name: str, arguments: dict[str, Any]) -> list[Any]:
+            raise exc
+
+        monkeypatch.setattr(_BoomPlugin, "handle_mcp_tool", _raise)
         with reloaded_server(_boom_discover) as mod, pytest.raises(RuntimeError):
             await mod.handle_call_tool("boom_plugin_explode", {"x": 1})
         rec = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
