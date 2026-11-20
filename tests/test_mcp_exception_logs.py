@@ -97,9 +97,6 @@ async def test_edit_visual_failure_logs_class_name_only(
 ) -> None:
     exc = _chained(RuntimeError)
     in_path = _edit_provider(monkeypatch, tmp_path, AsyncMock(side_effect=exc))
-    monkeypatch.setattr(
-        tools_creative_studio, "validate_image_file", lambda *_a, **_k: in_path
-    )
 
     with caplog.at_level(logging.DEBUG):
         result = await tools_creative_studio._handle_edit_visual(
