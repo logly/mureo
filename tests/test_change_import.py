@@ -1537,6 +1537,47 @@ class TestWatermark:
         assert feed.calls[0][1] == older
 
     @pytest.mark.asyncio
+    async def test_an_entry_dated_after_now_stays_in_the_log_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        """A pass only skips the record when choosing its start.
+
+        Nothing prunes or rewrites it, so the log keeps what was recorded
+        and the entry can count again later.
+        """
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        future = (NOW + timedelta(days=1)).isoformat()
+        self._record_external(path, NOW + timedelta(days=1), "future")
+        before = [
+            e for e in read_state_file(path).action_log if e.occurred_at == future
+        ]
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=())))
+
+        await import_external_changes(path, now=NOW)
+
+        after = [e for e in read_state_file(path).action_log if e.occurred_at == future]
+        assert len(before) == 1
+        assert after == before
+
+    @pytest.mark.asyncio
+    async def test_a_future_entry_sets_the_start_once_its_time_has_passed(
+        self, tmp_path: Path
+    ) -> None:
+        """The skip is judged against each pass's now, not decided once."""
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        future = NOW + timedelta(days=1)
+        self._record_external(path, future, "future")
+        self._record_external(path, NOW - timedelta(hours=3), "older")
+        feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+
+        await import_external_changes(path, now=NOW)
+        await import_external_changes(path, now=future + timedelta(hours=1))
+
+        assert feed.calls[0][1] == NOW - timedelta(hours=3)
+        assert feed.calls[1][1] == future
+
+    @pytest.mark.asyncio
     async def test_only_a_future_entry_falls_back_to_the_default_lookback(
         self, tmp_path: Path
     ) -> None:

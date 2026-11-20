@@ -6,22 +6,19 @@ judged on those bytes, and the same bytes handed to ``_create_image_asset``.
 The file is not reopened to measure it or to upload it, so a file replaced
 in between cannot be the one that reaches Google.
 
-The open count is taken on the descriptor ``read_image_file`` opens
-(``os.open``) and on ``Path.open``, which every other way of reading a path
-in this code goes through (``Path.read_bytes`` included). Counting opens of
-the one path under test keeps the assertion independent of how many other
-files the interpreter happens to touch.
+The open count (``tests._image_open_count``) covers the descriptor
+``read_image_file`` opens (``os.open``), ``Path.open`` (``Path.read_bytes``
+included) and the builtin ``open``, for the one path under test.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from mureo import _image_validation
+from tests._image_open_count import OPENED_ONCE, _count_opens
 from tests.test_google_ads_asset_group_images import (
     CUSTOMER_ID,
     _install_fake_mutate,
@@ -49,26 +46,6 @@ def _install_fake_create(client: Any) -> list[tuple[bytes, str]]:
 
     client._create_image_asset = _create
     return captured
-
-
-def _count_opens(monkeypatch: pytest.MonkeyPatch, target: Path) -> dict[str, int]:
-    counts = {"os.open": 0, "Path.open": 0}
-    real_os_open = os.open
-    real_path_open = Path.open
-
-    def counting_os_open(path: Any, flags: int, *args: Any) -> int:
-        if str(path) == str(target):
-            counts["os.open"] += 1
-        return real_os_open(path, flags, *args)
-
-    def counting_path_open(self: Path, *args: Any, **kwargs: Any) -> Any:
-        if str(self) == str(target):
-            counts["Path.open"] += 1
-        return real_path_open(self, *args, **kwargs)
-
-    monkeypatch.setattr(_image_validation.os, "open", counting_os_open)
-    monkeypatch.setattr(Path, "open", counting_path_open)
-    return counts
 
 
 async def test_the_bytes_measured_are_the_bytes_sent(tmp_path: Path) -> None:
@@ -101,7 +78,7 @@ async def test_the_file_is_opened_once(
         _swap_params(new_asset_id=None, new_image_path=str(image))
     )
 
-    assert counts == {"os.open": 1, "Path.open": 0}
+    assert counts == OPENED_ONCE
     assert len(created) == 1
 
 

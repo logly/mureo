@@ -78,6 +78,10 @@ Phase 1 in scope:
   against provider capabilities.
 - Plug into the deterministic skill ↔ provider matcher (three-bucket
   classification: `executable` / `advisory_only` / `unavailable`).
+- Supply a change feed via the `mureo.change_feeds` entry-points group,
+  so changes made outside mureo on your platform are imported into
+  `action_log`; see
+  [change-import.md](./change-import.md#the-abi-hook--adding-a-change-feed).
 
 Phase 1 explicitly **out of scope** (will land in later phases — your
 plugin should not depend on them):
