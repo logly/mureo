@@ -229,9 +229,11 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Local path to an image to upload and link "
-                        "(jpg/jpeg/png/gif, max 5MB). Its dimensions are "
-                        "checked against this field_type BEFORE the upload, "
-                        "so a wrongly proportioned file costs no API call. "
+                        "(jpg/jpeg/png/gif, max 5MB); the content must be an "
+                        "image of the type its extension declares. Its "
+                        "dimensions are checked against this field_type "
+                        "BEFORE the upload, so a wrongly proportioned file "
+                        "costs no API call. "
                         "Supply this OR new_asset_id, never both."
                     ),
                 },

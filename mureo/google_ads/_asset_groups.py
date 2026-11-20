@@ -275,7 +275,7 @@ def _validate_image_dimensions(
     behind in the account.
 
     Unknown dimensions are **not** an error. ``width``/``height`` are
-    ``None`` for a GIF or any header mureo cannot parse, and guessing is
+    ``None`` for any header mureo cannot parse, and guessing is
     the one thing this must not do — those go to Google and come back as a
     translated ``ImageError``. mureo never resizes.
     """

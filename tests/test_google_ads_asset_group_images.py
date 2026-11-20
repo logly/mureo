@@ -9,7 +9,7 @@ account already holds, or a local file that has to be uploaded first.
 mock credentials opens no channel until a call is issued, so the production
 code below runs against the real v25 protos — the operations it builds, the
 enums it sets and the resource-name paths it derives are the ones the API
-would receive. Only ``_search``, ``upload_image_asset`` and the outbound
+would receive. Only ``_search``, ``_create_image_asset`` and the outbound
 ``GoogleAdsService.mutate`` are replaced. A ``MagicMock`` client would have
 accepted any misspelt field name.
 
@@ -245,18 +245,18 @@ def _install_fake_mutate(client: GoogleAdsApiClient, response: Any) -> list[Any]
 
 
 def _install_fake_upload(client: GoogleAdsApiClient) -> list[Any]:
-    """Replace the upload; return the capture list."""
+    """Replace the asset creation; return ``(asset_name, bytes)`` per call."""
     captured: list[Any] = []
 
-    async def _upload(file_path: str, name: str | None = None) -> dict[str, Any]:
-        captured.append((file_path, name))
+    async def _create(image_data: bytes, asset_name: str) -> dict[str, Any]:
+        captured.append((asset_name, image_data))
         return {
             "resource_name": f"customers/{CUSTOMER_ID}/assets/888",
             "id": "888",
-            "name": name or Path(file_path).name,
+            "name": asset_name,
         }
 
-    client.upload_image_asset = _upload  # type: ignore[method-assign]
+    client._create_image_asset = _create  # type: ignore[method-assign]
     return captured
 
 
@@ -414,7 +414,7 @@ class TestNewImageSource:
         )
 
         assert len(uploads) == 1
-        assert uploads[0][0].endswith("hero.png")
+        assert uploads[0][0] == "hero.png"
         _, operations, _ = captured[0]
         assert operations[0].asset_group_asset_operation.create.asset == (
             f"customers/{CUSTOMER_ID}/assets/888"
@@ -439,7 +439,25 @@ class TestNewImageSource:
             )
         )
 
-        assert uploads[0][1] == "Autumn hero"
+        assert uploads[0][0] == "Autumn hero"
+
+    @pytest.mark.parametrize("blank", ["", "   ", None, 7])
+    async def test_a_blank_asset_name_falls_back_to_the_file_name(
+        self, tmp_path: Any, blank: Any
+    ) -> None:
+        client = _make_client()
+        _install_search(client)
+        uploads = _install_fake_upload(client)
+        _install_fake_mutate(client, _mutate_response())
+        image = _write_png(tmp_path / "hero.png", 1200, 628)
+
+        await client.replace_asset_group_image_asset(
+            _swap_params(
+                new_asset_id=None, new_image_path=str(image), new_image_name=blank
+            )
+        )
+
+        assert uploads[0][0] == "hero.png"
 
     @pytest.mark.parametrize(
         "params",
@@ -591,9 +609,9 @@ class TestDimensionRules:
     async def test_an_unmeasurable_file_is_not_refused_on_a_guess(
         self, tmp_path: Any
     ) -> None:
-        """A GIF has no std-lib prober here. mureo does not know its shape,
-        so it does not pretend to: the file goes to Google and the refusal,
-        if any, comes back translated."""
+        """This GIF's header declares no usable size. mureo does not know its
+        shape, so it does not pretend to: the file goes to Google and the
+        refusal, if any, comes back translated."""
         client = _make_client()
         _install_search(client)
         uploads = _install_fake_upload(client)
@@ -806,7 +824,7 @@ class TestImageErrorConstants:
         assert set(_IMAGE_CONSTRAINT_ERRORS) <= image_codes
 
     def test_the_mixin_shadows_no_sibling_implementation(self) -> None:
-        """The image mixin needs ``upload_image_asset`` and
+        """The image mixin needs ``_create_image_asset`` and
         ``list_asset_group_assets``, both owned by other mixins. A plain
         ``...`` stub for either would win the MRO — ``_MediaMixin`` is
         composed after this one — and every upload would silently return
@@ -817,6 +835,7 @@ class TestImageErrorConstants:
         from mureo.google_ads._media import _MediaMixin
 
         for name, owner in (
+            ("_create_image_asset", _MediaMixin),
             ("upload_image_asset", _MediaMixin),
             ("list_asset_group_assets", _AssetGroupsMixin),
         ):

@@ -253,7 +253,6 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
         "_TargetingMixin.set_device_targeting",
     ): 121,
     ("mureo/google_ads/_keywords.py", "_KeywordsMixin.diagnose_keywords"): 148,
-    ("mureo/google_ads/_media.py", "_MediaMixin.upload_image_asset"): 55,
     ("mureo/google_ads/_message_match.py", "LPScreenshotter.capture"): 52,
     (
         "mureo/google_ads/_monitoring.py",

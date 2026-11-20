@@ -330,10 +330,12 @@ out which situation they are in. Google enforces a shape per slot
 300x300, `PORTRAIT_MARKETING_IMAGE` 4:5 min 480x600, `LOGO` 1:1 min 128x128,
 `LANDSCAPE_LOGO` 4:1 min 512x128) and mureo checks it **before** uploading or
 linking anything, so a wrongly proportioned file costs no API call and leaves
-no unlinked asset behind. For a format it cannot measure locally (GIF, or an
-unrecognised header) it does not guess: the file goes to Google and an
-`ImageError` refusal comes back translated into the rule for that slot.
-mureo never crops or resizes.
+no unlinked asset behind. The file is read once: the shape is measured on the
+very bytes that are uploaded, and a file whose content is not the image type
+its extension declares is refused before anything is sent. For an image
+whose header gives no size mureo can read, it does not guess: the file goes
+to Google and an `ImageError` refusal comes back translated into the rule for
+that slot. mureo never crops or resizes.
 
 Neither swap is automatically reversible: to undo one, call the tool again
 with the old text or the old `asset_id`.
