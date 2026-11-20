@@ -24,7 +24,9 @@ from mureo.change_import import (
     clear_change_feed_registry,
     default_change_feed_registry,
     external_change_id,
+    import_external_changes,
     register_change_feed,
+    to_action_log_entry,
 )
 from mureo.change_import.builtin.google_ads import (
     _COVERAGE_NOTES,
@@ -34,6 +36,7 @@ from mureo.change_import.builtin.google_ads import (
     _row_to_change,
 )
 from mureo.client_factory import GOOGLE_ADS_THROTTLER
+from mureo.context.state import append_action_log, read_state_file
 from mureo.context.state_codec import parse_state
 from mureo.google_ads._extensions_targeting import CHANGE_HISTORY_ROW_LIMIT
 from mureo.mcp import server as mcp_server
@@ -503,6 +506,41 @@ class TestAccountTimeZone:
         assert before is not None and after is not None
         assert before.occurred_at != after.occurred_at
         assert external_change_id(before) == external_change_id(after)
+
+    @pytest.mark.asyncio
+    async def test_an_entry_imported_without_an_offset_is_not_imported_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Logs written before the zone was attached keep their entries as-is."""
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {"google_ads": {"account_id": "123", "campaigns": []}},
+                    "action_log": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        earlier = _row_to_change(_row(), None)
+        assert earlier is not None
+        append_action_log(
+            path,
+            to_action_log_entry(earlier, recorded_at=NOW),
+            join_active_batch=False,
+        )
+        before = read_state_file(path).action_log
+        feed, _client = _feed_with(monkeypatch, [_row()], "Asia/Tokyo")
+        register_change_feed(feed)
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        after = read_state_file(path).action_log
+        assert outcomes[0].already_imported == 1
+        assert outcomes[0].imported == ()
+        assert after == before
+        assert after[0].occurred_at == "2026-08-05T09:14:00"
 
     def test_an_unknown_zone_keeps_the_reported_time(self) -> None:
         change = _row_to_change(_row(), None)

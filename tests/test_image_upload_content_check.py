@@ -11,13 +11,16 @@ from __future__ import annotations
 import base64
 import os
 import sys
+import types
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mureo import _image_validation
 from mureo._image_validation import _read_regular_file
+from tests._image_open_count import OPENED_ONCE, _count_opens
 from tests.test_image_upload import _mock_shared_http
 from tests.test_image_validation_dimensions import _jpeg, _png
 from tests.test_image_validation_formats import _bmp, _gif, _tiff
@@ -153,6 +156,18 @@ class TestMetaUploadAdImageFile:
         await client.upload_ad_image_file(str(_write(tmp_path, "a.png", _PNG)))
         assert _sent_by_meta(client) == _PNG
 
+    async def test_the_file_is_opened_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second open could see a different file from the one checked."""
+        client = _meta_client()
+        path = _write(tmp_path, "a.png", _PNG)
+        counts = _count_opens(monkeypatch, path)
+        await client.upload_ad_image_file(str(path))
+        assert counts == OPENED_ONCE
+        client._http.post.assert_called_once()
+        assert _sent_by_meta(client) == _PNG
+
 
 class TestGoogleUploadImageAsset:
     @pytest.mark.parametrize(
@@ -220,6 +235,62 @@ class TestGoogleUploadImageAsset:
         client = _google_client()
         await client.upload_image_asset(str(_write(tmp_path, "a.png", _PNG)))
         assert _sent_by_google(client) == _PNG
+
+    async def test_the_file_is_opened_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second open could see a different file from the one checked."""
+        client = _google_client()
+        path = _write(tmp_path, "a.png", _PNG)
+        counts = _count_opens(monkeypatch, path)
+        await client.upload_image_asset(str(path))
+        assert counts == OPENED_ONCE
+        service = client._client.get_service.return_value
+        service.mutate_assets.assert_called_once()
+        assert _sent_by_google(client) == _PNG
+
+
+def _fstat_reporting_size(monkeypatch: pytest.MonkeyPatch, st_size: int) -> list[int]:
+    """Make ``fstat`` report ``st_size``; return the descriptors it was asked about.
+
+    Stands in for a file that grows, or is replaced, after its size is taken:
+    the type stays the real one, only the size is stale.
+    """
+    asked: list[int] = []
+    real_fstat = os.fstat
+
+    def _stale_fstat(fd: int) -> Any:
+        asked.append(fd)
+        info = real_fstat(fd)
+        return types.SimpleNamespace(st_mode=info.st_mode, st_size=st_size)
+
+    monkeypatch.setattr(_image_validation.os, "fstat", _stale_fstat)
+    return asked
+
+
+def test_a_file_that_grew_past_the_cap_after_fstat_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bounded read, not the stale size, is what refuses the file."""
+    path = _write(tmp_path, "a.png", b"x" * 1025)
+    asked = _fstat_reporting_size(monkeypatch, 10)
+    with pytest.raises(ValueError, match="File size exceeds the limit"):
+        _read_regular_file(path, "a.png", 1024, "1KB")
+    monkeypatch.undo()
+
+    assert len(asked) == 1
+    with pytest.raises(OSError):
+        os.fstat(asked[0])
+
+
+def test_a_file_exactly_at_the_cap_after_fstat_is_read_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reading one byte past the cap refuses only what is over it."""
+    payload = b"x" * 1024
+    path = _write(tmp_path, "a.png", payload)
+    _fstat_reporting_size(monkeypatch, 10)
+    assert _read_regular_file(path, "a.png", 1024, "1KB") == payload
 
 
 @pytest.mark.skipif(
