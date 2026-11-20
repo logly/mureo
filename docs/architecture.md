@@ -359,6 +359,9 @@ mureo/
 │                            #   mcp/_helpers.py wraps it in TextContent and re-exports both (#863).
 │                            #   tool_failure.exception_text is the one exception-to-text formatter,
 │                            #   used by mcp and the platform packages alike (#603, #865).
+│                            #   zones.zone_or_none resolves a platform-reported time zone name
+│                            #   without raising; the Google Ads change feed and the ChatGPT Ads
+│                            #   client share it (#1008).
 │                            #   rollback, policy, amazon_ads, chatgpt_ads and core never import mureo.mcp (#863):
 │                            #   the server publishes what they need at load — plugin reversal keys
 │                            #   (rollback.planner.set_plugin_reversal_keys) and built-in tool names

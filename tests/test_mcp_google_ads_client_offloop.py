@@ -259,6 +259,7 @@ class TestOtherAsyncCallers:
 
         client = MagicMock()
         client.list_change_history = AsyncMock(return_value=[])
+        client.get_account_time_zone = AsyncMock(return_value=None)
         factory = _RecordingFactory(client, delay=_SLOW_BUILD_SECONDS)
         loop_thread = threading.current_thread()
         feed = GoogleAdsChangeFeed()

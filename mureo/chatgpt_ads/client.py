@@ -50,7 +50,6 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timezone, tzinfo
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -70,6 +69,7 @@ from mureo.chatgpt_ads._errors import (
     ChatGPTAdsAPIError,
     error_from_response,
 )
+from mureo.core.zones import zone_or_none
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -203,16 +203,6 @@ def _page_rows(response: httpx.Response) -> tuple[dict[str, Any], list[Any]]:
             status=response.status_code,
         )
     return body, data
-
-
-def _zone(value: object) -> tzinfo:
-    """``value`` as an IANA zone; UTC when absent or not a valid zone name."""
-    if not isinstance(value, str) or not value:
-        return timezone.utc
-    try:
-        return ZoneInfo(value)
-    except (ZoneInfoNotFoundError, ValueError):
-        return timezone.utc
 
 
 class ChatGPTAdsClient:
@@ -454,7 +444,7 @@ class ChatGPTAdsClient:
         if self._timezone is None:
             account = await self.get(AD_ACCOUNT_PATH)
             value = account.get("timezone") if isinstance(account, dict) else None
-            self._timezone = _zone(value)
+            self._timezone = zone_or_none(value) or timezone.utc
         return self._timezone
 
 
