@@ -72,7 +72,9 @@ The workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defi
 
 ### Tool Connection Layer
 
-The bottom layer connects to advertising platforms and analytics services. mureo currently ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console; third-party MCP servers (e.g., GA4) can be composed alongside them. **This layer is intentionally replaceable.** As platforms release official MCP servers (Meta Ads MCP shipped 2026-04-29; Google Ads MCP available), mureo's built-in connectors are swapped for official ones with no change to the orchestration layer above. Official MCPs are drivers; mureo is the control plane that drives them.
+The bottom layer connects to advertising platforms and analytics services. mureo currently ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console, and, as a bundled provider, ChatGPT Ads; third-party MCP servers (e.g., GA4) can be composed alongside them. **This layer is intentionally replaceable.** As platforms release official MCP servers (Meta Ads MCP shipped 2026-04-29; Google Ads MCP available), mureo's built-in connectors are swapped for official ones with no change to the orchestration layer above. Official MCPs are drivers; mureo is the control plane that drives them.
+
+The built-in Google Ads, Meta Ads and Search Console tools stay as they are; a new platform is added as a provider (`MCPToolProvider`), shipped inside mureo or as a separate distribution depending on the platform. The provider path receives the audit trail, throttle, strategy gate, `action_log` recording and rollback from what the provider declares, so the server gains no per-platform branch. Providers shipped inside mureo are registered from one table, `mureo/bundled_providers.py`, which both the MCP server and the configure UI call before entry-point discovery. It holds two today: the Amazon Ads bridge (forwarding to Amazon's official MCP) and ChatGPT Ads (41 tools, eighteen reads and twenty-three changes, calling OpenAI's Advertiser API directly with an Ads API key; see [chatgpt-ads.md](chatgpt-ads.md)).
 
 ## What mureo provides (that an official MCP cannot)
 
@@ -121,6 +123,9 @@ mureo/
 │                            #   live-client opener (MCP handlers, analytics, change import);
 │                            #   open_google_ads_client / open_meta_ads_client are the one
 │                            #   Google Ads / Meta Ads openers (#875)
+├── bundled_providers.py     # The one table of providers shipped inside mureo (Amazon Ads and ChatGPT Ads);
+│                            #   registered before entry-point discovery by both the MCP server
+│                            #   and the configure UI; imports neither mcp nor web (#992)
 ├── throttle.py              # Rate limiting (token bucket + rolling hourly cap)
 ├── installed_packages.py    # The installed mureo / mureo-* distributions (PEP 503 names), shared
 │                            #   by `mureo upgrade` and the dashboard's About / update / upgrade (#863)
@@ -129,7 +134,10 @@ mureo/
 │   ├── mappers.py           # Response mapping to structured dicts
 │   ├── _ads.py              # _AdsMixin (create/update/list RSAs)
 │   ├── _ads_display.py      # _DisplayAdsMixin (create RDAs + RDAUploadError)
+│   ├── _asset_groups.py     # _AssetGroupsMixin (Performance Max asset groups: read, text swap)
+│   ├── _asset_groups_images.py # _AssetGroupImagesMixin (Performance Max image swap)
 │   ├── _keywords.py         # _KeywordsMixin (add/remove/suggest)
+│   ├── _placements.py       # _PlacementsMixin (negative placements: sites/apps/app categories)
 │   ├── _extensions.py       # _ExtensionsMixin (sitelinks, callouts, conversions, targeting)
 │   ├── _monitoring.py       # _MonitoringMixin (anomaly detection, reports)
 │   ├── _diagnostics.py      # _DiagnosticsMixin (campaign diagnosis, one method per delivery check)
@@ -141,10 +149,11 @@ mureo/
 │   ├── _gaql_validator.py   # GAQL input validators (IDs, dates, date ranges, IN clauses)
 │   └── _date_ranges.py      # Period-over-period comparison windows (SDK-free, #809)
 ├── meta_ads/                # Meta Ads API client
-│   ├── client.py            # MetaAdsApiClient (17 Mixins)
+│   ├── client.py            # MetaAdsApiClient (Mixins)
 │   ├── mappers.py           # Response mapping
 │   ├── _campaigns.py        # CampaignsMixin
 │   ├── _ad_sets.py          # AdSetsMixin
+│   ├── _placement_exclusions.py # PlacementExclusionsMixin (ad-set publisher exclusions)
 │   ├── _ads.py              # AdsMixin
 │   ├── _creatives.py        # CreativesMixin (carousel, collection, image upload)
 │   ├── _videos.py           # VideosMixin (AdVideo upload, status, thumbnails)
@@ -167,6 +176,34 @@ mureo/
 │   ├── lwa.py               # Login with Amazon token exchange (mint / refresh)
 │   ├── manifest.py          # `mureo amazon refresh-manifest` → ~/.mureo/amazon_tools.json
 │   └── provider.py          # Registry registration for the in-tree bridge (first-wins on `amazon_ads`)
+├── chatgpt_ads/             # ChatGPT Ads bundled provider over OpenAI's Advertiser API (#992-#995);
+│   │                        #   eighteen read tools, twenty-three change tools; imports neither mcp nor web
+│   ├── _api.py              # Base URL, OpenAPI version read, timeout / retry / page-size / throttle constants
+│   ├── _errors.py           # ChatGPTAdsAPIError + error_from_response: the one error-body reader
+│   ├── _hashing.py          # Custom-audience identifier normalisation and SHA-256 hashing (pure)
+│   ├── _period.py           # `period` vocabulary resolved in the ad account's time zone
+│   ├── _validation.py       # Argument checks shared by the handler modules (ids, names, bounded numbers, URLs)
+│   ├── client.py            # ChatGPTAdsClient (httpx, GET / POST / multipart upload; each request states whether a 5xx
+│   │                        #   is retried and whether a lost answer may have applied it; cursor walk); imported on first tool call
+│   ├── credentials.py       # Ads API key from the `chatgpt_ads` store section, then CHATGPT_ADS_API_KEY
+│   ├── handlers.py          # One coroutine per read tool, the composed tool list and handler table, run_tool;
+│   │                        #   run_with_client (client lifetime + call deadline, shared with the feed)
+│   ├── change_feed.py       # ChatGPTAdsChangeFeed: GET /audit_logs as external changes (account checked first, oldest first, 1,000 per pass)
+│   ├── handlers_mutations.py # One coroutine per change tool + the spend-limit read
+│   ├── handlers_create.py   # Create (always paused, idempotency key) and archive handlers
+│   ├── handlers_creative.py # Image upload (shared local image check), ad preview, location search
+│   ├── handlers_audiences.py # Custom audiences: list / get / create, members read from a local identifier file
+│   │                        #   (shared data-file check, hashed before sending, idempotency key), operations
+│   ├── handlers_measurement.py # Pixels and conversion event settings (a 404 there is the feature gate), conversion report
+│   ├── reversal.py          # capture_reversal: one prior read → the reversal recorded in action_log
+│   ├── tools.py             # The nine read Tool definitions + build_tool / id_param (pure data)
+│   ├── tools_mutations.py   # The eleven change tools + the spend-limit read, with identity / budget / bid declarations (pure data)
+│   ├── tools_create.py      # The create and archive tools, built from the tools_mutations fragments (pure data)
+│   ├── tools_creative.py    # The image upload, ad preview and location search tools (pure data)
+│   ├── tools_audiences.py   # The six custom-audience tools; members tools declare the audience identity (pure data)
+│   ├── tools_measurement.py # The pixel, conversion event and conversion report tools (pure data)
+│   └── provider.py          # ChatGPTAdsProvider, registration (first-wins on `chatgpt_ads`; registers the
+│                            #   change feed with its own entry), disable gate, platform delivery model
 ├── search_console/          # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py            # SearchConsoleApiClient
 ├── analysis/                # Cross-platform analysis utilities
@@ -206,7 +243,7 @@ mureo/
 │   │                        #   and daily; no logic of its own since #917
 │   ├── state_io.py          # read_state_file / write_state_file, the atomic write, the state lock, the clock
 │   ├── campaign_store.py    # upsert_campaign / get_campaign + _platform_base / _stamp_fetched_at
-│   ├── action_log_store.py  # append_action_log — the single recording choke point
+│   ├── action_log_store.py  # append_action_log — the single recording choke point; append_action_logs files several observed entries through it in one write
 │   ├── batch_store.py       # begin_batch / end_batch (the path half of batch.py)
 │   ├── platform_store.py    # set_platform_metrics / _daily / _not_collected, set_workspace_not_collected,
 │   │                        #   set_conversion_action_types
@@ -247,8 +284,8 @@ mureo/
 │   ├── platform_guards.py   # Write-time guards over that join (refuse / warn on duplicates)
 │   ├── state_store.py       # FilesystemStateStore — the default StateStore (STATE.json / STRATEGY.md)
 │   └── errors.py            # Context-specific exceptions
-├── cli/                     # Typer CLI (setup + auth + rollback inspection; ad operations are via MCP)
-│   ├── main.py              # Entry point (mureo command) — registers all 12 sub-command groups
+├── cli/                     # Typer CLI (setup + auth + configure + BYOD + providers + rollback + repair + journal; ad operations are via MCP)
+│   ├── main.py              # Entry point (mureo command) — registers every sub-command group plus `version`
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor / codex / gemini (Typer handlers)
 │   ├── setup_codex.py       # Codex install-kit (MCP config, credential guard, workflow-command skills, shared skills)
 │   ├── _skill_paths.py      # get_data_path / replace_dest, shared by setup_cmd, setup_codex, native_skills, skill_status (#879)
@@ -262,11 +299,15 @@ mureo/
 │   │                        #   upgrade_cmd and web/status_collector.py (#863)
 │   ├── byod_cmd.py          # mureo byod import / status / remove / clear (Bring Your Own Data)
 │   ├── demo_cmd.py          # mureo demo — scaffold a self-contained demo workspace
-│   ├── providers_cmd.py     # mureo providers install / list / remove (official MCP providers)
+│   ├── providers_cmd.py     # mureo providers list / add / remove / confirm (official MCP providers)
+│   ├── amazon_cmd.py        # mureo amazon refresh-manifest (Amazon Ads official-MCP bridge setup)
 │   ├── open_cmd.py          # mureo open — surface the running configure dashboard
 │   ├── learn_cmd.py         # mureo learn — append insights to the knowledge base
 │   ├── install_desktop_cmd.py # mureo install-desktop — wire mureo into Claude Desktop chat (macOS)
 │   ├── rollback_cmd.py      # mureo rollback list / show (inspection only; apply routes through MCP)
+│   ├── repair_cmd.py        # mureo repair platform-key — drop a platforms entry the document shows to be wrong
+│   ├── journal_cmd.py       # mureo journal — read back JOURNAL.jsonl
+│   ├── settings_remove.py   # remove_* counterparts of the MCP config / credential guard installers
 │   └── _tty.py              # TTY-safe helpers (confirm_or_default, is_tty) for non-interactive setup
 ├── mcp/                     # MCP server
 │   ├── __main__.py                        # python -m mureo.mcp entry point
@@ -321,11 +362,15 @@ mureo/
 │                            #   platform_keys.py defines ANALYTICS_ENTRY_POINT_GROUP, which
 │                            #   context.platform_guards reads without importing analytics and
 │                            #   analytics.registry re-exports (#879).
-│                            #   tool_failure.py is the MCP failure-envelope reader (failure_of);
-│                            #   the writer stays in mcp/_helpers.py, which re-exports it (#863).
+│                            #   tool_failure.py is the MCP failure-envelope reader (failure_of)
+│                            #   and builds the refused / error envelope dict (failure_payload);
+│                            #   mcp/_helpers.py wraps it in TextContent and re-exports both (#863).
 │                            #   tool_failure.exception_text is the one exception-to-text formatter,
 │                            #   used by mcp and the platform packages alike (#603, #865).
-│                            #   rollback, policy, amazon_ads and core never import mureo.mcp (#863):
+│                            #   zones.zone_or_none resolves a platform-reported time zone name
+│                            #   without raising; the Google Ads change feed and the ChatGPT Ads
+│                            #   client share it (#1008).
+│                            #   rollback, policy, amazon_ads, chatgpt_ads and core never import mureo.mcp (#863):
 │                            #   the server publishes what they need at load — plugin reversal keys
 │                            #   (rollback.planner.set_plugin_reversal_keys) and built-in tool names
 │                            #   (policy.learning_reset.set_builtin_platform_tool_names) — as it does
@@ -379,7 +424,8 @@ mureo/
 │   │                        #   on first use (builtin/ never imports the registry, #879)
 │   ├── dedupe.py            # Already-imported vs mureo's own change
 │   ├── importer.py          # Window, action_log write, per-platform outcome
-│   └── builtin/google_ads.py  # change_event feed (the only native feed today)
+│   └── builtin/google_ads.py  # change_event feed (the only built-in feed; the bundled ChatGPT Ads
+│                              #   provider registers its own, mureo/chatgpt_ads/change_feed.py)
 ├── byod/                    # Bring Your Own Data (XLSX bundle importer + CSV-backed read-only clients)
 ├── adapters/                # Protocol reference implementation (mureo.core.providers); BYOD adapters: byod/adapters/
 ├── demo/                    # Synthetic demo workspace scaffolding
@@ -417,7 +463,7 @@ skills/                          # Native slash skills — deployed to ~/.claude
 ├── competitive-scan/            # Auction analysis with Market Context
 ├── sync-state/                  # Manual STATE.json synchronization
 ├── learn/                       # Save diagnostic insights to knowledge base
-├── ... (28 skill dirs total)    # weekly-report, goal-review, monthly-report, tracking-health, …
+├── ...                          # weekly-report, goal-review, monthly-report, tracking-health, …
 ├── _mureo-strategy/             # Shared: STRATEGY.md / STATE.json conventions
 ├── _mureo-state-schema/         # Shared: STATE.json schema + status vocabulary contract (Code `Write`)
 ├── _mureo-report-persist/       # Shared: daily-check persistence steps (report, rollups, history, display)
@@ -483,7 +529,7 @@ mureo assumes the caller is an AI agent susceptible to prompt injection, not a t
 2. **GAQL input validation** — every ID, date, date-range constant, and string literal entering a Google Ads query flows through a single whitelist-based surface in `mureo/google_ads/_gaql_validator.py`. `_period_to_date_clause`'s explicit-range branch (`YYYY-MM-DD..YYYY-MM-DD` or GAQL `BETWEEN` spelling) pattern-matches and revalidates its dates and re-emits the `BETWEEN` clause instead of passing the raw caller string into GAQL.
 3. **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline built from historical `action_log` entries and emits prioritized alerts for zero spend (CRITICAL), CPA spikes (≥1.5×, critical at 2×), and CTR drops (≤0.5×, critical at 0.3×). Sample-size gates (30+ conversions, 1000+ impressions) follow the `_mureo-learning` skill's statistical-thinking rules to suppress single-day noise. Baselines tolerate malformed `metrics_at_action` rows; CPA/CTR are medianed per-entry so baseline values reflect a real historical day. Counts are medianed per day: an entry that states its window (`days`, or a `period` such as `LAST_30_DAYS`) has them divided by it, one that states none counts as one day, and `cost` / `spend` are one figure.
 4. **Tracking-parameter consistency** — `mureo/analysis/tracking/` detects ads whose final-URL tracking parameters disagree with the campaign they live in: a silent defect, because delivery and spend look healthy while the analytics everyone downstream trusts is quietly wrong. The detector is platform-neutral (it sees only `AdTrackingRecord`) with one thin accessor per platform, and it derives its verdict from evidence already in the account — never from a guessed naming convention. Operator intent is declared in STRATEGY.md's `## Tracking Convention` and parsed by mureo, not interpreted by the agent. Exposed as `analysis_tracking_consistency_check`, used by `/tracking-health` for the account audit and as a pre-flight before ads are created. See [tracking-consistency.md](tracking-consistency.md) for the exhaustive list of what it cannot detect.
-5. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update + status toggles across Google/Meta Ads), refuses destructive verbs (`.delete` / `.remove` / `.destroy` / `.purge` / `.transfer`), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
+5. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update, status toggles and the placement-exclusion reversals across Google/Meta Ads), refuses destructive verbs (`_delete` / `_remove` / `_destroy` / `_purge` / `_transfer`; `google_ads_negative_placements_remove` is the one exemption, because the inverse of adding an exclusion is a removal), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
 
    A bulk change is planned as **one unit** (#549): `mureo_batch_begin` / `mureo_batch_end` declare the boundary, every `action_log` entry written in between is stamped with the batch id at the single `append_action_log` choke point (so native, hosted-connector and bridged/plugin recordings all join without any per-platform code), and `rollback_plan_get` takes that id and classifies **every** member. Coverage is reported overall and per platform as `full` / `partial` / `none` — because reversibility is not uniform across platforms, and a plan that quietly omitted the members mureo cannot reverse would read as a complete revert. The same allow-list decides each member, so nothing about the guarantee is loosened by grouping.
 
@@ -501,7 +547,10 @@ Both API clients use multiple inheritance with Mixins to organize functionality 
 class GoogleAdsApiClient(
     _AdsMixin,           # RSA CRUD (create/update/list/status)
     _DisplayAdsMixin,    # RDA creation with auto image upload
+    _AssetGroupsMixin,   # Performance Max asset groups: read, text swap
+    _AssetGroupImagesMixin,  # Performance Max image swap
     _KeywordsMixin,      # Keyword add/remove/suggest/diagnose
+    _PlacementsMixin,    # Negative placements (sites, apps, app categories)
     _MonitoringMixin,    # Anomaly detection, reports, goals
     _ExtensionsMixin,    # Sitelinks, callouts, conversions, targeting
     _DiagnosticsMixin,   # Campaign delivery diagnosis
@@ -519,12 +568,13 @@ The base class (`GoogleAdsApiClient`) provides:
 - Error handling: `_wrap_mutate_error()` decorator that catches `GoogleAdsException` and returns user-friendly messages
 - Partial reads: in a composite result (diagnostics, performance analysis, monitoring, budget reallocation) a read that fails sets its key to `None` and logs `Failed to retrieve <what> (<ExceptionClass>)` at WARNING; derived insights skip a `None` input, and a `google_ads_monitoring_*` verdict that rests on a failed read is `status: "unknown"` unless data that was read proves `critical` (#865)
 
-### Meta Ads Client -- 17 Mixins
+### Meta Ads Client -- Mixins
 
 ```python
 class MetaAdsApiClient(
     CampaignsMixin,    # Campaign CRUD
     AdSetsMixin,       # Ad set CRUD
+    PlacementExclusionsMixin,  # Ad-set publisher exclusions
     AdsMixin,          # Ad CRUD
     CreativesMixin,    # Creative management, image/carousel/collection
     VideosMixin,       # AdVideo upload (URL/file), status polling, thumbnails
@@ -594,7 +644,8 @@ server.py :: _create_server()
         │           └── client.method() → list[TextContent]
         │
     │   ├── name in _PLUGIN_NAMES? → provider.handle_mcp_tool(name, args)
-        │     │   (entry-point provider plugins AND the in-tree Amazon Ads bridge)
+        │     │   (entry-point provider plugins AND the bundled Amazon Ads bridge
+        │     │    and ChatGPT Ads provider)
         │     │
         │       │   ├── plugin throttle (shared bucket, per-tool for read-only)
         │       │   ├── forward to the provider / the official Amazon MCP endpoint
@@ -610,7 +661,7 @@ Key implementation details:
 2. **Handler dispatch** uses a `dict[str, Callable]` mapping tool names to async handler functions.
 3. **Error handling**: the `@api_error_handler` decorator catches exceptions and converts them to `TextContent` error messages, so the agent always gets a text response.
 4. **Credential loading** happens per-request. Each handler call loads credentials from file/env, creates a fresh client, and executes the operation.
-5. **Plugin / bridge branch.** Tool families that are not built in are collected once at server start via `collect_plugin_tools()` and appended to `_ALL_TOOLS`; a name collision with a built-in is dropped. Both third-party `mureo.providers` entry-point plugins and the in-tree **Amazon Ads bridge** (`mureo/amazon_ads/`, registered by `register_amazon_provider()` before entry-point discovery so the in-tree bridge wins the `amazon_ads` name) ride this one path, so they get the same audit / throttle / strategy-gate / `action_log` treatment. The bridge's `mcp_tools()` is pure — it reads `~/.mureo/amazon_tools.json` only, with no credentials and no network — so a missing or broken manifest means "no Amazon tools", never a startup failure.
+5. **Plugin / bridge branch.** Tool families that are not built in are collected once at server start via `collect_plugin_tools()` and appended to `_ALL_TOOLS`; a name collision with a built-in is dropped. Both third-party `mureo.providers` entry-point plugins and the in-tree **Amazon Ads bridge** (`mureo/amazon_ads/`, registered through `mureo/bundled_providers.py` before entry-point discovery so the in-tree bridge wins the `amazon_ads` name) ride this one path, so they get the same audit / throttle / strategy-gate / `action_log` treatment. The bridge's `mcp_tools()` is pure — it reads `~/.mureo/amazon_tools.json` only, with no credentials and no network — so a missing or broken manifest means "no Amazon tools", never a startup failure. The bundled **ChatGPT Ads provider** (`mureo/chatgpt_ads/`) rides the same path with a fixed list of 41 tools, twenty-three of which change the account and declare identity / budget / bid semantics (a `capture_reversal` records a reversal for eleven of them; creates, archives, the image upload and audience membership changes record none); its `mcp_tools()` returns static definitions, and its HTTP client module (`mureo/chatgpt_ads/client.py`) is imported on the first tool call, not at server start.
 6. **Startup cost is a contract, not an implementation detail (#807).** An MCP client gives the server a fixed window to answer `initialize` — 30,000 ms by default in Claude Code, and not negotiable from inside the server — so importing `mureo.mcp.server` must stay cheap. Measured on one development machine on 2026-10-08 as the import's own CPU (`time.process_time` inside a child interpreter, min of 5 runs, bytecode cache warm; the whole import, `jsonschema`'s own included), with no plugins installed that import cost 3.1 s and left 2249 modules in `sys.modules`; it now costs 1.1 s and leaves 882. With a `mureo.runtime_context_factory` plugin installed — the configuration #807 was reported from — 3.1 s / 2259 before and 1.2 s / 892 after. With a provider plugin that imports a platform client at module scope, 3.2 s / 2250 before and 2.4 s / 2229 after: that remainder is the plugin's own import, which mureo cannot defer (see `docs/plugin-authoring.md`). Two rules keep the server's own share where it is, both enforced by `tests/test_mcp_startup_budget.py`:
     - **No platform SDK or API client may be asked for on mureo's import path.** The `mureo.google_ads` / `mureo.meta_ads` packages resolve their public names and submodules lazily via PEP 562 `__getattr__` (`mureo/_lazy_package.py`), so importing a stdlib-only helper from one of them does not pull the client and its generated protobuf tree; `mureo/adapters/*/adapter.py` imports its client under `TYPE_CHECKING` plus one function-local import for the constructor's `isinstance` check. That second one is not cosmetic: `collect_plugin_tools()` builds every provider during the server's import, the Amazon bridge's manifest location comes from the `RuntimeContext`, and an integrator's registered factory imports the adapter packages — so one registered factory used to put the whole SDK stack back (2259 modules, 1150 of them forbidden). The test installs a synthetic factory rather than waiting for one, because CI installs no plugins. It judges by **attribution**, not by comparison: a `sys.meta_path` finder records which module first asked for each forbidden module, and none of them may be mureo's. A plugin that imports a platform client of its own is charged for it and the server is not — the set difference this used to be was empty for most of the forbidden list in exactly that installation, which is to say it stopped checking where it was needed most.
     - **No per-tool JSON Schema metaschema check at import.** `mureo.mcp._tool_validation.LazyToolValidators` compiles a tool's `inputSchema` validator on that tool's first call, which is the call it is enforced on. `check_schema` costs a median of 3.1 ms per tool and 0.82 s summed over the 228-tool catalog (same machine, measured 2026-10-08 by calling it directly on each schema, `time.process_time`, min of 5 — a separate measurement from the import figures above), and it is the one startup term that grows with the catalog while the client's budget does not. What a schema that cannot be used costs depends on which layer meets the call first. Through the MCP framework, `mcp` (1.30.0 checked) validates the arguments before mureo's dispatcher runs, with a `jsonschema.validate()` that runs the metaschema check itself, and turns any exception from it into an error result: for a schema that declares no `$schema` or declares Draft 2020-12 (`mcp` picks the draft from `$schema`; mureo's layer always uses 2020-12), all three kinds of fault below are refused there, with the third-party message, which does not name the tool, and mureo's layer never sees the call — no `ToolSchemaUnusableError`, no log record, no `PluginToolWarning`. mureo's layer is the only check on an `mcp` without `validate_input` (`pyproject.toml` allows `mcp>=1.8.0,<2`), on a direct `handle_call_tool` call, and on the rollback handlers' reversals, which `_handlers_rollback._get_dispatcher()` sends through that direct call, real-spend ones included. There a schema that is not valid JSON Schema costs its tool its input validation, as before; one that cannot be compiled for any other reason, or that raises when applied to a call, gets that call refused before any handler runs (`ToolSchemaUnusableError`), so no call is served with bounds that could not be checked. Schemas mureo does **not** own — a plugin's — are still checked at startup, where the operator can see the report; mureo's own are checked in CI by `tests/test_mcp_strict_input_schemas.py`, against both the authored schema and the one the server actually compiles (they differ: `_reason_param` rebuilds every mutating tool).
@@ -638,6 +689,7 @@ Each platform throttler combines two mechanisms:
 | Meta Ads | 20 | 10 | 50,000 | Tuned to stay within the Business Use Case (BUC) quota |
 | Search Console | 5 | 5 | *(none)* | Reuses Google OAuth2 credentials |
 | Plugin / bridge tools | 5 | 5 | *(none)* | One shared conservative bucket for provider plugins and the Amazon Ads bridge; a tool that declares its own throttle hint gets a private bucket |
+| ChatGPT Ads (bundled provider) | 8 | 5 | *(none)* | Each of the 41 tools declares this throttle hint, so each has a private bucket. The bucket counts tool calls; one list call can send several page requests. The API allows 600 requests per minute per endpoint and 1,200 per minute overall; the client retries 429 (and 5xx on a GET, the ad preview and a create sent with an idempotency key) up to 3 attempts in total, honouring `Retry-After` up to 30 s |
 
 ### Integration
 
@@ -663,13 +715,15 @@ Each platform throttler combines two mechanisms:
      │
  │   ├── Google Ads: build OAuth2 Credentials → GoogleAdsClient → GoogleAdsApiClient
  │   ├── Meta Ads: MetaAdsApiClient(access_token, ad_account_id)
-     └── Amazon Ads: mint/refresh the LwA access token → Bearer header → forward
-           to the regional official-MCP endpoint
+ │   ├── Amazon Ads: mint/refresh the LwA access token → Bearer header → forward
+ │   │     to the regional official-MCP endpoint
+     └── ChatGPT Ads: load_chatgpt_ads_credentials() (`chatgpt_ads` section, then
+           CHATGPT_ADS_API_KEY) → Bearer header → https://api.ads.openai.com/v1
      │
 4. If no credentials: return error TextContent (no exception)
 ```
 
-The credential resolution logic is centralized in `mureo/auth.py`. Both the CLI and MCP server use the same `load_*_credentials()` and `create_*_client()` functions.
+The credential resolution logic is centralized in `mureo/auth.py` (ChatGPT Ads: `mureo/chatgpt_ads/credentials.py`). Both the CLI and MCP server use the same `load_*_credentials()` and `create_*_client()` functions.
 
 ### Meta Ads Token Auto-Refresh
 
@@ -681,7 +735,7 @@ The Amazon bridge is the reason mureo sits in the request path rather than letti
 
 ## Command-Based Workflow System
 
-In addition to the 229 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 270 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 

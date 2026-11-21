@@ -20,6 +20,12 @@ from jsonschema import Draft202012Validator
 
 import mureo.mcp.tools_creative_studio as mod
 from mureo.creative_studio.providers import NotSupportedError
+from tests._image_open_count import OPENED_ONCE, _count_opens
+from tests.test_image_validation_dimensions import _jpeg, _png
+from tests.test_image_validation_formats import _gif
+
+# A real PNG header: the edit input must identify as a PNG by its content.
+_PNG = _png(64, 64)
 
 
 class _FakeProvider:
@@ -644,7 +650,7 @@ class _EditProvider(_FakeProvider):
         return {"edit": True, "max_size": [1024, 1024]}
 
     async def edit(self, image: bytes, instruction: str) -> bytes:
-        self.calls.append({"edit": instruction})
+        self.calls.append({"edit": instruction, "image": image})
         return b"EDITED-BYTES"
 
 
@@ -666,7 +672,7 @@ async def test_edit_visual_happy_path(
     prov = _EditProvider()
     monkeypatch.setattr(mod, "available_providers", lambda: [prov])
     img = tmp_path / "pic.png"
-    img.write_bytes(b"\x89PNG original")
+    img.write_bytes(_PNG)
 
     result = await mod.handle_tool(
         "creative_studio_edit_visual",
@@ -688,7 +694,7 @@ async def test_edit_visual_increments_suffix(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(mod, "available_providers", lambda: [_EditProvider()])
     img = tmp_path / "pic.png"
-    img.write_bytes(b"\x89PNG original")
+    img.write_bytes(_PNG)
     (tmp_path / "pic_edit_1.png").write_bytes(b"existing")
 
     result = await mod.handle_tool(
@@ -706,7 +712,7 @@ async def test_edit_visual_no_edit_capable_provider(
     # _FakeProvider advertises edit=False.
     monkeypatch.setattr(mod, "available_providers", lambda: [_FakeProvider()])
     img = tmp_path / "pic.png"
-    img.write_bytes(b"\x89PNG original")
+    img.write_bytes(_PNG)
     result = await mod.handle_tool(
         "creative_studio_edit_visual",
         {"path": str(img), "instruction": "x"},
@@ -722,7 +728,7 @@ async def test_edit_visual_not_supported_envelope(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(mod, "available_providers", lambda: [_LyingProvider()])
     img = tmp_path / "pic.png"
-    img.write_bytes(b"\x89PNG original")
+    img.write_bytes(_PNG)
     result = await mod.handle_tool(
         "creative_studio_edit_visual",
         {"path": str(img), "instruction": "x"},
@@ -745,6 +751,132 @@ async def test_edit_visual_rejects_bad_path(
     )
     assert _payload(result)["status"] == "error"
     assert _payload(result)["error"] == "invalid_arguments"
+
+
+# The edit input goes to an external image provider, so it is read once
+# through ``read_image_file``: the bytes sent are the bytes checked, the read
+# is bounded, and content that is not a PNG is refused before any call (#1022).
+
+
+@pytest.mark.unit
+async def test_edit_visual_sends_the_bytes_of_the_input_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    prov = _EditProvider()
+    monkeypatch.setattr(mod, "available_providers", lambda: [prov])
+    img = tmp_path / "pic.png"
+    img.write_bytes(_PNG)
+
+    await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(img), "instruction": "x"},
+    )
+
+    assert prov.calls == [{"edit": "x", "image": _PNG}]
+
+
+@pytest.mark.unit
+async def test_edit_visual_opens_the_input_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    prov = _EditProvider()
+    monkeypatch.setattr(mod, "available_providers", lambda: [prov])
+    img = tmp_path / "pic.png"
+    img.write_bytes(_PNG)
+    counts = _count_opens(monkeypatch, img)
+
+    await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(img), "instruction": "x"},
+    )
+
+    assert counts == OPENED_ONCE
+    assert len(prov.calls) == 1
+
+
+async def _edit_refused(path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert the edit of ``path`` is refused and nothing reaches the provider."""
+    prov = _EditProvider()
+    monkeypatch.setattr(mod, "available_providers", lambda: [prov])
+    result = await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(path), "instruction": "x"},
+    )
+    payload = _payload(result)
+    assert payload["status"] == "error"
+    assert payload["error"] == "invalid_arguments"
+    assert "invalid image path" in payload["detail"]
+    assert prov.calls == []
+
+
+@pytest.mark.unit
+async def test_edit_visual_refuses_a_text_file_named_png(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    img = tmp_path / "x.png"
+    img.write_bytes(b"plain text, not an image")
+
+    await _edit_refused(img, monkeypatch)
+
+
+@pytest.mark.unit
+async def test_edit_visual_refuses_a_file_it_cannot_open(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A file that cannot be opened is an input error, not an exception."""
+    monkeypatch.chdir(tmp_path)
+    img = tmp_path / "x.png"
+    img.write_bytes(_png(64, 64))
+
+    def refuse(*_args: object, **_kwargs: object) -> int:
+        raise PermissionError(13, "Permission denied", str(img))
+
+    monkeypatch.setattr(mod, "read_image_file", refuse)
+
+    await _edit_refused(img, monkeypatch)
+
+
+@pytest.mark.unit
+async def test_edit_visual_refuses_a_png_link_to_a_text_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    text = tmp_path / "notes.txt"
+    text.write_bytes(b"plain text, not an image")
+    link = tmp_path / "x.png"
+    try:
+        link.symlink_to(text)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+
+    await _edit_refused(link, monkeypatch)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("payload", [_gif(64, 64), _jpeg(64, 64)])
+async def test_edit_visual_refuses_another_image_type_named_png(
+    payload: bytes, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    img = tmp_path / "x.png"
+    img.write_bytes(payload)
+
+    await _edit_refused(img, monkeypatch)
+
+
+@pytest.mark.unit
+async def test_edit_visual_refuses_a_png_over_the_size_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    img = tmp_path / "pic.png"
+    img.write_bytes(_PNG)
+    monkeypatch.setattr(mod, "_MAX_IMAGE_BYTES", len(_PNG) - 1)
+
+    await _edit_refused(img, monkeypatch)
 
 
 # ---------------------------------------------------------------------------
@@ -840,7 +972,7 @@ async def test_edit_visual_provider_failure_is_provider_failed(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(mod, "available_providers", lambda: [_FailingEditProvider()])
     img = tmp_path / "pic.png"
-    img.write_bytes(b"\x89PNG original")
+    img.write_bytes(_PNG)
     result = await mod.handle_tool(
         "creative_studio_edit_visual",
         {"path": str(img), "instruction": "x"},

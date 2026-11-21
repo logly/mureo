@@ -46,9 +46,9 @@ def test_separator_is_the_documented_literal() -> None:
             "plugin:mureo-lineyahoo-bridge:yahoo_ads",
         ),
         (
-            "mureo-logly-bridge",
-            "logly_ads_context",
-            "plugin:mureo-logly-bridge:logly_ads_context",
+            "mureo-acme-bridge",
+            "acme_ads_context",
+            "plugin:mureo-acme-bridge:acme_ads_context",
         ),
         ("acme-ads", "acme_ads", "plugin:acme-ads:acme_ads"),
     ],
@@ -63,7 +63,7 @@ def test_plugin_platform_key_carries_distribution_and_provider(
 @pytest.mark.parametrize(
     ("distribution", "expected"),
     [
-        ("mureo-logly-bridge", "plugin:mureo-logly-bridge"),
+        ("mureo-acme-bridge", "plugin:mureo-acme-bridge"),
         ("acme-ads", "plugin:acme-ads"),
         ("unknown", "plugin:unknown"),
     ],
@@ -122,7 +122,7 @@ def test_plugin_platform_key_is_idempotent() -> None:
     [
         ("plugin:mureo-lineyahoo-bridge:yahoo_ads", True),
         # The #481 short form stays valid on read.
-        ("plugin:mureo-logly-bridge", True),
+        ("plugin:mureo-acme-bridge", True),
         ("plugin:acme-ads", True),
         ("google_ads", False),
         ("meta_ads", False),
@@ -149,7 +149,7 @@ def test_is_plugin_platform_key(key: str, expected: bool) -> None:
             ("mureo-lineyahoo-bridge", "yahoo_ads"),
         ),
         # Legacy short form — a distribution, and no provider.
-        ("plugin:mureo-logly-bridge", ("mureo-logly-bridge", "")),
+        ("plugin:mureo-acme-bridge", ("mureo-acme-bridge", "")),
         # Not plugin keys at all.
         ("google_ads", ("", "")),
         ("plugin:", ("", "")),
@@ -200,7 +200,7 @@ def test_round_trip_key_to_parts() -> None:
 
 @pytest.mark.unit
 def test_round_trip_legacy_key_to_distribution() -> None:
-    for dist in ("mureo-logly-bridge", "acme-ads", "a"):
+    for dist in ("mureo-acme-bridge", "acme-ads", "a"):
         assert plugin_distribution(plugin_platform_key(dist)) == dist
 
 
@@ -217,7 +217,7 @@ def test_canonical_key_matches_only_its_own_platform() -> None:
     assert not plugin_platform_key_matches(
         key, "mureo-lineyahoo-bridge", "yahoo_ads_display"
     )
-    assert not plugin_platform_key_matches(key, "mureo-logly-bridge", "yahoo_ads")
+    assert not plugin_platform_key_matches(key, "mureo-acme-bridge", "yahoo_ads")
 
 
 @pytest.mark.unit
@@ -229,10 +229,10 @@ def test_legacy_key_still_joins_for_a_single_provider_distribution() -> None:
     what makes existing state correct with no rewrite.
     """
     assert plugin_platform_key_matches(
-        "plugin:mureo-logly-bridge", "mureo-logly-bridge", "logly_ads_context"
+        "plugin:mureo-acme-bridge", "mureo-acme-bridge", "acme_ads_context"
     )
     assert not plugin_platform_key_matches(
-        "plugin:mureo-logly-bridge", "mureo-smartnews-bridge", "smartnews_ads"
+        "plugin:mureo-acme-bridge", "mureo-smartnews-bridge", "smartnews_ads"
     )
 
 

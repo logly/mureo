@@ -1,6 +1,6 @@
 # External Tool Integration Guide
 
-mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console, plus official-MCP platforms it brings in itself: **Amazon Ads** (bridged through mureo) and **TikTok Ads** (hosted connector). For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
+mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console, plus official-MCP platforms it brings in itself: **Amazon Ads** (bridged through mureo) and **TikTok Ads** (hosted connector), and a bundled provider for **ChatGPT Ads** that calls OpenAI's Advertiser API directly. For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
 
 ## How It Works
 
@@ -63,7 +63,7 @@ The official GA4 MCP authenticates through Google's Application Default Credenti
 
 A `ga4` section that points at any other credential file is left alone, and a project id already stored in the derived section is kept (set your own quota project there and a re-authorization will not replace it). Editing the Google client id, client secret or refresh token, or the GA4 project id, on the dashboard re-writes the derived file; pointing `GOOGLE_APPLICATION_CREDENTIALS` at a file of your own removes it. Removing `google_ads` from the dashboard also removes the derived GA4 file and the `ga4` section that points at it; removing `ga4` removes the file. A re-authorization that no longer grants `analytics.readonly`, or whose client id carries no Cloud project number, removes the derived file and its section too. An authorization made before mureo requested this scope lacks it, and so does one where `analytics.readonly` was unticked on Google's consent screen (mureo logs which scopes Google left out): re-authorize once with `mureo auth upgrade-google`, or press **Re-authorize Google** on the configure wizard's GA4 step, which authorizes Google right there and then continues with GA4.
 
-**With a credential file of your own.** The MCP needs two environment variables, stored in the `ga4` section of the credential store. The `mureo configure` wizard (or the dashboard's env-var rows) collects them; both `mureo configure` and `mureo providers add ga4-official` inject the stored values into the provider's MCP entry. When a required value is not stored yet, `mureo providers add` still registers the provider, prints which names are missing, and leaves mureo's native GA4 tools active until the provider can authenticate:
+**With a credential file of your own.** The MCP needs two environment variables, stored in the `ga4` section of the credential store. The `mureo configure` wizard (or the dashboard's env-var rows) collects them; both `mureo configure` and `mureo providers add ga4-official` inject the stored values into the provider's MCP entry. When a required value is not stored yet, `mureo providers add` still registers the provider, and prints which names are missing; GA4 data stays unavailable until the provider can authenticate:
 
 - `GOOGLE_APPLICATION_CREDENTIALS` — path to an ADC credential file that can authenticate with the `https://www.googleapis.com/auth/analytics.readonly` scope. It does not have to be a service account: a service-account key, the `authorized_user` file written by `gcloud auth application-default login`, or an `external_account` configuration all work. The identity behind the file must be granted access to the GA4 property.
 - `GOOGLE_PROJECT_ID` — the Google Cloud project id. mureo also emits it as `GOOGLE_CLOUD_PROJECT`, the name the upstream README documents.
@@ -156,7 +156,7 @@ Community-maintained MCP servers exist for HubSpot and Salesforce. Quality and c
 
 ### Status: Official MCP — first-class mureo support
 
-TikTok publishes an official **TikTok for Business MCP Server** (a hosted HTTP MCP). mureo ships it as an official provider (`tiktok-ads-official`), so you don't wire it by hand — add it from `mureo configure` (both the dashboard and the setup wizard list TikTok) or with the CLI. It offers **read + write** across campaign management, reporting, catalogs, creatives, audiences, and Business Center.
+TikTok publishes an official **TikTok for Business MCP Server** (a hosted HTTP MCP). mureo ships it as an official provider (`tiktok-ads-official`): `mureo configure` (both the dashboard and the setup wizard list TikTok) and the CLI print the steps to add it. It offers **read + write** across campaign management, reporting, catalogs, creatives, audiences, and Business Center.
 
 mureo points at TikTok's **Progressive Disclosure** endpoint `https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer` — ~40 core tools load up front and the rest are discovered on demand — rather than the ~400-tool full-surface (`tt-ads-mcp-flat`) endpoint, to keep the exposed tool count manageable.
 
@@ -169,7 +169,7 @@ claude mcp add --transport http tiktok-ads \
   https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer
 ```
 
-Then run `/mcp` in Claude Code, select `tiktok-ads`, choose **Authenticate**, and sign in with your **TikTok for Business** account. `mureo configure` walks you through the same steps and reflects the connected state on the dashboard.
+Then run `/mcp` in Claude Code, select `tiktok-ads`, choose **Authenticate**, and sign in with your **TikTok for Business** account. `mureo configure` and `mureo providers add tiktok-ads-official` do not register it locally; they print the steps to add it as a Claude.ai custom connector instead (requires a paid Claude plan), and the dashboard reflects the connected state. `claude mcp add` above is the manual alternative.
 
 > **Note**: The official TikTok MCP is in beta; its tool surface may change. On **Claude Desktop**, add it via **Settings → Connectors → Add custom connector** with the URL above; on **Codex** it is not yet wired.
 
@@ -210,6 +210,30 @@ Amazon's tools then appear under **Amazon's own names** (e.g. `campaign_manageme
 `client_id` plus **either** `access_token` **or both** of `refresh_token` and `client_secret`. With the pair, mureo mints the access token before the first forwarded call and refreshes it once on expiry, persisting it atomically at `0600`. Full walkthrough, environment-variable table, and caveats: [`amazon-ads.md`](amazon-ads.md).
 
 > **Scope**: mureo's deep per-platform analytics (anomaly baselines, `result_indicator` CV-mismatch, RSA audit) are not available for Amazon yet — tracked in issue #120. Treat Amazon read findings as advisory. Amazon is also not part of BYOD by design.
+
+## ChatGPT Ads
+
+### Status: Bundled provider — read + write (mureo calls the API directly)
+
+ChatGPT Ads is read and changed through OpenAI's **Advertiser API** by a provider that ships inside mureo. There is no separate MCP server to register: mureo calls the API itself, so the request path is
+
+```
+Claude  →  local mureo MCP  →  https://api.ads.openai.com/v1
+```
+
+The Ads API key stays in the `chatgpt_ads` section of `~/.mureo/credentials.json` and never enters the host's MCP configuration. Every call rides mureo's plugin safety layer (audit trail, per-tool throttle, and for changes an `action_log` entry with a reversal and the STRATEGY.md caps on the amounts each tool declares; see `docs/chatgpt-ads.md` for which caps read which amounts). Ten read tools cover the ad account, its spending limits, campaigns, ad groups, ads, insights and the change history; eleven change tools pause and activate, rename, reschedule, and set budgets, bids and the account daily spending limit. Further tools create campaigns, ad groups and ads (always paused, with an idempotency key) and archive them, upload images, preview ads and search locations; creates, archives and uploads are recorded without a reversal. Further tools create custom audiences and add or remove their members from a local file (emails and phone numbers are hashed on the machine, never passed as arguments), set up pixels and conversion events, and report conversions; audience, pixel and event creates and membership changes are recorded without a reversal. The STATE.json platform key is `plugin:mureo-chatgpt-ads:chatgpt_ads`.
+
+### Configuration
+
+1. Create an Ads API key on the Settings page in Ads Manager, for your own ad account. One key reads one ad account.
+2. Paste it on the **ChatGPT Ads** card of `mureo configure` (the **ChatGPT Ads** tab of the dashboard's **Connection credentials** section), or set `CHATGPT_ADS_API_KEY`.
+3. The `chatgpt_ads_*` tools are listed by default, with or without a key, and the key is read on each call, so saving it needs no server restart. `MUREO_DISABLE_CHATGPT_ADS=1` leaves the tools out.
+
+### Authentication
+
+One field, `api_key` (secret, required), sent as a bearer token. A missing key is reported as `auth_error` with `auth_cause: no_credentials`, a rejected one (401, or a 403 that is not a feature gate) as `token_invalid`. Full walkthrough, units, data freshness, limits and the points not yet exercised against a live account: [`chatgpt-ads.md`](chatgpt-ads.md).
+
+> **Scope**: mureo's deep per-platform analytics (anomaly baselines, `result_indicator` CV-mismatch, RSA audit) do not exist for ChatGPT Ads. Treat its findings as advisory. ChatGPT Ads is not part of BYOD.
 
 ## Future Platforms
 

@@ -130,7 +130,7 @@ Detailed step-by-step:
 - [`docs/byod.md#step-2a--run-the-google-ads-script-optional`](byod.md#step-2a--run-the-google-ads-script-optional) — Google Ads template + filling instructions
 - [`docs/byod.md#step-2b--export-from-meta-ads-manager-optional`](byod.md#step-2b--export-from-meta-ads-manager-optional) — Meta Ads Saved Report (recognized in 9 languages: English / Japanese / Simplified Chinese / Traditional Chinese / Korean / Spanish / Portuguese / German / French)
 
-The exports are independent — you can start with one platform and add the other later. Search Console, GA4, Amazon Ads, and TikTok Ads are not part of BYOD; they require the Live API path. (Amazon Ads is bridged through the official Amazon Ads MCP and has no BYOD bundle by design — see [`docs/amazon-ads.md`](amazon-ads.md).)
+The exports are independent — you can start with one platform and add the other later. Search Console, GA4, Amazon Ads, TikTok Ads, and ChatGPT Ads are not part of BYOD; they require the Live API path. (Amazon Ads is bridged through the official Amazon Ads MCP and has no BYOD bundle by design — see [`docs/amazon-ads.md`](amazon-ads.md).)
 
 > **BYOD and Demo run on mureo-native only.** They are served by mureo's CSV-backed MCP tools; the official platform MCPs (`mureo providers add …` / the Claude.ai Meta connector) are the Live-API path and cannot read BYOD/demo data. Don't route a platform to the official MCP (or `mureo providers add` it) if you analyze it via BYOD or the demo — keep mureo-native enabled for it. See [docs/byod.md](byod.md#why-byod) → *Compatibility*.
 
@@ -189,7 +189,7 @@ Same as chat. If you connected the workspace folder, Cowork can also open `<work
 
 # Auth (Live API)
 
-Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually executing changes (`/rescue`, `/budget-rebalance`, `/creative-refresh`, `mureo rollback apply`) and for GA4 / Search Console support. **Amazon Ads** joins here too, but through a different route: mureo bridges the official Amazon Ads MCP rather than calling an ad API directly — see [`docs/amazon-ads.md`](amazon-ads.md).
+Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually executing changes (`/rescue`, `/budget-rebalance`, `/creative-refresh`, the `rollback_apply` MCP tool) and for GA4 / Search Console support. **Amazon Ads** joins here too, but through a different route: mureo bridges the official Amazon Ads MCP rather than calling an ad API directly — see [`docs/amazon-ads.md`](amazon-ads.md).
 
 ## Step 1 — Get credentials
 
@@ -199,6 +199,7 @@ Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually exec
 | **Meta Ads** | [Meta for Developers](https://developers.facebook.com/) App ID + App Secret (development mode is fine) |
 | **Amazon Ads** | A Login with Amazon (LwA) app: Client ID + (recommended) Refresh Token + Client Secret. See [`docs/amazon-ads.md`](amazon-ads.md) |
 | **GA4 / Search Console** | OAuth login (no developer token); the wizard handles this |
+| **ChatGPT Ads** | An Ads API key from the Settings page in Ads Manager (one key per ad account); enter it in the `mureo configure` step wizard or its **ChatGPT Ads** tab, or set `CHATGPT_ADS_API_KEY`. See [`docs/chatgpt-ads.md`](chatgpt-ads.md) |
 
 > **Google Ads API access level**: enabling the API in the Cloud Console grants **Test** access (test accounts only) right away. **Production accounts need at least Explorer** — applied for from the Google Ads API **Overview** page, with no brand verification required (2,880 production operations a day). **Basic** (15,000 a day) has brand verification of the Cloud project as a prerequisite before you can apply. Use BYOD while you wait. See [docs/authentication.md — Access levels](authentication.md#access-levels).
 
@@ -215,9 +216,9 @@ pip install mureo
 mureo setup claude-code             # interactive OAuth wizard runs as part of setup
 ```
 
-The setup command opens a local web wizard at `http://127.0.0.1:<random-port>/`, where you paste each token / secret in the appropriate field and complete the OAuth flow in the same browser. Skip individual platforms with `--no-google-ads` / `--no-meta-ads` if you only want one of them.
+The setup command prompts in the terminal for the OAuth client ID / secret (Google) and app ID / secret (Meta), and opens your browser only for the consent screen. Skip individual platforms with `--no-google-ads` / `--no-meta-ads` if you only want one of them.
 
-If a Google OAuth refresh token is already saved (Google Ads and Search Console share one), the wizard skips that authorization step and tells you the saved token is being reused, with a **Re-authorize Google** button if you want to mint a new one anyway.
+For a browser form instead, use `mureo configure`: if a Google OAuth refresh token is already saved (Google Ads and Search Console share one), its wizard skips that authorization step and tells you the saved token is being reused, with a **Re-authorize Google** button if you want to mint a new one anyway.
 
 > **Amazon Ads** uses a paste-code wizard rather than a redirect-back one — Amazon's consent has no loopback callback for a local tool to listen on. Open `mureo configure`, scroll the dashboard to **Connection credentials**, enter the Login with Amazon **Client ID** + **Client Secret** in the **Amazon Ads** tab (or set the `AMAZON_ADS_*` env vars), then click **Open Amazon consent page**, approve, and paste the address Amazon redirects you to back into the tab. mureo stores both tokens and refreshes the tool list; restart the MCP server afterwards. Full walkthrough: [`docs/amazon-ads.md`](amazon-ads.md).
 
@@ -283,7 +284,7 @@ Skill availability by host:
 
 | Host | Skill triggering | Notes |
 |---|---|---|
-| Claude Code | `/daily-check`, `/budget-rebalance`, … | All 20 operational skills + 8 foundation skills available locally |
+| Claude Code | `/daily-check`, `/budget-rebalance`, … | All 20 operational skills + 9 foundation skills available locally |
 | Claude Desktop chat | natural language ("run a daily check") | Skills must be registered to claude.ai (manual upload or marketplace) |
 | Cowork | natural language | Same registration story as chat |
 | OpenAI Codex | `$daily-check` / the `/skills` picker, or natural language | Skills install to `~/.codex/skills` (CLI / IDE / desktop app share them) |

@@ -39,7 +39,7 @@ mureo configure
 
 > `mureo auth setup --web` は**廃止**されました。そのブラウザ認証情報フローは統合された `mureo configure` UI の一部になっています。
 
-ターミナル入力を安全に受け取れない AI エージェントから mureo を案内された場合、あるいは単に GUI を使いたい場合は `mureo configure` を選んでください。localhost のランダムなポートに短命の HTTP サーバーを立ててブラウザで開き、HTML フォームと標準的な OAuth リダイレクトによる Google Ads / Meta Ads / GA4 の認証情報入力 (各項目は対応するコンソールへディープリンク) に加え、ダッシュボードの *接続先の認証情報* セクションにある **Amazon Ads** タブの **Authorize with Amazon** フローで LwA トークンを取得 (Amazon の同意にはループバックコールバックがないため、コードを貼り付ける案内付きのフローです。mureo が同意ページを開き、リダイレクト先のアドレスを貼り戻します。[amazon-ads.ja.md](amazon-ads.ja.md) 参照) もできます。さらに Claude のホスト選択、基本セットアップ (MCP サーバー + 認証ガードフック + skills)、公式 MCP プロバイダの追加、プラットフォームごとの mureo-native / 公式 MCP の切り替え、Demo/BYOD の雛形作成も行えます。フラグ: `--no-browser`、`--timeout-seconds N` (アイドル時の停止、既定 600)。セキュリティ強化 (CSRF ローテーション、OAuth `state` の再検証、DNS リバインディング対策、localhost に固定したリダイレクト検証、汎用化したエラー表示、POST サイズ上限、CSP) も同じものが適用されます。`SECURITY.md` 参照。
+ターミナル入力を安全に受け取れない AI エージェントから mureo を案内された場合、あるいは単に GUI を使いたい場合は `mureo configure` を選んでください。localhost のランダムなポートに短命の HTTP サーバーを立ててブラウザで開き、HTML フォームと標準的な OAuth リダイレクトによる Google Ads / Meta Ads / GA4 の認証情報入力 (各項目は対応するコンソールへディープリンク) に加え、ダッシュボードの *接続先の認証情報* セクションにある **Amazon 広告** (Amazon Ads) タブの **Amazon で認可する** (Authorize with Amazon) フローで LwA トークンを取得 (Amazon の同意にはループバックコールバックがないため、コードを貼り付ける案内付きのフローです。mureo が同意ページを開き、リダイレクト先のアドレスを貼り戻します。[amazon-ads.ja.md](amazon-ads.ja.md) 参照) もできます。同じセクションの **ChatGPT Ads** タブには Ads API キーを貼り付けます ([chatgpt-ads.ja.md](chatgpt-ads.ja.md) 参照)。さらに Claude のホスト選択、基本セットアップ (MCP サーバー + 認証ガードフック + skills)、公式 MCP プロバイダの追加、プラットフォームごとの mureo-native / 公式 MCP の切り替え、Demo/BYOD の雛形作成も行えます。フラグ: `--no-browser`、`--timeout-seconds N` (アイドル時の停止、既定 600)。セキュリティ強化 (CSRF ローテーション、OAuth `state` の再検証、DNS リバインディング対策、localhost に固定したリダイレクト検証、汎用化したエラー表示、POST サイズ上限、CSP) も同じものが適用されます。`SECURITY.md` 参照。
 
 認証ステップは、すでにディスクにあるものを再利用します。Google の refresh token が保存済みなら (Google Ads と Search Console は 1 本を共有) Google の認可ステップはスキップされ、UI がそう表示します。新しいトークンを発行したいときのために **Re-authorize Google** ボタンが出ます。GA4 を選んでいて、保存済みの認可に GA4 の読み取りスコープがない場合は、GA4 のステップにも同じボタンが出ます。押すとその位置に Google のステップが入り、新しい認可がスコープを持っていれば GA4 のステップはそこから埋まります ([integrations.md](integrations.md) 参照)。Google の同意画面で Search Console と GA4 の読み取りはチェックを外してかまいません (Google が付与しなかったスコープは mureo がログに残します) が、Google Ads のスコープのチェックを外すと認可は失敗します。保存する refresh token はこのスコープのためのものだからです。
 
@@ -105,6 +105,7 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 | `GOOGLE_ADS_CLIENT_SECRET` | はい | OAuth 2.0 クライアントシークレット |
 | `GOOGLE_ADS_REFRESH_TOKEN` | はい | OAuth 2.0 refresh token |
 | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | いいえ | マネージャーアカウント (MCC) の customer ID |
+| `GOOGLE_ADS_CUSTOMER_ID` | いいえ | 対象の `customer_id`。省略時は `GOOGLE_ADS_LOGIN_CUSTOMER_ID` が使われる。 |
 
 ### Meta Ads
 
@@ -113,6 +114,7 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 | `META_ADS_ACCESS_TOKEN` | はい | Graph API のアクセストークン |
 | `META_ADS_APP_ID` | いいえ | Meta の App ID |
 | `META_ADS_APP_SECRET` | いいえ | Meta の App Secret |
+| `META_ADS_TOKEN_OBTAINED_AT` | いいえ | トークンの取得日時 (ISO 8601)。[自動更新](#meta-ads-トークンの自動更新)で使われる |
 
 ### Amazon Ads
 
@@ -129,6 +131,14 @@ mureo は `~/.mureo/credentials.json` から認証情報を読み込み、ファ
 | `AMAZON_ADS_MANAGER_ACCOUNT_ID` | いいえ | fixed アカウントモードのみ |
 
 「条件付き」とは、クライアント ID に加えて `AMAZON_ADS_ACCESS_TOKEN` **か**、`AMAZON_ADS_REFRESH_TOKEN` と `AMAZON_ADS_CLIENT_SECRET` の**両方**、のどちらかという意味です。[amazon-ads.ja.md](amazon-ads.ja.md) 参照。
+
+### ChatGPT Ads
+
+| 変数 | 必須 | 説明 |
+|----------|----------|-------------|
+| `CHATGPT_ADS_API_KEY` | キーを保存していない場合は、はい | ご自身の広告アカウントの Advertiser API キー。Ads Manager の設定ページで作成します。1 つのキーで読み取れる広告アカウントは 1 つです |
+
+保存先は `~/.mureo/credentials.json` の `chatgpt_ads` セクションで、項目は `api_key` の 1 つです。`mureo configure` の **ChatGPT Ads** タブが書き込みます。空の値は未設定として扱います。ChatGPT Ads に `OPENAI_API_KEY` が使われることはありません。[chatgpt-ads.ja.md](chatgpt-ads.ja.md) 参照。
 
 **解決順序**: credentials.json が優先されます。環境変数は、credentials.json の該当セクションが無いか不完全な場合にのみ参照されます。
 
@@ -364,10 +374,11 @@ curl -X POST "https://graph.facebook.com/v26.0/oauth/access_token" \
 4. 生成されたトークンをコピーする。
 
 **configure UI でのトークン入力。** `mureo configure` の Meta Ads 認証ステップで、
-*Login with Facebook* の隣にある **"Paste a system-user token"** を開き、トークンを
-貼り、**Validate token** をクリックし (付与されたスコープと欠けているスコープが
+*Facebook でログインする* (Log in with Facebook) の隣にある
+**システムユーザートークンを貼り付ける** (Paste a system-user token) を開き、トークンを
+貼り、**トークンを検証** (Validate token) をクリックし (付与されたスコープと欠けているスコープが
 報告され、そのトークンで到達できる広告アカウントが一覧される)、広告アカウントを
-選んで **Save** します。
+選んで **トークンを保存** (Save token) します。
 
 **これらのトークンはたいてい期限切れになります。** ビジネス設定は新しいシステム
 ユーザートークンに **60 日**の有効期限を選ばせます。期限なしで発行されたトークンは
@@ -401,7 +412,7 @@ Meta の「never」判定なら `token_never_expires`。日付がある場合、
 App Secret には ✓ 設定済み / ✗ 未設定 を表示するので、この組がすでに保存されているかを
 確認できます。
 
-このカードを優先してください。Setup タブの **mureo Credentials (advanced)** フォームから
+このカードを優先してください。**設定** (Setup) タブの **mureo 認証情報（上級者向け）** (mureo Credentials (advanced)) フォームから
 `META_ADS_ACCESS_TOKEN` を保存することもできます。手で入れたトークンは入力どおりに
 保存され、自動更新の時計には乗りません (この書き込みは `token_obtained_at`、
 `token_expires_at`、`token_type`、`token_never_expires` をクリアします。いずれも
@@ -479,9 +490,9 @@ mureo は長期トークンを失効前に自動で更新できるので、手�
 
 自動更新は認証情報の読み込み時に走るので、2 か月使われていない mureo や、Meta が
 拒否し続ける交換は、古びたトークンをディスクに残します。ダッシュボードの
-**mureo integrations** リストはまさにそれを見ています: 53 日を超えると Meta の行は
+**mureo 連携** (mureo integrations) リストはまさにそれを見ています: 53 日を超えると Meta の行は
 トークンの経過日数とそれが意味することを表示し、隣にその場でシステムユーザー
-トークンのカードを開く **Re-authenticate** ボタンを出します。セットアップ
+トークンのカードを開く **再認証** (Re-authenticate) ボタンを出します。セットアップ
 ウィザードを再実行する必要はありません。
 
 この経過日数の警告は、mureo が交換できたはずのトークンにだけ出ます: `app_id` /
@@ -507,7 +518,10 @@ mureo は長期トークンを失効前に自動で更新できるので、手�
 
 1. **Google Ads OAuth** — Client ID/Secret を入力し (developer token は任意)、ブラウザで OAuth を開き、アカウントを選択。
 2. **Meta Ads OAuth** — App ID/Secret を入力し、ブラウザで OAuth を開き、長期トークンを取得し、アカウントを選択。
-3. **MCP 設定** — グローバル (`~/.claude/settings.json`) かプロジェクト単位 (`.mcp.json`) を選択。
+3. **MCP 設定** — グローバル (Claude Code のユーザースコープ。`~/.claude.json`) かプロジェクト単位 (`.mcp.json`) を選択。
+4. **認証ガード** — AI エージェントが `~/.mureo/credentials.json` を読めないようにする PreToolUse フックを入れる。
+
+Amazon Ads はターミナルでは入力しません。ウィザードは `mureo configure` の **Amazon 広告** (Amazon Ads) カードを案内します。
 
 ### プロジェクト単位の MCP 設定 (`.mcp.json`)
 
@@ -517,12 +531,15 @@ mureo は長期トークンを失効前に自動で更新できるので、手�
 {
   "mcpServers": {
     "mureo": {
-      "command": "python",
+      "type": "stdio",
+      "command": "/absolute/path/to/python",
       "args": ["-m", "mureo.mcp"]
     }
   }
 }
 ```
+
+`command` は mureo をインストールした Python インタープリタの絶対パスです。素の `python` だと AI エージェント側の `PATH` で解決され、そこに mureo が入っていなければ MCP サーバーは起動しません。
 
 `.mcp.json` に対応する AI エージェント (Claude Code など) は、そのプロジェクトディレクトリで作業するときに mureo MCP サーバーを自動的に見つけて接続します。
 
@@ -531,7 +548,7 @@ mureo は長期トークンを失効前に自動で更新できるので、手�
 セットアップの確認には `mureo auth` コマンドを使います:
 
 ```bash
-# 全プラットフォームの認証状態を表示
+# Google Ads / Meta Ads / Amazon Ads の認証状態を表示
 mureo auth status
 
 # Google Ads の認証情報を確認 (値はマスク表示)
@@ -539,6 +556,12 @@ mureo auth check-google
 
 # Meta Ads の認証情報を確認 (値はマスク表示)
 mureo auth check-meta
+
+# Amazon Ads の認証情報を確認 (値はマスク表示)
+mureo auth check-amazon
+
+# Google を再認証して Search Console と GA4 の読み取りを追加
+mureo auth upgrade-google
 ```
 
 `mureo auth status` の出力例:
@@ -546,8 +569,9 @@ mureo auth check-meta
 ```
 === Authentication Status ===
 
-Google Ads: Authenticated
-Meta Ads: Authenticated
+Google Ads: Authenticated (customer_id: 0000000000)
+Meta Ads: Authenticated (account_id: act_0000000000)
+Amazon Ads: Not authenticated
 ```
 
 `mureo auth check-google` の出力例:
@@ -555,10 +579,11 @@ Meta Ads: Authenticated
 ```json
 {
   "developer_token": "***************abcd",
-  "client_id": "123456789.apps.googleusercontent.com",
+  "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
   "client_secret": "***************wxyz",
   "refresh_token": "***************efgh",
-  "login_customer_id": "1234567890"
+  "login_customer_id": "0000000000",
+  "customer_id": "0000000000"
 }
 ```
 

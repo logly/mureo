@@ -27,13 +27,14 @@ logo twins), so a removal issued on its own can be refused, and if it were
 not refused the split would leave the asset group short between the two
 round trips. ``partial_failure`` is deliberately left off.
 
-The upload is a separate request by necessity — it reuses the validated
-``upload_image_asset`` path rather than restating its guards — so
-everything that can be checked is checked *before* it runs: the link
-being replaced, the duplicate-link rule, and the field type's dimension
-rule. What remains after a successful upload is the mutate itself; if
-that is refused, the account is left holding an unlinked (and therefore
-non-serving) image asset, and the error says so.
+The upload is a separate request by necessity — it reuses the shared
+bounded read (``read_image_file``) and ``_MediaMixin``'s asset creation
+rather than restating either — so everything that can be checked is
+checked *before* it runs: the link being replaced, the duplicate-link
+rule, and the field type's dimension rule, measured on the very bytes
+that are uploaded. What remains after a successful upload is the mutate
+itself; if that is refused, the account is left holding an unlinked (and
+therefore non-serving) image asset, and the error says so.
 
 References:
 https://developers.google.com/google-ads/api/performance-max/asset-requirements
@@ -42,12 +43,13 @@ https://developers.google.com/google-ads/api/docs/assets/working-with-assets
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
 from google.ads.googleads.errors import GoogleAdsException
 
-from mureo._image_validation import read_image_dimensions, validate_image_file
+from mureo._image_validation import image_dimensions, read_image_file
 from mureo.google_ads._asset_groups import (
     PMAX_IMAGE_FIELD_TYPES,
     _result_resource_name,
@@ -80,7 +82,7 @@ _NOT_ENOUGH_IMAGE_ASSET_ERRORS: tuple[str, ...] = (
 
 #: ``ImageError`` codes that mean "this picture is the wrong shape or size
 #: for the slot". mureo checks that itself whenever it can read the
-#: dimensions, so these only arrive for a format it cannot probe (a GIF).
+#: dimensions, so these only arrive for a header whose size it cannot read.
 #: Translated rather than passed through, because the operator's next step
 #: is a different image and the raw code does not say which one.
 _IMAGE_CONSTRAINT_ERRORS: tuple[str, ...] = (
@@ -183,7 +185,7 @@ class _AssetGroupImagesMixin:
 
     if TYPE_CHECKING:
         # Provided at runtime by sibling mixins on GoogleAdsApiClient —
-        # list_asset_group_assets by _AssetGroupsMixin, upload_image_asset
+        # list_asset_group_assets by _AssetGroupsMixin, _create_image_asset
         # by _MediaMixin. Declared inside TYPE_CHECKING so mypy sees them
         # without a real body shadowing theirs in the MRO: _MediaMixin is
         # composed AFTER this mixin, so a plain stub here would win the
@@ -194,8 +196,8 @@ class _AssetGroupImagesMixin:
             campaign_id: str | None = None,
         ) -> list[dict[str, Any]]: ...
 
-        async def upload_image_asset(
-            self, file_path: str, name: str | None = None
+        async def _create_image_asset(
+            self, image_data: bytes, asset_name: str
         ) -> dict[str, Any]: ...
 
     @_wrap_mutate_error("Performance Max asset-group image replacement")
@@ -339,21 +341,25 @@ class _AssetGroupImagesMixin:
     ) -> dict[str, Any]:
         """Validate a local file, then upload it as a new image asset.
 
-        The dimension check runs against the bytes on disk, before the
-        upload, so a wrongly proportioned file costs no API call and
-        leaves no unlinked asset in the account.
+        The file is read once (#1011): the dimension check runs against
+        the bytes that are then sent, before the upload, so a wrongly
+        proportioned file costs no API call and leaves no unlinked asset
+        in the account, and a file replaced after the check is not the
+        one uploaded.
         """
-        path = validate_image_file(
+        path, content = await asyncio.to_thread(
+            read_image_file,
             file_path,
             max_size_bytes=_GOOGLE_MAX_IMAGE_SIZE_BYTES,
             max_size_label="5MB",
             allowed_extensions=_GOOGLE_ALLOWED_IMAGE_EXTENSIONS,
         )
-        width, height = read_image_dimensions(path)
+        width, height = image_dimensions(content)
         _validate_image_dimensions(field_type, width, height)
         name = params.get("new_image_name")
-        uploaded = await self.upload_image_asset(
-            str(path), str(name) if isinstance(name, str) and name.strip() else None
+        uploaded = await self._create_image_asset(
+            content,
+            str(name) if isinstance(name, str) and name.strip() else path.name,
         )
         return {
             "asset_id": str(uploaded["id"]),
@@ -479,7 +485,7 @@ class _AssetGroupImagesMixin:
             f"That slot takes a {spec.ratio_label} image of at least "
             f"{spec.min_width}x{spec.min_height} pixels; Google recommends "
             f"{spec.recommended}. mureo could not read this file's dimensions "
-            f"itself (GIF and unrecognised headers are not probed), so the "
+            f"itself (its header declares no usable size), so the "
             f"check happened server-side. Supply a correctly proportioned "
             f"image — mureo does not crop or resize." + orphan
         ) from exc

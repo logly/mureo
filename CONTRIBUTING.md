@@ -12,8 +12,8 @@ Thank you for your interest in contributing to mureo. This guide covers the deve
   to run the browser-asset tests
   (`node --test tests/js/*.test.js`). mureo ships no JavaScript
   dependencies, there is no `package.json` and no build step; Node is used
-  purely as a test runner for the DOM-free logic in
-  `mureo/_data/web/reports_*.js`. Skip it if you are not touching the
+  purely as a test runner for the configure UI's browser assets
+  (`tests/js/`). Skip it if you are not touching the
   configure UI — CI runs it either way.
 
 ### Clone and Install
@@ -36,7 +36,7 @@ pytest tests/ -v
 mypy mureo/
 
 # Check linting
-ruff check mureo/
+ruff check .
 ```
 
 ## Running Tests
@@ -170,6 +170,14 @@ node --test tests/js/*.test.js
 | `reports_logic.js` | `MUREO_REPORTS_LOGIC` | KPI withholding, freshness aggregation, conflict routing |
 | `reports_format.js` | `MUREO_REPORTS_FORMAT` | Flag labels and severities, param detail, numbers, period labels |
 | `reports_order.js` | `MUREO_REPORTS_ORDER` | The Reports index card order and how it is persisted |
+| `reports_sparkline.js` | `MUREO_REPORTS_SPARKLINE` | Seven days of one metric as a line, with missing days left as gaps |
+| `reports_display.js` | `MUREO_REPORTS_DISPLAY` | The detail view's reading of `summary.display` |
+| `reports_chart.js` | `MUREO_REPORTS_CHART` | The daily chart, with points placed by date |
+| `reports_triage.js` | `MUREO_REPORTS_TRIAGE` | The multi-client triage layer: which clients need attention, and the ranking |
+| `reports_overview.js` | `MUREO_REPORTS_OVERVIEW` | Which view the Reports section shows, the portfolio figures, the daily feed |
+| `reports_hero.js` | `MUREO_REPORTS_HERO` | The list screen's band: how many clients are fine and how many are not |
+| `reports_index.js` | `MUREO_REPORTS_INDEX` | The list screen's model, composed once per render |
+| `outcome_text.js` | `MUREO_OUTCOME_TEXT` | An outcome evaluation in words: verdict, reason, a row's role and note |
 
 No install step: no `package.json`, no dependencies, no lockfile. Each
 module publishes exactly one global for the browser and carries an inert
@@ -191,11 +199,11 @@ test it; rendering stays in `dashboard.js` and stays pinned statically.
 
 ### Writing Tests
 
-Place tests in `tests/` mirroring the source structure:
+Most tests live directly in `tests/`, one `test_*.py` file per module or feature; `core`, `adapters`, `analytics`, `creative_studio` and `web` have their own `tests/<pkg>/` directory:
 
 ```
-mureo/google_ads/client.py  →  tests/test_google_ads/test_client.py
-mureo/context/strategy.py   →  tests/test_context/test_strategy.py
+mureo/google_ads/client.py  →  tests/test_google_ads_client.py
+mureo/context/strategy.py   →  tests/test_strategy.py
 ```
 
 Example test:
@@ -272,10 +280,10 @@ entries.append(new_entry)
 
 ```bash
 # Format code
-black mureo/ tests/
+black .
 
 # Fix auto-fixable lint issues
-ruff check --fix mureo/ tests/
+ruff check --fix .
 
 # Type check
 mypy mureo/
@@ -284,7 +292,7 @@ mypy mureo/
 Configuration is in `pyproject.toml`:
 
 - **black**: line-length 88, target Python 3.10
-- **ruff**: select rules E, F, I, N, W, UP, B, A, SIM, TCH
+- **ruff**: select rules E, F, I, N, W, UP, B, A, SIM, TCH, PLC0415, BLE
 - **mypy**: strict mode
 
 ### Error Handling
@@ -302,7 +310,7 @@ Shape drifts before logic breaks. Keep the shape the codebase already has (see a
 - **Do not add a function-local import to break an import cycle.** Fix the dependency direction. If an import inside a function is unavoidable, comment why on the import itself.
 - **One name per concept.** Reuse the existing parameter and field names (`period`, `customer_id`, `account_id`, `platform`, …).
 - **Broad excepts need a reason.** `except Exception` carries a `noqa: BLE001` with the reason, or narrows the type.
-- **Update the docs in the same PR** — `docs/architecture.md`, skill files, `CHANGELOG.md` — whenever the change touches what they describe.
+- **Update the docs in the same PR** — `docs/architecture.md`, skill files, `CHANGELOG.md` — whenever the change touches what they describe. `tests/test_doc_*.py` compare the docs' reference tables with the code: tool names and their required parameters, CLI commands, STATE.json field names, workflow skills, and throttle defaults (rate, burst, hourly cap). A change to any of these fails the suite until the matching doc edit is in the same change.
 - **Say why, not how the change came about.** Comments, docstrings, docs and `CHANGELOG.md` entries explain the reason for the code's shape. They do not record who asked for, decided, approved or rejected a change, review findings or their labels, workflow roles or phases, or internal documents and plan labels. Cite a public issue or PR number instead. `python scripts/check_comment_provenance.py` enforces this in CI.
 
 Reviewers check the diff for a new helper, a new failure shape, a new lazy import or a new name, and ask for a justification before approving.
@@ -321,11 +329,13 @@ The repository is English: code comments, docstrings, docs, skills, tests, commi
 
 1. **Tests pass**: `pytest tests/ -v`
 2. **Coverage >= 80%**: `pytest --cov=mureo --cov-report=term-missing`
-3. **Types pass**: `mypy mureo/`
-4. **Lint passes**: `ruff check mureo/`
-5. **Formatted**: `black --check mureo/ tests/`
+3. **Types pass**: `mypy mureo/ --ignore-missing-imports`
+4. **Lint passes**: `ruff check .`
+5. **Formatted**: `black --check .`
 6. **Browser assets pass** (only if you touched `mureo/_data/web/`):
    `node --test tests/js/*.test.js`
+7. **English-only and comment provenance checks pass**:
+   `python scripts/check_english_only.py && python scripts/check_comment_provenance.py`
 
 ### PR Structure
 
@@ -350,15 +360,15 @@ docs: update MCP server setup instructions
 When adding a new MCP tool:
 
 1. **Client method**: Add the async method to the appropriate Mixin in `mureo/google_ads/` or `mureo/meta_ads/`.
-2. **Tool definition**: Add a `Tool` object to `mureo/mcp/tools_google_ads.py` or `tools_meta_ads.py`.
+2. **Tool definition**: Add a `Tool` object to the matching `mureo/mcp/_tools_google_ads_*.py` or `_tools_meta_ads_*.py` sub-module.
 3. **Handler**: Add a handler function and register it in the `_HANDLERS` dict.
 4. **Tests**: Add unit tests for both the client method and the handler.
 5. **Documentation**: Update `docs/mcp-server.md` with the new tool.
 
 ### Adding a New CLI Command
 
-1. Add the command function to `mureo/cli/google_ads.py` or `mureo/cli/meta_ads.py`.
-2. Follow the existing pattern: `_require_creds()` -> create client -> `asyncio.run()` -> `_output()`.
+1. Add a Typer sub-app in `mureo/cli/<name>_cmd.py` and register it with `app.add_typer` in `mureo/cli/main.py`.
+2. Ad-platform operations belong in MCP tools, not the CLI.
 3. Add tests.
 4. Update `docs/cli.md`.
 

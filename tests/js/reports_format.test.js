@@ -194,8 +194,8 @@ test.describe("matchReportFlagBase", function () {
   });
 
   test.it("matches a base followed by a descriptor, not a bare prefix", function () {
-    // "cpa_over_target_logly" is the base plus a client name…
-    assert.equal(fmt.matchReportFlagBase("cpa_over_target_logly")[0], "cpa_over_target");
+    // "cpa_over_target_acme" is the base plus a client name…
+    assert.equal(fmt.matchReportFlagBase("cpa_over_target_acme")[0], "cpa_over_target");
     // …but "cpa_over_targeting" only SHARES a prefix and must not match.
     assert.equal(fmt.matchReportFlagBase("cpa_over_targeting"), null);
   });
@@ -232,9 +232,9 @@ test.describe("humanizeReportFlag", function () {
   });
 
   test.it("shows only the base label for a bare-string flag", function () {
-    // The trailing remainder ("_logly") is dropped on purpose — it read as
+    // The trailing remainder ("_acme") is dropped on purpose — it read as
     // distracting, ambiguous parentheses.
-    assert.equal(fmt.humanizeReportFlag("cpa_over_target_logly"), "CPA over target");
+    assert.equal(fmt.humanizeReportFlag("cpa_over_target_acme"), "CPA over target");
   });
 
   test.it("humanizes an unregistered bare-string flag", function () {

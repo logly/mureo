@@ -151,10 +151,10 @@ class TestRollbackList:
                 },
                 {
                     "timestamp": "2026-04-14T10:00:00",
-                    "action": "logly_pause",
-                    "platform": "plugin:mureo-logly-bridge:logly_ads_context",
+                    "action": "acme_pause",
+                    "platform": "plugin:mureo-acme-bridge:acme_ads_context",
                     "campaign_id": "222",
-                    "reversible_params": {"operation": "logly_resume"},
+                    "reversible_params": {"operation": "acme_resume"},
                 },
             ],
         )
@@ -171,7 +171,7 @@ class TestRollbackList:
         )
         assert result.exit_code == 0, result.output
         assert "line_pause" in result.output
-        assert "logly_pause" not in result.output
+        assert "acme_pause" not in result.output
 
     def test_missing_state_file_exits_with_helpful_message(
         self, tmp_path: Path

@@ -406,8 +406,8 @@ def _picker_entry(
     from mureo.core.providers import AccountOAuthConfig
 
     class _Broker:
-        name = "meta_ads_logly"
-        display_name = "Logly Meta"
+        name = "meta_ads_acme"
+        display_name = "Acme Meta"
         capabilities = frozenset()
         account_credential_fields = (
             AccountCredentialField(key="client_id", display_name="Client ID"),
@@ -431,8 +431,8 @@ def _picker_entry(
     if lister is not None:
         _Broker.list_oauth_accounts = staticmethod(lister)  # type: ignore[attr-defined]
     return ProviderEntry(
-        name="meta_ads_logly",
-        display_name="Logly Meta",
+        name="meta_ads_acme",
+        display_name="Acme Meta",
         capabilities=frozenset(),
         provider_class=_Broker,
         source_distribution=None,
@@ -443,7 +443,7 @@ def _store_token(credentials_path: Path) -> None:
     from mureo.core.secret_store import FilesystemSecretStore
 
     FilesystemSecretStore(path=credentials_path).save(
-        "meta_ads_logly", {"access_token": "TKN"}
+        "meta_ads_acme", {"access_token": "TKN"}
     )
 
 
@@ -457,7 +457,7 @@ def test_accounts_endpoint_returns_normalised_accounts(
         default_registry,
         "_entries",
         {
-            "meta_ads_logly": _picker_entry(
+            "meta_ads_acme": _picker_entry(
                 lambda creds: [
                     {"id": "act_1", "name": "Brand", "currency": "JPY"},
                     {"id": "act_2"},
@@ -466,7 +466,7 @@ def test_accounts_endpoint_returns_normalised_accounts(
         },
     )
     _store_token(credentials_path)
-    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_acme/accounts")
     assert status == 200
     # Extra keys the plugin returned travel all the way to the picker, and
     # an account the plugin gave no name for arrives as ``null`` (#746).
@@ -483,10 +483,10 @@ def test_accounts_endpoint_409_when_not_authenticated(
     monkeypatch.setattr(
         default_registry,
         "_entries",
-        {"meta_ads_logly": _picker_entry(lambda creds: [{"id": "act_1"}])},
+        {"meta_ads_acme": _picker_entry(lambda creds: [{"id": "act_1"}])},
     )
     # No token stored → 409 not_authenticated.
-    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_acme/accounts")
     assert status == 409
     assert body["error"] == "not_authenticated"
 
@@ -501,10 +501,10 @@ def test_accounts_endpoint_404_when_not_supported(
     monkeypatch.setattr(
         default_registry,
         "_entries",
-        {"meta_ads_logly": _picker_entry(None)},
+        {"meta_ads_acme": _picker_entry(None)},
     )
     _store_token(credentials_path)
-    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_acme/accounts")
     assert status == 404
     assert body["error"] == "accounts_not_supported"
 
@@ -528,10 +528,10 @@ def test_accounts_endpoint_502_when_hook_fails(
     monkeypatch.setattr(
         default_registry,
         "_entries",
-        {"meta_ads_logly": _picker_entry(_boom)},
+        {"meta_ads_acme": _picker_entry(_boom)},
     )
     _store_token(credentials_path)
-    status, body = get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    status, body = get(wizard, "/api/credentials/plugins/meta_ads_acme/accounts")
     assert status == 502
     assert body["error"] == "account_listing_failed"
 
@@ -637,6 +637,56 @@ def test_status_plugin_platforms_empty_when_no_provider_declares(
     status, body = get(wizard, "/api/status")
     assert status == 200
     assert body["plugin_platforms"] == {}
+
+
+@pytest.mark.unit
+def test_status_carries_plugin_providers(
+    wizard: ConfigureWizard, registry_two_plugins: None
+) -> None:
+    """Every provider with a descriptor, sorted; ``noop`` declares no field,
+    so it has no descriptor and is absent."""
+    status, body = get(wizard, "/api/status")
+    assert status == 200
+    assert body["plugin_providers"] == ["demo_ads"]
+
+
+@pytest.fixture
+def registry_bundled_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty registry, so the wizard's startup discovery registers the
+    bundled providers into it. Request it before ``wizard``."""
+    monkeypatch.setattr(default_registry, "_entries", {})
+
+
+@pytest.fixture
+def chatgpt_ads_switched_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The ChatGPT Ads gate set before the wizard boots, so its startup
+    discovery skips that bundled provider. Request it before ``wizard``."""
+    monkeypatch.setenv("MUREO_DISABLE_CHATGPT_ADS", "1")
+
+
+@pytest.mark.unit
+def test_status_plugin_providers_list_the_bundled_providers(
+    registry_bundled_only: None, wizard: ConfigureWizard
+) -> None:
+    status, body = get(wizard, "/api/status")
+    assert status == 200
+    names = body["plugin_providers"]
+    assert {"amazon_ads", "chatgpt_ads"} <= set(names)
+    assert names == sorted(names)
+
+
+@pytest.mark.unit
+def test_status_plugin_providers_omit_a_switched_off_bundled_provider(
+    chatgpt_ads_switched_off: None,
+    registry_bundled_only: None,
+    wizard: ConfigureWizard,
+) -> None:
+    """The configure wizard reads this list to decide whether to offer
+    ChatGPT Ads, so a provider that is not registered must be absent."""
+    status, body = get(wizard, "/api/status")
+    assert status == 200
+    assert "amazon_ads" in body["plugin_providers"]
+    assert "chatgpt_ads" not in body["plugin_providers"]
 
 
 def _valid_meta_entry() -> ProviderEntry:

@@ -40,6 +40,7 @@ def _make_skill_dir(parent: Path, name: str, content: str = "skill body") -> Pat
 # depend on filesystem inspection at runtime.
 _BUNDLE_NAMES = (
     "_mureo-amazon-ads",
+    "_mureo-chatgpt-ads",
     "_mureo-google-ads",
     "_mureo-learning",
     "_mureo-meta-ads",

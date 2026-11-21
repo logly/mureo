@@ -12,6 +12,7 @@
     "ga4",
     "tiktok_ads",
     "amazon_ads",
+    "chatgpt_ads",
   ];
 
   // The user's explicit host choice is persisted client-side so it
@@ -83,6 +84,7 @@
       ga4: false,
       tiktok_ads: false,
       amazon_ads: false,
+      chatgpt_ads: false,
     },
     providerChoice: {
       google_ads: null, // "official" | "native" | a plugin provider's name
@@ -100,6 +102,8 @@
     // so re-hydrating mid-run cannot change effectiveSteps(): the auth step
     // is queued on the choice, not on `configured`.
     pluginPlatforms: {},
+    // From /api/status `plugin_providers`: see wizard_platforms.js.
+    pluginProviders: [],
     // Existing on-disk credentials state, hydrated from /api/status. The
     // auth queue uses these flags to skip OAuth slots whose tokens are
     // already saved (e.g. Search Console reuses Google Ads OAuth).
@@ -175,6 +179,10 @@
     return window.MUREO_WIZARD_CHOICE.isPluginChoice(STATE, platform);
   }
 
+  function offeredPlatforms() {
+    return window.MUREO_WIZARD_PLATFORMS.offeredPlatforms(PLATFORMS, STATE.pluginProviders);
+  }
+
   function hasOfficialProviderQueued() {
     return (
       (STATE.platforms.google_ads &&
@@ -205,6 +213,9 @@
     // provider install, no native↔official choice), so selecting it queues
     // exactly one thing — the credential slot that fills the ``amazon_ads``
     // section the bridge reads.
+    // ChatGPT Ads: mureo serves it itself from one API key, so selecting it
+    // likewise queues exactly one thing — the credential slot that fills the
+    // ``chatgpt_ads`` section.
     // GA4: its slot is skipped when the store already holds the ``ga4``
     // section (a credential provider hook may have written it), for the
     // same reason the Google slot is skipped on a saved token.
@@ -217,7 +228,8 @@
         (STATE.providerChoice.meta_ads === "native" || isPluginChoice("meta_ads"))) ||
       STATE.platforms.search_console ||
       (STATE.platforms.ga4 && !STATE.existing.ga4.configured) ||
-      STATE.platforms.amazon_ads
+      STATE.platforms.amazon_ads ||
+      STATE.platforms.chatgpt_ads
     );
   }
 
@@ -261,7 +273,7 @@
     if (step === "basic")
       return STATE.basicInstallCompleted || STATE.basicInstallSkippedByAdvanced;
     if (step === "platforms")
-      return PLATFORMS.some(function (p) {
+      return offeredPlatforms().some(function (p) {
         return STATE.platforms[p];
       });
     if (step === "provider_choice") {
@@ -300,7 +312,8 @@
   // The provider names are resolved by the server in the session locale, so
   // they are re-read from the latest snapshot on every run and after a
   // locale switch, not only on the first load. Each entry is copied, so the
-  // wizard never shares an object with the snapshot.
+  // wizard never shares an object with the snapshot. A selection of a
+  // platform no longer offered is dropped, so it queues no slot.
   function hydratePluginPlatforms(status) {
     if (!status) return;
     const served = status.plugin_platforms || {};
@@ -309,6 +322,12 @@
       copy[platform] = Object.assign({}, served[platform]);
     });
     STATE.pluginPlatforms = copy;
+    const names = status.plugin_providers;
+    STATE.pluginProviders = Array.isArray(names) ? names.slice() : [];
+    const offered = offeredPlatforms();
+    PLATFORMS.forEach(function (p) {
+      if (offered.indexOf(p) === -1) STATE.platforms[p] = false;
+    });
   }
 
   function hydrateStateFromStatus(status) {
@@ -481,7 +500,7 @@
     wrap.innerHTML =
       '<h2>' + MUREO.t("wizard.platforms.title") + "</h2>" +
       '<p>' + MUREO.t("wizard.platforms.desc") + "</p>";
-    PLATFORMS.forEach(function (p) {
+    offeredPlatforms().forEach(function (p) {
       const label = document.createElement("label");
       label.style.display = "block";
       const checkbox = document.createElement("input");
@@ -596,7 +615,7 @@
 
     const summary = document.createElement("ul");
     summary.className = "wizard-completed-summary";
-    PLATFORMS.forEach(function (p) {
+    offeredPlatforms().forEach(function (p) {
       if (!STATE.platforms[p]) return;
       if (p === "meta_ads" && metaPending) return;
       // TikTok is never a "saved" row: pending (Code/Desktop) → shown as a

@@ -89,7 +89,8 @@ class TestLearningInsightsToolDefinition:
 
     def test_tool_still_takes_no_arguments_after_two_tier_read(self) -> None:
         """Reading both tiers must not introduce a scope argument —
-        mureo-pro and every bundled skill call this tool with ``{}``."""
+        add-on distributions and every bundled skill call this tool with
+        ``{}``."""
         mod = _import_learning_tools()
         tool = next(t for t in mod.TOOLS if t.name == "mureo_learning_insights_get")
         assert tool.inputSchema["properties"] == {}
@@ -243,7 +244,8 @@ class TestTwoTierRead:
     """The handler surfaces the workspace tier alongside the operator
     tier. Every path where the workspace tier contributes nothing must
     stay byte-identical to the pre-two-tier behaviour, because every
-    bundled diagnostic skill (and mureo-pro) already consumes it."""
+    bundled diagnostic skill (and any add-on distribution) already consumes
+    it."""
 
     @pytest.mark.asyncio
     async def test_workspace_absent_returns_legacy_operator_payload(self) -> None:
@@ -391,10 +393,10 @@ class TestTwoTierRead:
 
 
 @pytest.mark.unit
-class TestMureoProCompatibility:
-    """mureo-pro pins ``tools_learning.get_runtime_context`` as a
-    module-level name and monkeypatches it. Renaming, aliasing, or
-    caching the store at import time would break their shim."""
+class TestAddOnDistributionCompatibility:
+    """An add-on distribution pins ``tools_learning.get_runtime_context``
+    as a module-level name and monkeypatches it. Renaming, aliasing, or
+    caching the store at import time would break that shim."""
 
     def test_get_runtime_context_is_a_module_level_name(self) -> None:
         mod = _import_learning_tools()

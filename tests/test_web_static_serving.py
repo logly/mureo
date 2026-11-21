@@ -56,6 +56,7 @@ class TestStaticAllowList:
             "landing.js",
             "wizard.js",
             "wizard_provider_choice.js",
+            "wizard_platforms.js",
             "connector_url_row.js",
             "auth_wizards.js",
             "plugin_disconnect.js",
@@ -78,7 +79,8 @@ class TestStaticAllowList:
             .read_text(encoding="utf-8")
         )
         choice = html.index("/static/wizard_provider_choice.js")
-        assert choice < html.index("/static/wizard.js")
+        platforms = html.index("/static/wizard_platforms.js")
+        assert choice < platforms < html.index("/static/wizard.js")
         auth_bundle = [
             html.index(f"/static/{name}")
             for name in (

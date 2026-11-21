@@ -169,14 +169,14 @@ def test_every_pip_subprocess_forces_utf8_child_stdio(fake_pip: MagicMock) -> No
 
 
 def test_upgrade_named_package_with_version(fake_pip: MagicMock) -> None:
-    result = _runner().invoke(_app(), ["upgrade", "mureo-logly-bridge==1.2.3"])
+    result = _runner().invoke(_app(), ["upgrade", "mureo-acme-bridge==1.2.3"])
 
     assert result.exit_code == 0, result.stderr
     install_cmd = [
         c.args[0] for c in fake_pip.call_args_list if _is_package_install(c.args[0])
     ][0]
-    assert install_cmd[-1] == "mureo-logly-bridge==1.2.3"
-    assert install_cmd[install_cmd.index("--") + 1 :] == ["mureo-logly-bridge==1.2.3"]
+    assert install_cmd[-1] == "mureo-acme-bridge==1.2.3"
+    assert install_cmd[install_cmd.index("--") + 1 :] == ["mureo-acme-bridge==1.2.3"]
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ def test_upgrade_all_discovers_mureo_and_mureo_prefixed(
     fake_distributions(
         [
             "mureo",
-            "Mureo-Logly-Bridge",  # case + separator variants must normalise
+            "Mureo-Acme-Bridge",  # case + separator variants must normalise
             "mureo_lineyahoo_bridge",
             "mureology",  # squatter — must NOT be picked up
             "mureoextras",  # squatter — must NOT be picked up
@@ -207,7 +207,7 @@ def test_upgrade_all_discovers_mureo_and_mureo_prefixed(
     targets = install_cmd[install_cmd.index("--") + 1 :]
     assert set(targets) == {
         "mureo",
-        "mureo-logly-bridge",
+        "mureo-acme-bridge",
         "mureo-lineyahoo-bridge",
     }
     # mureo itself must always be present and ideally first for readability.

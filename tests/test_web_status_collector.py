@@ -535,6 +535,43 @@ class TestPluginPlatforms:
         assert snap.plugin_platforms["google_ads"] is not served["google_ads"]
 
 
+@pytest.mark.unit
+class TestPluginProviders:
+    """The snapshot carries the names of the plugin credential providers the
+    server has a descriptor for. The handler builds the list from the plugin
+    descriptors; ``collect_status`` relays it.
+    """
+
+    def test_default_is_empty(self, tmp_path: Path) -> None:
+        snap = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=_paths(tmp_path)
+        )
+        assert snap.plugin_providers == []
+        assert snap.as_dict()["plugin_providers"] == []
+
+    def test_dataclass_default_is_empty(self) -> None:
+        field = next(
+            f
+            for f in dataclasses.fields(StatusSnapshot)
+            if f.name == "plugin_providers"
+        )
+        assert field.default_factory() == []  # type: ignore[misc]
+
+    def test_list_propagates_to_snapshot(self, tmp_path: Path) -> None:
+        names = ["acme_ads_context", "chatgpt_ads"]
+        snap = collect_status(
+            "claude-code",
+            home=_build_home(tmp_path),
+            paths=_paths(tmp_path),
+            plugin_providers=names,
+        )
+        assert snap.plugin_providers == names
+        assert snap.as_dict()["plugin_providers"] == names
+        # A copy, so the caller's list cannot change the snapshot.
+        assert snap.plugin_providers is not names
+        assert snap.as_dict()["plugin_providers"] is not snap.plugin_providers
+
+
 def _skill_md(version: str | None) -> str:
     """A minimal SKILL.md, shaped like the ones mureo ships (#728).
 

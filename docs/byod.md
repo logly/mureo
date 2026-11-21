@@ -150,7 +150,7 @@ Next: ask Claude Code: 'Run /daily-check'
 ### Step 4 — Ask Claude Code
 
 Open Claude Code in any directory that contains a `STRATEGY.md` (or
-generate one with `mureo onboard` if you don't have one yet), then
+run `/onboard` in Claude Code if you don't have one yet), then
 type:
 
 > Run /daily-check
@@ -237,8 +237,8 @@ name prefixes returns `{"status": "skipped_in_byod_readonly", ...}`:
 `create_`, `update_`, `delete_`, `remove_`, `add_`, `send_`,
 `upload_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`,
 `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`,
-`cancel_`, `set_`, `patch_`, `boost_`, `end_`, `duplicate_`,
-`export_`.
+`cancel_`, `set_`, `patch_`, `replace_`, `boost_`, `end_`,
+`duplicate_`, `export_`.
 
 The last four (`boost_` / `end_` / `duplicate_` / `export_`) cover
 Meta-specific mutations whose method names don't match the generic
@@ -298,9 +298,9 @@ run `mureo auth setup` (or `mureo configure`) to populate
 | Google Ads Script | `search_terms` | `search_terms.csv` |
 | Meta Ads Export | Any sheet whose header contains a Day column + `Campaign name` + `Impressions` | `meta_ads/{campaigns,ad_sets,ads,metrics_daily}.csv` |
 
-The bundle importer dispatches the Google Ads adapter when at least
-one of those tabs is present, and the Meta Ads adapter when it
-detects a Meta Ads Manager export-style header. The two adapters are
+The bundle importer dispatches the Google Ads adapter when the
+`campaigns` tab is present (the other tabs are optional), and the
+Meta Ads adapter when it detects a Meta Ads Manager export-style header. The two adapters are
 disjoint — Google Ads tabs use `campaign` (short form) while Meta
 uses `Campaign name` (long form), so a workbook can carry only one
 adapter's data.
@@ -372,8 +372,8 @@ native, ODS, CSV) won't work.
 
 ### `Error: <file>: no recognized tabs found`
 
-The bundle importer expects at least one of the Google Ads tabs
-listed above. Verify the Google Ads Script actually populated data —
+The bundle importer expects the `campaigns` tab from the Google Ads
+Script (or a Meta Ads Manager export). Verify the Google Ads Script actually populated data —
 check the Sheet tabs by hand.
 
 ### `BYOD data for 'google_ads' already exists.`
@@ -386,7 +386,7 @@ Pass `--replace` to overwrite, or run
 Run `mureo byod status` and look for a "manifest references X but X
 is missing on disk" warning in the MCP server logs. If the platform's
 directory was deleted out of band, run
-`mureo byod import --replace` or `mureo byod remove --<platform>`.
+`mureo byod import <file.xlsx> --replace` or `mureo byod remove --<platform>`.
 
 ---
 

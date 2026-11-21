@@ -20,7 +20,9 @@ recovery proceeds by elimination against an unknown change set.
 
 Change import polls each platform's own change history, drops what mureo has
 already recorded and what mureo itself did, and writes the rest into
-`action_log` marked as **observed** rather than performed.
+`action_log` marked as **observed** rather than performed. One pass files a
+platform's imported changes in a single STATE.json write, so for each platform
+a pass either files all of them or none.
 
 ## Per-platform coverage
 
@@ -33,6 +35,7 @@ are different from "nothing happened there".
 |---|---|---|---|---|
 | Google Ads | `google_ads` | `change_event` (GAQL) | **Yes** — built-in feed (live API only) | Capped at 100 rows with no paging; ~30-day retention; user-made changes only. **BYOD mode reports `unavailable`** — the export carries performance rows, not an audit trail |
 | Meta Ads | `meta_ads` | Ad Account Activity (`/activities` edge on the Marketing API) | **No** | mureo ships no client for that edge. The data exists on Meta's side; mureo does not fetch it yet |
+| ChatGPT Ads (bundled provider) | `plugin:mureo-chatgpt-ads:chatgpt_ads` | Audit log (`GET /audit_logs` on the Advertiser API) | **Yes** — feed registered with the bundled provider | The platform publishes neither a retention period nor the list of change types it records; 1,000 entries per pass, oldest first (a capped pass sets `truncated` and its note names the time it read through; the next pass continues from the newest change imported, and if it stops at the same point, pass the `since` the note gives). The feed reads `GET /ad_account` first and imports nothing when the key reads another account than STATE.json names. At most 20 changed fields per entry. Only campaign, ad group and ad entries carry an identity, so an account-level change (the daily spending limit) is always imported as external. A create's record cannot name the entity it created, so the entry for an entity mureo created is imported as external too. See [chatgpt-ads.md](chatgpt-ads.md#change-import) |
 | Amazon Ads (official-MCP bridge) | `plugin:mureo-amazon-ads-bridge:amazon_ads` | Vendor API | **No** | The bridge can opt in through the ABI hook below; it does not today |
 | Yahoo Ads (Search / Display) | `plugin:<dist>:yahoo_ads` / `…:yahoo_ads_display` | Vendor change history | **No** | Same — plugin-side, via the ABI hook |
 | SmartNews Ads | `plugin:<dist>:…` | Vendor API | **No** | Same |
@@ -65,6 +68,31 @@ reported on every result rather than buried here:
 - **User-made changes only.** Automated bidding moving a bid, a policy
   disapproval, an automated rule firing — none of these appear. An empty
   feed is not evidence of a static account.
+
+### Change times are in the account's time zone
+
+`change_event.change_date_time` carries no offset: it is the time in the
+**account's** time zone. The feed reads `customer.time_zone` once per pass,
+attaches that zone to every change time (`2026-08-05 09:14:00` in an
+Asia/Tokyo account is recorded as `2026-08-05T09:14:00+09:00`), and asks for
+whole days of the account's calendar. mureo's own `action_log` entries carry
+an offset, so without the zone a change in a non-UTC account is off by the
+account's offset and the 10-minute attribution window never matches (#1008).
+
+When the zone cannot be read (the account reports none, or a name the system
+does not know), change times are kept as the platform reported them and read
+as UTC, the days are the window edges' own dates, and the result says so in
+`notes`: a change made through mureo may then be imported as external. A
+failure of the zone query itself is reported as `error`, like a failure of
+the change-history query.
+
+Entries imported before this conversion keep the time they were recorded
+with. They are recognised as already imported by their `external_id`, which
+is the event's `resource_name`, so they are neither imported again nor
+rewritten. A window start derived from such an entry is an account-local
+time read as UTC, so the first day asked for is the earlier of the start's
+own date and its date on the account's calendar (and the last day the later
+of the two): the day the change was made on is always inside the window.
 
 ## How an imported change is recorded
 
@@ -144,8 +172,14 @@ So the discriminator is mureo's own log. **Four conditions, all required:**
 
 Additionally, a **definite** create-vs-remove disagreement refutes a match —
 mureo removing a negative keyword while the operator adds one on the same ad
-group in the same minute. It only refutes, never confirms: a `*_update` tool
-may well be an upsert, so requiring agreement would block far more true
+group in the same minute. A feed entry whose operation is a creation
+(`CREATE`, `ADD`) is likewise never attributed to a recorded status action: a
+pause, enable, archive or status update tool does not create the entity it
+names, so an entity created outside mureo and paused by mureo minutes later
+is still imported (#1034). A hand-recorded action whose text reads as a
+status change is treated the same way, so a creation recorded under such a
+text is imported too. The check only refutes, never confirms: a `*_update`
+tool may well be an upsert, so requiring agreement would block far more true
 matches than it protects.
 
 ### How "the same target" is decided
@@ -185,10 +219,17 @@ A small shared vocabulary — `status`, `budget`, `bid`, `criterion`, `ad`,
   edit as `CAMPAIGN` + `changed_fields=["campaign_budget"]` at least as often
   as it reports it as `CAMPAIGN_BUDGET`; reading only the resource type would
   file the first one as a generic campaign edit — the same bucket a status
-  toggle falls into.
+  toggle falls into. Every field is classified: a row whose fields name more
+  than one of `budget` / `bid` / `status` (a budget and a status edited
+  together) has no kind, so it is imported (#1009). It is not the change
+  any single-kind mureo action made, and matching it on its first field
+  would drop the other edit silently.
 - **From `action_log`**: the tool name, matched verb-before-noun so
   `google_ads_campaigns_update_status` reads as `status` rather than
-  `campaign`.
+  `campaign`. `pause`, `enable`, `resume` and `archive` are status verbs
+  too: a feed can report an archive as a status change (the ChatGPT Ads
+  audit log does), so a `*_archive` tool reads as `status`, not as an
+  edit of the entity it names (#1030).
 
 **Both sides must yield a kind, and the two must be equal.** "Unknown matches
 anything" would restore identity-only behaviour for every action mureo cannot
@@ -227,6 +268,7 @@ It is bounded by design, and the bound is what makes the advice usable:
 | Same entity, same setting, within 10 min of a mureo change | **No — silently attributed to mureo** |
 | Same entity, same setting, after 10 min | Yes |
 | Same entity, *different* setting (budget vs status), any time | Yes |
+| The entity's *creation* (operation `CREATE` or `ADD`), within 10 min of a mureo pause, enable, archive or status update of it | Yes (#1034) |
 | A *sibling* entity in the same campaign (different ad group, ad, keyword) | Yes — provided the sibling was recorded at its own granularity; see below |
 | A *broader* entity than mureo touched (campaign-wide vs one ad) | Yes |
 | A *narrower* entity than mureo touched (one ad vs campaign-wide) | Yes |
@@ -305,6 +347,12 @@ of `action_log`. The first pass falls back to a deliberately short 7-day
 lookback — a wider first window does not recover more history, it just makes
 a row-capped feed likelier to truncate and lose the newest changes too.
 
+Imported entries dated after the time of the pass are ignored when the start
+is derived (#1010). One such entry would otherwise move the start past now,
+and every later pass would ask for a window that begins in the future. The
+entry stays in `action_log` and counts again once its time has passed. An
+explicit `since` still wins over the derived start.
+
 > **Continuous polling is the only thing that captures history.** A one-off
 > deep backfill is not available and cannot be made available: what has aged
 > out of a platform's feed is gone. Running `/daily-check` daily is what keeps
@@ -377,6 +425,24 @@ class AcmeChangeFeed:
 [project.entry-points."mureo.change_feeds"]
 acme_ads = "my_plugin.change_feed:AcmeChangeFeed"
 ```
+
+**How the feed meets the platform's key (#998).** The feed registers under
+its plain registry name (`acme_ads`), and labels its `ExternalChange`s with
+that name. The platform's STATE.json key is the canonical
+`plugin:<distribution>:acme_ads`, and mureo matches the two by the
+distribution that registered the feed — recorded from the entry point's
+`dist`, never taken from the feed. A feed with no recorded distribution, or
+one from another distribution with the same name, does not answer for that
+key; the legacy `plugin:<distribution>` short form resolves only while that
+distribution registers exactly one feed. Imported entries are filed under the
+canonical key — the same key mureo's own entries for the platform carry — so
+the dedupe against mureo's own changes and the `external_id` join on it. A
+provider that registers its feed in-process rather than through the entry
+point passes its distribution explicitly:
+`register_change_feed(feed, source_distribution="my-plugin")`.
+Registration is first-wins on the registry name across distributions: if two
+distributions ship a feed with the same name, the second is dropped with a
+`ChangeFeedWarning` and its platform has no feed.
 
 Two obligations worth stating plainly:
 

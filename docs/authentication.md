@@ -37,7 +37,7 @@ Each subcommand also exposes explicit `--google-ads/--no-google-ads` and `--meta
 
 > `mureo auth setup --web` was **removed**; its browser credential flow is now part of the unified `mureo configure` UI.
 
-Prefer `mureo configure` when you were pointed to mureo by an AI agent that cannot safely receive terminal input, or you simply want a GUI. It starts a short-lived HTTP server on a random localhost port, opens your browser at it, and — beyond Google Ads / Meta Ads / GA4 credential entry via HTML forms and standard OAuth redirects (every field deep-linked to the right console), plus an **Amazon Ads** tab in the dashboard's *Connection credentials* section whose **Authorize with Amazon** flow obtains the LwA tokens (Amazon's consent has no loopback callback, so it is a guided paste-code flow: mureo opens the consent page and you paste the redirected address back; see [amazon-ads.md](amazon-ads.md)) — also lets you pick the Claude host, run basic setup (MCP server + credential-guard hook + skills), add the official MCP providers, switch each platform between mureo-native and the official MCP, and scaffold Demo/BYOD. Flags: `--no-browser`, `--timeout-seconds N` (idle shutdown, default 600). The same security hardening (CSRF rotation, OAuth `state` re-validation, DNS-rebinding guard, localhost-pinned redirect verification, generic error surface, POST size cap, CSP) applies — see `SECURITY.md`.
+Prefer `mureo configure` when you were pointed to mureo by an AI agent that cannot safely receive terminal input, or you simply want a GUI. It starts a short-lived HTTP server on a random localhost port, opens your browser at it, and — beyond Google Ads / Meta Ads / GA4 credential entry via HTML forms and standard OAuth redirects (every field deep-linked to the right console), plus an **Amazon Ads** tab in the dashboard's *Connection credentials* section whose **Authorize with Amazon** flow obtains the LwA tokens (Amazon's consent has no loopback callback, so it is a guided paste-code flow: mureo opens the consent page and you paste the redirected address back; see [amazon-ads.md](amazon-ads.md)) and a **ChatGPT Ads** tab where you paste an Ads API key (see [chatgpt-ads.md](chatgpt-ads.md)) — also lets you pick the Claude host, run basic setup (MCP server + credential-guard hook + skills), add the official MCP providers, switch each platform between mureo-native and the official MCP, and scaffold Demo/BYOD. Flags: `--no-browser`, `--timeout-seconds N` (idle shutdown, default 600). The same security hardening (CSRF rotation, OAuth `state` re-validation, DNS-rebinding guard, localhost-pinned redirect verification, generic error surface, POST size cap, CSP) applies — see `SECURITY.md`.
 
 The auth step reuses what is already on disk: with a saved Google refresh token (Google Ads and Search Console share one) the Google authorization step is skipped and the UI says so, offering a **Re-authorize Google** button for when you do want to mint a new token. When GA4 is selected and the saved authorization lacks GA4 read-only, the GA4 step offers the same button: the Google step comes in at that point, and when the new authorization carries the scope the GA4 step is filled from it (see [integrations.md](integrations.md)). On Google's consent screen, Search Console and GA4 read-only may be left unticked (mureo logs which scopes Google left out), but the authorization fails when the Google Ads scope is unticked, since the stored token exists for it.
 
@@ -103,6 +103,7 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 | `GOOGLE_ADS_CLIENT_SECRET` | Yes | OAuth 2.0 client secret |
 | `GOOGLE_ADS_REFRESH_TOKEN` | Yes | OAuth 2.0 refresh token |
 | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | No | Manager account (MCC) customer ID |
+| `GOOGLE_ADS_CUSTOMER_ID` | No | Target `customer_id`. If omitted, `GOOGLE_ADS_LOGIN_CUSTOMER_ID` is used. |
 
 ### Meta Ads
 
@@ -111,6 +112,7 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 | `META_ADS_ACCESS_TOKEN` | Yes | Graph API access token |
 | `META_ADS_APP_ID` | No | Meta App ID |
 | `META_ADS_APP_SECRET` | No | Meta App Secret |
+| `META_ADS_TOKEN_OBTAINED_AT` | No | When the token was obtained (ISO 8601), used by [auto-refresh](#meta-ads-token-auto-refresh) |
 
 ### Amazon Ads
 
@@ -127,6 +129,14 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 | `AMAZON_ADS_MANAGER_ACCOUNT_ID` | No | Fixed account mode only |
 
 "Conditional" means the client ID plus **either** `AMAZON_ADS_ACCESS_TOKEN` **or both** of `AMAZON_ADS_REFRESH_TOKEN` and `AMAZON_ADS_CLIENT_SECRET`. See [amazon-ads.md](amazon-ads.md).
+
+### ChatGPT Ads
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `CHATGPT_ADS_API_KEY` | Yes, when no key is stored | Advertiser API key for your own ad account, created on the Settings page in Ads Manager. One key reads one ad account |
+
+The stored form is the `chatgpt_ads` section of `~/.mureo/credentials.json` with one field, `api_key`, written by the **ChatGPT Ads** card of `mureo configure`. A blank value counts as absent. `OPENAI_API_KEY` is never read for ChatGPT Ads. See [chatgpt-ads.md](chatgpt-ads.md).
 
 **Resolution order**: credentials.json takes priority. Environment variables are only checked if the corresponding section in credentials.json is missing or incomplete.
 
@@ -363,10 +373,10 @@ Generate one (4 steps):
 4. Copy the generated token.
 
 **Entering the token in the configure UI.** In the Meta Ads authentication step
-of `mureo configure`, open **"Paste a system-user token"** (next to *Login with
+of `mureo configure`, open **"Paste a system-user token"** (next to *Log in with
 Facebook*), paste the token, click **Validate token** (this reports the granted
 vs missing scopes and lists the ad accounts the token can reach), pick the ad
-account, then **Save**.
+account, then **Save token**.
 
 **Most of these tokens expire.** Business settings offers a **60-day** expiry
 for a new system-user token; a token issued without one does not expire at
@@ -510,7 +520,10 @@ reaches you in the morning report rather than in a failed run.
 
 1. **Google Ads OAuth** -- Enter Client ID/Secret (developer token optional), open browser for OAuth, select account.
 2. **Meta Ads OAuth** -- Enter App ID/Secret, open browser for OAuth, obtain Long-Lived Token, select account.
-3. **MCP configuration** -- Choose global (`~/.claude/settings.json`) or project-level (`.mcp.json`).
+3. **MCP configuration** -- Choose global (Claude Code user scope, `~/.claude.json`) or project-level (`.mcp.json`).
+4. **Credential guard** -- Installs the PreToolUse hook that blocks AI agents from reading `~/.mureo/credentials.json`.
+
+Amazon Ads has no terminal prompt; the wizard points you to the Amazon Ads card in `mureo configure`.
 
 ### Project-Level MCP Configuration (`.mcp.json`)
 
@@ -520,12 +533,15 @@ If you choose project-level placement, `mureo auth setup` creates a `.mcp.json` 
 {
   "mcpServers": {
     "mureo": {
-      "command": "python",
+      "type": "stdio",
+      "command": "/absolute/path/to/python",
       "args": ["-m", "mureo.mcp"]
     }
   }
 }
 ```
+
+`command` is the absolute path of the Python interpreter mureo is installed in. A bare `python` would resolve to whatever is on the AI agent's own `PATH`, which may not have mureo, and the MCP server would fail to start.
 
 AI agents that support `.mcp.json` (e.g., Claude Code) will automatically discover and connect to the mureo MCP server when working in that project directory.
 
@@ -534,7 +550,7 @@ AI agents that support `.mcp.json` (e.g., Claude Code) will automatically discov
 Use the `mureo auth` commands to verify your setup:
 
 ```bash
-# Show authentication status for all platforms
+# Show authentication status for Google, Meta and Amazon Ads
 mureo auth status
 
 # Check Google Ads credentials (shows masked values)
@@ -542,6 +558,12 @@ mureo auth check-google
 
 # Check Meta Ads credentials (shows masked values)
 mureo auth check-meta
+
+# Check Amazon Ads credentials (shows masked values)
+mureo auth check-amazon
+
+# Re-authenticate Google to add Search Console and GA4 read-only access
+mureo auth upgrade-google
 ```
 
 Example output for `mureo auth status`:
@@ -549,8 +571,9 @@ Example output for `mureo auth status`:
 ```
 === Authentication Status ===
 
-Google Ads: Authenticated
-Meta Ads: Authenticated
+Google Ads: Authenticated (customer_id: 0000000000)
+Meta Ads: Authenticated (account_id: act_0000000000)
+Amazon Ads: Not authenticated
 ```
 
 Example output for `mureo auth check-google`:
@@ -558,10 +581,11 @@ Example output for `mureo auth check-google`:
 ```json
 {
   "developer_token": "***************abcd",
-  "client_id": "123456789.apps.googleusercontent.com",
+  "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
   "client_secret": "***************wxyz",
   "refresh_token": "***************efgh",
-  "login_customer_id": "1234567890"
+  "login_customer_id": "0000000000",
+  "customer_id": "0000000000"
 }
 ```
 

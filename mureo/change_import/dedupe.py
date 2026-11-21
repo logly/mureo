@@ -29,7 +29,8 @@ overlapping on the same campaign is normal for a while after onboarding (see
 ``/daily-check`` → *Mixed operation*), so this is the common case, not the
 corner. A match therefore also requires the two to be the **same kind of
 change** — see :func:`change_kind` / :func:`action_kind` for the vocabulary
-and :func:`_kinds_match` for the rule.
+and :func:`_kinds_match` for the rule. A row whose fields name more than one
+kind (a budget and a status edited together) has no kind, so it is imported.
 
 **Which way it fails matters.** Wherever the comparison cannot be made —
 identity missing on either side, kind underivable on either side — the change
@@ -99,7 +100,8 @@ KIND_CAMPAIGN = "campaign"
 #: budget edit can arrive as ``CAMPAIGN`` + ``changed_fields=["campaign_budget"]``
 #: as easily as ``CAMPAIGN_BUDGET``; reading only the resource type would call
 #: the first one a generic campaign edit and let it match a status toggle.
-#: Ordered — first hit wins.
+#: Ordered — within ONE field the first hit wins; across fields see
+#: :func:`change_kind`.
 _FIELD_KINDS: tuple[tuple[str, str], ...] = (
     ("budget", KIND_BUDGET),
     ("bid", KIND_BID),
@@ -123,7 +125,9 @@ _RESOURCE_KINDS: dict[str, str] = {
 #: first hit wins, so the more specific verbs must precede the entity nouns.
 #: ``google_ads_campaigns_update_status`` has to read as a status change, not
 #: as a generic campaign edit, or the very case this exists to block would
-#: still match.
+#: still match. ``archive`` is a status verb for the same reason: a feed
+#: can report an archive as a ``status`` change (#1030), so
+#: ``*_ad_groups_archive`` must not read as an ad-group edit.
 _ACTION_KINDS: tuple[tuple[str, str], ...] = (
     ("budget", KIND_BUDGET),
     ("bid", KIND_BID),
@@ -138,6 +142,7 @@ _ACTION_KINDS: tuple[tuple[str, str], ...] = (
     ("pause", KIND_STATUS),
     ("enable", KIND_STATUS),
     ("resume", KIND_STATUS),
+    ("archive", KIND_STATUS),
     ("creative", KIND_AD),
     ("ads_create", KIND_AD),
     ("ads_update", KIND_AD),
@@ -332,15 +337,29 @@ def change_kind(change: ExternalChange) -> str:
     that as a generic campaign edit — which is exactly the bucket a status
     toggle falls into.
 
+    Every field is classified, and a row whose fields name more than one kind
+    has no kind (#1009). A row editing two settings at once is not the change
+    any single-kind mureo action made, and matching it on its first field
+    would drop the other edit silently.
+
     ``""`` is returned rather than a permissive default. A kind mureo cannot
     derive must not be allowed to match anything; see :func:`_kinds_match`.
     """
-    for field in change.changed_fields:
-        lowered = field.lower()
-        for token, kind in _FIELD_KINDS:
-            if token in lowered:
-                return kind
+    field_kinds = {_field_kind(field) for field in change.changed_fields} - {""}
+    if len(field_kinds) > 1:
+        return ""
+    if field_kinds:
+        return next(iter(field_kinds))
     return _RESOURCE_KINDS.get(change.resource_type.strip().upper(), "")
+
+
+def _field_kind(field: str) -> str:
+    """The kind one ``changed_fields`` entry names, or ``""`` for none."""
+    lowered = field.lower()
+    for token, kind in _FIELD_KINDS:
+        if token in lowered:
+            return kind
+    return ""
 
 
 def action_kind(action: str) -> str:
@@ -384,6 +403,14 @@ def _operations_conflict(entry: ActionLogEntry, change: ExternalChange) -> bool:
     removing a negative keyword while the operator adds one on the same ad
     group in the same minute — without demanding a verb mapping that is
     genuinely ambiguous for the ``*_update`` upsert family.
+
+    It also refutes a creation entry against a status action (#1034): a
+    pause, enable, archive or status update never creates the entity it
+    names, yet a creation row whose only classified field is ``status`` has
+    the status kind. A create/remove token in the action name is consulted
+    first and keeps its own verdict. A removal is not refuted the same way,
+    because a status tool may set a removed state and a feed may report an
+    archive as a removal.
     """
     feed_op = _OPERATION_ALIASES.get(change.operation.strip().upper(), "")
     if not feed_op:
@@ -392,7 +419,7 @@ def _operations_conflict(entry: ActionLogEntry, change: ExternalChange) -> bool:
     for token, own_op in _ACTION_OPERATIONS:
         if token in normalized:
             return own_op != feed_op
-    return False
+    return feed_op == "create" and action_kind(entry.action) == KIND_STATUS
 
 
 def _entry_matches(

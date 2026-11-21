@@ -100,6 +100,7 @@ class TestWizardAmazonPlatform:
             for name in (
                 "wizard.js",
                 "wizard_provider_choice.js",
+                "wizard_platforms.js",
                 "auth_wizards.js",
                 "auth_wizards_plugin.js",
                 "wizard_install_slots.js",

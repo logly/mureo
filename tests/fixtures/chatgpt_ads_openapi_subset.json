@@ -1,0 +1,655 @@
+{
+  "_comment": "Cut from the Advertiser API OpenAPI document (info.version 2.3.0, read 2026-11-19) for the operations the chatgpt_ads tools call. Array-typed query parameters are also listed with the bracket suffix the API reference's curl examples send (fields[], time_ranges[], include[]). A POST operation lists the property names of its JSON request body under body; an empty list means the operation takes no body. fields lists every dotted property path of a JSON body ([] marks an array item), so a nested key the document does not define is refused; headers lists the request headers an operation documents beyond Authorization; multipart lists the form fields of a multipart/form-data body.",
+  "openapi_version": "2.3.0",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/ad_account",
+      "query": []
+    },
+    {
+      "method": "GET",
+      "path": "/campaigns",
+      "query": [
+        "include",
+        "include[]",
+        "name",
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/campaigns/{campaign_id}",
+      "query": [
+        "include",
+        "include[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_groups",
+      "query": [
+        "include",
+        "include[]",
+        "campaign_id",
+        "name",
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_groups/{ad_group_id}",
+      "query": [
+        "include",
+        "include[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ads",
+      "query": [
+        "include",
+        "include[]",
+        "ad_group_id",
+        "name",
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ads/{ad_id}",
+      "query": [
+        "include",
+        "include[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_account/insights",
+      "query": [
+        "attribution_window_days",
+        "view_through_attribution_window_days",
+        "attribution_time_basis",
+        "time_granularity",
+        "aggregation_level",
+        "limit",
+        "before",
+        "after",
+        "time_ranges",
+        "time_ranges[]",
+        "filters",
+        "filters[]",
+        "fields",
+        "fields[]",
+        "sort",
+        "sort[]",
+        "segments",
+        "segments[]",
+        "override_segment_group_order",
+        "override_segment_group_order[]",
+        "includes",
+        "includes[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/campaigns/{campaign_id}/insights",
+      "query": [
+        "attribution_window_days",
+        "view_through_attribution_window_days",
+        "attribution_time_basis",
+        "time_granularity",
+        "aggregation_level",
+        "limit",
+        "before",
+        "after",
+        "time_ranges",
+        "time_ranges[]",
+        "filters",
+        "filters[]",
+        "fields",
+        "fields[]",
+        "sort",
+        "sort[]",
+        "segments",
+        "segments[]",
+        "override_segment_group_order",
+        "override_segment_group_order[]",
+        "includes",
+        "includes[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_groups/{ad_group_id}/insights",
+      "query": [
+        "attribution_window_days",
+        "view_through_attribution_window_days",
+        "attribution_time_basis",
+        "time_granularity",
+        "aggregation_level",
+        "limit",
+        "before",
+        "after",
+        "time_ranges",
+        "time_ranges[]",
+        "filters",
+        "filters[]",
+        "fields",
+        "fields[]",
+        "sort",
+        "sort[]",
+        "segments",
+        "segments[]",
+        "override_segment_group_order",
+        "override_segment_group_order[]",
+        "includes",
+        "includes[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ads/{ad_id}/insights",
+      "query": [
+        "attribution_window_days",
+        "view_through_attribution_window_days",
+        "attribution_time_basis",
+        "time_granularity",
+        "aggregation_level",
+        "limit",
+        "before",
+        "after",
+        "time_ranges",
+        "time_ranges[]",
+        "filters",
+        "filters[]",
+        "fields",
+        "fields[]",
+        "sort",
+        "sort[]",
+        "segments",
+        "segments[]",
+        "override_segment_group_order",
+        "override_segment_group_order[]",
+        "includes",
+        "includes[]"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/audit_logs",
+      "query": [
+        "limit",
+        "after",
+        "before",
+        "order",
+        "campaign_id",
+        "ad_group_id",
+        "ad_id",
+        "actor_id",
+        "start_time",
+        "end_time"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ad_account/spend_limit_windows",
+      "query": []
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns/{campaign_id}/pause",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns/{campaign_id}/activate",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups/{ad_group_id}/pause",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups/{ad_group_id}/activate",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ads/{ad_id}/pause",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ads/{ad_id}/activate",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns/{campaign_id}",
+      "query": [],
+      "body": [
+        "name",
+        "description",
+        "start_time",
+        "end_time",
+        "status",
+        "budget",
+        "targeting",
+        "landing_page_configuration",
+        "conversion_event_setting_ids"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups/{ad_group_id}",
+      "query": [],
+      "body": [
+        "name",
+        "description",
+        "context_hints",
+        "status",
+        "bidding_config",
+        "product_set",
+        "landing_page_configuration"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ad_account/daily_spend_limit",
+      "query": [],
+      "body": [
+        "window_id",
+        "amount_micros",
+        "expected_revision",
+        "start_date",
+        "end_date"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "name",
+        "description",
+        "start_time",
+        "end_time",
+        "status",
+        "budget",
+        "bidding_type",
+        "objective",
+        "billing_event_type",
+        "mode",
+        "product_feed_id",
+        "business_agent_id",
+        "targeting",
+        "landing_page_configuration",
+        "conversion_event_setting_ids"
+      ],
+      "fields": [
+        "name",
+        "description",
+        "start_time",
+        "end_time",
+        "status",
+        "budget",
+        "budget.lifetime_spend_limit_micros",
+        "budget.daily_spend_limit_micros",
+        "bidding_type",
+        "objective",
+        "billing_event_type",
+        "mode",
+        "product_feed_id",
+        "business_agent_id",
+        "targeting",
+        "targeting.locations",
+        "targeting.locations.countries",
+        "targeting.locations.include",
+        "targeting.locations.include[].id",
+        "targeting.locations.include[].name",
+        "targeting.locations.include[].type",
+        "targeting.locations.include[].country_code",
+        "targeting.locations.include[].region_code",
+        "targeting.excluded_locations",
+        "targeting.excluded_locations.countries",
+        "targeting.excluded_locations.include",
+        "targeting.excluded_locations.include[].id",
+        "targeting.excluded_locations.include[].name",
+        "targeting.excluded_locations.include[].type",
+        "targeting.excluded_locations.include[].country_code",
+        "targeting.excluded_locations.include[].region_code",
+        "targeting.custom_audiences",
+        "targeting.custom_audiences.ids",
+        "targeting.excluded_custom_audiences",
+        "targeting.excluded_custom_audiences.ids",
+        "targeting.platforms",
+        "targeting.platforms.included",
+        "landing_page_configuration",
+        "landing_page_configuration.query_string_template",
+        "conversion_event_setting_ids"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "campaign_id",
+        "name",
+        "description",
+        "context_hints",
+        "status",
+        "bidding_config",
+        "product_set",
+        "landing_page_configuration"
+      ],
+      "fields": [
+        "campaign_id",
+        "name",
+        "description",
+        "context_hints",
+        "status",
+        "bidding_config",
+        "bidding_config.billing_event_type",
+        "bidding_config.strategy",
+        "bidding_config.max_bid_micros",
+        "bidding_config.custom_audience_bid_multipliers",
+        "bidding_config.custom_audience_bid_multipliers[].custom_audience_id",
+        "bidding_config.custom_audience_bid_multipliers[].bid_multiplier_micros",
+        "product_set",
+        "product_set.product_feed_id",
+        "product_set.filters",
+        "product_set.filters[].field",
+        "product_set.filters[].operator",
+        "product_set.filters[].values",
+        "landing_page_configuration",
+        "landing_page_configuration.query_string_template"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ads",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "ad_group_id",
+        "name",
+        "creative",
+        "status",
+        "landing_page_configuration"
+      ],
+      "fields": [
+        "ad_group_id",
+        "name",
+        "creative",
+        "creative.file_ids",
+        "creative.type",
+        "creative.title",
+        "creative.body",
+        "creative.price",
+        "creative.target_url",
+        "creative.file_id",
+        "creative.image_crop",
+        "creative.image_crop.x",
+        "creative.image_crop.y",
+        "creative.image_crop.width",
+        "creative.image_crop.height",
+        "status",
+        "landing_page_configuration",
+        "landing_page_configuration.query_string_template"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/campaigns/{campaign_id}/archive",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ad_groups/{ad_group_id}/archive",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ads/{ad_id}/archive",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/ads/{ad_id}/preview",
+      "query": [],
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/upload",
+      "query": [],
+      "multipart": [
+        "image_url",
+        "file",
+        "purpose"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/geo_lookup/search",
+      "query": [
+        "q",
+        "limit"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/custom_audiences",
+      "query": [
+        "intended_use",
+        "custom_audience_ids",
+        "policy_revision",
+        "matched_count_granularity",
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/custom_audiences",
+      "query": [],
+      "body": [
+        "name",
+        "description",
+        "file_id",
+        "identifier_type",
+        "identifier_resolution",
+        "filename",
+        "mimetype",
+        "file_size"
+      ],
+      "fields": [
+        "name",
+        "description",
+        "file_id",
+        "identifier_type",
+        "identifier_resolution",
+        "filename",
+        "mimetype",
+        "file_size"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/custom_audiences/{custom_audience_id}",
+      "query": [
+        "matched_count_granularity"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/custom_audiences/{custom_audience_id}/add",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "file_id",
+        "identifiers",
+        "identifier_type",
+        "identifier_resolution",
+        "expected_revision"
+      ],
+      "fields": [
+        "file_id",
+        "identifiers",
+        "identifiers[].identifier_type",
+        "identifiers[].identifier",
+        "identifier_type",
+        "identifier_resolution",
+        "expected_revision"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/custom_audiences/{custom_audience_id}/remove",
+      "query": [],
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "body": [
+        "file_id",
+        "identifiers",
+        "identifier_type",
+        "identifier_resolution",
+        "expected_revision"
+      ],
+      "fields": [
+        "file_id",
+        "identifiers",
+        "identifiers[].identifier_type",
+        "identifiers[].identifier",
+        "identifier_type",
+        "identifier_resolution",
+        "expected_revision"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/custom_audiences/{custom_audience_id}/operations/{operation_id}",
+      "query": []
+    },
+    {
+      "method": "GET",
+      "path": "/conversions/pixels",
+      "query": [
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/conversions/pixels",
+      "query": [],
+      "body": [
+        "name",
+        "client_type"
+      ],
+      "fields": [
+        "name",
+        "client_type"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/conversions/event_settings",
+      "query": [
+        "limit",
+        "after",
+        "before",
+        "order"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/conversions/event_settings",
+      "query": [],
+      "body": [
+        "name",
+        "event_type",
+        "custom_event_name",
+        "attribution_window_days",
+        "source_ids"
+      ],
+      "fields": [
+        "name",
+        "event_type",
+        "custom_event_name",
+        "attribution_window_days",
+        "source_ids"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/conversions/insights",
+      "query": [],
+      "body": [
+        "include",
+        "event_names",
+        "attribution_time_basis",
+        "aggregation_level",
+        "time_granularity",
+        "breakdown",
+        "time_ranges",
+        "entity_ids",
+        "group_by_entity",
+        "include_zero_rows",
+        "attribution_window_days",
+        "view_through_attribution_window_days"
+      ],
+      "fields": [
+        "include",
+        "event_names",
+        "attribution_time_basis",
+        "aggregation_level",
+        "time_granularity",
+        "breakdown",
+        "time_ranges",
+        "entity_ids",
+        "group_by_entity",
+        "include_zero_rows",
+        "attribution_window_days",
+        "view_through_attribution_window_days"
+      ]
+    }
+  ]
+}

@@ -14,6 +14,9 @@ and the bridged / plugin promotion — so it is also where the workspace's open
 batch is stamped onto the entry (#549). Doing it here, inside the lock, is
 what makes batch membership platform-agnostic: no tool schema, no
 per-platform recorder and no plugin ABI has to know the batch exists.
+:func:`append_action_logs` files several observed entries in one write
+through the same steps, so it is part of the same choke point, not a second
+one.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from mureo.context.models import ActionLogEntry, StateDocument
@@ -160,14 +164,85 @@ def append_action_log(
             deferred one, and a non-list ``action_log`` on disk (#882).
     """
     request = _validated_request(entry, expected)
+    return _append_validated(
+        path, ((entry, request),), join_active_batch=join_active_batch
+    )
 
-    def _build(doc: StateDocument) -> StateDocument:
-        return _with_entry(doc, entry, request, join_active_batch=join_active_batch)
+
+def append_action_logs(
+    path: Path,
+    entries: Sequence[ActionLogEntry],
+) -> StateDocument:
+    """Append several observed entries to STATE.json with one write (#1018).
+
+    Each entry goes through the steps :func:`append_action_log` takes, in
+    order, but all of them inside ONE locked read-modify-write. Filing N
+    entries one call at a time re-reads, re-renders and rewrites a document
+    that grows with every row, which is quadratic in N; here it is one write,
+    and the entries land together or not at all.
+
+    Only **observed** entries (``origin`` set, #545) are taken. A change of
+    mureo's own shares its decision with the call's later appends only once
+    it is on disk (:func:`~mureo.context.ops_linkage.commit_slot`), so two of
+    them in one write would each open a decision where two single appends
+    share one. An observed entry opens no decision, which is what makes one
+    write for several of them the same as one write each. It is no member of
+    an open batch either (#549), so there is no ``join_active_batch`` here;
+    an explicit ``batch_id`` on an entry is still validated and kept.
+
+    Every entry is validated before the file is opened, so one refused entry
+    refuses the call and nothing is written. With no entries nothing is
+    written and the document as read is returned.
+
+    Args:
+        path: STATE.json location.
+        entries: The observed entries to append, in the order they are filed.
+
+    Returns:
+        Updated StateDocument; the entries are its last ``len(entries)``
+        ``action_log`` items, in order.
+
+    Raises:
+        BatchError: An entry's ``batch_id`` names no declared batch, or names
+            one that has already been closed.
+        ValueError: As on :func:`append_action_log`, for any entry. Also
+            raised when an entry has no ``origin``.
+    """
+    if any(entry.origin is None for entry in entries):
+        raise ValueError(
+            "append_action_logs files observed entries only (origin set). "
+            "Append a change of mureo's own with append_action_log, one call "
+            "per entry."
+        )
+    pairs = tuple((entry, _validated_request(entry, None)) for entry in entries)
+    return _append_validated(path, pairs, join_active_batch=False)
+
+
+def _append_validated(
+    path: Path,
+    pairs: tuple[tuple[ActionLogEntry, LinkRequest], ...],
+    *,
+    join_active_batch: bool,
+) -> StateDocument:
+    """Stamp, link and append already-validated entries in one locked write."""
+
+    def _build(doc: StateDocument) -> StateDocument | None:
+        if not pairs:
+            return None
+        built = doc
+        for entry, request in pairs:
+            built = _with_entry(
+                built, entry, request, join_active_batch=join_active_batch
+            )
+        return built
 
     written = _locked_state_mutation(path, _build)
-    # Only now, with the entry on disk, may the call's later appends join it.
-    commit_slot(request, written.action_log[-1])
+    # Only now, with the entries on disk, may the call's later appends join
+    # them.
+    stored = written.action_log[len(written.action_log) - len(pairs) :]
+    for (_entry, request), stored_entry in zip(pairs, stored, strict=True):
+        commit_slot(request, stored_entry)
     return written
 
 
-__all__ = ["append_action_log"]
+__all__ = ["append_action_log", "append_action_logs"]

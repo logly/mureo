@@ -25,7 +25,7 @@ Generate a weekly marketing operations report.
 
 1. **Load context**: Read STRATEGY.md and STATE.json (the same `mureo_state_get` response from step 0 on MCP hosts).
 
-2. **Discover platforms**: Identify all configured platforms and available data sources — built-in, `mcp__mureo__<plugin>_*` plugin platforms, and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, key `tiktok_ads`). See `../_mureo-shared/SKILL.md` → *Plugin platforms* and *Hosted-connector platforms*; pull a hosted connector's numbers from its own reporting tools and omit mureo-only value-adds.
+2. **Discover platforms**: Identify all configured platforms and available data sources — built-in, `mcp__mureo__<plugin>_*` plugin platforms (including **ChatGPT Ads**, the bundled `chatgpt_ads_*` tools, key `plugin:mureo-chatgpt-ads:chatgpt_ads` — its same-day spend and conversions are provisional, see `../_mureo-chatgpt-ads/SKILL.md`), and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, key `tiktok_ads`). See `../_mureo-shared/SKILL.md` → *Plugin platforms* and *Hosted-connector platforms*; pull a hosted connector's numbers from its own reporting tools and omit mureo-only value-adds.
 
 3. **Period**: Determine the reporting period — the last 7 days ending on `server_now`'s date from step 0, never on a date inferred from STATE.json.
 

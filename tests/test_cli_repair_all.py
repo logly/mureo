@@ -14,9 +14,9 @@ has to:
   - degrade to the single active workspace on a store with no client seam,
     which is every OSS install.
 
-The store capabilities are faked here on purpose. mureo-agency supplies them
-in production and IS installed on the machine this was written on, so a test
-that leaned on it would pass here and assert nothing in CI.
+The store capabilities are faked here on purpose. A multi-account backend
+supplies them in production and may be installed on a developer machine, so a
+test that leaned on it would pass there and assert nothing in CI.
 """
 
 from __future__ import annotations
@@ -53,9 +53,9 @@ def _clear_runtime_context_cache() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _pin_logly_bridge_installed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """One installed provider, ``logly_ads_context`` — the reported machine."""
-    entries = (SimpleNamespace(name="logly_ads_context"),)
+def _pin_acme_bridge_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One installed provider, ``acme_ads_context``, and nothing else."""
+    entries = (SimpleNamespace(name="acme_ads_context"),)
     monkeypatch.setattr(platform_guards, "_provider_entry_points", lambda: entries)
 
 
@@ -116,13 +116,13 @@ def _write(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _bad_state(path: Path, account_id: str) -> None:
-    """The reported shape: LOGLY snapshots under the invented key."""
+    """The broken shape: ACME snapshots under the invented key."""
     _write(
         path,
         {
             "version": "2",
             "platforms": {
-                "logly_ads": {
+                "acme_ads": {
                     "account_id": account_id,
                     "totals": {
                         "spend": 9000.0,
@@ -130,7 +130,7 @@ def _bad_state(path: Path, account_id: str) -> None:
                     },
                     "metrics_period": "LAST_30_DAYS",
                 },
-                "logly_ads_context": {
+                "acme_ads_context": {
                     "account_id": account_id,
                     "totals": {"fetched_at": "2026-08-12T03:00:00+00:00"},
                 },
@@ -144,7 +144,7 @@ def _clean_state(path: Path, account_id: str) -> None:
         path,
         {
             "version": "2",
-            "platforms": {"logly_ads_context": {"account_id": account_id}},
+            "platforms": {"acme_ads_context": {"account_id": account_id}},
         },
     )
 
@@ -217,7 +217,7 @@ class TestSurvey:
                 "version": "2",
                 "platforms": {
                     "google_ads": {"account_id": "4444444444"},
-                    "logly_ads_context": {"account_id": "4444444444"},
+                    "acme_ads_context": {"account_id": "4444444444"},
                 },
             },
         )
@@ -259,7 +259,7 @@ class TestSurvey:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_v2": {
+                    "acme_ads_v2": {
                         "account_id": "5555555555",
                         "totals": {
                             "spend": 128000.0,
@@ -302,7 +302,7 @@ class TestSurvey:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads_v2": {
+                    "acme_ads_v2": {
                         "account_id": "5555555555",
                         "totals": {
                             "spend": 128000.0,
@@ -367,8 +367,8 @@ class TestApplyAll:
         result = _run("--all", "--apply", "--yes")
 
         assert result.exit_code == 0, result.output
-        assert _platform_keys(paths["acme"]) == {"logly_ads_context"}
-        assert _platform_keys(paths["beta"]) == {"logly_ads_context"}
+        assert _platform_keys(paths["acme"]) == {"acme_ads_context"}
+        assert _platform_keys(paths["beta"]) == {"acme_ads_context"}
         assert paths["gamma"].read_bytes() == gamma_before
         # Backed up, per repaired client, and never for the clean one.
         assert len(list(tmp_path.glob("acme/STATE.json.bak.*"))) == 1
@@ -393,8 +393,8 @@ class TestApplyAll:
 
         assert result.exit_code == 0, result.output
         assert len(asked) == 1, asked
-        assert _platform_keys(paths["acme"]) == {"logly_ads_context"}
-        assert _platform_keys(paths["beta"]) == {"logly_ads_context"}
+        assert _platform_keys(paths["acme"]) == {"acme_ads_context"}
+        assert _platform_keys(paths["beta"]) == {"acme_ads_context"}
 
     def test_declining_the_single_confirmation_changes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -426,7 +426,7 @@ class TestWithoutTheClientSeam:
 
         assert result.exit_code == 0, result.output
         assert "Surveyed 1 client." in result.output
-        assert "logly_ads" in result.output
+        assert "acme_ads" in result.output
         assert state.read_bytes()  # unchanged: still a dry run
 
     def test_a_store_with_no_list_clients_repairs_the_active_workspace(
@@ -439,7 +439,7 @@ class TestWithoutTheClientSeam:
         result = _run("--all", "--apply", "--yes")
 
         assert result.exit_code == 0, result.output
-        assert _platform_keys(state) == {"logly_ads_context"}
+        assert _platform_keys(state) == {"acme_ads_context"}
 
 
 # ---------------------------------------------------------------------------
@@ -469,8 +469,8 @@ class TestPartialFailure:
         assert "Could not be read (1 of 4)" in result.output
         assert "delta" in result.output
         # The sweep carried on.
-        assert _platform_keys(paths["acme"]) == {"logly_ads_context"}
-        assert _platform_keys(paths["beta"]) == {"logly_ads_context"}
+        assert _platform_keys(paths["acme"]) == {"acme_ads_context"}
+        assert _platform_keys(paths["beta"]) == {"acme_ads_context"}
 
     def test_both_paths_report_the_same_unreadable_document_the_same_way(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -490,7 +490,7 @@ class TestPartialFailure:
             {
                 "version": "2",
                 "platforms": {
-                    "logly_ads": {"account_id": "1234567890", "campaigns": []}
+                    "acme_ads": {"account_id": "1234567890", "campaigns": []}
                 },
                 # Still refused by the strict read: a decision record that is
                 # not an object (one missing its required fields no longer
@@ -566,10 +566,10 @@ class TestRefusals:
     ) -> None:
         _three_clients(tmp_path, monkeypatch)
 
-        result = _run("--all", "--key", "logly_ads_context")
+        result = _run("--all", "--key", "acme_ads_context")
 
         assert result.exit_code == 1
-        assert "logly_ads_context" in result.output
+        assert "acme_ads_context" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -596,4 +596,4 @@ class TestArchivedClients:
         assert result.exit_code == 0, result.output
         assert "Surveyed 2 clients." in result.output
         assert "archived" in result.output
-        assert _platform_keys(paths["old"]) == {"logly_ads_context"}
+        assert _platform_keys(paths["old"]) == {"acme_ads_context"}

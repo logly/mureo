@@ -92,8 +92,10 @@ class ProviderSpec:
             logged or printed with values.
         notes: short human note rendered alongside ``list``; may mention
             authentication caveats.
-        coexists_with_mureo_platform: when non-None, mureo also serves this
-            platform natively; the CLI emits a coexistence warning.
+        coexists_with_mureo_platform: when non-None, the platform has a
+            ``MUREO_DISABLE_<PLATFORM>`` flag that the CLI manages and a
+            coexistence note; whether mureo registers native tools for it is
+            answered by ``mureo.providers.coexistence.has_native_tools``.
         optional_env: tuple of environment variable names that are injected
             into the upstream server's env block WHEN present, but are NOT
             required to consider the provider credentialed (e.g. an MCC

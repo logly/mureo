@@ -83,6 +83,36 @@ mureo/
 │   └── accounts.py      # Ad-account listing
 ├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py        # SearchConsoleApiClient
+├── amazon_ads/          # Amazon Ads official-MCP bridge (mureo-mediated, #113/#121)
+│   ├── bridge.py        # AmazonAdsBridge — MCPToolProvider (pure mcp_tools() + forwarding handler)
+│   ├── endpoints.py     # Regional endpoint URLs (na / eu / fe) + request headers
+│   ├── lwa.py           # Login with Amazon token exchange (mint / refresh)
+│   ├── manifest.py      # `mureo amazon refresh-manifest` → ~/.mureo/amazon_tools.json
+│   └── provider.py      # Registry registration for the in-tree bridge (first-wins on `amazon_ads`)
+├── chatgpt_ads/         # ChatGPT Ads bundled provider over OpenAI's Advertiser API (#992-#995);
+│   │                    #   reads, changes, creates and archives; imports neither mcp nor web
+│   ├── _api.py          # Base URL, OpenAPI version read, timeout / retry / page-size / throttle constants
+│   ├── _errors.py       # ChatGPTAdsAPIError + error_from_response: the one error-body reader
+│   ├── _hashing.py      # Custom-audience identifier normalisation and SHA-256 hashing
+│   ├── _period.py       # `period` vocabulary resolved in the ad account's time zone
+│   ├── _validation.py   # Argument checks shared by the handler modules
+│   ├── client.py        # ChatGPTAdsClient (httpx, GET / POST / multipart upload; each request states its 5xx retry and lost-answer note; cursor walk); imported on first tool call
+│   ├── credentials.py   # Ads API key from the `chatgpt_ads` store section, then CHATGPT_ADS_API_KEY
+│   ├── handlers.py      # One coroutine per read tool, the composed tool list and handler table, run_tool, run_with_client
+│   ├── change_feed.py   # ChatGPTAdsChangeFeed: the audit log as external changes for change import
+│   ├── handlers_mutations.py # One coroutine per change tool + the spend-limit read
+│   ├── handlers_create.py # Create (always paused, idempotency key) and archive handlers
+│   ├── handlers_creative.py # Image upload, ad preview, location search
+│   ├── handlers_audiences.py # Custom audiences: list / get / create, members from a local file, operations
+│   ├── handlers_measurement.py # Pixels, conversion event settings (404 = feature gate), conversion report
+│   ├── reversal.py      # capture_reversal: the prior read that becomes the recorded reversal
+│   ├── tools.py         # The nine read Tool definitions + build_tool / id_param
+│   ├── tools_mutations.py # The change tools + the spend-limit read, with their declarations
+│   ├── tools_create.py  # The create and archive tools, from the tools_mutations fragments
+│   ├── tools_creative.py # The image upload, ad preview and location search tools
+│   ├── tools_audiences.py # The six custom-audience tools
+│   ├── tools_measurement.py # The pixel, conversion event and conversion report tools
+│   └── provider.py      # ChatGPTAdsProvider, registration (with its change feed), disable gate, platform delivery model
 ├── mcp/                 # MCP server (Google/Meta/Search Console + Rollback/Analysis + Analytics registry, Creative Studio, Learning, mureo Context)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── tool_checks.py                     # writes_to_platform / check_tool_call: dispatch's own classification and caller-error checks, for a stored call (#983, #984)
@@ -115,7 +145,7 @@ mureo/
 │   ├── _handlers_batch.py                 # Batch lifecycle handlers
 │   ├── tools_change_import.py             # mureo_external_changes_import (#545)
 │   ├── _handlers_change_import.py         # Change-import handler
-│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_delivery_collapse_* / analysis_exclusion_impact_preview
+│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_delivery_collapse_* / analysis_exclusion_impact_preview / analysis_tracking_consistency_check
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
 │   ├── _handlers_delivery_collapse.py     # Delivery-collapse check / diagnose handlers (#546)
 │   ├── _handlers_exclusion_impact.py      # analysis_exclusion_impact_preview handler (#547)
@@ -168,10 +198,16 @@ mureo/
 │   ├── setup_codex.py   # Codex install-kit: MCP, credential guard, operational + foundation skills
 │   ├── _skill_paths.py  # get_data_path / replace_dest, shared by the skill installers (#879)
 │   ├── setup_gemini.py  # Gemini extension manifest at ~/.gemini/extensions/mureo/
+│   ├── install_desktop_cmd.py # `mureo install-desktop` — onboarding for Claude Desktop chat users
+│   ├── settings_remove.py # remove_* counterparts of the MCP config / credential guard installers
 │   ├── native_skills.py # Deploy/remove plugin native slash skills via `mureo.native_skills` group (#439)
 │   ├── configure_cmd.py # `mureo configure` — open the local web configuration UI
+│   ├── open_cmd.py      # `mureo open` — open the running configure dashboard in a browser (#241)
 │   ├── byod_cmd.py      # `mureo byod import` / `status` / `remove` / `clear`
-│   ├── providers_cmd.py # `mureo providers list` / `install` / `uninstall` (official MCP catalog)
+│   ├── demo_cmd.py      # `mureo demo init` / `list` — synthetic demo bundle
+│   ├── providers_cmd.py # `mureo providers list` / `add` / `remove` / `confirm` (official MCP catalog)
+│   ├── amazon_cmd.py    # `mureo amazon refresh-manifest` — Amazon Ads official-MCP bridge setup
+│   ├── learn_cmd.py     # `mureo learn add` / `tiers` — append insights to the diagnostic knowledge base
 │   ├── service_cmd.py   # `mureo service` — install/restart the auto-start configure daemon (#241)
 │   ├── upgrade_cmd.py   # `mureo upgrade` — pipx venv-aware bulk upgrade of mureo + plugins
 │   ├── skill_status.py  # Deployed workflow skills current / stale / missing (#728); read by
@@ -321,10 +357,12 @@ mureo/
 │   │                    #   `builtin_change_feeds()` on first use (builtin/ never imports it, #879)
 │   ├── dedupe.py        # Already-imported vs mureo's own change (why one is approximate)
 │   ├── importer.py      # Watermark, action_log write, per-platform outcome
-│   └── builtin/         # Native feeds — google_ads only today; see docs/change-import.md
+│   └── builtin/         # Native feeds — google_ads only; the bundled ChatGPT Ads provider registers
+│                        #   its own feed (mureo/chatgpt_ads/change_feed.py); see docs/change-import.md
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
-│   ├── tool_failure.py  # The MCP failure-envelope READER (failure_of / is_error_result, #863); the
-│   │                    #   writer stays in mcp/_helpers.py, which re-exports these names.
+│   ├── tool_failure.py  # The MCP failure-envelope READER (failure_of / is_error_result, #863) and
+│   │                    #   the refused / error envelope dict (failure_payload); mcp/_helpers.py
+│   │                    #   wraps it in TextContent and re-exports these names.
 │   │                    #   exception_text: the one exception-to-text formatter (#603, #865)
 │   ├── credential_source.py # Per-call credential-source ABI (#821); mcp/credential_source.py
 │   │                    #   re-exports the same objects (#863)
@@ -387,6 +425,9 @@ mureo/
 │                        #   change import); below mcp, so none of them loads the server (#863);
 │                        #   open_google_ads_client / open_meta_ads_client are the one
 │                        #   Google Ads / Meta Ads openers (#875)
+├── bundled_providers.py # The one table of providers shipped inside mureo (Amazon Ads and ChatGPT Ads);
+│                        #   the MCP server and the configure UI both register from it before
+│                        #   entry-point discovery; below mcp and web (#992)
 ├── installed_packages.py
 │                        # The installed mureo / mureo-* distributions, for `mureo upgrade`
 │                        #   and the dashboard's About / update check / upgrade (#863)
@@ -398,9 +439,9 @@ skills/                       # Native slash skills — one `<name>/SKILL.md` pe
 │                             #   by `mureo/cli/native_skills.py`.
 ├── onboard/, daily-check/, rescue/, budget-rebalance/, …   # ~20 operational (workflow) skills
 │   └── SKILL.md
-└── _mureo-*/                 # 9 foundation skills: _mureo-shared / _mureo-state-schema /
+└── _mureo-*/                 # 10 foundation skills: _mureo-shared / _mureo-state-schema /
     └── SKILL.md              #   _mureo-report-persist / _mureo-strategy / _mureo-google-ads / _mureo-meta-ads /
-                              #   _mureo-amazon-ads / _mureo-learning / _mureo-pro-diagnosis
+                              #   _mureo-amazon-ads / _mureo-chatgpt-ads / _mureo-learning / _mureo-pro-diagnosis
 docs/integrations.md          # Platform discovery + external MCP integration guide
 ```
 
@@ -432,7 +473,7 @@ in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
 | Callouts | `callouts.list`, `callouts.create`, `callouts.remove` |
 | Conversions | `conversions.list`, `conversions.get`, `conversions.performance`, `conversions.create`, `conversions.update`, `conversions.remove`, `conversions.tag` |
 | Targeting | `recommendations.list`, `recommendations.apply`, `device_targeting.get`, `device_targeting.set`, `bid_adjustments.get`, `bid_adjustments.update`, `location_targeting.list`, `location_targeting.update`, `schedule_targeting.list`, `schedule_targeting.update`, `change_history.list`, `demographic_targeting.list`, `audience_targeting.list` |
-| Analysis | `performance.report`, `performance.analyze`, `cost_increase.investigate`, `health_check.all`, `ad_performance.compare`, `ad_performance.report`, `network_performance.report`, `budget.efficiency`, `budget.reallocation`, `auction_insights.get`, `rsa_assets.analyze`, `rsa_assets.audit`, `search_terms.review` |
+| Analysis | `performance.report`, `performance.analyze`, `cost_increase.investigate`, `health_check.all`, `ad_performance.compare`, `ad_performance.report`, `network_performance.report`, `budget.efficiency`, `budget.reallocation`, `auction_insights.get`, `auction_insights.analyze`, `rsa_assets.analyze`, `rsa_assets.audit`, `search_terms.review` |
 | B2B | `btob.optimizations` |
 | Creative | `landing_page.analyze`, `creative.research` |
 | Monitoring | `monitoring.delivery_goal`, `monitoring.cpa_goal`, `monitoring.cv_goal`, `monitoring.zero_conversions` |
@@ -449,7 +490,7 @@ in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
 | Campaigns | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.pause`, `campaigns.enable` |
 | Ad Sets | `ad_sets.list`, `ad_sets.create`, `ad_sets.update`, `ad_sets.get`, `ad_sets.pause`, `ad_sets.enable` |
 | Ads | `ads.list`, `ads.create`, `ads.update`, `ads.get`, `ads.pause`, `ads.enable` |
-| Creatives | `creatives.create_carousel`, `creatives.create_collection`, `creatives.list`, `creatives.create`, `creatives.create_dynamic`, `creatives.upload_image` |
+| Creatives | `creatives.create_carousel`, `creatives.create_collection`, `creatives.list`, `creatives.create`, `creatives.create_dynamic`, `creatives.create_lead`, `creatives.upload_image` |
 | Images | `images.upload_file` |
 | Insights | `insights.report`, `insights.breakdown` |
 | Audiences | `audiences.list`, `audiences.create`, `audiences.get`, `audiences.delete`, `audiences.create_lookalike` |
@@ -459,11 +500,11 @@ in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
 | Analysis | `analysis.performance`, `analysis.audience`, `analysis.placements`, `analysis.cost`, `analysis.compare_ads`, `analysis.suggest_creative` |
 | Placement Exclusions | `excluded_placements.get`, `excluded_placements.set` |
 | Product Catalog | `catalogs.list`, `catalogs.create`, `catalogs.get`, `catalogs.delete`, `products.list`, `products.add`, `products.get`, `products.update`, `products.delete`, `feeds.list`, `feeds.create` |
-| Lead Ads | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `leads.get`, `leads.get_by_ad` |
-| Videos | `videos.upload`, `videos.upload_file` |
+| Lead Ads | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `lead_forms.update`, `lead_forms.duplicate`, `leads.get`, `leads.get_by_ad`, `leads.export_csv` |
+| Videos | `videos.upload`, `videos.upload_file`, `videos.get`, `videos.thumbnails` |
 | Split Tests | `split_tests.list`, `split_tests.get`, `split_tests.create`, `split_tests.end` |
 | Ad Rules | `ad_rules.list`, `ad_rules.get`, `ad_rules.create`, `ad_rules.update`, `ad_rules.delete` |
-| Pages | `pages.list` |
+| Pages | `pages.list`, `pages.photos_list` |
 | Page Posts | `page_posts.list`, `page_posts.boost` |
 | Instagram | `instagram.accounts`, `instagram.media`, `instagram.boost` |
 
@@ -476,6 +517,26 @@ in `_CANONICAL_ONLY_SKILLS` with its reason, not hidden behind a name filter.
 | Sitemaps | `sitemaps.list`, `sitemaps.submit` |
 | URL Inspection | `url_inspection.inspect` |
 
+### ChatGPT Ads
+
+Bundled provider (`mureo/chatgpt_ads/`); tool names are `chatgpt_ads_` + the name below. See [docs/chatgpt-ads.md](docs/chatgpt-ads.md).
+
+| Category | Tools |
+|----------|-------|
+| Account | `account.get`, `account.spend_limits_get`, `account.daily_spend_limit_set` |
+| Campaigns | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.update_budget`, `campaigns.pause`, `campaigns.enable`, `campaigns.archive` |
+| Ad Groups | `ad_groups.list`, `ad_groups.get`, `ad_groups.create`, `ad_groups.update`, `ad_groups.update_bid`, `ad_groups.pause`, `ad_groups.enable`, `ad_groups.archive` |
+| Ads | `ads.list`, `ads.get`, `ads.create`, `ads.preview`, `ads.pause`, `ads.enable`, `ads.archive` |
+| Insights | `insights.report` |
+| Change History | `change_history.list` |
+| Creative | `images.upload_file`, `locations.search` |
+| Audiences | `audiences.list`, `audiences.get`, `audiences.create`, `audiences.members_add`, `audiences.members_remove`, `audiences.operations_get` |
+| Measurement | `pixels.list`, `pixels.create`, `conversion_events.list`, `conversion_events.create`, `conversions.report` |
+
+### Amazon Ads
+
+Amazon Ads is served by bridging the official Amazon Ads MCP (`mureo/amazon_ads/`): mureo exposes Amazon's own tool names as-is from the manifest that `mureo amazon refresh-manifest` builds, so there is no mureo-defined tool table. See [docs/amazon-ads.md](docs/amazon-ads.md).
+
 ### mureo Core Tools (platform-independent)
 
 These families are not tied to a single ad platform. Tool names are the exact MCP tool ids.
@@ -486,7 +547,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Rollback | `rollback_plan_get`, `rollback_apply` |
 | Batch (#549) | `mureo_batch_begin`, `mureo_batch_end`, `mureo_batch_status` |
 | Change Import (#545) | `mureo_external_changes_import` |
-| Analysis | `analysis_anomalies_check`, `analysis_delivery_collapse_check`, `analysis_delivery_collapse_diagnose`, `analysis_exclusion_impact_preview` |
+| Analysis | `analysis_anomalies_check`, `analysis_delivery_collapse_check`, `analysis_delivery_collapse_diagnose`, `analysis_exclusion_impact_preview`, `analysis_tracking_consistency_check` |
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
@@ -503,7 +564,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 - **Tools return structured JSON data only** — no formatted text, no Markdown in tool responses.
 - **All data models use frozen dataclasses** — immutable by default.
 - **Credentials via file or env vars** — `~/.mureo/credentials.json` with environment variable fallback.
-- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap, Search Console: 5 QPS, Creative Studio: 1 QPS + 120/hr cap, Plugin tools: 5 QPS). See `mureo/throttle.py`.
+- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap, Search Console: 5 QPS, Creative Studio: 1 QPS + 120/hr cap, ChatGPT Ads: 8 QPS per tool, Plugin tools: 5 QPS). See `mureo/throttle.py` (ChatGPT Ads: `mureo/chatgpt_ads/_api.py`).
 - **Meta token auto-refresh** — Long-Lived Tokens are automatically refreshed when 53+ days old (requires `app_id` and `app_secret`). See `mureo/auth.py`.
 
 ## Coding Standards
@@ -522,7 +583,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 
 Structure drifts before logic breaks: a second error envelope, a helper that duplicates another, a new name for an existing concept, a function-local import added to dodge a cycle. The 2026-10 structural audit found all four here (#862–#866). These rules exist so that a change decided by one person and written by another — or by an agent — keeps the shape the codebase already has.
 
-- **One failure shape per boundary.** MCP tools fail through the helpers `mureo/mcp/_helpers.py` provides (`api_error_handler`, the `API error:` envelope, the `auth_error` result, `_json_result`, the `refused` / `error` envelope of `_failure_result`), read back by `failure_of` in `mureo/core/tool_failure.py` (the reader, re-exported by `_helpers`; the writer stays in `_helpers` because it builds MCP `TextContent`, #863); web handlers fail through `send_error_json` (`mureo/web/_helpers.py`; `send_failure` picks 400 or 500 from the caller's fault codes), and web actions return `ActionResult` (`mureo/web/action_result.py`: `refused` = 400, `failed` = 500) sent by `send_result`; the contract is "Failure contract" in `docs/plugin-authoring.md`. Do not add a new error shape, status word or `{"error": ...}` variant. If the existing helper cannot express a case, extend the helper in one place and update `failure_of` (which `is_error_result` and the journal read) with it (#862, #864).
+- **One failure shape per boundary.** MCP tools fail through the helpers `mureo/mcp/_helpers.py` provides (`api_error_handler`, the `API error:` envelope, the `auth_error` result, `_json_result`, the `refused` / `error` envelope of `_failure_result`), read back by `failure_of` in `mureo/core/tool_failure.py` (the reader, re-exported by `_helpers`; the envelope dict is `failure_payload` in the same module so layers below the server can build it, and `_helpers` wraps it in MCP `TextContent`, #863); web handlers fail through `send_error_json` (`mureo/web/_helpers.py`; `send_failure` picks 400 or 500 from the caller's fault codes), and web actions return `ActionResult` (`mureo/web/action_result.py`: `refused` = 400, `failed` = 500) sent by `send_result`; the contract is "Failure contract" in `docs/plugin-authoring.md`. Do not add a new error shape, status word or `{"error": ...}` variant. If the existing helper cannot express a case, extend the helper in one place and update `failure_of` (which `is_error_result` and the journal read) with it (#862, #864).
 - **Reuse before writing.** Before adding a helper, search for one with the same purpose — not only the same name — and diff the bodies. A byte-identical or near-identical copy is a defect; mixin type stubs that resolve to one implementation are not.
 - **No function-local imports to break an import cycle.** Fix the dependency direction instead. If one is unavoidable, comment the reason on the import and open an issue (#863). Startup-cost deferrals stay documented as such. Ruff enforces this (`PLC0415`): a function-local import under `mureo/` carries `# noqa: PLC0415 — <reason>` with exactly one of `startup cost (#NNN)` (a heavy import kept off a hot entry point, with a `# Startup cost (~X CPU): ...` line above it), `optional dependency` (not a required dependency; the `ImportError` is handled at the site), `import cycle: mureo.<a> -> mureo.<b> (#879)` (a real load-time cycle not yet removed; `<b>` is the module the statement imports, and #879 is the cycle inventory) or `PEP 562 re-export (#863)`. `tests/test_plc0415_reasons.py` runs ruff with `--ignore-noqa` and checks every site it finds; a file-level `# ruff: noqa` that covers the rule is refused. No per-file ignore under `mureo/` may list the rule: the `tests/**` entry is the only place in the ruff config that switches it off.
 - **One name per concept.** Check the existing vocabulary (`period`, `customer_id`, `account_id`, `platform`, …) before introducing a parameter, field or key name.
@@ -602,6 +663,19 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     binds at load, #851).
   - `reports_order.js` → `window.MUREO_REPORTS_ORDER` — the Reports index
     card order (localStorage, and the two ways the grid is reordered).
+  - `reports_sparkline.js` → `window.MUREO_REPORTS_SPARKLINE` — seven days
+    of one metric as a line. Points are placed by date, so a day the
+    collector missed stays a gap, never a zero; fewer than two plottable days
+    draws nothing. Depends on nothing but the DOM.
+  - `reports_display.js` → `window.MUREO_REPORTS_DISPLAY` — the detail
+    view's reading of `summary.display` (#706): a section with no data is not
+    drawn, and a client without the contract keeps the legacy detail view.
+    Reads `MUREO_REPORTS_FORMAT` and `MUREO_OUTCOME_TEXT` at call time.
+  - `reports_chart.js` → `window.MUREO_REPORTS_CHART` — the daily chart,
+    with the day / week / month switch. Points are placed by date, and a week
+    or month bucket says how many of its days it holds (`days` /
+    `expected`), so a partial period is marked rather than shown as whole.
+    Depends only on the DOM.
   - `reports_triage.js` → `window.MUREO_REPORTS_TRIAGE` — the multi-client
     triage layer (#651): which clients need attention, the ranking
     (`REPORTS_TRIAGE_KINDS` — the array index IS the rank), and what to run
@@ -615,6 +689,12 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     the operator where they are), the portfolio figures above the grid, and
     the "what mureo did today" feed (dated by the summary's `server_today` —
     this module never asks the browser what time it is).
+  - `reports_hero.js` → `window.MUREO_REPORTS_HERO` — the list screen's
+    band: how many clients are fine and how many are not. It is handed the
+    health counts `reports_index.js` builds rather than grading the roster
+    itself; its fourth block is the client whose received summary carries no
+    figure. Reads `MUREO_REPORTS_LOGIC` and `MUREO_REPORTS_OVERVIEW` at call
+    time.
   - `reports_index.js` → `window.MUREO_REPORTS_INDEX` — the list screen's
     whole model, composed once per render from the rows and the summaries
     already fetched (`buildReportsIndexModel`): the alert layer, the
@@ -659,6 +739,7 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 - Google Ads: `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`
 - Meta Ads: `META_ADS_ACCESS_TOKEN`, `META_ADS_APP_ID`, `META_ADS_APP_SECRET`
 - Amazon Ads: `AMAZON_ADS_CLIENT_ID` plus either `AMAZON_ADS_ACCESS_TOKEN` or both of `AMAZON_ADS_REFRESH_TOKEN` / `AMAZON_ADS_CLIENT_SECRET`; optional `AMAZON_ADS_REGION`, `AMAZON_ADS_ACCOUNT_MODE`, `AMAZON_ADS_PROFILE_ID`, `AMAZON_ADS_ACCOUNT_ID`, `AMAZON_ADS_MANAGER_ACCOUNT_ID`
+- ChatGPT Ads: `CHATGPT_ADS_API_KEY` (never `OPENAI_API_KEY`, which is Creative Studio's image-generation key). The key is set once as the HTTP client's default header and never interpolated into a message, exception or log line; its exact value is replaced in an error body before the body is read, and httpx transport errors are reported by class name only, raised outside the `except` so nothing is chained
 - The `auth_setup.py` wizard writes credentials to `~/.mureo/credentials.json`
 - **No log line may carry a token, secret or credential value** — log the field name, the exception *type*, or a scrubbed detail, never the value. Since #581 the configure server installs a real handler (`mureo/logging_setup.py` → `~/.mureo/logs/configure.log`, `MUREO_LOG_LEVEL` to raise it), so a leaky `logger.*` call is now a leak on disk rather than a dead line. HTTP access logs go through `safe_http_log_line`, which drops query strings (an OAuth callback carries `?code=`)
 

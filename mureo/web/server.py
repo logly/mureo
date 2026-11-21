@@ -153,29 +153,29 @@ class ConfigureWizard:
         ``SystemExit`` must not tear down configure startup. Only
         ``KeyboardInterrupt`` is honoured so Ctrl+C still works.
 
-        #121 — the in-tree Amazon Ads bridge is not a ``mureo.providers``
-        entry point, so it is registered explicitly (idempotently, from
-        the same single source the MCP startup path uses) or the Amazon
-        credentials card never renders. It goes FIRST so a wholesale
-        entry-point failure cannot take the built-in card down with it.
-        Imported lazily to keep the bridge — and the mcp SDK types it
-        pulls in — off the configure-UI import path.
+        #121 — the providers bundled in mureo (the Amazon Ads bridge today)
+        are not ``mureo.providers`` entry points, so they are registered
+        explicitly (idempotently, from the same table the MCP startup path
+        uses, :mod:`mureo.bundled_providers`) or their credentials cards
+        never render. They go FIRST so a wholesale entry-point failure cannot
+        take the bundled cards down with it. Imported lazily to keep the
+        bridges — and the mcp SDK types they pull in — off the configure-UI
+        import path.
 
-        Audit #53 — ``MUREO_DISABLE_AMAZON_ADS=1`` skips that registration,
-        matching the MCP server's own gate. Both processes must agree: a card
-        rendered here for a bridge the server does not serve would invite the
-        operator to configure credentials that go nowhere.
+        Audit #53 — a bundled provider's ``MUREO_DISABLE_*`` gate (e.g.
+        ``MUREO_DISABLE_AMAZON_ADS=1``) skips its registration, matching the
+        MCP server's own gate. Both processes must agree: a card rendered here
+        for a provider the server does not serve would invite the operator to
+        configure credentials that go nowhere.
         """
         try:
-            # Startup cost (~240 ms CPU): the bridge and the mcp SDK types it
-            # pulls in wait for provider discovery (#863).
-            from mureo.amazon_ads.provider import (  # noqa: PLC0415 — startup cost (#863)
-                amazon_ads_disabled,
-                register_amazon_provider,
+            # Startup cost (~240 ms CPU): the bridges and the mcp SDK types
+            # they pull in wait for provider discovery (#863).
+            from mureo.bundled_providers import (  # noqa: PLC0415 — startup cost (#863)
+                register_bundled_providers,
             )
 
-            if not amazon_ads_disabled():
-                register_amazon_provider()
+            register_bundled_providers()
             discover_providers()
         except KeyboardInterrupt:
             raise
@@ -365,7 +365,7 @@ class ConfigureWizard:
         wants a self-contained path bundle rooted at that home. The
         process-global runtime-context factory is resolved from entry
         points and its paths live OUTSIDE that sandbox (in dev/CI a
-        third-party factory such as ``mureo-agency`` resolves against the
+        third-party runtime-context factory resolves against the
         operator's real ``~/.mureo``), so consulting it here would let a
         configure-UI write escape the injected home and clobber real
         credentials. Production ``mureo configure`` always runs with

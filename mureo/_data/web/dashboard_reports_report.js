@@ -388,7 +388,7 @@
       // Where the way out lives (#610/#636). The repair is NOT offered as a
       // button here. Since #631 this signal does agree with mureo's
       // write-time answer — the CORRECT key in the reported incident
-      // (`logly_ads_context`) no longer fires it — but agreeing about the
+      // (`acme_ads_context`) no longer fires it — but agreeing about the
       // key is not deciding the repair: removal needs the DOCUMENT to show
       // the entry wrong (a resolvable sibling on the same ad account, or an
       // entry storing nothing) and is refused for one carrying

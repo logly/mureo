@@ -15,7 +15,7 @@ Detecting that is one rule with **three** consumers:
   carrying one;
 - the read-only Reports view, which surfaces an existing conflict rather than
   silently adding the entries together;
-- out-of-tree writers (mureo-agency) that assemble a whole ``StateDocument``
+- out-of-tree writers that assemble a whole ``StateDocument``
   themselves and never call the upsert helpers.
 
 This module is the single source of that rule. Reimplementing it in any of the

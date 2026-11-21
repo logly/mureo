@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from mcp.types import TextContent, Tool, ToolAnnotations
@@ -199,14 +199,30 @@ def test_reserved_names_are_exactly_the_builtin_tool_names() -> None:
 
 @pytest.mark.unit
 def test_no_plugins_is_additive_no_op() -> None:
-    """With no third-party entry points, the plugin sets are empty —
-    the regression guarantee for the existing suite.
+    """With no third-party entry points, the plugin sets hold only the
+    bundled ChatGPT Ads provider's tools (Amazon contributes none without a
+    manifest) — the regression guarantee for the existing suite.
     """
+    from mureo.chatgpt_ads.provider import ChatGPTAdsProvider
     from mureo.mcp import server as mod
 
+    chatgpt_ads_tools = ChatGPTAdsProvider().mcp_tools()
     mod = importlib.reload(mod)
-    assert frozenset() == mod._PLUGIN_NAMES
-    assert mod._PLUGIN_TOOLS == []
+    assert frozenset(t.name for t in chatgpt_ads_tools) == mod._PLUGIN_NAMES
+    assert list(chatgpt_ads_tools) == mod._PLUGIN_TOOLS
+
+
+@pytest.mark.unit
+def test_no_plugins_and_both_bundled_providers_disabled_is_empty() -> None:
+    """With both bundled providers switched off and no entry points, the
+    plugin sets are empty again: the disable gates leave nothing behind."""
+    with reloaded_server(
+        lambda **_kw: (),
+        patches={"mureo.core.providers.default_registry._entries": {}},
+        env={"MUREO_DISABLE_CHATGPT_ADS": "1", "MUREO_DISABLE_AMAZON_ADS": "1"},
+    ) as mod:
+        assert frozenset() == mod._PLUGIN_NAMES
+        assert mod._PLUGIN_TOOLS == []
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +340,14 @@ class TestPluginAuditAndThrottle:
         log = tmp_path / "plugin_audit.jsonl"
         monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
         exc = _platform_shaped(RuntimeError)
-        monkeypatch.setattr(_BoomPlugin, "handle_mcp_tool", AsyncMock(side_effect=exc))
+
+        # A real coroutine function, not an ``AsyncMock``: tool exposure asks
+        # ``inspect.iscoroutinefunction``, which answers False for an
+        # ``AsyncMock`` on Python 3.10.0 and would skip the provider.
+        async def _raise(self: Any, name: str, arguments: dict[str, Any]) -> list[Any]:
+            raise exc
+
+        monkeypatch.setattr(_BoomPlugin, "handle_mcp_tool", _raise)
         with reloaded_server(_boom_discover) as mod, pytest.raises(RuntimeError):
             await mod.handle_call_tool("boom_plugin_explode", {"x": 1})
         rec = json.loads(log.read_text(encoding="utf-8").splitlines()[0])

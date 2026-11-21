@@ -30,6 +30,7 @@ from mureo.context.monthly_budget import (
 )
 from mureo.context.state import (
     append_action_log,
+    append_action_logs,
     begin_batch,
     end_batch,
     get_campaign,
@@ -92,6 +93,7 @@ __all__ = [
     "write_strategy_file",
     # state
     "append_action_log",
+    "append_action_logs",
     "begin_batch",
     "end_batch",
     "get_campaign",

@@ -22,9 +22,11 @@ from typing import Any
 
 import pytest
 
+import mureo.context.state_io as state_io
 from mureo.change_import import (
     ATTRIBUTION_WINDOW_MINUTES,
     CHANGE_FEED_ENTRY_POINT_GROUP,
+    DEFAULT_LOOKBACK_DAYS,
     ChangeFeedProvider,
     ChangeFeedResult,
     ChangeFeedWarning,
@@ -46,6 +48,12 @@ from mureo.change_import import (
 from mureo.change_import import registry as registry_mod
 from mureo.change_import.builtin import builtin_change_feeds
 from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed
+from mureo.change_import.dedupe import (
+    KIND_STATUS,
+    _operations_conflict,
+    action_kind,
+    change_kind,
+)
 from mureo.change_import.registry import ChangeFeedRegistry
 from mureo.context.batch import batch_members
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
@@ -59,6 +67,15 @@ from mureo.context.state_codec import parse_state, render_state
 from mureo.rollback import RollbackStatus, plan_batch_rollback, plan_rollback
 
 NOW = datetime(2026, 8, 7, 12, 0, 0, tzinfo=timezone.utc)
+
+#: Action names that read as a status kind and carry no create/remove token.
+_STATUS_ACTIONS = (
+    "google_ads_campaigns_update_status",
+    "meta_ads_ads_pause",
+    "meta_ads_ad_sets_enable",
+    "some_platform_campaigns_resume",
+    "chatgpt_ads_ads_archive",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -662,6 +679,166 @@ class TestNoDoubleCounting:
             ImportVerdict.IMPORT
         )
 
+    def test_a_row_naming_two_kinds_has_no_kind(self) -> None:
+        """A budget field and a status field on one row: neither kind (#1009)."""
+        change = _change(changed_fields=("campaign_budget", "status"))
+        assert change_kind(change) == ""
+
+    def test_two_fields_of_one_kind_keep_that_kind(self) -> None:
+        change = _change(changed_fields=("status", "primary_status"))
+        assert change_kind(change) == KIND_STATUS
+
+    def test_a_field_with_no_kind_does_not_hide_one_that_has_it(self) -> None:
+        change = _change(changed_fields=("name", "status"))
+        assert change_kind(change) == KIND_STATUS
+
+    def test_a_mixed_row_is_not_absorbed_by_a_single_kind_action(self) -> None:
+        """mureo edits the budget; the same row also changes the status.
+
+        Matching on the first field would read the row as mureo's budget edit
+        and drop the status change with it.
+        """
+        doc = _log(
+            action="google_ads_budget_update",
+            campaign_id="111",
+            timestamp=NOW - timedelta(minutes=2),
+        )
+        mixed = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("campaign_budget", "status"),
+            operation="UPDATE",
+            campaign_id="111",
+        )
+        assert classify_change(mixed, doc) is ImportVerdict.IMPORT
+
+    def test_a_budget_only_row_is_still_absorbed_by_the_budget_action(self) -> None:
+        doc = _log(
+            action="google_ads_budget_update",
+            campaign_id="111",
+            timestamp=NOW - timedelta(minutes=2),
+        )
+        budget_only = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("campaign_budget",),
+            operation="UPDATE",
+            campaign_id="111",
+        )
+        assert classify_change(budget_only, doc) is ImportVerdict.ATTRIBUTED_TO_MUREO
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "chatgpt_ads_campaigns_archive",
+            "chatgpt_ads_ad_groups_archive",
+            "chatgpt_ads_ads_archive",
+            "some_platform_ad_sets_archive",
+        ],
+    )
+    def test_an_archive_action_is_a_status_change(self, action: str) -> None:
+        """A feed reports an archive as a ``status`` change (#1030), so the
+        archive verb must outrank the entity noun the name also carries."""
+        assert action_kind(action) == KIND_STATUS
+
+    def test_an_archive_operation_does_not_refute_an_archive_action(self) -> None:
+        """``ARCHIVE`` is neither a create nor a remove, so it imposes no
+        constraint; only kind, target and window decide."""
+        entry = _log(action="some_platform_campaigns_archive").action_log[0]
+        change = _change(
+            resource_type="CAMPAIGN", operation="ARCHIVE", changed_fields=("status",)
+        )
+        assert _operations_conflict(entry, change) is False
+
+    @pytest.mark.parametrize("operation", ["CREATE", "ADD", " create "])
+    @pytest.mark.parametrize("action", _STATUS_ACTIONS)
+    def test_a_creation_refutes_a_status_action(
+        self, action: str, operation: str
+    ) -> None:
+        """A pause, enable, archive or status update never creates the entity
+        it names, so a creation row is not its record (#1034)."""
+        entry = _log(action=action).action_log[0]
+        change = _change(operation=operation, changed_fields=("status",))
+        assert _operations_conflict(entry, change) is True
+
+    @pytest.mark.parametrize(
+        "operation", ["UPDATE", "REMOVE", "DELETE", "PAUSE", "ARCHIVE", ""]
+    )
+    @pytest.mark.parametrize("action", _STATUS_ACTIONS)
+    def test_only_a_creation_refutes_a_status_action(
+        self, action: str, operation: str
+    ) -> None:
+        """A status tool may set a removed state, and a feed may report an
+        archive as a removal, so a removal does not refute it."""
+        entry = _log(action=action).action_log[0]
+        change = _change(operation=operation, changed_fields=("status",))
+        assert _operations_conflict(entry, change) is False
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "google_ads_budget_update",
+            "google_ads_ad_groups_update",
+            "reviewed the account",
+        ],
+    )
+    def test_a_creation_does_not_refute_other_actions(self, action: str) -> None:
+        entry = _log(action=action).action_log[0]
+        change = _change(operation="CREATE")
+        assert _operations_conflict(entry, change) is False
+
+    def test_a_creation_refutes_a_hand_recorded_status_text(self) -> None:
+        """Free text that reads as a status change is a status action too, so
+        a creation recorded under it is imported: the over-import side."""
+        action = "Created the campaign and paused it"
+        assert action_kind(action) == KIND_STATUS
+        entry = _log(action=action).action_log[0]
+        change = _change(operation="CREATE", changed_fields=("status",))
+        assert _operations_conflict(entry, change) is True
+
+    @pytest.mark.parametrize(
+        ("action", "operation", "expected"),
+        [
+            ("some_platform_status_create", "CREATE", False),
+            ("some_platform_status_create", "REMOVE", True),
+            ("some_platform_status_remove", "REMOVE", False),
+            ("some_platform_status_remove", "CREATE", True),
+        ],
+    )
+    def test_a_create_or_remove_token_decides_before_the_status_kind(
+        self, action: str, operation: str, expected: bool
+    ) -> None:
+        assert action_kind(action) == KIND_STATUS
+        entry = _log(action=action).action_log[0]
+        change = _change(operation=operation, changed_fields=("status",))
+        assert _operations_conflict(entry, change) is expected
+
+    @pytest.mark.parametrize(
+        ("operation", "expected"),
+        [
+            ("CREATE", ImportVerdict.IMPORT),
+            ("UPDATE", ImportVerdict.ATTRIBUTED_TO_MUREO),
+        ],
+    )
+    def test_a_creation_is_not_absorbed_by_a_pause_of_the_entity(
+        self, operation: str, expected: ImportVerdict
+    ) -> None:
+        """An entity created outside mureo and paused by mureo minutes later
+        is still imported (#1034)."""
+        doc = _log(
+            action="google_ads_campaigns_update_status",
+            campaign_id="111",
+            timestamp=NOW - timedelta(minutes=2),
+        )
+        change = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            operation=operation,
+            changed_fields=("status",),
+            campaign_id="111",
+        )
+        assert classify_change(change, doc) is expected
+
 
 # ---------------------------------------------------------------------------
 # 3. Importing twice does not duplicate
@@ -803,7 +980,7 @@ class TestImportsStayOutOfBatches:
 class TestProvenanceSurvivesBatchStamping:
     """The path #545 does NOT route around.
 
-    The importer passes ``join_active_batch=False``, so it never reaches
+    An import is filed with ``join_active_batch=False``, so it never reaches
     ``stamp_batch`` at all. A hosted connector does: mureo holds no
     credentials for TikTok and dispatches nothing, so an agent records what it
     read from the connector's own change history through
@@ -1457,3 +1634,278 @@ class TestWatermark:
         await import_external_changes(path, since=asked, now=NOW)
 
         assert feed.calls[0][1] == asked
+
+    @staticmethod
+    def _record_external(path: Path, occurred: datetime, change_id: str) -> None:
+        append_action_log(
+            path,
+            to_action_log_entry(
+                _change(occurred_at=occurred.isoformat(), change_id=change_id),
+                recorded_at=NOW,
+            ),
+            join_active_batch=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_entry_dated_after_now_does_not_move_the_start(
+        self, tmp_path: Path
+    ) -> None:
+        """A start past now would ask every later pass for a future window (#1010)."""
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        older = NOW - timedelta(hours=3)
+        self._record_external(path, NOW + timedelta(days=1), "future")
+        self._record_external(path, older, "older")
+        feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+
+        await import_external_changes(path, now=NOW)
+
+        assert feed.calls[0][1] == older
+
+    @pytest.mark.asyncio
+    async def test_an_entry_dated_after_now_stays_in_the_log_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        """A pass only skips the record when choosing its start.
+
+        Nothing prunes or rewrites it, so the log keeps what was recorded
+        and the entry can count again later.
+        """
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        future = (NOW + timedelta(days=1)).isoformat()
+        self._record_external(path, NOW + timedelta(days=1), "future")
+        before = [
+            e for e in read_state_file(path).action_log if e.occurred_at == future
+        ]
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=())))
+
+        await import_external_changes(path, now=NOW)
+
+        after = [e for e in read_state_file(path).action_log if e.occurred_at == future]
+        assert len(before) == 1
+        assert after == before
+
+    @pytest.mark.asyncio
+    async def test_a_future_entry_sets_the_start_once_its_time_has_passed(
+        self, tmp_path: Path
+    ) -> None:
+        """The skip is judged against each pass's now, not decided once."""
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        future = NOW + timedelta(days=1)
+        self._record_external(path, future, "future")
+        self._record_external(path, NOW - timedelta(hours=3), "older")
+        feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+
+        await import_external_changes(path, now=NOW)
+        await import_external_changes(path, now=future + timedelta(hours=1))
+
+        assert feed.calls[0][1] == NOW - timedelta(hours=3)
+        assert feed.calls[1][1] == future
+
+    @pytest.mark.asyncio
+    async def test_only_a_future_entry_falls_back_to_the_default_lookback(
+        self, tmp_path: Path
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        self._record_external(path, NOW + timedelta(days=1), "future")
+        feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+
+        await import_external_changes(path, now=NOW)
+
+        assert feed.calls[0][1] == NOW - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+
+    @pytest.mark.asyncio
+    async def test_an_explicit_since_still_wins_over_a_future_entry(
+        self, tmp_path: Path
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        self._record_external(path, NOW + timedelta(days=1), "future")
+        feed = _StubFeed("google_ads", ChangeFeedResult(changes=()))
+        register_change_feed(feed)
+        asked = NOW - timedelta(days=3)
+
+        await import_external_changes(path, since=asked, now=NOW)
+
+        assert feed.calls[0][1] == asked
+
+
+# ---------------------------------------------------------------------------
+# One pass files a platform's changes with one STATE.json write (#1018)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestOneWritePerPass:
+    """A write per imported row made a pass quadratic in the page size."""
+
+    @pytest.fixture
+    def writes(self, monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+        calls: list[Path] = []
+        real = state_io.write_state_file
+
+        def _spy(path: Path, doc: Any, **kwargs: Any) -> None:
+            calls.append(path)
+            real(path, doc, **kwargs)
+
+        monkeypatch.setattr(state_io, "write_state_file", _spy)
+        return calls
+
+    @staticmethod
+    def _page(*ids: str) -> tuple[ExternalChange, ...]:
+        return tuple(
+            _change(change_id=f"customers/1/changeEvents/{i}", campaign_id=i)
+            for i in ids
+        )
+
+    @pytest.mark.asyncio
+    async def test_several_changes_are_filed_with_one_write(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        page = self._page("1", "2", "3")
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=page)))
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert len(writes) == 1
+        log = read_state_file(path).action_log
+        assert outcomes[0].imported == (0, 1, 2)
+        assert [log[i].external_id for i in outcomes[0].imported] == [
+            external_change_id(c) for c in page
+        ]
+
+    @pytest.mark.asyncio
+    async def test_an_entry_recorded_while_the_feed_answers_claims_its_change(
+        self, tmp_path: Path
+    ) -> None:
+        """The page is checked against STATE.json as the feed left it.
+
+        mureo records its entry after the platform accepted the change, so a
+        pass that began in between must not file that change as external.
+        """
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        echo = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("status",),
+            operation="UPDATE",
+            campaign_id="111",
+            client_type="GOOGLE_ADS_API",
+        )
+
+        class _RecordsMeanwhile(_StubFeed):
+            async def fetch_change_events(
+                self, account_id: str, *, since: datetime, until: datetime
+            ) -> ChangeFeedResult:
+                append_action_log(
+                    path,
+                    ActionLogEntry(
+                        timestamp=(NOW - timedelta(minutes=1)).isoformat(),
+                        action="google_ads_campaigns_update_status",
+                        platform="google_ads",
+                        campaign_id="111",
+                    ),
+                )
+                return await super().fetch_change_events(
+                    account_id, since=since, until=until
+                )
+
+        register_change_feed(
+            _RecordsMeanwhile("google_ads", ChangeFeedResult(changes=(echo,)))
+        )
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert outcomes[0].attributed_to_mureo == 1
+        assert outcomes[0].imported == ()
+        assert [e.is_external for e in read_state_file(path).action_log] == [False]
+
+    @pytest.mark.asyncio
+    async def test_a_pass_with_everything_already_imported_writes_nothing(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        page = self._page("1", "2")
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=page)))
+        await import_external_changes(path, now=NOW)
+        writes.clear()
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert writes == []
+        assert outcomes[0].imported == ()
+        assert outcomes[0].already_imported == 2
+
+    @pytest.mark.asyncio
+    async def test_a_pass_with_everything_attributed_writes_nothing(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        append_action_log(
+            path,
+            ActionLogEntry(
+                timestamp=(NOW - timedelta(minutes=1)).isoformat(),
+                action="google_ads_campaigns_update_status",
+                platform="google_ads",
+                campaign_id="111",
+            ),
+        )
+        writes.clear()
+        echo = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("status",),
+            operation="UPDATE",
+            campaign_id="111",
+            client_type="GOOGLE_ADS_API",
+        )
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=(echo,))))
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert writes == []
+        assert outcomes[0].attributed_to_mureo == 1
+        assert outcomes[0].imported == ()
+
+    @pytest.mark.asyncio
+    async def test_the_same_change_twice_in_one_page_is_filed_once(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        page = (*self._page("1"), *self._page("1"), *self._page("2"))
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=page)))
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert len(writes) == 1
+        assert outcomes[0].imported == (0, 1)
+        assert outcomes[0].already_imported == 1
+        assert len(read_state_file(path).action_log) == 2
+
+    @pytest.mark.asyncio
+    async def test_reported_indices_start_after_the_entries_already_on_disk(
+        self, tmp_path: Path, writes: list[Path]
+    ) -> None:
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        for tag in ("x", "y"):
+            append_action_log(
+                path,
+                ActionLogEntry(
+                    timestamp=(NOW - timedelta(days=2)).isoformat(),
+                    action="google_ads_budget_update",
+                    platform="google_ads",
+                    campaign_id=tag,
+                ),
+            )
+        writes.clear()
+        page = self._page("1", "2")
+        register_change_feed(_StubFeed("google_ads", ChangeFeedResult(changes=page)))
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert len(writes) == 1
+        assert outcomes[0].imported == (2, 3)
+        log = read_state_file(path).action_log
+        assert [log[i].is_external for i in outcomes[0].imported] == [True, True]

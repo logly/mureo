@@ -9,25 +9,35 @@ and the honesty of the MCP tool's response when a platform cannot be polled.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from mureo.change_import import (
     ChangeFeedResult,
+    ImportVerdict,
+    classify_change,
     clear_change_feed_registry,
     default_change_feed_registry,
+    external_change_id,
+    import_external_changes,
     register_change_feed,
+    to_action_log_entry,
 )
 from mureo.change_import.builtin.google_ads import (
+    _COVERAGE_NOTES,
     _CRITERION_RESOURCE_TYPES,
+    _UNKNOWN_ZONE_NOTE,
     GoogleAdsChangeFeed,
     _row_to_change,
 )
 from mureo.client_factory import GOOGLE_ADS_THROTTLER
+from mureo.context.state import append_action_log, read_state_file
+from mureo.context.state_codec import parse_state
 from mureo.google_ads._extensions_targeting import CHANGE_HISTORY_ROW_LIMIT
 from mureo.mcp import server as mcp_server
 from mureo.mcp._handlers_change_import import handle_external_changes_import
@@ -79,7 +89,7 @@ def _clear_runtime_context_cache() -> Any:
 class TestRowMapping:
     def test_a_row_with_only_an_ad_group_names_the_ad_group(self) -> None:
         change = _row_to_change(
-            _row(change_resource_type="AD_GROUP", change_resource_name="")
+            _row(change_resource_type="AD_GROUP", change_resource_name=""), None
         )
         assert change is not None
         assert change.campaign_id == "111"
@@ -175,7 +185,8 @@ class TestRowMapping:
             _row(
                 change_resource_type=resource_type,
                 change_resource_name=change_resource_name,
-            )
+            ),
+            None,
         )
         assert change is not None
         assert change.campaign_id == "111"
@@ -184,7 +195,8 @@ class TestRowMapping:
 
     def test_an_unresolvable_criterion_row_claims_no_sub_campaign_target(self) -> None:
         change = _row_to_change(
-            _row(change_resource_type="AD_GROUP_CRITERION", change_resource_name="odd")
+            _row(change_resource_type="AD_GROUP_CRITERION", change_resource_name="odd"),
+            None,
         )
         assert change is not None
         assert change.entity_id is None
@@ -217,7 +229,8 @@ class TestRowMapping:
             _row(
                 change_resource_type=resource_type,
                 change_resource_name=change_resource_name,
-            )
+            ),
+            None,
         )
         assert change is not None
         assert change.ad_id == "999"
@@ -227,7 +240,8 @@ class TestRowMapping:
     def test_an_unresolvable_ad_row_claims_no_sub_campaign_target(self) -> None:
         """Falling back to the ad group would claim specificity it lacks."""
         change = _row_to_change(
-            _row(change_resource_type="AD_GROUP_AD", change_resource_name="weird")
+            _row(change_resource_type="AD_GROUP_AD", change_resource_name="weird"),
+            None,
         )
         assert change is not None
         assert change.ad_id is None
@@ -235,12 +249,12 @@ class TestRowMapping:
         assert change.campaign_id == "111"
 
     def test_timestamp_is_normalised_to_parseable_iso(self) -> None:
-        change = _row_to_change(_row())
+        change = _row_to_change(_row(), None)
         assert change is not None
         assert datetime.fromisoformat(change.occurred_at)
 
     def test_the_event_resource_name_becomes_the_dedup_id(self) -> None:
-        change = _row_to_change(_row())
+        change = _row_to_change(_row(), None)
         assert change is not None
         assert change.change_id == "customers/1/changeEvents/2026-08-05~1~2"
 
@@ -252,7 +266,8 @@ class TestRowMapping:
                 campaign="something/else",
                 ad_group="",
                 change_resource_name="",
-            )
+            ),
+            None,
         )
         assert change is not None
         assert change.campaign_id is None
@@ -261,7 +276,7 @@ class TestRowMapping:
     def test_a_row_without_a_change_time_is_dropped(self) -> None:
         """Dating it 'now' would review it on the wrong schedule and would
         move the watermark past changes never seen."""
-        assert _row_to_change(_row(change_date_time="")) is None
+        assert _row_to_change(_row(change_date_time=""), None) is None
 
     def test_a_real_change_event_row_classifies_end_to_end(self) -> None:
         """The whole path, from the row the API returns to the kind (#588).
@@ -304,7 +319,7 @@ class TestRowMapping:
         raw = util.convert_proto_plus_to_protobuf(event)
         assert isinstance(raw.change_resource_type, int)  # the production shape
 
-        change = _row_to_change(map_change_event(raw))
+        change = _row_to_change(map_change_event(raw), None)
 
         assert change is not None
         assert change.resource_type == "AD"
@@ -327,6 +342,7 @@ class TestGoogleFeed:
             _row(resource_name=f"customers/1/changeEvents/{i}")
             for i in range(CHANGE_HISTORY_ROW_LIMIT)
         ]
+        client.get_account_time_zone.return_value = "UTC"
         monkeypatch.setattr(feed, "_open_client", lambda _account: client)
 
         result = await feed.fetch_change_events("123", since=NOW, until=NOW)
@@ -342,6 +358,7 @@ class TestGoogleFeed:
         feed = GoogleAdsChangeFeed()
         client = AsyncMock()
         client.list_change_history.return_value = []
+        client.get_account_time_zone.return_value = None
         monkeypatch.setattr(feed, "_open_client", lambda _account: client)
 
         result = await feed.fetch_change_events("123", since=NOW, until=NOW)
@@ -424,6 +441,232 @@ class TestGoogleFeed:
 
         assert payload["blind_spots"] == ["google_ads"]
         assert payload["platforms"][0]["status"] == "unavailable"
+
+
+TOKYO = ZoneInfo("Asia/Tokyo")
+
+
+def _status_row(local_time: str) -> dict[str, Any]:
+    """A campaign status toggle as ``change_event`` reports it (account-local)."""
+    return _row(
+        change_date_time=local_time,
+        change_resource_type="CAMPAIGN",
+        change_resource_name="customers/1/campaigns/111",
+        resource_change_operation="UPDATE",
+        changed_fields=["status"],
+        ad_group="",
+    )
+
+
+def _status_entry(timestamp: str) -> Any:
+    """A parsed StateDocument holding mureo's own status toggle on campaign 111."""
+    entry = {
+        "timestamp": timestamp,
+        "action": "google_ads_campaigns_update_status",
+        "platform": "google_ads",
+        "campaign_id": "111",
+    }
+    return parse_state(json.dumps({"action_log": [entry]}))
+
+
+def _feed_with(
+    monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, Any]], zone: Any
+) -> tuple[GoogleAdsChangeFeed, AsyncMock]:
+    feed = GoogleAdsChangeFeed()
+    client = AsyncMock()
+    client.list_change_history.return_value = rows
+    client.get_account_time_zone.return_value = zone
+    monkeypatch.setattr(feed, "_open_client", lambda _account: client)
+    return feed, client
+
+
+@pytest.mark.unit
+class TestAccountTimeZone:
+    """``change_date_time`` is in the account's time zone, not UTC (#1008)."""
+
+    @pytest.mark.parametrize(
+        ("reported", "expected"),
+        [
+            ("2026-08-05 09:14:00", "2026-08-05T09:14:00+09:00"),
+            ("2026-08-05 09:14:00.123456", "2026-08-05T09:14:00.123456+09:00"),
+            ("2026-08-05T09:14:00-05:00", "2026-08-05T09:14:00-05:00"),
+        ],
+        ids=["naive", "microseconds", "already-offset"],
+    )
+    def test_a_known_zone_is_attached(self, reported: str, expected: str) -> None:
+        change = _row_to_change(_row(change_date_time=reported), TOKYO)
+        assert change is not None
+        assert change.occurred_at == expected
+
+    def test_the_import_identity_does_not_depend_on_the_zone(self) -> None:
+        """A row imported before its time carried an offset is not imported twice."""
+        before = _row_to_change(_row(), None)
+        after = _row_to_change(_row(), TOKYO)
+
+        assert before is not None and after is not None
+        assert before.occurred_at != after.occurred_at
+        assert external_change_id(before) == external_change_id(after)
+
+    @pytest.mark.asyncio
+    async def test_an_entry_imported_without_an_offset_is_not_imported_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Logs written before the zone was attached keep their entries as-is."""
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {"google_ads": {"account_id": "123", "campaigns": []}},
+                    "action_log": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        earlier = _row_to_change(_row(), None)
+        assert earlier is not None
+        append_action_log(
+            path,
+            to_action_log_entry(earlier, recorded_at=NOW),
+            join_active_batch=False,
+        )
+        before = read_state_file(path).action_log
+        feed, _client = _feed_with(monkeypatch, [_row()], "Asia/Tokyo")
+        register_change_feed(feed)
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        after = read_state_file(path).action_log
+        assert outcomes[0].already_imported == 1
+        assert outcomes[0].imported == ()
+        assert after == before
+        assert after[0].occurred_at == "2026-08-05T09:14:00"
+
+    def test_an_unknown_zone_keeps_the_reported_time(self) -> None:
+        change = _row_to_change(_row(), None)
+        assert change is not None
+        assert change.occurred_at == "2026-08-05T09:14:00"
+
+    @pytest.mark.parametrize(
+        "zone_name",
+        ["UTC", "Asia/Tokyo", "America/Los_Angeles"],
+        ids=["utc", "utc+9", "utc-8"],
+    )
+    def test_mureos_own_change_is_attributed_in_any_zone(self, zone_name: str) -> None:
+        zone = ZoneInfo(zone_name)
+        committed = datetime(2026, 1, 15, 10, 0, 0, tzinfo=zone)
+        stamped = (committed - timedelta(minutes=1)).isoformat(timespec="seconds")
+        row = _status_row(committed.strftime("%Y-%m-%d %H:%M:%S"))
+
+        change = _row_to_change(row, zone)
+
+        assert change is not None
+        assert classify_change(change, _status_entry(stamped)) is (
+            ImportVerdict.ATTRIBUTED_TO_MUREO
+        )
+
+    def test_an_operator_edit_nine_hours_away_is_imported(self) -> None:
+        """The naive strings are three minutes apart; the real times are not."""
+        change = _row_to_change(_status_row("2026-01-15 10:03:00"), TOKYO)
+
+        assert change is not None
+        assert classify_change(change, _status_entry("2026-01-15T10:00:00+00:00")) is (
+            ImportVerdict.IMPORT
+        )
+
+    @pytest.mark.parametrize(
+        ("zone", "end_date"),
+        [("Asia/Tokyo", "2026-11-20"), (None, "2026-11-19")],
+        ids=["account-calendar", "unknown-zone"],
+    )
+    @pytest.mark.asyncio
+    async def test_the_window_is_on_the_accounts_calendar(
+        self, monkeypatch: pytest.MonkeyPatch, zone: str | None, end_date: str
+    ) -> None:
+        feed, client = _feed_with(monkeypatch, [], zone)
+        until = datetime(2026, 11, 19, 17, 0, 0, tzinfo=timezone.utc)
+
+        await feed.fetch_change_events("123", since=until, until=until)
+
+        assert client.list_change_history.await_args.kwargs["end_date"] == end_date
+
+    @pytest.mark.parametrize(
+        ("zone", "since", "start_date"),
+        [
+            # An entry recorded without an offset holds 23:30 account-local,
+            # read as 23:30 UTC. On the account's calendar that is already the
+            # next day, which would skip the last half hour of the 19th.
+            (
+                "Asia/Tokyo",
+                datetime(2026, 11, 19, 23, 30, tzinfo=timezone.utc),
+                "2026-11-19",
+            ),
+            # A start that carries the account's offset is already local.
+            (
+                "Asia/Tokyo",
+                datetime(2026, 11, 20, 1, 0, tzinfo=TOKYO),
+                "2026-11-20",
+            ),
+            # West of UTC the account's day is the earlier one.
+            (
+                "America/Los_Angeles",
+                datetime(2026, 11, 19, 3, 0, tzinfo=timezone.utc),
+                "2026-11-18",
+            ),
+        ],
+        ids=["offsetless-entry-east", "offset-bearing", "west"],
+    )
+    @pytest.mark.asyncio
+    async def test_the_start_day_covers_the_edge_on_both_calendars(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        zone: str,
+        since: datetime,
+        start_date: str,
+    ) -> None:
+        feed, client = _feed_with(monkeypatch, [], zone)
+        until = datetime(2026, 11, 21, 0, 0, 0, tzinfo=timezone.utc)
+
+        await feed.fetch_change_events("123", since=since, until=until)
+
+        assert client.list_change_history.await_args.kwargs["start_date"] == (
+            start_date
+        )
+
+    @pytest.mark.parametrize("zone", [None, "", "Not/AZone"])
+    @pytest.mark.asyncio
+    async def test_an_unknown_zone_is_reported(
+        self, monkeypatch: pytest.MonkeyPatch, zone: str | None
+    ) -> None:
+        feed, _client = _feed_with(monkeypatch, [_row()], zone)
+
+        result = await feed.fetch_change_events("123", since=NOW, until=NOW)
+
+        assert result.changes[0].occurred_at == "2026-08-05T09:14:00"
+        assert _UNKNOWN_ZONE_NOTE in result.notes
+        assert result.notes[: len(_COVERAGE_NOTES)] == _COVERAGE_NOTES
+
+    @pytest.mark.asyncio
+    async def test_a_known_zone_adds_no_note(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        feed, _client = _feed_with(monkeypatch, [_row()], "Asia/Tokyo")
+
+        result = await feed.fetch_change_events("123", since=NOW, until=NOW)
+
+        assert result.changes[0].occurred_at == "2026-08-05T09:14:00+09:00"
+        assert _UNKNOWN_ZONE_NOTE not in result.notes
+
+    @pytest.mark.asyncio
+    async def test_a_failing_zone_read_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Raising is how the importer learns the window was not checked."""
+        feed, client = _feed_with(monkeypatch, [_row()], None)
+        client.get_account_time_zone.side_effect = RuntimeError("quota")
+
+        with pytest.raises(RuntimeError, match="quota"):
+            await feed.fetch_change_events("123", since=NOW, until=NOW)
 
 
 class _StubFeed:

@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 229 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 192 advertising and SEO operation tools across Google Ads (92), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 1 change-import tool (record changes made outside mureo), 5 cross-platform analysis tools (anomaly detection, delivery-collapse detection and diagnosis, the exclusion delivery-impact preview and tracking-parameter consistency), 16 mureo-context tools (strategy / state / reports / the dashboard's display contract / per-day history / collection failures — per platform and for the workspace as a whole — / outcome evaluation / decision records / history queries / workspace settings), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 270 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 192 advertising and SEO operation tools across Google Ads (92), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 1 change-import tool (record changes made outside mureo), 5 cross-platform analysis tools (anomaly detection, delivery-collapse detection and diagnosis, the exclusion delivery-impact preview and tracking-parameter consistency), 16 mureo-context tools (strategy / state / reports / the dashboard's display contract / per-day history / collection failures — per platform and for the workspace as a whole — / outcome evaluation / decision records / history queries / workspace settings), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), 5 Creative Studio tools (text-free key-visual generation + banner composition), and 41 ChatGPT Ads tools (18 reads, 23 changes) served by the bundled ChatGPT Ads provider (see [ChatGPT Ads (bundled provider)](#chatgpt-ads-bundled-provider)). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families plus the ChatGPT Ads provider, whose 41 tools ship with mureo and are listed unless `MUREO_DISABLE_CHATGPT_ADS=1` is set — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -17,7 +17,7 @@ The server communicates over stdin/stdout using the MCP JSON-RPC protocol. It is
 
 ### Claude Desktop
 
-Add to your MCP configuration (`~/.config/claude/mcp.json` or the app's settings):
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS), or run `mureo install-desktop`:
 
 ```json
 {
@@ -89,6 +89,8 @@ Or use `uv` to run it:
 
 ## Tool Reference
 
+> **`customer_id`** (Google Ads) and **`account_id`** (Meta Ads) are listed in the "Required Parameters" column below but are optional in the schema: when omitted they fall back to the configured credentials. Every other entry in those tables is a schema-required field or a group of alternatives, of which the call must give at least one. A group named with "at least one of" can be given in any combination; in one named with "one of", some or all members exclude each other. A few cells state a condition in words instead, such as a parameter required only when another is absent.
+
 ### Google Ads
 
 #### Campaigns
@@ -159,8 +161,10 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_budget_get` | Get campaign budget | `customer_id`, `campaign_id` |
-| `google_ads_budget_update` | Update budget | `customer_id`, `budget_id`, `amount` |
-| `google_ads_budget_create` | Create a new campaign budget | `customer_id`, `name`, `amount` |
+| `google_ads_budget_update` | Update budget | `customer_id`, `budget_id`, one of `amount` / `amount_micros` / `total_amount` / `total_amount_micros` |
+| `google_ads_budget_create` | Create a new campaign budget | `customer_id`, `name`, one of `amount` / `total_amount` / `total_amount_micros` |
+
+A daily and a total amount can be set in one call; `amount` with `amount_micros`, or `total_amount` with `total_amount_micros`, is refused. `google_ads_budget_create` takes a total amount only with `period` `CUSTOM_PERIOD`, and refuses that period without one.
 
 #### Accounts
 
@@ -180,8 +184,8 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_sitelinks_list` | List sitelink extensions | `customer_id`, `campaign_id` |
-| `google_ads_sitelinks_create` | Create a sitelink extension | `customer_id`, `campaign_id`, `sitelink_text`, `final_url` |
-| `google_ads_sitelinks_remove` | Remove a sitelink extension | `customer_id`, `campaign_id`, `extension_id` |
+| `google_ads_sitelinks_create` | Create a sitelink extension | `customer_id`, `campaign_id`, `link_text`, `final_url` |
+| `google_ads_sitelinks_remove` | Remove a sitelink extension | `customer_id`, `campaign_id`, `asset_id` |
 
 #### Callouts
 
@@ -189,7 +193,7 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 |------|-------------|-------------------|
 | `google_ads_callouts_list` | List callout extensions | `customer_id`, `campaign_id` |
 | `google_ads_callouts_create` | Create a callout extension | `customer_id`, `campaign_id`, `callout_text` |
-| `google_ads_callouts_remove` | Remove a callout extension | `customer_id`, `campaign_id`, `extension_id` |
+| `google_ads_callouts_remove` | Remove a callout extension | `customer_id`, `campaign_id`, `asset_id` |
 
 #### Conversions
 
@@ -198,7 +202,7 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | `google_ads_conversions_list` | List conversion actions | `customer_id` |
 | `google_ads_conversions_get` | Get conversion action details | `customer_id`, `conversion_action_id` |
 | `google_ads_conversions_performance` | Get conversion performance metrics | `customer_id` |
-| `google_ads_conversions_create` | Create a conversion action | `customer_id`, `name`, `type` |
+| `google_ads_conversions_create` | Create a conversion action | `customer_id`, `name` |
 | `google_ads_conversions_update` | Update a conversion action | `customer_id`, `conversion_action_id` |
 | `google_ads_conversions_remove` | Remove a conversion action | `customer_id`, `conversion_action_id` |
 | `google_ads_conversions_tag` | Get conversion tracking tag snippet | `customer_id`, `conversion_action_id` |
@@ -208,15 +212,15 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_recommendations_list` | List optimization recommendations | `customer_id` |
-| `google_ads_recommendations_apply` | Apply an optimization recommendation | `customer_id`, `recommendation_id` |
+| `google_ads_recommendations_apply` | Apply an optimization recommendation | `customer_id`, `resource_name` |
 | `google_ads_device_targeting_get` | Get device targeting settings | `customer_id`, `campaign_id` |
-| `google_ads_device_targeting_set` | Set device targeting bid adjustments | `customer_id`, `campaign_id`, `device_type`, `bid_modifier` |
+| `google_ads_device_targeting_set` | Enable/disable delivery per device (bid_modifier 1.0/0.0) | `customer_id`, `campaign_id`, `enabled_devices` |
 | `google_ads_bid_adjustments_get` | Get bid adjustment settings | `customer_id`, `campaign_id` |
-| `google_ads_bid_adjustments_update` | Update bid adjustments | `customer_id`, `campaign_id` |
+| `google_ads_bid_adjustments_update` | Update bid adjustments | `customer_id`, `campaign_id`, `criterion_id`, `bid_modifier` |
 | `google_ads_location_targeting_list` | List location targeting criteria | `customer_id`, `campaign_id` |
-| `google_ads_location_targeting_update` | Update location targeting | `customer_id`, `campaign_id` |
+| `google_ads_location_targeting_update` | Update location targeting | `customer_id`, `campaign_id`, at least one of `add_locations` / `remove_criterion_ids` |
 | `google_ads_schedule_targeting_list` | List ad schedule targeting | `customer_id`, `campaign_id` |
-| `google_ads_schedule_targeting_update` | Update ad schedule targeting | `customer_id`, `campaign_id` |
+| `google_ads_schedule_targeting_update` | Update ad schedule targeting | `customer_id`, `campaign_id`, at least one of `add_schedules` / `remove_criterion_ids` |
 | `google_ads_change_history_list` | List account change history | `customer_id` |
 | `google_ads_demographic_targeting_list` | List explicit demographic criteria (age range, gender, parental status, household income) set on ad groups | `customer_id` |
 | `google_ads_audience_targeting_list` | List audience-type criteria (user interests, remarketing / customer-match lists, custom / combined audiences) attached to ad groups | `customer_id` |
@@ -226,7 +230,7 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_performance_report` | Get performance report | `customer_id` |
-| `google_ads_performance_analyze` | Analyze performance trends and anomalies | `customer_id` |
+| `google_ads_performance_analyze` | Analyze performance trends and anomalies | `customer_id`, `campaign_id` |
 | `google_ads_cost_increase_investigate` | Investigate sudden cost increases | `customer_id`, `campaign_id` |
 | `google_ads_health_check_all` | Run a comprehensive account health check | `customer_id` |
 | `google_ads_ad_performance_compare` | Compare ad performance across variants | `customer_id`, `ad_group_id` |
@@ -236,7 +240,7 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 | `google_ads_budget_reallocation` | Suggest budget reallocation across campaigns | `customer_id` |
 | `google_ads_auction_insights_get` | Get auction insights (competitor analysis) | `customer_id`, `campaign_id` |
 | `google_ads_auction_insights_analyze` | Interpret impression-share metrics into human-readable competitive-position insights | `customer_id`, `campaign_id` |
-| `google_ads_rsa_assets_analyze` | Analyze RSA asset performance | `customer_id`, `ad_group_id` |
+| `google_ads_rsa_assets_analyze` | Analyze RSA asset performance | `customer_id`, `campaign_id` |
 | `google_ads_rsa_assets_audit` | Audit RSA assets for best practices | `customer_id`, `campaign_id` |
 | `google_ads_search_terms_review` | Review search terms with rule-based scoring | `customer_id`, `campaign_id` |
 
@@ -244,23 +248,23 @@ Excluded websites, mobile apps and mobile app categories — the placement side 
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `google_ads_btob_optimizations` | Get B2B-specific optimization suggestions | `customer_id` |
+| `google_ads_btob_optimizations` | Get B2B-specific optimization suggestions | `customer_id`, `campaign_id` |
 
 #### Creative
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `google_ads_landing_page_analyze` | Analyze landing page relevance and quality | `customer_id`, `campaign_id` |
-| `google_ads_creative_research` | Research competitive creative strategies | `customer_id` |
+| `google_ads_landing_page_analyze` | Analyze landing page relevance and quality | `customer_id`, `url` |
+| `google_ads_creative_research` | Research competitive creative strategies | `customer_id`, `campaign_id`, `url` |
 
 #### Monitoring
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_monitoring_delivery_goal` | Monitor campaign delivery against goals | `customer_id`, `campaign_id` |
-| `google_ads_monitoring_cpa_goal` | Monitor CPA against target goals | `customer_id`, `campaign_id` |
-| `google_ads_monitoring_cv_goal` | Monitor conversion volume against goals | `customer_id`, `campaign_id` |
-| `google_ads_monitoring_zero_conversions` | Detect campaigns with zero conversions | `customer_id` |
+| `google_ads_monitoring_cpa_goal` | Monitor CPA against target goals | `customer_id`, `campaign_id`, `target_cpa` |
+| `google_ads_monitoring_cv_goal` | Monitor conversion volume against goals | `customer_id`, `campaign_id`, `target_cv_daily` |
+| `google_ads_monitoring_zero_conversions` | Diagnose a campaign with zero conversions | `customer_id`, `campaign_id` |
 
 #### Capture
 
@@ -330,10 +334,12 @@ out which situation they are in. Google enforces a shape per slot
 300x300, `PORTRAIT_MARKETING_IMAGE` 4:5 min 480x600, `LOGO` 1:1 min 128x128,
 `LANDSCAPE_LOGO` 4:1 min 512x128) and mureo checks it **before** uploading or
 linking anything, so a wrongly proportioned file costs no API call and leaves
-no unlinked asset behind. For a format it cannot measure locally (GIF, or an
-unrecognised header) it does not guess: the file goes to Google and an
-`ImageError` refusal comes back translated into the rule for that slot.
-mureo never crops or resizes.
+no unlinked asset behind. The file is read once: the shape is measured on the
+very bytes that are uploaded, and a file whose content is not the image type
+its extension declares is refused before anything is sent. For an image
+whose header gives no size mureo can read, it does not guess: the file goes
+to Google and an `ImageError` refusal comes back translated into the rule for
+that slot. mureo never crops or resizes.
 
 Neither swap is automatically reversible: to undo one, call the tool again
 with the old text or the old `asset_id`.
@@ -364,7 +370,7 @@ see its *Apply or draft* section.
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_ad_sets_list` | List ad sets | `account_id` |
-| `meta_ads_ad_sets_create` | Create an ad set | `account_id`, `campaign_id`, `name`, `daily_budget` |
+| `meta_ads_ad_sets_create` | Create an ad set | `account_id`, `campaign_id`, `name` |
 | `meta_ads_ad_sets_update` | Update an ad set | `account_id`, `ad_set_id` |
 | `meta_ads_ad_sets_get` | Get ad set details | `account_id`, `ad_set_id` |
 | `meta_ads_ad_sets_pause` | Pause an ad set | `account_id`, `ad_set_id` |
@@ -386,18 +392,18 @@ see its *Apply or draft* section.
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_creatives_list` | List ad creatives | `account_id` |
-| `meta_ads_creatives_create` | Create a standard ad creative (single image **or video**) | `account_id`, `name` |
+| `meta_ads_creatives_create` | Create a standard ad creative (single image **or video**) | `account_id`, `name`, `page_id`, `link_url` |
 | `meta_ads_creatives_create_carousel` | Create a carousel creative (2-10 cards) | `account_id`, `page_id`, `cards`, `link` |
 | `meta_ads_creatives_create_collection` | Create a collection creative | `account_id`, `page_id`, `product_ids`, `link` |
-| `meta_ads_creatives_create_dynamic` | Create a dynamic product ad creative | `account_id`, `catalog_id` |
+| `meta_ads_creatives_create_dynamic` | Create a dynamic product ad creative | `account_id`, `name`, `page_id`, `image_hashes`, `bodies`, `titles`, `link_url` |
 | `meta_ads_creatives_create_lead` | Create a Lead Ad creative attached to an Instant Form | `account_id`, `name`, `page_id`, `form_id`, `link_url` |
-| `meta_ads_creatives_upload_image` | Upload an image for use in creatives | `account_id`, `file_path` |
+| `meta_ads_creatives_upload_image` | Upload an image from a public HTTPS URL | `account_id`, `image_url` |
 
 #### Images
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `meta_ads_images_upload_file` | Upload an image from local file | `account_id`, `file_path` |
+| `meta_ads_images_upload_file` | Upload a local JPEG, PNG, GIF, BMP or TIFF image (`.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.tiff`, `.tif`; at most 30MB, content identified as the format its extension names) and return its image hash | `account_id`, `file_path` |
 
 #### Insights
 
@@ -411,10 +417,10 @@ see its *Apply or draft* section.
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_audiences_list` | List custom audiences | `account_id` |
-| `meta_ads_audiences_create` | Create a custom audience | `account_id`, `name`, `subtype` |
+| `meta_ads_audiences_create` | Create a custom audience | `account_id`, `name` |
 | `meta_ads_audiences_get` | Get audience details | `account_id`, `audience_id` |
 | `meta_ads_audiences_delete` | Delete a custom audience | `account_id`, `audience_id` |
-| `meta_ads_audiences_create_lookalike` | Create a lookalike audience | `account_id`, `source_audience_id`, `country` |
+| `meta_ads_audiences_create_lookalike` | Create a lookalike audience | `account_id`, `name`, `source_audience_id`, `country`, `ratio` |
 
 #### Targeting Discovery
 
@@ -446,11 +452,11 @@ see its *Apply or draft* section.
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_analysis_performance` | Analyze overall performance trends | `account_id` |
-| `meta_ads_analysis_audience` | Analyze audience performance and overlap | `account_id` |
-| `meta_ads_analysis_placements` | Analyze placement performance breakdown | `account_id` |
-| `meta_ads_analysis_cost` | Analyze cost trends and efficiency | `account_id` |
-| `meta_ads_analysis_compare_ads` | Compare performance across ads | `account_id` |
-| `meta_ads_analysis_suggest_creative` | Suggest creative improvements based on data | `account_id` |
+| `meta_ads_analysis_audience` | Analyze audience performance and overlap | `account_id`, `campaign_id` |
+| `meta_ads_analysis_placements` | Analyze placement performance breakdown | `account_id`, `campaign_id` |
+| `meta_ads_analysis_cost` | Analyze cost trends and efficiency | `account_id`, `campaign_id` |
+| `meta_ads_analysis_compare_ads` | Compare performance across ads | `account_id`, `ad_set_id` |
+| `meta_ads_analysis_suggest_creative` | Suggest creative improvements based on data | `account_id`, `campaign_id` |
 
 #### Placement Exclusions
 
@@ -640,7 +646,7 @@ Record changes made **outside** mureo — in a platform's own UI, its editor, or
 |------|-------------|-------------------|
 | `mureo_external_changes_import` | Poll each configured platform's change feed and append anything mureo did not do to `action_log` with `origin: "external"`. Skips changes already imported and changes mureo itself made. Idempotent. | *(none)* |
 
-Optional: `platforms` (array of platform keys; omit to cover every platform in STATE.json), `since` (ISO 8601 window start; omit to resume from the newest change already imported), `path`.
+Optional: `platforms` (array of platform keys; omit to cover every platform in STATE.json), `since` (ISO 8601 window start; omit to resume from the newest change already imported that is not dated after now), `path`.
 
 **The response is designed to be read for blind spots, not just for finds.** Every configured platform appears in `platforms[]`:
 
@@ -650,7 +656,7 @@ Optional: `platforms` (array of platform keys; omit to cover every platform in S
 | `unavailable` | The platform was **not checked**: either mureo has no change feed for it, or a registered feed could not answer for this account/mode (BYOD, unsupported account type). `reason: "change_import_unavailable_for_<platform>"`; the specific cause is in `notes`. Not evidence that nothing happened |
 | `error` | The feed exists but could not be read (expired token, missing credentials). Also unchecked, also not evidence of quiet |
 
-`blind_spots` collects the `unavailable` and `error` platforms; `truncated_platforms` collects those whose feed capped its response, meaning older changes inside that window are unreachable and **cannot be recovered later**. `feeds_available_for` lists the platforms that have a registered feed at all.
+`blind_spots` collects the `unavailable` and `error` platforms; `truncated_platforms` collects those whose feed capped its response, meaning older changes inside that window are unreachable and **cannot be recovered later**. `feeds_available_for` lists the platforms that have a registered feed at all, as platform keys exactly as they appear in STATE.json (`plugin:<dist>:<provider>` for a plugin feed), so it compares directly with `platforms[].platform` and `blind_spots`.
 
 Per-platform coverage — which feeds exist, which mureo reads today, and what each omits — is in [`docs/change-import.md`](change-import.md). Do not infer it from tool availability.
 
@@ -669,6 +675,10 @@ Cross-platform analysis that operates on data the caller supplies — an `action
 | `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. The baseline is per day: counts in an entry that states its window (`days`, or a `period` such as `LAST_30_DAYS`) are divided by it, an entry that states none counts as one day, and `cost` / `spend` are one figure. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). | `current` (`current.campaign_id` and `current.cost` required) |
 | `analysis_delivery_collapse_check` | Flag campaigns whose impressions fell off a cliff while their status still says they should be serving. Baseline comes from the supplied day-grain rows, **not** from `action_log`. | `platform`, `rows` |
 | `analysis_delivery_collapse_diagnose` | Overlay a change feed on one campaign's daily delivery, fold in elimination-ladder evidence, and report the cause **and** the open questions. `change_lookback_days` (default 3) and `timeline_days` (default 21) are settable — widen the lookback for a cause with a delayed effect. | `platform`, `campaign_id`, `rows` |
+| `analysis_exclusion_impact_preview` | Size a bulk exclusion / block / negative-keyword batch before applying it: what share of the recent window's impressions, clicks, cost and conversions the excluded entities carried, incrementally and cumulatively. Returns `would_block` from the same rule the dispatcher enforces. | either `tool` (+ `arguments`) or `excluded_entities` |
+| `analysis_tracking_consistency_check` | Audit final-URL tracking parameters across ad records from any platform. Returns findings with `severity`, `delivery_state` (`served` / `not_served` / `unknown`), the ad ids and the evidence — a utm scheme belonging to exactly one other campaign, one landing page under two schemes, a parameter the rest of the campaign carries, and violations of a `## Tracking Convention` declared in STRATEGY.md. Pass `planned_ads` to pre-flight ads before creating them. | `ads` |
+
+`had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
 
 #### Delivery collapse (#546)
 
@@ -734,8 +744,6 @@ Two blind spots follow from that rule, both listed in the diagnosis `limitations
 - Several campaigns collapsing on the same day is reported as a correlation only.
 
 `next_checks` names the mureo tool for each open step on platforms that have one, and an empty string where mureo has no tool at all (billing everywhere; bid competitiveness and learning state on Meta) rather than inventing one.
-| `analysis_exclusion_impact_preview` | Size a bulk exclusion / block / negative-keyword batch before applying it: what share of the recent window's impressions, clicks, cost and conversions the excluded entities carried, incrementally and cumulatively. Returns `would_block` from the same rule the dispatcher enforces. | either `tool` (+ `arguments`) or `excluded_entities` |
-| `analysis_tracking_consistency_check` | Audit final-URL tracking parameters across ad records from any platform. Returns findings with `severity`, `delivery_state` (`served` / `not_served` / `unknown`), the ad ids and the evidence — a utm scheme belonging to exactly one other campaign, one landing page under two schemes, a parameter the rest of the campaign carries, and violations of a `## Tracking Convention` declared in STRATEGY.md. Pass `planned_ads` to pre-flight ads before creating them. | `ads` |
 
 #### `analysis_exclusion_impact_preview` (#547)
 
@@ -770,7 +778,7 @@ Per-surface attribution:
 | `google_ads_negative_placements_add` | `group_placement_view` over the window | Yes for `website` / `mobile_application`; `mobile_app_category` is not a placement that serves, so a mixed batch reports `partial` |
 | `google_ads_negative_keywords_add` / `_add_to_ad_group` | `search_term_view` over the window, matched per `EXACT` / `PHRASE` / `BROAD` | Yes. Negative keywords do not match close variants and neither does the estimate, so it is a lower bound |
 | `meta_ads_excluded_placements_set` | — | **No.** No insights breakdown attributes past delivery to publisher categories, publisher block lists or brand-safety content types. Reported `unknown` |
-| Plugin / bridged surfaces (Yahoo, LINE, SmartNews, LOGLY, Amazon) | Whatever the provider registers via `register_exclusion_surface`, else caller-supplied `delivery_records` | Provider-declared |
+| Plugin platforms registered through the provider ABI, and Amazon Ads (bridge) | Whatever the provider registers via `register_exclusion_surface`, else caller-supplied `delivery_records` | Provider-declared |
 
 **Cumulative tightening.** `cumulative` is the share attributable to the whole
 standing exclusion set once this batch lands, which is what catches a fortnight
@@ -802,8 +810,6 @@ must stay pure and fast. With none of them written the check does no I/O at all
 and behaviour is unchanged. `MUREO_DISABLE_EXCLUSION_PREFLIGHT=1` turns it off
 entirely.
 
-`had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
-
 `analysis_tracking_consistency_check` takes ad records (`ad_id`, `campaign_id`, `final_urls`, `platform`, optional `campaign_name` / `status` / `impressions`) that the caller assembles from `google_ads_ads_list`, `meta_ads_ads_list`, a plugin's own list tool or a bridged MCP — so a platform mureo cannot fetch ads for is still auditable whenever the agent can list them. Ads are only compared with ads carrying the same `platform` value. `impressions` grades the finding: `>0` makes it a data-integrity incident (`critical`), `0` a cheap fix (`high`), and omitting it leaves `delivery_state: unknown` with a note saying the severity may be understated — omitted is not `0`. Ads whose URL could not be read are listed in `ads_without_readable_url` rather than reported clean. See [docs/tracking-consistency.md](tracking-consistency.md) for the full list of what is and is not detectable.
 
 ### Mureo Context
@@ -817,7 +823,7 @@ Both read tools carry a **`server_now`** field — the server's clock as ISO 860
 | `mureo_strategy_get` | Read STRATEGY.md — raw markdown plus an `exists` flag (empty markdown when absent), `server_now`, the `path` it read and the runtime `workspace_id` (and `notices` when the runtime has any) | *(none)* |
 | `mureo_strategy_set` | Atomically replace STRATEGY.md (parsed for well-formedness before writing) | `markdown` |
 | `mureo_state_get` | Read STATE.json as a parsed v2 document (version, platforms, campaigns, action_log, decisions) plus `server_now`, the `path` it read and the runtime `workspace_id` (and `notices` when the runtime has any). Optional `action_log` (`all` / `pending` / `none`) and `decisions` (`all` / `none`) scope the two trails independently to cut context cost. Unless `auto_evaluate` is `false`, the call also **closes** every past-due observation the document itself decides and reports them in `auto_evaluations` / `auto_evaluation_skipped` (see below) | *(none)* |
-| `mureo_state_action_log_append` | Atomically append a single action_log entry for later evaluation (`timestamp` is stamped server-side). The entry may carry `display_title` (≤40 chars) and `display_summary` (≤120) — the one line the dashboard shows for it, refused rather than truncated when over. They add a rendering and replace nothing: `summary` is still written as fully as the next agent needs. `session_id` and `client` are stamped by the server from the writing session. `reason` (≤500) is **yours to set**: unlike every other mutating tool this one takes no call-level `reason`, because it records a change rather than making one, so the entry's field is the only place the rationale can go. `entry.expected` and `entry.decision_id` link the entry to a decision the same way the call-level parameters do on a mutating tool, and `entry.approval` records an external approval the change carried out (see [Ops history](ops-history.md)); with ops history on, an entry that would open a new decision must carry `entry.reason` and `entry.expected`. An evaluation record (`entry.evaluation_of`) must carry `entry.evaluation`, the table `mureo_outcome_evaluate` returned, unchanged: without it the append is refused with `evaluation_required`, and `entry.evaluation` without `entry.evaluation_of` with `evaluation_without_target`; its shape is checked (a table with no rows is refused: `no_comparable_metric`) and it is stored where the automatic closure stores its table. The record's `summary` is built from the table and its `decision_id` is the evaluated entry's, as on an automatic record; values passed for either are replaced. An entry with a `campaign_id` and no `metrics_at_action`, that mureo made (no `origin`) and that is not an evaluation record, gets its baseline from STATE.json (#890): the campaign's `metrics`, copied whole (`period`, `fetched_at` and `result_indicator` included), plus `days` read from `period` — only when the snapshot has metrics and its `fetched_at` is at most 2 days old (`BASELINE_MAX_AGE_DAYS`) and at most a day ahead (`BASELINE_MAX_LEAD_DAYS`, a timezone gap); otherwise nothing is filled. A baseline you pass is stored as given. The answer carries a top-level `baseline`: `{"source": "caller" | "state_snapshot" | "none", "reason"?}`, `reason` only when an entry that could have been filled was not (`platform_not_in_state`, `campaign_not_in_state`, `no_current_metrics`, `current_metrics_undated`, `baseline_stale`). Like `server_now`, it is never written to STATE.json | `entry` |
+| `mureo_state_action_log_append` | Atomically append a single action_log entry for later evaluation (`timestamp` is stamped server-side). The entry may carry `display_title` (≤40 chars) and `display_summary` (≤120) — the one line the dashboard shows for it, refused rather than truncated when over. They add a rendering and replace nothing: `summary` is still written as fully as the next agent needs. `session_id` and `client` are stamped by the server from the writing session. `reason` (≤500) is **yours to set**: unlike every other mutating tool this one takes no call-level `reason`, because it records a change rather than making one, so the entry's field is the only place the rationale can go. `entry.expected` and `entry.decision_id` link the entry to a decision the same way the call-level parameters do on a mutating tool, and `entry.approval` records an external approval the change carried out (see [Ops history](ops-history.md)); with ops history on, an entry that would open a new decision must carry `entry.reason` and `entry.expected`. An evaluation record (`entry.evaluation_of`) must carry `entry.evaluation`, the table `mureo_outcome_evaluate` returned, unchanged: without it the append is refused with `evaluation_required`, and `entry.evaluation` without `entry.evaluation_of` with `evaluation_without_target`; its shape is checked (a table with no rows is refused: `no_comparable_metric`) and it is stored where the automatic closure stores its table. The record's `summary` is built from the table and its `decision_id` is the evaluated entry's, as on an automatic record; values passed for either are replaced. An entry with a `campaign_id` and no `metrics_at_action`, that mureo made (no `origin`) and that is not an evaluation record, gets its baseline from STATE.json (#890): the campaign's `metrics`, copied whole (`period`, `fetched_at` and `result_indicator` included), plus `days` read from `period` — only when the snapshot has metrics and its `fetched_at` is at most 2 days old (`BASELINE_MAX_AGE_DAYS`) and at most a day ahead (`BASELINE_MAX_LEAD_DAYS`, a timezone gap); otherwise nothing is filled. A baseline you pass is stored as given. The answer carries a top-level `baseline`: `{"source": "caller" \| "state_snapshot" \| "none", "reason"?}`, `reason` only when an entry that could have been filled was not (`platform_not_in_state`, `campaign_not_in_state`, `no_current_metrics`, `current_metrics_undated`, `baseline_stale`). Like `server_now`, it is never written to STATE.json | `entry` |
 | `mureo_state_upsert_campaign` | Upsert a CampaignSnapshot (with optional performance `metrics`) into STATE.json | `campaign` |
 | `mureo_state_report_set` | Persist a structured report summary for the read-only dashboard. `report` names the kind, one per skill that writes one — `daily`, `weekly`, `monthly`, `goal`, `audience`, `experiment`, `fatigue`, `pacing`, `tracking`. The structure is enforced: headline figures belong in `totals` as raw numbers (a canonical metric carrying a string is refused — it renders as nothing), each finding is its own `flags` entry, and `narrative` is capped at 400 characters, a longer one being refused rather than truncated. Reports already on disk are untouched — the bound applies to new writes. Every version written is also appended to `history/reports/<kind>.jsonl`, so the one it replaces is still readable | `report`, `summary` |
 | `mureo_state_display_set` | Write the **display contract** — the small, write-guarded surface the dashboard renders, separate from everything else in STATE.json. Five sections: `nav_message` (one operator line, ≤80 chars), `highlights` (≤3 `{tone, text}` chips, tone `good`/`watch`/`bad`, text ≤60), `proposals` (`{title ≤30, body ≤80, status proposed`/`done, date}`), `breakdown.campaigns` / `.adgroups` (rows of `{name, spend, mcpa, target_cpa, state, note ≤40}`, `state` from a closed set), and `stated_values` (`{label ≤24, value}` where the value is a raw number or a string ≤12 chars — prose is refused). Over a bound or outside a vocabulary the write is **refused, never truncated**. `source` (the writing skill, ≤24) is **required** alongside any section and `generated_at` is stamped server-side, so a screen always says who drew it and when. The whole section is replaced by what the call states, and a call that states nothing clears it — so a second writer the same day must read the current contract first and carry over the other skill's still-live `proposals`, and nothing else. The KPI funnel and the daily chart are deliberately **not** writable: mureo computes both from the stored totals | *(none, but `source` once any section is stated)* |
@@ -858,7 +864,7 @@ The closure entry is the same record a diligent agent would have written: `actio
 
 The freshness rule trusts `fetched_at` as the collector wrote it — mureo cannot verify when a platform's figures were actually read, so a collector that stamps a wrong date produces a wrong closure. That is the same trust the dashboard already places in the snapshot it renders; nothing here widens it, but nothing here checks it either.
 
-The write asks the policy gates the same question a `mureo_state_action_log_append` call would: a host that runs a read-only gate (mureo-agency's, for example) gets `auto_evaluation_skipped` entries reading `write_denied: <the gate's own sentence>` and STATE.json is left untouched. A read tool must not do what the host forbids a write tool to do. Nothing is written when nothing is due either — the lock is not even taken — so a repeated `mureo_state_get` leaves the file byte-identical.
+The write asks the policy gates the same question a `mureo_state_action_log_append` call would: a host that runs a read-only gate gets `auto_evaluation_skipped` entries reading `write_denied: <the gate's own sentence>` and STATE.json is left untouched. A read tool must not do what the host forbids a write tool to do. Nothing is written when nothing is due either — the lock is not even taken — so a repeated `mureo_state_get` leaves the file byte-identical.
 
 `auto_evaluate: false` turns the whole pass off; both response keys are then **omitted** rather than empty, because "mureo closed nothing" and "mureo did not look" are different answers. When the pass does run, both keys are always present. If it fails for any reason the response carries `auto_evaluation_error` (`"<ExceptionType>: <message>"`, logged server-side with its traceback) and the document is returned unchanged — `mureo_state_get` is the call every skill starts from and must never fail on this.
 
@@ -899,10 +905,10 @@ Read-only: it calls no platform API and changes nothing.
 | Surface | When | Strength |
 |---|---|---|
 | `## Guardrails` `block_learning_resets` / `block_learning_resets_during_incident` | before dispatch | **hard** — the call is refused by `StrategyPolicyGate`, before any API call |
-
-`block_learning_resets` is an account-wide freeze: it refuses every reset-triggering change, with or without an identifiable campaign. `block_learning_resets_during_incident` is narrower by name and in fact — it refuses only a change that **identifies a campaign** which is not positively known to be out of a learning period. An unknown state on an identified campaign is refused (fail-closed); a change that identifies no campaign at all (`google_ads_conversions_*` is account-level, `google_ads_budget_update` is keyed on a `budget_id`) has no subject and is not refused, or the rule would permanently block editing a conversion action with no relation to any incident.
 | `mureo_learning_reset_preflight` | before the change, when the agent calls it | advisory — as strong as the agent's compliance |
 | A notice appended to a reset-triggering call's own result | after that call | records the reset so the *next* change in the sequence is not made blind |
+
+`block_learning_resets` is an account-wide freeze: it refuses every reset-triggering change, with or without an identifiable campaign. `block_learning_resets_during_incident` is narrower by name and in fact — it refuses only a change that **identifies a campaign** which is not positively known to be out of a learning period. An unknown state on an identified campaign is refused (fail-closed); a change that identifies no campaign at all (`google_ads_conversions_*` is account-level, `google_ads_budget_update` is keyed on a `budget_id`) has no subject and is not refused, or the rule would permanently block editing a conversion action with no relation to any incident.
 
 **Per-platform coverage.** Reset triggers are sourced from first-party documentation only; where mureo has no such source it reports `unknown` and never `no_reset`, because a false "this resets nothing" turns a missing warning into implied approval.
 
@@ -911,13 +917,14 @@ Read-only: it calls no platform API and changes nothing.
 | Google Ads | **Yes** — `bidding_details.bidding_strategy_system_status` on the campaign's STATE.json snapshot | **Yes** — Google's own `LEARNING_*` enum members ([`BiddingStrategySystemStatus`](https://developers.google.com/google-ads/api/reference/rpc/v25/BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus)) |
 | Meta Ads | No — Meta exposes [`learning_stage_info`](https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-learning-stage-info/) on the **ad set**; mureo's client does not request it and STATE.json is campaign-level | No — Meta documents that "significant edits" restart the phase without enumerating them |
 | Amazon Ads (official-MCP bridge) | No — no learning-state read exists on the bridged tool surface | No |
-| Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
+| ChatGPT Ads (bundled provider) | No — the provider reads no learning state | No — the platform documentation states none, so the provider registers no rules |
+| Plugin platforms | No — unless the plugin registers rules | No — unless the plugin registers rules |
 
 A plugin or bridge advertises its own platform's rules through `mureo.policy.learning_rules.register_platform_learning_rules`, the same registry pattern the budget/bid declarations use.
 
 **Namespaced built-in variants are classified as the built-in.** A provider that exposes a built-in platform's tool surface again as `<builtin_platform>_<suffix>_<operation>` (see `_mureo-shared` → *Namespaced built-in variants*) is checked against the built-in `<builtin_platform>_<operation>` tool: the same mutation/read verdict, the same reset triggers and the same argument rules, so `google_ads_<suffix>_campaigns_update` with a `bidding_strategy` is a reset exactly as `google_ads_campaigns_update` is, and the refusal and notice name the tool that was called. The match is on the name, preferring the longest built-in `<operation>`. A name that starts with a built-in platform prefix but mirrors no built-in operation is not treated as mureo's own: its declared `readOnlyHint` decides, then the read-only name pattern, as for any plugin tool.
 
-**What a platform has no check for — only a wrong assumption.** The table above is the *data* half: facts mureo can verify. The prose half is `mureo.policy.platform_model.register_platform_model` (#648) — one capped paragraph stating how a platform selects and prices delivery, and what it therefore does not have. It is rendered into the server's MCP `instructions` (the `initialize` response), so it is read before any tool call and does not depend on a skill description matching; it appears only when this server serves tools for that platform. Every model carries the same first-party `Evidence` record, and mureo core registers none of its own — a platform with no registered model contributes nothing rather than a default. Registration is first-wins and a model is rendered only where the provider that registered it actually contributed the matching tools, so a plugin can state how its own platform works but never how another's does; a block that lost statements to the length cap says so in the block itself. See [`plugin-authoring.md` §3](plugin-authoring.md#3-provider-protocols).
+**What a platform has no check for — only a wrong assumption.** The table above is the *data* half: facts mureo can verify. The prose half is `mureo.policy.platform_model.register_platform_model` (#648) — one capped paragraph stating how a platform selects and prices delivery, and what it therefore does not have. It is rendered into the server's MCP `instructions` (the `initialize` response), so it is read before any tool call and does not depend on a skill description matching; it appears only when this server serves tools for that platform. Every model carries the same first-party `Evidence` record. The built-in tool families register none — a platform with no registered model contributes nothing rather than a default — while a bundled provider registers its own: the ChatGPT Ads provider does, so with it enabled (the default) the `instructions` carry its `chatgpt_ads` line. Registration is first-wins and a model is rendered only where the provider that registered it actually contributed the matching tools, so a plugin can state how its own platform works but never how another's does; a block that lost statements to the length cap says so in the block itself. See [`plugin-authoring.md` §3](plugin-authoring.md#3-provider-protocols).
 
 **Plugin tool notes — the third `instructions` contribution.** A host that defers tool loading shows the model only tool names, so a plugin tool the agent is meant to offer unprompted is never considered. A plugin tool can declare `_meta["mureo"]["guidance"]`, one paragraph (at most 400 characters, no line boundary of any kind) saying when to consider it, on a tool name of 1–128 characters from `[A-Za-z0-9_.-]`; it is rendered as `- <tool name>: <note>` under a heading stating that a note grants no permission and that every confirmation the tool's own description requires still applies. Only plugin tools this server serves render a note — tools of mureo's own catalog never do. Notes are taken one for each provider in turn, so one provider's notes cannot push out another provider's only note, and the block is capped at 1200 characters, dropping whole notes in that order with a notice in the block. An unusable note is dropped with a `PluginToolWarning`. See [Always-on tool notes](plugin-authoring.md#always-on-tool-notes-optional).
 
@@ -944,8 +951,52 @@ Generate creator-quality ad creatives — text-free key visuals plus copy compos
 | `creative_studio_providers_list` | List image-generation providers, whether each has an API key configured, its capabilities, and model ids | *(none)* |
 | `creative_studio_generate_visual` | Generate text-free key-visual PNGs from a visual-only prompt (a hard no-text constraint is appended) | `prompt` |
 | `creative_studio_brand_kit_get` | Return the loaded brand kit (colours, fonts, logo, clear-space) or tasteful defaults | *(none)* |
-| `creative_studio_edit_visual` | Refine an existing key visual through a provider's edit path (art-direction loop) | `path`, `instruction` |
+| `creative_studio_edit_visual` | Refine an existing key visual through a provider's edit path (art-direction loop). The input is read once and must be a PNG by content, or it is refused | `path`, `instruction` |
 | `creative_studio_compose` | Composite ad copy + brand kit over a key visual into per-format banner PNGs | `visual_path`, `headline`, `cta` |
+
+### ChatGPT Ads (bundled provider)
+
+Read and change ChatGPT Ads accounts through OpenAI's Advertiser API. The tools are served by a provider that ships inside mureo (`mureo/chatgpt_ads/`), so they ride the plugin dispatch branch below (audited, throttled per tool, and for changes recorded in `action_log`, with a reversal except for creates, archives, uploads and audience membership changes, and gated by the STRATEGY.md caps on the amounts each tool declares) rather than a built-in tool family, but their list is fixed and counted in the total above. The configured Ads API key selects the ad account, so no tool takes an account argument. Budgets, bids and spending limits are micros of the account currency, in returned objects and in arguments; insights `spend` / `cpc` / `cpm` are major currency units. Setup, periods, data freshness, limits, failure shapes and what each reversal restores: [`chatgpt-ads.md`](chatgpt-ads.md).
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `chatgpt_ads_account_get` | Get the ad account the API key belongs to (id, name, status, time zone, currency) | *(none)* |
+| `chatgpt_ads_campaigns_list` | List campaigns, optionally with serving issues | *(none)* |
+| `chatgpt_ads_campaigns_get` | Get one campaign (budget, bidding, targeting, schedule) | `campaign_id` |
+| `chatgpt_ads_ad_groups_list` | List ad groups, optionally of one campaign | *(none)* |
+| `chatgpt_ads_ad_groups_get` | Get one ad group (bid settings, serving issues) | `ad_group_id` |
+| `chatgpt_ads_ads_list` | List ads, optionally within one ad group | *(none)* |
+| `chatgpt_ads_ads_get` | Get one ad (review status, creative, serving issues) | `ad_id` |
+| `chatgpt_ads_insights_report` | Delivery and conversion metrics for a period, at account / campaign / ad group / ad level, optionally daily | *(none)* |
+| `chatgpt_ads_change_history_list` | The account's audit log for a period, optionally narrowed to one campaign, ad group or ad | *(none)* |
+| `chatgpt_ads_account_spend_limits_get` | The account's spending limits: daily rule, date-range limits, revision (invoice-billed accounts) | *(none)* |
+| `chatgpt_ads_campaigns_pause` / `chatgpt_ads_campaigns_enable` | Pause one campaign / activate a paused one | `campaign_id` |
+| `chatgpt_ads_ad_groups_pause` / `chatgpt_ads_ad_groups_enable` | Pause one ad group / activate a paused one | `ad_group_id` |
+| `chatgpt_ads_ads_pause` / `chatgpt_ads_ads_enable` | Pause one ad / activate a paused one | `ad_id` |
+| `chatgpt_ads_campaigns_update` | Rename a campaign or change its start / end time | `campaign_id`, and at least one of `name` / `start_time` / `end_time` |
+| `chatgpt_ads_campaigns_update_budget` | Replace a campaign's budget amounts (daily and/or lifetime, micros); refused when the budget type would change | `campaign_id`, `budget` |
+| `chatgpt_ads_ad_groups_update` | Rename an ad group | `ad_group_id`, `name` |
+| `chatgpt_ads_ad_groups_update_bid` | Replace an ad group's bidding config | `ad_group_id`, `bidding_config` |
+| `chatgpt_ads_account_daily_spend_limit_set` | Set the account's daily spending limit; refused when more than one daily rule exists | `amount_micros` |
+| `chatgpt_ads_campaigns_create` | Create a campaign, always paused, with an idempotency key; no reversal | `name`, `budget`, `bidding_type` |
+| `chatgpt_ads_ad_groups_create` | Create an ad group in a campaign, always paused, with an idempotency key; no reversal | `campaign_id`, `name`, `bidding_config` |
+| `chatgpt_ads_ads_create` | Create a single-image chat card ad, always paused, with an idempotency key; enters review; no reversal | `ad_group_id`, `name`, `creative` |
+| `chatgpt_ads_campaigns_archive` / `chatgpt_ads_ad_groups_archive` / `chatgpt_ads_ads_archive` | Archive one campaign / ad group / ad, irreversibly (`destructiveHint`; no reversal) | `campaign_id` / `ad_group_id` / `ad_id` |
+| `chatgpt_ads_images_upload_file` | Upload a local JPEG, PNG or WebP image (at most 30MB, content identified as the format its extension names) and return its `file_id` | `file_path` |
+| `chatgpt_ads_ads_preview` | Get an ad's rendered preview (an HTML iframe snippet that expires after 24 hours) | `ad_id` |
+| `chatgpt_ads_locations_search` | Search the location catalog by name for targeting ids | `query` |
+| `chatgpt_ads_audiences_list` / `chatgpt_ads_audiences_get` | List custom audiences (optionally by intended use) / get one | *(none)* / `audience_id` |
+| `chatgpt_ads_audiences_create` | Create an empty custom audience (name, optional description); no idempotency key on the platform; no reversal | `name` |
+| `chatgpt_ads_audiences_members_add` / `chatgpt_ads_audiences_members_remove` | Add / remove members from a local `.txt` / `.csv` file (one identifier per line, 1-10,000 distinct, at most 2 MiB); email (a plain ASCII address) and phone are SHA-256 hashed before sending; returns the asynchronous operation; with an idempotency key; no reversal; remove carries `destructiveHint` | `audience_id`, `file_path`, `identifier_type` |
+| `chatgpt_ads_audiences_operations_get` | Get one membership operation (processing / succeeded / failed) | `audience_id`, `operation_id` |
+| `chatgpt_ads_pixels_list` / `chatgpt_ads_pixels_create` | List conversion pixels / create a web pixel (cannot be edited or deleted through the API) | *(none)* / `name` |
+| `chatgpt_ads_conversion_events_list` / `chatgpt_ads_conversion_events_create` | List conversion event settings / create one, permanently (no edit or delete endpoint), always with the documented 30-day click window | *(none)* / `name`, `event_type`, `source_id` |
+| `chatgpt_ads_conversions_report` | Goal conversions (click and view-through) per entity, optionally daily, by country or device, with per-event details; a POST that only reads; no pagination (2,000 rows) | *(none)*; `entity_ids` unless `group_by_entity` is false |
+
+- **Env gate.** `MUREO_DISABLE_CHATGPT_ADS=1` leaves the provider unregistered: none of these tools is listed and the configure UI shows no ChatGPT Ads card.
+- **Failures.** A missing key is `auth_error` / `no_credentials`; a rejected key (401, or a 403 that is not a feature gate) is `auth_error` / `token_invalid`; a feature not enabled for the account is the `feature_not_enabled` error envelope (for the pixel list and create this includes the `404 Not found` the platform answers when conversions are not enabled; on the event-setting tools a 404, such as `Client data source not found` for a `source_id` that is not a pixel of the account, stays an `API error: ...` text); any other platform error is `API error: ...` text. A change refused before it is sent (more than one account daily rule, or a budget change that would change the budget type) is the `refused` envelope `{"status": "refused", "error": "multiple_daily_spend_limits" | "budget_kind_change" | "budget_unreadable", "detail": ...}`, and a change that ends in a 5xx, an unreadable success answer, a transport error or the deadline ends `The change may have been applied; check the account before retrying.`; a create, or an audience membership add / remove, that ends that way names the `idempotency_key` to repeat it with instead. A bad image or identifier file is the shared file check's `ValueError` / `FileNotFoundError`; an invalid identifier line is a `ValueError` naming line numbers only, and in a platform error for an add or remove anything shaped like a digest or an advertising id is replaced with `***`. See [Error Handling](#error-handling).
+- **Delivery model.** The provider registers a platform delivery model, so while these tools are served the server's `instructions` carry a `chatgpt_ads` line (see *What a platform has no check for* under [Learning-period reset pre-flight](#learning-period-reset-pre-flight)).
+- **Platform key.** `plugin:mureo-chatgpt-ads:chatgpt_ads`.
 
 ### Amazon Ads (official-MCP bridge)
 
@@ -987,8 +1038,8 @@ Beyond the built-in platforms above, the server also exposes tools from
 entry-point group. A plugin opts in by implementing the
 `MCPToolProvider` Protocol (`mcp_tools()` + `async handle_mcp_tool()`);
 see [`plugin-authoring.md`](plugin-authoring.md) §3. The in-tree Amazon
-Ads bridge implements the same Protocol, so everything below applies to
-it too.
+Ads bridge and the bundled ChatGPT Ads provider implement the same
+Protocol, so everything below applies to them too.
 
 Server behaviour:
 
@@ -1005,13 +1056,14 @@ Server behaviour:
   skipped with a `PluginToolWarning` — it can never crash the server or
   block other plugins. Discovery itself failing wholesale yields zero
   plugin tools rather than a startup error.
-- **Discovered once at server start**, like the env-var gates below.
+- **Discovered once at server start**, like the `MUREO_DISABLE_*` gates (GOOGLE_ADS / META_ADS / CREATIVE_STUDIO / AMAZON_ADS / CHATGPT_ADS).
 
 Plugin tools obey the same `MUREO_DISABLE_*` reasoning only insofar as
 the plugin chooses; the disable env vars gate the built-in families,
-not third-party plugins. The in-tree **Amazon Ads bridge** rides this
-same dispatch branch but *is* mureo's own code, so it does have a gate:
-`MUREO_DISABLE_AMAZON_ADS=1`.
+not third-party plugins. The in-tree **Amazon Ads bridge** and the
+bundled **ChatGPT Ads provider** ride this same dispatch branch but *are*
+mureo's own code, so each has a gate: `MUREO_DISABLE_AMAZON_ADS=1` and
+`MUREO_DISABLE_CHATGPT_ADS=1`.
 
 ## Journal (`JOURNAL.jsonl`)
 
@@ -1241,6 +1293,18 @@ Beyond individual MCP tools, mureo provides higher-level operational workflows v
 | `/budget-rebalance` | Mode-guided budget reallocation |
 | `/competitive-scan` | Auction analysis with Market Context |
 | `/sync-state` | Manual STATE.json synchronization |
+| `/ad-fatigue-check` | Creative fatigue scoring (frequency, CTR decline, CPM drift) |
+| `/audience-review` | Targeting and placement audit against the Persona |
+| `/budget-pacing` | Month-to-date spend vs monthly budget, projected landing |
+| `/creative-generate` | Key visuals and banners from a strategy-grounded brief |
+| `/experiment` | Controlled A/B test design, run and evaluation |
+| `/goal-review` | Goal progress against STRATEGY.md targets |
+| `/incident-postmortem` | Postmortem after a rescue or incident |
+| `/lead-form-create` | Guided Meta Instant Form creation |
+| `/learn` | Save a diagnosis insight for future operations |
+| `/monthly-report` | Monthly digest with month-over-month comparison |
+| `/tracking-health` | Preventive conversion-tracking audit |
+| `/weekly-report` | Weekly summary across all platforms |
 
 Each command reads strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) from `STRATEGY.md` and campaign state from `STATE.json`, then selects and invokes the appropriate MCP tools. For example, `/daily-check` adapts its monitoring focus based on the current Operation Mode -- an `EFFICIENCY_STABILIZE` mode prioritizes CPA and budget efficiency, while a `GROWTH_SCALE` mode focuses on impression share and conversion volume.
 
@@ -1433,7 +1497,7 @@ A tool that declines a call, or whose call fails, without raising returns one JS
 
 Other keys may sit beside the three (`findings`, `plan`, `index`, `signals`, `anomalies`, `platform`, ...); they never replace them. The journal records such a call as `refused` or `platform_error` — never `ok` — with `"<error>: <detail>"` as its reason, and a mutation that returns it is never written to `action_log`. The refusals of the policy gate and the exclusion guardrail, which run before any tool is dispatched, remain plain text and are journalled as `denied` / `refused` by the dispatcher itself. A `status` word that is not a failure (`capability_not_available`, `no_analytics_module`, `no_collapse_detected`, ...) is a success and is journalled as `ok`.
 
-In the code, the writer of this envelope (and of the `API error:` and `auth_error` shapes) is `mureo/mcp/_helpers.py`; the one reader of all three, `failure_of` / `is_error_result`, lives in `mureo/core/tool_failure.py` so the layers below the server (rollback, the Amazon bridge) can tell a failure from a success without importing it, and `_helpers` re-exports it (#863).
+In the code, the writer of this envelope (and of the `API error:` and `auth_error` shapes) is `mureo/mcp/_helpers.py`; the one reader of all three, `failure_of` / `is_error_result`, lives in `mureo/core/tool_failure.py` so the layers below the server (rollback, the Amazon bridge) can tell a failure from a success without importing it, and `_helpers` re-exports it (#863). The dict of this envelope is built by `failure_payload` in the same module, so those layers can also write it; `_helpers` only wraps it in MCP `TextContent`.
 
 ### Validation Errors
 
@@ -1473,7 +1537,10 @@ AI agents can issue tool calls at high speed, which risks hitting API rate limit
 | Google Ads | 10 | 5 | -- |
 | Meta Ads | 20 | 10 | 50,000 |
 | Search Console | 5 | 5 | -- |
+| Creative Studio | 1 | 2 | 120 |
+| ChatGPT Ads (per tool) | 8 | 5 | -- |
+| Plugin tools without a declared throttle (shared default bucket) | 5 | 5 | -- |
 
-The throttler uses a **token bucket algorithm** combined with a **rolling hourly cap** (Meta Ads only). When the bucket is empty, the request awaits until a token becomes available -- no errors are raised and no tool calls are dropped.
+The throttler uses a **token bucket algorithm** combined with a **rolling hourly cap** (Meta Ads, Creative Studio). When the bucket is empty, the request awaits until a token becomes available -- no errors are raised and no tool calls are dropped.
 
 Each platform has a module-level singleton throttler that is shared across all MCP tool calls in the same server process. No user configuration is required; throttling is always active.

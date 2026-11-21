@@ -530,7 +530,7 @@ class TestHyphenNamespacedToolNames:
             "reporting-create_inventory_report",
             "reporting-create_product_report",
             "amc-execute_query",
-            "logly_ads_context_merge_adgroup_list",
+            "acme_ads_context_merge_adgroup_list",
             # Verbs no installed tool uses today. A hardcoded vocabulary is
             # only as good as the next plugin's naming, so the ones a review
             # found missing are pinned here rather than left to be

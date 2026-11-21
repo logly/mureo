@@ -31,7 +31,9 @@ refused at registration, because the failure mode this module exists to
 prevent is a *plausible* sentence, and a plausible sentence with no source is
 indistinguishable from a correct one until it costs money.
 
-mureo core ships **no** built-in models. That is the same honesty rule the
+The built-in tool families register **no** models; a provider registers its
+own, quoting its platform's documentation (the bundled ChatGPT Ads provider
+does, #993). That is the same honesty rule the
 learning rules apply to a platform with no first-party enumeration: where
 mureo cannot quote a source, it says nothing rather than guessing, and it does
 not pre-empt a platform's own account of itself. A platform with no registered
@@ -68,8 +70,9 @@ posture :mod:`mureo.core.providers.registry` already takes for provider names:
    *contributed by the platform the model names*, judged from the server's
    tool-ownership map — not from "some tool somewhere matches the prefix".
    A plugin claiming ``google_ads_`` therefore renders nothing: those tools
-   are mureo's own, and mureo registers no models. A plugin can state how its
-   own platform works; it cannot state how anyone else's does.
+   are mureo's own, and the built-in tool families register none. A plugin
+   can state how its own platform works; it cannot state how anyone else's
+   does.
 
 Neither control judges whether a statement is *true* — nothing can. What they
 bound is whose name a statement can be published under.
@@ -271,8 +274,9 @@ def models_in_scope(tool_owners: Mapping[str, str]) -> tuple[PlatformModel, ...]
     ``tool_prefix`` is owned by the platform the model *names* — matching the
     prefix is not enough, or any plugin could annotate any other platform's
     tools by choosing a prefix. mureo's own built-in tools are not in the map
-    at all, so nothing can be published under their platforms' names; mureo
-    core registers no models, and a claim on ``google_ads_`` renders nothing.
+    at all, so nothing can be published under their platforms' names; the
+    built-in tool families register none, and a claim on ``google_ads_``
+    renders nothing.
 
     Scope is also decided from what this server actually serves, not from what
     is installed: a platform switched off by ``MUREO_DISABLE_*`` exposes no

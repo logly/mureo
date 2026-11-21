@@ -519,11 +519,11 @@ class TestAmazonRegistryRegistration:
         with _reloaded_server(
             monkeypatch, tmp_path, with_manifest=True, registry_entries={}
         ) as mod:
-            names = [e.name for e in mod._discover_with_amazon()]
+            names = [e.name for e in mod._discover_with_bundled()]
             assert names.count("amazon_ads") == 1
             # Idempotent: calling again (as a re-discovery would) does not
             # duplicate the entry either.
-            names = [e.name for e in mod._discover_with_amazon()]
+            names = [e.name for e in mod._discover_with_bundled()]
             assert names.count("amazon_ads") == 1
 
     def test_each_amazon_tool_is_collected_exactly_once(
@@ -541,13 +541,19 @@ class TestAmazonRegistryRegistration:
         self, monkeypatch, tmp_path
     ) -> None:
         """Registry presence must not create tools out of thin air."""
+        from mureo.amazon_ads.bridge import AmazonAdsBridge
         from mureo.core.providers import default_registry
 
         with _reloaded_server(
             monkeypatch, tmp_path, with_manifest=False, registry_entries={}
         ) as mod:
             assert "amazon_ads" in default_registry  # UI can still configure it
-            assert mod._PLUGIN_TOOLS == []
+            # Other bundled providers still contribute theirs; none is Amazon's.
+            assert [
+                name
+                for name, provider in mod._PLUGIN_DISPATCH.items()
+                if isinstance(provider, AmazonAdsBridge)
+            ] == []
 
 
 @pytest.mark.unit
@@ -617,7 +623,7 @@ class TestBuiltInShadowingPolicy:
             self._discover_publishing_foreign_amazon(foreign),
         )
 
-        entries = mod._discover_with_amazon()
+        entries = mod._discover_with_bundled()
 
         amazon = [e for e in entries if e.name == "amazon_ads"]
         assert len(amazon) == 1  # still exactly once
@@ -645,7 +651,7 @@ class TestBuiltInShadowingPolicy:
             "mureo.core.providers.registry.discover_providers", _no_thirdparty
         )
 
-        entries = mod._discover_with_amazon()
+        entries = mod._discover_with_bundled()
 
         amazon = [e for e in entries if e.name == "amazon_ads"]
         assert len(amazon) == 1
@@ -699,7 +705,7 @@ class TestAmazonDisableEnvVar:
         )
         monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", "1")
 
-        entries = mod._discover_with_amazon()
+        entries = mod._discover_with_bundled()
 
         assert [e for e in entries if e.name == "amazon_ads"] == []
         # Not registered either: a disabled bridge must not linger in the
@@ -742,6 +748,6 @@ class TestAmazonDisableEnvVar:
         )
         monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", value)
 
-        entries = mod._discover_with_amazon()
+        entries = mod._discover_with_bundled()
 
         assert [e.name for e in entries if e.name == "amazon_ads"] == ["amazon_ads"]

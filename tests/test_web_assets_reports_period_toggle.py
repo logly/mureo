@@ -171,7 +171,7 @@ def test_report_flags_are_humanized_not_raw() -> None:
     """Free-form snake_case report flags (reports.daily.flags) must be mapped
     to friendly labels, not rendered raw. The dashboard humanizes them via a
     base→i18n-label map with a generic fallback, so a raw tag like
-    `cpa_over_target_logly` never reaches the operator.
+    `cpa_over_target_acme` never reaches the operator.
 
     That the LONGEST base wins and that an unknown code degrades to a
     humanized token rather than a raw i18n key is *executed* by

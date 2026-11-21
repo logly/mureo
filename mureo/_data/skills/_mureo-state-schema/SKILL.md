@@ -87,7 +87,7 @@ right:
   rejected on create rather than silently stripped. **Never invent or
   abbreviate a platform key**: creating an entry under a key that is neither a
   first-class ad-platform key, nor a platform an installed plugin registered
-  (its entry-point name — `logly_ads_context`, not `logly_ads`), nor a
+  (its entry-point name — `acme_ads_context`, not `acme_ads`), nor a
   `plugin:<dist>:<provider>` key is rejected, with the accepted keys listed in
   the error. Use the canonical `plugin:<dist>:<provider>` form when the bridge
   that owns a snapshot is not installed on this machine. If a document already

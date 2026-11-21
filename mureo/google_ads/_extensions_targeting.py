@@ -584,6 +584,20 @@ class _TargetingMixin:
         response = await self._search(query)  # type: ignore[attr-defined]
         return [map_change_event(row.change_event) for row in response]
 
+    async def get_account_time_zone(self) -> str | None:
+        """The account's IANA time zone name (``customer.time_zone``), or ``None``.
+
+        ``change_event.change_date_time`` is reported in this zone without an
+        offset, so a caller comparing it with offset-bearing times (#1008)
+        needs the zone to place it. API errors propagate, as they do from
+        :meth:`list_change_history`.
+        """
+        query = "SELECT customer.time_zone FROM customer LIMIT 1"
+        response = await self._search(query)  # type: ignore[attr-defined]
+        for row in response:
+            return str(row.customer.time_zone) or None
+        return None
+
     # === Geographic Targeting ===
 
     async def list_location_targeting(self, campaign_id: str) -> list[dict[str, Any]]:

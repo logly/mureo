@@ -133,7 +133,7 @@ def test_every_mureo_module_imports_as_the_first_import(
 
 # ---------------------------------------------------------------------------
 # rollback / policy / amazon_ads / core / analytics / change_import /
-# client_factory never import ``mureo.mcp`` (#863)
+# client_factory / bundled_providers never import ``mureo.mcp`` (#863)
 # ---------------------------------------------------------------------------
 
 #: Packages (and top-level modules) below ``mureo.mcp``. ``mureo/mcp/__init__``
@@ -143,10 +143,12 @@ _BELOW_MCP = (
     "rollback",
     "policy",
     "amazon_ads",
+    "chatgpt_ads",
     "core",
     "analytics",
     "change_import",
     "client_factory.py",
+    "bundled_providers.py",
 )
 
 #: Child: import the lower layers and nothing else, run the two call paths
@@ -157,6 +159,9 @@ _LOWER_LAYERS_ALONE = (
     "import json, sys\n"
     "import mureo.rollback, mureo.policy.learning_reset\n"
     "import mureo.amazon_ads.bridge, mureo.core.tool_failure\n"
+    "import mureo.chatgpt_ads.provider, mureo.chatgpt_ads.client\n"
+    "import mureo.chatgpt_ads.reversal\n"
+    "import mureo.bundled_providers\n"
     "from mureo.amazon_ads.bridge import _normalize_failure\n"
     "from mureo.rollback.planner import _plugin_reversal_keys\n"
     "_plugin_reversal_keys('some_plugin_tool')\n"
@@ -189,8 +194,9 @@ _LIVE_CLIENT_OPENERS_ALONE = (
     " 'auth': 'mureo.auth' in sys.modules}))\n"
 )
 
-#: The failure-envelope reader moved to ``mureo.core.tool_failure``;
-#: ``mureo.mcp._helpers`` re-exports the same objects.
+#: The failure-envelope reader and the envelope dict builder live in
+#: ``mureo.core.tool_failure``; ``mureo.mcp._helpers`` re-exports the same
+#: objects.
 _ENVELOPE_READER_NAMES = (
     "FAILURE_STATUSES",
     "API_ERROR_PREFIX",
@@ -199,6 +205,7 @@ _ENVELOPE_READER_NAMES = (
     "Failure",
     "failure_of",
     "is_error_result",
+    "failure_payload",
 )
 
 
@@ -316,6 +323,23 @@ def test_lower_layer_source_never_imports_mcp(package: str) -> None:
         for path in paths
         for lineno, name in _imports_of(
             ast.parse(path.read_text("utf-8")), _package_of(path), _MCP_PACKAGE
+        )
+    ]
+    assert offenders == []
+
+
+@pytest.mark.unit
+def test_change_import_source_never_imports_chatgpt_ads() -> None:
+    """The ChatGPT Ads provider registers its change feed INTO change_import
+    (#994); change_import importing the provider back would be a cycle."""
+    root = pathlib.Path(mureo.__file__).parent / "change_import"
+    offenders = [
+        f"{path.relative_to(root.parent)}:{lineno} imports {name}"
+        for path in sorted(root.rglob("*.py"))
+        for lineno, name in _imports_of(
+            ast.parse(path.read_text("utf-8")),
+            _package_of(path),
+            "mureo.chatgpt_ads",
         )
     ]
     assert offenders == []

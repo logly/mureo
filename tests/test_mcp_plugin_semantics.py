@@ -308,13 +308,13 @@ class TestRecordMutationActionLog:
         self._seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         record_mutation_action_log(
-            tool="logly_pause",
-            source="mureo-logly-bridge",
-            provider="logly_ads_context",
+            tool="acme_pause",
+            source="mureo-acme-bridge",
+            provider="acme_ads_context",
             reversal=None,
         )
         entry = read_state_file(tmp_path / "STATE.json").action_log[0]
-        assert entry.platform == "plugin:mureo-logly-bridge:logly_ads_context"
+        assert entry.platform == "plugin:mureo-acme-bridge:acme_ads_context"
 
     def test_common_argument_names_are_recorded_as_identity(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

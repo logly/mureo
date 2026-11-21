@@ -156,6 +156,7 @@ from mureo.web.plugin_credentials import (
     list_plugin_credential_fields,
     multi_account_picker_scope,
     plugin_platform_status,
+    plugin_provider_names,
     save_plugin_credentials,
 )
 from mureo.web.plugin_oauth_revoke import disconnect_plugin_provider
@@ -820,13 +821,15 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # One atomic snapshot: pairing self.wizard.session.host with a separate
         # self.wizard.host_paths read could cross a concurrent set_host (#407).
         snap = self.wizard.host_snapshot()
+        # A malformed plugin declaration is dropped (and logged) inside
+        # list_plugin_credential_fields, so it cannot fail this route.
+        descriptors = self._plugin_descriptors()
         snapshot = collect_status(
             snap.host,
             paths=snap.paths,
             multi_account_auth=self._multi_account_active(),
-            # A malformed plugin declaration is dropped (and logged) inside
-            # list_plugin_credential_fields, so it cannot fail this route.
-            plugin_platforms=plugin_platform_status(self._plugin_descriptors()),
+            plugin_platforms=plugin_platform_status(descriptors),
+            plugin_providers=plugin_provider_names(descriptors),
         )
         send_json(self, snapshot.as_dict())
 
@@ -1090,8 +1093,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         it also hides each OAuth provider's post-auth picker field
         (``accounts_field``) — the account is chosen per-client at runtime,
         so a single configure-time ``account_id`` is meaningless. This is
-        merged with the backend's own ``ui_plugin_credential_fields`` so the
-        agency backend need declare nothing for it (``mureo-pro`` unchanged);
+        merged with the backend's own ``ui_plugin_credential_fields`` so a
+        multi-account backend need declare nothing for it (a single-account
+        backend is unchanged);
         an explicit backend scope for a provider wins, since it is the more
         specific authority.
         """

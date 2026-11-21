@@ -95,7 +95,7 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
     ("mureo/byod/bundle.py", "import_bundle"): 173,
     ("mureo/byod/clients.py", "ByodGoogleAdsClient.get_search_terms_report"): 70,
     ("mureo/change_import/builtin/google_ads.py", "_row_identity"): 52,
-    ("mureo/change_import/importer.py", "_import_one_platform"): 113,
+    ("mureo/change_import/importer.py", "_import_one_platform"): 102,
     ("mureo/cli/_repair_preview.py", "echo_undecidable_duplicates"): 52,
     ("mureo/cli/byod_cmd.py", "import_"): 54,
     ("mureo/cli/configure_cmd.py", "configure"): 81,
@@ -253,7 +253,6 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
         "_TargetingMixin.set_device_targeting",
     ): 121,
     ("mureo/google_ads/_keywords.py", "_KeywordsMixin.diagnose_keywords"): 148,
-    ("mureo/google_ads/_media.py", "_MediaMixin.upload_image_asset"): 55,
     ("mureo/google_ads/_message_match.py", "LPScreenshotter.capture"): 52,
     (
         "mureo/google_ads/_monitoring.py",
@@ -335,7 +334,6 @@ KNOWN_OVER_LIMIT: dict[tuple[str, str], int] = {
     ("mureo/policy/learning_reset.py", "learning_reset_denial"): 58,
     ("mureo/policy/pattern_scan.py", "_scan"): 122,
     ("mureo/policy/strategy_gate.py", "evaluate_guardrails"): 244,
-    ("mureo/providers/coexistence.py", "coexistence_warning"): 51,
     ("mureo/providers/config_writer.py", "add_provider_to_claude_settings"): 97,
     ("mureo/providers/config_writer.py", "hosted_provider_connectivity"): 61,
     ("mureo/providers/mureo_env.py", "add_provider_and_disable_in_mureo"): 64,
@@ -413,7 +411,7 @@ KNOWN_OVER_LIMIT_JS: dict[tuple[str, str], int] = {
 # shrink-only; remove an entry when you fix it, never add one
 KNOWN_LONG_FILES: dict[str, int] = {
     "mureo/_data/web/auth_wizards_meta.js": 831,
-    "mureo/_data/web/dashboard_plugins.js": 851,
+    "mureo/_data/web/dashboard_plugins.js": 850,
     "mureo/_data/web/dashboard_reports_detail.js": 910,
     "mureo/_data/web/dashboard_reports_report.js": 845,
     "mureo/_data/web/dashboard_setup.js": 833,
@@ -427,7 +425,7 @@ KNOWN_LONG_FILES: dict[str, int] = {
     "mureo/mcp/_tools_google_ads_campaigns.py": 944,
     "mureo/mcp/_tools_google_ads_extensions.py": 1060,
     "mureo/mcp/_tools_meta_ads_campaigns.py": 859,
-    "mureo/mcp/server.py": 1223,
+    "mureo/mcp/server.py": 1184,
     "mureo/mcp/tools_creative_studio.py": 806,
     "mureo/mcp/tools_mureo_context.py": 1416,
     "mureo/web/auth_wizard.py": 1427,

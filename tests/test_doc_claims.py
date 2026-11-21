@@ -22,44 +22,12 @@ which is neither of those.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
 
-from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
-from mureo.mcp.tools_analytics_registry import TOOLS as ANALYTICS_REGISTRY_TOOLS
-from mureo.mcp.tools_batch import TOOLS as BATCH_TOOLS
-from mureo.mcp.tools_change_import import TOOLS as CHANGE_IMPORT_TOOLS
-from mureo.mcp.tools_creative_studio import TOOLS as CREATIVE_STUDIO_TOOLS
-from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
-from mureo.mcp.tools_learning import TOOLS as LEARNING_TOOLS
-from mureo.mcp.tools_learning_preflight import TOOLS as LEARNING_PREFLIGHT_TOOLS
-from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
-from mureo.mcp.tools_mureo_context import TOOLS as MUREO_CONTEXT_TOOLS
-from mureo.mcp.tools_rollback import TOOLS as ROLLBACK_TOOLS
-from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
+from tests._doc_surface import _TOOL_FAMILIES, _doc_text
 
 pytestmark = pytest.mark.unit
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-
-#: Every built-in tool family ``mureo.mcp.server`` composes into its tool
-#: list, ungated. A family added to the server without being added here
-#: fails ``test_family_list_covers_every_built_in_tool`` below.
-_TOOL_FAMILIES = (
-    GOOGLE_ADS_TOOLS,
-    META_ADS_TOOLS,
-    SEARCH_CONSOLE_TOOLS,
-    ROLLBACK_TOOLS,
-    BATCH_TOOLS,
-    CHANGE_IMPORT_TOOLS,
-    ANALYSIS_TOOLS,
-    MUREO_CONTEXT_TOOLS,
-    ANALYTICS_REGISTRY_TOOLS,
-    LEARNING_TOOLS,
-    LEARNING_PREFLIGHT_TOOLS,
-    CREATIVE_STUDIO_TOOLS,
-)
 
 #: Each shipped surface that states the total, paired with the pattern that
 #: locates the claim in *that* document's wording. Deliberately not one
@@ -85,10 +53,6 @@ def _shipped_tool_count() -> int:
     return sum(len(family) for family in _TOOL_FAMILIES)
 
 
-def _doc_text(rel: str) -> str:
-    return (_REPO_ROOT / rel).read_text(encoding="utf-8")
-
-
 def _stated_counts(rel: str, pattern: re.Pattern[str]) -> list[int]:
     return [int(match.group(1)) for match in pattern.finditer(_doc_text(rel))]
 
@@ -101,7 +65,7 @@ def test_the_documented_total_counts_distinct_tools() -> None:
 
 
 def test_family_list_covers_every_built_in_tool() -> None:
-    """The families above must still be all of them.
+    """The families in ``tests/_doc_surface.py`` must still be all of them.
 
     A new family wired into the server but not listed here would leave the
     docs' total too low with this pin still green — the exact way #677

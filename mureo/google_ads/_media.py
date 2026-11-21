@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Any
 
-from mureo._image_validation import validate_image_file
+from mureo._image_validation import read_image_file
 from mureo.google_ads._enum_names import map_enum_name
 from mureo.google_ads.mappers import ASSET_TYPE_MAP, MIME_TYPE_MAP
 
@@ -95,18 +95,30 @@ class _MediaMixin:
 
         Raises:
             FileNotFoundError: File does not exist
-            ValueError: Validation error
+            ValueError: Validation error, including content that is not the
+                image type its extension declares
         """
-        path = validate_image_file(
+        # The bytes sent are the bytes read_image_file checked (#1011).
+        path, image_data = await asyncio.to_thread(
+            read_image_file,
             file_path,
             max_size_bytes=_GOOGLE_MAX_IMAGE_SIZE_BYTES,
             max_size_label="5MB",
             allowed_extensions=_GOOGLE_ALLOWED_IMAGE_EXTENSIONS,
         )
+        return await self._create_image_asset(image_data, name or path.name)
 
-        asset_name = name or path.name
-        image_data = path.read_bytes()
+    async def _create_image_asset(
+        self, image_data: bytes, asset_name: str
+    ) -> dict[str, Any]:
+        """Create an image asset from bytes a caller has already checked.
 
+        Takes bytes rather than a path so the caller sends exactly what it
+        validated (and, for the asset-group swap, what it measured).
+
+        Returns:
+            {"resource_name": "customers/123/assets/456", "id": "456", "name": "..."}
+        """
         asset_service = self._client.get_service("AssetService")
         asset_operation = self._client.get_type("AssetOperation")
         asset = asset_operation.create

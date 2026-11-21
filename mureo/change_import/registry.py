@@ -35,7 +35,13 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.change_import.builtin import builtin_change_feeds
 from mureo.change_import.protocol import CHANGE_FEED_ENTRY_POINT_GROUP
-from mureo.core.platform_keys import PLUGIN_PLATFORM_PREFIX
+from mureo.core.platform_keys import (
+    PLUGIN_PLATFORM_PREFIX,
+    is_plugin_platform_key,
+    plugin_platform_key,
+    plugin_platform_key_matches,
+    plugin_platform_parts,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -100,19 +106,32 @@ class ChangeFeedRegistry:
         self._feeds: dict[str, ChangeFeedProvider] = {}
         self._discovered: bool = False
 
-    def register(self, feed: ChangeFeedProvider) -> None:
+    def register(
+        self, feed: ChangeFeedProvider, *, source_distribution: str = ""
+    ) -> None:
         """Register ``feed`` under ``feed.platform``.
 
         First-wins, so the built-in bootstrap is idempotent. A structurally
         invalid feed is skipped with a :class:`ChangeFeedWarning` rather than
         registered — a feed that cannot be called would otherwise turn into
         an ``ERROR`` outcome on every import pass forever.
+
+        ``source_distribution`` is the pip distribution registering ``feed``
+        in-process; it is what lets :func:`resolve_change_feed` match the feed
+        to its canonical ``plugin:<distribution>:<platform>`` key, the same
+        breadcrumb entry-point discovery records from ``ep.dist``. It is
+        recorded only for a feed that is actually stored: a duplicate that
+        first-wins drops must not leave a breadcrumb behind.
         """
         error = _feed_validation_error(feed)
         if error is not None:
             _warn(f"change feed {feed!r}: {error}; not registered")
             return
-        self._feeds.setdefault(feed.platform, feed)
+        if feed.platform in self._feeds:
+            return
+        self._feeds[feed.platform] = feed
+        if source_distribution:
+            _SOURCE_DISTRIBUTIONS[id(feed)] = source_distribution
 
     def get(self, platform: str) -> ChangeFeedProvider | None:
         """Return the registered feed for ``platform``, or ``None``."""
@@ -121,6 +140,10 @@ class ChangeFeedRegistry:
     def platforms(self) -> tuple[str, ...]:
         """Return the sorted tuple of platforms with a registered feed."""
         return tuple(sorted(self._feeds))
+
+    def feeds(self) -> tuple[tuple[str, ChangeFeedProvider], ...]:
+        """Return ``(platform, feed)`` pairs, sorted by platform."""
+        return tuple(sorted(self._feeds.items(), key=lambda item: item[0]))
 
     def clear(self) -> None:
         """Drop all registrations (test helper)."""
@@ -253,9 +276,13 @@ def clear_change_feed_registry() -> None:
     _BUILTIN_LOADED = False
 
 
-def register_change_feed(feed: ChangeFeedProvider) -> None:
+def register_change_feed(
+    feed: ChangeFeedProvider, *, source_distribution: str = ""
+) -> None:
     """Register ``feed`` on the default registry."""
-    default_change_feed_registry().register(feed)
+    default_change_feed_registry().register(
+        feed, source_distribution=source_distribution
+    )
 
 
 def get_change_feed(platform: str) -> ChangeFeedProvider | None:
@@ -268,6 +295,75 @@ def get_change_feed(platform: str) -> ChangeFeedProvider | None:
     registry = default_change_feed_registry()
     registry.discover()
     return registry.get(platform)
+
+
+def resolve_change_feed(platform_key: str) -> ChangeFeedProvider | None:
+    """Return the feed that answers for the STATE.json key ``platform_key``.
+
+    A feed registers under its plain registry name, but a provider-served
+    platform's STATE.json key is ``plugin:<distribution>:<name>`` (#481,
+    #537), so the two need reconciling — the same join
+    ``mureo_analytics_run`` makes for analytics modules, with one difference
+    in the ambiguous case below.
+
+    The two input shapes are resolved by **disjoint** paths, never by falling
+    through from one to the other:
+
+    - A plugin platform key resolves **only** against feeds whose recorded
+      source distribution is the key's distribution and whose registry name
+      the key names. The distribution is authoritative because mureo records
+      it from the registering distribution, not from the feed. There is no
+      direct-lookup attempt first, so a feed with no recorded distribution,
+      or one from another distribution that happens to share the name, never
+      answers for this key.
+    - Anything else (a built-in key, a registry name) uses the direct lookup
+      of :func:`get_change_feed`, unchanged.
+
+    The legacy ``plugin:<distribution>`` short form names a distribution, not
+    a platform. With exactly one feed for that distribution it resolves; with
+    several it is ``None``. Analytics takes the first module in sorted
+    registry-name order there; an import refuses instead, because a window of
+    changes filed under the wrong platform is written into ``action_log``, and
+    nothing a reader does later can tell it was misfiled or undo it.
+
+    Triggers entry-point discovery on first call (idempotent).
+    """
+    if not is_plugin_platform_key(platform_key):
+        return get_change_feed(platform_key)
+    registry = default_change_feed_registry()
+    registry.discover()
+    distribution, _provider = plugin_platform_parts(platform_key)
+    candidates = [
+        feed
+        for name, feed in registry.feeds()
+        if plugin_source(feed) == distribution
+        and plugin_platform_key_matches(platform_key, distribution, name)
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def change_feed_platform_keys() -> tuple[str, ...]:
+    """Return, sorted, the STATE.json platform key each registered feed serves.
+
+    A feed with a recorded source distribution serves its canonical
+    ``plugin:<distribution>:<name>`` key; any other feed serves its plain
+    name, which for a built-in is the STATE.json key. This is the vocabulary
+    an import outcome's ``platform`` uses, so a caller can compare the two
+    directly — unlike :func:`list_change_feed_platforms`, which lists
+    registry names.
+    """
+    registry = default_change_feed_registry()
+    registry.discover()
+    return tuple(
+        sorted(
+            (
+                plugin_platform_key(source, name)
+                if (source := plugin_source(feed))
+                else name
+            )
+            for name, feed in registry.feeds()
+        )
+    )
 
 
 def list_change_feed_platforms() -> tuple[str, ...]:
@@ -287,6 +383,7 @@ def discover_change_feeds(
 __all__ = [
     "ChangeFeedRegistry",
     "ChangeFeedWarning",
+    "change_feed_platform_keys",
     "clear_change_feed_registry",
     "default_change_feed_registry",
     "discover_change_feeds",
@@ -294,4 +391,5 @@ __all__ = [
     "list_change_feed_platforms",
     "plugin_source",
     "register_change_feed",
+    "resolve_change_feed",
 ]

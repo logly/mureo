@@ -113,7 +113,7 @@ from mureo.policy.declaration_resolution import (
 # (:mod:`mureo.policy.declarations`), split out to keep this module within the
 # project file-size budget. It is re-imported here — and listed in ``__all__``
 # below — so that ``mureo.policy.strategy_gate`` stays a stable import path:
-# the sibling bridges, mureo-pro, and the test-suite import several of these
+# the sibling bridges, out-of-tree packages, and the test-suite import several of these
 # names from here, so every symbol that used to live in this module must keep
 # resolving from it.
 from mureo.policy.declarations import (
@@ -169,7 +169,7 @@ logger = logging.getLogger(__name__)
 # Stable import surface of this module. Membership here marks the re-exported
 # declaration names above as an explicit re-export (mypy ``--strict``'s
 # ``no_implicit_reexport``) and documents the API the downstream bridges,
-# mureo-pro, and the test-suite depend on. The three ``_``-prefixed registry
+# out-of-tree packages, and the test-suite depend on. The three ``_``-prefixed registry
 # names are included deliberately: the test-suite imports them from this path.
 __all__ = [
     "GUARDRAILS_BULLET_RE",

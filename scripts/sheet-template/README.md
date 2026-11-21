@@ -27,8 +27,8 @@ account on Google's infrastructure.
 This BYOD path covers **Google Ads only**. GA4 and Search Console are
 reached via the existing Live API OAuth credentials (see
 `docs/authentication.md`); attempting to feed those datasets through
-the Sheet bundle is not supported. Meta Ads BYOD ships in a follow-up
-PR.
+the Sheet bundle is not supported. Meta Ads BYOD uses the Ads Manager
+Excel export instead of this script; see `docs/byod.md`.
 
 ## Files
 

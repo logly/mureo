@@ -26,8 +26,8 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.change_import import (
     ChangeImportStatus,
+    change_feed_platform_keys,
     import_external_changes,
-    list_change_feed_platforms,
 )
 from mureo.core.clock import server_now_iso
 from mureo.mcp._helpers import _json_result, resolve_workspace_path
@@ -113,7 +113,7 @@ async def handle_external_changes_import(
             "imported_total": sum(len(o.imported) for o in outcomes),
             "blind_spots": blind_spots,
             "truncated_platforms": [o.platform for o in outcomes if o.truncated],
-            "feeds_available_for": list(list_change_feed_platforms()),
+            "feeds_available_for": list(change_feed_platform_keys()),
         }
     )
 

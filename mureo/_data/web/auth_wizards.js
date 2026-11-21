@@ -501,8 +501,8 @@
     const titleKey = "wizard.auth." + slot.key + "_title";
     wrap.innerHTML = "<h3>" + MUREO.t(titleKey) + "</h3>";
 
-    // Declarative slot (Amazon Ads, or a plugin provider chosen for a
-    // built-in platform): fields come from the provider registry, so it
+    // Declarative slot (Amazon Ads, ChatGPT Ads, or a plugin provider chosen
+    // for a built-in platform): fields come from the provider registry, so it
     // owns the whole card and returns before every branch below.
     if (slot.pluginProvider) {
       window.MUREO_AUTH_PLUGIN_SLOT.renderPluginCredentialSlot(

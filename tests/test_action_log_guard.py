@@ -240,7 +240,7 @@ class TestAPlatformRepair:
         monkeypatch.setattr(
             platform_guards,
             "_provider_entry_points",
-            lambda: (SimpleNamespace(name="logly_ads_context"),),
+            lambda: (SimpleNamespace(name="acme_ads_context"),),
         )
         path = tmp_path / "STATE.json"
         write_state_file(
@@ -248,7 +248,7 @@ class TestAPlatformRepair:
             _doc(
                 2,
                 platforms={
-                    "logly_ads": PlatformState(account_id=""),
+                    "acme_ads": PlatformState(account_id=""),
                     "google_ads": PlatformState(account_id="123"),
                 },
             ),

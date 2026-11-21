@@ -651,9 +651,14 @@ function loadAuthWizardPage(routes) {
 /**
  * The same page and sandbox, running the configure wizard (wizard.js) —
  * so a test can drive `window.MUREO_WIZARD` against the real step bodies.
+ * The files it reads through globals load first, in app.html's order.
  */
 function loadWizardPage(routes) {
-  return loadPage(routes, ["wizard_provider_choice.js", "wizard.js"]);
+  return loadPage(routes, [
+    "wizard_provider_choice.js",
+    "wizard_platforms.js",
+    "wizard.js",
+  ]);
 }
 
 /**

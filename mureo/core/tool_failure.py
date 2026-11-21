@@ -19,10 +19,12 @@ call fail?" without importing the server.
 such an envelope (or a library result) carries. It lives here, not in
 :mod:`mureo.mcp`, so the platform packages can use it too (#603, #865).
 
-The writer stays in :mod:`mureo.mcp._helpers` (``_failure_result``,
-``_auth_error_result``, ``_json_result``, ``api_error_handler``) because it
-builds MCP ``TextContent``; that module re-exports every name defined here,
-so the two halves keep one vocabulary.
+:func:`failure_payload` builds the ``refused`` / ``error`` envelope as a plain
+dict, so those lower layers can also write it without the server. Wrapping a
+payload in MCP ``TextContent`` stays in :mod:`mureo.mcp._helpers`
+(``_failure_result``, ``_auth_error_result``, ``_json_result``,
+``api_error_handler``), because only that layer depends on the MCP SDK; it
+re-exports every name defined here, so the two halves keep one vocabulary.
 """
 
 from __future__ import annotations
@@ -120,6 +122,25 @@ def failure_of(result: list[Any] | None) -> Failure | None:
     if not isinstance(code, str):
         return None
     return Failure(status, code, str(payload.get("detail") or ""))
+
+
+def failure_payload(
+    code: str, detail: str, /, *, refused: bool = False, **fields: Any
+) -> dict[str, Any]:
+    """The ``refused`` / ``error`` JSON envelope as a dict (#862).
+
+    ``status`` is ``"refused"`` when mureo declined before touching the
+    platform and ``"error"`` otherwise; ``code`` is a stable snake_case
+    identifier an agent can branch on, ``detail`` the operator-readable text.
+    ``fields`` ride along beside the envelope (``findings``, ``plan`` ...) and
+    never override it. :func:`failure_of` is the reader; keep the two in step.
+    """
+    return {
+        **fields,
+        "status": "refused" if refused else "error",
+        "error": code,
+        "detail": detail,
+    }
 
 
 def is_error_result(result: list[Any] | None) -> bool:

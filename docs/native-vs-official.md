@@ -1,4 +1,4 @@
-# mureo native tools vs. official MCP providers (Google, Meta & Amazon)
+# mureo native tools vs. official MCP providers (Google, Meta, Amazon & ChatGPT Ads)
 
 > Status: 2026-09-17. The official ad-platform MCPs are in beta and their tool
 > surface changes over time — re-verify before relying on a specific capability.
@@ -11,21 +11,23 @@ Meta Ads and Search Console (`mureo/google_ads`, `mureo/meta_ads`,
 `mureo/search_console` in this repository). GA4 is **not** native — mureo
 installs Google's official Analytics MCP as the `ga4-official` provider
 (`mureo providers add ga4-official`; see [integrations.md](./integrations.md)).
-Every other platform arrives as a separately distributed, pip-installable
-plugin that mureo discovers through the provider registry (the
+Amazon Ads and ChatGPT Ads ship inside mureo as bundled providers
+(`mureo/bundled_providers.py`); any other platform arrives as a separately
+distributed, pip-installable plugin that mureo discovers through the provider registry (the
 `mureo.providers` entry-point group); see
 [plugin-authoring.md](./plugin-authoring.md). The ad platforms now also publish
 **official MCP servers**, and mureo can install and register those as
 *drivers*. They are not mutually exclusive: mureo is the control plane, and an
 official MCP is a thin driver onto the platform's own API.
 
-There are **three** connection models in mureo today:
+There are **four** connection models in mureo today:
 
 | Model | Who holds the credentials | Who is in the request path | Example |
 |---|---|---|---|
 | **mureo-native** | mureo (`~/.mureo/credentials.json`) | mureo → platform API | Google Ads, Meta Ads, Search Console |
 | **Official, host-registered** | the AI host / connector | client → platform MCP (mureo is bypassed) | `google-ads-official`, `meta-ads-official`, TikTok's hosted MCP |
 | **Official, mureo-mediated bridge** | mureo (`~/.mureo/credentials.json`) | mureo → platform MCP | **Amazon Ads** |
+| **Bundled provider, direct API** | mureo (`~/.mureo/credentials.json`) | mureo (provider path) → platform API | **ChatGPT Ads** |
 
 The third model matters because the second one costs you mureo's safety layer:
 a host-registered official MCP never reaches mureo's dispatcher, so its calls
@@ -214,6 +216,42 @@ Setup, environment variables, and the full caveat list: [amazon-ads.md](./amazon
 
 ---
 
+## ChatGPT Ads — a bundled provider over the platform API
+
+mureo reads and changes ChatGPT Ads through OpenAI's Advertiser API with a provider that
+ships inside mureo (`mureo/chatgpt_ads/`). No MCP server sits in between:
+
+```
+Claude  →  local mureo MCP  →  https://api.ads.openai.com/v1
+```
+
+- **Credentials stay with mureo.** The Ads API key lives in the `chatgpt_ads`
+  section of `~/.mureo/credentials.json` (or `CHATGPT_ADS_API_KEY`). One key
+  reads one ad account.
+- **Provider path, not a built-in family.** The tools are served the way a
+  plugin's are: audited and throttled per tool, and the changes are gated by the STRATEGY.md caps on the amounts each tool declares (which caps read which amounts is in chatgpt-ads.md). Their names are mureo's
+  (`chatgpt_ads_*`), and their list is fixed, so the documented tool total
+  includes them.
+- **Changes are recorded and reversible.** Ten tools read the account, its
+  spending limits, campaigns, ad groups, ads, insights and the change
+  history; eleven change status, names, schedules, budgets, bids and the
+  account daily spending limit. Each change is promoted into `action_log`
+  with a reversal captured before the write, so `rollback_apply` can undo
+  it. Six more create campaigns, ad groups and ads (always paused, with an
+  idempotency key) and archive them; with an image upload they are recorded
+  without a reversal, because a created entity has no id before the call and
+  an archive cannot be undone on the platform. An ad preview and a location
+  search complete the set. Six more read, create and fill custom audiences
+  from a local identifier file (hashed on the machine, never passed as
+  arguments), and five set up pixels and conversion events and report
+  conversions; audience membership changes record no reversal.
+- **No deep mureo analytics** (anomaly baselines, RSA audit, CV-mismatch) and
+  no BYOD.
+
+Setup, units, limits and failure shapes: [chatgpt-ads.md](./chatgpt-ads.md).
+
+---
+
 ## How they coexist
 
 When you install an official provider for a platform mureo also serves natively,
@@ -226,7 +264,7 @@ inject the stored values into the provider's MCP entry; when one is missing,
 the CLI prints which names it still needs (#945).
 Removing the official provider clears the flag and re-enables native tools.
 
-- Switch native → official: `mureo providers add <provider>` (or the configure dashboard toggle)
+- Switch native → official: `mureo providers add <provider>` (or the configure dashboard toggle); for a hosted provider (Meta), add the Claude.ai connector, then run `mureo providers confirm <provider>`
 - Switch back: `mureo providers remove <provider>`
 - Search Console has no official MCP — mureo native remains canonical and is never disabled.
 

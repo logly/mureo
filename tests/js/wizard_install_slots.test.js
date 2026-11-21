@@ -27,6 +27,7 @@ const DOWN = Object.freeze({ down: true });
 // Templates that carry {detail}, so a test sees which detail was inserted.
 const DETAIL_TEMPLATES = {
   "wizard.providers_install.failed": "failed:{detail}",
+  "wizard.providers_install.failed_official_only": "failed-official-only:{detail}",
   "wizard.providers_install.installer_missing": "missing:{detail}",
 };
 
@@ -321,6 +322,39 @@ test.describe("the Install button and each install answer", () => {
     assert.deepEqual(env.calls.toasts, ["wizard.providers_install.failed"]);
     assert.equal(env.button.disabled, false);
     assert.equal(env.completed.length, 0);
+  });
+
+  test("a failed GA4 install does not offer mureo's own tools", async () => {
+    const env = await clickInstall(makeState({ platforms: { ga4: true } }), "ga4", {
+      [INSTALL_URL]: [installAnswer("weird", "boom")],
+    });
+
+    assert.equal(env.statusLine.textContent, "wizard.providers_install.failed_official_only");
+    assert.deepEqual(env.calls.toasts, ["wizard.providers_install.failed_official_only"]);
+  });
+
+  test("a GA4 install that fails at the network names network_error", async () => {
+    const env = await clickInstall(
+      makeState({ platforms: { ga4: true } }),
+      "ga4",
+      { [INSTALL_URL]: [DOWN] },
+      DETAIL_TEMPLATES
+    );
+
+    assert.equal(env.statusLine.textContent, "failed-official-only:network_error");
+    assert.deepEqual(env.calls.toasts, ["failed-official-only:network_error"]);
+    assert.equal(env.button.disabled, false);
+  });
+
+  test("a GA4 install the server rejects names the error code", async () => {
+    const env = await clickInstall(
+      makeState({ platforms: { ga4: true } }),
+      "ga4",
+      { [INSTALL_URL]: [{ ok: false, body: { error: "unknown_provider" } }] },
+      DETAIL_TEMPLATES
+    );
+
+    assert.equal(env.statusLine.textContent, "failed-official-only:unknown_provider");
   });
 
   test("the detail fills every {detail} and `$` patterns stay literal", async () => {

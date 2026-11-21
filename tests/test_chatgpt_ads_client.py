@@ -1,0 +1,484 @@
+"""The ChatGPT Ads HTTP client: auth header, retries, pagination, errors.
+
+Every request goes through ``httpx.MockTransport`` and is checked against the
+contract fixture cut from the OpenAPI document, so a path or query name the
+API does not document fails here rather than against a live account.
+"""
+
+from __future__ import annotations
+
+from datetime import timezone
+
+import httpx
+import pytest
+
+from mureo.chatgpt_ads import client as client_module
+from mureo.chatgpt_ads._api import OPENAPI_VERSION
+from mureo.chatgpt_ads._errors import (
+    MAY_HAVE_BEEN_APPLIED,
+    NO_ERROR_DETAIL,
+    REPEAT_WITH_IDEMPOTENCY_KEY,
+    ChatGPTAdsAPIError,
+)
+from mureo.chatgpt_ads.client import ChatGPTAdsClient
+from mureo.core.auth_failure import AUTH_CAUSE_TOKEN_INVALID, PlatformAuthError
+from tests._chatgpt_ads_fakes import (
+    SENTINEL_KEY,
+    FakeAPI,
+    multipart_parts,
+    openapi_fixture_version,
+    page,
+    rows,
+)
+
+pytestmark = pytest.mark.unit
+
+
+class TestGet:
+    async def test_sends_the_key_as_a_bearer_header(self) -> None:
+        api = FakeAPI().add("/ad_account", body={"id": "adacct_1"})
+        client = api.client()
+        assert await client.get("/ad_account") == {"id": "adacct_1"}
+        await client.aclose()
+        sent = api.requests[0]
+        assert sent.headers["Authorization"] == f"Bearer {SENTINEL_KEY}"
+        assert str(sent.url).startswith("https://api.ads.openai.com/v1/ad_account")
+
+    async def test_429_then_success_retries_with_backoff(self) -> None:
+        api = FakeAPI().add("/ad_account", 429, {"error": {"message": "slow"}})
+        api.add("/ad_account", body={"id": "adacct_1"})
+        sleeps: list[float] = []
+        client = api.client(sleeps)
+        assert await client.get("/ad_account") == {"id": "adacct_1"}
+        assert len(api.requests) == 2
+        assert sleeps == [1.0]
+
+    async def test_numeric_retry_after_is_honoured(self) -> None:
+        api = FakeAPI()
+        api.add("/ad_account", 429, {}, {"Retry-After": "4"})
+        api.add("/ad_account", 503, {}, {"Retry-After": "30"})
+        api.add("/ad_account", body={"id": "x"})
+        sleeps: list[float] = []
+        await api.client(sleeps).get("/ad_account")
+        assert sleeps == [4.0, 30.0]
+
+    @pytest.mark.parametrize("value", ["31", "9999", "inf"])
+    async def test_retry_after_above_the_cap_is_reported_at_once(
+        self, value: str
+    ) -> None:
+        api = FakeAPI().add("/ad_account", 429, {}, {"Retry-After": value})
+        api.add("/ad_account", body={"id": "x"})
+        sleeps: list[float] = []
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client(sleeps).get("/ad_account")
+        assert info.value.status == 429
+        assert sleeps == []
+        assert len(api.requests) == 1
+
+    @pytest.mark.parametrize("value", ["-1", "nan", "soon", ""])
+    async def test_unusable_retry_after_falls_back_to_backoff(self, value: str) -> None:
+        api = FakeAPI().add("/ad_account", 429, {}, {"Retry-After": value})
+        api.add("/ad_account", body={})
+        sleeps: list[float] = []
+        await api.client(sleeps).get("/ad_account")
+        assert sleeps == [1.0]
+
+    async def test_non_numeric_retry_after_falls_back_to_backoff(self) -> None:
+        api = FakeAPI().add("/ad_account", 429, {}, {"Retry-After": "soon"})
+        api.add("/ad_account", body={})
+        sleeps: list[float] = []
+        await api.client(sleeps).get("/ad_account")
+        assert sleeps == [1.0]
+
+    async def test_429_exhausted_raises_an_api_error(self) -> None:
+        api = FakeAPI().add("/ad_account", 429, {"error": {"message": "Too many"}})
+        sleeps: list[float] = []
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client(sleeps).get("/ad_account")
+        assert info.value.status == 429
+        assert "Too many" in str(info.value)
+        assert len(api.requests) == 3
+        assert sleeps == [1.0, 2.0]
+
+    async def test_500_is_retried_then_reported(self) -> None:
+        api = FakeAPI().add("/ad_account", 500, "upstream exploded")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().get("/ad_account")
+        assert info.value.status == 500
+        assert str(info.value) == f"HTTP 500: {NO_ERROR_DETAIL}"
+        assert len(api.requests) == 3
+
+    async def test_400_is_not_retried(self) -> None:
+        api = FakeAPI().add("/ad_account", 400, {"error": {"message": "bad"}})
+        with pytest.raises(ChatGPTAdsAPIError):
+            await api.client().get("/ad_account")
+        assert len(api.requests) == 1
+
+    async def test_401_raises_platform_auth_error(self) -> None:
+        api = FakeAPI().add("/ad_account", 401, {"error": {"message": "Bad key"}})
+        with pytest.raises(PlatformAuthError) as info:
+            await api.client().get("/ad_account")
+        assert info.value.cause == AUTH_CAUSE_TOKEN_INVALID
+
+    async def test_malformed_success_body_is_an_api_error(self) -> None:
+        api = FakeAPI().add("/ad_account", 200, "<html>not json</html>")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().get("/ad_account")
+        assert info.value.__cause__ is None
+        assert info.value.__context__ is None
+
+    async def test_transport_error_names_only_the_error_class(self) -> None:
+        api = FakeAPI()
+        api.raise_on["/v1/ad_account"] = httpx.ConnectError(
+            f"boom Authorization: Bearer {SENTINEL_KEY}"
+        )
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().get("/ad_account")
+        assert "ConnectError" in str(info.value)
+        assert SENTINEL_KEY not in str(info.value)
+        assert info.value.__cause__ is None
+        assert info.value.__context__ is None
+
+    async def test_a_transport_error_is_not_retried(self) -> None:
+        api = FakeAPI()
+        api.raise_on["/v1/ad_account"] = httpx.ReadTimeout("slow")
+        sleeps: list[float] = []
+        with pytest.raises(ChatGPTAdsAPIError):
+            await api.client(sleeps).get("/ad_account")
+        assert len(api.requests) == 1
+        assert sleeps == []
+
+    async def test_an_invalid_url_is_a_transport_error(self) -> None:
+        api = FakeAPI()
+        api.raise_on["/v1/ad_account"] = httpx.InvalidURL("bad url")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().get("/ad_account")
+        assert "InvalidURL" in str(info.value)
+        assert info.value.__context__ is None
+
+    async def test_a_success_body_nested_past_the_recursion_limit(self) -> None:
+        api = FakeAPI().add("/ad_account", 200, "[" * 100_000)
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().get("/ad_account")
+        assert info.value.__context__ is None
+        assert info.value.__cause__ is None
+
+    async def test_the_key_echoed_in_an_error_body_is_replaced(self) -> None:
+        body = {"error": {"message": f"Incorrect API key provided: {SENTINEL_KEY}"}}
+        api = FakeAPI().add("/ad_account", 400, body)
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().get("/ad_account")
+        assert SENTINEL_KEY not in str(info.value)
+        assert "Incorrect API key provided: ***" in str(info.value)
+
+    async def test_client_works_as_an_async_context_manager(self) -> None:
+        api = FakeAPI().add("/ad_account", body={"id": "a"})
+        async with api.client() as client:
+            assert await client.get("/ad_account") == {"id": "a"}
+
+
+class TestPostBody:
+    @pytest.mark.parametrize(
+        ("status", "body"), [(204, None), (200, None), (200, "  \n\t")]
+    )
+    async def test_an_empty_success_body_is_an_empty_object(
+        self, status: int, body: str | None
+    ) -> None:
+        api = FakeAPI().add("/campaigns/c_1/pause", status, body)
+        assert await api.client().post("/campaigns/c_1/pause") == {}
+
+    async def test_a_body_that_is_not_json_may_have_been_applied(self) -> None:
+        api = FakeAPI().add("/campaigns/c_1/pause", 200, "<html>proxy</html>")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post("/campaigns/c_1/pause")
+        assert "not JSON" in str(info.value)
+        assert str(info.value).endswith(MAY_HAVE_BEEN_APPLIED)
+        assert len(api.requests) == 1
+
+    @pytest.mark.parametrize("body", [None, "  ", "<html>proxy</html>"])
+    async def test_a_get_keeps_reading_any_unreadable_body_as_an_error(
+        self, body: str | None
+    ) -> None:
+        api = FakeAPI().add("/ad_account", 200, body)
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().get("/ad_account")
+        assert "not JSON" in str(info.value)
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+
+
+_KEY_SENTENCE = REPEAT_WITH_IDEMPOTENCY_KEY.format(key="k-1")
+
+
+class TestPostRead:
+    """A POST the platform documents as a read: retried like a GET, never
+    flagged as possibly applied."""
+
+    async def test_a_5xx_is_retried(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 503, {})
+        api.add("/ads/a_1/preview", body={"data": []})
+        sleeps: list[float] = []
+        assert await api.client(sleeps).post_read("/ads/a_1/preview") == {"data": []}
+        assert [r.method for r in api.requests] == ["POST", "POST"]
+        assert sleeps == [1.0]
+
+    async def test_a_final_5xx_carries_no_applied_note(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 500, {"error": {"message": "x"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_read("/ads/a_1/preview")
+        assert len(api.requests) == 3
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+
+    async def test_an_unreadable_answer_carries_no_applied_note(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 200, "<html>proxy</html>")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_read("/ads/a_1/preview")
+        assert "not JSON" in str(info.value)
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+
+    async def test_a_transport_error_carries_no_applied_note(self) -> None:
+        def _raise(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("slow", request=request)
+
+        client = ChatGPTAdsClient(SENTINEL_KEY, transport=httpx.MockTransport(_raise))
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await client.post_read("/ads/a_1/preview")
+        assert str(info.value) == "transport error (ReadTimeout)"
+
+    async def test_a_429_is_retried(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 429, {})
+        api.add("/ads/a_1/preview", body={"data": []})
+        assert await api.client().post_read("/ads/a_1/preview") == {"data": []}
+        assert len(api.requests) == 2
+
+    async def test_a_final_429_carries_no_applied_note(self) -> None:
+        api = FakeAPI().add("/ads/a_1/preview", 429, {"error": {"message": "x"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_read("/ads/a_1/preview")
+        assert len(api.requests) == 3
+        assert "429" in str(info.value)
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+        assert "idempotency_key" not in str(info.value)
+
+
+class TestIdempotentPost:
+    async def test_an_empty_key_is_refused_before_sending(self) -> None:
+        """An empty ``Idempotency-Key`` header is never valid, and treating
+        it as "no key" would silently drop the retry guarantee."""
+        api = FakeAPI().add("/campaigns", body={"id": "cmpn_1"})
+        with pytest.raises(ValueError, match="idempotency_key"):
+            await api.client().post("/campaigns", {"name": "x"}, idempotency_key="")
+        assert api.requests == []
+
+    async def test_the_key_travels_as_a_header(self) -> None:
+        api = FakeAPI().add("/campaigns", body={"id": "cmpn_1"})
+        out = await api.client().post(
+            "/campaigns", {"name": "x"}, idempotency_key="k-1"
+        )
+        assert out == {"id": "cmpn_1"}
+        assert api.requests[0].headers["Idempotency-Key"] == "k-1"
+
+    async def test_without_a_key_no_header_is_sent(self) -> None:
+        api = FakeAPI().add("/campaigns", body={"id": "cmpn_1"})
+        await api.client().post("/campaigns", {"name": "x"})
+        assert "Idempotency-Key" not in api.requests[0].headers
+
+    async def test_a_5xx_is_retried_with_the_same_key_and_body(self) -> None:
+        api = FakeAPI().add("/campaigns", 502, {})
+        api.add("/campaigns", 503, {})
+        api.add("/campaigns", body={"id": "cmpn_1"})
+        sleeps: list[float] = []
+        client = api.client(sleeps)
+        out = await client.post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert out == {"id": "cmpn_1"}
+        assert len(api.requests) == 3
+        assert {r.headers["Idempotency-Key"] for r in api.requests} == {"k-1"}
+        assert {r.content for r in api.requests} == {api.requests[0].content}
+        assert sleeps == [1.0, 2.0]
+
+    async def test_a_final_5xx_names_the_key(self) -> None:
+        api = FakeAPI().add("/campaigns", 500, {"error": {"message": "boom"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert len(api.requests) == 3
+        assert str(info.value).endswith(_KEY_SENTENCE)
+        assert MAY_HAVE_BEEN_APPLIED not in str(info.value)
+
+    async def test_a_transport_error_names_the_key(self) -> None:
+        def _raise(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("slow", request=request)
+
+        client = ChatGPTAdsClient(SENTINEL_KEY, transport=httpx.MockTransport(_raise))
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await client.post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert str(info.value).endswith(_KEY_SENTENCE)
+
+    async def test_an_unreadable_answer_names_the_key(self) -> None:
+        api = FakeAPI().add("/campaigns", 200, "<html>proxy</html>")
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert str(info.value).endswith(_KEY_SENTENCE)
+        assert len(api.requests) == 1
+
+    async def test_a_4xx_is_final_and_unflagged(self) -> None:
+        api = FakeAPI().add("/campaigns", 422, {"error": {"message": "bad"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post("/campaigns", {"name": "x"}, idempotency_key="k-1")
+        assert len(api.requests) == 1
+        assert "k-1" not in str(info.value)
+
+
+class TestPostFile:
+    async def test_the_file_is_one_multipart_field(self) -> None:
+        api = FakeAPI().add("/upload", body={"file_id": "file_1"})
+        out = await api.client().post_file(
+            "/upload", filename="card.png", content=b"\x89PNG", content_type="image/png"
+        )
+        assert out == {"file_id": "file_1"}
+        parts = multipart_parts(api.requests[0])
+        assert set(parts) == {"file"}
+        assert 'filename="card.png"' in parts["file"]["headers"]["Content-Disposition"]
+        assert parts["file"]["headers"]["Content-Type"] == "image/png"
+        assert parts["file"]["content"] == b"\x89PNG"
+
+    async def test_a_5xx_is_final_and_may_have_been_applied(self) -> None:
+        api = FakeAPI().add("/upload", 500, {"error": {"message": "boom"}})
+        api.add("/upload", body={"file_id": "file_1"})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_file(
+                "/upload", filename="a.png", content=b"x", content_type="image/png"
+            )
+        assert len(api.requests) == 1
+        assert str(info.value).endswith(MAY_HAVE_BEEN_APPLIED)
+
+    async def test_an_error_body_echoing_the_key_is_redacted(self) -> None:
+        escaped = "".join(f"\\u{ord(c):04x}" for c in SENTINEL_KEY)
+        api = FakeAPI().add("/upload", 400, '{"error": {"message": "' + escaped + '"}}')
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().post_file(
+                "/upload", filename="a.png", content=b"x", content_type="image/png"
+            )
+        assert SENTINEL_KEY not in str(info.value)
+        assert "***" in str(info.value)
+
+
+class TestListAll:
+    async def test_follows_last_id_until_the_limit(self) -> None:
+        api = FakeAPI()
+        api.add("/campaigns", body=page(rows("cmpn", 0, 2), has_more=True))
+        api.add("/campaigns", body=page(rows("cmpn", 2, 2), has_more=True))
+        api.add("/campaigns", body=page(rows("cmpn", 4, 2), has_more=True))
+        result = await api.client().list_all("/campaigns", [], limit=3, page_max=500)
+        assert [r["id"] for r in result] == ["cmpn_0", "cmpn_1", "cmpn_2"]
+        assert len(api.requests) == 2
+        assert ("limit", "3") in api.params(0)
+        assert ("after", "cmpn_1") in api.params(1)
+        assert ("limit", "1") in api.params(1)
+
+    async def test_has_more_false_stops(self) -> None:
+        api = FakeAPI().add("/campaigns", body=page(rows("cmpn", 0, 2), has_more=False))
+        result = await api.client().list_all("/campaigns", [], limit=50, page_max=500)
+        assert len(result) == 2
+        assert len(api.requests) == 1
+
+    async def test_page_size_is_capped_by_the_api_maximum(self) -> None:
+        api = FakeAPI().add("/audit_logs", body=page([], has_more=False))
+        await api.client().list_all("/audit_logs", [], limit=1000, page_max=100)
+        assert ("limit", "100") in api.params(0)
+
+    async def test_an_empty_page_claiming_more_does_not_loop(self) -> None:
+        api = FakeAPI().add("/ads", body=page([], has_more=True))
+        assert await api.client().list_all("/ads", [], limit=10, page_max=500) == []
+        assert len(api.requests) == 1
+
+    async def test_a_body_without_a_data_list_is_an_api_error(self) -> None:
+        api = FakeAPI().add("/ads", body={"object": "list"})
+        with pytest.raises(ChatGPTAdsAPIError):
+            await api.client().list_all("/ads", [], limit=10, page_max=500)
+
+
+def _more(rows_: list[dict[str, str]], last_id: object) -> dict[str, object]:
+    """A page claiming more rows, with ``last_id`` forced to ``last_id``."""
+    return {**page(rows_, has_more=True), "last_id": last_id}
+
+
+class TestListAllBounds:
+    """A list that cannot be walked to its end is an error, never a short
+    list reported as complete."""
+
+    @pytest.mark.parametrize("last_id", ["", None, 7])
+    async def test_more_rows_without_a_usable_cursor(self, last_id: object) -> None:
+        api = FakeAPI().add("/campaigns", body=_more(rows("c", 0, 2), last_id))
+        with pytest.raises(ChatGPTAdsAPIError, match="cursor"):
+            await api.client().list_all("/campaigns", [], limit=10, page_max=500)
+        assert len(api.requests) == 1
+
+    async def test_a_cursor_that_does_not_advance(self) -> None:
+        api = FakeAPI()
+        api.add("/campaigns", body=_more(rows("c", 0, 2), "c_1"))
+        api.add("/campaigns", body=_more(rows("c", 2, 2), "c_1"))
+        with pytest.raises(ChatGPTAdsAPIError, match="cursor"):
+            await api.client().list_all("/campaigns", [], limit=10, page_max=500)
+        assert len(api.requests) == 2
+
+    async def test_the_page_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(client_module, "MAX_PAGES_PER_CALL", 3)
+        api = FakeAPI()
+        for i in range(5):
+            api.add("/campaigns", body=page(rows("c", i, 1), has_more=True))
+        with pytest.raises(ChatGPTAdsAPIError, match="3 pages"):
+            await api.client().list_all("/campaigns", [], limit=10, page_max=500)
+        assert len(api.requests) == 3
+
+    @pytest.mark.parametrize(("status", "retries"), [(429, 3), (500, 3), (400, 1)])
+    async def test_an_error_on_the_second_page(self, status: int, retries: int) -> None:
+        api = FakeAPI()
+        api.add("/campaigns", body=page(rows("c", 0, 2), has_more=True))
+        api.add("/campaigns", status, {"error": {"message": "second page"}})
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await api.client().list_all("/campaigns", [], limit=10, page_max=500)
+        assert info.value.status == status
+        assert len(api.requests) == 1 + retries
+
+    async def test_a_transport_error_on_the_second_page(self) -> None:
+        calls: list[httpx.Request] = []
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            if len(calls) == 2:
+                raise httpx.ConnectError("gone", request=request)
+            return httpx.Response(200, json=page(rows("c", 0, 2), has_more=True))
+
+        client = ChatGPTAdsClient(SENTINEL_KEY, transport=httpx.MockTransport(_handler))
+        with pytest.raises(ChatGPTAdsAPIError) as info:
+            await client.list_all("/campaigns", [], limit=10, page_max=500)
+        assert info.value.status == 0
+        assert info.value.__context__ is None
+        assert len(calls) == 2
+
+
+class TestAccountTimezone:
+    async def test_reads_and_caches_the_account_zone(self) -> None:
+        api = FakeAPI().add("/ad_account", body={"timezone": "Asia/Tokyo"})
+        client = api.client()
+        first = await client.account_timezone()
+        second = await client.account_timezone()
+        assert str(first) == "Asia/Tokyo"
+        assert second is first
+        assert len(api.requests) == 1
+
+    @pytest.mark.parametrize("value", [None, "", "Not/AZone", 42, "../etc"])
+    async def test_an_absent_or_invalid_zone_falls_back_to_utc(
+        self, value: object
+    ) -> None:
+        api = FakeAPI().add("/ad_account", body={"timezone": value})
+        assert await api.client().account_timezone() == timezone.utc
+
+
+def test_the_contract_fixture_is_cut_from_the_recorded_openapi_version() -> None:
+    """The client's recorded document version and the fixture move together.
+
+    The fixture is what the request-shape tests compare against; refreshing
+    one without the other would leave the constant naming a document the
+    tests no longer check.
+    """
+    assert openapi_fixture_version() == OPENAPI_VERSION

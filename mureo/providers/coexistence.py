@@ -1,11 +1,12 @@
 """User-facing coexistence warning for official providers.
 
-When a user installs an official MCP for a platform that mureo also serves
-natively, we surface a warning that confirms (or recommends) disabling
-mureo's own server for that platform.
+When a user installs an official MCP for a platform that has a
+``MUREO_DISABLE_<PLATFORM>`` flag, we surface a note that confirms (or
+recommends) setting that flag. For a platform whose native tool family the
+MCP server registers, the flag disables those tools; for a platform without
+one (see :func:`has_native_tools`) the note states only the env entry.
 
-Since the disable-mureo extension (2026-05-12, Founder Q1/Q2), the
-``mureo providers add`` CLI auto-disables the matching mureo tool family
+The ``mureo providers add`` CLI auto-disables the matching mureo tool family
 via ``mcpServers.mureo.env.MUREO_DISABLE_<PLATFORM>=1``. The warning text
 varies depending on whether the user has a ``mcpServers.mureo`` block to
 auto-disable:
@@ -40,6 +41,39 @@ _PLATFORM_TO_ENV_VAR: dict[str, str] = {
     "ga4": "MUREO_DISABLE_GA4",
 }
 
+# The platforms whose native tool family the MCP server registers. A platform
+# outside this set can still own a ``MUREO_DISABLE_<PLATFORM>`` flag (GA4
+# does), which then gates nothing.
+_PLATFORMS_WITH_NATIVE_TOOLS: frozenset[str] = frozenset({"google_ads", "meta_ads"})
+
+
+def has_native_tools(platform: str) -> bool:
+    """Return whether the MCP server registers native tools for ``platform``.
+
+    The notes in this module and in :mod:`mureo.cli.providers_cmd` use it to
+    avoid describing tools that do not exist.
+    """
+    return platform in _PLATFORMS_WITH_NATIVE_TOOLS
+
+
+def _block_present_note(spec_id: str, label: str, env_var: str, *, native: bool) -> str:
+    """Return the note for a ``mcpServers.mureo`` block that got ``env_var``."""
+    if native:
+        return (
+            f"Note: mureo's {label} tools have been auto-disabled "
+            f'(mcpServers.mureo.env.{env_var}="1"). To re-enable, run '
+            f"'mureo providers remove {spec_id}' to remove the official "
+            f"server and clear the env entry, or edit "
+            f"~/.claude.json manually."
+        )
+    return (
+        f'Note: mcpServers.mureo.env.{env_var}="1" has been set. '
+        f"mureo registers no native {label} tools, so no mureo tool changes. "
+        f"To undo, run 'mureo providers remove {spec_id}' to remove the "
+        f"official server and clear the env entry, or edit "
+        f"~/.claude.json manually."
+    )
+
 
 def coexistence_warning(
     spec: ProviderSpec,
@@ -54,8 +88,9 @@ def coexistence_warning(
     When the overlap exists:
 
     - If ``mureo_block_present=True`` (default), the message confirms the
-      auto-disable already happened (the CLI flipped the env var on
-      ``mcpServers.mureo.env``) and explains how to re-enable. The text
+      CLI set the env var on ``mcpServers.mureo.env`` and explains how to
+      undo it. For a platform with native tools it says they were
+      auto-disabled; for one without, that no mureo tool changes. The text
       mentions ``"manually"`` so legacy callers grepping for the Phase 1
       "manual remediation" hint still match.
     - If ``mureo_block_present=False``, the message degrades to point the
@@ -78,12 +113,8 @@ def coexistence_warning(
     # permissions/env only). config_writer writes the auto-disable there, so
     # the remediation message must name the same file.
     if mureo_block_present:
-        return (
-            f"Note: mureo's {label} tools have been auto-disabled "
-            f'(mcpServers.mureo.env.{env_var}="1"). To re-enable, run '
-            f"'mureo providers remove {spec.id}' to remove the official "
-            f"server and clear the env entry, or edit "
-            f"~/.claude.json manually."
+        return _block_present_note(
+            spec.id, label, env_var, native=has_native_tools(platform)
         )
 
     return (

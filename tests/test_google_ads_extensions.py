@@ -674,6 +674,44 @@ class TestListChangeHistory:
         )
 
 
+@pytest.mark.unit
+class TestGetAccountTimeZone:
+    """``change_event`` times are account-local; this names the account's zone."""
+
+    @pytest.fixture()
+    def client(self) -> _MockExtensionsClient:
+        return _MockExtensionsClient()
+
+    @pytest.mark.asyncio
+    async def test_returns_the_zone_name(self, client: _MockExtensionsClient) -> None:
+        row = MagicMock()
+        row.customer.time_zone = "Asia/Tokyo"
+        client._search = AsyncMock(return_value=[row])
+
+        assert await client.get_account_time_zone() == "Asia/Tokyo"
+        query = client._search.await_args.args[0]
+        assert "customer.time_zone" in query
+        assert "FROM customer" in query
+
+    @pytest.mark.asyncio
+    async def test_no_row_is_none(self, client: _MockExtensionsClient) -> None:
+        client._search = AsyncMock(return_value=[])
+        assert await client.get_account_time_zone() is None
+
+    @pytest.mark.asyncio
+    async def test_an_empty_value_is_none(self, client: _MockExtensionsClient) -> None:
+        row = MagicMock()
+        row.customer.time_zone = ""
+        client._search = AsyncMock(return_value=[row])
+        assert await client.get_account_time_zone() is None
+
+    @pytest.mark.asyncio
+    async def test_an_api_error_propagates(self, client: _MockExtensionsClient) -> None:
+        client._search = AsyncMock(side_effect=RuntimeError("quota"))
+        with pytest.raises(RuntimeError, match="quota"):
+            await client.get_account_time_zone()
+
+
 # ---------------------------------------------------------------------------
 # list_location_targeting tests
 # ---------------------------------------------------------------------------

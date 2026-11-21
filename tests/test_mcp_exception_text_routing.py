@@ -15,7 +15,7 @@ import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -33,6 +33,7 @@ from mureo.mcp import (
 )
 from mureo.mcp._helpers import exception_text
 from mureo.rollback import RollbackExecutionError
+from tests.test_image_validation_dimensions import _png
 from tests.test_mcp_tools_delivery_collapse import AS_OF, _rows
 
 _SECRET = "authorization: Bearer SECRET-1234"
@@ -243,7 +244,7 @@ async def test_creative_edit_invalid_path_routes_through_exception_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     exc = _platform_shaped(ValueError)
-    monkeypatch.setattr(tools_creative_studio, "validate_image_file", _raiser(exc))
+    monkeypatch.setattr(tools_creative_studio, "read_image_file", _raiser(exc))
 
     result = await tools_creative_studio._handle_edit_visual(
         {"path": "in.png", "instruction": "brighter"}
@@ -255,9 +256,9 @@ async def test_creative_edit_invalid_path_routes_through_exception_text(
 def _edit_provider(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, edit: AsyncMock
 ) -> Path:
-    """Wire one fake edit-capable provider; return the validated input path."""
+    """Wire one fake edit-capable provider; return a real PNG input path."""
     in_path = tmp_path / "in.png"
-    in_path.write_bytes(b"png")
+    in_path.write_bytes(_png(64, 64))
     provider = SimpleNamespace(name="fake", edit=edit)
     monkeypatch.setattr(
         tools_creative_studio, "_resolve_edit_provider", lambda _arg: provider
@@ -274,9 +275,6 @@ async def test_creative_edit_not_supported_routes_through_exception_text(
 ) -> None:
     exc = _platform_shaped(NotSupportedError)
     in_path = _edit_provider(monkeypatch, tmp_path, AsyncMock(side_effect=exc))
-    monkeypatch.setattr(
-        tools_creative_studio, "validate_image_file", lambda *_a, **_k: in_path
-    )
 
     result = await tools_creative_studio._handle_edit_visual(
         {"path": str(in_path), "instruction": "brighter"}
@@ -292,8 +290,7 @@ async def test_creative_edited_image_validation_routes_through_exception_text(
 ) -> None:
     exc = _platform_shaped(ValueError)
     in_path = _edit_provider(monkeypatch, tmp_path, AsyncMock(return_value=b"png"))
-    validate = MagicMock(side_effect=[in_path, exc])
-    monkeypatch.setattr(tools_creative_studio, "validate_image_file", validate)
+    monkeypatch.setattr(tools_creative_studio, "validate_image_file", _raiser(exc))
     monkeypatch.setattr(tools_creative_studio, "write_bytes", lambda p, _d: p)
 
     result = await tools_creative_studio._handle_edit_visual(
