@@ -64,7 +64,7 @@ that time zone; say which account you read.
 | `chatgpt_ads_account_get` | Confirm the account, its currency and time zone |
 | `chatgpt_ads_campaigns_list` | Find campaigns and their ids (`name` filter, `include_serving_issues`, `limit` default 50) |
 | `chatgpt_ads_campaigns_get` | Read one campaign's objective, bidding type, budget, targeting and schedule; `include_serving_issues=true` to see why it is not delivering |
-| `chatgpt_ads_ad_groups_list` | List one campaign's ad groups (`campaign_id` is required) |
+| `chatgpt_ads_ad_groups_list` | List ad groups: one campaign's with `campaign_id`, otherwise the whole account's |
 | `chatgpt_ads_ad_groups_get` | Read one ad group's bid settings and serving issues |
 | `chatgpt_ads_ads_list` | Find ads, optionally within one ad group; check review status across ads |
 | `chatgpt_ads_ads_get` | See why one ad was rejected or is not serving, and what its creative says |
@@ -102,9 +102,10 @@ and come back as one array; there is no cursor to pass back.
 
 ### Change history
 
-`chatgpt_ads_change_history_list` defaults to `last_7d` and can be narrowed to
-one campaign, ad group or ad. Read it before attributing a performance change
-to the market.
+`chatgpt_ads_change_history_list` defaults to `last_7d`, which ends
+yesterday (pass `today` for changes made today), and can be narrowed to one
+campaign, ad group or ad. Read it before attributing a performance change to
+the market.
 
 Changes made on this account outside mureo are recorded into `action_log` by
 `mureo_external_changes_import`, from the same audit log (at most 1,000
@@ -229,8 +230,9 @@ that does not read an amount does not bound it.
 - **No undo.** `rollback_apply` cannot undo a create or an archive. Undo a
   create by leaving it paused, or archive it once the operator confirms.
   Archiving cannot be reversed on the platform: prefer pausing, and say so
-  before asking for approval. Whether archiving a campaign or ad group also
-  archives its children is not documented.
+  before asking for approval. Archiving a campaign does not archive its ad
+  groups and ads: they keep their status and are archived one by one.
+  Whether archiving an ad group archives its ads is not documented.
 
 ### Custom audiences
 

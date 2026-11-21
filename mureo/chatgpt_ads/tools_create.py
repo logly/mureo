@@ -114,7 +114,7 @@ IDEMPOTENCY_KEY = {
         "letters, digits, '_' or '-'. Omit it on a first attempt and mureo "
         "generates one; pass the key an error message names to repeat that "
         "attempt, which returns the earlier entity when the platform can see "
-        "it."
+        "it. Never reuse a key for a different entity."
     ),
 }
 
@@ -402,15 +402,16 @@ _ADS_CREATE = build_tool(
 )
 
 
-def _archive_tool(entity: str, noun: str, id_key: str, example: str) -> Tool:
+def _archive_tool(
+    entity: str, noun: str, id_key: str, example: str, children: str
+) -> Tool:
     description = (
         f"Archives one ChatGPT Ads {noun}, irreversibly: the platform has no "
         "restore, and mureo records no reversal, so it cannot be undone. "
         "Returns the updated platform object unchanged (status archived). "
         f"Mutates the account. To stop spending reversibly use "
-        f"chatgpt_ads_{entity}_pause instead. Whether the {noun}'s children "
-        "are archived with it is not documented."
-    )
+        f"chatgpt_ads_{entity}_pause instead. {children}"
+    ).rstrip()
     return build_tool(
         f"chatgpt_ads_{entity}_archive",
         description,
@@ -425,9 +426,21 @@ CREATE_TOOLS: tuple[Tool, ...] = (
     _CAMPAIGNS_CREATE,
     _AD_GROUPS_CREATE,
     _ADS_CREATE,
-    _archive_tool("campaigns", "campaign", "campaign_id", "cmpn_123"),
-    _archive_tool("ad_groups", "ad group", "ad_group_id", "adgrp_123"),
-    _archive_tool("ads", "ad", "ad_id", "ad_123"),
+    _archive_tool(
+        "campaigns",
+        "campaign",
+        "campaign_id",
+        "cmpn_123",
+        "Its ad groups and ads are not archived with it; archive them one by one.",
+    ),
+    _archive_tool(
+        "ad_groups",
+        "ad group",
+        "ad_group_id",
+        "adgrp_123",
+        "Whether the ad group's ads are archived with it is not documented.",
+    ),
+    _archive_tool("ads", "ad", "ad_id", "ad_123", ""),
 )
 
 __all__ = [

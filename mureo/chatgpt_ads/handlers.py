@@ -127,10 +127,7 @@ async def _campaigns_get(client: ChatGPTAdsClient, arguments: dict[str, Any]) ->
 
 
 async def _ad_groups_list(client: ChatGPTAdsClient, arguments: dict[str, Any]) -> Any:
-    # The reference marks campaign_id required (the OpenAPI document does
-    # not); required is the reading that cannot be rejected.
-    params = [("campaign_id", path_id(arguments, "campaign_id"))]
-    params += _list_filters(arguments, "name")
+    params = _list_filters(arguments, "campaign_id", "name")
     limit = limit_value(arguments, DEFAULT_LIST_LIMIT)
     return await client.list_all(
         "/ad_groups", params, limit=limit, page_max=PAGE_MAX_ENTITIES

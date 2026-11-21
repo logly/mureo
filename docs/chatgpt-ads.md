@@ -96,7 +96,7 @@ the audience and measurement tools under
 | `chatgpt_ads_account_spend_limits_get` | `GET /ad_account/spend_limit_windows` | *(none)* |
 | `chatgpt_ads_campaigns_list` | `GET /campaigns` | `name`, `include_serving_issues` (false), `limit` (50) |
 | `chatgpt_ads_campaigns_get` | `GET /campaigns/{campaign_id}` | `campaign_id` (required), `include_serving_issues` (false) |
-| `chatgpt_ads_ad_groups_list` | `GET /ad_groups` | `campaign_id` (required), `name`, `limit` (50) |
+| `chatgpt_ads_ad_groups_list` | `GET /ad_groups` | `campaign_id`, `name`, `limit` (50) |
 | `chatgpt_ads_ad_groups_get` | `GET /ad_groups/{ad_group_id}` | `ad_group_id` (required) |
 | `chatgpt_ads_ads_list` | `GET /ads` | `ad_group_id`, `name`, `limit` (50) |
 | `chatgpt_ads_ads_get` | `GET /ads/{ad_id}` | `ad_id` (required) |
@@ -158,7 +158,8 @@ platform's change history against `action_log`
 campaign-edit name could never be recognised as mureo's own budget change.
 
 - **Pause and activate** send no body. `enable` makes the entity eligible to
-  spend again.
+  spend again. A pause on a campaign that is already paused is accepted and
+  answers the campaign unchanged.
 - **`name`** is 3 to 1000 characters on one line (no line break anywhere)
   and not all spaces.
 - **`start_time` / `end_time`** are Unix seconds from 946684800 (2000-01-01)
@@ -260,12 +261,15 @@ Each create returns the new platform object unchanged; its `id` is what the
 next level's create needs (campaign → ad group → ad).
 
 - **Always paused.** The create tools take no `status`; mureo always sends
-  `"status": "paused"`, and a `status` argument is refused. Nothing created
+  `"status": "paused"`, and a `status` argument is refused. A created
+  campaign, ad group and ad answer `status` `paused`. Nothing created
   through mureo can spend until the matching `*_enable` tool is called.
 - **`budget`** takes exactly one of `daily_spend_limit_micros` or
   `lifetime_spend_limit_micros` (at least 1000000; the platform refuses both
-  and neither, and mureo refuses them before sending). The daily minimum
-  also depends on the currency, which the platform checks. A STRATEGY.md
+  and neither, and mureo refuses them before sending). The platform also
+  refuses a daily budget below a per-currency minimum, with a 400 whose
+  message names the minimum in micros (2,500,000,000 for JPY); mureo does not
+  check it beforehand. A STRATEGY.md
   `max_daily_budget_per_campaign` does not bound a lifetime budget: a create
   with only `lifetime_spend_limit_micros` passes it however large, and only
   `max_lifetime_budget_per_campaign` bounds that amount.
@@ -317,8 +321,8 @@ next level's create needs (campaign → ad group → ad).
   `image_crop` (`x`, `y`, `width`, `height`, each a fraction from 0 to 1;
   only with `file_id`). Multi-image and product-template creatives are not
   offered.
-- **Review.** An ad enters the platform's review when it is created
-  (`review_status` `in_review`, then `approved` or `rejected`); read it with
+- **Review.** An ad answers `review_status` `in_review` at creation and
+  later reads `approved` or `rejected`; read it with
   `chatgpt_ads_ads_get`.
 
 **Idempotency key.** Each create sends an `Idempotency-Key` header: the
@@ -329,7 +333,11 @@ existing object instead of creating a duplicate when a matching earlier create
 is visible to it, so a create, unlike other changes, is retried on a 5xx (at
 most 3 attempts in total, as for a `GET`). That retry waits the normal backoff
 before repeating; whether a create still in flight is already visible to the
-repeat is not documented. When a create ends in a 5xx, a non-JSON success
+repeat is not documented. A repeat with the same key returns the earlier
+entity with the same id, and the answer carries the key as
+`user_external_id`. A repeat with the same key and a different body is not
+refused: it returns the earlier entity unchanged, so a key must never be
+reused for a different entity. When a create ends in a 5xx, a non-JSON success
 body, a transport error or the call deadline, the error text ends with the key
 instead of the "may have been applied" sentence: `The entity may have been
 created; repeat the call with idempotency_key="<key>" and the same arguments:
@@ -371,8 +379,10 @@ reversal, and `rollback_plan_get` reports the entry as not supported. The
 tools carry `destructiveHint` (as does the audience member removal, see
 [Custom audiences](#custom-audiences)). To stop spending reversibly, pause
 instead.
-Whether archiving a campaign or an ad group also archives its children is not
-documented.
+Archiving a campaign does not archive its ad groups and ads: they keep their
+status and are archived one by one. An archived campaign is left out of
+`chatgpt_ads_campaigns_list`'s default answer. Whether archiving an ad group
+archives its ads is not documented.
 
 ### Custom audiences
 
@@ -392,8 +402,11 @@ other audience tools use); it is sent in the path.
   (3 to 1000 characters on one line, not all spaces) and, when given,
   `description` (at most 1000 characters; the platform states no limit, so
   mureo uses the name's). No file is ever sent, so the audience starts empty;
-  an empty audience needs the account's small-audience enablement. Wait for
-  status `ready` before using it. The platform offers no idempotency key for
+  an empty audience needs the account's small-audience enablement. A new
+  audience answers status `rockset_ingest_pending`, then `ready`; wait for
+  `ready` before using it. It can be missing from
+  `chatgpt_ads_audiences_list` for a few seconds after the create. The
+  platform offers no idempotency key for
   this call: when the answer is lost, the error ends with the "may have been
   applied" sentence, and the reference says to check the audience list before
   creating another.
@@ -514,12 +527,16 @@ a restore. An audience create records none either.
   setting is created with 30, the only value the reference documents, since
   a setting cannot be changed afterwards.
 - **No idempotency key.** Neither create carries one; a lost answer ends with
-  the "may have been applied" sentence. List before creating again.
+  the "may have been applied" sentence. List before creating again. A new
+  conversion event setting can be missing from
+  `chatgpt_ads_conversion_events_list` for a few seconds after its create.
 - **The feature gate.** The reference says the pixel collection answers
   `404 Not found` when conversions are not enabled for the account. On the
   pixel list and create mureo reports a 404 as the `feature_not_enabled`
   result. A 404 from the event settings or the conversion report keeps its
-  ordinary meaning (an `API error: HTTP 404 ...` text).
+  ordinary meaning (an `API error: HTTP 404 ...` text). An account that has
+  no pixel and no event setting yet is not gated for that reason: its lists
+  answer empty and its creates are accepted.
 - **The report.** `chatgpt_ads_conversions_report` returns the platform's
   answer unchanged: `data` rows with `entity_id`, `date` / `country` /
   `device` where they apply, `conversions` (click plus view-through within the
@@ -635,7 +652,8 @@ reset risk of these tools as `unknown`.
 `ts`, `actor_id`, `actor_type`, `audit_log_type`, `obj_type`, `obj_id`,
 `item_name`, `changes`). `period` is sent as `start_time` / `end_time` in Unix
 seconds: from midnight of the first day to the last second of the last day, in
-the ad account's time zone.
+the ad account's time zone. The default `last_7d` covers seven complete days
+ending yesterday, so it leaves out today; pass `today` for changes made today.
 
 ## Change import
 
@@ -697,6 +715,15 @@ deduplicated.
   window like its pause / enable. An archive entry that names no changed
   field reads as a campaign, ad group or ad edit rather than a status
   change, so it is imported as external for all three.
+- **What the audit log holds.** An entry made with an API key carries the
+  same `actor_type` as one made in Ads Manager and the user's id as its
+  actor, so the entry does not tell the two apart. Image uploads and
+  custom-audience creates are not recorded. A pause and an archive are
+  reported with a `status` key in `changes`; a pause of a campaign that is
+  already paused is recorded as an entry with no changed field, so that
+  entry is imported as an external change even when mureo sent the pause.
+  `obj_type` values include `Campaign`, `AdGroup`, `Ad`, `AdAccount`,
+  `AdsManagerApiKey`, `ClientDataSource` and `ConversionEventSetting`.
 - **Always imported as external.** An account-level change (the daily
   spending limit) and an entry on any resource other than a campaign, ad
   group or ad carry no identity, so they are imported as external even when
@@ -715,7 +742,8 @@ deduplicated.
 `period` takes the same vocabulary as the Meta Ads tools: `today`,
 `yesterday`, `last_7d`, `last_14d`, `last_30d`, `last_90d` (N complete days
 ending yesterday), `this_month`, `last_month`, or an explicit
-`YYYY-MM-DD..YYYY-MM-DD` (both ends inclusive).
+`YYYY-MM-DD..YYYY-MM-DD` (both ends inclusive). `today` and `this_month` are
+accepted: the platform answers 200 to a range whose last day is today.
 
 Relative values resolve against **today in the ad account's time zone**, the
 `timezone` that `GET /ad_account` returns, because the API reads a date range
@@ -833,6 +861,14 @@ click count to get CPC; use the returned `cpc`.
 | `chatgpt_ads_campaigns_update_budget` that would change the budget type | `{"status": "refused", "error": "budget_kind_change", "detail": ...}`, before any change; `budget_unreadable` when the current budget holds neither amount |
 | A missing or malformed argument | `ValueError`, raised before any request |
 
+The platform answers an error as
+`{"error": {"message", "type", "param", "code"}}`. `code` can be `null`: some
+400 answers carry `type` `server_error`, no code, and a message that itself
+starts with the status (`"400: ..."`), so the text reads
+`API error: HTTP 400: 400: ...`. Examples of codes are `invalid_api_key`
+(401) and `integer_above_max_value` (400, a `limit` above the maximum). The
+message of a plain 404 reads `Not found: <id>`.
+
 A change that ends in a 5xx, a non-JSON success body, a transport error or
 the deadline may have reached the platform before the answer was lost. Read
 the entity with the matching `*_get` tool before trying again; repeating the
@@ -898,16 +934,9 @@ The STATE.json platform key is `plugin:mureo-chatgpt-ads:chatgpt_ads`.
 ## Not yet exercised against a live account
 
 The tools are written against the published API reference and OpenAPI
-document and tested against recorded answers, not yet against a live ad
-account. These points are unverified:
+document, tested against recorded answers and exercised against a live ad
+account. These points remain unverified:
 
-- **Error-body shape.** The reference defines no error-body schema. mureo
-  reads `{"error": {"message", "code"}}`, `{"error": "<text>"}` and a
-  top-level `message`, `detail` or `code`, and reports the status code alone
-  for any other body.
-- **`GET /ad_groups` without `campaign_id`.** The reference marks
-  `campaign_id` required and the OpenAPI document marks it optional; the tool
-  requires it.
 - **`Retry-After`.** Whether 429 answers carry it, and in which form.
 - **Feature gates.** Which status codes and error codes a feature that is not
   enabled for an account answers with. The reference documents
@@ -918,10 +947,6 @@ account. These points are unverified:
   canonical form; conversion metrics are requested under their bare names
   (`conversions`, `cpa`, ...), as the reference's examples do. Whether every
   conversion metric is accepted that way is unverified.
-- **Ranges that end today.** A `date_range` `until` normalizes to the following
-  local midnight, and the reference says bounds cannot be in the future.
-  Whether `today` and `this_month` are accepted, clamped or refused is
-  unverified.
 - **`budget` with one limit set.** Whether a campaign whose budget holds only
   a daily or only a lifetime amount answers with the other key absent, `null`
   or 0. Absent and `null` count as unset. A 0 counts as present and fails the
@@ -951,24 +976,28 @@ account. These points are unverified:
   are as the API reference and the OpenAPI document give them. If a live
   answer differs, the affected change is recorded without a reversal, or
   with a caveat, and no error is raised.
-- **Pausing a paused entity.** Whether pause on an entity that is already
-  paused, or activate on one that is already active, is accepted unchanged or
-  answered with an error.
+- **Repeating a pause or an activate.** Whether a pause on an ad group or an
+  ad that is already paused, or an activate on an entity that is already
+  active, is accepted unchanged or answered with an error.
 - **Audit-log vocabulary.** The reference documents one example entry, a
   campaign rename (`audit_log_type` `update_campaign`, `obj_type` `Campaign`,
-  `changes` with a `name` key). The other `audit_log_type` and `obj_type`
-  values and the keys of `changes` are not published, so the ad group and ad
-  spellings change import expects (`AdGroup`, `Ad`) are unverified.
-- **Pause and activate in the audit log.** Whether a pause or an activate is
-  reported with a `status` key in `changes`. If it is not, mureo's own pause /
-  enable is not recognised and is imported as an external change.
+  `changes` with a `name` key). The ad group and ad spellings change import
+  expects (`AdGroup`, `Ad`) are the ones the audit log uses (see
+  [Change import](#change-import)); the full set of
+  `audit_log_type` and `obj_type` values and of the keys of `changes` is not
+  published.
+- **An activate in the audit log.** Whether an activate is reported with a
+  `status` key in `changes`, as a pause and an archive are. If it is not,
+  mureo's own enable is not recognised and is imported as an external
+  change.
 - **Audience operations.** How long an add or remove stays `processing`, and
   how the platform answers an inline request near the 10,000-identifier
   limit.
 - **Repeating an add or remove.** Whether a repeat with the same key returns
   the first operation as the reference describes.
 - **The conversions feature gate.** Whether the pixel list and create answer
-  `404 Not found`, and nothing else, when conversions are not enabled, and
+  `404 Not found`, and nothing else, on an account for which the platform
+  has not enabled conversions, and
   what the event-setting paths answer then (mureo reports their answer as an
   ordinary error), as well as the status of a `Client data source not found`
   answer.
@@ -985,18 +1014,14 @@ account. These points are unverified:
 - **Account id.** That the `id` of `GET /ad_account` is the value to compare
   with the account id recorded in STATE.json; change import refuses the
   window when the two differ.
-- **Idempotent replay.** That a create repeated with the same
-  `Idempotency-Key` and body returns the first entity rather than a second
-  one or an error, and what the platform answers when the same key comes
-  with a different body. Also whether a create still in flight is already
+- **Idempotent replay.** Whether a create still in flight is already
   visible to a repeat: mureo's own retry of a 5xx waits its normal backoff
   first, and the platform documents the replay only for a matching earlier
   create that is visible to it.
 - **Upload size limit.** The platform documents no maximum image size; the
   30MB cap is mureo's. A smaller platform limit would surface as an API
   error.
-- **Archive cascade.** Whether archiving a campaign or an ad group archives
-  its ad groups and ads.
+- **Archive cascade.** Whether archiving an ad group archives its ads.
 
 ## Terms
 

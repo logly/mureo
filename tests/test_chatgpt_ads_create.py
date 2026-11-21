@@ -147,10 +147,19 @@ class TestDefinitions:
                 "chatgpt_ads_ads_create",
                 ("paused", "chatgpt_ads_ads_enable", "review", "creative.file_id"),
             ),
-            *(
-                (name, ("cannot be undone", "pause", "not documented"))
-                for name in _ARCHIVES
+            (
+                "chatgpt_ads_campaigns_archive",
+                (
+                    "cannot be undone",
+                    "pause",
+                    "ad groups and ads are not archived with it",
+                ),
             ),
+            (
+                "chatgpt_ads_ad_groups_archive",
+                ("cannot be undone", "pause", "ads are archived with it is not"),
+            ),
+            ("chatgpt_ads_ads_archive", ("cannot be undone", "pause")),
         ],
     )
     def test_descriptions_state_what_the_operator_must_know(
@@ -279,6 +288,7 @@ class TestIdempotency:
             assert condition in (_BY_NAME[name].description or "")
             key = _BY_NAME[name].inputSchema["properties"]["idempotency_key"]
             assert "when the platform can see it" in key["description"]
+            assert "Never reuse a key for a different entity" in key["description"]
 
     @pytest.mark.parametrize("name", _CREATES)
     async def test_a_429_repeats_the_same_key_and_body(

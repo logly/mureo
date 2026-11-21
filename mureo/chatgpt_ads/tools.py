@@ -192,17 +192,17 @@ _CAMPAIGNS_GET = build_tool(
 
 _AD_GROUPS_LIST = build_tool(
     "chatgpt_ads_ad_groups_list",
-    "Lists the ad groups of one ChatGPT Ads campaign. Returns a JSON array of "
-    "ad group objects as the platform returns them (id, name, status, "
-    "bidding_config with bid amounts in micros, serving_issues). Read-only. "
-    "campaign_id is required. For one ad group use chatgpt_ads_ad_groups_get; "
-    "for its ads use chatgpt_ads_ads_list.",
+    "Lists ChatGPT Ads ad groups, of one campaign when campaign_id is given, "
+    "otherwise of the whole ad account. Returns a JSON array of ad group "
+    "objects as the platform returns them (id, name, status, bidding_config "
+    "with bid amounts in micros, serving_issues). Read-only. For one ad group "
+    "use chatgpt_ads_ad_groups_get; for its ads use chatgpt_ads_ads_list.",
     {
         "campaign_id": id_param("Parent campaign", "cmpn_123"),
         "name": _NAME_PARAM,
         "limit": ENTITY_LIMIT,
     },
-    ["campaign_id"],
+    [],
 )
 
 _AD_GROUPS_GET = build_tool(
@@ -316,7 +316,10 @@ _CHANGE_HISTORY_LIST = build_tool(
     {
         "period": {
             "type": "string",
-            "description": f"{PERIOD_DESCRIPTION} Default 'last_7d'.",
+            "description": (
+                f"{PERIOD_DESCRIPTION} Default 'last_7d', which ends "
+                "yesterday; pass 'today' for changes made today."
+            ),
         },
         "campaign_id": id_param("Campaign whose changes to return", "cmpn_123"),
         "ad_group_id": id_param("Ad group whose changes to return", "adgrp_123"),
