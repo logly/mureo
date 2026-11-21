@@ -147,7 +147,7 @@ the audience and measurement tools under
 | `chatgpt_ads_campaigns_pause` / `_enable` | `POST /campaigns/{campaign_id}/pause` / `/activate` | `campaign_id` (required) |
 | `chatgpt_ads_ad_groups_pause` / `_enable` | `POST /ad_groups/{ad_group_id}/pause` / `/activate` | `ad_group_id` (required) |
 | `chatgpt_ads_ads_pause` / `_enable` | `POST /ads/{ad_id}/pause` / `/activate` | `ad_id` (required) |
-| `chatgpt_ads_campaigns_update` | `POST /campaigns/{campaign_id}` | `campaign_id` (required), at least one of `name`, `start_time`, `end_time` |
+| `chatgpt_ads_campaigns_update` | `POST /campaigns/{campaign_id}` | `campaign_id` (required), at least one of `name` / `start_time` / `end_time` |
 | `chatgpt_ads_campaigns_update_budget` | `GET /campaigns/{campaign_id}`, then `POST /campaigns/{campaign_id}` | `campaign_id`, `budget` (both required), `current_daily_budget`, `projected_total_daily_budget` |
 | `chatgpt_ads_ad_groups_update` | `POST /ad_groups/{ad_group_id}` | `ad_group_id`, `name` (both required) |
 | `chatgpt_ads_ad_groups_update_bid` | `POST /ad_groups/{ad_group_id}` | `ad_group_id`, `bidding_config` (both required) |

@@ -663,6 +663,19 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     binds at load, #851).
   - `reports_order.js` → `window.MUREO_REPORTS_ORDER` — the Reports index
     card order (localStorage, and the two ways the grid is reordered).
+  - `reports_sparkline.js` → `window.MUREO_REPORTS_SPARKLINE` — seven days
+    of one metric as a line. Points are placed by date, so a day the
+    collector missed stays a gap, never a zero; fewer than two plottable days
+    draws nothing. Depends on nothing but the DOM.
+  - `reports_display.js` → `window.MUREO_REPORTS_DISPLAY` — the detail
+    view's reading of `summary.display` (#706): a section with no data is not
+    drawn, and a client without the contract keeps the legacy detail view.
+    Reads `MUREO_REPORTS_FORMAT` and `MUREO_OUTCOME_TEXT` at call time.
+  - `reports_chart.js` → `window.MUREO_REPORTS_CHART` — the daily chart,
+    with the day / week / month switch. Points are placed by date, and a week
+    or month bucket says how many of its days it holds (`days` /
+    `expected`), so a partial period is marked rather than shown as whole.
+    Depends only on the DOM.
   - `reports_triage.js` → `window.MUREO_REPORTS_TRIAGE` — the multi-client
     triage layer (#651): which clients need attention, the ranking
     (`REPORTS_TRIAGE_KINDS` — the array index IS the rank), and what to run
@@ -676,6 +689,12 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
     the operator where they are), the portfolio figures above the grid, and
     the "what mureo did today" feed (dated by the summary's `server_today` —
     this module never asks the browser what time it is).
+  - `reports_hero.js` → `window.MUREO_REPORTS_HERO` — the list screen's
+    band: how many clients are fine and how many are not. It is handed the
+    health counts `reports_index.js` builds rather than grading the roster
+    itself; its fourth block is the client whose received summary carries no
+    figure. Reads `MUREO_REPORTS_LOGIC` and `MUREO_REPORTS_OVERVIEW` at call
+    time.
   - `reports_index.js` → `window.MUREO_REPORTS_INDEX` — the list screen's
     whole model, composed once per render from the rows and the summaries
     already fetched (`buildReportsIndexModel`): the alert layer, the
