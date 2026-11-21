@@ -760,7 +760,9 @@ class ExampleGoogleProvider:
   A provider that declares no required field never reads as configured.
   `/api/credentials/plugins` carries `serves_platform` and `configured` per
   provider, and `/api/status` carries `plugin_platforms`, mapping each
-  served platform to `{provider_name, display_name, configured}`.
+  served platform to `{provider_name, display_name, configured}`, and
+  `plugin_providers`, the sorted names of every provider that has a
+  credentials card.
 - **Two providers, one platform.** A configured provider wins over an
   unconfigured one; otherwise the first by provider name is shown. Only
   one provider is offered per platform.

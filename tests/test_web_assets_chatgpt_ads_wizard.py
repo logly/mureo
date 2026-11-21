@@ -42,7 +42,12 @@ class TestWizardChatgptAdsPlatform:
     def test_wizard_does_not_hardcode_the_api_key_field(self) -> None:
         """The field comes from ``account_credential_fields`` through the
         plugin list endpoint, like Amazon's."""
-        for name in ("wizard.js", "wizard_auth_queue.js", "wizard_plugin_slot.js"):
+        for name in (
+            "wizard.js",
+            "wizard_platforms.js",
+            "wizard_auth_queue.js",
+            "wizard_plugin_slot.js",
+        ):
             assert "api_key" not in _read(name), f"api_key hand-copied into {name}"
 
 

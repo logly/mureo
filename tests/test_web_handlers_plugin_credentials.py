@@ -639,6 +639,56 @@ def test_status_plugin_platforms_empty_when_no_provider_declares(
     assert body["plugin_platforms"] == {}
 
 
+@pytest.mark.unit
+def test_status_carries_plugin_providers(
+    wizard: ConfigureWizard, registry_two_plugins: None
+) -> None:
+    """Every provider with a descriptor, sorted; ``noop`` declares no field,
+    so it has no descriptor and is absent."""
+    status, body = get(wizard, "/api/status")
+    assert status == 200
+    assert body["plugin_providers"] == ["demo_ads"]
+
+
+@pytest.fixture
+def registry_bundled_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty registry, so the wizard's startup discovery registers the
+    bundled providers into it. Request it before ``wizard``."""
+    monkeypatch.setattr(default_registry, "_entries", {})
+
+
+@pytest.fixture
+def chatgpt_ads_switched_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The ChatGPT Ads gate set before the wizard boots, so its startup
+    discovery skips that bundled provider. Request it before ``wizard``."""
+    monkeypatch.setenv("MUREO_DISABLE_CHATGPT_ADS", "1")
+
+
+@pytest.mark.unit
+def test_status_plugin_providers_list_the_bundled_providers(
+    registry_bundled_only: None, wizard: ConfigureWizard
+) -> None:
+    status, body = get(wizard, "/api/status")
+    assert status == 200
+    names = body["plugin_providers"]
+    assert {"amazon_ads", "chatgpt_ads"} <= set(names)
+    assert names == sorted(names)
+
+
+@pytest.mark.unit
+def test_status_plugin_providers_omit_a_switched_off_bundled_provider(
+    chatgpt_ads_switched_off: None,
+    registry_bundled_only: None,
+    wizard: ConfigureWizard,
+) -> None:
+    """The configure wizard reads this list to decide whether to offer
+    ChatGPT Ads, so a provider that is not registered must be absent."""
+    status, body = get(wizard, "/api/status")
+    assert status == 200
+    assert "amazon_ads" in body["plugin_providers"]
+    assert "chatgpt_ads" not in body["plugin_providers"]
+
+
 def _valid_meta_entry() -> ProviderEntry:
     return _entry(
         "meta_vendor",
