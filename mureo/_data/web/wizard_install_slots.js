@@ -14,6 +14,15 @@
   const TIKTOK_HOSTED_URL =
     "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer";
 
+  // Google Ads is the one platform this step installs for that also has
+  // tools of mureo's own. Anywhere else the official MCP is the only path,
+  // so a failed install cannot point at "mureo standard".
+  function installFailedKey(platform) {
+    return platform === "google_ads"
+      ? "wizard.providers_install.failed"
+      : "wizard.providers_install.failed_official_only";
+  }
+
   // Re-sync wizard state from the authoritative /api/status after a
   // successful install (the optimistic local flag alone left the row
   // showing "✗ not registered" when status disagreed — issue #1), then
@@ -138,7 +147,9 @@
   // it, persist it into google_ads.service_account_path via the
   // section-aware env-var writer, then re-run install. mureo-native is NOT
   // disabled by the backend until the official server is credentialed, so
-  // the user keeps working throughout.
+  // the user keeps working throughout. The generic message is the one a
+  // platform without mureo-native tools (GA4) gets, so it makes no such
+  // promise.
   function renderNeedsCredentialsCard(platform, providerId, state, onComplete) {
     const card = document.createElement("div");
     card.className = "dashboard-provider-hosted-note";
@@ -257,8 +268,9 @@
       // The official server registered but cannot authenticate yet —
       // it needs ADC credentials the wizard hasn't collected (Google
       // Ads: a service-account JSON path). Surface an inline input +
-      // "Save & install" instead of a bare error. mureo-native stays
-      // ON (backend did not disable it), so the user is never stranded.
+      // "Save & install" instead of a bare error. On a platform with
+      // mureo-native tools they stay ON (backend did not disable them),
+      // so the user is never stranded.
       ctx.btn.remove();
       ctx.statusLine.hidden = true;
       ctx.wrap.appendChild(
@@ -293,7 +305,7 @@
     statusLine.className = "dashboard-provider-hosted-note";
     statusLine.hidden = true;
     function fail(detail, key) {
-      const tmpl = MUREO.t(key || "wizard.providers_install.failed");
+      const tmpl = MUREO.t(key || installFailedKey(platform));
       // Function replacement so a "$"-containing detail is inserted
       // literally (see the note at the providers-install failure path);
       // global, since a template may name {detail} more than once.
